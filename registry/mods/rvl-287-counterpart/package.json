@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_287_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-287 Counterpart",
+  "description": "Ravel counterpart for RVL-287: the wave's client-side neighbour-aware block model facility.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "03564e84fa5fd7620321f862dab651e4ac7fa89af7e2a375d0ad2fe23af77f01"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "1622b8298865c6814b50f1617da2c606cf4a52b57ce563293ec0d2cfc79088c7"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "ad94fdbe6f0c1d651572acb06e1d5024472f7006d3121ada997582fda529966b"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "b72991a1f099653c01195a69048eb42df0b409133a31b29f2235c0e407f15043"
+      },
+      {
+        "path": "generated/neighbourhood.json",
+        "sha256": "9ba15d9cd26dc8e16df8a971f21443e0addffdf82e0e8a2afc8e8fdaa0e99cd2"
+      },
+      {
+        "path": "generated/quadrant.txt",
+        "sha256": "088f8d98de03e2c7a14aff7dfae49125286d0335fce80053ae3561c21d88a11e"
+      },
+      {
+        "path": "generated/slots.json",
+        "sha256": "baac66bc14a5d9279d9f4c21b243eaff28dfdde154db3ab3896964735c9d6ed7"
+      },
+      {
+        "path": "src/conditions.rs",
+        "sha256": "4ab40f0b5ec319e7a448d6f289fb7d46254447ff4b542621cab595cc0d2f98a2"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "0e0600d5548090e24c9aa433075dfef649ba945fd70e85f3e6443edb45b84f7e"
+      },
+      {
+        "path": "src/geometry.rs",
+        "sha256": "6a7a5cedcf12a35d0cc967d9c3b71e9db38b2d3a4eeaa3b66e61a02aa453b7cb"
+      },
+      {
+        "path": "src/kinds.rs",
+        "sha256": "02d5dc912e5ef106887c80640b1f9d8510073b90116c5600f5401c4a86b0949d"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "8145cc41547b8d608686b4c7ebfae2196f3e0894a8e63df00a20a2f0c236683e"
+      },
+      {
+        "path": "src/lookup.rs",
+        "sha256": "25aadf48345a2ecfc1de80ea25b7db80d31883e701641a2534d1e6d55da59ca4"
+      },
+      {
+        "path": "src/neighbourhood.rs",
+        "sha256": "5d5dd5d62e1061eab78f56e2ba6877628320cb18f88ee05ec4ed7e71deb6f79e"
+      },
+      {
+        "path": "src/quadrant.rs",
+        "sha256": "2c7f9b0c4fb5e086d41d1a8df1cee6fbf3a300bc64bb31e5333985bf6f1bb5b0"
+      },
+      {
+        "path": "src/slots.rs",
+        "sha256": "562e696c1d0236d0b5e2175caafda1ab0618206e12974623dabbb12070665e65"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "748cfcadf1164dd2400e363c2c7bcfd19af8d1e400677a36411a66100fd5d05a"
+  }
+}

@@ -1,0 +1,481 @@
+//! Section three's settings document.
+//!
+//! Section three counts six properties. Two of them describe outbound network
+//! behaviour — an anonymous startup ping and an update check that fetches a
+//! document whose address is assembled from the running game version, both on by
+//! default — and section three states that a counterpart reproduces neither.
+//! That is a design decision rather than a rights one: Ravel does not ship code
+//! that contacts a third-party service by default.
+//!
+//! So four of the six are here, and one further setting is added: section 11.1
+//! requires the brewing closure's cap to be a setting rather than a constant.
+//!
+//! The third-party list is re-read on every settings load and reload, and the
+//! comparator of section 6.4 is rebuilt from it each time, so the setting takes
+//! effect without a restart. [`Settings::comparator`] is that rebuild, and it is
+//! the only way to get a comparator, so a comparator can never outlive the list
+//! it resolved.
+
+use core::fmt;
+
+use ravel_sdk::JsonValue;
+use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
+
+use crate::data::{Comparator, MAX_IGNORED};
+use crate::recipes::{Closure, DEFAULT_CLOSURE_CAP, MAX_CLOSURE_CAP};
+
+/// The key an invalid recipe's treatment is switched under.
+pub const ABORT_ON_INVALID_RECIPE: &str = "recipes.abort_on_invalid";
+
+/// The key a compatibility bundle's failure treatment is switched under.
+pub const ABORT_ON_BUNDLE_FAILURE: &str = "compatibility.abort_on_failure";
+
+/// The key the ignored component kinds are listed under.
+pub const IGNORED_COMPONENTS: &str = "matching.ignored_component_kinds";
+
+/// The key unequal-data logging is switched under.
+pub const LOG_UNEQUAL_DATA: &str = "diagnostics.log_unequal_data";
+
+/// The key the brewing closure's cap is set under.
+pub const CLOSURE_CAP: &str = "recipes.brewing_closure_cap";
+
+/// The five settings this package declares, in declaration order.
+pub const KEYS: [&str; 5] = [
+    ABORT_ON_INVALID_RECIPE,
+    ABORT_ON_BUNDLE_FAILURE,
+    IGNORED_COMPONENTS,
+    LOG_UNEQUAL_DATA,
+    CLOSURE_CAP,
+];
+
+/// The two of section three's six this package does not reproduce.
+///
+/// Both describe outbound network behaviour and both are on by default upstream.
+pub const DECLINED: [&str; 2] = ["startup analytics ping", "remote version check"];
+
+/// The most characters the ignored-component list may carry.
+pub const MAX_IGNORED_TEXT: usize = 4_096;
+
+/// The packaged settings document.
+///
+/// The three settings section three calls server-scoped are declared `common`
+/// rather than `dedicated-server`. Ravel's `dedicated-server` side is that side
+/// alone, and this package declares `integrated-server` as a supported side, so
+/// declaring them the way section three's server document reads would put them
+/// on no screen in single-player: a player could never change the matching rule
+/// their own world runs under. `common` reaches every side a server runs on and
+/// one it does not.
+pub const DOCUMENT: &str = r#"{
+  "schemaVersion": 1,
+  "owner": "rvl_132_counterpart",
+  "version": 1,
+  "settings": [
+    {
+      "key": "recipes.abort_on_invalid",
+      "title": "Abort loading on an invalid recipe",
+      "description": "Aborts loading when an invalid recipe is met while enumerating, rather than skipping it.",
+      "valueSchema": { "type": "boolean" },
+      "default": false,
+      "side": "common",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    },
+    {
+      "key": "compatibility.abort_on_failure",
+      "title": "Abort loading on a compatibility bundle failure",
+      "description": "Aborts loading when a compatibility bundle fails, rather than logging the failure and carrying on.",
+      "valueSchema": { "type": "boolean" },
+      "default": false,
+      "side": "common",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    },
+    {
+      "key": "matching.ignored_component_kinds",
+      "title": "Component kinds to ignore when comparing item and fluid data",
+      "description": "A comma-separated list of data component kind names. Two items carrying different values of an ignored kind compare equal, so this changes what machines accept.",
+      "valueSchema": { "type": "string", "maxLength": 4096 },
+      "default": "",
+      "side": "common",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    },
+    {
+      "key": "diagnostics.log_unequal_data",
+      "title": "Log every unequal data comparison",
+      "description": "Logs every comparison that answers unequal. A performance hazard: a machine compares data many times per tick.",
+      "valueSchema": { "type": "boolean" },
+      "default": false,
+      "side": "client",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    },
+    {
+      "key": "recipes.brewing_closure_cap",
+      "title": "Most brewing recipes the closure may derive",
+      "description": "The brewing recipe list is derived rather than read, and is unbounded under a badly-behaved package. Past this many the derivation stops and reports a probable cycle.",
+      "valueSchema": { "type": "integer", "minimum": 1.0, "maximum": 100000.0 },
+      "default": 7500,
+      "side": "common",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    }
+  ]
+}"#;
+
+/// Reads the packaged declaration.
+///
+/// # Errors
+///
+/// Returns whatever [`ConfigurationDeclaration::parse`] refuses, which for a
+/// compile-time constant is a packaging failure rather than a runtime one.
+pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
+    ConfigurationDeclaration::parse(DOCUMENT)
+}
+
+/// What a resolution refuses.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Refused {
+    /// The ignored-component list is longer than [`MAX_IGNORED_TEXT`].
+    ListTooLong {
+        /// The published ceiling.
+        limit: usize,
+    },
+    /// The ignored-component list names more kinds than [`MAX_IGNORED`].
+    TooManyIgnored {
+        /// The published ceiling.
+        limit: usize,
+    },
+}
+
+impl fmt::Display for Refused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ListTooLong { limit } => {
+                write!(
+                    formatter,
+                    "an ignored-kind list longer than {limit} characters"
+                )
+            }
+            Self::TooManyIgnored { limit } => {
+                write!(
+                    formatter,
+                    "an ignored-kind list naming more than {limit} kinds"
+                )
+            }
+        }
+    }
+}
+
+/// The values in force for one launch.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Settings {
+    /// Whether an invalid recipe met while enumerating aborts loading.
+    pub abort_on_invalid_recipe: bool,
+    /// Whether a failure inside a compatibility bundle aborts loading.
+    pub abort_on_bundle_failure: bool,
+    /// The component kinds to ignore when comparing data.
+    pub ignored: Vec<String>,
+    /// Whether every unequal-data comparison is logged.
+    pub log_unequal_data: bool,
+    /// The brewing closure's cap.
+    pub closure_cap: usize,
+}
+
+impl Settings {
+    /// The values a build ships with, before anything is resolved.
+    #[must_use]
+    pub fn shipped() -> Self {
+        Self {
+            abort_on_invalid_recipe: false,
+            abort_on_bundle_failure: false,
+            ignored: Vec::new(),
+            log_unequal_data: false,
+            closure_cap: DEFAULT_CLOSURE_CAP,
+        }
+    }
+
+    /// Reads the values in force, keeping a shipped default for a key the
+    /// resolution does not carry.
+    ///
+    /// A resolution is not a trusted input: a list past either ceiling keeps the
+    /// shipped default rather than being truncated, because a silently shortened
+    /// ignore list changes what machines accept and says nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refused::ListTooLong`] and [`Refused::TooManyIgnored`], both of
+    /// which leave every value at its shipped default.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
+        let shipped = Self::shipped();
+        let truth = |key: &str, fallback: bool| {
+            key.parse()
+                .ok()
+                .and_then(|key| resolved.value(&key))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(fallback)
+        };
+        let text = IGNORED_COMPONENTS
+            .parse()
+            .ok()
+            .and_then(|key| resolved.value(&key))
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let ignored = ignored_from(&text)?;
+        let cap = CLOSURE_CAP
+            .parse()
+            .ok()
+            .and_then(|key| resolved.value(&key))
+            .and_then(JsonValue::as_u64)
+            .and_then(|cap| usize::try_from(cap).ok())
+            .filter(|cap| *cap >= 1 && *cap <= MAX_CLOSURE_CAP)
+            .unwrap_or(shipped.closure_cap);
+        Ok(Self {
+            abort_on_invalid_recipe: truth(
+                ABORT_ON_INVALID_RECIPE,
+                shipped.abort_on_invalid_recipe,
+            ),
+            abort_on_bundle_failure: truth(
+                ABORT_ON_BUNDLE_FAILURE,
+                shipped.abort_on_bundle_failure,
+            ),
+            ignored,
+            log_unequal_data: truth(LOG_UNEQUAL_DATA, shipped.log_unequal_data),
+            closure_cap: cap,
+        })
+    }
+
+    /// The data comparator these values put in force.
+    ///
+    /// Section three: the list is re-read on every load and reload and the
+    /// comparator is rebuilt from it each time. A rebuilt comparator resolves its
+    /// list once and keeps it, which is harmless only because the whole
+    /// comparator is replaced, and this is the replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refused::TooManyIgnored`] for a list past [`MAX_IGNORED`].
+    /// [`Settings::read`] guards the list it resolves, but the fields are public
+    /// and a caller may assign one, and a comparator that silently ignores
+    /// nothing is a matching change with no signal.
+    pub fn comparator(&self) -> Result<Comparator, Refused> {
+        Comparator::new(self.ignored.clone())
+            .map_err(|_| Refused::TooManyIgnored { limit: MAX_IGNORED })
+    }
+
+    /// The brewing closure these values put in force.
+    #[must_use]
+    pub fn closure(&self) -> Closure {
+        Closure::new(self.closure_cap).unwrap_or_else(|_| Closure::shipped())
+    }
+}
+
+/// Reads the ignored-component list out of its comma-separated text.
+///
+/// # Errors
+///
+/// Returns [`Refused::ListTooLong`] past [`MAX_IGNORED_TEXT`] characters and
+/// [`Refused::TooManyIgnored`] past [`MAX_IGNORED`] names.
+pub fn ignored_from(text: &str) -> Result<Vec<String>, Refused> {
+    if text.len() > MAX_IGNORED_TEXT {
+        return Err(Refused::ListTooLong {
+            limit: MAX_IGNORED_TEXT,
+        });
+    }
+    let mut names: Vec<String> = text
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    if names.len() > MAX_IGNORED {
+        return Err(Refused::TooManyIgnored { limit: MAX_IGNORED });
+    }
+    Ok(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::{Components, Value};
+
+    #[test]
+    fn the_packaged_declaration_parses_and_names_five_settings() {
+        let declared = declaration().expect("a packaged document");
+        assert_eq!(declared.settings.len(), 5);
+        let keys: Vec<String> = declared
+            .settings
+            .iter()
+            .map(|setting| setting.key.to_string())
+            .collect();
+        assert_eq!(keys, KEYS);
+    }
+
+    #[test]
+    fn the_two_outbound_settings_are_declared_nowhere() {
+        // Neither of the two is a key, and no declared key names anything a
+        // network switch would be named after, so the document cannot grow one
+        // by a rename.
+        let declared = declaration().expect("a packaged document");
+        let keys: Vec<String> = declared
+            .settings
+            .iter()
+            .map(|setting| setting.key.to_string())
+            .collect();
+        for outbound in ["ping", "analytics", "telemetry", "update", "version"] {
+            assert!(!keys.iter().any(|key| key.contains(outbound)), "{outbound}");
+        }
+        assert_eq!(DECLINED.len(), 2);
+        assert_eq!(keys.len(), KEYS.len());
+    }
+
+    #[test]
+    fn four_of_section_threes_six_are_here_and_one_is_added() {
+        assert_eq!(KEYS.len(), 5);
+        assert_eq!(KEYS.len() - 1 + DECLINED.len(), 6);
+        assert!(KEYS.contains(&CLOSURE_CAP));
+    }
+
+    #[test]
+    fn the_three_server_scoped_settings_are_declared_common() {
+        let declared = declaration().expect("a packaged document");
+        for key in [
+            ABORT_ON_INVALID_RECIPE,
+            ABORT_ON_BUNDLE_FAILURE,
+            IGNORED_COMPONENTS,
+        ] {
+            let setting = declared
+                .settings
+                .iter()
+                .find(|setting| setting.key.to_string() == key)
+                .expect("a declared setting");
+            assert_eq!(
+                setting.side,
+                ravel_sdk::config::SettingSide::Common,
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_diagnostic_setting_is_client_scoped() {
+        let declared = declaration().expect("a packaged document");
+        let setting = declared
+            .settings
+            .iter()
+            .find(|setting| setting.key.to_string() == LOG_UNEQUAL_DATA)
+            .expect("a declared setting");
+        assert_eq!(setting.side, ravel_sdk::config::SettingSide::Client);
+    }
+
+    #[test]
+    fn the_shipped_values_are_the_ones_the_document_declares() {
+        let shipped = Settings::shipped();
+        assert!(!shipped.abort_on_invalid_recipe);
+        assert!(!shipped.abort_on_bundle_failure);
+        assert!(!shipped.log_unequal_data);
+        assert_eq!(shipped.ignored.len(), 0);
+        assert_eq!(shipped.closure_cap, DEFAULT_CLOSURE_CAP);
+    }
+
+    #[test]
+    fn an_empty_list_names_nothing() {
+        assert_eq!(ignored_from(""), Ok(Vec::new()));
+        assert_eq!(ignored_from("  ,  , "), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn a_list_is_read_trimmed_sorted_and_without_repeats() {
+        assert_eq!(
+            ignored_from(" wear , tint ,wear"),
+            Ok(vec!["tint".to_owned(), "wear".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_list_past_either_ceiling_is_refused_rather_than_truncated() {
+        let long = "a".repeat(MAX_IGNORED_TEXT + 1);
+        assert_eq!(
+            ignored_from(&long),
+            Err(Refused::ListTooLong {
+                limit: MAX_IGNORED_TEXT
+            })
+        );
+        let many: Vec<String> = (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect();
+        assert_eq!(
+            ignored_from(&many.join(",")),
+            Err(Refused::TooManyIgnored { limit: MAX_IGNORED })
+        );
+        let at_ceiling: Vec<String> = (0..MAX_IGNORED).map(|index| format!("k{index}")).collect();
+        assert_eq!(
+            ignored_from(&at_ceiling.join(",")).map(|names| names.len()),
+            Ok(MAX_IGNORED)
+        );
+    }
+
+    fn wear_data(wear: i64) -> Components {
+        Components::from([("wear".to_owned(), Value::Whole(wear))])
+    }
+
+    #[test]
+    fn the_comparator_is_rebuilt_from_the_values_in_force() {
+        let mut settings = Settings::shipped();
+        let sharp = wear_data(0);
+        let blunt = wear_data(90);
+        assert!(
+            !settings
+                .comparator()
+                .expect("an empty list")
+                .equal(&sharp, &blunt)
+        );
+        settings.ignored = vec!["wear".to_owned()];
+        assert!(
+            settings
+                .comparator()
+                .expect("a one-name list")
+                .equal(&sharp, &blunt)
+        );
+    }
+
+    #[test]
+    fn an_over_long_ignore_list_refuses_the_comparator_rather_than_ignoring_nothing() {
+        // The fields are public and assignable, and a comparator that silently
+        // ignores nothing is a matching change with no signal.
+        let settings = Settings {
+            ignored: (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect(),
+            ..Settings::shipped()
+        };
+        assert_eq!(
+            settings.comparator(),
+            Err(Refused::TooManyIgnored { limit: MAX_IGNORED })
+        );
+    }
+
+    #[test]
+    fn the_closure_is_rebuilt_from_the_cap_in_force() {
+        let mut settings = Settings::shipped();
+        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
+        settings.closure_cap = 40;
+        assert_eq!(settings.closure().cap(), 40);
+        settings.closure_cap = 0;
+        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
+        settings.closure_cap = MAX_CLOSURE_CAP + 1;
+        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
+    }
+
+    #[test]
+    fn refusals_say_what_was_wrong() {
+        assert!(
+            Refused::ListTooLong { limit: 8 }
+                .to_string()
+                .contains("longer than 8")
+        );
+        assert!(
+            Refused::TooManyIgnored { limit: 8 }
+                .to_string()
+                .contains("more than 8")
+        );
+    }
+}

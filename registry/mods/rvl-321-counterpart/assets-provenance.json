@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-321",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification records that the entry's own textures, models and sounds were fetched with the source, were not read as behaviour, and that nothing is shipped from them; nothing here was rewritten from reference either, so there is no asset to record."
+}

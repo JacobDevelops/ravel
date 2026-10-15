@@ -1,0 +1,96 @@
+{
+  "attribution": [
+    {
+      "name": "Terrarium Earth",
+      "notice": "The upstream rendering library read for this entry is published by Terrarium Earth under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/terrarium-earth/Athena"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-287.md and is not in the public repository. Neither is publishable while the names surface is unresolved and the inventory records this artifact's branding as prohibited. The fetched tree carries no game asset of any kind: no texture, no sound, no model document and no image source file, counted over the whole tree twice. Its four non-source documents are two mixin configurations and two mod descriptors, all read as declarations rather than as assets. One binary is present, the build wrapper's own jar, which is build tooling rather than content and was not opened.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its derived identifiers remain unresolved. The specification therefore names nothing after the original. The constraint bites in five specific places for this entry, and section 14 of the specification names all five rather than transcribing them: the resource directory declaration documents are collected from, the declaration key naming the model kind, the eight model kind identifiers, the condition type discriminator with its eight type words and two key names, and the texture slot names together with the four render-type names. A counterpart that is pack-compatible with the original is exactly what this record cannot clear.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The fetched tree contains no texture and no assets directory of any kind. The inventory records textures as not-applicable for this artifact and this read confirms it rather than assuming it. Every texture this entry handles is one a declaring dependent supplies; the entry ships none.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree contains no model document. This entry builds models at runtime from a dependent's declarations and ships no model file of its own. The inventory records models as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file and no code path in it refers to one. The inventory records sounds as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "The inventory records branding as prohibited for this artifact and nothing in this read relaxes that. No branding material was fetched or read: the mod descriptor names a logo file that is not present in the source tree, and the display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The two mod descriptors were read only to confirm the dependency, side and licence declarations that sections 1 and 2 of the specification state, and none of that text is transcribed.",
+      "status": "prohibited",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/terrarium-earth/Athena",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git b121dde63d5ccd637358ad9ba0fe74244b57e85b, commit message 'fix: incorrect model state', dated 2025-06-19; sha256 of the fetched source archive: 1d55ef2203a7cdd4ae78149ae7dbf1eac4dfb18bb3b1e4f9e81b1f425d13c7d8",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-287.md. Version correspondence to the pinned pack artifact -- exact: at this revision the root build properties declare version 4.0.2 and a game version of 1.21, and the root build script sets each module's archive base name to the project name, the module name and the game version joined by hyphens, which together with the declared version produce the pinned artifact file name athena-neoforge-1.21-4.0.2.jar. The revision was located by reading the branch the project keeps for this game version rather than by trusting a tag, because the project publishes no tags at all: the tag listing was empty when read. Every commit on that branch was checked for its declared version at that time; this is the only commit declaring 4.0.2, the commit before it declares 4.0.1 and the commit after it declares 4.0.3, so the range this version covers is exactly one commit. That commit-range claim, the neighbouring versions and the empty tag listing all rest on the reader's own fetch of the upstream repository and are not evidenced by the fetched tree: what was extracted is a source archive carrying no history, so a later reader cannot recheck any of the three from the pinned material and must refetch to do so. The version 4.0.2, the game version and the archive-base-name composition that yields the pinned artifact stem are evidenced by the build inputs in the tree itself. No decompilation was performed and no jar was opened.",
+      "verifiedAgainst": "the artifact file name recorded in inventory/atm10-tts-2.0.2/plans.json"
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying a copyright line naming the year 2024 and the project's own organisation as holder, and the standard permission grant with no additional term and no separate asset reservation. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. The one mod descriptor in scope declares the licence as MIT, and the root build script's publication block declares the same, which agrees."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact athena-neoforge-1.21-4.0.2.jar, no dependency on any other inventory entry, and a declared MIT licence with assets not reserved separately. All confirmed above; the absent inventory dependency is confirmed against the mod descriptor, which declares only the loader and the game, matching the plan row's count of two platform dependencies. The wave manifest admits the entry as a foundation seed. The graph records exactly three edges into this entry and two out of it, counted twice: the outbound pair are the loader and the game, and the inbound three are one required client edge, one optional client edge and one required both-sides edge, from three entries that sit outside this wave. Section 3 of the specification is written against that trio and none of their sources was read. Two inventory-adjacent claims are qualified rather than confirmed. The plan row assigns this entry a test set including registry parity and a side matrix, and this read found the entry registers no game content of its own and runs no code at all on a dedicated server, so registry parity can only be about the eight model kind identifiers it puts in its own process-wide table, and the side matrix's server row asserts that a counterpart loads and does nothing rather than that it behaves. The plan row also assigns mixin integration, and the two injected hooks this entry installs are both recorded in the specification as host-blocked at the reviewed public revision, so that test cannot run until Ravel publishes a model surface."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes. This repository had no pre-existing row for this project, so nothing in the file competes with this one."
+    }
+  ],
+  "subject": {
+    "id": "RVL-287",
+    "kind": "other",
+    "originalAuthor": "Terrarium Earth",
+    "originalProject": "Athena",
+    "version": "4.0.2"
+  }
+}

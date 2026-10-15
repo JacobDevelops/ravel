@@ -1,0 +1,12 @@
+[package]
+name = "rvl-120-counterpart"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+num-traits.workspace = true
+ravel-sdk.workspace = true
+
+[lints]
+workspace = true

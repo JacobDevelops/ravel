@@ -1,0 +1,15 @@
+# Nothing derived from a mod artifact is tracked. These directories exist so
+# that acquisition work has somewhere to land that is ignored by construction
+# rather than by an author remembering.
+/artifacts/**
+/extracted/**
+/scratch/**
+/target/**
+.env
+.env.*
+!.env.example
+target
+
+# Authorized local material (decompiled source, acquired jars, instance trees) is
+# ignored by construction — never tracked, per the fixture policy.
+/tests/fixtures/local/**

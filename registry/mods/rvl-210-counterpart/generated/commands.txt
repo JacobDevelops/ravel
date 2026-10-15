@@ -1,0 +1,8 @@
+subcommand	arity	inherited
+settings	2	true
+version	0	true
+diagnostic	1	false
+ignite	1	false
+reload	0	false
+dump	1	false
+manual	1	false

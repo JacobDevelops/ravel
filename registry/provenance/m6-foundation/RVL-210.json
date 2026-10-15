@@ -1,0 +1,103 @@
+{
+  "attribution": [
+    {
+      "name": "rubensworks",
+      "notice": "The upstream shared library read for this entry is authored by rubensworks and published as CyclopsCore under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/CyclopsMC/CyclopsCore"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-210.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree carries seven binary images: five in the shipped resources, of which one is an animated particle texture with its own metadata document, and two logo images that are branding and were not opened. The three shipped model documents were read as a registration census entry and not as assets. The tree carries no sound file, no block-state document and no data-pack content. One further binary, an encrypted signing keystore, is present at the repository root, was not opened, and is not part of the shipped artifact. Nothing fetched is tracked or shipped.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 4 findings fixed in the specification and the counterpart on 2026-09-05; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry. One behaviour is nevertheless specified not to be reproduced, for a reason that is not a rights reason: at server start the entry makes an ungated outbound fetch of a remote list of player account identifiers, and it hard-codes five more. The specification's section 9 records the divergence and its reason. That is a design decision recorded here so the divergence is not mistaken for an omission.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its content identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified. The constraint bites in one specific place for this entry: it registers four item data component kinds and three advancement trigger kinds whose identifiers are storable by a dependent or by a saved world, so a counterpart that is save-compatible with the original is exactly what this record cannot clear.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "Three model documents ship with the entry, two block models and one item model, and they were read as registration census entries rather than as assets. The fetched tree carries no block-state document. The inventory records models as cleared for this artifact.",
+      "status": "cleared",
+      "surface": "models"
+    },
+    {
+      "basis": "Seven images are present in the fetched tree: five shipped resources, one of them an animated particle texture carrying its own metadata document, and two logo images that fall under branding below. None was opened or read as behaviour and nothing is shipped from them. The inventory records textures as cleared for this artifact and the licence reserves no asset separately. Nothing upstream is tracked or shipped; any counterpart art is rewritten from reference under policies/source-access.json and recorded in the package's assets-provenance.json.",
+      "status": "cleared",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree contains no sound file, which is what the inventory's not-applicable verdict for this artifact holds. The specification refers to no sound.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched for reading and none was read. The two logo images at the repository root were listed by the census and not opened. The display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The mod descriptor was read only to confirm the dependency, side and licence declarations the specification's sections 1 and 2 state, and none of that text is transcribed.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/CyclopsMC/CyclopsCore",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git 5e619948c509e689cb2eaa135dfae8a42110e71e, commit message 'Bump mod version', dated 2026-02-17; sha256 of the fetched source archive: 168195717ac7d1ecbe5218581dedf93de02005e53622d70d89e14985243c1c7e",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-210.md. Version correspondence to the pinned pack artifact -- exact: the properties file at this revision declares mod version '1.29.0' and game version '1.21.1', and the loader module's build script produces the pinned artifact file name cyclopscore-1.21.1-neoforge-1.29.0.jar from them. Two independent cross-checks agree: the properties file declares the loader version 21.1.2, which is the lower bound of the loader dependency range the pinned pack's dependency graph records for this artifact, and it declares the distribution project identifier 232758, which is the project identifier the inventory's rights triage records for this artifact. The revision was located by tag: unlike the project read for RVL-120, this project publishes one release tag per game version and build, the tag naming this game version and this build resolves to this commit, and the commit is an ancestor of the branch the project keeps for this game version and its long-term-support line, twenty-eight commits behind that branch's head. The clean-room tree already held a checkout of this project at its current development line for a later game version, which is not the pinned build; that tree was not read for this specification and the read was confined to the version-suffixed tree extracted from the archive above. No decompilation was performed and no jar was opened. One subtree of the pinned revision is absent from the fetched archive and this is the single largest limit on the specification. The loader module declares a further source set whose contents are a separate repository included as a sub-repository; a source archive of a revision carries the empty directory rather than the sub-repository's files. That subtree holds the interface declarations for the generic quantity vocabulary that sixty-seven files in the fetched tree compile against and that the specification's section 10 describes. Those declarations were therefore not read: section 10 is written from the use sites, is marked inferred rather than read, and marks the exact signatures unknown. The absent package is published by the same author as the artifact behind RVL-132, the entry that depends on this one, and ships compiled inside this entry's artifact rather than being resolved from the dependent, which is why the plan row can record this entry as depending on nothing and still be correct. The specification raises the resulting wave-level question in its section 18 rather than deciding it."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE.txt at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying the standard permission grant with no additional term and no separate asset reservation. Its copyright line names the year 2015 and a holder, so unlike the notice read for RVL-120 this one is complete. The project's mod descriptor in the same tree declares the licence as MIT, and the properties file the descriptor draws that value from does the same, so the declaration and the file agree. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. A counterpart that reproduced any of this text would owe the notice its named holder, which is one more reason nothing here is copied."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner integration-runtime, artifact cyclopscore-1.21.1-neoforge-1.29.0.jar, no dependency on any other inventory entry, and a declared MIT licence with assets not reserved separately. All confirmed above; the absent dependency is confirmed against the mod descriptor, which declares the game and the loader as its only requirements, and the dependency graph, which records no outgoing edge from this artifact to any other mod. The wave manifest admits the entry as a foundation seed required by RVL-132 under foundation closure. The graph records eight declaring dependents on this entry in the pinned pack, all required and on both sides; those eight resolve to five admitted counterparts, RVL-132 inside this wave and RVL-085, RVL-188, RVL-216 and RVL-241 outside it, because three of the eight declarations are companion integrations shipped inside a sibling's own artifact. That is what the specification's section 17 is written against. One inventory-adjacent claim is qualified rather than confirmed: the plan row assigns this entry a recipe-parity and asset-pipeline test set, and this read found the entry ships no recipe, tag, loot or advancement document at all and only five images and three model documents, so those two tests can only be about a dependent's content or about the manual engine's own documents rather than about anything this entry declares."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "A checkout of RVL-132's upstream project at a revision that is not the pinned build, in the same ignored fixture tree",
+      "producedBy": "an earlier M6 clean-room fetch, not this one",
+      "revision": "not pinned to the artifact behind RVL-132; no digest is asserted for it here because this record does not pin it",
+      "use": "Read only to count which of this entry's subsystems the wave's dependent declares against, which is the specification's section 17. It is a reliable guide to which subsystems matter and is not evidence about the pinned build's surface, so section 17 marks its list inferred, states the qualification in the section itself, and asks RVL-132's own specification to recount it against the pinned revision. Nothing from that tree is described as this entry's behaviour, and no identifier from it appears in the specification."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The ref field names the branch and the release tag, following the form the more recent rows use. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes, and it binds only what the archive contains, which is not the sub-repository subtree the source entry above records as absent. This repository had a pre-existing row for the same project at a different game version and branch; that row names a different ref and a different commit and does not compete with this one."
+    }
+  ],
+  "subject": {
+    "id": "RVL-210",
+    "kind": "other",
+    "originalAuthor": "rubensworks",
+    "originalProject": "CyclopsCore",
+    "version": "1.29.0"
+  }
+}

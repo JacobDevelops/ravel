@@ -17,6 +17,13 @@ Schema tests use `evidenceKind: synthetic`. A milestone manifest must use
 required native attestations. Relabelling a contract fixture cannot close a
 milestone.
 
+Performance/resource tooling is retired. Closed measurement records, historical
+commands, logs, reviews, and manifests are preserved, but are not a current
+capture procedure. Any retained performance input bound by `inputs[].name`
+(including `tests/performance/hardware/linux-reference.toml`) stays at that path
+so the gate can recompute its digest at `revision.id`. Do not delete those paths
+or hand-edit recorded digests to match the working tree.
+
 `review.record` names the independent review the milestone is closed on, and it is
 the one hashed artifact that must be obtainable: `name` is a path relative to the
 milestone directory, and `ravel-verify-scaffold` recomputes its digest against the

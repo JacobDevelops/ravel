@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-210",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification counts five images, two particle definition documents, three model documents, one manual document, one schema document and one empty structure template, and section eighteen excludes the widget toolkit, the render helpers and the manual page layout that would use them. Nothing upstream is tracked or shipped and nothing was rewritten from reference, so there is no asset to record."
+}

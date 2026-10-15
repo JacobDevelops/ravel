@@ -1,0 +1,101 @@
+{
+  "idScheme": {
+    "pattern": "^RVL-[0-9]{3}$",
+    "allocation": "RVL- followed by the zero-padded allocation number of the pinned reference the entry is bound to, which is its position in the frozen manifest plus one.",
+    "native": "The id names a slot in Ravel's inventory. It is not the upstream mod id, the filename, the project id, the file id, or any string derived from one, and it carries no upstream word at all.",
+    "survivesRename": "A rename or a re-source upstream changes what fills the slot, never which slot it is. The id is opaque for exactly that reason: a readable id would have had to encode a name upstream can change, and would have had to be reissued when it did.",
+    "scope": "atm11-0.2.1. A different pinned fixture allocates its own slots; nothing in M5 asks an id to outlive the pin it was allocated against."
+  },
+  "owners": {
+    "sdk-platform": {
+      "description": "A library or API other entries build on. Its counterpart has to exist before the entries above it can be tested.",
+      "rule": "three or more dependent entries, or a code-only layout, and not already an integration-runtime entry."
+    },
+    "integration-runtime": {
+      "description": "An entry that reaches into the game at runtime, or is large enough that its counterpart is a subsystem rather than a module.",
+      "rule": "three or more of mixin configs, access transformers and service providers together, or two thousand or more class files."
+    },
+    "content-data": {
+      "description": "An entry whose weight is data the server owns: recipes, loot, tags, advancements, worldgen, functions.",
+      "rule": "a server-leaning layout, or more data files than asset files, once the two lanes above have not claimed it."
+    },
+    "client-presentation": {
+      "description": "An entry whose weight is what the client draws or plays, shaderpacks included.",
+      "rule": "the shaderpack class, or a client-leaning layout, or any asset file at all, once the lanes above have not claimed it."
+    }
+  },
+  "methods": {
+    "source-informed-reimplementation": {
+      "readsSource": true,
+      "admissibleSourceUse": ["permitted"],
+      "description": "The counterpart may be written with the entry's source open. Admissible only where M5-W5 recorded sourceUse permitted."
+    },
+    "black-box-respecification": {
+      "readsSource": false,
+      "admissibleSourceUse": ["permitted", "conditional", "unresolved", "prohibited"],
+      "description": "The counterpart is specified from observed behaviour and the entry's own declared metadata. This is the method M5-W5 found sufficient everywhere: behaviour is cleared for all 235, so a licence that forbids source use narrows the method rather than blocking the work."
+    }
+  },
+  "testKinds": {
+    "registry-parity": { "trigger": "every entry", "restsOnEstimate": false },
+    "side-matrix": { "trigger": "every entry", "restsOnEstimate": true },
+    "recipe-parity": { "trigger": "recipes counted", "restsOnEstimate": false },
+    "loot-parity": { "trigger": "loot tables counted", "restsOnEstimate": false },
+    "tag-parity": { "trigger": "tags counted", "restsOnEstimate": false },
+    "advancement-parity": { "trigger": "advancements counted", "restsOnEstimate": false },
+    "worldgen-parity": { "trigger": "worldgen files counted", "restsOnEstimate": false },
+    "function-parity": { "trigger": "functions counted", "restsOnEstimate": false },
+    "language-parity": { "trigger": "language files counted", "restsOnEstimate": false },
+    "asset-pipeline": { "trigger": "textures or models counted", "restsOnEstimate": false },
+    "sound-parity": { "trigger": "sounds counted", "restsOnEstimate": false },
+    "shader-pipeline": { "trigger": "shader files counted", "restsOnEstimate": false },
+    "networking-probe": { "trigger": "classes on a network-shaped path", "restsOnEstimate": true },
+    "saved-data-round-trip": { "trigger": "classes on a saved-data-shaped path", "restsOnEstimate": true },
+    "mixin-integration": { "trigger": "mixin configs or access transformers counted", "restsOnEstimate": false },
+    "service-discovery": { "trigger": "service providers counted", "restsOnEstimate": false },
+    "nested-library-provision": { "trigger": "the entry ships a jar-in-jar library", "restsOnEstimate": false },
+    "cluster-integration": { "trigger": "the entry sits in a required-dependency cluster of two or more", "restsOnEstimate": false },
+    "rights-method-audit": { "trigger": "sourceUse is not permitted", "restsOnEstimate": false }
+  },
+  "rubric": {
+    "foundationValue": {
+      "derivedFrom": "M5-W3 graph: distinct other entries that declare a required dependency this entry provides.",
+      "judgement": "the band edges. Where one dependent stops being incidental and fifteen starts being foundational is a choice, and it is this one.",
+      "scale": { "1": "no dependent", "2": "one", "3": "two to four", "4": "five to fourteen", "5": "fifteen or more" }
+    },
+    "dependencyCentrality": {
+      "derivedFrom": "M5-W3 graph: distinct entries joined to this one by a required internal or nested edge in either direction.",
+      "judgement": "counting both directions. An entry with many dependencies is as entangled as one with many dependents, even though only the second is foundational.",
+      "scale": { "1": "isolated", "2": "one or two", "3": "three to six", "4": "seven to fifteen", "5": "sixteen or more" }
+    },
+    "integrationBreadth": {
+      "derivedFrom": "M5-W4 surfaces: how many of the eighteen counted surface families are nonzero.",
+      "judgement": "that families count equally. A mod with one recipe and one texture scores the same breadth as one with a thousand of each, because breadth is about how many kinds of parity a counterpart owes, not how much of each.",
+      "scale": { "1": "one family or none", "2": "two or three", "3": "four to six", "4": "seven to nine", "5": "ten or more" }
+    },
+    "compatibilityUncertainty": {
+      "derivedFrom": "M5-W3 node classification and dependency resolution, and the two M5-W4 columns labelled estimates.",
+      "judgement": "that the four causes are equal and additive. Each adds one to a base of one: a blocked graph classification, a nonzero estimate column, runtime intrusion, and a required dependency absent from the pack or an optional one pointing outside it.",
+      "scale": { "1": "none of the four", "2": "one", "3": "two", "4": "three", "5": "all four" }
+    },
+    "rightsRisk": {
+      "derivedFrom": "M5-W5 sourceUse, plus the per-surface asset statuses.",
+      "judgement": "that unresolved outranks conditional. An unresolved licence cannot be planned around, where a copyleft one can, so not knowing is scored worse than knowing something inconvenient.",
+      "scale": { "1": "sourceUse permitted", "2": "permitted with an asset surface prohibited", "3": "conditional", "4": "unresolved", "5": "prohibited, or one band lower with an asset surface prohibited" }
+    },
+    "expectedMemoryImpact": {
+      "derivedFrom": "M5-W4 surfaces: class files in the archive's table of contents.",
+      "judgement": "the proxy itself. This is a count of compiled classes, not a measurement of anything a running game allocates, and it is a size band rather than a footprint. Nothing in M5 launched a game.",
+      "scale": { "1": "under a hundred classes", "2": "under five hundred", "3": "under two thousand", "4": "under eight thousand", "5": "eight thousand or more" }
+    },
+    "verticalSliceValue": {
+      "derivedFrom": "M5-W4 layout and content counts, and M5-W3 dependents and cluster size.",
+      "judgement": "the four proxies for playability. Each adds one to a base of one: the entry ships both assets and data, it carries progression-visible content, something depends on it, and it sits in a cluster of ten or more. A slice is worth building when it is visible, reachable, and connected.",
+      "scale": { "1": "none of the four", "2": "one", "3": "two", "4": "three", "5": "all four" }
+    }
+  },
+  "scores": {
+    "riskScore": "the four risk-bearing components — integration breadth, compatibility uncertainty, rights risk, expected memory impact — averaged and rounded up. One to five.",
+    "rank": "all seven components summed, for ordering a wave. Seven to thirty-five."
+  }
+}

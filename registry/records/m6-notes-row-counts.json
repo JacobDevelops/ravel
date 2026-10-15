@@ -1,0 +1,14 @@
+{
+  "rvl_002_counterpart": { "exercised": 33, "declarableOnly": 7, "excluded": 2, "observableAreas": 40 },
+  "rvl_025_counterpart": { "exercised": 50, "declarableOnly": 7, "excluded": 4, "observableAreas": 57 },
+  "rvl_042_counterpart": { "exercised": 10, "declarableOnly": 8, "excluded": 0, "observableAreas": 18 },
+  "rvl_060_counterpart": { "exercised": 60, "declarableOnly": 7, "excluded": 4, "observableAreas": 67 },
+  "rvl_086_counterpart": { "exercised": 33, "declarableOnly": 10, "excluded": 4, "observableAreas": 43 },
+  "rvl_120_counterpart": { "exercised": 44, "declarableOnly": 6, "excluded": 5, "observableAreas": 50 },
+  "rvl_132_counterpart": { "exercised": 44, "declarableOnly": 3, "excluded": 6, "observableAreas": 47 },
+  "rvl_146_counterpart": { "exercised": 51, "declarableOnly": 5, "excluded": 4, "observableAreas": 56 },
+  "rvl_180_counterpart": { "exercised": 10, "declarableOnly": 6, "excluded": 6, "observableAreas": 16 },
+  "rvl_210_counterpart": { "exercised": 36, "declarableOnly": 5, "excluded": 6, "observableAreas": 41 },
+  "rvl_287_counterpart": { "exercised": 26, "declarableOnly": 5, "excluded": 2, "observableAreas": 31 },
+  "rvl_321_counterpart": { "exercised": 35, "declarableOnly": 5, "excluded": 1, "observableAreas": 40 }
+}

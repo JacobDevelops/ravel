@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_146_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-146 Counterpart",
+  "description": "Ravel counterpart for RVL-146: a foundation seed with no gameplay, owning the argument wire format, the recipe search state machine, the ingredient arithmetic, the colour arithmetic and the highlight lifetimes its dependents build on.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "3682e0cc6114a5d3c42e5c877e9d641869ff7734dcf03ee7ab180e67f1d547b6"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "5e21f02415fc68f7b61115f955c298d30dba781bca847ae364611b85eb106578"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "ec9f968514474acd7b5c29004e60af47a30f31918edc8e978533d7dae0bf3614"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "5ad7306e1105b0f64b67be77c064d2e7cce4baa71873a3ca1c1604b2791fc4f6"
+      },
+      {
+        "path": "generated/slots.txt",
+        "sha256": "c93ebcb7e5d0d44bc66534593db323742baf60fae1322fc9111d2f71d7e4f227"
+      },
+      {
+        "path": "generated/transport.txt",
+        "sha256": "66d880597d67ad0ce40dd83d0d9c8231707bf5563ad0b3892a842fcf3e7c9255"
+      },
+      {
+        "path": "src/channel.rs",
+        "sha256": "fbe459afcc45e1bc36691a8c89180cbf29782c06f17a58edac344d810f3bdb50"
+      },
+      {
+        "path": "src/colour.rs",
+        "sha256": "7cc2ef971def7b311b4d9c43b24e88c1463eda70ec4ff4158fea5e34f74fc874"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "b74e014484b62204f3abf7325411d5fb5ba212044715a9a3b53efc918323f79f"
+      },
+      {
+        "path": "src/highlights.rs",
+        "sha256": "b7286eb2167436df124b2adb3f46b61631333d8d4e743903668419e397474871"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "2e982d10944735e91cde97a2b8368acd036420747e4075d63505cee4fe456f0d"
+      },
+      {
+        "path": "src/menus.rs",
+        "sha256": "ca83392fc4c2980aae20611bcbcd126379cfd9cf430279eabe3fac1d23a3567f"
+      },
+      {
+        "path": "src/persistence.rs",
+        "sha256": "4252996f4af65669e23107d9da35134557736ad8844461f5ee225d774efb2553"
+      },
+      {
+        "path": "src/quantity.rs",
+        "sha256": "5905f48faeedcc218d1621e47639dcbbcb0640f271148ef74a55d4ec80ee8150"
+      },
+      {
+        "path": "src/recipes.rs",
+        "sha256": "a12f2ac0500821e38a2819873eb98db88c2b3b14bcf96d5cca5ebf9f248b3739"
+      },
+      {
+        "path": "src/registration.rs",
+        "sha256": "e03548c487ca9e9a0492f6e6f69c32eda1463aa4d3c9d66bc7a69f2c48fa1947"
+      },
+      {
+        "path": "src/shapes.rs",
+        "sha256": "790c74ce8bf5097a6086f2725eb6b3f26e6a4d2baf54f88cf71a1e33bb06391e"
+      },
+      {
+        "path": "src/tools.rs",
+        "sha256": "be3bee861b7dc7bdd857398358a8a04aae83c6eac8b9929d162481474e213e45"
+      },
+      {
+        "path": "src/transport.rs",
+        "sha256": "36285e4ca312b5d9a5ca5252c456c4aae2e39fc3ad128fd84dd8e82a1d5a1a51"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "86379886065981a3b97e0dc97af0552f8cbf5b7b1a02f82b49730711c3117e8f"
+  }
+}

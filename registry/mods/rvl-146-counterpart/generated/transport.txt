@@ -1,0 +1,9 @@
+kind	tag	reverse	bytes	body
+absent	0	absent	5	0161010100
+integer	1	integer	6	016101010101
+long	2	long	6	016101010201
+short	3	short	7	0161010103ffff
+boolean	4	boolean	6	016101010401
+text	5	text	8	0161010105026162
+stack	6	stack	8	0161010106020a00
+compound	7	compound	8	0161010107020a00

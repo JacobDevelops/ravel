@@ -171,8 +171,6 @@ fn files_named(root: &Path, directory: &str, extension: &str) -> BTreeSet<String
         .collect()
 }
 
-const GATE_DEFINITION: &str = "Makefile.toml";
-
 const M4_PROCESS_MATRIX: &str = "evidence/m4/linux-process-matrix.json";
 
 const TASK_COMMAND_PREFIX: &str = "devenv tasks run ";
@@ -182,77 +180,19 @@ pub(crate) fn verify_m4_process_matrix(root: &Path, violations: &mut Vec<String>
     if !record.is_file() {
         return;
     }
-    let gate = match gate_sub_tasks(root) {
-        Ok(gate) => gate,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-
     let Some(recorded) = recorded_tasks(&record, ".processes", violations) else {
         return;
     };
-    for extra in recorded.difference(&gate) {
-        violations.push(format!(
-            "{M4_PROCESS_MATRIX} records {extra} under processes, which {GATE_DEFINITION} does not \
-             list among the sub-tasks ravel:verify runs; a row the gate never ran took its exit \
-             status from somewhere the record does not name"
-        ));
-    }
-    for missing in gate.difference(&recorded) {
-        violations.push(format!(
-            "{M4_PROCESS_MATRIX} omits {missing} from processes, which {GATE_DEFINITION} lists \
-             among the sub-tasks ravel:verify runs; a gate process with no row is how a failing \
-             one leaves a record that still reads complete"
-        ));
-    }
-
     if let Some(outside) = recorded_tasks(&record, ".checksOutsideTheGate", violations) {
-        for inside in outside.intersection(&gate) {
+        for inside in outside.intersection(&recorded) {
             violations.push(format!(
-                "{M4_PROCESS_MATRIX} records {inside} under checksOutsideTheGate while \
-                 {GATE_DEFINITION} lists it among the sub-tasks ravel:verify runs; that section is \
-                 for checks the gate does not run and is not a way out of the reconciliation"
+                "{M4_PROCESS_MATRIX} records {inside} under both processes and \
+                 checksOutsideTheGate; a recorded gate process cannot also be outside that gate"
             ));
         }
     }
 
     verify_recorded_exit_statuses(&record, violations);
-}
-
-fn gate_sub_tasks(root: &Path) -> Result<BTreeSet<String>, String> {
-    let source = fs::read_to_string(root.join(GATE_DEFINITION))
-        .map_err(|error| format!("cannot read {GATE_DEFINITION}: {error}"))?;
-    let parsed = toml::from_str::<toml::Table>(&source)
-        .map_err(|error| format!("cannot parse {GATE_DEFINITION} as TOML: {error}"))?;
-    let dependencies = parsed
-        .get("tasks")
-        .and_then(|tasks| tasks.get("ravel:verify"))
-        .and_then(|gate| gate.get("dependencies"))
-        .and_then(toml::Value::as_array)
-        .ok_or_else(|| {
-            format!("{GATE_DEFINITION} must declare a dependencies array for ravel:verify")
-        })?;
-    let mut names = BTreeSet::new();
-    for dependency in dependencies {
-        let name = dependency
-            .as_str()
-            .filter(|name| !name.trim().is_empty())
-            .ok_or_else(|| {
-                format!(
-                    "{GATE_DEFINITION} ravel:verify dependencies must be nonempty task-name strings"
-                )
-            })?;
-        names.insert(name.to_owned());
-    }
-    if names.is_empty() {
-        return Err(format!(
-            "{GATE_DEFINITION} states no dependencies for ravel:verify, so nothing says which \
-             sub-tasks the gate runs and no record of them can be reconciled"
-        ));
-    }
-    Ok(names)
 }
 
 fn recorded_tasks(

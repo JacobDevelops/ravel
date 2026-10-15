@@ -4,41 +4,23 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const PRIVATE_WORKSPACE_NAME: [&str; 2] = ["ravel-", "registry"];
-
-fn private_workspace_name() -> String {
-    PRIVATE_WORKSPACE_NAME.concat()
-}
-
-/// Rejects secret paths and private workspace names from a tracked tree.
+/// Rejects secret and runtime paths from a tracked tree.
 #[must_use]
 pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec<String> {
-    let private = private_workspace_name();
     paths
         .into_iter()
-        .flat_map(|path| {
+        .filter_map(|path| {
             let normalized = path.replace('\\', "/");
-            let lower = normalized.to_ascii_lowercase();
-            let mut violations = Vec::new();
-            if is_forbidden_tracked_path(&normalized) {
-                violations.push(format!("forbidden tracked path: {normalized}"));
-            }
-            if lower.contains(&private) {
-                violations.push(format!(
-                    "tracked path names the private compatibility workspace: {normalized}"
-                ));
-            }
-            violations
+            is_forbidden_tracked_path(&normalized)
+                .then(|| format!("forbidden tracked path: {normalized}"))
         })
         .collect()
 }
 
-/// Rejects private keys, credential assignments, and private-workspace
-/// references in tracked text.
+/// Rejects private keys and credential assignments in tracked text.
 /// Home-directory paths and public upstream identifiers are deliberately not refused.
 #[must_use]
 pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
-    let private = private_workspace_name();
     let mut violations = Vec::new();
     for relative in paths {
         let path = root.join(relative);
@@ -69,11 +51,6 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
             ));
         }
 
-        if source.to_ascii_lowercase().contains(&private) {
-            violations.push(format!(
-                "tracked file names the private compatibility workspace: {relative}"
-            ));
-        }
         if relative.rsplit('/').next() == Some("Cargo.toml") {
             for value in escaping_path_dependencies(relative, &source) {
                 violations.push(format!(
@@ -150,17 +127,14 @@ fn resolves_outside_root(directory: &str, value: &str) -> bool {
 pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
     if root.join(".jj").exists() {
         let output = Command::new("jj")
-            .args(["file", "list"])
+            .args(["file", "list", "-T", "path ++ \"\\0\""])
             .current_dir(root)
             .output()
             .map_err(|error| format!("cannot list tracked files with jj: {error}"))?;
         if !output.status.success() {
             return Err("cannot list tracked files with jj".to_owned());
         }
-        return Ok(String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(str::to_owned)
-            .collect());
+        return Ok(parse_tracked_paths(&output.stdout));
     }
 
     let mut files = Vec::new();
@@ -170,6 +144,14 @@ pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
         .filter_map(|path| path.strip_prefix(root).ok())
         .map(|path| path.to_string_lossy().replace('\\', "/"))
         .collect())
+}
+
+fn parse_tracked_paths(output: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(output)
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 pub(crate) fn collect_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {

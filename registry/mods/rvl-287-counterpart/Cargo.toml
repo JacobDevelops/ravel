@@ -1,0 +1,11 @@
+[package]
+name = "rvl-287-counterpart"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+ravel-sdk.workspace = true
+
+[lints]
+workspace = true

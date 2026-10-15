@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::test_support::temporary_root;
-use crate::tracked::{verify_tracked_contents, verify_tracked_paths};
+use crate::tracked::{parse_tracked_paths, verify_tracked_contents, verify_tracked_paths};
 
 #[test]
 fn tracked_credential_paths_are_rejected() {
@@ -42,6 +42,8 @@ fn non_runtime_material_is_not_a_policy_violation() {
         ".minecraft/assets/example.png",
         "mods/example.jar",
         "pack.mrpack",
+        "registry/mods/rvl-042-counterpart/Cargo.toml",
+        "registry/fixtures/hidden\nname.rs",
     ]);
 
     assert!(violations.is_empty(), "violations: {violations:?}");
@@ -107,4 +109,12 @@ fn a_tracked_file_that_is_not_utf8_is_still_scanned_for_credentials() {
         ["tracked file contains credential material: keystore.bin"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn nul_delimited_tracked_paths_preserve_newlines() {
+    assert_eq!(
+        parse_tracked_paths(b"registry/a\nb.rs\0registry/c.rs\0"),
+        ["registry/a\nb.rs", "registry/c.rs"]
+    );
 }

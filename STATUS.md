@@ -29,6 +29,12 @@ replaced-tree forced reload and refused-pack-id report have harness and mutation
 A fresh instance's resource-pack selection is seeded on its second launch, after the game has
 created `options.txt` with its own version line. A player who disables the pack wins.
 
+Host builds use `cargo make ravel:host-build <instance> <cache> <minecraft>`;
+fixture setup uses `cargo make ravel:fixture-reconstruct` and
+`cargo make ravel:fixture-verify`. The standalone CLI and performance/resource
+tooling are retired. Closed measurements and their manifest-bound inputs remain
+historical evidence, not current capture or budget gates.
+
 ## What is not true yet
 
 **The full TTS pack is not playable through Ravel yet.** M6 records twelve accepted foundation
@@ -88,9 +94,9 @@ has no in-game call that changes its journal; the saved-data test mod supplies t
 - Screen sources are generated. Version selection is a build-time choice declared per entry point.
   Per-version sources handle genuine API differences; role indirection handles renames.
 - Ravel has never been released, so there is no installed compatibility contract to preserve.
-- Set a version override inside mise's child process when not using an activated shell:
-  `mise exec -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'`. An override on `mise exec`
-  itself can be replaced by mise's configured default.
+- Mise defaults `RAVEL_MINECRAFT_VERSION` to `26.1.2`; an outer environment value overrides it.
+  Select another version explicitly, for example
+  `RAVEL_MINECRAFT_VERSION=1.21.1 cargo make ravel:typecheck`.
 - Translating bindings need the published mapping as well as the jars. Missing untracked local inputs
   must be recorded as a skip, not reported as a version that passed.
 - Check every path, including obfuscated versions, and prove a check by mutation. Write a durable

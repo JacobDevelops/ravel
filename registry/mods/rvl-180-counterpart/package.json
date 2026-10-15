@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_180_counterpart",
+  "version": "4.6.1",
+  "displayName": "RVL-180 Counterpart",
+  "description": "Ravel counterpart for RVL-180: the wave's shared grouping, display, command and wire library, written from behaviour alone.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "a60fa2b2850d685a3125fc0c3ecea4eec9d5b9d731ae750af0ae5dcafd862b18"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "f7cdcd9b1d33108b42acb5229b95fb6be5f0b429a539898770fe17b436dd0d3d"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "5d1450fb5fca6c3d61b963857b022302769b7767b0535dcdc79e120d7462ddd8"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "922186f35c3b617c30e75bb9d074b5698c193e1e6f2909de397993c295143e02"
+      },
+      {
+        "path": "generated/declarations.json",
+        "sha256": "ae93b14ec96041f18334d10aa6d47a75c00b2e0f696c16d71ebe34a5f2ad2b8b"
+      },
+      {
+        "path": "generated/grouping.txt",
+        "sha256": "0068b4de7abadffcc5316f56bea4b7fbc5fe990f97b7e898dabbf7bbe6345b5d"
+      },
+      {
+        "path": "generated/sprites.txt",
+        "sha256": "ded7ca34cce97fbcc5e6e3726b0f409dd2cfd9c83429fe89c77e4e2c35a491b2"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "fba81451479fc01a0fd490b8852a5fc87c5fda2827cbcbdcad518d6bdecd6858"
+      },
+      {
+        "path": "src/colour.rs",
+        "sha256": "7831beacfe780366890df459645405814173f429c8e172d7cc5f06731e6e8886"
+      },
+      {
+        "path": "src/commands.rs",
+        "sha256": "baeaa2afcae14980bdb9e76c01d44c32245995eed1881b802654b027eed306c3"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "b6655a95e30d5b39b1e9d741cc5b83f965131443e3d464d8ad0b212c3960ecfe"
+      },
+      {
+        "path": "src/grouping.rs",
+        "sha256": "8724453ea0f0f159039f0f96c41a3b9a9316bf564ec19db99612ec01ff2fe980"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "e5a377deb5f491f44128e8db16e731413d953d7e306caebad43824ac7c174ad1"
+      },
+      {
+        "path": "src/presentation.rs",
+        "sha256": "fbde77817c2be67b13680aedb1c10ec6c487793f6635b94b60959a66cc366da0"
+      },
+      {
+        "path": "src/sprites.rs",
+        "sha256": "d06df4b3eab078241745ee7ce3355d63ac2faaa34db2a1124c977662a9c98c10"
+      },
+      {
+        "path": "src/transport.rs",
+        "sha256": "034560dbe47c2d998d4127a6d38f2d6030c7280dd696306d08eea1d0d340c98a"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "cc1c49d6d79d0853a9a060cdb78c41e814ce3e12ff4e52f32cca4881cc13030d"
+  }
+}

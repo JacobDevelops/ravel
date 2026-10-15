@@ -1,0 +1,407 @@
+{
+  "arithmetic": {
+    "admissible": 204,
+    "cluster": 4,
+    "clusterCandidates": 144,
+    "clusterOutsideFoundation": 2,
+    "excludedByRights": 120,
+    "foundation": 10,
+    "foundationSeeds": 8,
+    "plans": 324,
+    "sdkPlatformAdmissible": 17,
+    "sdkPlatformLane": 24,
+    "wave": 12
+  },
+  "entries": [
+    {
+      "admission": [
+        {
+          "part": "cluster",
+          "rule": "cluster-leaf"
+        }
+      ],
+      "canonicalId": "RVL-002",
+      "dependencies": [
+        "RVL-042",
+        "RVL-321"
+      ],
+      "foundationValue": 1,
+      "method": "source-informed-reimplementation",
+      "owner": "content-data",
+      "rank": 14,
+      "riskScore": 2,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "loot-parity",
+        "mixin-integration",
+        "recipe-parity",
+        "registry-parity",
+        "side-matrix",
+        "tag-parity",
+        "worldgen-parity"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-025",
+      "dependencies": [
+        "RVL-120"
+      ],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 21,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "advancement-parity",
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "loot-parity",
+        "mixin-integration",
+        "networking-probe",
+        "recipe-parity",
+        "registry-parity",
+        "side-matrix",
+        "tag-parity",
+        "worldgen-parity"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "requiredBy": [
+            "RVL-321"
+          ],
+          "rule": "foundation-closure"
+        },
+        {
+          "part": "cluster",
+          "requiredBy": [
+            "RVL-002",
+            "RVL-086",
+            "RVL-321"
+          ],
+          "rule": "cluster-closure"
+        }
+      ],
+      "canonicalId": "RVL-042",
+      "dependencies": [],
+      "foundationValue": 4,
+      "method": "source-informed-reimplementation",
+      "owner": "integration-runtime",
+      "rank": 19,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "mixin-integration",
+        "registry-parity",
+        "side-matrix",
+        "sound-parity",
+        "tag-parity"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-060",
+      "dependencies": [],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 17,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "cluster-integration",
+        "mixin-integration",
+        "nested-library-provision",
+        "networking-probe",
+        "registry-parity",
+        "saved-data-round-trip",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "cluster",
+          "rule": "cluster-leaf"
+        }
+      ],
+      "canonicalId": "RVL-086",
+      "dependencies": [
+        "RVL-042"
+      ],
+      "foundationValue": 1,
+      "method": "source-informed-reimplementation",
+      "owner": "client-presentation",
+      "rank": 15,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "loot-parity",
+        "mixin-integration",
+        "networking-probe",
+        "recipe-parity",
+        "registry-parity",
+        "side-matrix",
+        "tag-parity"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-120",
+      "dependencies": [],
+      "foundationValue": 4,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 18,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "mixin-integration",
+        "networking-probe",
+        "registry-parity",
+        "saved-data-round-trip",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-132",
+      "dependencies": [
+        "RVL-210"
+      ],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 16,
+      "riskScore": 2,
+      "sourceUse": "permitted",
+      "tests": [
+        "cluster-integration",
+        "language-parity",
+        "mixin-integration",
+        "registry-parity",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-146",
+      "dependencies": [],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 16,
+      "riskScore": 2,
+      "sourceUse": "permitted",
+      "tests": [
+        "cluster-integration",
+        "mixin-integration",
+        "networking-probe",
+        "registry-parity",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-180",
+      "dependencies": [],
+      "foundationValue": 4,
+      "method": "black-box-respecification",
+      "owner": "sdk-platform",
+      "rank": 23,
+      "riskScore": 4,
+      "sourceUse": "conditional",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "mixin-integration",
+        "nested-library-provision",
+        "networking-probe",
+        "registry-parity",
+        "rights-method-audit",
+        "side-matrix",
+        "tag-parity"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "requiredBy": [
+            "RVL-132"
+          ],
+          "rule": "foundation-closure"
+        }
+      ],
+      "canonicalId": "RVL-210",
+      "dependencies": [],
+      "foundationValue": 4,
+      "method": "source-informed-reimplementation",
+      "owner": "integration-runtime",
+      "rank": 22,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "mixin-integration",
+        "networking-probe",
+        "recipe-parity",
+        "registry-parity",
+        "saved-data-round-trip",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        }
+      ],
+      "canonicalId": "RVL-287",
+      "dependencies": [],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 14,
+      "riskScore": 2,
+      "sourceUse": "permitted",
+      "tests": [
+        "cluster-integration",
+        "mixin-integration",
+        "registry-parity",
+        "side-matrix"
+      ]
+    },
+    {
+      "admission": [
+        {
+          "part": "foundation",
+          "rule": "foundation-seed"
+        },
+        {
+          "part": "cluster",
+          "requiredBy": [
+            "RVL-002"
+          ],
+          "rule": "cluster-closure"
+        }
+      ],
+      "canonicalId": "RVL-321",
+      "dependencies": [
+        "RVL-042"
+      ],
+      "foundationValue": 3,
+      "method": "source-informed-reimplementation",
+      "owner": "sdk-platform",
+      "rank": 21,
+      "riskScore": 3,
+      "sourceUse": "permitted",
+      "tests": [
+        "asset-pipeline",
+        "cluster-integration",
+        "language-parity",
+        "loot-parity",
+        "mixin-integration",
+        "networking-probe",
+        "recipe-parity",
+        "registry-parity",
+        "side-matrix",
+        "tag-parity",
+        "worldgen-parity"
+      ]
+    }
+  ],
+  "fixture": {
+    "artifactSet": {
+      "count": 324,
+      "sha256": "11b1079d944dfdc52a82140f21cdc38d44541e59a308d70dcd1887ccd2556342"
+    },
+    "id": "atm10-tts-2.0.2"
+  },
+  "inputs": {
+    "plans": {
+      "path": "inventory/atm10-tts-2.0.2/plans.json",
+      "sha256": "fb9a334399f576fd72e242c71588a5aa6504d0efaf3b96828a548d0f58bc4a0b"
+    },
+    "rights": {
+      "path": "inventory/atm10-tts-2.0.2/rights.json",
+      "sha256": "f1178a98fd82d3d3e2c5ccd7c07807a1ac5636dd1828a1a3997b15b0490dc90e"
+    }
+  },
+  "manifestKind": "foundation-wave",
+  "producedBy": "waves/select.py",
+  "rules": {
+    "C1-candidate": "A cluster candidate is a pair of admissible entries in the client-presentation, content-data or integration-runtime lanes that share a dependency, closed over dependencies, with every member admissible.",
+    "C2-choice": "Among candidates, fewest members outside the foundation set wins; then most distinct owner lanes spanned; then lowest summed riskScore over the new members; then lowest leaf ids.",
+    "F1-seed": "A foundation seed is an admissible entry owned by sdk-platform whose rubric foundationValue is 3 or more, which is two or more dependent entries. This rule is exhaustive: every entry in the inventory satisfying it is in the foundation part.",
+    "F2-closure": "Anything a foundation seed depends on joins the foundation part.",
+    "R0-rights": "An entry whose sourceUse is prohibited or unresolved is excluded outright. A counterpart whose rights position is unresolved is not foundation work.",
+    "R1-closure": "Each part is dependency-closed: if an entry is in a part, every id in its dependencies is in that part."
+  },
+  "scenario": {
+    "leaves": [
+      "RVL-002",
+      "RVL-086"
+    ],
+    "part": "cluster",
+    "prerequisites": [
+      "RVL-042",
+      "RVL-321"
+    ],
+    "shape": "Two gameplay entries in different owner lanes over a shared runtime entry and a shared library, so M6-W4's fresh play, save, exit and reload run exercises server-owned content and client presentation against one prerequisite pair rather than against a single leaf."
+  },
+  "schemaVersion": 1,
+  "verifiedBy": "checks/verify-wave.sh",
+  "wave": "m6-foundation"
+}

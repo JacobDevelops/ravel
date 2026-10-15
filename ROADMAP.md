@@ -9,7 +9,7 @@ Last updated: 2026-07-30
 
 Ravel enables a player to run a complete, natively compiled Rust modpack inside
 official Minecraft: Java Edition, currently targeting Minecraft 1.21.1, without
-another Java mod loader. Initial completion means that the separate private
+another Java mod loader. Initial completion means that the in-tree
 ATM10-To-the-Sky-equivalent pack passes its automated compatibility suites, meets the
 Linux performance contract, and completes the pinned progression path in a
 fresh Ravel world. Apple Silicon support is a separate phase after that complete
@@ -18,8 +18,8 @@ should cost significantly less RAM and CPU than the equivalent Java pack, and
 [`SPEC.md`](SPEC.md) §1 states that goal against §6's thresholds.
 
 The `ravel` repository owns the reusable loader, SDK, package contracts,
-tooling, test mods, and sanitized evidence. The compatibility pack and its worlds
-live in a separate workspace.
+tooling, test mods, sanitized evidence, and `registry/` compatibility sources.
+Official fixtures and runtime worlds remain authorized, ignored local material.
 
 ## Constraints
 
@@ -78,9 +78,10 @@ later work.
 ## Non-goals
 
 This roadmap does not authorize a native client, custom launcher, public
-registry, Java mod execution, automatic KubeJS translation, world import from
-official ATM10 To the Sky, Windows support, Intel macOS support, Linux ARM support,
-hot-loading, or a wholly Rust server.
+registry service, Java mod execution, automatic KubeJS translation, world import
+from official ATM10 To the Sky, Windows support, Intel macOS support, Linux ARM
+support, hot-loading, or a wholly Rust server. The in-tree `registry/` is source
+and compatibility material, not authorization to deploy the M13 service.
 
 ## Verification system
 
@@ -177,12 +178,11 @@ pins them; the proof workload was later retargeted to ATM10 To the Sky 2.0.2 on
 Minecraft 1.21.1, and a closed milestone's record describes the material it
 measured rather than the target that replaced it.
 
-The single-pair performance protocol lives in
-`tests/performance/profiles/initial.toml` for later M9 acceptance. It contains
-the canonical world, route, warm-up, duration, graphics and
-simulation settings, active content, sampling intervals, and pass/fail
-calculations. M9 cannot close until those values are explicit and the complete
-Linux workload passes them.
+M9 requires an explicit single-pair performance protocol covering the canonical
+world, route, warm-up, duration, graphics and simulation settings, active content,
+sampling intervals, and pass/fail calculations. The former in-repository
+performance collectors and measurement tasks are retired; their removal does
+not establish that M9 passed or waive its acceptance criteria.
 
 The fixed M9 values come from the spec:
 
@@ -210,7 +210,7 @@ M0 Linux launch smoke proof
       └─> M2 loader skeleton
            └─> M3 credible Linux loader
                 ├─> M4 general SDK breadth
-                │    └─> M5 private compatibility inventory
+                │    └─> M5 compatibility inventory
                 │         └─> M6 foundation counterparts
                 │              └─> M7 complete counterpart library
                 │                   └─> M8 complete pack
@@ -227,7 +227,7 @@ M12 and M13 require separately approved post-initial scope
 
 ## Desired end-goal repository
 
-### Public `ravel` tree
+### Single-repository `ravel` tree
 
 The selected runtime mechanisms are described in the
 [architecture overview](docs/architecture/overview.md#mechanisms).
@@ -260,8 +260,7 @@ ravel/
 │   ├── ravel-pack/                 # pack manifest, composition and validation library
 │   └── ravel-testkit/              # deterministic mod, loader and process test APIs
 ├── tools/
-│   ├── ravel-cli/                  # package, pack, fixture, Prism/test handoff and benchmarks
-│   └── ravel-xtask/                # codegen, policy, evidence and milestone gates
+│   └── ravel-xtask/                # codegen, host/fixture tools, policy and evidence gates
 ├── jvm/                            # agent jar sources; screen is a separate artifact
 │   ├── bootstrap/                  # generated/minimal classes, never a Java mod API
 │   └── build/                      # reproducible JVM artifact build description
@@ -272,6 +271,19 @@ ravel/
 │           ├── adapter.toml         # inputs and exact upstream hashes
 │           ├── hooks.toml           # reviewed hook capability inventory
 │           └── mappings.lock        # mapping provenance and pinned inputs
+├── registry/                      # in-tree compatibility sources, not the M13 service
+│   ├── mods/                      # counterpart crates in the root Cargo workspace
+│   ├── packs/                     # pinned pack declarations and authored data
+│   ├── inventory/                 # pinned inventories and implementation plans
+│   ├── specifications/            # behaviour specifications
+│   ├── provenance/                # source and rights records
+│   ├── proposals/                 # general SDK capability proposals
+│   ├── resolutions/               # capability dispositions
+│   ├── policies/                  # authorized source-access policy
+│   ├── records/                   # counterpart authoring and review records
+│   ├── waves/                     # wave selection and routing
+│   ├── fixtures/                  # original counterpart/alias test fixtures
+│   └── checks/                    # registry validation entry points
 ├── schemas/
 │   ├── package.schema.json
 │   ├── pack.schema.json
@@ -296,19 +308,10 @@ ravel/
 │   ├── conformance/                 # package, graph, lifecycle and SDK contract suites
 │   ├── minecraft-process/           # real official-Minecraft process harness
 │   ├── save-reload/                 # world persistence and migration scenarios
-│   ├── performance/
-│   │   ├── profiles/                # versioned workload definitions
-│   │   └── collectors/              # Linux/macOS metric collection adapters
 │   ├── fixtures/
 │   │   ├── public/                  # shared test inputs
 │   │   └── local/                   # machine-local test inputs
 │   └── snapshots/                   # redacted deterministic expected outputs
-├── experiments/
-│   ├── adg-1-jvm-entry/
-│   ├── adg-2-mod-execution/
-│   ├── adg-3-bindings/
-│   ├── adg-4-state-ownership/
-│   └── adg-5-prism/
 ├── examples/
 │   ├── minimal-mod/
 │   ├── content-mod/
@@ -417,43 +420,29 @@ dependencies, or safety boundaries require it. M4 proves the default
 model structurally with synthetic second-version data; shipping that version is
 not required.
 
-### Public/private workspace boundary
+### Registry and local-material boundary
 
-The private compatibility workspace is a different repository from its first
-commit. Its target shape is:
+`registry/` is part of this checkout. Its `mods/*` crates belong to the root
+Cargo workspace: there is one `Cargo.lock` and one target directory, with no
+nested registry workspace. Registry checks resolve the repository root and
+consume its SDK, schemas, and tools. Cargo path dependencies remain inside
+the checkout.
 
-```text
-ravel-compat-private/
-├── Cargo.toml
-├── counterparts/
-│   └── <canonical-ravel-id>/        # one reusable package per pinned entry
-├── integrations/
-│   └── <cluster>/
-├── pack/
-│   ├── manifest.toml
-│   ├── config/
-│   ├── data/
-│   └── rust-modules/
-├── inventory/
-│   ├── manifest-entries/
-│   ├── dependency-graph/
-│   └── behaviour-specs/
-├── fixtures/
-│   └── official-<pack>/             # ignored; one per pinned fixture, reconstructed locally
-├── tests/
-│   ├── counterpart/
-│   ├── clusters/
-│   ├── differential/
-│   └── scenarios/
-├── worlds/
-│   └── canonical/                   # ignored/private test worlds
-└── evidence/
-    └── m5-m11/
-```
+The registry includes counterpart sources, pack declarations, inventory,
+specifications, provenance, and original check fixtures. It does not include
+official fixture archives, extracted upstream inputs, runtime worlds, scratch
+output, or credentials. Authorized fixture material stays ignored under
+`tests/fixtures/local/`; evidence contains
+sanitized summaries and hashes rather than raw captures or secrets.
 
-The compatibility workspace consumes the CLI and schemas as reusable interfaces.
-General SDK gaps discovered there return as capability proposals plus original
-test-mod acceptance cases.
+Compatibility work uses the public SDK and package contracts. General SDK gaps
+become capability proposals with original test-mod acceptance cases. Colocation
+does not permit counterparts to depend on loader internals.
+
+The tracked registry sources are distinct from the public publication service
+planned for M13. Their presence neither selects its distribution/identity
+mechanism nor authorizes publication. See the
+[boundary record](docs/architecture/public-private-boundary.md).
 
 ## mise and cargo-make design
 
@@ -469,25 +458,21 @@ the code-policy graph locally and in `.github/workflows/ci.yml`.
 Individual task names keep the `ravel:` prefix. Formatting covers Rust,
 shell, TOML, and Markdown; lint covers clippy, shell, and workflow checks.
 
-Run `cargo make ravel:tracy` once to build Tracy 0.13.1's capture and CSV
-export tools with `tests/performance/collectors/tracy-csvexport-frames.patch`.
-The tools live in `target/tools/tracy/bin/`, on the mise environment's PATH.
-CMake is provisioned by mise; the host supplies the C/C++ compiler and
-native build dependencies.
+Host composition and fixture operations run through `ravel-xtask`:
+`cargo make ravel:host-build <instance> <cache> <minecraft>`,
+`cargo make ravel:fixture-reconstruct`, and `cargo make ravel:fixture-verify`.
+Registry validation uses `cargo make ravel:registry-verify`.
 
-The host also supplies coreutils, git, curl, archive utilities, pkg-config,
-and Linux capture tools such as perf, procps, sysstat, vulkan-tools,
-openbox, and xdotool. macOS hosts need Bash 4+ and GNU findutils/coreutils from
-the system package manager (for example, `brew install bash findutils coreutils`),
-with their binaries ahead of the system tools on PATH: the task scripts use
-GNU `find` and Bash's `mapfile`. Apple system tools such as Instruments remain
-native host prerequisites for the post-Linux-M10 Apple Silicon phase. A development
-JDK is not evidence of the game's runtime: record the Java runtime actually
-used by the pinned Minecraft/Prism workload.
+The host also supplies coreutils, git, curl, archive utilities, and pkg-config.
+macOS hosts need Bash 4+ and GNU findutils/coreutils from the system package
+manager (for example, `brew install bash findutils coreutils`), with their
+binaries ahead of the system tools on PATH: the task scripts use GNU `find` and
+Bash's `mapfile`. A development JDK is not evidence of the game's runtime:
+record the Java runtime actually used by the pinned Minecraft/Prism workload.
 
-CLI launch commands are limited to reproducible development/test invocation
-and handoff to a Prism-managed instance. They do not own authentication,
-Minecraft installation, instance management, pack acquisition, or launcher UI.
+Development/test commands support reproducible invocation and handoff to a
+Prism-managed instance. They do not own authentication, Minecraft installation,
+instance management, pack acquisition, or launcher UI.
 
 ## Milestone roadmap
 
@@ -671,7 +656,7 @@ number meets a real pack.
 | M3-W5 | Implement in-game mod/dependency surface | M2-W7, M3-W3 | mod list and diagnostics UI, over the model `ravel-loader` already holds ordered by resolved load order | valid and invalid graphs render deterministic actionable messages. Drawing uses the shared Java screen mechanism, so what remains is a screen and not a design |
 | M3-W6 | Implement opt-in profiling | M2-W8 | collectors and profiling UI/report | per-mod attribution accuracy and unsupported metrics are explicit; normal-mode budget passes |
 | M3-W7 | Linux process matrix | M3-W1..W6 | Linux result bundle | every required surface passes natively on Linux; instance scan proves no other loader |
-| M3-W8 | Independent prototype review | M3-W7 | review record | M3 gate passes and authorizes private inventory work only after M4 |
+| M3-W8 | Independent prototype review | M3-W7 | review record | M3 gate passes and authorizes compatibility inventory work only after M4 |
 
 Where a row above says work already exists, that describes what is written, not
 what has passed. A row is closed by its Verification column and by
@@ -715,13 +700,13 @@ The restatement is recorded here rather than left to a diff, for the reason the
 binding-coverage row below records its own retraction in place: whether a row met its gate
 is a question a reader has to be able to answer from the tree.
 
-### M5 — Private compatibility inventory
+### M5 — Compatibility inventory
 
 **Purpose:** convert the pinned official fixture into an implementation-independent
 work inventory without implementing any counterpart.
 
-This milestone runs in the private workspace and consumes released local
-artifacts from M4.
+This milestone's inventory and checks live in `registry/` and consume the root
+workspace's SDK and tools, using authorized ignored local fixture material.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
@@ -731,7 +716,7 @@ artifacts from M4.
 | M5-W4 | Catalogue behaviour surfaces | M5-W2 | config/resource/KubeJS/packet/save/side inventories | every source artifact maps to a record or evidenced dead/unreachable classification |
 | M5-W6 | Assign canonical IDs and counterpart plans | M5-W3..W4 | owner, method, dependencies, tests and risk score per entry | 100% inventory coverage; IDs are unique and Ravel-native |
 | M5-W7 | Produce general SDK gap proposals | M5-W4, M5-W6 | capability proposals and original test cases | proposals identify the required capability and a testable contract |
-| M5-W8 | Inventory review and gate | M5-W1..W4, M5-W6..W7 | private evidence manifest | 235/235 or evidence-corrected total has a complete plan; M5 gate passes |
+| M5-W8 | Inventory review and gate | M5-W1..W4, M5-W6..W7 | sanitized evidence manifest | 235/235 or evidence-corrected total has a complete plan; M5 gate passes |
 
 M5's figure is 235 because that is what M5 measured: the pinned fixture when it
 ran was ATM11 0.2.1, and `evidence/m5/inventory-summary.json` binds the rows
@@ -754,11 +739,11 @@ nontrivial gameplay clusters before scaling to every entry.
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M6-W1 | Select foundation wave from M5 rubric | M5 | frozen wave manifest and cluster scenario | every selection reason and dependency is explicit |
-| M6-W2 | Resolve general SDK gaps publicly | M5-W7 | public SDK changes plus original test mods | public M4-class gates pass before private counterparts consume them |
+| M6-W2 | Resolve general SDK gaps publicly | M5-W7 | SDK changes plus original test mods | M4-class gates pass before in-tree counterparts consume them |
 | M6-W3 | Specify, then implement, foundation libraries/APIs | M6-W1..W2 | one behaviour specification per entry, then individually packaged counterparts | per-package unit, registration, save, side, performance and package-metadata suites pass |
 | M6-W4 | Implement smallest gameplay cluster | M6-W3 | cluster packages and integration | fresh play, save, exit and reload scenario passes |
 | M6-W5 | Validate counterpart-authoring process | M6-W3..W4 | counterpart template, checklist and evidence schema | a second independent counterpart follows it without hidden loader hooks |
-| M6-W6 | Review and gate | M6-W5 | private review/evidence | admitted set is green, package metadata is complete, each counterpart records which of its observable areas are declarable-only, and the M6 gate passes |
+| M6-W6 | Review and gate | M6-W5 | sanitized review/evidence | admitted set is green, package metadata is complete, each counterpart records which of its observable areas are declarable-only, and the M6 gate passes |
 
 M6-W2 resolved five of the six general SDK capabilities M5-W7 proposed:
 server-resolved data, world shaping, audio, drawing stages, and behaviour
@@ -822,13 +807,13 @@ unclassified entries.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M7-W0 | Ship the SDK capability the waves consume | M6 | public SDK changes plus original test mods | public M4-class gates pass before private counterparts consume them |
+| M7-W0 | Ship the SDK capability the waves consume | M6 | SDK changes plus original test mods | M4-class gates pass before in-tree counterparts consume them |
 | M7-W1 | Freeze waves and cluster ownership | M6 | ordered wave manifests | graph closure proves no wave depends on a later unavailable wave |
 | M7-W2 | Implement and test each counterpart | M7-W0..W1 | one package and evidence record per entry | standard per-counterpart suite passes, including differential tests |
 | M7-W3 | Test integration clusters after each wave | M7-W2 | cluster reports | cross-mod registry, recipe, resource, side, save and performance cases pass |
 | M7-W4 | Re-run full closure | each wave | burn-up ledger | accepted/blocked/unstarted totals equal verified fixture total |
 | M7-W5 | Final 100% audit | all waves | complete library manifest | 324/324 or evidence-corrected total; zero unresolved dependencies/registries; package provenance fields present |
-| M7-W6 | Independent review and gate | M7-W5 | private review/evidence | all package and cluster suites pass; M7 gate passes |
+| M7-W6 | Independent review and gate | M7-W5 | sanitized review/evidence | all package and cluster suites pass; M7 gate passes |
 
 M7-W0 exists because a counterpart cannot be written against a capability the SDK
 does not have, and M6-W2 was the only work package anywhere that shipped one. The
@@ -877,12 +862,12 @@ reachable executable pack behaviour.
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M8-W0 | Carry the loader into a running game | M4 | package discovery in a launch, a build step that composes the discovered set on the player's machine, plus a carry leg for each declared abstraction | a package the player installed — one no Ravel developer compiled — is discovered, resolved, built into the host on the player's machine and observed to act in a running game; every surface M6 recorded as declarable-only is either carried or restated as still declarable-only with its reason |
-| M8-W1 | Pin pack manifest and counterpart versions | M7 | reproducible private pack manifest | package, target, dependency and integrity closure pass |
+| M8-W1 | Pin pack manifest and counterpart versions | M7 | reproducible in-tree pack manifest | package, target, dependency and integrity closure pass |
 | M8-W2 | Port configuration and declarative content | M8-W1 | schema-validated config/data | every M5 inventory record maps to output or evidenced exclusion |
 | M8-W3 | Reimplement custom KubeJS behaviour as Rust modules | M8-W1 | compiled safe-Rust pack modules | scenario equivalence passes; runtime scan finds no JS engine |
 | M8-W4 | Build full scenario suite | M8-W2..W3 | fresh-world and integration scenarios | intended content/progression inventory has complete scenario coverage |
 | M8-W5 | Repeated save/reload soak | M8-W4 | world and migration evidence | repeated clean shutdown/reload cycles preserve state; failure cases fail closed |
-| M8-W6 | Independent pack review and gate | M8-W0..W5 | private review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |
+| M8-W6 | Independent pack review and gate | M8-W0..W5 | sanitized review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |
 
 M8-W0 exists because nothing else owned the thing every other row here assumes. A
 launch discovers no package today: the shipped host runs only mods it was
@@ -1015,7 +1000,8 @@ security, performance, and exit criteria.
 
 ### M13 — Publication and registry
 
-Post-initial and not implementation-ready. It requires a separate plan covering
+Post-initial and not implementation-ready. The existing `registry/` source tree
+does not authorize the publication service. It requires a separate plan covering
 name collision checks, dependency/licence audit, signing and publisher identity,
 moderation, distribution, and rollback.
 
@@ -1032,12 +1018,12 @@ moderation, distribution, and rollback.
 | Resources/data | data and pack | schema and Minecraft-process tests |
 | Saves/migrations | save and loader world gate | repeated save/reload and migration matrix |
 | Diagnostics/profiling | observability | attribution, redaction, accuracy and overhead tests |
-| Prism ownership | CLI/runbook/bootstrap | stock launch evidence |
-| Counterpart completeness | private inventory and packages | verified-total ledger and per-package suites |
-| Pack completeness | private pack and scenarios | full inventory mapping, closure and soak |
-| Performance | performance profiles/collectors | M0 Linux launch proof and M9 single-pair Linux acceptance |
-| Progression | private checklist/world | M10 journal plus regressions |
-| Official server protocol | network plus private adapters | protocol specification and M11 cross-client suite |
+| Prism ownership | xtask/runbook/bootstrap | stock launch evidence |
+| Counterpart completeness | in-tree inventory and packages | verified-total ledger and per-package suites |
+| Pack completeness | in-tree pack and scenarios | full inventory mapping, closure and soak |
+| Performance | explicit M9 workload protocol | M0 Linux launch proof and M9 single-pair Linux acceptance |
+| Progression | in-tree checklist and ignored local world | M10 journal plus regressions |
+| Official server protocol | network and compatibility adapters | protocol specification and M11 cross-client suite |
 
 ## Open questions and decision deadlines
 

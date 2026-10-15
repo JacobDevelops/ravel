@@ -2,7 +2,7 @@
 
 M2 built the pre-world loader and proved it on one no-op package.
 [`manifest.json`](manifest.json) is the admission artifact; the records below are
-what it admits, and `devenv tasks run ravel:verify-milestone:m2` reads both.
+what it admits, and `cargo make ravel:verify-milestone m2` reads both.
 
 | Record | Work package | What it shows |
 | --- | --- | --- |
@@ -18,10 +18,10 @@ fail if either file differs by a byte, so a record cannot describe a loader that
 no longer behaves that way. Regenerate one by rerunning its test and rewriting
 the file from the run it reports.
 
-`loader-overhead.json` comes from `devenv tasks run ravel:measure-loader-overhead`
-and is a measurement rather than a contract: rerunning it moves the numbers
-within the same order, which is why the budget it sets carries a factor of two.
-They hold on the `linux-reference-v1` hardware profile and nowhere else.
+`loader-overhead.json` is a frozen measurement produced by the retired
+`ravel:measure-loader-overhead` task, not a current capture procedure or budget
+gate. Its recorded limits hold on the `linux-reference-v1` hardware profile and
+nowhere else. The manifest-bound hardware profile remains for digest verification.
 
 `prism-launch.json` is the one record that needs the game. It is written by
 `cargo run -p ravel-spike-adg-5-prism --bin m2-launch-record` from a launcher log

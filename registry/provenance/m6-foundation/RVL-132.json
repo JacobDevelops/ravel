@@ -1,0 +1,95 @@
+{
+  "attribution": [
+    {
+      "name": "rubensworks",
+      "notice": "The upstream library read for this entry is authored by rubensworks and published as CommonCapabilities under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/CyclopsMC/CommonCapabilities"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-132.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree carries two binary images, both logos at the repository root, which are branding and were not opened. It carries one further binary, an encrypted signing keystore at the repository root, which was not opened and is not part of the shipped artifact. It carries no texture, no model document, no block-state document, no sound file and no data-pack content other than one empty structure template used by the in-game test harness. Nothing fetched is tracked or shipped.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 4 findings fixed in the specification and the counterpart on 2026-09-05; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry. Two behaviours are nevertheless specified not to be reproduced, for a reason that is not a rights reason: the entry sends an anonymous startup ping to an analytics service and fetches a remote version document, both on by default. The specification's section 3 records the divergence and its reason, which is the same decision RVL-210's record makes for a heavier case in its own entry. That is a design decision recorded here so the divergence is not mistaken for an omission.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its content identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified. The constraint bites in three specific places for this entry: it registers three ingredient kinds under names a dependent and a saved world can store, those kinds decompose into seven named category types dependents index by, and its item serialisation carries one extra field name that a reader must know to avoid silent truncation. A counterpart that is save-compatible with the original is exactly what this record cannot clear, so the specification states all three as obtainable from the pinned artifact rather than writing them.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The fetched tree carries no texture of any kind. The entry ships no block, no item and no particle, so it declares nothing that would carry one. The two images present are logos at the repository root and fall under branding below. Nothing upstream is tracked or shipped.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree carries no model document and no block-state document, which follows from the entry registering no block and no item. The inventory's verdict for this artifact is what this read confirms.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file, which is what the inventory's not-applicable verdict for this artifact holds. The specification refers to no sound.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched for reading and none was read. The two logo images at the repository root were listed by the census and not opened. The display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The mod descriptor and the properties file beside it were read only to confirm the version, dependency, side and licence declarations the specification's sections 1 and 2 state, and none of that text is transcribed.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/CyclopsMC/CommonCapabilities",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git a43687a34bfffc946b88beca2c25d36823b3c59c, commit message 'Bump mod version', dated 2026-03-14; sha256 of the fetched source archive: ce7feb8ab888264c73f063f30a002386bac70ed633af6a6519780648115034ad",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-132.md. Version correspondence to the pinned pack artifact -- exact: the properties file at this revision declares mod version '2.11.4' and game version '1.21.1', and the build script composes the pinned artifact file name commoncapabilities-1.21.1-neoforge-2.11.4.jar from them. Two independent cross-checks agree: the properties file declares the loader version 21.1.21, which is the lower bound of the loader dependency range the pinned pack's dependency graph records for this artifact, and it declares the distribution project identifier 247007, which is the project identifier the inventory's rights triage records for this artifact. The revision was located by tag: this project publishes one release tag per game version and build, the tag naming this game version and this build resolves to this commit, and the commit is an ancestor of the branch the project keeps for this game version and its long-term-support line, six commits behind that branch's head. The clean-room tree already held a checkout of this project at its current development line for a later game version, and a separate checkout of the interface-vocabulary repository at the same later line; neither was read for this specification and the read was confined to the version-suffixed tree extracted from the archive above. No decompilation was performed and no jar was opened. One subtree of the pinned revision is absent from the fetched archive and this is the single largest limit on the specification. The shipped source set declares one package whose contents are a separate repository included as a sub-repository; a source archive of a revision carries the empty directory rather than the sub-repository's files. That subtree holds the interface declarations for the ingredient, storage and recipe vocabulary that this entry's three registered kinds and every one of its adapters compile against. Those declarations were therefore not read: the specification's section 5 is written from the use sites, is marked read for what this entry does with the vocabulary and unknown for the exact signatures, and its section 17 states the limit. The same package is the one RVL-210's record names as absent from its own archive and as shipping compiled inside RVL-210's artifact. The wave has decided the vocabulary is owned by RVL-210's counterpart, so this specification consumes it and does not respecify it."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE.txt at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying the standard permission grant with no additional term and no separate asset reservation. Its copyright line names the year 2015 and a holder, so the notice is complete. The project's mod descriptor in the same tree declares the licence as MIT, and the properties file the descriptor draws that value from does the same, so the declaration and the file agree. This is the same licence text and the same named holder as the record for RVL-210, which is the same author's project. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. A counterpart that reproduced any of this text would owe the notice its named holder, which is one more reason nothing here is copied."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact commoncapabilities-1.21.1-neoforge-2.11.4.jar, one dependency on another inventory entry and two on the platform, and a declared MIT licence with assets not reserved separately. All confirmed above; the single inventory dependency is confirmed against the mod descriptor, which declares RVL-210's artifact, the game and the loader as its only requirements, and the dependency graph, which records exactly those three outgoing edges. The wave manifest admits the entry as a foundation seed and admits RVL-210 under foundation closure as required by it. The graph records four declaring dependents on this entry in the pinned pack, all required and on both sides, and all four are outside this wave. That is what the specification's section 16 is written against. One inventory-adjacent claim is qualified rather than confirmed: the plan row assigns this entry a registry-parity and a language-parity test set, and this read found the entry registers only three ingredient kinds into a registry the dependency owns and ships thirty translation documents that name nothing it registers, so those two tests can only be about the shared registry's contents or about a dependent's own text rather than about anything this entry declares under its own name."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The ref field names the branch and the release tag, following the form the more recent rows use. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes, and it binds only what the archive contains, which is not the sub-repository subtree the source entry above records as absent. This repository had a pre-existing row for the same project at a different game version and branch; that row names a different ref and a different commit and does not compete with this one."
+    }
+  ],
+  "subject": {
+    "id": "RVL-132",
+    "kind": "other",
+    "originalAuthor": "rubensworks",
+    "originalProject": "CommonCapabilities",
+    "version": "2.11.4"
+  }
+}

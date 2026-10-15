@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "note": "Every phrase a derivation.reads list may use, which check reads it, and which observable archive operation it corresponds to. Round 4's review found that derivation.reads was bound by nothing: `every class file, fully disassembled` could be written into two records and the gate still exited 0. Round 4's answer was this file, and round 5's review found what that answer is worth on its own: every link in it is a filename. It injected a reader of 1,113 class-file bodies into checks/surfaces-model.sh, changed no entry here and no record, and the gate exited 0 with every record still claiming metadata-only. A phrase is a claim about code, and a table of phrases cannot check code. So the phrases are no longer the ground: checks/verify-reads.sh runs each producer with Python's zipfile and the unzip binary wrapped, classifies every listing and every byte that came back, refuses any read of an entry body outright, and requires the set of operations a producer was seen performing to equal the set the observedAs fields below claim for it. This file is now the vocabulary and the claim; the run is the evidence. The producers map still decides which phrases a record may carry, so a record that omits an input its own model reads still fails in verify-provenance.sh, which is round 4's NB2.",
+  "reads": {
+    "mod index entry: filename, hash, project id and file id": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "the acquired artifact files, hashed and not opened": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "acquisition log, download provenance only": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "META-INF/neoforge.mods.toml": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "declaration"
+      ]
+    },
+    "META-INF/mods.toml": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "declaration"
+      ]
+    },
+    "archive table of contents": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "toc"
+      ]
+    },
+    "tables of contents of the jar-in-jar libraries an artifact ships, at any depth": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "container",
+        "toc"
+      ]
+    },
+    "first four bytes of each archive entry, to tell an archive from a resource": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "signature"
+      ]
+    },
+    "pack override tree, counted only": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "behaviour-surface counts, taken from the same tables of contents": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "pinned manifest reference ordinals": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "manifest.files[].projectID": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "manifest.files[].fileID": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "manifest.files[].required": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "manifest.files[].isLocked": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": []
+    },
+    "the whole bytes of every entry named like an archive, so that it can be listed": {
+      "decompiled": false,
+      "restrictedContentRead": false,
+      "readsSource": false,
+      "observedAs": [
+        "container"
+      ]
+    }
+  },
+  "producers": {
+    "checks/artifact-set.sh": [
+      "mod index entry: filename, hash, project id and file id",
+      "the acquired artifact files, hashed and not opened",
+      "acquisition log, download provenance only"
+    ],
+    "checks/mod-metadata.sh": [
+      "META-INF/neoforge.mods.toml",
+      "META-INF/mods.toml",
+      "archive table of contents",
+      "tables of contents of the jar-in-jar libraries an artifact ships, at any depth",
+      "first four bytes of each archive entry, to tell an archive from a resource"
+    ],
+    "checks/public-repo.sh": [],
+    "checks/derivation-reads.sh": [],
+    "checks/reader-accounting.sh": [],
+    "checks/recheck-metadata.sh": [
+      "META-INF/neoforge.mods.toml",
+      "META-INF/mods.toml",
+      "archive table of contents",
+      "tables of contents of the jar-in-jar libraries an artifact ships, at any depth",
+      "the whole bytes of every entry named like an archive, so that it can be listed"
+    ],
+    "checks/surface-recount.sh": [
+      "archive table of contents",
+      "tables of contents of the jar-in-jar libraries an artifact ships, at any depth",
+      "the whole bytes of every entry named like an archive, so that it can be listed"
+    ],
+    "checks/graph-model.sh": [],
+    "checks/surfaces-model.sh": [
+      "pack override tree, counted only"
+    ],
+    "checks/rights-model.sh": [
+      "acquisition log, download provenance only",
+      "behaviour-surface counts, taken from the same tables of contents"
+    ],
+    "checks/plans-model.sh": [
+      "pinned manifest reference ordinals"
+    ],
+    "checks/rebuild-references.sh": [
+      "manifest.files[].projectID",
+      "manifest.files[].fileID",
+      "manifest.files[].required",
+      "manifest.files[].isLocked"
+    ],
+    "checks/rebuild-graph.sh": [],
+    "checks/rebuild-surfaces.sh": [],
+    "checks/rebuild-rights.sh": [],
+    "checks/rebuild-plans.sh": [],
+    "checks/observed-recount.sh": [],
+    "checks/read-observation.sh": []
+  },
+  "records": {
+    "references": "checks/rebuild-references.sh",
+    "graph": "checks/rebuild-graph.sh",
+    "surfaces": "checks/rebuild-surfaces.sh",
+    "rights": "checks/rebuild-rights.sh",
+    "plans": "checks/rebuild-plans.sh"
+  }
+}

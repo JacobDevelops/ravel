@@ -2,9 +2,11 @@
 
 //! Repository automation for Ravel.
 
-mod budget;
+mod error;
 mod evidence;
+pub mod fixture;
 mod gate_versions;
+pub mod host;
 mod instance_scan;
 mod inventory;
 mod java_shape;
@@ -18,7 +20,7 @@ mod version_boundary;
 #[cfg(test)]
 mod test_support;
 
-pub use budget::{BudgetReport, verify_budget};
+pub use error::FixtureError;
 pub use evidence::manifest::{verify_evidence_manifest, verify_milestone};
 pub use evidence::records::verify_evidence_records;
 pub use gate_versions::verify_gate_versions;
@@ -75,4 +77,19 @@ const TEST_MOD_NAMES: &[&str] = &[
     "server-only",
     "waystone-ledger",
     "world-shaping",
+];
+
+const REGISTRY_MOD_NAMES: &[&str] = &[
+    "rvl-002-counterpart",
+    "rvl-025-counterpart",
+    "rvl-042-counterpart",
+    "rvl-060-counterpart",
+    "rvl-086-counterpart",
+    "rvl-120-counterpart",
+    "rvl-132-counterpart",
+    "rvl-146-counterpart",
+    "rvl-180-counterpart",
+    "rvl-210-counterpart",
+    "rvl-287-counterpart",
+    "rvl-321-counterpart",
 ];

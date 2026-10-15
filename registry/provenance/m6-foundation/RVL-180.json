@@ -1,0 +1,100 @@
+{
+  "attribution": [
+    {
+      "name": "ChickenBones and covers1624",
+      "notice": "The upstream shared library respecified for this entry is authored by ChickenBones and covers1624 and published under the GNU Lesser General Public License v2.1. No source text of it was read, fetched or decompiled, and no compiled entry of the pinned artifact was opened. Only the artifact's non-code entries and the project's public landing page were used. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/TheCBProject/CodeChickenLib"
+    },
+    {
+      "name": "CurseForge",
+      "notice": "The pinned artifact was acquired through CurseForge's automated distribution channel by M5 and is held in the public repository's ignored fixture tree. It is not tracked in either repository and nothing is redistributed from it.",
+      "url": "https://www.curseforge.com/minecraft/mc-mods/codechicken-lib-1-8"
+    }
+  ],
+  "implementationMethod": "black-box",
+  "publication": {
+    "notes": "The specification derived for this entry is tracked at specifications/m6-foundation/RVL-180.md and is not in the public repository. The pinned artifact lives only in the public repository's ignored fixture tree at tests/fixtures/local/atm10-tts-2.0.2/mods/ and is not tracked in either repository. Two things withhold publication independently: the names surface is unresolved, and the code surface is permission-required under a weak-copyleft licence with no author permission yet obtained. Neither is affected by this record.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 1 finding fixed in the specification and the counterpart's notes on 2026-09-05; the specification's observed/documented/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "The M5 triage records this entry's code surface as permission-required under the GNU Lesser General Public License v2.1, a weak-copyleft licence, and records its sourceUse as conditional. The plan row elects black-box-respecification with readsSource false. That is the condition this record exists to state: reading the code of this entry was not the route taken to a specification, and nothing of it was read. policies/source-access.json withdraws the M5 gate that would have made reading impermissible for a private author, so the constraint honoured here is the plan's method rather than a prohibition; the licence's distribution terms are untouched and keep their full force, and no source text, decompiled tree or compiled entry of this artifact was opened by this author. Weak copyleft governs derivative works of the code, and a specification written without reading the code produces none. checks/verify-spec-identifiers.sh was run over the specification and returned no finding.",
+      "status": "permission-required",
+      "surface": "code"
+    },
+    {
+      "basis": "The M5 triage records behaviour as cleared for this artifact, and LGPL v2.1 imposes no behavioural restriction. Behaviour is what this entry's specification states, and it states only what the artifact's non-code documents declare and what the public landing page describes.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. The licence grants no trademark right, so the project's own name, its mod id, its display name and its content identifiers remain unresolved. The specification therefore names nothing after the original and carries no upstream identifier, and no save-compatible identifier mapping is specified, so a counterpart's alias declaration is empty.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The M5 triage records textures as permission-required for this artifact. Twenty-one interface images are present in the pinned artifact. They were listed and counted from the archive table of contents and none was opened, decoded or viewed. Nothing upstream is tracked or shipped; any counterpart art is drawn fresh from reference under policies/source-access.json and recorded in the package's assets-provenance.json.",
+      "status": "permission-required",
+      "surface": "textures"
+    },
+    {
+      "basis": "Unchanged from the inventory, which records models as not-applicable for this artifact. The archive table of contents holds no model document, confirming it.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "Unchanged from the inventory, which records sounds as not-applicable for this artifact. The archive table of contents holds no sound file, confirming it.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "The display name and the two author names appear in the artifact's mod descriptor and are carried in this record's attribution block only. They are excluded from any counterpart regardless of licence status under policies/source-access.json, and the specification carries neither.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "compiled-artifact",
+      "locator": "tests/fixtures/local/atm10-tts-2.0.2/mods/CodeChickenLib-1.21.1-4.6.1.526.jar in the public repository, ignored tree",
+      "producedBy": "M5 automated acquisition; read for this entry by the M6-W3 black-box author",
+      "revision": "the pinned pack artifact, version 4.6.1.526 for game version 1.21.1, entries dated 2025-07-15; sha256 of the artifact as held on disk: e35cb0ca3e3aeb87e1e171242454426d22edf517b06dc38e5c3d5b6d44d6bc04. This is a compiled artifact and not source text.",
+      "use": "The only upstream artifact used for specifications/m6-foundation/RVL-180.md. Its 672 entries were listed with an archive table-of-contents command. Of those, none of the 522 compiled entries in the outer archive and none of the 284 in the bundled nested archive was opened, decompiled or disassembled, and no compiled entry's bytes were examined at all. What was read, each as a whole document: the mod descriptor, the resource-pack declaration, the bytecode-transformation configuration, the nested-archive bundling metadata, the language document, the two aggregate tag documents, the atlas document, one entry of the build cache index, and the licence file's opening lines to confirm its identity as the GNU Lesser General Public License v2.1. The access-widening document was read for its directive column only, counted by directive kind, without reading the member names it widens: 39 public, 33 public field, 3 protected, 2 protected field, 77 in total. The 32 leaf tag documents and the 21 interface images were listed and counted, not opened. The bundled nested archive was extracted only far enough to list its own table of contents. Version correspondence to the pinned pack artifact -- exact: this is that artifact, digested on disk rather than resolved from any index."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, graph.json, surfaces.json and rights.json, and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record rests on and the second body of evidence the specification is written from. The plan row: artifact CodeChickenLib-1.21.1-4.6.1.526.jar, canonical id RVL-180, owner sdk-platform, rank 23, risk score 4, sourceUse conditional, method black-box-respecification with readsSource false, ten tests. The rights row: licence declared as GNU Lesser General Public License v2.1, family weak-copyleft, assets not reserved separately, acquisition automated-curseforge, publication blocked:unresolved, and the seven per-surface verdicts this record's rights block carries unchanged. The graph: seven in-pack dependents, every edge required and declared BOTH, five at a floor of [4.6.1,5.0.0) and two at [4.6.0,5.0.0), plus two platform edges of its own. The surface census: 806 compiled entries of which 284 nested, 34 tags, 21 textures, one language document, two data namespaces, one asset namespace, 18 entries attributed to networking and 0 to persistence by a class-path heuristic, side layout both by a layout heuristic, no pack configuration or script overlay. The wave manifest admits the entry as a foundation seed with no dependency of its own. One census figure is not confirmed by the artifact: the census records two access transformers and no mixin configuration, and the archive holds one of each. The specification records that discrepancy as unresolved rather than choosing a side."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "policies/source-access.json",
+      "producedBy": "M6-W3",
+      "revision": "as accepted by M6-W3",
+      "use": "The disposition governing what this workspace may read. It withdraws M5's reading gate for a private author, so the black-box method used here is the plan's own election rather than a restriction the policy imposes, and this record says so in the code-surface basis rather than claiming a prohibition that no longer exists. Its assets clause is what the texture-surface basis applies: upstream art is reference for a fresh drawing, never shipped, and each shipped asset is recorded in the package's assets-provenance.json."
+    },
+    {
+      "accessedAt": "2026-09-05T14:00:00Z",
+      "category": "metadata",
+      "locator": "https://github.com/TheCBProject/CodeChickenLib",
+      "producedBy": "M6-W3 black-box author",
+      "revision": "the repository landing page as served at the access time above; no commit, tag or branch was resolved, no clone was made, no file under the repository was opened, and no source was fetched",
+      "use": "The public description of the project, fetched once over the network and used only for behaviour description. It yields one sentence: a library of systems that make several aspects of modding easier, naming three-dimensional mathematics and transformations, model rendering, packets, configuration, colours and bytecode manipulation. That sentence is repeated almost verbatim in the artifact's own mod descriptor. The page carries no reference manual, no facility list, no integration guide, no side or permission statement and no configuration description; its remaining content is distribution channels. The specification marks every claim taken from it as documented and states in its closing section that nine words of documentation specify nothing."
+    }
+  ],
+  "subject": {
+    "id": "RVL-180",
+    "kind": "library",
+    "originalAuthor": "ChickenBones and covers1624",
+    "originalProject": "CodeChickenLib",
+    "version": "4.6.1.526"
+  }
+}

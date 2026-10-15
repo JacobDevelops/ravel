@@ -4,6 +4,8 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
+mod commands;
+
 /// Reports changed digests while treating a successful rewrite as success.
 fn package_digests(directory: &Path, check: bool) -> ExitCode {
     match ravel_xtask::refresh_digests(directory, check) {
@@ -38,7 +40,16 @@ fn package_digests(directory: &Path, check: bool) -> ExitCode {
 
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    let root = env::current_dir().expect("current directory must be available");
+    let root = match env::current_dir() {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("operation failed: cannot read current directory: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Some(result) = commands::dispatch(&args, &root) {
+        return result;
+    }
     let (subject, violations) = match args.as_slice() {
         [package, digests, directory] if package == "package" && digests == "digests" => {
             return package_digests(&root.join(directory), false);
@@ -60,17 +71,6 @@ fn main() -> ExitCode {
         }
         [verify, versions] if verify == "verify" && versions == "gate-versions" => {
             ("gate versions", ravel_xtask::verify_gate_versions(&root))
-        }
-        [verify, budget, runs @ ..]
-            if verify == "verify" && budget == "budget" && !runs.is_empty() =>
-        {
-            let runs = runs.iter().map(Path::new).collect::<Vec<_>>();
-            let report = ravel_xtask::verify_budget(&root, &runs);
-            // Unchecked limits must remain visible even when comparisons pass.
-            for note in &report.notes {
-                println!("- {note}");
-            }
-            ("budget", report.violations)
         }
         // Emit sanitized evidence on both success and failure.
         [scan, instance, directory] if scan == "scan" && instance == "instance" => {
@@ -105,7 +105,9 @@ fn main() -> ExitCode {
                 "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
                  cargo xtask verify gate-versions\n  \
                  cargo xtask verify milestone M<N>\n  \
-                 cargo xtask verify budget <run.json>...\n  \
+                 cargo xtask host build <instance> <cache> <minecraft>\n  \
+                 cargo xtask fixture reconstruct [descriptor]\n  \
+                 cargo xtask fixture verify [descriptor archive]\n  \
                  cargo xtask scan instance <instance-directory>\n  \
                  cargo xtask package digests [--check] <package-directory>"
             );

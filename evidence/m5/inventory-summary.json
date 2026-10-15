@@ -64,7 +64,7 @@
    "class": "machinery",
    "holds": "the private gate whose exit status and summary lines every figure above was read from",
    "name": "checks/verify.sh",
-   "sha256": "a92c2cb6d756bfa7bb9190e8e80d85c13ffed6e19c8b2514ad28d3af4abc4715"
+   "sha256": "65bcd53854df0f30dbf214ea0d1f55f990e8aff35ba59eedb299eaa4e6dc5989"
   },
   {
    "class": "machinery",
@@ -76,13 +76,13 @@
    "class": "machinery",
    "holds": "the classification of every observed read, and the refusal that fires on an entry body",
    "name": "checks/verify-reads.sh",
-   "sha256": "42d479ea40b825cba813ac276686049a682ed53c952a8986eaab9d616a2f1565"
+   "sha256": "c00bf2a92244da2c71715dd19e180691d11a41f1ba12ad864029e33295b37a12"
   },
   {
    "class": "machinery",
    "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives",
    "name": "checks/verify-primitives.sh",
-   "sha256": "9691a0873043ea3f27830851526695a3b260173f62cb44a66b4bd5796a8a34f5"
+   "sha256": "037196be7dec1647beadf109b1ef89f7f2fff8741ff5de3037621e0a15115448"
   },
   {
    "class": "machinery",
@@ -94,7 +94,7 @@
    "class": "machinery",
    "holds": "every accounted occurrence, held congruent with the vocabulary in both directions",
    "name": "checks/read-primitives.tsv",
-   "sha256": "b88dbcc0d43a2cee0722a0316d63b245ac2a83fe6eb9af71ab00da6e5f08c450"
+   "sha256": "b611747c95c62d053827e4e1d72b174ff64a532e508fd664256a7bb9e83e1da5"
   }
  ],
  "disclosure": {
@@ -361,6 +361,17 @@
    "milestone": "M6",
    "reason": "M6-W6's first review round found that the denominator M6 publishes \u2014 the exercised, declarable-only and observableAreas figures of evidence/m6/counterpart-summary.json \u2014 was counted from 547 rows that existed only in one session's temporary directory, that 307 of those rows carried free prose rather than a published verdict, and that every genuinely ambiguous row had been resolved in the direction that shrinks the denominator. checks/verify-notes-rows.sh closes that: every section row of every counterpart's NOTES.md now begins with a verdict published in checks/counterpart-verdicts.tsv, the per-package counts are derived from those rows into records/m6-notes-row-counts.json by the check itself, and the check refuses an unpublished verdict, an unparseable row and a record that disagrees with its rows. It also runs checks/counterpart-evidence.schema.json over the public summary's rows, which the same round found rejected every row of the record it describes and which nothing ran. Adopting it changes checks/verify.sh and the count of files under checks/, both of which this record binds. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry. The accounted-use figures do not move either: the new check reads through no primitive checks/read-primitive-vocabulary.tsv names.",
    "workPackage": "M6-W6"
+  },
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/verify-reads.sh",
+    "checks/verify-primitives.sh",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [],
+   "milestone": "M7",
+   "reason": "The registry moved from a separate private workspace into registry/ in the root repository, and its lint/build gate now selects counterpart packages in the root Cargo workspace independently of the published evidence. The checks resolve registry data and root source paths locally, and tracked-file listing uses jj locally or Git in CI rather than requiring a sibling checkout. The default offline gate preserves fixture-independent schema and record-integrity validation while naming fixture-dependent checks it cannot perform; fixture mode requires the acquired inputs. Live bound-artifact digest/class/tracked comparisons, all six primitiveScan comparisons, and counterpart membership/count comparisons remain enforcing. checks/read-primitives.tsv changes only the boundary digest row's reason to describe registry-owned bindings; the four accounted cargo occurrences and every primitive count remain unchanged. The primitive scan computes 40 files scanned, 27 primitives declared, 12 refused, 15 accounted, 95 accounted uses and 37 occurrence rows, so no figure is amended. Bound names remain registry-relative; only the changed machinery digests are rebound. Under docs/decisions/machinery-is-not-material.md this is a machinery amendment, not a new certification of the M5 material: no material digest or material figure changes."
   }
  ],
  "milestone": "M5",
@@ -373,7 +384,7 @@
   "readingSource": 104
  },
  "primitiveScan": {
-  "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
+  "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 95 now, and the difference is not a correction: later milestones adopted checks into that gate and machineryAmendments records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
   "accounted": 15,
   "accountedUses": 95,
   "class": "machinery",
@@ -424,6 +435,6 @@
   "unclassified": 0,
   "unclassifiedCountsArtifacts": "Zero of the 235 artifacts are left unclassified. It does not say that every entry inside them fell into a family, and a reader should not take it that way. The families here count entries of named kinds \u2014 the kinds a port plan is sized from \u2014 and their totals sum to 230,370 entries across thirteen families, which is fewer than the archives hold. Entries in no family are not a gap; they are the parts of an archive nothing in M5 needed to size. No figure in M5 is a count of every entry in the pack."
  },
- "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest. Nothing in this repository recomputes those digests, because the files are not here \u2014 but something does: the private gate holds all fifteen and recomputes every one of them against this record on each of its runs, so a file there that moves without its digest moving here fails a gate rather than ageing quietly into a false line. That is the whole of what the binding buys. It does not tell a reader here whether the figures are right; it stops the two trees drifting apart, and a hand that moves a file and rewrites this record together still passes.",
+ "whatThisRecordIs": "The public-safe aggregate of an inventory originally built entirely in a separate private workspace, now held under registry/ in the root repository. The material figures record that inventory's settled M5 tree; the machinery figures and digests record subsequent explicit amendments. Every original figure was re-derived from the underlying rows rather than read off that gate's summary. The files those counts came from are bound above by digest, with names relative to registry/. The registry gate recomputes all fifteen bound digests against this record on each of its runs, so a bound file that moves without its digest moving here fails a gate rather than ageing quietly into a false line. That is the whole of what the binding buys. It does not independently prove that the figures are right; it stops the registry files and this record drifting apart, and a hand that moves a file and rewrites this record together still passes.",
  "workPackage": "M5-W8"
 }

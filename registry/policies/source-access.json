@@ -1,0 +1,26 @@
+{
+  "assets": {
+    "artUpstreamBytesShipped": "never, on any surface, at any permission status",
+    "branding": "excluded regardless of permission. Display names, logos, author names and mod icons stay out. Permission to reuse a texture is not permission to present a counterpart as the original author's work, and no one is asking for that.",
+    "derivationRecord": "mods/<package>/assets-provenance.json, tracked",
+    "fetchAsReference": "every entry, alongside source, untracked",
+    "releaseGate": "author permission, obtained before anything is released",
+    "shipOriginalArt": "rewritten with the originals as reference, never copied"
+  },
+  "manifestKind": "source-access-policy",
+  "policy": {
+    "appliesTo": "specification authorship and counterpart production inside this workspace",
+    "decidedBy": "M6-W3",
+    "readUpstreamSource": "every entry, whatever its rights verdict"
+  },
+  "schemaVersion": 1,
+  "unchangedByThisPolicy": [
+    "Nothing upstream is tracked. Fetched source and fetched assets live under this repository's ignored tests/fixtures/local/ directory and never become tracked files.",
+    "No counterpart may carry an upstream identifier. checks/verify-counterparts.sh is the mechanism and this policy does not touch it.",
+    "Nothing decompiles, transliterates, or mechanically translates. The clean-room split is what makes a specification safe to implement from, and reading source more widely raises its importance rather than lowering it.",
+    "Ravel's rights obligations are untouched. This policy governs what specification authors may read, not what Ravel may publish or ship.",
+    "inventory/atm11-0.2.1/rights.json is frozen M5 material and remains the record a publication decision reads. Nothing here edits a verdict."
+  ],
+  "whatThisRecordIs": "M6's disposition of the reading question M5-W5's rights triage left standing. inventory/atm11-0.2.1/rights.json is M5's finding — the licence each upstream artifact carried when M5 measured it — and remains frozen. The reading gate is withdrawn: specification authors may read available upstream source in ignored local fixtures, but no upstream source is tracked or distributed. The checked-in registry contains original specifications and counterpart implementations. Rights verdicts retain their force for distribution, and rights.json remains the record a publication decision reads.",
+  "whyTheAssetsClauseExists": "rights.json records rights per surface rather than per mod, and the surfaces disagree: behaviour is cleared, code and textures and models are permission-required, branding is prohibited, names is unresolved, and every entry is publication-blocked today. Reading is not the question on an art surface, because art is not read on the way to a rewrite the way code is — it is either shipped or it is not. The project owner is obtaining author permission before release, which is exactly what permission-required asks for, so upstream art may be fetched and used as reference. What that arrangement needs in order to be more than a promise is a way to act on the answer. assets-provenance.json is that way: one row per shipped art asset naming the upstream artifact and canonical id it was derived from, whether it was rewritten from reference or owes nothing upstream, and the permission status carried from rights.json. A grant tells you which packages it unblocks. A refusal — and some authors will refuse — can be honoured by query rather than by inspecting a few hundred images, because six months on nothing distinguishes derived art from original work by looking at it. A package whose derivation record is missing or stale is not finished."
+}

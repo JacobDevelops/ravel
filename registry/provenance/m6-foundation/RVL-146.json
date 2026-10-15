@@ -1,0 +1,96 @@
+{
+  "attribution": [
+    {
+      "name": "GlodBlock",
+      "notice": "The upstream shared library read for this entry is published by GlodBlock under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/GlodBlock/Glodium"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-146.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree carries two binary files, counted over the whole tree twice: an image serving as the mod descriptor's icon, which is branding and was not opened, and the build wrapper archive, which is build tooling and is not part of the published artifact. It carries no texture, no sound and no model document. Its three non-source resource documents are a mod descriptor, a resource-pack metadata document and a one-line access-widening declaration, all read as declarations rather than as assets.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 4 findings fixed in the specification and the counterpart on 2026-09-05; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its derived identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified. The constraint bites in five specific places for this entry, and section 14 of the specification names all of them rather than transcribing them: the argument type tags and the assignment of number to type that two peers must derive identically, which the specification withholds along with the declaration order it comes from, the saved compound key and its two entry keys that appear in an existing world, the two field spellings of the ingredient shape that pack authors write into recipe files, the two field spellings of the pair shape that appear in any data written through it, and the game method the access-widening declaration widens. A counterpart that is wire-compatible or save-compatible with the original is exactly what this record cannot clear.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The fetched tree contains no texture. Its only image is the mod descriptor's icon, which is branding rather than a texture and is recorded under that surface. The inventory records textures as not-applicable for this artifact and this read confirms it rather than assuming it.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree contains no model document. The inventory records models as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file and no code path that names a sound. The inventory records sounds as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was read. The tree carries one image, the icon the mod descriptor points at; it was identified by its file type and dimensions and was not opened, because the display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The mod descriptor was read only to confirm the dependency, side and licence declarations the specification's sections 1 and 2 state, and none of that text is transcribed.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/GlodBlock/Glodium",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git 96e37ac0454000ad6ce9c4fee1edbdb03a33184f, commit message 'bump version', dated 2024-10-18; sha256 of the fetched source archive: 06cb206ba021d32b66ad6f6aea1765296f53dd831580bc564fcd6820e32f12c0",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-146.md. Version correspondence to the pinned pack artifact -- exact: at this revision the build properties declare the version the pinned artifact file name carries and the game version 1.21.1, and the build script names the archive after the display name and stamps it with that declared version, which together produce the pinned artifact file name Glodium-1.21-2.2-neoforge.jar. The commit's own diff is the bump that declared that version, touching the build properties and nothing else. The revision was located by reading history rather than by trusting a tag: the project publishes no tag at all, and the branch it keeps for this game version stops at an earlier version than the pinned one, so the pinned version lives on the default branch instead. Two later commits on that branch still declare this version; both touch only the build script's publishing configuration, so the bump commit is the revision that declares it and the source is identical across the three. The next commit after them declares a different game version. No decompilation was performed and no jar was opened.",
+      "verifiedAgainst": "the artifact file name recorded in inventory/atm10-tts-2.0.2/plans.json"
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE.txt at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty lines, carrying a copyright line naming the year 2021 and the project's author as holder, and the standard permission grant with no additional term and no separate asset reservation. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. The mod descriptor in the same tree declares the licence as MIT, which agrees."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact Glodium-1.21-2.2-neoforge.jar, no dependency on any other inventory entry, and a declared MIT licence. All confirmed above; the absent inventory dependency is confirmed against the mod descriptor, which declares only the loader and the game, matching the plan row's count of two platform dependencies. The wave manifest admits the entry as a foundation seed. The graph records three edges into this entry, all required on both sides, all resolved, and all carrying the same minimum version, which is below the pinned version; the three entries they come from sit outside this wave and are planned as black-box respecifications, and none of their sources was read. That trio is what section 3 of the specification is written against. One inventory-adjacent claim is qualified rather than confirmed: the plan row assigns this entry a test set including registry parity, and this read found the entry registers no content of its own, so that test can only be about a dependent's content passing through the facilities this entry provides. The entry does own one piece of world data, the saved recipe memory of the specification's section 6.1, and that saved state does not survive a load at this revision."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes. This repository held one earlier row for this project, at the default branch head and a later game version; that row is a different revision of the same project and is not the one this record pins, and the two trees are extracted to separate directories."
+    }
+  ],
+  "subject": {
+    "id": "RVL-146",
+    "kind": "other",
+    "originalAuthor": "GlodBlock",
+    "originalProject": "Glodium",
+    "version": "1.21-2.2-neoforge"
+  }
+}

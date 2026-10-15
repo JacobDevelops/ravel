@@ -1,0 +1,4 @@
+registry_core::Registry
+registry_core::Registry::new
+registry_core::Registry::push
+registry_core::Registry::len

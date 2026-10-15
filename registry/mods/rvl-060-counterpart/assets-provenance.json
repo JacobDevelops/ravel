@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-060",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture, and the specification records that the pinned tree carries none either: four resource documents and no binary asset the game loads, counted over the whole tree twice. The one binary in that tree is a build-wrapper archive that is not shipped. Nothing was opened, nothing is tracked, and nothing was rewritten from reference. The fluid property record of `fluids` names sound actions a declaring dependent supplies a sound for; no sound sits behind those names here."
+}

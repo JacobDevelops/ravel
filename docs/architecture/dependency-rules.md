@@ -86,6 +86,11 @@ stable contracts toward concrete host internals.
 - Testkit may depend on the loader and public contracts to construct process
   harnesses, but production libraries never depend on testkit. Local fixtures
   are never package or source dependencies.
+- Counterpart crates in `registry/mods/*` are members of the root Cargo
+  workspace and consume the public SDK, not loader or JVM internals. Colocation
+  does not relax the mod-author boundary. Cargo path dependencies stay within
+  the checkout; authorized ignored local fixtures remain runtime test inputs,
+  never package or source dependencies.
 
 - `ravel-bootstrap` is the JVM entry crate. It holds no unsafe code — see
   [`safety-boundary.md`](safety-boundary.md) — it exposes only safe Rust upward, and no other
@@ -107,8 +112,6 @@ stable contracts toward concrete host internals.
   and on nothing below them; the generated workspace hands an installed mod
   `ravel-sdk` and nothing else, so a player's mod reaches no bootstrap, JVM or
   version internal either.
-- Measurement experiments under `experiments/` are not production crates. No
-  production crate depends on one, and `ravel:verify-scaffold` enforces that.
 
 The [mechanisms overview](overview.md#mechanisms) describes the current boundaries:
 a mod is distributed as source the player's machine compiles, and every screen

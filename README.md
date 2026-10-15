@@ -48,6 +48,18 @@ The development and CI gate is:
 cargo make ravel:verify
 ```
 
+Build an installed-package host and reconstruct or verify the pinned fixture with:
+
+```console
+cargo make ravel:host-build <instance> <cache> <minecraft>
+cargo make ravel:fixture-reconstruct
+cargo make ravel:fixture-verify
+```
+
+These tasks run `ravel-xtask`; the standalone `ravel-cli` has been removed.
+Performance/resource capture and budget tooling are retired. Closed measurements
+and their manifest-bound inputs remain historical evidence.
+
 The underlying code checks can also be run individually:
 
 ```console

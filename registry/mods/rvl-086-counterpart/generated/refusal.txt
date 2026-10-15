@@ -1,0 +1,8 @@
+surface	Digging	Sword	Shearing	Ranged	Armour	Other
+BreakSpeed	watches	watches	watches	-	-	-
+BreakBlock	watches	watches	watches	-	-	-
+AttackEntity	watches	watches	watches	-	-	-
+UseInAir	-	-	watches	watches	-	-
+UseOnBlock	watches	watches	watches	-	-	-
+InteractEntity	-	-	watches	-	-	-
+CropHarvest	watches	watches	watches	-	-	-

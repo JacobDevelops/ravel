@@ -82,9 +82,9 @@ Ravel into a Java mod host.
   enumerate later additions.
 - **Counterpart identity.** Counterparts use their own Ravel-native identity;
   load-time identity mapping belongs to the host.
-  In the private compatibility workspace, a genuine compatibility alias lives
-  only in `counterparts/<package>/aliases.json`, whose rows contain the upstream
-  id, native id and canonical replacement id.
+  A genuine compatibility alias lives only in
+  `registry/mods/<package>/aliases.json`, whose rows contain the upstream id,
+  native id and canonical replacement id.
 - **Toolchain and cache.** Player mod builds share one exactly pinned toolchain
   and one reconstructible Cargo build cache per machine across instances.
   Cargo's cache keys separate different builds, and its lock serializes concurrent
@@ -107,9 +107,8 @@ The ADG-1 through ADG-5 candidate sources and `ravel:spike-adg-1` through
 validates their saved results. The ADG names refer to JVM entry, mod execution,
 bindings, state ownership, launcher integration, configuration and screens
 (ADG-6), and world persistence (ADG-7). ADG-6 selected its mechanism without
-a new measurement. The world-persistence byte-preservation measurement runs
-with `./jvm/harness/run-datafix-byte-preservation.sh`; the outward-action crossing
-measurement runs with `cargo make ravel:measure-outward-crossing`.
+a new measurement. The world-persistence byte-preservation and outward-action
+crossing measurement runners are retired; saved evidence remains historical.
 A primitive crossing's roughly 10 ns median and zero allocation are a warm,
 trivial-call floor, not a frame budget or a prediction for a real hook; see
 [`evidence/m1/README.md`](../../evidence/m1/README.md).

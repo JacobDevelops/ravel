@@ -1,0 +1,96 @@
+{
+  "attribution": [
+    {
+      "name": "McJty",
+      "notice": "The upstream mod read for this entry is authored by McJty and published under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/McJtyMods/RFToolsBase"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-025.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree carries twenty-nine binary images: eleven block textures, ten item textures, five interface textures and three manual illustrations. None was opened or read as behaviour and nothing is shipped from them. The tree carries no sound file. It carries thirty-two model documents and seven block-state documents, which were listed as a registration census and not read as assets.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 3 findings fixed in the specification and the counterpart on 2026-09-05; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its content identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified. The constraint bites in five specific places for this entry: it registers five item data component kinds whose identifiers a saved world carries; one material tag that three dependent mods craft against; six network payload identifiers on a versioned channel; four world-generation document names bound to two custom placement-modifier identifiers; and seventeen manual entry names. A counterpart that is save-compatible or wire-compatible with the original is exactly what this record cannot clear, and the specification says so at each of those points rather than writing the spellings.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "Twenty-nine images ship with the entry and none was fetched for reading or opened. The inventory records textures as cleared for this artifact and the licence reserves no asset separately. Nothing upstream is tracked or shipped; any counterpart art is rewritten from reference under policies/source-access.json and recorded in the package's assets-provenance.json.",
+      "status": "cleared",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree carries thirty-two model documents and seven block-state documents. They were counted as a registration census, and two of the block-state documents were found to name blocks that are not registered at this revision, which the specification's section 5 records as a shipped defect. None was read as an asset. The inventory records models as cleared for this artifact.",
+      "status": "cleared",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file and the entry claims a sound registration group it never populates, which is what the inventory's not-applicable verdict for this artifact holds. The specification refers to no sound.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched or read; the display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The mod descriptor was read only to confirm the dependency, side and licence declarations the specification's sections 1 and 2 state, and none of that text is transcribed. The descriptor's logo field is commented out and the tree carries no logo file.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "coverage": "Read in full: 64 of the tree's 143 source files, being every file outside the published interface directory except the four screen files, the three renderer files and two render helpers. Read as a census: the 79 published interface files, whose declarations and contract comments the specification's section 15 counts and groups. Read as documents: all 39 generated documents, all 13 hand-written world-generation and guidebook data documents, the language file, the mod descriptor, the access-transformer declaration, the build properties and the licence. Listed and not opened: 29 images, 32 model documents and 17 guidebook documents.",
+      "locator": "https://github.com/McJtyMods/RFToolsBase",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git 51791394f5f72d986664b1407cff24f6b516d758, commit message 'Bump', dated 2025-11-26; sha256 of the fetched source archive: 093746bc17ff2e9460e5aa3fecdfe6f4f683d6b458af9f401049f2d3c0a9b72d",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-025.md. Version correspondence to the pinned pack artifact -- exact: the build properties at this revision declare version '1.21-6.0.10' and a mod id that together produce the pinned artifact file name rftoolsbase-1.21-6.0.10.jar, and the mod descriptor declares the loader range and the shared-library minimum the artifact was built against. The revision was located by reading the build-properties history on the branch the project keeps for this game version, the same method the RVL-120 record used for the same author: the project publishes no tag and no release for this line, and names one branch per game version, so the branch is unambiguous and the version is declared in a properties file rather than a tag. The commit immediately before this one declares 6.0.9 and the next change to the same file declares 6.0.11, so this is the commit that declared the pinned version. Four later commits on the same branch still declare 6.0.10 before that bump; they are post-release development -- two build-configuration changes, one unfinished port of three devices, and one documentation pass -- and none was read. No decompilation was performed and no jar was opened."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying the standard permission grant with no additional term and no separate asset reservation. Its copyright line names the year 2019 and an organisation holder, so unlike the shared library of RVL-120 the notice here is complete. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. One inconsistency, recorded rather than resolved: the mod descriptor's licence field points at a licence file on a branch for an older game version, and the file it points at is spelled differently from the file that actually sits in this revision's tree. The grant read here is the one in this tree, at this revision."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact rftoolsbase-1.21-6.0.10.jar, one dependency on RVL-120, and a declared MIT licence with assets not reserved separately. All confirmed above; the single dependency is confirmed against the mod descriptor, which declares the loader and that one shared library and nothing else. The wave manifest admits the entry as a foundation seed with foundation value 3, and the dependency graph records RVL-018, RVL-051 and RVL-293 as the three pack mods that require this entry on both sides, which is what the specification's section 16 is written against. Two of those three name this entry's exact pinned version as their minimum and the third names an earlier one. One inventory-adjacent claim is confirmed rather than qualified: the plan row assigns this entry the full twelve-test set including recipe, tag, loot, advancement and world-generation parity, and this read found shipped documents of every one of those kinds, so unlike RVL-120 the assigned test set is the set the entry in fact needs."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes. This repository had no pre-existing row for this project, so nothing in the file competes with this one."
+    }
+  ],
+  "subject": {
+    "id": "RVL-025",
+    "kind": "mod",
+    "originalAuthor": "McJty",
+    "originalProject": "RFToolsBase",
+    "version": "6.0.10"
+  }
+}

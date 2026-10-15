@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_060_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-060 Counterpart",
+  "description": "Ravel counterpart for RVL-060: the foundation seed's registration facade, wire contracts, data-driven predicates and validators, and portable colour and transport arithmetic.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "ae8787ff4187e23ca720ecc09c95d5e7b38308ba71facc38487470ac275a1a47"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "b779f2306d1edef9368be6127c711a4c7adb9060a02f46708b701983c3709460"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "f67fdf48dcc332919cd14e3d50e3d9ce7fbad24da8b44a21af1aecf72bdb7308"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "b676ff0ac316eb8a033dffcc2ddf48b83cf6a4c50500af4752e782379f81c841"
+      },
+      {
+        "path": "generated/colour.txt",
+        "sha256": "68a145336faa1261e133338e9bc752c8ebaa9479c5125568b6812df8ac63b866"
+      },
+      {
+        "path": "generated/transport.txt",
+        "sha256": "6525aa44d6178ee22f3f8c3f527711af1c17a1c17b33b95e6b6da08ef9bd0804"
+      },
+      {
+        "path": "generated/validators.json",
+        "sha256": "b35d9c451e4da4040219c0e99fab83e4d3325b5325728d9f35709b353da52e0f"
+      },
+      {
+        "path": "src/channel.rs",
+        "sha256": "5014c43ddc023f4388373f14b78f1e9da59ba0ad0e9a39bf6d49a9a13461db07"
+      },
+      {
+        "path": "src/colour.rs",
+        "sha256": "bac14dc5b89ffea24e8d8f3bd701824e17168723f74ae16ae1c7b54208a798b9"
+      },
+      {
+        "path": "src/data.rs",
+        "sha256": "669e249acd395165ea10ddd6c2dd1710007e41d9161ce4394ddc7dc8c057fd1c"
+      },
+      {
+        "path": "src/declaration.rs",
+        "sha256": "6a85c53f7cc2f6b58af02a1021009d6eda678880da8f854960e9448a6be1ffd8"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "e652783011161e5123b19608b7f76ab77dea55f4856062d863d0d1dc5e3736fc"
+      },
+      {
+        "path": "src/fluids.rs",
+        "sha256": "b31781d3cd433a5f0e99fbf555beba8fe1c57fa90b1e0776c3cd29902c7d19d7"
+      },
+      {
+        "path": "src/highlights.rs",
+        "sha256": "18cb67021a074678a15c07542faa6438bf4ca576f230500ef7cea68fd80a99a5"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "d7f3825f4c88b249e9140e6d75e4b8e3ee1ed447c4e95c1cd8f2332756c28b70"
+      },
+      {
+        "path": "src/matching.rs",
+        "sha256": "1a1e85b966a9271af3b4dad08aaa3dca8f127280d0efe3ddc7d71073a4682fc3"
+      },
+      {
+        "path": "src/presentation.rs",
+        "sha256": "876883f22cb2c5c7e08d405675ba8f5449cbb8efe3f6e210a1bac9e13d7ce5c1"
+      },
+      {
+        "path": "src/shapes.rs",
+        "sha256": "2ee27e51c883c3a85753b5615d151c6080f0e304e775683a75a670c8407fa59b"
+      },
+      {
+        "path": "src/storage.rs",
+        "sha256": "4204d857ee608a7a7014f24710906c45a956fd8fb8cdfb7fc0d461ad191ef352"
+      },
+      {
+        "path": "src/transport.rs",
+        "sha256": "61524b5f8506b73132168dfc1166a510d910118d77ec2b8e0df1018114f66e27"
+      },
+      {
+        "path": "src/validators.rs",
+        "sha256": "c2277a0867835eab54a693a1e4061fa4268b9146b12b34373df83a808ec99957"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "31e96056e56af73ef6d55fc1025124abe5c07f5dc1d3912dda3c066b8a45b681"
+  }
+}

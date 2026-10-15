@@ -1,0 +1,11 @@
+[package]
+name = "rvl-180-counterpart"
+version = "4.6.1"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+ravel-sdk.workspace = true
+
+[lints]
+workspace = true

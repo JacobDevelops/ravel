@@ -1,7 +1,7 @@
 # Ravel Specification
 
 Status: Draft product and capability contract  
-Current target: Minecraft: Java Edition 1.21.1; multiple versions are supported through declared ranges  
+Current default: Minecraft: Java Edition 26.1.2; multiple versions are supported through declared ranges
 Proof workload: an ATM10-To-the-Sky-equivalent Rust modpack pinned to All the Mods 10: To the Sky 2.0.2  
 Last updated: 2026-08-29
 
@@ -203,8 +203,8 @@ Vanilla datapacks and resource packs must continue to work unchanged.
 
 ### 3.7 Version support
 
-- Ravel supports more than one Minecraft version. The current target is
-  Minecraft 1.21.1, the version the pinned proof workload runs on.
+- Ravel supports more than one Minecraft version. The default target is
+  Minecraft 26.1.2; the pinned historical proof workload runs on Minecraft 1.21.1.
   Minecraft-specific hooks, mappings, and bindings must live behind explicit
   version adapters.
 - Core loader, package, and SDK code must not hardcode the assumptions of any
@@ -659,7 +659,7 @@ Original Ravel loader and SDK code is dual MIT/Apache-2.0.
 
 ## 12. Repository topology
 
-### 12.1 Public-ready loader repository
+### 12.1 Single repository and Cargo workspace
 
 The `ravel` repository contains:
 
@@ -670,21 +670,27 @@ The `ravel` repository contains:
 - pack authoring and validation tools;
 - original test mods and fixtures;
 - compatibility harnesses;
+- the `registry/` counterpart sources, pack declarations, inventories, and checks;
 - specifications and architecture documentation.
 
-### 12.2 Private compatibility workspace
+### 12.2 In-tree compatibility registry and local material
 
-A separate private workspace contains:
+`registry/` is part of this repository, not a separate private workspace.
+Its counterpart crates under `registry/mods/*` are members of the root Cargo
+workspace and share its `Cargo.lock` and target directory. Pack declarations,
+inventory, behaviour specifications, and provenance live beside
+them in `registry/`. Registry checks use this checkout's SDK, schemas, and tools;
+Cargo path dependencies must remain inside the repository.
 
-- the ATM10-To-the-Sky-equivalent Rust counterparts;
-- private pack manifests and integrations;
-- ignored official ATM10 To the Sky fixtures;
-- private end-to-end worlds and reports.
+Official fixtures and compatibility worlds remain authorized, ignored local
+material, not source or package dependencies. `tests/fixtures/local/` must stay
+untracked. Credentials, launcher tokens, raw captures, and unsanitized reports
+must not enter tracked evidence.
 
-### 12.3 Future registry
+### 12.3 Future publication service
 
-A Ravel package registry is post-initial scope. It is considered when individual
-counterparts and the loader are ready for publication. Until then, package
+A public Ravel package registry service is post-initial M13 scope. The in-tree
+`registry/` sources do not select or deploy that service. Until then, package
 acquisition remains file/manifest based and external to the loader.
 
 Open question 8 has a recorded preferred shape. A registry should be an index
@@ -716,10 +722,10 @@ work behind its own decision gate.
 
 The preferred shape above is elaborated in
 [`docs/architecture/official-registry-design.md`](docs/architecture/official-registry-design.md),
-which describes the index/mod/pack layout, the modpack-composition unit, and the
-migration boundary between the public registry and the private rewrite
-workspace. That document is subordinate to this section: it elaborates the shape
-and does not select the M13 mechanism.
+which describes the proposed publication index/mod/pack layout and
+modpack-composition unit, distinct from today's in-tree compatibility sources.
+That document is subordinate to this section: it elaborates the shape and does
+not select the M13 mechanism.
 
 ## 13. Testing contract
 
@@ -753,10 +759,10 @@ Every counterpart requires:
 
 ### 13.3 Canonical world and scenarios
 
-The private workspace maintains a canonical fresh compatibility world and a
-scenario suite that deliberately exercises every counterpart and integration
-cluster. Scripted scenarios run against both the pinned official fixture and
-Ravel where equivalent automation is possible.
+The compatibility suite maintains a canonical fresh world as ignored local
+material and deliberately exercises every counterpart and integration cluster.
+Scripted scenarios run against both the pinned official fixture and Ravel where
+equivalent automation is possible.
 
 The suite compares observable behaviour, registries, recipes, resources,
 packets, and saved state. It must distinguish exact comparisons from
@@ -964,9 +970,9 @@ Exit:
   test mod without internal loader access;
 - version-specific Minecraft logic remains isolated.
 
-### M5 — Private compatibility inventory
+### M5 — Compatibility inventory
 
-In the private workspace:
+In `registry/`, using authorized ignored local fixtures:
 
 - reconstruct the exact pinned fixture;
 - inventory all 235 of its manifest entries, the count ATM11 0.2.1 carried as the
@@ -1088,7 +1094,7 @@ amendment with explicit exit criteria. A wholly Rust server is not implied.
 
 ### M13 — Publication and registry
 
-Post-initial scope:
+Post-initial publication work, distinct from the existing `registry/` source tree:
 
 - verify public-name collisions and finalize repository/package presentation;
 - complete loader/SDK dependency and licence audit;
@@ -1108,7 +1114,7 @@ The initial scope does not include:
 - importing official ATM10 To the Sky worlds;
 - shaders as part of the performance target;
 - Windows, Intel macOS, or Linux ARM support;
-- a public mod registry;
+- a public mod registry service;
 - automatic KubeJS translation or JavaScript execution;
 - official ATM10 To the Sky multiplayer before single-player completion;
 - a wholly Rust dedicated server;

@@ -90,8 +90,32 @@ fn scaffold_contract_covers_every_original_test_mod() {
     }
 }
 
-fn private_workspace_name() -> String {
-    ["ravel-", "registry"].concat()
+#[test]
+fn scaffold_contract_covers_every_registry_mod() {
+    let required = required_scaffold_paths();
+
+    for name in [
+        "rvl-002-counterpart",
+        "rvl-025-counterpart",
+        "rvl-042-counterpart",
+        "rvl-060-counterpart",
+        "rvl-086-counterpart",
+        "rvl-120-counterpart",
+        "rvl-132-counterpart",
+        "rvl-146-counterpart",
+        "rvl-180-counterpart",
+        "rvl-210-counterpart",
+        "rvl-287-counterpart",
+        "rvl-321-counterpart",
+    ] {
+        for file in ["Cargo.toml", "src/lib.rs"] {
+            let relative = format!("registry/mods/{name}/{file}");
+            assert!(
+                required.contains(&relative),
+                "missing contract for {relative}"
+            );
+        }
+    }
 }
 
 fn temporary_root(label: &str) -> PathBuf {
@@ -105,41 +129,36 @@ fn temporary_root(label: &str) -> PathBuf {
 }
 
 #[test]
-fn a_tracked_path_naming_the_private_workspace_is_refused() {
-    let path = format!("docs/{}/notes.md", private_workspace_name());
-
-    let violations = verify_tracked_paths([path.as_str()]);
+fn tracked_registry_paths_and_historical_names_are_allowed() {
+    let violations = verify_tracked_paths([
+        "registry/mods/rvl-002-counterpart/Cargo.toml",
+        "registry/mods/rvl-002-counterpart/src/lib.rs",
+        "docs/ravel-registry/notes.md",
+    ]);
 
     assert!(
-        violations
-            .iter()
-            .any(|violation| violation.starts_with("tracked path names the private")),
-        "expected the private-workspace path to be refused, got:\n{}",
+        violations.is_empty(),
+        "registry paths and historical names are allowed:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn a_tracked_file_naming_the_private_workspace_is_refused() {
+fn tracked_registry_documentation_and_historical_names_are_allowed() {
     let root = temporary_root("named");
     let relative = "docs/architecture/public-private-boundary.md".to_owned();
     fs::create_dir_all(root.join("docs/architecture")).expect("the directory should be creatable");
     fs::write(
         root.join(&relative),
-        format!(
-            "The private workspace lives at ../{}.\n",
-            private_workspace_name()
-        ),
+        "Counterpart crates live in registry/mods, imported from ravel-registry.\n",
     )
     .expect("the document should be writable");
 
     let violations = verify_tracked_contents(&root, &[relative]);
 
     assert!(
-        violations
-            .iter()
-            .any(|violation| violation.starts_with("tracked file names the private")),
-        "expected the private-workspace reference to be refused, got:\n{}",
+        violations.is_empty(),
+        "registry documentation and historical names are allowed:\n{}",
         violations.join("\n")
     );
     fs::remove_dir_all(&root).expect("the temporary root should be removable");
@@ -153,7 +172,7 @@ fn a_manifest_path_dependency_inside_the_repository_is_allowed() {
         .expect("the directory should be creatable");
     fs::write(
         root.join(&relative),
-        "[dependencies]\nravel-core = { path = \"../ravel-core\" }\nother = { path = \"../../tools/ravel-cli\" }\n",
+        "[dependencies]\nravel-core = { path = \"../ravel-core\" }\nother = { path = \"../../tools/ravel-xtask\" }\n",
     )
     .expect("the manifest should be writable");
 

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-132",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification counts thirty translation documents, one empty structure template used by the in-game test harness and two logo images that are branding; the logos were not opened, nothing upstream is tracked or shipped, and nothing was rewritten from reference. The specification records that the entry ships no block, no item, no recipe document, no tag document, no loot document, no advancement document, no texture, no model, no sound and no screen, so there is no asset to record."
+}

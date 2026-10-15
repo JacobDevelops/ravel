@@ -1,0 +1,59 @@
+# The verdict vocabulary a counterpart's NOTES.md section table may use, and the
+# class each verdict counts as. checks/verify-notes-rows.sh owns this file: it
+# reads every `| §…` row of every section table under mods/, takes the verdict
+# each Here cell begins with, and refuses a cell whose verdict is not published
+# here. Nothing derives this table from the tables it governs.
+#
+# It exists because the denominator was a reader's interpretation of free prose.
+# The sealed packages carried 240 rows whose Here cell used one of the four
+# verdicts records/counterpart-checklist.md named, and 307 carrying something
+# else, so for most of the wave the classification was one hand reading a
+# sentence. The rows now begin with a published word, and the word is what the
+# count is taken from.
+#
+# The three classes, and why each row lands where it does:
+#
+#   exercised         a rule of the specification runs in this package and a
+#                     test of this package asserts the change it makes. The
+#                     denominator's numerator.
+#   declarable-only   the shape is present and no Ravel seam at the reviewed
+#                     revision runs it. Inside the denominator, because the
+#                     section is observable and unexercised: a later revision
+#                     that grows the seam moves this row without moving the
+#                     specification. "Not reached" belongs here rather than
+#                     outside, because a thing that is present and unreachable
+#                     is still a thing this package carries.
+#   excluded          the specification excludes it, marks it not carried, or
+#                     the package declined to ship it. Outside the denominator,
+#                     because there is nothing here for a later revision to
+#                     exercise.
+#
+# Matching is longest-verdict-first and word-bounded: a published verdict counts
+# only where the Here cell begins with it and the next character is a space, a
+# comma, a semicolon or the end of the cell. So "implemented as data" carries the
+# verdict "implemented", and a cell that starts "declared and asked for through
+# the SDK" carries no verdict at all and has to say which class it means.
+#
+# verdict	class
+implemented	exercised
+fixed	exercised
+corrected	exercised
+consumed	exercised
+kept	exercised
+closed	exercised
+answered	exercised
+refused	exercised
+declarable only	declarable-only
+declared	declarable-only
+host-blocked	declarable-only
+gating only	declarable-only
+coined here	declarable-only
+pinned as data	declarable-only
+not carried	excluded
+not reproduced	excluded
+not provided	excluded
+provides nothing	excluded
+deliberately none	excluded
+declined	excluded
+not shipped	excluded
+excluded	excluded

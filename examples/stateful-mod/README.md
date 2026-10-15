@@ -26,7 +26,7 @@ JSON, so consumers need a package dependency rather than this mod's Rust types.
 [`package.json`](package.json) and [`provenance.json`](provenance.json) are what
 make this crate a package rather than only a crate — the metadata the loader
 validates before any of the code above runs. Copy the directory whole into an
-instance's `ravel/mods` and `ravel-cli host build` compiles it into that
+instance's `ravel/mods` and `cargo make ravel:host-build` compiles it into that
 instance's host.
 
 Its `savedDataVersions` is the one field the table above forces: a mod that owns

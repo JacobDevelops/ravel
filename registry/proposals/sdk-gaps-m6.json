@@ -1,0 +1,71 @@
+{
+  "schema": "implementation-discovered-sdk-gap-list/v1",
+  "whyThisFileExists": "proposals/sdk-gaps.json is the frozen inventory-derived M5 finding. This file is its mutable implementation-proof successor under docs/decisions/machinery-is-not-material.md's successor rule: implementation may discover a public SDK impossibility that inventory machinery could not establish, without rewriting the material M5 certified.",
+  "idSequence": "Gap identifiers continue the global RVL-GAP sequence established by M5; this file starts after RVL-GAP-06 and may not reuse an identifier from any proposal file.",
+  "gaps": [
+    {
+      "id": "RVL-GAP-07",
+      "capability": "Activate an integration only when its optional target is present, keep the whole mod set valid when that target is absent, expose a per-integration off switch, and run its registration callback only while enabled.",
+      "discoveredBy": "M6-W3",
+      "discoveredWhile": "Implementing RVL-097's integration discovery, which must skip absent targets rather than requiring them.",
+      "impossibility": "At public Ravel jj change skluoolsplvu, commit 8983cab26baa, which was local-only and unpushed at observation time: ServiceRefused::NoProvider became FailureKind::MissingRequiredDependency at LifecycleState::Resolved and refused the whole set, while an undeclared call became ServiceUnavailable::Undeclared. Searches of crates/ravel-host-api/src/ and crates/ravel-sdk/src/ for fn installed, fn is_present, fn has_mod, fn present, installed_mods, and fn mods( found no presence query. Those two refusal paths therefore exhausted that revision's public options, so it could not express an optional target whose absence skips one integration without refusing the set.",
+      "blockedEntries": [
+        "RVL-097"
+      ],
+      "status": "resolved",
+      "resolvedBy": {
+        "change": "lsxtzpmuqpkw",
+        "shipped": "Registrar::loads answers whether a mod is one this launch runs, read from the entry's own sides declaration, with false covering an id outside the plan, a mod this side parks and a mod that failed. The guide shows a registration branched on it and says which of the two optional-dependency routes to use."
+      }
+    },
+    {
+      "id": "RVL-GAP-08",
+      "capability": "Perform a game action from Rust: play a sound a mod declared, draw at a stage it contributes to, and send a packet it defined, through a native crossing that carries a call outward into the running game rather than only values inward from it.",
+      "discoveredBy": "M6-W3",
+      "discoveredWhile": "Proving the RVL-162 counterpart, whose recorded host blockers name the surfaces its accepted behaviour could not reach.",
+      "impossibility": "At public Ravel jj change knynnpsrytmt, commit 7694f737ebee, which was local-only and unpushed at observation time: JavaHandle in crates/ravel-minecraft/src/lib.rs was the only type in the workspace naming a JNI object, and its whole surface was JavaHandle::new, JavaHandle::class giving the type the call site's descriptor declared, JavaHandle::is_null, and reference equality. No method on it called into the JVM, and its own boundary note recorded that calling into the game was unsettled. Every generated export compiled into crates/ravel-bootstrap/ is the JVM entering Rust rather than Rust calling outward. AudioDeclaration::play accordingly answered with a PlayRequest describing what would be played rather than playing it, and StageDeclaration::resolve ordered contributions at stages nothing drew at. Without an outward crossing a mod could declare a sound, a stage or a packet and no Rust code could perform any of them.",
+      "blockedEntries": [
+        "RVL-162"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "RVL-GAP-09",
+      "capability": "Ask a mod at all three interception points rather than the one reached today: where a block is broken and where an item is used are declared and asked by nothing, and reaching them needs a resolved target first, since the hook inventory resolves none for either. Whether such a target can refuse is decided by the member itself: the generator refuses to generate a refusing hook whose target does not return void, because an early return would have to invent a value. The broadcast event surface is inbound too and is not this: it carries no veto.",
+      "discoveredBy": "M6-W3",
+      "discoveredWhile": "Proving the RVL-162 counterpart, whose recorded host blockers name the surfaces its accepted behaviour could not reach.",
+      "impossibility": "At public Ravel jj change knynnpsrytmt, commit 7694f737ebee, which was local-only and unpushed at observation time: Point::ALL held exactly three variants, Point::BlockIsBroken, Point::ItemIsUsed and Point::WorldIsSaved, and no entity point existed in the public crates at all. Only Point::WorldIsSaved was reached in a running game, through its own boundary export in crates/ravel-bootstrap/src/persistence.rs and its own return protocol rather than through the event or command path; the other two were declared, ordered and refusable where a mod writes them, and asked by nothing. Reaching them was not a re-pin of version data: shapes in crates/ravel-minecraft-adapter/src/generate/render.rs returns GenerateError::Unsupported for any hook whose refuses flag is set and whose resolved target descriptor does not end in )V, because a bare early return is all that is admitted and a value-returning target would have to invent one. The game's block-destruction and item-use members are not void, so a refusable hook for either could not be generated at that revision at all. GameEvent::ALL is the separate inbound set, GameEvent::ServerTick, GameEvent::ClientTick and GameEvent::ResourcesReloaded, delivered through HostMod::observe, which returns no verdict and cannot refuse.",
+      "blockedEntries": [
+        "RVL-162"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "RVL-GAP-10",
+      "capability": "Ask the running game what it currently holds: whether a tag has members there rather than merely no loaded mod having declared any, what an identifier resolves to in a live registry, and where the game directory is, which the mod-facing configuration surface never hands a mod beside its validated typed values.",
+      "discoveredBy": "M6-W3",
+      "discoveredWhile": "Proving the RVL-162 counterpart, whose recorded host blockers name the surfaces its accepted behaviour could not reach.",
+      "impossibility": "At public Ravel jj change knynnpsrytmt, commit 7694f737ebee, which was local-only and unpushed at observation time: TagSet::merged folded the ContentDeclaration of each loaded mod, so TagSet::members answered out of what mods declared and returned empty both for a tag the running game holds no members for and for a tag no loaded mod declared, which leaves those two indistinguishable to a mod. No public type offered a lookup into a live registry. Filesystem access did exist, in ravel_config::file, whose path, read, read_path and write functions each take a game directory path; crates/ravel-sdk/src/config.rs re-exports the declaration, document, layering and schema types and does not re-export that module, and no SDK type produces the path those functions require. The mod-facing configuration surface therefore handed a mod validated typed values and no path, so a mod could not reach the game directory even though the code that reads it is in the workspace.",
+      "blockedEntries": [
+        "RVL-162"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "RVL-GAP-11",
+      "capability": "Admit a package a launch discovered, rather than only refuse one: take a package's manifest and its member values from what discovery read at runtime instead of from copies embedded at compile time and a set fixed in source. Separately, ask a mod for its server data at all, since the host-facing mod trait has no method that requests it, so nothing loads it and nothing can condition it on what else the launch composed.",
+      "discoveredBy": "M6-W3",
+      "discoveredWhile": "Proving the RVL-162 counterpart, whose recorded host blockers name the surfaces its accepted behaviour could not reach.",
+      "impossibility": "At public Ravel jj change knynnpsrytmt, commit 7694f737ebee, which was local-only and unpushed at observation time: a launch did read a package document for each installed package. crates/ravel-loader/src/discovery.rs parses one through ravel_package::PackageManifest and checks it with ravel_package::verify_package, raising ravel_package::ManifestError or ravel_package::IntegrityError, so discovery was real and could refuse a package. What it could not do was admit one: crates/ravel-composed-host/src/lib.rs took every manifest from include_str copies embedded at compile time and built its member set from a vec literal in fn members, so a package that discovery accepted still could not join a launch it was not compiled into. Separately, HostMod declares HostMod::id, HostMod::enter and HostMod::register and no method that asks a mod for server data; searches of crates/ravel-host-api/src/, crates/ravel-loader/src/ and crates/ravel-host-runtime/src/ for server_data and ServerData returned nothing. A mod's ServerDataDeclaration was therefore never asked for under any condition, so there was no loading path for a condition to attach to.",
+      "blockedEntries": [
+        "RVL-162"
+      ],
+      "status": "resolved",
+      "resolvedBy": {
+        "change": "ssmvwyosvlkx",
+        "shipped": "The composition half only. ravel-cli host build discovers an instance, plans a host naming what it found, compiles it and reports the library and members, so the generated host that reads discovery at runtime has a caller for the first time. The server-data half is untouched and stays open under RVL-GAP-11 until it is filed separately."
+      }
+    }
+  ],
+  "sequencing": "The cheap-and-expensive split these gaps were first filed under was wrong, and the correction is narrower than the first attempt at it. Four separate statements, which are not to be merged into fewer. RVL-GAP-09 needs a decision about what value an early return synthesizes, because a hook that may refuse a target which does not return void has nothing else to give back. The composition half of RVL-GAP-11 needs no crossing: it is loader work entirely above the JVM boundary, and it is the genuinely cheap item here. The data half of RVL-GAP-11 is unspecified rather than blocked, because the host-facing surface it would hang on does not exist, and nothing yet establishes what building it would require. RVL-GAP-08's outward crossing stays expensive, and RVL-GAP-10 rides on it, being that same crossing in the read-only direction. That two of these are each unfinished is not evidence that one thing unfinishes both, and no such link is recorded here."
+}

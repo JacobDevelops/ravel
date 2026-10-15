@@ -1,0 +1,19 @@
+# The verdict each tracked counterpart fixture is declared to have, written by
+# hand. checks/verify-counterparts.sh scans each tree under
+# fixtures/counterparts/ with exactly the rules it applies to a real
+# counterpart, and fails if a tree's verdict is not the one declared here.
+#
+# This is what stops the rules being useless in either direction. A check that
+# passes everything and a check that fails everything are both green on an empty
+# set and neither is worth running; one fixture that must pass and three that
+# must fail is the cheapest thing that separates them, and it runs on every gate
+# rather than on the day somebody remembered to mutate a file.
+#
+# The verdicts are declared here rather than computed, so this table and the
+# rules can disagree.
+#
+# name	verdict	why this tree has that verdict
+clean	pass	every name in it is the package's own; nothing in it is an upstream name and nothing normalizes onto one
+carries-upstream	fail	a source file names an acquired entry verbatim, which is rule U1 and the branch a transliteration trips first
+normalized-name	fail	a source file declares a type whose name is an acquired entry only after case and separator folding, which is rule N1; a transliteration that renames by convention is still a transliteration
+generated-carries-upstream	fail	the same verbatim name as carries-upstream, but in a generated artefact rather than a source file, because a check enforcing this over source files only has not satisfied M6's obligation

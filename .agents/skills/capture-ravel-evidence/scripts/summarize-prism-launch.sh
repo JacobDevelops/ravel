@@ -184,18 +184,8 @@ done
 
 test -z "$pre_launch_command" && test -z "$post_exit_command" \
   || fail "pre-launch and post-exit commands are not permitted"
-wrapper_kind="none"
-wrapper_sha=""
 if test -n "$wrapper_command" && test "$wrapper_command" != "false"; then
-  test "$override_commands" = "true" \
-    || fail "wrapper requires Prism command overrides"
-  case "$wrapper_command" in
-    */ravel-cli\ performance\ supervise-initial-linux\ */atm11-markers.sock\ --)
-      wrapper_kind="focus-free-supervisor"
-      wrapper_sha="$(printf '%s' "$wrapper_command" | sha256sum | cut -d' ' -f1)"
-      ;;
-    *) fail "wrapper is not the project focus-free supervisor" ;;
-  esac
+  fail "wrapper commands are not permitted"
 fi
 
 command_is_configured() {
@@ -244,8 +234,6 @@ jq -n \
   --argjson override_commands "$(command_is_configured "$override_commands")" \
   --argjson pre_launch "$(command_is_configured "$pre_launch_command")" \
   --argjson post_exit "$(command_is_configured "$post_exit_command")" \
-  --arg wrapper_kind "$wrapper_kind" \
-  --arg wrapper_sha "$wrapper_sha" \
   --arg log_summary_sha "$log_summary_sha" \
   --arg level_dat_sha "$level_dat_sha" \
   --arg world_tree_sha "$world_tree_sha" \
@@ -281,10 +269,8 @@ jq -n \
       commandOverridesConfigured: $override_commands,
       preLaunchCommandConfigured: $pre_launch,
       postExitCommandConfigured: $post_exit,
-      wrapperKind: $wrapper_kind,
-      wrapperCommandSha256: (
-        if $wrapper_sha == "" then null else $wrapper_sha end
-      )
+      wrapperKind: "none",
+      wrapperCommandSha256: null
     },
     launch: {
       clientReadyEventObserved: true,

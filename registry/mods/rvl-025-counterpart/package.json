@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_025_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-025 Counterpart",
+  "description": "Ravel counterpart for RVL-025: a content pack whose published interface surface three admitted counterparts build against.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "dependencies": [
+    {
+      "id": "rvl_120_counterpart",
+      "relationship": "required",
+      "version": ">=0.1.0, <0.2.0",
+      "order": "after"
+    }
+  ],
+  "savedDataVersions": [
+    1
+  ],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "2af5ca84f960b932f04203b8d7ef349520c3b75224f2dfbdbf5714066ab4119b"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "8eae3641e308f7cfb4a3ca74fb596aa12461faf492f3f4cdf4dcb492926b89dd"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "e3e0e67f1d4114ba6fc10f8e150dc9805d813dbe4bc5959774d901aa95dfc48f"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "0b147052e7822e22391871c5c4ac0e7805b6a2ec819cb1f33b81b01cbebf9f88"
+      },
+      {
+        "path": "generated/capabilities.json",
+        "sha256": "0f7f966e77f0963578e987b8d763857725b284a8f8ae138a2081c04e26d061c1"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "d1c8f6601750d0b9f54d53f209897eccf4b45cff4edf41b4a5055773dba8e7a0"
+      },
+      {
+        "path": "generated/network.txt",
+        "sha256": "13fce41d31ffc116f24a02a96011baad9e98dd88941afbcec4d8d922cfe045d2"
+      },
+      {
+        "path": "src/capabilities.rs",
+        "sha256": "9491deb7bb98cc60d0c32ee0950003608cf30de38d42b1c76319c1121e43aca9"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "8ebfa80c63f9a06aa9323e8a33e98b3beb397ea1b92a451256e83fc18cb5ddb5"
+      },
+      {
+        "path": "src/commands.rs",
+        "sha256": "bad21c8db3e82b90c3b1419f1413bea12a759483d340b7ad6dae526bd98b5c2a"
+      },
+      {
+        "path": "src/data.rs",
+        "sha256": "626ca47cfa04838715eb38d204c61d133e6483025b2f68f11eec0e62e893bff4"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "7a213b638978f5b7baab826fed3297da5b8e58d7f65c1112d6b8b47a4d04fecd"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "f2f93beab5e03802813e4978a5f0f7183d48b302df25b71f2e1c4f4ae9a4c666"
+      },
+      {
+        "path": "src/machines.rs",
+        "sha256": "a7bf278dd012719e45b01cd427a0c83a4877dfc19d08d024278c17d92ec09452"
+      },
+      {
+        "path": "src/matching.rs",
+        "sha256": "364020642a907d5883b0af26455a9bbd4e51b0a672c83fec6397e42f8904b7a8"
+      },
+      {
+        "path": "src/network.rs",
+        "sha256": "e1b486702925dea390f3e4d820305878fe2657d515b583290faa3eb68343d26b"
+      },
+      {
+        "path": "src/ordering.rs",
+        "sha256": "83002f8496c7c444cc2e6c4b68c21bcbe524a119464988b8024b915808a6aaf5"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "3dbb429964ebf307de16b6cc8580ea9a8a5b230e2352bde5380725b7beffb067"
+      },
+      {
+        "path": "src/shapes.rs",
+        "sha256": "1c07057bd24ed0d9026796eaebfbf21e5da9cc0d3892b54110dd27f98c9e1ebc"
+      },
+      {
+        "path": "src/storage.rs",
+        "sha256": "9d80f76bc306ea7642dbd9ffb3b6cffbcbbb22a79ea6b1d8ab5e85750e7accd7"
+      },
+      {
+        "path": "src/tools.rs",
+        "sha256": "a82a8703ba9846edbc9138b8e4f69708c424fa4bf76b3cd78324e1903d593a46"
+      },
+      {
+        "path": "src/values.rs",
+        "sha256": "1da1973468b8d3d4e40e18506d799fc9109948a0dc3b08be1216fba4f4184e81"
+      },
+      {
+        "path": "src/world.rs",
+        "sha256": "9a120fe45febd14cf87eea916aa362c8301639ee0cd4e8f9a0b7a04c4e2c5f7a"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "fbba119816f6ea374388ecf54dbc1f776d8de0114b04e74d39ca9d116b85569d"
+  }
+}

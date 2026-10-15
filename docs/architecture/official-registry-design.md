@@ -1,14 +1,16 @@
 # The official Ravel registry — design
 
-Status: design proposal. This describes the shape the public Ravel registry
-should take.
+Status: design proposal for the public registry publication service, not the
+current `registry/` source tree.
 
-This document is a target to build toward, not a record of what exists. Where it
+The checked-in `registry/` holds counterpart crates, packs, inventories,
+specifications, provenance, and checks in the root Cargo workspace. The service
+and storage layout proposed below are deferred M13 work. Where this document
 names a mechanism the loader does not yet have, that is a dependency to satisfy,
 not a claim it is present.
 
 **Authority and scope.** `SPEC.md` is the contract; this doc is subordinate to
-it. `SPEC.md §12.3` places the registry at **post-initial / M13 scope** and
+it. `SPEC.md §12.3` places the publication service at **post-initial / M13 scope** and
 records a *preferred shape* plus three candidate mechanisms whose **selection is
 a deferred M13 decision gate**. This document elaborates that preferred shape; it
 does **not** select a mechanism and does not change M0–M10. Two constraints from
@@ -70,13 +72,15 @@ and share the artifact store and the admission gate.
 
 ## 3. Directory / storage layout
 
-The registry tree is what ships and what a mirror serves.
+This proposed publication layout is what a service or mirror would serve. It is
+not the checked-in `registry/` source layout: `mods/` there holds source crates,
+and `packs/` holds pack declarations, not published index entries.
 
-The registry tree is content-addressed at the artifact layer and human-navigable
-at the index layer.
+The publication tree is content-addressed at the artifact layer and
+human-navigable at the index layer.
 
 ```text
-# === REGISTRY TREE — official, permanent, this is what ships ===
+# Proposed M13 publication tree, not today's repository layout
 registry/
   index/                      # the queryable catalogue (small, cacheable, signed)
     mods/                     # one mod each (see §2)

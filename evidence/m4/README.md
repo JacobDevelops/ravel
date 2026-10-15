@@ -30,9 +30,14 @@ nothing about Ravel inside a game, because no game process was started for M4.
 That is recorded as `gameLaunch.occurred: false`, a field rather than a sentence,
 because it is the thing about this record a reader is most likely to get wrong.
 
-## Recomputing it
+## Historical recomputation procedure
 
-Everything below runs inside the devenv shell.
+The commands below describe the recorded devenv-era gate, not the current
+checkout's environment or task graph. Today use `cargo make ravel:verify` and
+`cargo make ravel:verify-milestone m4`; do not rewrite the historical matrix to
+claim it ran those commands. Performance/resource tooling has been retired.
+
+Everything in the original procedure below ran inside the devenv shell.
 
 ```console
 devenv tasks run ravel:verify

@@ -338,12 +338,11 @@ What the numbers say:
 ### What compiling a pack costs (M3)
 
 Measured on the same `x86_64-linux` profile, `rustc` 1.95.0, release profile,
-sixteen build jobs unless a variant says otherwise. Reproduce with:
-
-```console
-cargo make ravel:measure-pack-compile
-cargo make ravel:measure-pack-compile-variants
-```
+sixteen build jobs unless a variant says otherwise. The measurements came from
+the now-retired `ravel:measure-pack-compile` and
+`ravel:measure-pack-compile-variants` tasks. This section records historical
+evidence, not a supported rerun procedure. This document's path remains because
+the closed M4 manifest binds it at its pinned revision.
 
 The result is [`pack-compile.json`](../../evidence/m3/pack-compile.json). The mod
 is generated but not trivial: 1,161 lines, eleven derived types, sixteen

@@ -1,0 +1,87 @@
+{
+  "attribution": [
+    {
+      "name": "BlakeBr0",
+      "notice": "Mystical Agradditions is authored by BlakeBr0 and published under the MIT licence. It was read at the pinned revision above to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/BlakeBr0/MysticalAgradditions"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree and is not tracked. The specification derived from it is tracked here and not in the public repository. Nothing in either is publishable while the names surface is unresolved.",
+    "reviewedAt": "2026-08-13T00:00:00Z",
+    "reviewedBy": "unreviewed; M6-W4 wrote this record and no independent review has read it",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source. Reading and reimplementing are permitted. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-counterparts.sh identifier rules were run over.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name and its content identifiers remain unresolved. The specification therefore names nothing after the original.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The inventory clears this entry's texture surface, but no asset was fetched or read: binaries were deleted from the extracted tree before reading, so nothing here rests on them.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "As for textures.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "As for textures.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched or read.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-08-13T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/BlakeBr0/MysticalAgradditions",
+      "producedBy": "M6-W4 clean-room reader",
+      "revision": "git 91f56cf9c1483ae234482d6af8a883f223cb7d0e (branch 26.1, head at fetch time); sha256 of the fetched source archive: e830ff8fa0999d194acfd19d6676c771701ec3572dbe09f2bb434768f73bdb22",
+      "use": "The inventory names this entry's method 'source-informed-reimplementation'; the public provenance schema's nearest vocabulary term is 'source-informed', recorded above. The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree and read to write specifications/m6-foundation/RVL-103.md. Version correspondence to the pinned pack artifact -- approximate: no version tags exist upstream and the branch head was pinned, so the source may be ahead of the 9.0.1 artifact the inventory pins. Binary files (archives, images, sounds, compiled classes) were deleted from the extracted tree before reading; nothing was decompiled and no jar was opened."
+    },
+    {
+      "accessedAt": "2026-08-13T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE at the repository root of the source above",
+      "producedBy": "M6-W4 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, carrying 'Copyright (c) 2018 BlakeBr0' and the standard permission grant. MIT permits reading, modification and derivative works, which is what method source-informed-reimplementation requires, so the inventory's permitted verdict for this entry is confirmed rather than assumed."
+    },
+    {
+      "accessedAt": "2026-08-13T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm11-0.2.1/plans.json and rights.json",
+      "producedBy": "M5 inventory",
+      "revision": "as frozen by M5 and consumed by waves/m6-foundation.json",
+      "use": "The claim this record checks: the entry is sourceUse permitted with method source-informed-reimplementation and a declared MIT licence. Confirmed above."
+    }
+  ],
+  "subject": {
+    "id": "RVL-103",
+    "kind": "other",
+    "originalAuthor": "BlakeBr0",
+    "originalProject": "Mystical Agradditions",
+    "version": "branch 26.1 at 91f56cf"
+  }
+}

@@ -19,8 +19,8 @@ is where launch-time integrity verification lives; `cargo xtask package digests
 --check` is the same check at packaging time.
 
 The leg between the two is now built and has a caller, and that caller is not a
-launch. `ravel-cli host build <instance> <cache>` runs it: discover the instance,
-plan a host naming what was found, compile it, and print the library path and the
+launch. `cargo make ravel:host-build <instance> <cache> <minecraft>` runs it:
+discover the instance, plan a host naming what was found, compile it, and print the library path and the
 mods it was built from. `ravel-build` takes what discovery found, generates a Cargo workspace naming
 every installed package, and compiles it into the host library the JVM loads —
 on your machine, from your source, into the build cache Ravel shares per

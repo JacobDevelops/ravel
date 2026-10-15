@@ -1,0 +1,220 @@
+//! The derived documents this package writes beside its source.
+//!
+//! Nothing here is a new fact. Each document is a rendering of a table the crate
+//! already computes — the registration census of [`crate::census`], the packaged
+//! settings declaration of [`crate::settings`], and the surface-by-shape matrix
+//! of [`crate::refusal`] — written out so a reader can see what the code decides
+//! without running it. The test beside them rebuilds every one and compares it
+//! against the bytes on disk, so a table that moves and a document that does not
+//! is a failing test rather than a stale file.
+
+use std::fmt::{self, Write as _};
+
+use ravel_sdk::config::DeclarationError;
+use ravel_sdk::{JsonValue, json};
+use rvl_042_counterpart::flags::FlagIdError;
+
+use crate::census;
+use crate::refusal::Surface;
+use crate::repair::Shape;
+use crate::settings;
+
+/// Where the registration census is written.
+pub const CENSUS_PATH: &str = "generated/census.json";
+
+/// Where the settings table is written.
+pub const SETTINGS_PATH: &str = "generated/settings.txt";
+
+/// Where the refusal matrix is written.
+pub const REFUSAL_PATH: &str = "generated/refusal.txt";
+
+/// Why a document could not be rendered.
+///
+/// Both causes are packaging failures rather than runtime ones: the settings
+/// document and the flag names are compile-time constants of this package.
+#[derive(Debug)]
+pub enum Refused {
+    /// The packaged settings document did not parse.
+    Declaration(DeclarationError),
+    /// A gate named in the census tables is not a legal flag identity.
+    Flag(FlagIdError),
+}
+
+impl fmt::Display for Refused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Declaration(source) => write!(formatter, "{source}"),
+            Self::Flag(source) => write!(formatter, "{source}"),
+        }
+    }
+}
+
+impl From<DeclarationError> for Refused {
+    fn from(source: DeclarationError) -> Self {
+        Self::Declaration(source)
+    }
+}
+
+impl From<FlagIdError> for Refused {
+    fn from(source: FlagIdError) -> Self {
+        Self::Flag(source)
+    }
+}
+
+/// Every generated document, as a path relative to the package root and the
+/// bytes that belong at it.
+///
+/// # Errors
+///
+/// Returns [`Refused`] when the packaged settings document does not parse or a
+/// census gate is not a legal flag identity.
+pub fn documents() -> Result<Vec<(&'static str, String)>, Refused> {
+    Ok(vec![
+        (CENSUS_PATH, census()?),
+        (SETTINGS_PATH, settings()?),
+        (REFUSAL_PATH, refusal()),
+    ])
+}
+
+/// The registration census: what is claimed, in what order, what gates each
+/// listed entry, what shape each item is, and what colour each variant carries.
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when a gate named in the census tables is not a legal
+/// flag identity under this package's own namespace.
+pub fn census() -> Result<String, FlagIdError> {
+    let claimed: Vec<JsonValue> = census::claims()
+        .into_iter()
+        .map(|(kind, name)| json!({"kind": format!("{kind:?}"), "name": name}))
+        .collect();
+    let grouping = census::grouping(crate::FLAG_NAMESPACE)?;
+    let listed: Vec<JsonValue> = grouping
+        .declared()
+        .iter()
+        .map(|entry| {
+            json!({
+                "entry": entry.entry,
+                "gates": entry
+                    .gates
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let shapes: Vec<JsonValue> = census::item_names()
+        .into_iter()
+        .zip(census::item_shapes())
+        .map(|(name, shape)| {
+            json!({
+                "item": name,
+                "shape": shape.map(|shape| format!("{shape:?}")),
+            })
+        })
+        .collect();
+    let tints: Vec<JsonValue> = (0..census::TINTED_VARIANTS)
+        .filter_map(|variant| {
+            let colour = census::tint(variant)?;
+            Some(json!({"variant": variant, "packed": colour.pack()}))
+        })
+        .collect();
+
+    let document = json!({
+        "blocks": census::BLOCKS,
+        "items": census::ITEMS,
+        "claimed": claimed,
+        "listed": listed,
+        "shapes": shapes,
+        "tints": tints,
+    });
+    Ok(format!("{document}\n"))
+}
+
+/// The settings table: every declared setting with the side it applies to, the
+/// group it belongs to, its packaged default, and the flags bound to it.
+///
+/// # Errors
+///
+/// Returns [`DeclarationError`] when the packaged document does not parse.
+pub fn settings() -> Result<String, DeclarationError> {
+    let declaration = settings::declaration()?;
+    let mut rendered = String::from("key\tside\tgroup\trestart\tdefault\tflags\n");
+    for setting in &declaration.settings {
+        let key = setting.key.as_str();
+        let group = if settings::DECIDING_KEYS.contains(&key) {
+            "deciding"
+        } else {
+            "presentation"
+        };
+        let bound: Vec<&str> = settings::FLAG_BINDINGS
+            .iter()
+            .filter(|(_, switch)| *switch == key)
+            .map(|(flag, _)| *flag)
+            .collect();
+        let bound = if bound.is_empty() {
+            "-".to_owned()
+        } else {
+            bound.join(",")
+        };
+        let side = format!("{:?}", setting.side);
+        let _ = writeln!(
+            rendered,
+            "{key}\t{side}\t{group}\t{}\t{}\t{bound}",
+            setting.restart_required, setting.default
+        );
+    }
+    Ok(rendered)
+}
+
+/// The refusal matrix: which of the seven surfaces the nearly-destroyed rule
+/// watches for each of the six shapes.
+#[must_use]
+pub fn refusal() -> String {
+    let mut rendered = String::from("surface");
+    for shape in Shape::ALL {
+        let _ = write!(rendered, "\t{shape:?}");
+    }
+    rendered.push('\n');
+    for surface in Surface::ALL {
+        let _ = write!(rendered, "{surface:?}");
+        for shape in Shape::ALL {
+            rendered.push('\t');
+            rendered.push_str(if surface.watches(shape) {
+                "watches"
+            } else {
+                "-"
+            });
+        }
+        rendered.push('\n');
+    }
+    rendered
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use super::documents;
+
+    #[test]
+    fn the_generated_documents_regenerate_byte_for_byte() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rebuilt = documents().expect("the packaged constants render");
+        let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
+
+        for (relative, content) in rebuilt {
+            let path = root.join(relative);
+            if regenerating {
+                let parent = path.parent().expect("a generated path has a directory");
+                fs::create_dir_all(parent).expect("the generated directory is writable");
+                fs::write(&path, &content).expect("the generated document is writable");
+                continue;
+            }
+            let on_disk = fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{relative} is readable: {error}"));
+            assert_eq!(on_disk, content, "{relative} has drifted from the crate");
+        }
+    }
+}

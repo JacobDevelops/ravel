@@ -1,9 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::evidence::m4::{
-    GATE_DEFINITION, verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
-};
+use crate::evidence::m4::{verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface};
 use crate::inventory::EXAMPLE_NAMES;
 use crate::test_support::temporary_root;
 use crate::{CRATE_NAMES, TEST_MOD_NAMES};
@@ -158,22 +156,8 @@ fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
-fn process_matrix_root(label: &str, tasks: &[&str], matrix: &str) -> PathBuf {
+fn process_matrix_root(label: &str, matrix: &str) -> PathBuf {
     let root = temporary_root(label);
-    let mut dependencies = String::with_capacity(tasks.iter().map(|task| task.len() + 8).sum());
-    for task in tasks {
-        dependencies.push_str("    \"");
-        dependencies.push_str(task);
-        dependencies.push_str("\",\n");
-    }
-    fs::write(
-        root.join(GATE_DEFINITION),
-        format!(
-            "[tasks.\"ravel:verify-scaffold\"]\ncommand = \"x\"\n\
-             \n[tasks.\"ravel:verify\"]\ndependencies = [\n{dependencies}]\n"
-        ),
-    )
-    .expect("gate definition should be writable");
     let milestone = root.join("evidence/m4");
     fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
     fs::write(milestone.join("linux-process-matrix.json"), matrix)
@@ -182,57 +166,28 @@ fn process_matrix_root(label: &str, tasks: &[&str], matrix: &str) -> PathBuf {
 }
 
 #[test]
-fn gate_dependencies_accept_inline_arrays_and_ignore_other_tasks() {
-    let root = temporary_root("gate-inline-dependencies");
-    fs::write(
-        root.join(GATE_DEFINITION),
-        "[tasks.other]\ndependencies = ['ravel:outside']\n\
-         [tasks.\"ravel:verify\"]\n\
-         dependencies = ['ravel:fmt', \"ravel:audit\"] # the gate only\n",
-    )
-    .expect("gate definition should be writable");
-
-    let names = super::gate_sub_tasks(&root).expect("gate dependencies should parse");
-
-    assert_eq!(
-        names.into_iter().collect::<Vec<_>>(),
-        ["ravel:audit", "ravel:fmt"]
-    );
-    fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
-fn unreadable_gate_dependency_lists_are_rejected() {
-    let root = temporary_root("gate-invalid-dependencies");
-    for source in [
-        "[tasks.\"ravel:verify\"\ndependencies = ['ravel:fmt']",
-        "[tasks.other]\ndependencies = ['ravel:fmt']",
-        "[tasks.\"ravel:verify\"]\ncommand = 'true'",
-        "[tasks.\"ravel:verify\"]\ndependencies = 'ravel:fmt'",
-        "[tasks.\"ravel:verify\"]\ndependencies = []",
-        "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', 1]",
-        "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', '  ']",
-    ] {
-        fs::write(root.join(GATE_DEFINITION), source).expect("gate definition should be writable");
-
-        assert!(
-            super::gate_sub_tasks(&root).is_err(),
-            "invalid dependencies were accepted: {source}"
-        );
-    }
-    fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
-fn a_process_matrix_naming_exactly_the_gates_sub_tasks_is_accepted() {
+fn a_historical_process_matrix_is_independent_of_the_current_makefile() {
     let root = process_matrix_root(
-        "matrix-agrees",
-        &["ravel:fmt", "ravel:audit"],
+        "matrix-historical",
         r#"{"result":"pass","processes":[
             {"command":"devenv tasks run ravel:fmt","exitStatus":0},
-            {"command":"devenv tasks run ravel:audit","exitStatus":0}]}"#,
+            {"command":"devenv tasks run ravel:verify-budget","exitStatus":0}],
+            "checksOutsideTheGate":[
+                {"command":"devenv tasks run ravel:historical-check","exitStatus":0}]}"#,
     );
 
+    for source in [
+        "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', 'ravel:verify-budget']",
+        "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', 'ravel:registry-verify']",
+        "not valid TOML",
+    ] {
+        fs::write(root.join("Makefile.toml"), source).expect("Makefile should be writable");
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{source}: {violations:?}");
+    }
+    fs::remove_file(root.join("Makefile.toml")).expect("Makefile should be removable");
     let mut violations = Vec::new();
     verify_m4_process_matrix(&root, &mut violations);
 
@@ -241,40 +196,13 @@ fn a_process_matrix_naming_exactly_the_gates_sub_tasks_is_accepted() {
 }
 
 #[test]
-fn a_process_matrix_that_has_drifted_from_the_gate_is_reported() {
-    let root = process_matrix_root(
-        "matrix-drifted",
-        &["ravel:fmt", "ravel:audit"],
-        r#"{"result":"pass","processes":[
-            {"command":"devenv tasks run ravel:fmt","exitStatus":0},
-            {"command":"devenv tasks run ravel:this-task-does-not-exist","exitStatus":0}]}"#,
-    );
-
-    let mut violations = Vec::new();
-    verify_m4_process_matrix(&root, &mut violations);
-
-    assert_eq!(
-        violations,
-        [
-            "evidence/m4/linux-process-matrix.json records ravel:this-task-does-not-exist \
-             under processes, which Makefile.toml does not list among the sub-tasks \
-             ravel:verify runs; a row the gate never ran took its exit status from somewhere \
-             the record does not name",
-            "evidence/m4/linux-process-matrix.json omits ravel:audit from processes, which \
-             Makefile.toml lists among the sub-tasks ravel:verify runs; a gate process with \
-             no row is how a failing one leaves a record that still reads complete",
-        ]
-    );
-    fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
 fn a_failed_process_under_a_record_that_calls_itself_a_pass_is_reported() {
     let root = process_matrix_root(
         "matrix-red-row",
-        &["ravel:fmt"],
         r#"{"result":"pass","processes":[
-            {"command":"devenv tasks run ravel:fmt","exitStatus":1}]}"#,
+            {"command":"devenv tasks run ravel:fmt","exitStatus":1}],
+            "checksOutsideTheGate":[
+                {"command":"devenv tasks run ravel:historical-check","exitStatus":1}]}"#,
     );
 
     let mut violations = Vec::new();
@@ -286,17 +214,20 @@ fn a_failed_process_under_a_record_that_calls_itself_a_pass_is_reported() {
             "evidence/m4/linux-process-matrix.json records a nonzero exit status for `devenv \
              tasks run ravel:fmt` under .processes while its own result is pass; a record that \
              reports a failed process and calls itself green states two things that cannot \
-             both be true"
+             both be true",
+            "evidence/m4/linux-process-matrix.json records a nonzero exit status for `devenv \
+             tasks run ravel:historical-check` under .checksOutsideTheGate while its own result \
+             is pass; a record that reports a failed process and calls itself green states \
+             two things that cannot both be true"
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
-fn a_gate_sub_task_recorded_as_a_check_outside_the_gate_is_reported() {
+fn a_task_recorded_both_inside_and_outside_the_gate_is_reported() {
     let root = process_matrix_root(
         "matrix-parked-row",
-        &["ravel:fmt"],
         r#"{"result":"pass",
             "processes":[{"command":"devenv tasks run ravel:fmt","exitStatus":0}],
             "checksOutsideTheGate":[
@@ -309,9 +240,8 @@ fn a_gate_sub_task_recorded_as_a_check_outside_the_gate_is_reported() {
     assert_eq!(
         violations,
         [
-            "evidence/m4/linux-process-matrix.json records ravel:fmt under checksOutsideTheGate \
-             while Makefile.toml lists it among the sub-tasks ravel:verify runs; that section \
-             is for checks the gate does not run and is not a way out of the reconciliation"
+            "evidence/m4/linux-process-matrix.json records ravel:fmt under both processes and \
+             checksOutsideTheGate; a recorded gate process cannot also be outside that gate"
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -321,10 +251,10 @@ fn a_gate_sub_task_recorded_as_a_check_outside_the_gate_is_reported() {
 fn a_recorded_command_that_names_no_task_is_reported() {
     let root = process_matrix_root(
         "matrix-bare-command",
-        &["ravel:fmt"],
         r#"{"result":"pass","processes":[
             {"command":"devenv tasks run ravel:fmt","exitStatus":0},
-            {"command":"cargo test","exitStatus":0}]}"#,
+            {"command":"cargo test","exitStatus":0}],
+            "checksOutsideTheGate":[{"command":"cargo check","exitStatus":0}]}"#,
     );
 
     let mut violations = Vec::new();
@@ -335,7 +265,10 @@ fn a_recorded_command_that_names_no_task_is_reported() {
         [
             "evidence/m4/linux-process-matrix.json records the command `cargo test` under \
              .processes, which does not name a devenv task; a row nothing can resolve to a \
-             task is reconciled against nothing"
+             task is reconciled against nothing",
+            "evidence/m4/linux-process-matrix.json records the command `cargo check` under \
+             .checksOutsideTheGate, which does not name a devenv task; a row nothing can resolve \
+             to a task is reconciled against nothing"
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");

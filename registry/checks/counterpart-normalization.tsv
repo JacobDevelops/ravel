@@ -1,0 +1,28 @@
+# The documented normalization, written out as worked examples.
+#
+# checks/verify-counterparts.sh applies one rule and this table states it:
+#
+#   fold to lower case, then drop every character that is not a letter or a
+#   digit.
+#
+# A name is compared to an upstream identifier in its normal form as well as
+# verbatim, so case, separator style and package-segment punctuation cannot
+# launder a name. Every raw string below is normalized by the check itself and
+# required to equal the normal form beside it, so a hand that changes the rule
+# in the code without changing the rule as documented fails here. The rows are
+# written by hand and are not generated from the code; that is the point of
+# them.
+#
+# No row names an acquired entry. The rule is about shapes rather than about
+# any particular name, and a table of worked examples does not need upstream
+# material to say what folding to lower case and dropping punctuation does.
+#
+# raw	normal	why this row is here
+RegistryCore	registrycore	case folding alone
+registry_core	registrycore	snake case, the separator style a Rust module uses
+registry-core	registrycore	kebab case, the separator style a crate name uses
+REGISTRYCORE	registrycore	shouting
+dev.example.registrycore	devexampleregistrycore	the whole of a dotted name folds to one run; segments are normalized separately by the tokenizer, which is why a package segment is still caught on its own
+Registry Core	registrycore	a display name with a space in it
+RVL-190	rvl190	digits survive; only non-alphanumeric characters are dropped
+r_e_g	reg	repeated separators collapse because they are dropped rather than replaced

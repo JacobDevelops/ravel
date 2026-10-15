@@ -1,0 +1,9 @@
+first	second	diagonal	slot	number
+false	false	false	alone	1
+false	false	true	alone	1
+false	true	false	second_side	3
+false	true	true	second_side	3
+true	false	false	first_side	2
+true	false	true	first_side	2
+true	true	false	notch	4
+true	true	true	enclosed	5

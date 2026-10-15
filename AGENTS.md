@@ -4,8 +4,8 @@ Ravel is a Minecraft: Java Edition mod loader and SDK for natively compiled Rust
 inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt. It supports more than
 one Minecraft version: a package declares the versions it runs on in `compatibility.minecraft` as an exact
 version or a semver range, and per-version hooks, mappings and stubs live under `minecraft/versions/<version>/`.
-The current target is `1.21.1`, the version the ATM10 To the Sky 2.0.2 proof workload runs on.
-Both `1.21.1` and `26.1.2` have pinned version data.
+The default target is `26.1.2`; the historical ATM10 To the Sky 2.0.2 proof workload remains pinned to
+`1.21.1`. Both versions have pinned version data.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.
@@ -17,8 +17,8 @@ per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink
 
 - [`SPEC.md`](SPEC.md) is the product and capability contract.
 - [`ROADMAP.md`](ROADMAP.md) is the dependency-ordered plan and defines the evidence gate for each milestone.
-- [`docs/architecture/`](docs/architecture/) records the boundaries that already hold: layering, safety, and
-  the public/private split.
+- [`docs/architecture/`](docs/architecture/) records layering, safety, and the
+  [single-workspace registry and local-material boundary](docs/architecture/public-private-boundary.md).
 - Before writing in a crate, read a sibling crate and match its patterns instead of inventing new ones.
 
 ## Environment
@@ -33,9 +33,10 @@ with edition 2024. The first build needs network access for the cargo registry.
 cargo make ravel:verify
 ```
 
-That gate runs formatting, typecheck, lint, tests, coverage, dependency audit, and the scaffold contract.
-The individual tasks are `ravel:fmt`, `ravel:typecheck`, `ravel:lint`, `ravel:test`, `ravel:coverage`,
-`ravel:audit`, and `ravel:verify-scaffold`.
+That gate runs formatting, typecheck, lint, tests, coverage, dependency audit, the scaffold contract,
+and the offline registry checks. The individual tasks are `ravel:fmt`, `ravel:typecheck`, `ravel:lint`,
+`ravel:test`, `ravel:coverage`, `ravel:audit`, `ravel:verify-scaffold`, and `ravel:registry-verify`.
+Registry checks requiring acquired local fixtures run separately with `ravel:registry-verify-fixture`.
 
 Formatting and lint cover shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
 pass `cargo make ravel:fmt`. Report the real output. Never state that a gate passed without running it.
@@ -58,15 +59,18 @@ Judge the gate by its exit status, not an individual task's test summary.
   stays empty unless deliberately changed. The workspace denies `clippy::all` and
   `clippy::pedantic`. Fix causes: no `#[allow]`, no `#[ignore]`, no skipped tests, no loosened assertions to
   reach green. Everywhere else, unsafe operations belong only in audited dependencies behind narrow safe
-  wrappers. Measurement experiments under `experiments/` may hold unsafe and are fenced out of the
-  production graph.
+  wrappers.
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.
 - Follow the mechanisms in [`docs/architecture/overview.md`](docs/architecture/overview.md#mechanisms):
   configuration is declared in data and Ravel-owned screens are drawn in Java.
-- `tests/fixtures/local/` is gitignored local material. Never track credentials.
-- Adding or removing a crate or test mod means updating `CRATE_NAMES` or `TEST_MOD_NAMES` in
+- `registry/mods/*` shares the root Cargo workspace, lockfile, and target directory.
+  Registry source in this checkout is not the deferred M13 publication service.
+- `tests/fixtures/local/` is ignored, authorized local material.
+  Never track fixture contents, credentials, launcher tokens, or raw captures.
+- Adding or removing a crate, test mod, or registry counterpart means updating `CRATE_NAMES`,
+  `TEST_MOD_NAMES`, or `REGISTRY_MOD_NAMES` in
   [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and, if another member depends on it,
   its `[workspace.dependencies]` entry in `Cargo.toml`.
 

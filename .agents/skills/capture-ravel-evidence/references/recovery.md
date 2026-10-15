@@ -171,7 +171,7 @@ expected coordinate, not merely a total chunk count.
 
 Current hosts load the absolute file named by `-Dravel.host` with `System.load`;
 they do not search `java.library.path`. Build the installed packages with
-`ravel-cli host build` and point the property at
+`cargo make ravel:host-build <instance> <cache> <minecraft>` and point the property at
 `<instance>/ravel/host/libravel_bootstrap.so`. A missing property or file is a
 startup refusal, not a reason to copy the host into the launcher's natives directory.
 
@@ -305,7 +305,7 @@ that still holds a Microsoft account cannot be launched by accident.
 
 ## Focus-free rule
 
-Background process launch and localhost Tracy collection are allowed. Global
+Background process launch is allowed. Global
 input injection, desktop-wide screenshots, focus stealing, and unannounced
 window activation are not. If a UI-only step cannot be isolated, pause and ask
 for a bounded quiet window.

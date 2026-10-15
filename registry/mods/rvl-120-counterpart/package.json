@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_120_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-120 Counterpart",
+  "description": "Ravel counterpart for RVL-120: the foundation seed's decision rules, wire contracts and portable arithmetic, which five admitted counterparts depend on.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "4d76fa2cbe7585f731ce83dde3454d8c52686df0b84ce66f1565595b331b138a"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "ff83c89b9b3cde2ad577ca3a650e43d6b5e809ab7490361738617c5deeb43fe9"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "eb8596cc924df64a0d31ebcacb55b6481455828bb4fff6969b2dac55d4ab4293"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "0c8fc24c63fca0d058aae4831d3cb066352e026fdabebbfc2fa2da3cc03e30f7"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "0c13cda5408a9118e8600d97bb715b7a255f48112d6e55649fdd492553ffb5a5"
+      },
+      {
+        "path": "generated/network.txt",
+        "sha256": "c3d1eeb1c2a86ebd01c617edff89311f01c73140759163546088113e877b23a5"
+      },
+      {
+        "path": "generated/settings.txt",
+        "sha256": "307052570d66c127c2cef91d7ffabddf36009bba2001e712e5da7a21fc33c95b"
+      },
+      {
+        "path": "src/arithmetic.rs",
+        "sha256": "6e8d0dc13c03d4e67183fe53a367daa41a9388b8d177840e98cf6a779ee96b35"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "f318e3861399290d56b035b194c60a72328e81d70be6f3e658c74ab52abcef62"
+      },
+      {
+        "path": "src/commands.rs",
+        "sha256": "302a978befc76cee849848dbb4c6e01a9d9375a7708b7aa13af0aedda605279d"
+      },
+      {
+        "path": "src/data.rs",
+        "sha256": "3474e1e8a2d248d1d37f95dfb13bb5f926e71116d6adcfb579b61008e3f7576c"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "86c5acaedfa726789ef073f79b307ffda9332e20c3445030e4f36d649a78e6cb"
+      },
+      {
+        "path": "src/grouping.rs",
+        "sha256": "f7df707ee73b895db2081daf507c04db521dd3d5f43c19507c60db79c46eb4dd"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "a8c89c036b9f543b3fe762451afac36c50286d1d10a845b6b5b9349e3f8ff063"
+      },
+      {
+        "path": "src/network.rs",
+        "sha256": "4b99ee0b2b9468b0815e740fe32d5eb4c57b1cd75e1dc420db8ef8d88af39a6a"
+      },
+      {
+        "path": "src/preferences.rs",
+        "sha256": "e943a22a4956887e0be6104379fb16cfd54f6e7f1c39ceb118e38d2e7d4bbff0"
+      },
+      {
+        "path": "src/primitives.rs",
+        "sha256": "a8cb1937814480bf3fae8ab13c6c90246d90403c837935e441d32bccdcc3e02f"
+      },
+      {
+        "path": "src/recipes.rs",
+        "sha256": "a3c6d53ffee78cf9d02ca2ffa13cbf61d5091598e8b16c606631d5d78c42f3f7"
+      },
+      {
+        "path": "src/save.rs",
+        "sha256": "55a7526840fa97453a6d0f6474845224fb0975eb6d99ea0514461fb49f9d9806"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "ee6872b077729a6986a5df8c26f8da065b4d25d181fea3c13e8334193dc391d6"
+      },
+      {
+        "path": "src/values.rs",
+        "sha256": "3d3ff2dca9e163f6fbb785c89f9b7db5b8bcd7db997d20a4f368b2bd6dea4d2f"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "afbc71598f7dec460c98e3c5e83f718f125670d2884efcf794be765dced27264"
+  }
+}

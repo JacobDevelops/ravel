@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-180",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification counts twenty-one interface images in the pinned artifact and records that they were listed from the archive's table of contents and none was opened, decoded or viewed. Nothing upstream is tracked or shipped, and nothing has been rewritten from reference, so there is no asset to record. That is undone work rather than blocked work: source-access policy permits shipping art rewritten with the originals as reference and gates only release on author permission, and §11 item 3 of the specification asks for an equivalent set drawn fresh. `sprites` names the twenty-one paths a drawing would land on and generates the one atlas document that would stitch them; no bytes sit behind any of the twenty-one names, so that atlas stitches an empty directory, and NOTES.md lists the drawing under what is not provided."
+}

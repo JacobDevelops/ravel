@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_132_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-132 Counterpart",
+  "description": "Ravel counterpart for RVL-132: the bridging library's three ingredient kinds, their matching and serialised forms, the store-adapter table and the attachments four pinned mods depend on.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "3184de62df83b164800a7a0841b4b1e40c0e3152cd946b3168207c72ee2d0bbc"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "f83d5be2796d7cc36f07c34ecf2a3d461b294ed17515b285f4a22e72cdfed1d6"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "583ca232f033c56ded88333d3b73ebf1381c55d9615943c04742bfbcf58fd012"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "fa445af9c839b79fcca3f9fd708580c4fcecc3f1cd67bb4259c3ba8b33282c68"
+      },
+      {
+        "path": "generated/capabilities.txt",
+        "sha256": "9e25a7a383f73a3dbdf2f79e95ddde9f8c7347cc890e04ad31512c1cbde16686"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "4ee6ada419559689ef6b4cd84852caf3a11100e3c58dabee818bf9f25bce82ee"
+      },
+      {
+        "path": "generated/storage.txt",
+        "sha256": "dad8643010be0e9f72381d8167dd1dd35e78bb6cba3a64debb21818e6714c458"
+      },
+      {
+        "path": "src/cache.rs",
+        "sha256": "35ebd1f336658602cfe2ae994c5eadd31378c5688973da751449e2aa4843de3f"
+      },
+      {
+        "path": "src/capabilities.rs",
+        "sha256": "23dc8bf1fc575e4a43c1d2285b58f23819de87b65ac890007237121ab73ff79b"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "d4004f0223982f2f8d5289391f8c92b0301a4e5fddd4790b948b00076bad9180"
+      },
+      {
+        "path": "src/data.rs",
+        "sha256": "e6ecc766c01b56d5f3c9156af1d66e96c859a88453732c3758ae979f5993e8be"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "371887f29defdf11eed7a2c3095af661f01758ab5184669a2a1b1bc90099bc71"
+      },
+      {
+        "path": "src/forms.rs",
+        "sha256": "f4c58d371b86ceee7846a7a57942b2b14567952bb54d40ed092982388297e7d0"
+      },
+      {
+        "path": "src/holdings.rs",
+        "sha256": "b37e76d7a6113db228c1ed5a5d94d5eea512d82b323b62d3ac2e49d1cb57aa47"
+      },
+      {
+        "path": "src/kinds.rs",
+        "sha256": "1f53a11da3f0fa78a7815b47e362302200766c2aff6da60b6400a1a19ba840fd"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "498f1e7a349caeb4e55579fbbc49a4f048a1a0fd5cf18aa4877fe005b927ff9f"
+      },
+      {
+        "path": "src/readings.rs",
+        "sha256": "495908abaa5a45158068026d76ec65db613ebb2c2a18d2b973a625a5ab786071"
+      },
+      {
+        "path": "src/recipes.rs",
+        "sha256": "2378477c9cc943cd28b86c1d4705774cb70eb4ef4d08c3ebe36832f1bc83fbec"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "c26b05f38be3275ae309dbb94fdbc93cee82898c134230660e7edf5cb08ba94e"
+      },
+      {
+        "path": "src/storage.rs",
+        "sha256": "5d723d24a7e2376822404f30486c9e00b53558a9fc7cedf971d351fc1a7f8605"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "7c6d6ee0776e1e6da8a86b52ae36e0b51963451bce21225bd9761fda5d23f702"
+  }
+}

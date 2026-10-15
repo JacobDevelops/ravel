@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "rvl_060_counterpart",
+    "version": "0.1.0"
+  },
+  "implementationMethod": "specification-implemented",
+  "sources": [
+    {
+      "category": "specification",
+      "locator": "specifications/m6-foundation/RVL-060.md",
+      "use": "The behaviour specification this package implements. Nothing upstream was opened, decompiled or read to write this package.",
+      "producedBy": "M6-W3"
+    },
+    {
+      "category": "metadata",
+      "locator": "provenance/m6-foundation/RVL-060.json",
+      "revision": "sha256 fa170d6e28f82323e93c5398fd832b9dfe341307de0d219dbf8d0b9f4d53fd53",
+      "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved. Two consequences are visible in this package: no identifier here is carried across, so aliases.json is empty; and the four compatibility-required spellings that record names -- the channel and payload suffixes, the pack descriptor key, the highlight directory and its parting key, and the eleven validator kind names -- are each read from a build-time input, are an error rather than a default when the build supplies nothing, and have a placeholder the tests pin the surrounding shape with.",
+      "producedBy": "M6-W3"
+    },
+    {
+      "category": "published-api",
+      "locator": "ravel-sdk",
+      "use": "The whole of what this package names of Ravel's own surface: content declaration and the registration barrier, the packet contract and its framing, saved-data declaration and versioning, the side model and its client-only isolation, and the open JSON value the three open surfaces carry.",
+      "producedBy": "Ravel"
+    }
+  ],
+  "rights": [
+    { "surface": "code", "status": "cleared" },
+    { "surface": "behaviour", "status": "cleared" },
+    { "surface": "names", "status": "not-applicable" },
+    { "surface": "textures", "status": "not-applicable" },
+    { "surface": "models", "status": "not-applicable" },
+    { "surface": "sounds", "status": "not-applicable" },
+    { "surface": "branding", "status": "not-applicable" }
+  ]
+}

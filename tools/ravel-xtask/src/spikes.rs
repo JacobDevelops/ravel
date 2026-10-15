@@ -1,4 +1,4 @@
-//! Spike records and experiment boundaries.
+//! Saved architecture spike result validation.
 
 use std::fs;
 use std::path::Path;

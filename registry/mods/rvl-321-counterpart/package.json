@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_321_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-321 Counterpart",
+  "description": "Ravel counterpart for RVL-321: the crop, ground, machine and world-shaping progression the cluster scenario measures.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "9267c88ff3aba2f7f88795d86a83645649792d2fbad5578568ee5c745fc7fa65"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "71e29e77b50ba4a2bcfb9afbd1c8d2e1ab121074cb78a0aa960485a9ad11f19c"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "02a16359ce15e3477088f9681fd40b97c312777629b669d0f5cd68761fa2d3bd"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "62c0527f2cbb323b058c63ea658818b2fbcccb80ae13efa3a84e971652226e3d"
+      },
+      {
+        "path": "generated/machines.txt",
+        "sha256": "69c54cc33bd83dd8edd76209391f3fa39451b1092df41836ade095de15175e92"
+      },
+      {
+        "path": "generated/recipes.json",
+        "sha256": "c264c2d8e65950a4df0291dd948e144c949ee39102dc21cfbf9190791c04e619"
+      },
+      {
+        "path": "generated/world.txt",
+        "sha256": "ca9dbd6703afca5e3adc70ae941e70c5ea8d843715f3e5c442b08b5962338dd1"
+      },
+      {
+        "path": "src/cache.rs",
+        "sha256": "3d6239eab050434ea857d2f5e80ff3887aebc15ab420f6501f1fa8ebfd43b5a8"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "cabd0cb31e3da05e3c98bdf76202261319a3376b8b29381f931e62357daf19b9"
+      },
+      {
+        "path": "src/ground.rs",
+        "sha256": "4965198459635d9ae071fe5526e5a0641660da507eab5eb0573f4376da50a0bb"
+      },
+      {
+        "path": "src/growth.rs",
+        "sha256": "001d68dba9e6fbb76057ca67d7e3c23139954e6ce6dbd0d7080820a46bca4a67"
+      },
+      {
+        "path": "src/harvest.rs",
+        "sha256": "383380eb50bd7b4270155035aaa51b132bd7e56d7e83eb4cc9da42f5cbbbd2fe"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "c79f7c2c12a202e3863c37909db7a7eb215042b129a1b3542f1951656013f22f"
+      },
+      {
+        "path": "src/machines.rs",
+        "sha256": "7e63b2d9dbc61f504ce8a13a9682a03522e6e679fefa9af0d29aedec9d0b51fb"
+      },
+      {
+        "path": "src/model.rs",
+        "sha256": "e4c4c94b44385d2cf594e6bda6bc60133c501be272512e45e7e36a6266d28473"
+      },
+      {
+        "path": "src/recipes.rs",
+        "sha256": "1eb8e093895eb2a8eca0d1bb1398829175b4564bb35c23341f9ed6ff0ea5d2b1"
+      },
+      {
+        "path": "src/registries.rs",
+        "sha256": "8d4b369146c61047a1cb03d6943cbb1c6816a02ef6e869a32bc48098e82eea12"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "9177ce62f5d4e6a1140dfe6fb34b2bf153987ce2509f4dda5c58dd0500099aad"
+      },
+      {
+        "path": "src/world.rs",
+        "sha256": "e71250870a78807c6763d28cd0f54e9df9d9b06da61dbbf5f80712f677575bd3"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "4eadeb0a7be460dcd1733daab14de0a916ca195f05ccfe8da5c4fdc443258908"
+  }
+}

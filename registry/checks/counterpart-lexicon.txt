@@ -1,0 +1,108 @@
+# The published lexicon: the names a Ravel counterpart is allowed to carry.
+#
+# One name per line, lower case, comments and blank lines ignored. A counterpart
+# package's own names -- its directory, the directories under it, and the stem of
+# every file in it -- are split on the separators a Rust tree uses and each word
+# has to appear here. A word that does not is a name nobody published, which is
+# how a name arrives from somewhere else.
+#
+# This list is written by hand. It is not derived from the inventory, from the
+# counterparts, or from anything the check computes, and that is deliberate: if
+# the names a counterpart may carry were decided by the same code that decides
+# what an upstream name is, the two could never disagree and neither would be
+# worth reading. They meet in checks/verify-counterparts.sh, which refuses a
+# lexicon entry that is an upstream identifier or that matches one under the
+# documented normalization -- so the list cannot be used to publish a name into
+# legitimacy -- and refuses an entry no counterpart carries, so it cannot be
+# padded ahead of the work it would excuse.
+#
+# Purely numeric segments are not names and are not published here. A canonical
+# id's number is a number.
+
+rvl
+registry
+core
+src
+lib
+rs
+generated
+symbols
+txt
+cargo
+toml
+aliases
+json
+assets
+provenance
+package
+notes
+md
+counterpart
+flags
+selection
+inventory
+reusable
+arithmetic
+settings
+cache
+ground
+growth
+harvest
+machines
+model
+recipes
+registries
+world
+attractor
+census
+effects
+matching
+overrides
+refusal
+repair
+tooltip
+tier
+crops
+fuel
+foods
+tools
+drops
+data
+network
+commands
+values
+grouping
+save
+preferences
+primitives
+capabilities
+channel
+declarations
+dumps
+declaration
+registration
+helpers
+menus
+persistence
+quantity
+query
+shapes
+storage
+transport
+ordering
+colour
+fluids
+highlights
+presentation
+validators
+kinds
+forms
+holdings
+readings
+sprites
+conditions
+geometry
+lookup
+neighbourhood
+quadrant
+slots

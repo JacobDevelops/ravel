@@ -1,0 +1,7 @@
+packet	direction	version
+rvl_025_counterpart:held_components	to-server	1
+rvl_025_counterpart:card_arguments	to-server	1
+rvl_025_counterpart:browser_pattern	to-server	1
+rvl_025_counterpart:readout_request	to-server	1
+rvl_025_counterpart:held_item	to-server	1
+rvl_025_counterpart:readout_answer	to-client	1

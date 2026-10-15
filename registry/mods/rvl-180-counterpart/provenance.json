@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "rvl_180_counterpart",
+    "version": "4.6.1"
+  },
+  "implementationMethod": "specification-implemented",
+  "sources": [
+    {
+      "category": "specification",
+      "locator": "specifications/m6-foundation/RVL-180.md",
+      "use": "The behaviour specification this package implements, and the only description of the behaviour that was used. It is itself a black-box respecification: its author opened no source, no decompiled tree and no compiled entry, and it says so in its own opening and closing sections.",
+      "producedBy": "M6-W3"
+    },
+    {
+      "category": "compiled-artifact",
+      "locator": "the pinned artifact recorded at provenance/m6-foundation/RVL-180.json, held only in the public repository's ignored fixture tree",
+      "revision": "sha256 e35cb0ca3e3aeb87e1e171242454426d22edf517b06dc38e5c3d5b6d44d6bc04, as digested on disk by the specification's author",
+      "use": "Not opened by this package's author. It is recorded here because it is the sole upstream input behind the specification and because this package's rights depend on how it was read: its author listed the archive's 672 entries, opened none of the 522 compiled entries in the outer archive and none of the 284 in the bundled nested archive, and read the non-code documents whole. Nothing was fetched, extracted, decompiled or examined for this package, and nothing from it is tracked or shipped here.",
+      "producedBy": "M5 automated acquisition; read for the specification by the M6-W3 black-box author"
+    },
+    {
+      "category": "metadata",
+      "locator": "provenance/m6-foundation/RVL-180.json",
+      "revision": "sha256 2ed8def10b9410c7135d6bb905bdcd6cb0944fff203829d5426446ec20928b77",
+      "use": "The rights record the specification was written under. It records the code surface as permission-required under a weak-copyleft licence with sourceUse conditional, behaviour as cleared, names as unresolved and textures as permission-required. This package carries the consequences: it is written from behaviour alone, its alias declaration is empty because no save-compatible identifier mapping is specified, and it ships no art.",
+      "producedBy": "M6-W3"
+    },
+    {
+      "category": "metadata",
+      "locator": "policies/source-access.json",
+      "use": "The disposition governing what this workspace may read. Its assets clause is why the twenty-one interface sprites are named and not shipped: upstream art is reference for a fresh drawing, never redistributed, and each shipped asset is recorded in assets-provenance.json. This package has drawn none, so that record is empty.",
+      "producedBy": "M6-W3"
+    },
+    {
+      "category": "published-api",
+      "locator": "ravel-sdk",
+      "use": "The whole of what this package names. It lists no other Ravel crate and no third-party dependency.",
+      "producedBy": "Ravel"
+    }
+  ],
+  "rights": [
+    { "surface": "code", "status": "cleared" },
+    { "surface": "behaviour", "status": "cleared" },
+    { "surface": "names", "status": "not-applicable" },
+    { "surface": "textures", "status": "not-applicable" },
+    { "surface": "models", "status": "not-applicable" },
+    { "surface": "sounds", "status": "not-applicable" },
+    { "surface": "branding", "status": "not-applicable" }
+  ]
+}

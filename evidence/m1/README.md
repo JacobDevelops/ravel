@@ -11,7 +11,7 @@ are properties of a loader that does not exist yet. M3 decides it against the
 prototype. The measurements below are what that decision will use.
 
 [`manifest.json`](manifest.json) is M1's admission artifact, and
-`devenv tasks run ravel:verify-milestone:m1` is what checks it: every gate has a
+`cargo make ravel:verify-milestone m1` is what checks it: every gate has a
 recorded result, every gate has an accepted ADR, the spike results are hashed under
 the `spike-v1` protocol, an ADG-5 result records an observed stock launch, and the
 manifest names the change that introduced it. All of that holds, and so does the
@@ -57,9 +57,9 @@ that run.
 
 ## What is recorded
 
-One result per candidate under [`spikes/`](spikes/), all conforming to
-[`schemas/spike-result.schema.json`](../../schemas/spike-result.schema.json) and
-checked by `devenv tasks run ravel:verify-spikes`.
+One result per candidate under [`spikes/`](spikes/) conforms to
+[`schemas/spike-result.schema.json`](../../schemas/spike-result.schema.json).
+The historical `ravel:verify-spikes` task checked them.
 
 | Gate | Candidates | Outcome | Headline evidence |
 | --- | --- | --- | --- |
@@ -87,11 +87,11 @@ gap in the evidence:
 reading a launcher's settings runs no game: there is no process to end and nothing
 to hang.
 
-## Reproducing it
+## Historical reproduction commands
 
-Each gate has one task. None of them authenticates, and none of them launches the
-game. All of them need the pinned local fixtures from
-[`tests/fixtures/local/README.md`](../../tests/fixtures/local/README.md).
+The commands below describe the original evidence runs, not a supported
+performance-measurement workflow in the current checkout. They did not
+authenticate or launch the game and required the pinned local fixtures.
 
 ```console
 devenv tasks run ravel:spike-adg-1

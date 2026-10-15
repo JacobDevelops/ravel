@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-146",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification counts two binary files in the pinned tree, an icon serving the mod descriptor and a build wrapper archive, and records no texture, no model document and no sound. The icon is branding and excluded by policy; the wrapper is build tooling and not part of the published artifact. Nothing upstream is tracked or shipped and nothing was rewritten from reference, so there is no asset to record."
+}

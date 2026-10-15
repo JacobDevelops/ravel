@@ -5,7 +5,6 @@ use std::fs;
 use std::path::Path;
 
 use crate::TEST_MOD_NAMES;
-use crate::budget::{BUDGET_RECORDS, VOID_LIMITS};
 use crate::evidence::findings::relative_label;
 use crate::evidence::manifest::MILESTONE_MANIFESTS;
 use crate::java_shape::{descriptor_handles, quoted_value};
@@ -13,19 +12,31 @@ use crate::json::jq_value;
 use crate::tracked::collect_files;
 use crate::version_boundary::{HookInventory, VERSION_DATA};
 
+const BUDGET_RECORDS: &[&str] = &["evidence/m2/loader-overhead.json"];
+
+pub(crate) const VOID_LIMITS: &[(&str, &str)] = &[
+    (
+        "build.packCompile",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; the build cost of source distribution is evidence/m3/pack-compile.json",
+    ),
+    (
+        "build.relink",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; nothing relinks a pack under the selected mechanism",
+    ),
+    (
+        "build.binaryGrowthPerMod",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; per-mod binary growth describes an artefact the mechanism does not produce",
+    ),
+];
+
 pub(crate) const EXAMPLE_NAMES: &[&str] = &[
     "content-mod",
     "guide-snippets",
     "minimal-mod",
     "stateful-mod",
-];
-
-pub(crate) const EXPERIMENT_NAMES: &[&str] = &[
-    "m2-loader-overhead",
-    "m3-pack-compile",
-    "m3-profiling-overhead",
-    "m6-outward-crossing",
-    "spike-harness",
 ];
 
 const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";

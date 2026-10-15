@@ -1,0 +1,12 @@
+[package]
+name = "rvl-132-counterpart"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+ravel-sdk.workspace = true
+rvl-210-counterpart = { path = "../rvl-210-counterpart", version = "0.1.0" }
+
+[lints]
+workspace = true

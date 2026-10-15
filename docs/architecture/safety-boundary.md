@@ -41,9 +41,9 @@ Two consequences worth stating:
   holds more strongly than the spike measured: zero against two, not one against
   two.
 
-The table stays empty unless deliberately changed. Measurement alternatives live in `experiments/`,
-which is fenced out of the production graph by `ravel:verify-scaffold` and may hold
-whatever unsafe a candidate needs to be measured at all.
+The table stays empty unless deliberately changed. Retired measurement instruments
+are not maintained crates; their saved results remain under `evidence/` and are
+validated independently of the deleted experiment sources.
 
 The retired spike sources contained hand-written `#[unsafe(no_mangle)]` exports,
 which are not what the saved results' counts describe. `maintainedUnsafeBlocks`

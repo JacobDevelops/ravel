@@ -1,0 +1,95 @@
+{
+  "attribution": [
+    {
+      "name": "BlakeBr0",
+      "notice": "The upstream progression mod read for this entry is authored by BlakeBr0 and published under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/BlakeBr0/MysticalAgriculture"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-321.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree includes the entry's binary assets (773 texture files) and its declarative model and data files; the textures were not read as behaviour and nothing is shipped from them.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its content identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "773 texture files were fetched with the source and not read. The inventory records textures as cleared for this artifact and the licence reserves no asset separately. Nothing upstream is tracked or shipped; any counterpart art is rewritten from reference under policies/source-access.json and recorded in the package's assets-provenance.json.",
+      "status": "cleared",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree carries no binary model file; its models are declarative model documents fetched with the source and read only for the registration census the specification records. The inventory records models as cleared for this artifact and the licence reserves no asset separately. Nothing upstream is tracked or shipped.",
+      "status": "cleared",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file, which is what the inventory's not-applicable verdict for this artifact holds. The specification's sound references name host sounds rather than any shipped with the entry.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched or read; the display name, logo and author identity are excluded regardless of licence status under policies/source-access.json.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/BlakeBr0/MysticalAgriculture",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git 395ff6dae89991ace049b46a9077c787075114a6, the 26.1 branch at release 1.21.1-8.0.24; sha256 of the fetched source archive: 4b82a32c4138f9269343458f6001a4c64bea48d2b0f62b71fa0789eb999e456a",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-321.md. Version correspondence to the pinned pack artifact -- exact: the build script at this revision declares version '1.21.1-8.0.24' and an archive base name that together produce the pinned artifact file name MysticalAgriculture-1.21.1-8.0.24.jar, and its properties declare the game version 1.21.1. The extracted tree carries a second directory for a later branch of the same project; only the revision-suffixed directory named above was read. No decompilation was performed and no jar was opened."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying 'Copyright (c) 2018 BlakeBr0' and the standard permission grant with no additional term and no separate asset reservation. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact MysticalAgriculture-1.21.1-8.0.24.jar, and a declared MIT licence with assets not reserved separately. Confirmed above. The wave manifest admits the entry as a foundation seed and under cluster closure required by RVL-002, which is what the specification's dependent section is written against."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes."
+    }
+  ],
+  "subject": {
+    "id": "RVL-321",
+    "kind": "other",
+    "originalAuthor": "BlakeBr0",
+    "originalProject": "MysticalAgriculture",
+    "version": "8.0.24"
+  }
+}

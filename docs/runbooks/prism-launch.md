@@ -61,12 +61,11 @@ must be fetched from the URLs in the descriptor and checked before use.
 11. Capture the successful launch and world-open summary only in the
     ignored/private evidence boundary; do not repeat the launch or run
     performance capture during M0.
-12. Leave Prism's pre-launch and post-exit commands empty. A new M0 run also
-    leaves the wrapper empty. The already completed focus-free official-pack
-    run used the project `supervise-initial-linux` boundary with a live private
-    marker socket; its launch admission records the wrapper-command hash but
-    admits no performance result. Any other wrapper is rejected. M9 owns any
-    resulting performance capture and does not require this M0 run to repeat.
+12. Leave Prism's pre-launch, post-exit, and wrapper commands empty. The already
+    completed focus-free official-pack run used the now-retired
+    `supervise-initial-linux` boundary with a live private marker socket. Its
+    launch admission records the wrapper-command hash but admits no performance
+    result; it is historical evidence, not a wrapper to configure for a new run.
 
 ## Admission record
 

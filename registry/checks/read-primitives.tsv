@@ -1,0 +1,69 @@
+# Every use of a read primitive under checks/, named, counted and given a reason.
+# A use is an occurrence, not a line: two on one line are two. That distinction
+# is written here because it was wrong here — the counts were copied from a scan
+# that counted lines, so two rows were short by one each and the total this
+# workspace publishes was wrong by two while every gate was green.
+#
+# checks/verify-primitives.sh owns this file. No producer writes it and no model
+# derives it: it is the checker's side of the premise the read observation acts
+# on, which is that the two wrapped channels are the only ways an archive is
+# opened here. The scan compares this table to what it reads out of the code in
+# both directions, so an occurrence with no row fails and a row with no
+# occurrence fails.
+#
+# The dispositions, which verify-primitives.sh defines and this file may not
+# invent:
+#
+#   watched      the call goes through a channel checks/read-observation.sh
+#                wraps, so checks/verify-reads.sh sees the entry and the byte
+#                count and classifies them
+#   observation  the occurrence is the observation machinery itself; it reads no
+#                acquired artifact
+#   local        it reads or writes a file this workspace owns — its own tracked
+#                files, its own scratch directory, shell a model under checks/
+#                wrote during the run
+#   digest       it reads an acquired artifact whole, as bytes, and keeps the
+#                digest and nothing else
+#
+# Adding a reader means adding a row here, and a row is a sentence somebody has
+# to write and a reviewer can disagree with. That is the point of it and it is
+# also its limit: this table cannot tell a true reason from a plausible one.
+#
+# file	primitive	count	disposition	reason
+artifact-set.sh	sha1sum	1	digest	the acquired jar is hashed whole against the hash the pinned manifest declares for it
+artifact-set.sh	sha256sum	4	digest	the acquired jar, shader and resource pack are hashed whole, and the artifact table this workspace wrote is hashed to bind the set
+mod-metadata.sh	python3	1	watched	runs checks/modmeta.py, whose archive reading is the zipfile the observation patches
+modmeta.py	builtin-open	5	local	one read of the artifact table this workspace wrote, and four output files it writes
+modmeta.py	io	1	watched	wraps bytes that already came back through zipfile, so the observation counted them where they were read
+modmeta.py	method-open	1	watched	zipfile.ZipFile.open, patched by the observation
+modmeta.py	method-read	3	watched	reads through zipfile handles, each counted with its entry and its byte count
+modmeta.py	zipfile	11	watched	the archive channel itself, patched at namelist, infolist, open and read; one signature names the module twice, which is why this count is of occurrences and not of lines
+read-observation.sh	builtin-open	1	observation	the sitecustomize writes its own tally at exit
+read-observation.sh	cat	3	observation	three here-documents that write the shims: unzip, the interpreter, and the sitecustomize
+read-observation.sh	pythonpath	1	observation	puts the sitecustomize where the interpreter loads it
+read-observation.sh	zipfile	9	observation	the methods it patches
+rebuild-graph.sh	source-generated	1	local	shell checks/graph-model.sh wrote into the scratch directory during this run
+rebuild-plans.sh	source-generated	1	local	shell checks/plans-model.sh wrote into the scratch directory during this run
+rebuild-proposals.sh	eval	1	local	shell checks/proposals-model.sh printed during this run
+rebuild-proposals.sh	sha256sum	1	local	digests this workspace's own tracked files so the proposal record binds them
+rebuild-references.sh	sha256sum	2	digest	the pinned manifest and the fixture archive are hashed whole
+rebuild-rights.sh	source-generated	2	local	shell checks/surfaces-model.sh and checks/rights-model.sh wrote during this run
+rebuild-surfaces.sh	source-generated	1	local	shell checks/surfaces-model.sh wrote into the scratch directory during this run
+recheck-metadata.sh	unzip	9	watched	the second channel, shimmed on PATH by the observation
+surface-recount.sh	unzip	5	watched	the second channel, shimmed on PATH by the observation
+verify-boundary.sh	sha256sum	1	local	hashes registry-owned tracked files against milestone boundArtifacts digests; machinery changes require an explicit amendment while material bindings remain immutable
+verify-counterpart-packages.sh	cat	1	local	prints the listed-path file this run wrote into its own scratch directory
+verify-counterpart-packages.sh	sha256sum	2	local	hashes this workspace's own counterpart files against the digests their package manifest declares, so an edited file whose manifest was not refreshed fails here
+verify-graph.sh	source-generated	1	local	shell checks/graph-model.sh wrote into the scratch directory during this run
+verify-inventory.sh	sha256sum	2	digest	the pinned manifest and the fixture archive are hashed whole
+verify-plans.sh	source-generated	1	local	shell checks/plans-model.sh wrote into the scratch directory during this run
+verify-proposals.sh	cat	1	local	prints a list this workspace wrote into its own scratch directory
+verify-proposals.sh	eval	1	local	shell checks/proposals-model.sh printed during this run
+verify-proposals.sh	sha256sum	1	local	digests this workspace's own tracked files against what the proposal record binds
+verify-provenance.sh	sha256sum	2	digest	the pinned manifest and the fixture archive are hashed whole
+verify-reads.sh	tar	2	local	copies this workspace into the sandbox the producers are run in, which is one pipeline reading with one invocation and writing with a second
+verify-rights.sh	source-generated	2	local	shell checks/surfaces-model.sh and checks/rights-model.sh wrote during this run
+verify-surfaces.sh	source-generated	2	local	shell checks/surfaces-model.sh and checks/surface-recount.sh wrote during this run
+verify-wave.sh	sha256sum	2	local	hashes the two inventory files the frozen M6 wave manifest is bound against, so a manifest frozen over a different tree fails here
+verify-counterpart-build.sh	cargo	4	local	names this workspace's own counterpart packages and then formats, lints and runs them, which is the only evidence anywhere that their rules do what their specifications say
+verify-spec-source-names.sh	cat	6	local	six here-documents this run writes into its own scratch directory: five blocks of the hand-maintained platform deny-list and the awk program that extracts declared names from the fetched tree

@@ -1,0 +1,10 @@
+absent	unresolved	nothing was declared, so nothing is known; the absence of a grant is not a grant and not a refusal either
+reference-only	unresolved	the declaration points somewhere instead of saying something, and this workspace does not follow the pointer
+custom	unresolved	the terms are the authors own and no reading of them has been recorded here, so the answer is that we do not know
+permissive	cleared	the licence grants use of the work including its source, on terms this workspace can meet without asking
+attribution-required	permission-required	the grant carries an obligation to credit, which is a condition to satisfy rather than a permission already held
+weak-copyleft	permission-required	the grant carries conditions on distributing derived work, which have to be met before the source is used
+strong-copyleft	permission-required	the grant carries conditions that reach the whole derived work, which have to be met before the source is used
+all-rights-reserved	prohibited	the author reserved every right, so no permission to read the source into a derived work exists to be relied on
+noncommercial-or-noderivatives	prohibited	the licence names the use as one it does not permit, and reimplementing from the source is that use
+source-restricted	prohibited	the licence permits the work generally and names competing with the licensor as the use it withholds, which is what a native reimplementation is

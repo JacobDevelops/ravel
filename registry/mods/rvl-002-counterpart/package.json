@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_002_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-002 Counterpart",
+  "description": "Ravel counterpart for RVL-002: the content cluster's leaf, a sixth tier above the tiered-crop entry with its ground, crops, fuels, foods, tools and deposits.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "a647e426db209cc1433791d7daeb7b678ad5f4a3767d91c2cb067c76055bc929"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "cc04911d00205148c65d3fd0ce7da72a408f878b7e5d5f2bb1d83a3a5f581127"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "322040259eaa6faf02c548a3830a24f18b07576dc2271c0bcf11c5528a054b38"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "78aae0aa805ab1fda316dd95bc59e78a20195b01c63f2331f84afb564d470d54"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "81550ed5450be37ed054174dd8e5ecd89ec6fe4e66d9d2f76c9297cfc094260d"
+      },
+      {
+        "path": "generated/foods.json",
+        "sha256": "fc5f0cbb85589f9c0fe72a18840373f5be61ab7893932b8d2f01634263f001ae"
+      },
+      {
+        "path": "generated/fuel.txt",
+        "sha256": "b1b056a8d21cec2ff12427415f6df9ce7f9298f4031e8e35240d546dd4ae0da2"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "cc940ee0360bc21a68ffbe07142da075a65f8f6847b91280c7b0e92ba2473318"
+      },
+      {
+        "path": "src/crops.rs",
+        "sha256": "48fd92120d59cf35e3915198a38ae347a565012209a637d7404fadacbfa1ce54"
+      },
+      {
+        "path": "src/data.rs",
+        "sha256": "4526ad4dee0baf2f448b2d62f1988246bec99c5ad81d69fd57c033b62899497d"
+      },
+      {
+        "path": "src/drops.rs",
+        "sha256": "e0a70a278f842603bb5fb407405b7806d07f67e41c8d6669fce09d49a7f46a2b"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "2b8fa6e722e82f2cec80f48a1481059db0de243534bc79aae829f47e9ef9b4f8"
+      },
+      {
+        "path": "src/foods.rs",
+        "sha256": "150274fb616c1fb4153fa575d90e3825047885859ae38f4bcda85198de59d39f"
+      },
+      {
+        "path": "src/fuel.rs",
+        "sha256": "ba91fc792e8c72170fe690257df9380e92a42dce7edb293a4006ec0e603af6e1"
+      },
+      {
+        "path": "src/ground.rs",
+        "sha256": "989eb1f2d94aaa079f91a80311409297b292f7a64afcd37be1e44049419aa485"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "469e79ae3e3d9f47ebaa6f670d654d980e3f80d735bc1078a2e63744b8dccd9a"
+      },
+      {
+        "path": "src/recipes.rs",
+        "sha256": "ac52375530b8e89542febaa9b20b9b96d6655bb72824596f7584a3f1075f29a2"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "5ac51ac42e92bd79097c0b66f7f36fceee798d8f6f3633436ee8d669d78a953a"
+      },
+      {
+        "path": "src/tier.rs",
+        "sha256": "c070b2610c4abc656ba1523d3e0fe7887321aed1f4c34b236bfda9049daa100e"
+      },
+      {
+        "path": "src/tools.rs",
+        "sha256": "ccf9824e3ce0eb5c9521caa0fb56a1d2b9399b6fa1dcd5b21869bd8737fcc21a"
+      },
+      {
+        "path": "src/world.rs",
+        "sha256": "f45842ff22a44a2885aeb2f1e3f144ec8b2056d8d4e7265e161e5b851e7ccbdb"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "87f3c9d805f3c519a69727f13fb3ff257a70e370b6b169ddd50d968442632f4a"
+  }
+}

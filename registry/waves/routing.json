@@ -1,0 +1,7399 @@
+{
+  "capabilities": {
+    "advancements": {
+      "module": "no module",
+      "reachesARunningGame": false
+    },
+    "audio": {
+      "module": "audio",
+      "reachesARunningGame": false
+    },
+    "config": {
+      "module": "config",
+      "reachesARunningGame": false
+    },
+    "content-behaviour": {
+      "module": "content",
+      "reachesARunningGame": false
+    },
+    "interception": {
+      "module": "interception",
+      "reachesARunningGame": true
+    },
+    "loot": {
+      "module": "no module",
+      "reachesARunningGame": false
+    },
+    "network": {
+      "module": "network",
+      "reachesARunningGame": false
+    },
+    "persistence": {
+      "module": "save",
+      "reachesARunningGame": false
+    },
+    "recipes": {
+      "module": "no module",
+      "reachesARunningGame": false
+    },
+    "resources": {
+      "module": "resources",
+      "reachesARunningGame": false
+    },
+    "screens": {
+      "module": "no module",
+      "reachesARunningGame": false
+    },
+    "services": {
+      "module": "services, provision",
+      "reachesARunningGame": false
+    },
+    "shaders": {
+      "module": "render_stages",
+      "reachesARunningGame": false
+    },
+    "tags": {
+      "module": "tags",
+      "reachesARunningGame": false
+    },
+    "worldgen": {
+      "module": "world_shaping",
+      "reachesARunningGame": false
+    }
+  },
+  "derivation": "computed by waves/route.py from surfaces.json and plans.json",
+  "entries": [
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-001",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-002",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-003",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-004",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-005",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-006",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-007",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-008",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-009",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-010",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-011",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-012",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-013",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-014",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-015",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-016",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-017",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-018",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-019",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-020",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-021",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-022",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-023",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-024",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-025",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-026",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-027",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-028",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-029",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-030",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-031",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-032",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-033",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-034",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-035",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-036",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-037",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-038",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-039",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-040",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-041",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-042",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-043",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "loot",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-044",
+      "demands": [
+        "advancements",
+        "loot",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence",
+        "resources",
+        "shaders"
+      ],
+      "canonicalId": "RVL-045",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence",
+        "resources",
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-046",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-047",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-048",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-049",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-050",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-051",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-052",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-053",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-054",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-055",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-056",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "shaders"
+      ],
+      "canonicalId": "RVL-057",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-058",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-059",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence"
+      ],
+      "canonicalId": "RVL-060",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-061",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-062",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-063",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-064",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-065",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-066",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-067",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-068",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence"
+      ],
+      "canonicalId": "RVL-069",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-070",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-071",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-072",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-073",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "shaders"
+      ],
+      "canonicalId": "RVL-074",
+      "demands": [
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-075",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-076",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "resources"
+      ],
+      "canonicalId": "RVL-077",
+      "demands": [
+        "audio",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-078",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-079",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-080",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-081",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-082",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-083",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-084",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-085",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-086",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-087",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "services"
+      ],
+      "canonicalId": "RVL-088",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-089",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-090",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-091",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-092",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-093",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-094",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "resources"
+      ],
+      "canonicalId": "RVL-095",
+      "demands": [
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-096",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-097",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-098",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-099",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-100",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence",
+        "services"
+      ],
+      "canonicalId": "RVL-101",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence",
+        "tags"
+      ],
+      "canonicalId": "RVL-102",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-103",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-104",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-105",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources"
+      ],
+      "canonicalId": "RVL-106",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-107",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-108",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-109",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-110",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-111",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-112",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-113",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-114",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-115",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-116",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-117",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-118",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-119",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources"
+      ],
+      "canonicalId": "RVL-120",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-121",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-122",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-123",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-124",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-125",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "tags"
+      ],
+      "canonicalId": "RVL-126",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-127",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-128",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-129",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-130",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-131",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-132",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-133",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-134",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-135",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-136",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "screens",
+        "services"
+      ],
+      "canonicalId": "RVL-137",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "screens",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-138",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-139",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-140",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-141",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-142",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-143",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-144",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "shaders"
+      ],
+      "canonicalId": "RVL-145",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-146",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-147",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-148",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-149",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "services"
+      ],
+      "canonicalId": "RVL-150",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-151",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-152",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-153",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-154",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-155",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-156",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-157",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-158",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-159",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-160",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-161",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-162",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-163",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-164",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-165",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-166",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-167",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-168",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-169",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "screens",
+        "services"
+      ],
+      "canonicalId": "RVL-170",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "screens",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-171",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-172",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-173",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-174",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-175",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-176",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-177",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-178",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-179",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-180",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-181",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-182",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-183",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-184",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-185",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-186",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-187",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-188",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-189",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-190",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-191",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-192",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-193",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-194",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-195",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-196",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-197",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-198",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-199",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-200",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-201",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-202",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-203",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-204",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-205",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "recipes",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-206",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-207",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-208",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-209",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-210",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes"
+      ],
+      "canonicalId": "RVL-211",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-212",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-213",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "screens"
+      ],
+      "canonicalId": "RVL-214",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "screens"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-215",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-216",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-217",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-218",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-219",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-220",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-221",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-222",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-223",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-224",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-225",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-226",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-227",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-228",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-229",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-230",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-231",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "shaders"
+      ],
+      "canonicalId": "RVL-232",
+      "demands": [
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-233",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-234",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services",
+        "shaders"
+      ],
+      "canonicalId": "RVL-235",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "services",
+        "shaders"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-236",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-237",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-238",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-239",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "screens",
+        "services",
+        "shaders"
+      ],
+      "canonicalId": "RVL-240",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "screens",
+        "services",
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-241",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-242",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-243",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-244",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-245",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-246",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-247",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-248",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-249",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-250",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-251",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-252",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-253",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-254",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-255",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-256",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-257",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-258",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-259",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "shaders"
+      ],
+      "canonicalId": "RVL-260",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "shaders"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-261",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-262",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-263",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-264",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-265",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-266",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-267",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-268",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-269",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-270",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-271",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-272",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-273",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "shaders"
+      ],
+      "canonicalId": "RVL-274",
+      "demands": [
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-275",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-276",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence",
+        "services"
+      ],
+      "canonicalId": "RVL-277",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-278",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-279",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-280",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-281",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "canonicalId": "RVL-282",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-283",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-284",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-285",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-286",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-287",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-288",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-289",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-290",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-291",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-292",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-293",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-294",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network"
+      ],
+      "canonicalId": "RVL-295",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-296",
+      "demands": [
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-297",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-298",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-299",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-300",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "canonicalId": "RVL-301",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "shaders",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-302",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-303",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources"
+      ],
+      "canonicalId": "RVL-304",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-305",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "persistence"
+      ],
+      "canonicalId": "RVL-306",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "persistence"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-307",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-308",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-309",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "canonicalId": "RVL-310",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "network",
+        "resources"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "services",
+        "tags"
+      ],
+      "canonicalId": "RVL-311",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "services",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-312",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "services"
+      ],
+      "canonicalId": "RVL-313",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "services"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-314",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-315",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-316",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-317",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-318",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "services",
+        "shaders",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "network",
+        "persistence",
+        "resources",
+        "screens",
+        "shaders"
+      ],
+      "canonicalId": "RVL-319",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "network",
+        "persistence",
+        "resources",
+        "screens",
+        "shaders"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "unresolved"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-320",
+      "demands": [
+        "advancements",
+        "audio",
+        "config",
+        "content-behaviour",
+        "loot",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "prohibited"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "canonicalId": "RVL-321",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "recipes",
+        "resources",
+        "tags",
+        "worldgen"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour"
+      ],
+      "canonicalId": "RVL-322",
+      "demands": [
+        "config",
+        "content-behaviour"
+      ],
+      "method": "source-informed-reimplementation",
+      "runnableToday": false,
+      "sourceUse": "permitted"
+    },
+    {
+      "blockedOn": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "canonicalId": "RVL-323",
+      "demands": [
+        "advancements",
+        "config",
+        "content-behaviour",
+        "interception",
+        "loot",
+        "network",
+        "persistence",
+        "recipes",
+        "resources",
+        "tags"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    },
+    {
+      "blockedOn": [
+        "config",
+        "content-behaviour",
+        "resources",
+        "services"
+      ],
+      "canonicalId": "RVL-324",
+      "demands": [
+        "config",
+        "content-behaviour",
+        "interception",
+        "resources",
+        "services"
+      ],
+      "method": "black-box-respecification",
+      "runnableToday": false,
+      "sourceUse": "conditional"
+    }
+  ],
+  "inventoryKind": "atm10-tts-2.0.2",
+  "limits": [
+    "It routes demand and does not measure absorption: how much of an entry Ravel's platform already answers needs a reader per entry, which this does not attempt.",
+    "Content behaviour is charged to every entry carrying class files, because the inventory does not distinguish a class that registers data from one that implements a block. That makes the content-behaviour figure an upper bound.",
+    "content-behaviour has a module and still reads False. A mod can now declare a block or an item, describe how it behaves, and have the host register it in a launched game \u2014 but a counterpart needs blocks that do something, and a block whose only behaviour is hardness, blast resistance, tool requirement and random ticking is not that. The flag flips when the surface carries behaviour a mod writes rather than values it picks.",
+    "A capability's reachesARunningGame verdict is written here by hand from what docs/guide/limits.md states in the public repository. It is a claim about the host at the time of writing and goes stale when the host gains a surface.",
+    "It reads the inventory's own counts and opens no artifact."
+  ],
+  "schemaVersion": 1,
+  "totals": {
+    "blocked": 324,
+    "demandByCapability": {
+      "advancements": 132,
+      "audio": 63,
+      "config": 318,
+      "content-behaviour": 318,
+      "interception": 261,
+      "loot": 135,
+      "network": 155,
+      "persistence": 46,
+      "recipes": 175,
+      "resources": 241,
+      "screens": 5,
+      "services": 64,
+      "shaders": 30,
+      "tags": 180,
+      "worldgen": 38
+    },
+    "entries": 324,
+    "runnableToday": 0
+  }
+}

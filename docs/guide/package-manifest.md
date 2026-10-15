@@ -12,7 +12,7 @@ below, and verifies the digests each one records — so a malformed or altered
 package stops the launch by name. What it will not do is admit what it found: the
 mods a launch runs are the ones its host was compiled from, and an installed
 package that host does not name refuses the launch rather than joining it.
-`ravel-cli host build` is what compiles a host that names them. Until a launch
+`cargo make ravel:host-build <instance> <cache> <minecraft>` compiles a host that names them. Until a launch
 runs that itself, write the manifest as though it were read, because it is. See
 [What does not work yet](limits.md).
 

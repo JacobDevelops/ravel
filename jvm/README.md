@@ -40,7 +40,7 @@ Set two stock Prism instance arguments:
 -Dravel.host=<absolute path to libravel_bootstrap.so>
 ```
 
-`ravel-cli host build` produces the host at
+`cargo make ravel:host-build <instance> <cache> <minecraft>` produces the host at
 `<instance>/ravel/host/libravel_bootstrap.so`. Removing the launch arguments
 switches Ravel off without uninstalling it.
 

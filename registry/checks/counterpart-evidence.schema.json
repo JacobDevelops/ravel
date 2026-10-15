@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel-registry:checks:counterpart-evidence",
+  "title": "Counterpart evidence row",
+  "description": "One row of evidence/m6/counterpart-summary.json's counterparts[]: what a single sealed counterpart package under mods/ carries, and what the three counterpart checks measured over it. The arithmetic this schema exists to hold is declarableOnly + exercised == observableAreas. The denominator is defined once, here: observableAreas counts the specification sections a counterpart implements plus those it lists as declarable-only; sections the specification itself excludes or marks not carried are outside the denominator. Every section of NOTES.md's section table therefore resolves to exactly one of three dispositions — exercised, declarable-only, or outside the denominator — and the first two sum to it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "entry",
+    "specification",
+    "observableAreas",
+    "declarableOnly",
+    "exercised",
+    "provenance",
+    "suites"
+  ],
+  "properties": {
+    "id": {
+      "description": "The counterpart package this row is about, named the way the record names it: the package directory under mods/ with its separators folded to underscores. Its numeric slot is the slot entry names.",
+      "type": "string",
+      "pattern": "^rvl_[0-9]{3}_counterpart$"
+    },
+    "entry": {
+      "description": "The canonical wave identifier this counterpart implements, as waves/m6-foundation.json names it. Its numeric slot is the same slot as id, which is what checks/verify-counterparts.sh binds aliases.json's canonicalId to.",
+      "type": "string",
+      "pattern": "^RVL-[0-9]{3}$"
+    },
+    "specification": {
+      "description": "The state of the behaviour specification this package was implemented from.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "accepted",
+        "structureReviewed",
+        "carriesUpstreamIdentifier"
+      ],
+      "properties": {
+        "route": {
+          "description": "The route the specification was written by, in the two words the record uses: source is a source-informed reimplementation, whose specification was written by a reader who saw upstream source; observed is a black-box respecification, written without it. The public gate's own record predicate reads this field and admits exactly these two, and the wave manifest's longer method strings are that manifest's vocabulary rather than this one.",
+          "type": "string",
+          "enum": [
+            "source",
+            "observed"
+          ]
+        },
+        "accepted": {
+          "description": "Whether specifications/m6-foundation/<id>.md exists and is accepted. checks/verify-counterparts.sh refuses a counterpart with no accepted specification for its canonical slot.",
+          "type": "boolean"
+        },
+        "structureReviewed": {
+          "description": "Whether the module list, public types and section table were reviewed for structure by a reader with no upstream access, per step 3 of records/counterpart-checklist.md. For a counterpart written from here on, that review precedes implementation, which is the cheap moment to catch a transliteration. For the twelve foundation entries it ran on 2026-09-05 after implementation: the reader read the specification first and then the counterpart's module list and public types, and each structural noun it found was removed from both the specification and the counterpart. This field records that a structure review happened and was acted on; step 3 of the checklist records which of the two timings it had.",
+          "type": "boolean"
+        },
+        "carriesUpstreamIdentifier": {
+          "description": "Whether the specification still trips rule U1 or N1, as checks/verify-spec-identifiers.sh and checks/verify-spec-source-names.sh report them. True is a finding, not a property.",
+          "type": "boolean"
+        }
+      }
+    },
+    "observableAreas": {
+      "description": "The denominator: the specification sections this counterpart implements plus those it lists as declarable-only. Sections the specification excludes or marks not carried are not counted here. Equal to declarableOnly + exercised.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "declarableOnly": {
+      "description": "Sections whose shape is declared and whose behaviour no Ravel seam at the reviewed revision can carry. None is stubbed: a declarable-only section carries no pretend implementation.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "exercised": {
+      "description": "Sections whose rules run here and are held to an assertion by the package's own tests, including those implemented with a declared behaviour change.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "provenance": {
+      "description": "The package's own provenance.json, as checks/verify-counterpart-packages.sh hashes it and as the wave record at provenance/m6-foundation/<id>.json is held to by checks/verify-provenance.sh.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete"],
+      "properties": {
+        "complete": {
+          "description": "Whether the record names an implementationMethod, every source the implementer had in hand, and a status for all seven rights surfaces.",
+          "type": "boolean"
+        }
+      }
+    },
+    "suites": {
+      "description": "What checks/verify-counterpart-build.sh ran over this package.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "failed"],
+      "properties": {
+        "total": {
+          "description": "Tests run. A counterpart with no test has no evidence that its rules do what its specification says.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "failed": {
+          "description": "Tests that did not pass. Any value above zero fails the build check.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

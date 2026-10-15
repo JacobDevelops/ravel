@@ -65,7 +65,7 @@ const M5_RECORDS: &[(&str, &str, &str)] = &[(
         and ((.boundArtifacts | map(select(.class == "machinery") | .name)) as $machinery
              | .machineryAmendments | all(.entries | all(. as $e | $machinery | index($e) != null)))"#,
     "an inventory summary carrying every aggregate as a number, a digest over every \
-     private file it binds with the class that digest freezes, its trail of machinery \
+     registry file it binds with the class that digest freezes, its trail of machinery \
      amendments, and its own disclosure of what the read observation watches and \
      which of its claims rest on judgement",
 )];

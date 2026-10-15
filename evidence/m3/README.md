@@ -220,13 +220,13 @@ One more is carried and it is about the measurements rather than the machinery.
 All three M3 trials — `pack-compile.json`'s curve and variants runs and
 `profiling-overhead.json`'s — record `trial.revision.dirty: true`, so no revision
 identifies the code any of them measured, including the code behind the single
-M3-W6 limit `cargo xtask verify budget` enforces on every gate run. It is
+M3-W6 limit the now-retired `cargo xtask verify budget` enforced. It is
 disclosed as a deviation rather than repaired: the two pack-compile runs took 174
 and 1161 seconds and hold on `linux-reference-v1` alone, and a re-run would land
 on a working copy that is dirty again for the same reason the manifest's own
 revision block gives — recording a result changes the tree that produced it. The
-limit and the arithmetic over it are bound on every gate; which source produced
-the figure is not.
+limit and the arithmetic over it were checked by that historical gate; which
+source produced the figure was not.
 
 Two findings from that round are fixed rather than carried. The `review.record`
 digests it found unbound in three different ways under one field name are bound, as
@@ -280,7 +280,7 @@ and the record rather than this paragraph is what a reader counts from.
 
 ### What a green closure would and would not prove
 
-`devenv tasks run ravel:verify-milestone:m3` is an *attestation* gate, and the
+`cargo make ravel:verify-milestone m3` is an *attestation* gate, and the
 limit of what it decides is worth stating plainly, because a green exit is easy to
 read as more than it is. Two things it controls: `review.md`'s bytes are bound by
 `review.record.sha256`, so the text that was attested cannot be swapped for other
@@ -298,8 +298,8 @@ gate binds **which text was attested**, not **that the attestation was earned**.
 An auditor reading a green closure is reading a digest-bound claim of independent
 review, and has to weigh the claim on the record's own contents.
 
-`pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
-is the measurement ADG-2 named as deciding its open mechanism: whether an
+`pack-compile.json` is frozen evidence from the retired `ravel:measure-pack-compile`
+task. It is the measurement ADG-2 named as deciding its open mechanism: whether an
 interchangeable mod ships as a per-platform binary or as source a bundled
 toolchain compiles. It replaces the floor M2-W8 set from generated one-struct
 crates, and it decides nothing on its own — the generated crates are ordinary
@@ -307,18 +307,18 @@ safe Rust behind the same `HostMod` contract the tracked test mods use, and
 nothing in the run loaded a library, started a guest runtime, spawned a mod
 process, or exported a foreign symbol.
 
-Its `variants` section comes from a second run,
-`devenv tasks run ravel:measure-pack-compile-variants`, which changes one thing
+Its `variants` section comes from a second run of the retired
+`ravel:measure-pack-compile-variants` task, which changed one thing
 at a time about the curve — four build jobs instead of sixteen, a sixteen-deep
-dependency spine, and whole-pack link-time optimization — and splices its results
+dependency spine, and whole-pack link-time optimization — and spliced its results
 in beside the curve rather than over it. That section carries its own trial
 provenance, its own two-build protocol, and its own control, because a figure
 measured in a later run is not the same measurement as the one it sits next to.
 
-It is a measurement rather than a contract. Rerunning it moves the numbers, and
-they hold on the `linux-reference-v1` hardware profile and nowhere else; the
-record carries that profile's digest so a later run can tell whether it is
-comparable. Its `whatThisDoesNotSay` list is part of the record, not commentary
+It is a historical measurement, not a supported rerun procedure or a contract.
+The figures hold on the `linux-reference-v1` hardware profile and nowhere else;
+the record carries that profile's digest to identify the measured environment.
+Its `whatThisDoesNotSay` list is part of the record, not commentary
 on it: the generated mods are alike, have no dependency graph between them, and
 pull nothing outside serde, so every figure is a floor.
 
@@ -327,11 +327,11 @@ path, no credential, and no local directory.
 
 ## `profiling-overhead.json`
 
-It comes from `devenv tasks run ravel:measure-profiling-overhead` and is two
-things at once, which is the same shape `evidence/m2/loader-overhead.json` has:
-the M3-W6 measurement, and a budget record whose limits a later run is compared
-against. `cargo xtask verify budget` takes the union of that file's limits and
-this one's, and runs inside `ravel:verify`.
+This frozen record was produced by the retired `ravel:measure-profiling-overhead`
+task and served two purposes, like `evidence/m2/loader-overhead.json`: the M3-W6
+measurement and a budget record. The former `cargo xtask verify budget` checked
+the union of both records' limits inside `ravel:verify`. That budget gate and the
+measurement tooling are removed; the evidence and its pinned bindings remain.
 
 Its `budget` limit is **decided rather than derived**. Every M2 limit is its own
 measurement doubled; this one is one per cent of a tick, fixed before the

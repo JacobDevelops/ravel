@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-086",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification excludes the sixty-two image files fetched with the source, which were not opened, and the sixteen tinted blocks share one texture and one model upstream; none of that is tracked or shipped here and nothing was rewritten from reference, so there is no asset to record."
+}

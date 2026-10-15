@@ -6,14 +6,10 @@ members = [
   "examples/guide-snippets",
   "examples/minimal-mod",
   "examples/stateful-mod",
-  "experiments/m2-loader-overhead",
-  "experiments/m3-pack-compile",
-  "experiments/m3-profiling-overhead",
-  "experiments/m6-outward-crossing",
-  "experiments/spike-harness",
+  "registry/mods/*",
   "test-mods/*",
   "tests/conformance",
-  "tools/*",
+  "tools/ravel-xtask",
 ]
 
 [workspace.package]
@@ -25,6 +21,7 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 jni = "0.22.4"
+num-traits = { version = "0.2", default-features = false }
 miniz_oxide = "0.8.9"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
@@ -47,7 +44,6 @@ ravel-resolve = { path = "crates/ravel-resolve", version = "0.0.0" }
 ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
-ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-test-mod-audio = { path = "test-mods/audio", version = "0.0.0" }
 ravel-test-mod-client-only = { path = "test-mods/client-only", version = "0.0.0" }
 ravel-test-mod-commands = { path = "test-mods/commands", version = "0.0.0" }
@@ -69,7 +65,6 @@ ravel-test-mod-world-shaping = { path = "test-mods/world-shaping", version = "0.
 ravel-build = { path = "crates/ravel-build", version = "0.0.0" }
 ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
-rustix = { version = "1.1.4", default-features = false, features = ["process"] }
 semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

@@ -1,0 +1,95 @@
+{
+  "attribution": [
+    {
+      "name": "Cyclops",
+      "notice": "CommonCapabilities is authored by Cyclops and published under the MIT licence. It was read at the pinned revision above to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/CyclopsMC/CommonCapabilities"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree and is not tracked. The specification derived from it is tracked here and not in the public repository. Nothing in either is publishable while the names surface is unresolved.",
+    "reviewedAt": "2026-08-11T00:00:00Z",
+    "reviewedBy": "unreviewed; M6-W3 wrote this record and no independent review has read it",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source. Reading and reimplementing are permitted. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-counterparts.sh identifier rules were run over.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name and its content identifiers remain unresolved. The specification therefore names nothing after the original.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "No asset was fetched or read; binaries were deleted from the extracted tree before reading.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "As for textures.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "As for textures.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched or read.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-08-11T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/CyclopsMC/CommonCapabilities",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git b8b53897caac3448469870dd3b09c0d1b1f82c73 (branch master-26-lts, head at fetch time); sha256 of the fetched source archive: 7c058f22b17f7d0ba5ad4736858831c646d8dc08db5b2ec5d962918f880db113",
+      "use": "The inventory names this entry's method 'source-informed-reimplementation'; the public provenance schema's nearest vocabulary term is 'source-informed', recorded above. The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree and read to write specifications/m6-foundation/RVL-217.md. Version correspondence to the pinned pack artifact -- exact: the fetched tree declares mod_version 2.11.8, the version of the pinned artifact. Binary files (archives, images, sounds, compiled classes) were deleted from the extracted tree before reading; nothing was decompiled and no jar was opened."
+    },
+    {
+      "accessedAt": "2026-08-11T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE.txt at the repository root of the source above",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, carrying 'Copyright (c) 2015 Cyclops' and the standard permission grant. MIT permits reading, modification and derivative works, which is what method source-informed-reimplementation requires, so the inventory's permitted verdict for this entry is confirmed rather than assumed."
+    },
+    {
+      "accessedAt": "2026-08-11T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm11-0.2.1/plans.json and rights.json",
+      "producedBy": "M5 inventory",
+      "revision": "as frozen by M5 and consumed by waves/m6-foundation.json",
+      "use": "The claim this record checks: the entry is sourceUse permitted with method source-informed-reimplementation and a declared MIT licence. Confirmed above."
+    },
+    {
+      "accessedAt": "2026-08-11T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/CyclopsMC/CommonCapabilitiesAPI",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git e6fc3ad540eb639f02d8f1668c87fa9795a947c7; sha256 of the fetched source archive: 0f643b1319a6d031caefc861b5caaa932051ea38755382072d2b4480bc9afd40",
+      "use": "The published interface project the entry's artifact ships inside itself. The capability contracts RVL-217's specification records live here rather than in the mod repository, so it was fetched and read under the same rights check. Its licence file was read directly and states the MIT terms. Licence file read: LICENSE.txt, MIT."
+    }
+  ],
+  "subject": {
+    "id": "RVL-217",
+    "kind": "other",
+    "originalAuthor": "Cyclops",
+    "originalProject": "CommonCapabilities",
+    "version": "2.11.8"
+  }
+}

@@ -1,0 +1,7 @@
+ae2things	The upstream mod id quoted in evidence/m6/review.md as the injected identifier in two mutation-test refusal logs. This historical evidence records what the boundary check rejected, not a Ravel public API or implementation.
+configured	An ordinary English past participle, used throughout the loader and the SDK about configuration. The collision is with a mod id that took the same word.
+create	An ordinary English verb, used throughout the loader and the SDK about creating values, sessions and directories. The pinned pack contains a mod whose id took the same word.
+kubejs	The name of the pack script tree SPEC.md and ROADMAP.md describe as ATM-authored material Ravel must not transcribe. Naming the tree is what those sentences are for; the word is the tree, and the mod id it collides with is the tree's implementation upstream.
+observable	An ordinary English adjective, used in SPEC.md and the observability crate about what Ravel exposes. The collision is with a mod id that took the same word.
+shrink	An ordinary English verb in a conformance-test comment about declaration sets becoming smaller. The pinned pack contains a mod whose id took the same word.
+waystones	Ravel's own M4 test mod, test-mods/waystone-ledger/, written in M4 and so predating this workspace. It is named for the generic modding concept and for the conventional c:waystones tag any mod may declare, not for the pinned entry that shares the word.

@@ -1,0 +1,1027 @@
+{
+  "derivation": {
+    "decompiled": false,
+    "handAssignedFields": 0,
+    "producedBy": "checks/rebuild-proposals.sh",
+    "prose": "checks/proposals-vocabulary.json",
+    "reads": [
+      "inventory/atm11-0.2.1/surfaces.json model",
+      "inventory/atm11-0.2.1/plans.json model",
+      "checks/proposals-vocabulary.json",
+      "proposals/tests digests"
+    ],
+    "readsUpstreamTests": false,
+    "restrictedContentRead": false
+  },
+  "fixture": {
+    "id": "atm11-0.2.1",
+    "inventoryDigest": "d21431cb5bf450dc4d13fa92a9ecfcab05d801e49e2374ec7c8eb17343b8dc7a"
+  },
+  "inventoryKind": "sdk-gap-proposals",
+  "proposals": [
+    {
+      "capability": "server-data-declaration",
+      "id": "RVL-GAP-01",
+      "motivation": {
+        "entries": [
+          "RVL-001",
+          "RVL-002",
+          "RVL-003",
+          "RVL-004",
+          "RVL-006",
+          "RVL-008",
+          "RVL-010",
+          "RVL-011",
+          "RVL-012",
+          "RVL-014",
+          "RVL-016",
+          "RVL-017",
+          "RVL-018",
+          "RVL-019",
+          "RVL-020",
+          "RVL-024",
+          "RVL-026",
+          "RVL-028",
+          "RVL-033",
+          "RVL-035",
+          "RVL-037",
+          "RVL-039",
+          "RVL-043",
+          "RVL-044",
+          "RVL-045",
+          "RVL-048",
+          "RVL-053",
+          "RVL-055",
+          "RVL-056",
+          "RVL-057",
+          "RVL-059",
+          "RVL-061",
+          "RVL-066",
+          "RVL-067",
+          "RVL-068",
+          "RVL-070",
+          "RVL-072",
+          "RVL-076",
+          "RVL-077",
+          "RVL-082",
+          "RVL-084",
+          "RVL-085",
+          "RVL-087",
+          "RVL-090",
+          "RVL-091",
+          "RVL-093",
+          "RVL-094",
+          "RVL-097",
+          "RVL-099",
+          "RVL-100",
+          "RVL-102",
+          "RVL-103",
+          "RVL-105",
+          "RVL-106",
+          "RVL-107",
+          "RVL-108",
+          "RVL-110",
+          "RVL-111",
+          "RVL-113",
+          "RVL-115",
+          "RVL-116",
+          "RVL-117",
+          "RVL-118",
+          "RVL-119",
+          "RVL-120",
+          "RVL-121",
+          "RVL-123",
+          "RVL-125",
+          "RVL-128",
+          "RVL-131",
+          "RVL-133",
+          "RVL-134",
+          "RVL-135",
+          "RVL-136",
+          "RVL-138",
+          "RVL-139",
+          "RVL-142",
+          "RVL-143",
+          "RVL-146",
+          "RVL-148",
+          "RVL-149",
+          "RVL-150",
+          "RVL-151",
+          "RVL-154",
+          "RVL-155",
+          "RVL-157",
+          "RVL-159",
+          "RVL-161",
+          "RVL-163",
+          "RVL-164",
+          "RVL-165",
+          "RVL-168",
+          "RVL-169",
+          "RVL-173",
+          "RVL-174",
+          "RVL-175",
+          "RVL-177",
+          "RVL-181",
+          "RVL-183",
+          "RVL-184",
+          "RVL-186",
+          "RVL-189",
+          "RVL-194",
+          "RVL-195",
+          "RVL-196",
+          "RVL-198",
+          "RVL-199",
+          "RVL-201",
+          "RVL-203",
+          "RVL-205",
+          "RVL-206",
+          "RVL-210",
+          "RVL-211",
+          "RVL-212",
+          "RVL-213",
+          "RVL-214",
+          "RVL-218",
+          "RVL-224",
+          "RVL-225",
+          "RVL-226",
+          "RVL-227",
+          "RVL-229",
+          "RVL-230",
+          "RVL-231",
+          "RVL-232",
+          "RVL-233",
+          "RVL-234"
+        ],
+        "entryCount": 127,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "advancements",
+          "functions",
+          "lootTables",
+          "recipes"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "server_data",
+        "borders": [
+          "content",
+          "generate",
+          "tags"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-01-t1.rs",
+          "kind": "declaration-accepted",
+          "sha256": "bae61367dd3310a6e18038f0d318c890c5b3ef5298b86648a61a73b3b36e1104"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-01-t2.rs",
+          "kind": "generation-determinism",
+          "sha256": "d18f86016e1d5585621edb3fe62d79c2cfce41c23869a5f4cc60aa91ba62ccb7"
+        }
+      ]
+    },
+    {
+      "capability": "world-shaping-declaration",
+      "id": "RVL-GAP-02",
+      "motivation": {
+        "entries": [
+          "RVL-002",
+          "RVL-016",
+          "RVL-018",
+          "RVL-019",
+          "RVL-023",
+          "RVL-026",
+          "RVL-028",
+          "RVL-037",
+          "RVL-045",
+          "RVL-059",
+          "RVL-067",
+          "RVL-070",
+          "RVL-077",
+          "RVL-094",
+          "RVL-103",
+          "RVL-107",
+          "RVL-115",
+          "RVL-117",
+          "RVL-123",
+          "RVL-133",
+          "RVL-134",
+          "RVL-135",
+          "RVL-142",
+          "RVL-148",
+          "RVL-155",
+          "RVL-157",
+          "RVL-186",
+          "RVL-198",
+          "RVL-199",
+          "RVL-211",
+          "RVL-216",
+          "RVL-225"
+        ],
+        "entryCount": 32,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "worldgen"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "world_shaping",
+        "borders": [
+          "content",
+          "save"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-02-t1.rs",
+          "kind": "round-trip",
+          "sha256": "20122759f8ddd95e70e6d48bcd8473652c6abc25f74357d6d8d0a4b4981b1d04"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-02-t2.rs",
+          "kind": "absent-dependency-refused",
+          "sha256": "f21fceb6236715b3af5a865c5e7dea5b3ba18775528d03f1655f812852f54e74"
+        }
+      ]
+    },
+    {
+      "capability": "audio-declaration",
+      "id": "RVL-GAP-03",
+      "motivation": {
+        "entries": [
+          "RVL-002",
+          "RVL-003",
+          "RVL-016",
+          "RVL-031",
+          "RVL-039",
+          "RVL-048",
+          "RVL-055",
+          "RVL-056",
+          "RVL-057",
+          "RVL-059",
+          "RVL-067",
+          "RVL-070",
+          "RVL-072",
+          "RVL-084",
+          "RVL-093",
+          "RVL-094",
+          "RVL-102",
+          "RVL-108",
+          "RVL-111",
+          "RVL-117",
+          "RVL-118",
+          "RVL-121",
+          "RVL-131",
+          "RVL-134",
+          "RVL-136",
+          "RVL-138",
+          "RVL-139",
+          "RVL-142",
+          "RVL-143",
+          "RVL-154",
+          "RVL-161",
+          "RVL-162",
+          "RVL-165",
+          "RVL-172",
+          "RVL-177",
+          "RVL-194",
+          "RVL-196",
+          "RVL-198",
+          "RVL-201",
+          "RVL-210",
+          "RVL-211",
+          "RVL-218",
+          "RVL-220",
+          "RVL-225",
+          "RVL-226"
+        ],
+        "entryCount": 45,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "sounds"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "audio",
+        "borders": [
+          "content",
+          "resources",
+          "sides"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-03-t1.rs",
+          "kind": "declaration-accepted",
+          "sha256": "928f527f5a24ca743e44342b7b6af6f2c83f75d7e3e2303f6ca0c782b865081a"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-03-t2.rs",
+          "kind": "side-refusal",
+          "sha256": "ae837e15d195b7196d697691fc228ad9787a44d84153b929b8f0d7a152396f33"
+        }
+      ]
+    },
+    {
+      "capability": "render-stage-declaration",
+      "id": "RVL-GAP-04",
+      "motivation": {
+        "entries": [
+          "RVL-002",
+          "RVL-015",
+          "RVL-022",
+          "RVL-029",
+          "RVL-059",
+          "RVL-064",
+          "RVL-067",
+          "RVL-070",
+          "RVL-074",
+          "RVL-094",
+          "RVL-095",
+          "RVL-097",
+          "RVL-124",
+          "RVL-127",
+          "RVL-131",
+          "RVL-134",
+          "RVL-145",
+          "RVL-162",
+          "RVL-185",
+          "RVL-192",
+          "RVL-196",
+          "RVL-228",
+          "RVL-234"
+        ],
+        "entryCount": 23,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "shaders"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "render_stages",
+        "borders": [
+          "resources",
+          "sides"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-04-t1.rs",
+          "kind": "ordering",
+          "sha256": "38be74fc5caf994b263192ca32d6139d9587252a6adf9394ec8c7e2f125016ba"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-04-t2.rs",
+          "kind": "absent-dependency-refused",
+          "sha256": "fcaf6c76204a8b5b7499216454e891a9422f08cb0f0126b5c4c00d4ce4101f6c"
+        }
+      ]
+    },
+    {
+      "capability": "behaviour-interception",
+      "id": "RVL-GAP-05",
+      "motivation": {
+        "entries": [
+          "RVL-001",
+          "RVL-002",
+          "RVL-004",
+          "RVL-005",
+          "RVL-008",
+          "RVL-009",
+          "RVL-011",
+          "RVL-013",
+          "RVL-014",
+          "RVL-016",
+          "RVL-017",
+          "RVL-018",
+          "RVL-019",
+          "RVL-020",
+          "RVL-021",
+          "RVL-023",
+          "RVL-024",
+          "RVL-025",
+          "RVL-026",
+          "RVL-027",
+          "RVL-028",
+          "RVL-029",
+          "RVL-030",
+          "RVL-031",
+          "RVL-033",
+          "RVL-034",
+          "RVL-035",
+          "RVL-037",
+          "RVL-038",
+          "RVL-039",
+          "RVL-041",
+          "RVL-042",
+          "RVL-043",
+          "RVL-044",
+          "RVL-045",
+          "RVL-046",
+          "RVL-047",
+          "RVL-048",
+          "RVL-049",
+          "RVL-050",
+          "RVL-051",
+          "RVL-052",
+          "RVL-054",
+          "RVL-055",
+          "RVL-056",
+          "RVL-057",
+          "RVL-058",
+          "RVL-059",
+          "RVL-060",
+          "RVL-061",
+          "RVL-062",
+          "RVL-063",
+          "RVL-064",
+          "RVL-065",
+          "RVL-067",
+          "RVL-069",
+          "RVL-070",
+          "RVL-071",
+          "RVL-072",
+          "RVL-075",
+          "RVL-077",
+          "RVL-078",
+          "RVL-080",
+          "RVL-081",
+          "RVL-082",
+          "RVL-083",
+          "RVL-085",
+          "RVL-086",
+          "RVL-087",
+          "RVL-088",
+          "RVL-089",
+          "RVL-090",
+          "RVL-092",
+          "RVL-094",
+          "RVL-097",
+          "RVL-098",
+          "RVL-099",
+          "RVL-100",
+          "RVL-101",
+          "RVL-102",
+          "RVL-103",
+          "RVL-104",
+          "RVL-105",
+          "RVL-106",
+          "RVL-108",
+          "RVL-109",
+          "RVL-110",
+          "RVL-111",
+          "RVL-112",
+          "RVL-114",
+          "RVL-115",
+          "RVL-116",
+          "RVL-117",
+          "RVL-119",
+          "RVL-121",
+          "RVL-122",
+          "RVL-123",
+          "RVL-124",
+          "RVL-127",
+          "RVL-128",
+          "RVL-129",
+          "RVL-130",
+          "RVL-131",
+          "RVL-132",
+          "RVL-133",
+          "RVL-134",
+          "RVL-135",
+          "RVL-136",
+          "RVL-137",
+          "RVL-141",
+          "RVL-143",
+          "RVL-146",
+          "RVL-147",
+          "RVL-148",
+          "RVL-149",
+          "RVL-150",
+          "RVL-152",
+          "RVL-153",
+          "RVL-156",
+          "RVL-158",
+          "RVL-161",
+          "RVL-162",
+          "RVL-165",
+          "RVL-166",
+          "RVL-167",
+          "RVL-168",
+          "RVL-170",
+          "RVL-171",
+          "RVL-172",
+          "RVL-173",
+          "RVL-174",
+          "RVL-175",
+          "RVL-176",
+          "RVL-177",
+          "RVL-178",
+          "RVL-179",
+          "RVL-180",
+          "RVL-182",
+          "RVL-183",
+          "RVL-184",
+          "RVL-187",
+          "RVL-188",
+          "RVL-189",
+          "RVL-190",
+          "RVL-192",
+          "RVL-193",
+          "RVL-194",
+          "RVL-195",
+          "RVL-196",
+          "RVL-197",
+          "RVL-198",
+          "RVL-199",
+          "RVL-201",
+          "RVL-202",
+          "RVL-204",
+          "RVL-206",
+          "RVL-208",
+          "RVL-209",
+          "RVL-210",
+          "RVL-211",
+          "RVL-214",
+          "RVL-215",
+          "RVL-217",
+          "RVL-219",
+          "RVL-220",
+          "RVL-221",
+          "RVL-223",
+          "RVL-224",
+          "RVL-225",
+          "RVL-226",
+          "RVL-228",
+          "RVL-230",
+          "RVL-231",
+          "RVL-232",
+          "RVL-233",
+          "RVL-234",
+          "RVL-235"
+        ],
+        "entryCount": 177,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "accessTransformers",
+          "mixinConfigs"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "interception",
+        "borders": [
+          "events",
+          "sides"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-05-t1.rs",
+          "kind": "ordering",
+          "sha256": "d53f5e69c2871bef91df4f36f197d26d6a85dd5b52bb84cbbc204deff01d3259"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-05-t2.rs",
+          "kind": "conflict-refused",
+          "sha256": "9e31395e69f852a025c6bc3626bc014b191fffd0f9f8523626d7deedd45c626d"
+        }
+      ]
+    },
+    {
+      "capability": "library-provision",
+      "id": "RVL-GAP-06",
+      "motivation": {
+        "entries": [
+          "RVL-002",
+          "RVL-005",
+          "RVL-017",
+          "RVL-029",
+          "RVL-031",
+          "RVL-037",
+          "RVL-044",
+          "RVL-045",
+          "RVL-055",
+          "RVL-063",
+          "RVL-064",
+          "RVL-065",
+          "RVL-067",
+          "RVL-070",
+          "RVL-088",
+          "RVL-098",
+          "RVL-100",
+          "RVL-105",
+          "RVL-112",
+          "RVL-124",
+          "RVL-136",
+          "RVL-143",
+          "RVL-148",
+          "RVL-153",
+          "RVL-161",
+          "RVL-168",
+          "RVL-170",
+          "RVL-178",
+          "RVL-183",
+          "RVL-184",
+          "RVL-189",
+          "RVL-192",
+          "RVL-210",
+          "RVL-211",
+          "RVL-222",
+          "RVL-228"
+        ],
+        "entryCount": 36,
+        "restsOnEstimate": false,
+        "rule": "any",
+        "surfaceFamilies": [
+          "nestedJars"
+        ]
+      },
+      "publicSurface": {
+        "anchor": "provision",
+        "borders": [
+          "content",
+          "services"
+        ],
+        "shipped": false
+      },
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-06-t1.rs",
+          "kind": "declaration-accepted",
+          "sha256": "12fe827d24496b37e95c47bd73ebfa9b71ca117b28e2f6634aa9b82e4d20998d"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-06-t2.rs",
+          "kind": "conflict-refused",
+          "sha256": "072d94a01fd30a499a4a053edfb56060d16b68f9f4d6efd1e237c31260aa3bae"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "totals": {
+    "familiesProposed": 10,
+    "motivatingEntries": 221,
+    "proposals": 6,
+    "restingOnEstimate": 0,
+    "testCases": 12
+  },
+  "vocabulary": {
+    "capabilities": {
+      "audio-declaration": {
+        "anchor": "audio",
+        "borders": [
+          "content",
+          "resources",
+          "sides"
+        ],
+        "boundary": "No audio is reproduced, described, or carried. The proposal is the entry kind and the side rule.",
+        "capability": "A mod declares the audio entries it owns and the events that play them, as a declaration whose client half is refused on a server rather than skipped there.",
+        "id": "RVL-GAP-03",
+        "motivation": {
+          "families": [
+            "sounds"
+          ],
+          "rule": "any"
+        },
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-03-t1.rs",
+            "kind": "declaration-accepted"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-03-t2.rs",
+            "kind": "side-refusal"
+          }
+        ],
+        "whyGeneral": "The family clears the threshold across entries whose lanes and rights differ, so it is not one lane's need. The SDK can carry the bytes as a supplied resource, but it has no entry kind for an audio event, so nothing relates the bytes to what plays them and nothing refuses a play call made on the wrong side."
+      },
+      "behaviour-interception": {
+        "anchor": "interception",
+        "borders": [
+          "events",
+          "sides"
+        ],
+        "boundary": "The proposal is a published set of points with an ordering and a refusal contract. It is not a way to rewrite the game's code, it names no point any entry chose, and it reproduces no entry's behaviour.",
+        "capability": "A mod declares that it wants to answer at a named point in the game rather than only to be told what happened there, and Ravel publishes those points, orders the mods at each one, and lets a mod refuse or replace the outcome under a declared contract.",
+        "id": "RVL-GAP-05",
+        "motivation": {
+          "families": [
+            "mixinConfigs",
+            "accessTransformers"
+          ],
+          "rule": "any"
+        },
+        "restraint": "Ravel forbids unsafe code in every maintained crate and this proposal does not ask for an exception. A point is a place the host already calls out from, so an interception is a call the host makes, not a patch a mod applies.",
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-05-t1.rs",
+            "kind": "ordering"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-05-t2.rs",
+            "kind": "conflict-refused"
+          }
+        ],
+        "whyGeneral": "This is the largest pattern in the inventory by entry count and it spans every lane. The SDK tells a mod what the game did; it has no way for a mod to change what the game is about to do. Nothing about the pattern is one entry's: what differs between entries is which point they want, and a point is exactly what a platform can publish once."
+      },
+      "library-provision": {
+        "anchor": "provision",
+        "borders": [
+          "services",
+          "content"
+        ],
+        "boundary": "No library is ported, bundled, or named. The proposal is the provider declaration, the resolution, and the two refusals.",
+        "capability": "A mod declares that it provides a shared library other mods may build on, at a version, and Ravel resolves one provider per library for a launch and refuses a set where two providers disagree or where a required library has none.",
+        "id": "RVL-GAP-06",
+        "motivation": {
+          "families": [
+            "nestedJars"
+          ],
+          "rule": "any"
+        },
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-06-t1.rs",
+            "kind": "declaration-accepted"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-06-t2.rs",
+            "kind": "conflict-refused"
+          }
+        ],
+        "whyGeneral": "Entries carrying this family are each shipping a copy of something meant to be shared, and the count clears the threshold across lanes. The SDK orders named calls between mods that are both installed, which is a different question from which mod supplies a shared thing and at what version. Nothing today answers the second."
+      },
+      "render-stage-declaration": {
+        "anchor": "render_stages",
+        "borders": [
+          "resources",
+          "sides"
+        ],
+        "boundary": "No drawing program is written, ported, or described. The proposal is the stage name, the ordering, and the two refusals.",
+        "capability": "A mod declares the named drawing stages it contributes to and the order it wants among other mods at each one, and Ravel refuses a cycle and a stage no mod declares rather than resolving either quietly.",
+        "id": "RVL-GAP-04",
+        "motivation": {
+          "families": [
+            "shaders"
+          ],
+          "rule": "any"
+        },
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-04-t1.rs",
+            "kind": "ordering"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-04-t2.rs",
+            "kind": "absent-dependency-refused"
+          }
+        ],
+        "whyGeneral": "The family clears the threshold, and every entry carrying it is doing the same thing structurally: adding work to a stage some other party also draws in. Ordering between mods is what the SDK already solved for named calls between mods, and drawing has none of it."
+      },
+      "server-data-declaration": {
+        "anchor": "server_data",
+        "borders": [
+          "content",
+          "generate",
+          "tags"
+        ],
+        "boundary": "The proposal is the declaration and the refusal. It specifies no entry's tables and reproduces nothing any entry ships.",
+        "capability": "A mod declares the server-resolved data entries it owns in the one declaration that already holds its registry keys, tag memberships and translations, so that one barrier answers whether a path is already claimed and one generation step writes the same bytes every run.",
+        "id": "RVL-GAP-01",
+        "motivation": {
+          "families": [
+            "recipes",
+            "lootTables",
+            "advancements",
+            "functions"
+          ],
+          "rule": "any"
+        },
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-01-t1.rs",
+            "kind": "declaration-accepted"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-01-t2.rs",
+            "kind": "generation-determinism"
+          }
+        ],
+        "whyGeneral": "Entries of this shape are carried across every lane the inventory assigns, and by a majority of the acquired set rather than by one kind of entry. The public SDK declares registry keys, tag memberships, translations and bytes a mod supplies itself; a server-resolved entry is none of those, so today it can only be shipped as supplied bytes, which is the escape hatch the declaration itself treats as a last resort."
+      },
+      "world-shaping-declaration": {
+        "anchor": "world_shaping",
+        "borders": [
+          "content",
+          "save"
+        ],
+        "boundary": "The proposal is the binding and the refusal, not any generator, biome, or placement an entry defines.",
+        "capability": "A mod declares how it shapes a world, and Ravel binds that declaration to the world once, at creation, so a world records which shaping mods were in force when it was made and refuses a later launch that no longer supplies one.",
+        "id": "RVL-GAP-02",
+        "motivation": {
+          "families": [
+            "worldgen"
+          ],
+          "rule": "any"
+        },
+        "tests": [
+          {
+            "file": "proposals/tests/rvl-gap-02-t1.rs",
+            "kind": "round-trip"
+          },
+          {
+            "file": "proposals/tests/rvl-gap-02-t2.rs",
+            "kind": "absent-dependency-refused"
+          }
+        ],
+        "whyGeneral": "The family is declared by enough of the acquired set to clear the threshold, and it is the one content family whose effect is written into a world rather than resolved per launch. The SDK versions the data a mod owns and migrates it, but nothing binds a world to the set of mods that shaped it, so removing one is silent where removing owned data is not."
+      }
+    },
+    "dispositions": {
+      "not-a-capability": "The family is a size proxy rather than a thing a mod declares, so no capability answers it and none is proposed. The rubric already treats it as a band rather than as a measurement.",
+      "proposed": "At least one proposal in this file cites the family as motivation.",
+      "shipped": "The public SDK already exposes a module that answers the family, so the family is not a gap. The named module has to exist in the public checkout for the claim to stand."
+    },
+    "estimateDisclosure": "Two families are estimates rather than findings: they count classes on a path whose name suggests a purpose, because what registers a packet or a saved-data table is code this workspace does not read. Both are dispositioned shipped rather than proposed, so no proposal in this file rests on an estimate. A record that cited one would carry restsOnEstimate true, and the consumer recomputes that flag rather than believing it.",
+    "familyDisposition": {
+      "accessTransformers": {
+        "disposition": "proposed"
+      },
+      "advancements": {
+        "disposition": "proposed"
+      },
+      "classFiles": {
+        "disposition": "not-a-capability"
+      },
+      "functions": {
+        "disposition": "proposed"
+      },
+      "lang": {
+        "disposition": "shipped",
+        "module": "content"
+      },
+      "lootTables": {
+        "disposition": "proposed"
+      },
+      "mixinConfigs": {
+        "disposition": "proposed"
+      },
+      "models": {
+        "disposition": "shipped",
+        "module": "resources"
+      },
+      "nestedJars": {
+        "disposition": "proposed"
+      },
+      "networkingClasses": {
+        "disposition": "shipped",
+        "module": "network"
+      },
+      "persistenceClasses": {
+        "disposition": "shipped",
+        "module": "save"
+      },
+      "recipes": {
+        "disposition": "proposed"
+      },
+      "serviceProviders": {
+        "disposition": "shipped",
+        "module": "services"
+      },
+      "shaders": {
+        "disposition": "proposed"
+      },
+      "sounds": {
+        "disposition": "proposed"
+      },
+      "tags": {
+        "disposition": "shipped",
+        "module": "tags"
+      },
+      "textures": {
+        "disposition": "shipped",
+        "module": "resources"
+      },
+      "worldgen": {
+        "disposition": "proposed"
+      }
+    },
+    "idScheme": {
+      "allocation": "RVL-GAP- followed by a zero-padded slot number. The slot is allocated in this file and names a capability Ravel would provide, never an entry that would use it.",
+      "native": "The id, like every other string a proposal record carries, is Ravel's own. No proposal names an acquired file, a project id, a file id, or any word an upstream project chose.",
+      "pattern": "^RVL-GAP-[0-9]{2}$"
+    },
+    "minimumMotivatingEntries": {
+      "judgement": "the edge. Twenty is under a tenth of the acquired set and well above the largest single dependency cluster, so a pattern that clears it is carried by entries that share nothing but the surface they declare. Below it, what looks like a platform gap is more cheaply read as a habit of a few entries, and the right answer is one counterpart rather than a capability every mod pays for.",
+      "rule": "A capability proposal is admissible only where the entries whose counted surfaces motivate it number at least this many.",
+      "value": 20
+    },
+    "motivationRules": {
+      "all": "An entry motivates the proposal when every cited surface family is nonzero for it.",
+      "any": "An entry motivates the proposal when at least one cited surface family is nonzero for it."
+    },
+    "surfaceFamilies": {
+      "accessTransformers": {
+        "estimate": false,
+        "path": "integration.accessTransformers"
+      },
+      "advancements": {
+        "estimate": false,
+        "path": "data.advancements"
+      },
+      "classFiles": {
+        "estimate": false,
+        "path": "indicative.classFiles"
+      },
+      "functions": {
+        "estimate": false,
+        "path": "data.functions"
+      },
+      "lang": {
+        "estimate": false,
+        "path": "resources.lang"
+      },
+      "lootTables": {
+        "estimate": false,
+        "path": "data.lootTables"
+      },
+      "mixinConfigs": {
+        "estimate": false,
+        "path": "integration.mixinConfigs"
+      },
+      "models": {
+        "estimate": false,
+        "path": "resources.models"
+      },
+      "nestedJars": {
+        "estimate": false,
+        "path": "integration.nestedJars"
+      },
+      "networkingClasses": {
+        "estimate": true,
+        "path": "indicative.networkingClasses"
+      },
+      "persistenceClasses": {
+        "estimate": true,
+        "path": "indicative.persistenceClasses"
+      },
+      "recipes": {
+        "estimate": false,
+        "path": "data.recipes"
+      },
+      "serviceProviders": {
+        "estimate": false,
+        "path": "integration.serviceProviders"
+      },
+      "shaders": {
+        "estimate": false,
+        "path": "resources.shaders"
+      },
+      "sounds": {
+        "estimate": false,
+        "path": "resources.sounds"
+      },
+      "tags": {
+        "estimate": false,
+        "path": "data.tags"
+      },
+      "textures": {
+        "estimate": false,
+        "path": "resources.textures"
+      },
+      "worldgen": {
+        "estimate": false,
+        "path": "data.worldgen"
+      }
+    },
+    "testCaseKinds": {
+      "absent-dependency-refused": "A declaration naming something no installed mod provides is refused at the barrier rather than at first use.",
+      "conflict-refused": "A second claim on one owned thing is refused, and the refusal names both claimants.",
+      "declaration-accepted": "A well-formed declaration is taken, and what it produces is what the capability promises.",
+      "generation-determinism": "The same declaration produces the same bytes twice.",
+      "ordering": "Two declarations that depend on each other are entered in the order the dependency implies, and a cycle is refused.",
+      "round-trip": "A value written by the capability is read back equal, and a value the capability did not write is refused.",
+      "side-refusal": "A declaration only one side may make is refused on the other side rather than quietly skipped."
+    },
+    "testCaseOrigin": {
+      "mechanism": "The bound is the same structural one the reference records rest on rather than a promise. No producer in this workspace has ever opened a test belonging to an acquired entry, so there is nothing here to transcribe from. What holds it is the closed lexicon: every word in every proposal file, test cases included, has to appear in checks/proposals-lexicon.txt, and that lexicon is required to share nothing with the identifiers the inventory knows. A transcribed test would arrive carrying words nobody added to the lexicon, and a lexicon edited to admit them would fail against the same identifier set.",
+      "minimumDistinctKindsPerProposal": 2,
+      "minimumPerProposal": 2,
+      "readsUpstreamTests": false,
+      "rule": "Every test case is written against the proposed Ravel capability. None is transcribed or adapted from any other project's tests."
+    }
+  }
+}

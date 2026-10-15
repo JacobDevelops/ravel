@@ -1,0 +1,16 @@
+deposit	size	targets	count	lowest	highest	biomes	stage	own_feature	air_discard
+first_ore	8	2	16	-32	64	overworld	underground_ores	false	0
+second_ore	8	2	12	-60	24	overworld	underground_ores	false	0
+nether_stone	64	1	4	0	128	nether	raw	true	0
+
+bound	chance	draw	placed
+false	0.05	0	target
+false	0.05	0.01	target
+false	0.05	0.05	target
+false	0.05	0.5	target
+false	0.05	0.99	target
+true	0.05	0	rare
+true	0.05	0.01	rare
+true	0.05	0.05	target
+true	0.05	0.5	target
+true	0.05	0.99	target

@@ -1,4 +1,4 @@
 interface:
   display_name: "Capture Ravel Evidence"
-  short_description: "Validate private Ravel launch and performance evidence"
-  default_prompt: "Use $capture-ravel-evidence to validate a privacy-safe Linux launch proof or performance evidence run."
+  short_description: "Validate private Ravel launch evidence"
+  default_prompt: "Use $capture-ravel-evidence to validate privacy-safe launch proof or recover an isolated Prism launch."

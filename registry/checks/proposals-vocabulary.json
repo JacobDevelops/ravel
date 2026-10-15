@@ -1,0 +1,346 @@
+{
+  "idScheme": {
+    "pattern": "^RVL-GAP-[0-9]{2}$",
+    "allocation": "RVL-GAP- followed by a zero-padded slot number. The slot is allocated in this file and names a capability Ravel would provide, never an entry that would use it.",
+    "native": "The id, like every other string a proposal record carries, is Ravel's own. No proposal names an acquired file, a project id, a file id, or any word an upstream project chose."
+  },
+  "minimumMotivatingEntries": {
+    "value": 20,
+    "rule": "A capability proposal is admissible only where the entries whose counted surfaces motivate it number at least this many.",
+    "judgement": "the edge. Twenty is under a tenth of the acquired set and well above the largest single dependency cluster, so a pattern that clears it is carried by entries that share nothing but the surface they declare. Below it, what looks like a platform gap is more cheaply read as a habit of a few entries, and the right answer is one counterpart rather than a capability every mod pays for."
+  },
+  "motivationRules": {
+    "any": "An entry motivates the proposal when at least one cited surface family is nonzero for it.",
+    "all": "An entry motivates the proposal when every cited surface family is nonzero for it."
+  },
+  "surfaceFamilies": {
+    "lang": {
+      "path": "resources.lang",
+      "estimate": false
+    },
+    "textures": {
+      "path": "resources.textures",
+      "estimate": false
+    },
+    "models": {
+      "path": "resources.models",
+      "estimate": false
+    },
+    "sounds": {
+      "path": "resources.sounds",
+      "estimate": false
+    },
+    "shaders": {
+      "path": "resources.shaders",
+      "estimate": false
+    },
+    "recipes": {
+      "path": "data.recipes",
+      "estimate": false
+    },
+    "lootTables": {
+      "path": "data.lootTables",
+      "estimate": false
+    },
+    "tags": {
+      "path": "data.tags",
+      "estimate": false
+    },
+    "advancements": {
+      "path": "data.advancements",
+      "estimate": false
+    },
+    "worldgen": {
+      "path": "data.worldgen",
+      "estimate": false
+    },
+    "functions": {
+      "path": "data.functions",
+      "estimate": false
+    },
+    "mixinConfigs": {
+      "path": "integration.mixinConfigs",
+      "estimate": false
+    },
+    "accessTransformers": {
+      "path": "integration.accessTransformers",
+      "estimate": false
+    },
+    "serviceProviders": {
+      "path": "integration.serviceProviders",
+      "estimate": false
+    },
+    "nestedJars": {
+      "path": "integration.nestedJars",
+      "estimate": false
+    },
+    "classFiles": {
+      "path": "indicative.classFiles",
+      "estimate": false
+    },
+    "networkingClasses": {
+      "path": "indicative.networkingClasses",
+      "estimate": true
+    },
+    "persistenceClasses": {
+      "path": "indicative.persistenceClasses",
+      "estimate": true
+    }
+  },
+  "familyDisposition": {
+    "lang": {
+      "disposition": "shipped",
+      "module": "content"
+    },
+    "textures": {
+      "disposition": "shipped",
+      "module": "resources"
+    },
+    "models": {
+      "disposition": "shipped",
+      "module": "resources"
+    },
+    "sounds": {
+      "disposition": "proposed"
+    },
+    "shaders": {
+      "disposition": "proposed"
+    },
+    "recipes": {
+      "disposition": "proposed"
+    },
+    "lootTables": {
+      "disposition": "proposed"
+    },
+    "tags": {
+      "disposition": "shipped",
+      "module": "tags"
+    },
+    "advancements": {
+      "disposition": "proposed"
+    },
+    "worldgen": {
+      "disposition": "proposed"
+    },
+    "functions": {
+      "disposition": "proposed"
+    },
+    "mixinConfigs": {
+      "disposition": "proposed"
+    },
+    "accessTransformers": {
+      "disposition": "proposed"
+    },
+    "serviceProviders": {
+      "disposition": "shipped",
+      "module": "services"
+    },
+    "nestedJars": {
+      "disposition": "proposed"
+    },
+    "classFiles": {
+      "disposition": "not-a-capability"
+    },
+    "networkingClasses": {
+      "disposition": "shipped",
+      "module": "network"
+    },
+    "persistenceClasses": {
+      "disposition": "shipped",
+      "module": "save"
+    }
+  },
+  "dispositions": {
+    "proposed": "At least one proposal in this file cites the family as motivation.",
+    "shipped": "The public SDK already exposes a module that answers the family, so the family is not a gap. The named module has to exist in the public checkout for the claim to stand.",
+    "not-a-capability": "The family is a size proxy rather than a thing a mod declares, so no capability answers it and none is proposed. The rubric already treats it as a band rather than as a measurement."
+  },
+  "estimateDisclosure": "Two families are estimates rather than findings: they count classes on a path whose name suggests a purpose, because what registers a packet or a saved-data table is code this workspace does not read. Both are dispositioned shipped rather than proposed, so no proposal in this file rests on an estimate. A record that cited one would carry restsOnEstimate true, and the consumer recomputes that flag rather than believing it.",
+  "testCaseKinds": {
+    "declaration-accepted": "A well-formed declaration is taken, and what it produces is what the capability promises.",
+    "conflict-refused": "A second claim on one owned thing is refused, and the refusal names both claimants.",
+    "generation-determinism": "The same declaration produces the same bytes twice.",
+    "ordering": "Two declarations that depend on each other are entered in the order the dependency implies, and a cycle is refused.",
+    "side-refusal": "A declaration only one side may make is refused on the other side rather than quietly skipped.",
+    "absent-dependency-refused": "A declaration naming something no installed mod provides is refused at the barrier rather than at first use.",
+    "round-trip": "A value written by the capability is read back equal, and a value the capability did not write is refused."
+  },
+  "testCaseOrigin": {
+    "readsUpstreamTests": false,
+    "rule": "Every test case is written against the proposed Ravel capability. None is transcribed or adapted from any other project's tests.",
+    "mechanism": "The bound is the same structural one the reference records rest on rather than a promise. No producer in this workspace has ever opened a test belonging to an acquired entry, so there is nothing here to transcribe from. What holds it is the closed lexicon: every word in every proposal file, test cases included, has to appear in checks/proposals-lexicon.txt, and that lexicon is required to share nothing with the identifiers the inventory knows. A transcribed test would arrive carrying words nobody added to the lexicon, and a lexicon edited to admit them would fail against the same identifier set.",
+    "minimumPerProposal": 2,
+    "minimumDistinctKindsPerProposal": 2
+  },
+  "capabilities": {
+    "server-data-declaration": {
+      "id": "RVL-GAP-01",
+      "anchor": "server_data",
+      "borders": [
+        "content",
+        "generate",
+        "tags"
+      ],
+      "motivation": {
+        "families": [
+          "recipes",
+          "lootTables",
+          "advancements",
+          "functions"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares the server-resolved data entries it owns in the one declaration that already holds its registry keys, tag memberships and translations, so that one barrier answers whether a path is already claimed and one generation step writes the same bytes every run.",
+      "whyGeneral": "Entries of this shape are carried across every lane the inventory assigns, and by a majority of the acquired set rather than by one kind of entry. The public SDK declares registry keys, tag memberships, translations and bytes a mod supplies itself; a server-resolved entry is none of those, so today it can only be shipped as supplied bytes, which is the escape hatch the declaration itself treats as a last resort.",
+      "boundary": "The proposal is the declaration and the refusal. It specifies no entry's tables and reproduces nothing any entry ships.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-01-t1.rs",
+          "kind": "declaration-accepted"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-01-t2.rs",
+          "kind": "generation-determinism"
+        }
+      ]
+    },
+    "world-shaping-declaration": {
+      "id": "RVL-GAP-02",
+      "anchor": "world_shaping",
+      "borders": [
+        "content",
+        "save"
+      ],
+      "motivation": {
+        "families": [
+          "worldgen"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares how it shapes a world, and Ravel binds that declaration to the world once, at creation, so a world records which shaping mods were in force when it was made and refuses a later launch that no longer supplies one.",
+      "whyGeneral": "The family is declared by enough of the acquired set to clear the threshold, and it is the one content family whose effect is written into a world rather than resolved per launch. The SDK versions the data a mod owns and migrates it, but nothing binds a world to the set of mods that shaped it, so removing one is silent where removing owned data is not.",
+      "boundary": "The proposal is the binding and the refusal, not any generator, biome, or placement an entry defines.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-02-t1.rs",
+          "kind": "round-trip"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-02-t2.rs",
+          "kind": "absent-dependency-refused"
+        }
+      ]
+    },
+    "audio-declaration": {
+      "id": "RVL-GAP-03",
+      "anchor": "audio",
+      "borders": [
+        "content",
+        "resources",
+        "sides"
+      ],
+      "motivation": {
+        "families": [
+          "sounds"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares the audio entries it owns and the events that play them, as a declaration whose client half is refused on a server rather than skipped there.",
+      "whyGeneral": "The family clears the threshold across entries whose lanes and rights differ, so it is not one lane's need. The SDK can carry the bytes as a supplied resource, but it has no entry kind for an audio event, so nothing relates the bytes to what plays them and nothing refuses a play call made on the wrong side.",
+      "boundary": "No audio is reproduced, described, or carried. The proposal is the entry kind and the side rule.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-03-t1.rs",
+          "kind": "declaration-accepted"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-03-t2.rs",
+          "kind": "side-refusal"
+        }
+      ]
+    },
+    "render-stage-declaration": {
+      "id": "RVL-GAP-04",
+      "anchor": "render_stages",
+      "borders": [
+        "resources",
+        "sides"
+      ],
+      "motivation": {
+        "families": [
+          "shaders"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares the named drawing stages it contributes to and the order it wants among other mods at each one, and Ravel refuses a cycle and a stage no mod declares rather than resolving either quietly.",
+      "whyGeneral": "The family clears the threshold, and every entry carrying it is doing the same thing structurally: adding work to a stage some other party also draws in. Ordering between mods is what the SDK already solved for named calls between mods, and drawing has none of it.",
+      "boundary": "No drawing program is written, ported, or described. The proposal is the stage name, the ordering, and the two refusals.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-04-t1.rs",
+          "kind": "ordering"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-04-t2.rs",
+          "kind": "absent-dependency-refused"
+        }
+      ]
+    },
+    "behaviour-interception": {
+      "id": "RVL-GAP-05",
+      "anchor": "interception",
+      "borders": [
+        "events",
+        "sides"
+      ],
+      "motivation": {
+        "families": [
+          "mixinConfigs",
+          "accessTransformers"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares that it wants to answer at a named point in the game rather than only to be told what happened there, and Ravel publishes those points, orders the mods at each one, and lets a mod refuse or replace the outcome under a declared contract.",
+      "whyGeneral": "This is the largest pattern in the inventory by entry count and it spans every lane. The SDK tells a mod what the game did; it has no way for a mod to change what the game is about to do. Nothing about the pattern is one entry's: what differs between entries is which point they want, and a point is exactly what a platform can publish once.",
+      "boundary": "The proposal is a published set of points with an ordering and a refusal contract. It is not a way to rewrite the game's code, it names no point any entry chose, and it reproduces no entry's behaviour.",
+      "restraint": "Ravel forbids unsafe code in every maintained crate and this proposal does not ask for an exception. A point is a place the host already calls out from, so an interception is a call the host makes, not a patch a mod applies.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-05-t1.rs",
+          "kind": "ordering"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-05-t2.rs",
+          "kind": "conflict-refused"
+        }
+      ]
+    },
+    "library-provision": {
+      "id": "RVL-GAP-06",
+      "anchor": "provision",
+      "borders": [
+        "services",
+        "content"
+      ],
+      "motivation": {
+        "families": [
+          "nestedJars"
+        ],
+        "rule": "any"
+      },
+      "capability": "A mod declares that it provides a shared library other mods may build on, at a version, and Ravel resolves one provider per library for a launch and refuses a set where two providers disagree or where a required library has none.",
+      "whyGeneral": "Entries carrying this family are each shipping a copy of something meant to be shared, and the count clears the threshold across lanes. The SDK orders named calls between mods that are both installed, which is a different question from which mod supplies a shared thing and at what version. Nothing today answers the second.",
+      "boundary": "No library is ported, bundled, or named. The proposal is the provider declaration, the resolution, and the two refusals.",
+      "tests": [
+        {
+          "file": "proposals/tests/rvl-gap-06-t1.rs",
+          "kind": "declaration-accepted"
+        },
+        {
+          "file": "proposals/tests/rvl-gap-06-t2.rs",
+          "kind": "conflict-refused"
+        }
+      ]
+    }
+  }
+}

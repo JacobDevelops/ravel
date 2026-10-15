@@ -1,0 +1,1302 @@
+{
+  "owner": "rvl_321_counterpart",
+  "recipes": [
+    {
+      "crop": "rvl_321_counterpart:tier_1_kind_creature",
+      "id": "rvl_321_counterpart:tier_1_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_1_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_1_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_1_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_1_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_1_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_1_kind_creature",
+      "id": "rvl_321_counterpart:tier_1_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_1_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_1_kind_material",
+      "id": "rvl_321_counterpart:tier_1_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_1_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_1_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_1_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_1_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_1_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_1_kind_material",
+      "id": "rvl_321_counterpart:tier_1_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_1_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_1_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_2_kind_creature",
+      "id": "rvl_321_counterpart:tier_2_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_2_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_2_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_2_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_2_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_2_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_2_kind_creature",
+      "id": "rvl_321_counterpart:tier_2_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_2_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_2_kind_material",
+      "id": "rvl_321_counterpart:tier_2_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_2_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_2_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_2_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_2_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_2_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_2_kind_material",
+      "id": "rvl_321_counterpart:tier_2_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_2_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_2_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_3_kind_creature",
+      "id": "rvl_321_counterpart:tier_3_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_3_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_3_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_3_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_3_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_3_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_3_kind_creature",
+      "id": "rvl_321_counterpart:tier_3_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_3_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_3_kind_material",
+      "id": "rvl_321_counterpart:tier_3_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_3_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_3_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_3_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_3_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_3_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_3_kind_material",
+      "id": "rvl_321_counterpart:tier_3_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_3_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_3_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_4_kind_creature",
+      "id": "rvl_321_counterpart:tier_4_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_4_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_4_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_4_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_4_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_4_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_4_kind_creature",
+      "id": "rvl_321_counterpart:tier_4_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_4_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_4_kind_material",
+      "id": "rvl_321_counterpart:tier_4_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_4_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_4_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_4_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_4_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_4_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_4_kind_material",
+      "id": "rvl_321_counterpart:tier_4_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_4_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_4_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_5_kind_creature",
+      "id": "rvl_321_counterpart:tier_5_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_5_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_5_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_5_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_5_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_5_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_5_kind_creature",
+      "id": "rvl_321_counterpart:tier_5_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_5_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_5_kind_material",
+      "id": "rvl_321_counterpart:tier_5_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_5_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_5_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_5_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_5_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_5_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_5_kind_material",
+      "id": "rvl_321_counterpart:tier_5_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_5_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_5_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_side_kind_creature",
+      "id": "rvl_321_counterpart:tier_side_kind_creature_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_side_kind_creature_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_side_kind_creature_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_side_kind_creature",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_creature_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_side_kind_creature_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_side_kind_creature_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_creature_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_side_kind_creature",
+      "id": "rvl_321_counterpart:tier_side_kind_creature_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_side_kind_creature_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        }
+      ]
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_side_kind_material",
+      "id": "rvl_321_counterpart:tier_side_kind_material_seed_conversion",
+      "input": {
+        "entry": "rvl_321_counterpart:tier_side_kind_material_seeds",
+        "kind": "entry"
+      },
+      "kind": "seed_conversion",
+      "result": {
+        "count": 2,
+        "entry": "rvl_321_counterpart:tier_side_kind_material_material"
+      }
+    },
+    {
+      "crop": "rvl_321_counterpart:tier_side_kind_material",
+      "grid": [
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:kind_material_seed",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        }
+      ],
+      "id": "rvl_321_counterpart:tier_side_kind_material_seed_grid",
+      "kind": "plain_grid_seed",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_side_kind_material_seeds"
+      }
+    },
+    {
+      "altar": {
+        "entry": "rvl_321_counterpart:kind_material_seed",
+        "kind": "entry"
+      },
+      "copiesData": false,
+      "crop": "rvl_321_counterpart:tier_side_kind_material",
+      "id": "rvl_321_counterpart:tier_side_kind_material_seed_ritual",
+      "kind": "ritual_four_station",
+      "result": {
+        "count": 1,
+        "entry": "rvl_321_counterpart:tier_side_kind_material_seeds"
+      },
+      "ring": [
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_crafted",
+          "kind": "entry"
+        },
+        {
+          "entry": "rvl_321_counterpart:tier_side_material",
+          "kind": "entry"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 1
+}

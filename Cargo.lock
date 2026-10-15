@@ -9,10 +9,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "bitflags"
-version = "2.13.1"
+name = "autocfg"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "block-buffer"
@@ -85,16 +85,6 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
-
-[[package]]
-name = "errno"
-version = "0.3.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
-dependencies = [
- "libc",
- "windows-sys",
-]
 
 [[package]]
 name = "hashbrown"
@@ -183,12 +173,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
-name = "linux-raw-sys"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
-
-[[package]]
 name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -207,6 +191,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -265,19 +258,6 @@ dependencies = [
  "ravel-package",
  "sha2",
  "toml",
-]
-
-[[package]]
-name = "ravel-cli"
-version = "0.0.0"
-dependencies = [
- "ravel-build",
- "ravel-loader",
- "ravel-package",
- "rustix",
- "serde",
- "serde_json",
- "sha2",
 ]
 
 [[package]]
@@ -537,57 +517,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ravel-spike-harness"
-version = "0.0.0"
-dependencies = [
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "ravel-spike-m2-loader-overhead"
-version = "0.0.0"
-dependencies = [
- "ravel-core",
- "ravel-host-api",
- "ravel-package",
- "ravel-resolve",
- "ravel-spike-harness",
- "ravel-test-mod-noop",
- "ravel-testkit",
- "serde_json",
-]
-
-[[package]]
-name = "ravel-spike-m3-pack-compile"
-version = "0.0.0"
-dependencies = [
- "ravel-spike-harness",
- "serde_json",
-]
-
-[[package]]
-name = "ravel-spike-m3-profiling-overhead"
-version = "0.0.0"
-dependencies = [
- "ravel-core",
- "ravel-host-api",
- "ravel-observability",
- "ravel-spike-harness",
- "serde_json",
-]
-
-[[package]]
-name = "ravel-spike-m6-outward-crossing"
-version = "0.0.0"
-dependencies = [
- "jni",
- "ravel-spike-harness",
- "serde_json",
-]
-
-[[package]]
 name = "ravel-test-mod-audio"
 version = "0.0.0"
 dependencies = [
@@ -763,7 +692,11 @@ dependencies = [
 name = "ravel-xtask"
 version = "0.0.0"
 dependencies = [
+ "ravel-build",
+ "ravel-loader",
  "ravel-package",
+ "serde",
+ "serde_json",
  "sha2",
  "toml",
 ]
@@ -778,16 +711,100 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustix"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+name = "rvl-002-counterpart"
+version = "0.1.0"
 dependencies = [
- "bitflags",
- "errno",
- "libc",
- "linux-raw-sys",
- "windows-sys",
+ "ravel-sdk",
+ "rvl-042-counterpart",
+ "rvl-321-counterpart",
+]
+
+[[package]]
+name = "rvl-025-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+ "rvl-120-counterpart",
+]
+
+[[package]]
+name = "rvl-042-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-060-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-086-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+ "rvl-042-counterpart",
+]
+
+[[package]]
+name = "rvl-120-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-132-counterpart"
+version = "0.1.0"
+dependencies = [
+ "ravel-sdk",
+ "rvl-210-counterpart",
+]
+
+[[package]]
+name = "rvl-146-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-180-counterpart"
+version = "4.6.1"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-210-counterpart"
+version = "0.1.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-287-counterpart"
+version = "0.1.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
+name = "rvl-321-counterpart"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "ravel-sdk",
+ "rvl-042-counterpart",
 ]
 
 [[package]]

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-002",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The specification counts sixty-two images and the block-state and model documents as presentation and excludes them; nothing upstream is tracked or shipped and nothing was rewritten from reference, so there is no asset to record."
+}

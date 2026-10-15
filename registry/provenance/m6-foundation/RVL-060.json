@@ -1,0 +1,96 @@
+{
+  "attribution": [
+    {
+      "name": "Team Resourceful",
+      "notice": "The upstream shared library read for this entry is published by Team Resourceful under the MIT licence. It was read at the pinned revision below to write a behaviour specification. Ravel's counterpart is an independent implementation and is not affiliated with, endorsed by, or derived from the original's source text.",
+      "url": "https://github.com/Team-Resourceful/ResourcefulLib"
+    }
+  ],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/ and is not tracked in either repository. The specification derived from it is tracked at specifications/m6-foundation/RVL-060.md and is not in the public repository. Neither is publishable while the names surface is unresolved. The fetched tree carries no binary asset the game loads: no texture, no sound, no model document and no image source file, counted over the whole tree twice. Its one binary file is a build-tool archive in the build wrapper directory, which was not opened and is not shipped. Its four non-source resource documents are two mixin configurations and two mod descriptors, all read as declarations rather than as assets.",
+    "reviewedAt": "2026-09-05",
+    "reviewedBy": "structure-reviewed 2026-09-05 by an independent Claude reader that had seen no upstream source; it read the specification first and then the counterpart's module list and public types to see whether a structural noun had crossed, after the counterpart was implemented; verdict: accepted with findings, 5 findings fixed in the specification and the counterpart on 2026-09-05; the specification's read/inferred/unknown markers and closing coverage statement were checked present. No human has read the specification in full.",
+    "status": "private-only"
+  },
+  "rights": [
+    {
+      "basis": "MIT, read at the source rather than trusted from the inventory. Reading, modification and derivative works are permitted, which is what source-informed reimplementation requires. The counterpart must not copy source text; the specification written from this read carries no upstream identifier, which checks/verify-spec-identifiers.sh was run over and returned no finding.",
+      "status": "cleared",
+      "surface": "code"
+    },
+    {
+      "basis": "MIT imposes no behavioural restriction and the inventory records behaviour as cleared and sourceUse as permitted for this entry.",
+      "status": "cleared",
+      "surface": "behaviour"
+    },
+    {
+      "basis": "Unchanged from the inventory. MIT does not grant trademark rights, so the project's own name, its mod id and its derived identifiers remain unresolved. The specification therefore names nothing after the original, and no save-compatible identifier mapping is specified. The constraint bites in four specific places for this entry, and section 14 of the specification names all four rather than transcribing them: the network channel and payload identifier suffixes two peers must derive identically, the mod-descriptor key a dependent writes to declare a bundled resource pack, the resource directory that block highlight documents load from, and the eleven tag validator kind names a pack author writes. The two network suffixes of section 5 are deliberately not transcribed either: the specification states that the channel identifier takes a version-derived suffix and the payload identifier a further suffix built from the packet identifier, and marks the exact separator and prefix characters unknown to it, so a counterpart that needs wire compatibility reads them from the pinned artifact at build time rather than from a document this record clears. A counterpart that is wire-compatible or pack-compatible with the original is exactly what this record cannot clear.",
+      "status": "unresolved",
+      "surface": "names"
+    },
+    {
+      "basis": "The fetched tree contains no texture. The inventory records textures as not-applicable for this artifact and this read confirms it rather than assuming it.",
+      "status": "not-applicable",
+      "surface": "textures"
+    },
+    {
+      "basis": "The fetched tree contains no model document. The inventory records models as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "models"
+    },
+    {
+      "basis": "The fetched tree contains no sound file. The entry's fluid property record carries a map from a named sound action to a sound the declaring dependent supplies, so it refers to sounds without shipping any. The inventory records sounds as not-applicable for this artifact and this read confirms it.",
+      "status": "not-applicable",
+      "surface": "sounds"
+    },
+    {
+      "basis": "No branding material was fetched or read; the display name, logo and author identity are excluded regardless of licence status under policies/source-access.json. The two mod descriptors were read only to confirm the dependency, side and licence declarations the specification's sections 1 and 2 state, and none of that text is transcribed.",
+      "status": "not-applicable",
+      "surface": "branding"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "source-code",
+      "locator": "https://github.com/Team-Resourceful/ResourcefulLib",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "git 95968b13173937e9166b4224ff7528508bdb144c, commit message 'Released v3.0.12', dated 2024-12-08; sha256 of the fetched source archive: 1d19fd99972e26b98a8bc74426669b3122b9866b2b9392a36e5656edd0335524",
+      "use": "The upstream implementation, fetched as a source archive into the public repository's ignored fixture tree at tests/fixtures/local/m6-clean-room/tar/ and extracted alongside it, and read to write specifications/m6-foundation/RVL-060.md. Version correspondence to the pinned pack artifact -- exact: at this revision a version properties file declares version 3.0.12 and the current game version 1.21, and the build script declares an archive base name and a per-module artifact naming rule that together produce the pinned artifact file name resourcefullib-neoforge-1.21-3.0.12.jar. The commit's own diff is the bump that declared that version, from the preceding one. The revision was located by reading the branch the project keeps for this game version rather than by trusting a tag: the project publishes tags, but the tag bearing this version's name points at a commit on a later game version's branch whose message announces a different version, so the tags are unreliable for this purpose and were not used. This commit is the head of the game version's branch, so no later commit on it declares this version. No decompilation was performed and no jar was opened.",
+      "verifiedAgainst": "the artifact file name recorded in inventory/atm10-tts-2.0.2/plans.json"
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "LICENSE at the repository root of the source above, in the fetched tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "read directly from the fetched tree, not from any index",
+      "use": "The licence, verified at the source rather than trusted from M5's triage. It is the MIT licence verbatim, twenty-one lines, carrying a copyright line naming the year 2023 and the project's own organisation as holder, and the standard permission grant with no additional term and no separate asset reservation. MIT permits reading, modification and derivative works, so the inventory's permitted verdict for this entry is confirmed rather than assumed. Both mod descriptors in the same tree declare the licence as MIT, which agrees."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm10-tts-2.0.2/plans.json, rights.json, graph.json and waves/m6-foundation.json",
+      "producedBy": "M5 inventory and M6-W1",
+      "revision": "as frozen by M5 and consumed by the foundation wave manifest",
+      "use": "The claims this record checks: the entry is sourceUse permitted with method source-informed-reimplementation, owner sdk-platform, artifact resourcefullib-neoforge-1.21-3.0.12.jar, no dependency on any other inventory entry, and a declared MIT licence with assets not reserved separately. All confirmed above; the absent inventory dependency is confirmed against the mod descriptor, which declares only the loader and the game, matching the plan row's count of two platform dependencies. The wave manifest admits the entry as a foundation seed. The graph records exactly two edges into this entry, both required on both sides and both resolved, from two entries that sit outside this wave and are planned as black-box respecifications; that pair is what section 3 of the specification is written against, and neither of their sources was read. One inventory-adjacent claim is qualified rather than confirmed: the plan row assigns this entry a test set including registry parity and saved-data round trip, and this read found the entry registers no content of its own and owns no world data of its own, so both of those tests can only be about a dependent's content passing through the facilities this entry provides."
+    },
+    {
+      "accessedAt": "2026-09-05T00:00:00Z",
+      "category": "metadata",
+      "locator": "tests/fixtures/local/m6-clean-room/fetch-manifest.txt in the public repository, ignored tree",
+      "producedBy": "M6-W3 clean-room reader",
+      "revision": "one line appended in the file's existing four-field form: repository, ref, commit, sha256 of the archive",
+      "use": "Records the fetch. No fetch tool exists in either repository; the earlier rows were written by hand and this one was fetched with a plain archive download from the same host and appended in the same form, digesting the archive with sha256 as the existing rows do. The digest binds the archive as fetched at the time above rather than asserting that the host re-serves identical bytes. This repository had no pre-existing row for this project, so nothing in the file competes with this one."
+    }
+  ],
+  "subject": {
+    "id": "RVL-060",
+    "kind": "other",
+    "originalAuthor": "Team Resourceful",
+    "originalProject": "ResourcefulLib",
+    "version": "3.0.12"
+  }
+}

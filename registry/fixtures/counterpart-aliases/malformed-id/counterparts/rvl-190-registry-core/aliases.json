@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "canonicalId": "RVL-190",
+  "mappings": [
+    {
+      "source": "CyclopsCore:registry",
+      "target": "rvl_registry_core:registry"
+    }
+  ]
+}

@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use crate::budget::VOID_LIMITS;
 use crate::evidence::closure::verify_closure_records;
 use crate::evidence::manifest::require_manifest_rule;
+use crate::inventory::VOID_LIMITS;
 
 pub(crate) fn verify_m2_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
     require_manifest_rule(

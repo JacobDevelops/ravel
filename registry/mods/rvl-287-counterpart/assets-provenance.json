@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "subject": "RVL-287",
+  "assets": [],
+  "notes": "This package ships no art, no sound and no texture. The rights record marks textures, models and sounds not-applicable for this entry and the specification counts no game asset of any kind in the pinned tree; every texture this facility handles is one a declaring dependent supplies. Nothing upstream is tracked or shipped and nothing was rewritten from reference, so there is no asset to record. The texture names this package handles are values a declaration carries, never bytes this package holds."
+}

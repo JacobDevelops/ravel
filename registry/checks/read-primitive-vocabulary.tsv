@@ -1,0 +1,65 @@
+# Every way of reading a file that this workspace knows about, what it is, and
+# why it is refused or accounted for.
+#
+# This is a judged claim and it is written as data because of that. Nobody
+# measured "these are all the ways to read"; somebody decided it, and a decision
+# belongs in a file with a reason beside each row that a reviewer can disagree
+# with, not in an array inside the script that acts on it.
+#
+# checks/verify-primitives.sh holds no primitive of its own. It reads this file,
+# and the two are congruent both ways:
+#
+#   * every row's pattern is required to match that row's probe, so a pattern
+#     that has been mistyped into matching nothing fails here rather than
+#     silently watching nothing. That is the failure mode of a list of regexes,
+#     and it is the one nobody notices, because a dead pattern and a clean
+#     workspace print the same line;
+#   * every accounted primitive is required to occur somewhere under checks/ and
+#     to be accounted for in checks/read-primitives.tsv, and every primitive that
+#     file names is required to be a row here. A row that matches nothing is
+#     stale and says so.
+#
+# columns: primitive, class, pattern, probe, reason
+#
+# class is one of:
+#   refused     no row in any table admits it; a hand that wants one edits this
+#               file, which is a tracked decision rather than a data entry
+#   accounted   this workspace legitimately uses it, so every occurrence is
+#               named and reasoned in checks/read-primitives.tsv
+#   fragment    not a primitive; a piece of pattern the rows below build on
+#
+# %CMD% in a pattern stands for the command-position fragment, which is the row
+# named command-position. Literals are written with one character bracketed so
+# that a pattern matches what it looks for and never its own source; that device
+# is why checks/verify-primitives.sh can scan itself without exempting itself,
+# and this file is skipped by that scan because it is data.
+#
+# primitive	class	pattern	probe	reason
+command-position	fragment	((^|[;&|(`]|!)[[:space:]]*|(then|do|else|elif|time|exec|xargs)[[:space:]]+)	  unzip -Z1 artifact.jar	a tool named at the start of a line or a compound is being run; a tool named anywhere else is a word in a sentence or a piece of a path, and this fragment is where that difference is decided
+zlib	refused	(import[[:space:]]+[z]lib|[z]lib\.)	import zlib	inflating a deflated entry is how an archive member becomes readable bytes without any archive library being involved; round 6 read 50,357 class files this way with the gate green, and nothing in this workspace has a reason to decompress anything itself
+mmap	refused	(import[[:space:]]+[m]map|[m]map\.)	import mmap	maps a file into memory and reads it with no call anything observes, which is the same read as the builtin with the evidence removed
+subprocess	refused	(import[[:space:]]+[s]ubprocess|[s]ubprocess\.)	import subprocess	spawns a reader whose command line this scan never sees and whose reads no shim on PATH is guaranteed to intercept
+ctypes	refused	(import[[:space:]]+[c]types|[c]types\.)	import ctypes	calls the C library directly, so a read can be made below every wrapper Python has and below every rule written here
+dynamic-import	refused	[_][_]import[_][_]	__import__("zlib")	names a module as a runtime string, which defeats a scan that reads import statements and is never necessary in a check
+os-level-read	refused	[o]s\.(open|read|pread|preadv|sendfile|copy_file_range)[[:space:]]*\(	os.read(fd, 4096)	reads bytes at the descriptor, below the file object the builtin returns and below anything a table here accounts for
+external-archive-tool	refused	%CMD%([b]sdtar|7z|7za|[j]ar|[d]d|[x]xd|[o]d|[s]trings|[j]avap|[c]pio|[f]unzip|[z]ipinfo|[g]zip|[g]unzip|[z]cat)([[:space:]]|$)	  jar -xf artifact.jar	each of these opens an archive or reads raw bytes, and none of them is the shimmed binary, so a read through one is a read this workspace never observed; funzip and zipinfo are named because round 7 read entry bodies through them and they are not a channel nobody thought of but the shimmed binary's own siblings, shipping from the same derivation as the unzip the observation replaces
+python-isolation-flag	refused	[p]ython3?[[:space:]]+-[A-Za-z]*[SEI]	python3 -S -c import zipfile	the Python half of the observation is a sitecustomize on PYTHONPATH, and each of these flags stops the interpreter loading it, so the watch is silently absent while the reading is unchanged
+python-isolation-shebang	refused	^#!.*[p]ython.*[[:space:]]-[A-Za-z]*[SEI]	#!/usr/bin/env python3 -S	the same isolation asked for in a script header instead of on a command line
+python-environment-erasure	refused	(unset[[:space:]]+[P]YTHON|%CMD%[e]nv[[:space:]]+-[iu])	  env -i python3 reader.py	removes the variables the shims key on, so the observation runs and sees nothing while reporting nothing wrong
+absolute-tool-path	refused	(^|[[:space:]"'=(])/[A-Za-z0-9._-][A-Za-z0-9._/-]*/([u]nzip|[p]ython3?|[t]ar|[j]ar|[d]d|[c]at|[b]sdtar)([[:space:]"']|$)	  /usr/bin/unzip -p artifact.jar entry.class	naming a tool by its full path walks past the shim directory this observation puts at the front of PATH, which is the whole mechanism by which the binary half is watched
+foreign-interpreter	refused	%CMD%([b]ash|[s]h|[z]sh|[p]erl|[r]uby|[n]ode)[[:space:]]	  perl -e read	starts a language this scan does not read and no shim wraps, so whatever it does with a file is outside every rule here
+builtin-open	accounted	(^|[^.A-Za-z0-9_])[o]pen[[:space:]]*\(	data = open(path, "rb").read()	the ordinary way to read any file, including an archive read as raw bytes; legitimate for this workspace's own tables and outputs and for nothing else
+method-open	accounted	\.[o]pen[[:space:]]*\(	archive.open(info)	opening a member of an already-open archive, which is one of the four methods the observation patches
+method-read	accounted	\.[r]ead[[:space:]]*\(	handle.read(4)	taking bytes from an open handle; watched when the handle came from zipfile and unwatched otherwise, which is why each occurrence has to say which it is
+zipfile	accounted	(import[[:space:]]+[z]ipfile|[z]ipfile\.)	import zipfile	the archive channel the observation patches, and the one every legitimate archive read in this workspace goes through
+io	accounted	(^|[^.A-Za-z0-9_])[i]o\.	io.BytesIO(blob)	wraps bytes in a file-like object; harmless over bytes that were already counted where they were read, and a way to launder a read otherwise
+unzip	accounted	%CMD%[u]nzip([[:space:]]|$)	  unzip -Z1 artifact.jar	the binary archive channel, watched by a shim placed earlier on PATH than the real one
+python3	accounted	%CMD%[p]ython3?([[:space:]]|$)	  python3 reader.py	starts the interpreter; the invocation is accounted here and the script it is pointed at is a variable this scan cannot resolve, so that argument is held by the interpreter shim at run time instead
+pythonpath	accounted	[P]YTHONPATH=	PYTHONPATH=/tmp/py	decides whether the sitecustomize is found, so writing it is either the observation setting itself up or somebody dismantling it
+sha256sum	accounted	%CMD%[s]ha256sum([[:space:]]|$)	  sha256sum artifact.jar	reads a file whole to hash it, which over an acquired artifact is a complete read of restricted material that keeps only the digest
+sha1sum	accounted	%CMD%[s]ha1sum([[:space:]]|$)	  sha1sum artifact.jar	the same complete read, against the hash the pinned manifest declares
+tar	accounted	%CMD%[t]ar([[:space:]]|$)	  tar -cf - .	reads and writes whole trees, which is how the observation builds its sandbox and would also be a way to copy a fixture
+cat	accounted	%CMD%[c]at([[:space:]]|$)	  cat >shim	reads a file whole to its output, and writes here-documents
+eval	accounted	%CMD%[e]val([[:space:]]|$)	  eval "$(proposals_model)"	runs text as shell, so what it runs is not a file this scan read; admissible only where the text came from a model under checks/
+source-generated	accounted	^[[:space:]]*(\.|source)[[:space:]]+"?\$\{?[m]eta_work	. "$meta_work/model"	sources shell written into the scratch directory during the run; the generator is scanned and the generated text never is, so each occurrence names which model wrote it
+cargo	accounted	%CMD%[c]argo([[:space:]]|$)	  cargo test --quiet	reads and compiles every source file in this workspace and then runs the tests it built, which is both the widest read here and the only one that executes what it read; it is confined to the workspace's own counterparts and reaches nothing acquired

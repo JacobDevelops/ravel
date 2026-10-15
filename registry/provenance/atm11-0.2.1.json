@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "fixture",
+    "id": "atm11-0.2.1",
+    "version": "0.2.1",
+    "originalProject": "All the Mods 11",
+    "originalAuthor": "ATMTeam"
+  },
+  "implementationMethod": "metadata-only",
+  "sources": [
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/descriptors/atm11-0.2.1.json",
+      "revision": "public repository, tracked",
+      "use": "Pins which CurseForge project and file the fixture is, and the two digests every record in this workspace is bound to. It is the authority for what the fixture is; the archive below is only the bytes that authority describes.",
+      "producedBy": "Ravel public repository, M0 fixture tooling",
+      "accessedAt": "2026-08-09T23:50:20Z"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/local/atm11-0.2.1/extracted/manifest.json",
+      "revision": "sha256:7e5ef9696d85279ce669082f019f0f40a95f4012e9c27b1fc572333d0dd5d3ac",
+      "use": "The pinned client manifest. Four metadata fields per entry are read — projectID, fileID, required, isLocked — and nothing else, which is what bounds every record in inventory/atm11-0.2.1/references.json to metadata.",
+      "producedBy": "checks/rebuild-references.sh",
+      "accessedAt": "2026-08-09T23:50:20Z"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/local/atm11-0.2.1/source/atm11-0.2.1.zip",
+      "revision": "sha256:c931db298c22643c8bd13c1e452323a34828d9410dad6c8b6002033111ac5d50",
+      "use": "Digested, not opened. The archive holds ATM-owned overrides and is the restricted material this workspace exists to keep out of its own tracked files; only its digest is recorded, so the records can be bound to an exact fixture without any of it being read.",
+      "producedBy": "Ravel public repository, M0 fixture tooling",
+      "accessedAt": "2026-08-09T23:50:20Z"
+    },
+    {
+      "category": "metadata",
+      "locator": "the acquired artifact set: 235 files in the public repository's ignored fixture tree, 229 mods and 6 shaderpacks",
+      "revision": "sha256:d21431cb5bf450dc4d13fa92a9ecfcab05d801e49e2374ec7c8eb17343b8dc7a",
+      "use": "Every pinned reference was acquired, and each file is bound to the reference it was acquired for — a mod by the launcher index's SHA-1 recomputed over the bytes, a shaderpack by the acquisition log's CDN path. Two things are opened per archive and no more, plus four bytes: the declaration a loader reads and the archive's table of contents, and the first four bytes of each entry in it, read to tell an archive from a resource. The same two things are opened in every library an artifact ships inside itself, at any depth, and what those libraries hold is counted against the artifact that ships them, because no pinned reference names a library and a counterpart reimplementing the artifact has to reproduce what it loads. No class is decompiled, disassembled or read as bytes, and no resource, data file or script is read past those four bytes, which is why the method above is still metadata-only after M5-W3 to M5-W7. Every record under inventory/atm11-0.2.1/ carries this digest.",
+      "producedBy": "checks/artifact-set.sh",
+      "accessedAt": "2026-08-10T00:00:00Z"
+    },
+    {
+      "category": "metadata",
+      "locator": "the launcher's import log, in the same ignored fixture tree",
+      "revision": "read for download provenance only",
+      "use": "Says how each artifact arrived: from the platform's own CDN, from an alternate distributor, or blocked from automated download and fetched by hand. It is the only local record of which pinned file each shaderpack is, because the launcher moves shaderpacks out of the mod folder after import and leaves no index behind.",
+      "producedBy": "the launcher that performed the import",
+      "accessedAt": "2026-08-10T00:00:00Z"
+    }
+  ],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "prohibited",
+      "basis": "The worst of 235 per-artifact verdicts, which is what a fixture-level status can be when the artifacts disagree. M5-W5 triaged every acquired artifact from the licence it declares about itself: 104 cleared, 43 permission-required, 73 prohibited and 15 unresolved. inventory/atm11-0.2.1/rights.json holds the per-artifact verdicts and is where a question about one entry is answered; only a permitted verdict there admits a method that reads that entry's source."
+    },
+    {
+      "surface": "behaviour",
+      "status": "cleared",
+      "basis": "A policy of this workspace applied to every artifact rather than a reading taken from any of them: Ravel observes behaviour and respecifies it instead of copying code, so a licence that forbids source use narrows the method rather than blocking the work. Nothing measures this and no input changes it, which is why the count of artifacts carrying it is only the count of artifacts."
+    },
+    {
+      "surface": "textures",
+      "status": "prohibited",
+      "basis": "The worst of the per-artifact verdicts M5-W5 recorded: 75 cleared, 29 permission-required, 55 prohibited, 6 unresolved and 70 not-applicable because the artifact ships none. An author who reserved their assets apart from their code is read as having reserved them."
+    },
+    {
+      "surface": "models",
+      "status": "prohibited",
+      "basis": "The worst of the per-artifact verdicts M5-W5 recorded: 61 cleared, 19 permission-required, 46 prohibited, 3 unresolved and 106 not-applicable."
+    },
+    {
+      "surface": "sounds",
+      "status": "prohibited",
+      "basis": "The worst of the per-artifact verdicts M5-W5 recorded: 24 cleared, 3 permission-required, 16 prohibited, 2 unresolved and 190 not-applicable."
+    },
+    {
+      "surface": "names",
+      "status": "unresolved",
+      "basis": "Whether original mod IDs and display names may be advertised is an interoperability question SPEC.md 7.3 defers; nothing here makes them canonical Ravel identities. Like behaviour, this is applied to every artifact rather than read off one."
+    },
+    {
+      "surface": "branding",
+      "status": "prohibited",
+      "basis": "ATM pack branding, menu assets and the pack image are ATM-owned and are not reproduced. Per artifact: 118 prohibited, one for each artifact that declares a logo file, and 117 not-applicable for the artifacts that declare none. No logo is extracted, tracked or transcribed."
+    },
+    {
+      "surface": "quests",
+      "status": "prohibited",
+      "basis": "ATM-owned quests live in the archive's overrides and are never extracted, tracked, or transcribed. SPEC.md 7.2 names them explicitly. The pack's override trees are counted and never named."
+    },
+    {
+      "surface": "scripts",
+      "status": "prohibited",
+      "basis": "ATM-owned KubeJS scripts live in the archive's overrides and are never extracted, tracked, or transcribed. SPEC.md 7.2 names them explicitly. The pack's override trees are counted and never named."
+    },
+    {
+      "surface": "other",
+      "status": "cleared",
+      "basis": "The numeric project and file identifiers this workspace records are factual references to a distribution platform's catalogue, not expressive content, and are what the pinned manifest exists to state."
+    }
+  ],
+  "attribution": [
+    {
+      "name": "ATMTeam",
+      "notice": "All the Mods 11 version 0.2.1 is authored by ATMTeam and distributed through CurseForge. It is used here as a pinned compatibility oracle. Ravel is not affiliated with, endorsed by, or derived from it.",
+      "url": "https://www.curseforge.com/minecraft/modpacks/all-the-mods-11"
+    },
+    {
+      "name": "CurseForge",
+      "notice": "Fixture acquisition and use are subject to the CurseForge terms the public fixture descriptor records.",
+      "url": "https://support.curseforge.com/en/support/solutions/articles/9000207877-terms-conditions"
+    }
+  ],
+  "publication": {
+    "status": "private-only",
+    "reviewedBy": "unreviewed; M5-W8 is the inventory review this record awaits",
+    "notes": "Nothing derived from this fixture is publishable while any rights surface above is unresolved or prohibited, and inventory/atm11-0.2.1/rights.json clears none of the 235 artifacts for publication. The prohibited surfaces are prohibited outright rather than pending, and no later review clears the pack's own branding, quests and scripts: they name material this workspace never extracts. checks/verify-provenance.sh holds every statement above to the inventory it is provenance for, so this record cannot drift away from what the workspace found."
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "manifestKind": "sdk-gap-resolutions",
+  "resolutions": [
+    {
+      "anchor": "server_data",
+      "proposal": "RVL-GAP-01",
+      "workPackage": "M6-W2"
+    },
+    {
+      "anchor": "world_shaping",
+      "proposal": "RVL-GAP-02",
+      "workPackage": "M6-W2"
+    },
+    {
+      "anchor": "audio",
+      "proposal": "RVL-GAP-03",
+      "workPackage": "M6-W2"
+    },
+    {
+      "anchor": "render_stages",
+      "proposal": "RVL-GAP-04",
+      "workPackage": "M6-W2"
+    },
+    {
+      "anchor": "interception",
+      "proposal": "RVL-GAP-05",
+      "workPackage": "M6-W2"
+    },
+    {
+      "anchor": "provision",
+      "proposal": "RVL-GAP-06",
+      "workPackage": "M7-W0"
+    }
+  ],
+  "schemaVersion": 1,
+  "verifiedBy": "checks/verify-proposals.sh",
+  "whatThisRecordIs": "M6's disposition of the capability gaps M5-W7 filed. proposals/sdk-gaps.json is M5's finding — those capabilities were absent from Ravel's SDK when M5 measured — and that finding is permanently true of the tree M5 certified, so it is frozen, is bound as material by the public M5 evidence, and says nothing about what happened afterwards. Who closed a gap is a later milestone's fact and it lives here, where it is free to grow. One row per gap a work package resolved: the proposal it closes, the work package that closed it, and the module of the public SDK the shipped answer occupies, which is where a reader goes to check the claim. Every row is written by hand. Nothing here is generated from the public SDK tree and nothing in that tree is generated from here, which is why checks/verify-proposals.sh can hold the two against each other and get an answer that is not a restatement: a module that ships with no row is a gap closed by nobody, and a row whose module does not ship is a resolution nobody delivered. A gap that no work package has closed has no row — absence here is the ordinary state of an open gap, not an omission."
+}

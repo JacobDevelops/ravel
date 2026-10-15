@@ -56,7 +56,7 @@ printf '%s\n' \
   'OverrideCommands=true' \
   'PreLaunchCommand=' \
   'PostExitCommand=' \
-  'WrapperCommand=/private/ravel-cli performance supervise-initial-linux /private/atm11-markers.sock --' \
+  'WrapperCommand=' \
   >"$instance/instance.cfg"
 printf '%s\n' \
   'Sound engine started' \
@@ -81,8 +81,8 @@ jq --exit-status '
   and .instance.modFileCount == 1
   and .instance.expectedLoader == "neoforge"
   and .instance.unexpectedLoaderPresent == false
-  and .instance.wrapperKind == "focus-free-supervisor"
-  and (.instance.wrapperCommandSha256 | test("^[0-9a-f]{64}$"))
+  and .instance.wrapperKind == "none"
+  and .instance.wrapperCommandSha256 == null
   and .launch.clientReadyEventObserved == true
   and .launch.integratedServerStarted == true
   and .launch.saveObserved == true
@@ -129,11 +129,12 @@ sed -i \
 sed -i 's/OverrideCommands=true/OverrideCommands=false/' "$instance/instance.cfg"
 if RAVEL_EVIDENCE_ROOT="$repository" "$subject" \
   official-atm11 "$instance" "$private_output/inert-wrapper.json" 2>/dev/null; then
-  printf 'expected inert wrapper to be rejected\n' >&2
+  printf 'expected retired supervisor wrapper to be rejected\n' >&2
   exit 1
 fi
 test ! -e "$private_output/inert-wrapper.json"
-sed -i 's/OverrideCommands=false/OverrideCommands=true/' "$instance/instance.cfg"
+sed -i 's/OverrideCommands=false/OverrideCommands=true/; s#WrapperCommand=.*#WrapperCommand=#' \
+  "$instance/instance.cfg"
 
 chmod 755 "$private_output"
 unsafe="$private_output/unsafe-directory.json"

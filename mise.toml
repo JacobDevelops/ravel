@@ -13,13 +13,10 @@ node = "26.12.0"
 "npm:markdownlint-cli" = "0.49.1"
 shellcheck = "0.11.0"
 shfmt = "3.14.1"
-hyperfine = "2.0.0"
 jj = "0.46.0"
 actionlint = "1.7.12"
-cmake = "4.4.4"
 
 [env]
-RAVEL_MINECRAFT_VERSION = "26.1.2"
 CARGO_TERM_COLOR = "always"
 RUST_BACKTRACE = "1"
-_.path = ["{{config_root}}/target/tools/tracy/bin"]
+RAVEL_MINECRAFT_VERSION = "{{ get_env(name='RAVEL_MINECRAFT_VERSION', default='26.1.2') }}"

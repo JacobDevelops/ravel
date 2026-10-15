@@ -15,7 +15,8 @@ has drifted stops building here first.
 
 Those three ship a `package.json` and a `provenance.json`, so each is a package
 rather than only a crate: copy the directory whole into an instance's
-`ravel/mods` and `ravel-cli host build` compiles it into that instance's host.
+`ravel/mods`, then run `cargo make ravel:host-build <instance> <cache> <minecraft>`
+to compile it into that instance's host.
 The two below are not packages and cannot be installed.
 
 - [`pack-module`](pack-module) — where M4-W5's pack example lives, and why it is not

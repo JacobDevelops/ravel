@@ -6,10 +6,10 @@ use std::path::Path;
 use crate::evidence::manifest::MILESTONE_MANIFESTS;
 use crate::evidence::records::verify_evidence_records;
 use crate::inventory::{
-    EXAMPLE_NAMES, EXPERIMENT_NAMES, verify_campaign_inventory, verify_example_inventory,
-    verify_game_type_claims, verify_guide_enumerations, verify_harness_lifecycles,
-    verify_hook_inventory_document, verify_manifest_percentages, verify_review_blocking_counts,
-    verify_review_round_counts, verify_test_mod_inventory, verify_void_limits,
+    EXAMPLE_NAMES, verify_campaign_inventory, verify_example_inventory, verify_game_type_claims,
+    verify_guide_enumerations, verify_harness_lifecycles, verify_hook_inventory_document,
+    verify_manifest_percentages, verify_review_blocking_counts, verify_review_round_counts,
+    verify_test_mod_inventory, verify_void_limits,
 };
 use crate::java_shape::{
     verify_hook_name_literals, verify_menu_row_placement, verify_persistence_reflection,
@@ -21,7 +21,7 @@ use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, veri
 use crate::version_boundary::{
     hook_inventories, verify_version_boundary, verify_version_directories,
 };
-use crate::{CRATE_NAMES, TEST_MOD_NAMES};
+use crate::{CRATE_NAMES, REGISTRY_MOD_NAMES, TEST_MOD_NAMES};
 
 const ROOT_FILES: &[&str] = &[
     ".cargo/config.toml",
@@ -44,7 +44,6 @@ const ROOT_FILES: &[&str] = &[
     "evidence/m1/README.md",
     "evidence/m2/README.md",
     "docs/runbooks/darwin-verification.md",
-    "experiments/README.md",
     "jvm/README.md",
     "jvm/bootstrap/dev/ravel/jvm/Agent.java",
     "jvm/bootstrap/dev/ravel/jvm/HookTarget.java",
@@ -70,8 +69,6 @@ const ROOT_FILES: &[&str] = &[
     "schemas/fixture.schema.json",
     "schemas/pack.schema.json",
     "schemas/package.schema.json",
-    "schemas/performance-collector.schema.json",
-    "schemas/performance-result.schema.json",
     "schemas/provenance.schema.json",
     "schemas/runtime-inputs.schema.json",
     "schemas/saved-data.schema.json",
@@ -80,7 +77,6 @@ const ROOT_FILES: &[&str] = &[
     "tests/fixtures/README.md",
     "tests/fixtures/local/README.md",
     "tests/fixtures/public/README.md",
-    "tools/ravel-cli/Cargo.toml",
     "tools/ravel-xtask/Cargo.toml",
 ];
 
@@ -100,6 +96,12 @@ pub fn required_scaffold_paths() -> Vec<String> {
                 .iter()
                 .map(|name| format!("crates/{name}/Cargo.toml")),
         )
+        .chain(REGISTRY_MOD_NAMES.iter().flat_map(|name| {
+            [
+                format!("registry/mods/{name}/Cargo.toml"),
+                format!("registry/mods/{name}/src/lib.rs"),
+            ]
+        }))
         .chain(
             TEST_MOD_NAMES
                 .iter()
@@ -109,11 +111,6 @@ pub fn required_scaffold_paths() -> Vec<String> {
             EXAMPLE_NAMES
                 .iter()
                 .map(|name| format!("examples/{name}/Cargo.toml")),
-        )
-        .chain(
-            EXPERIMENT_NAMES
-                .iter()
-                .map(|name| format!("experiments/{name}/Cargo.toml")),
         )
         .collect()
 }
@@ -159,7 +156,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_version_boundary(root, &mut violations);
     verify_example_inventory(root, &mut violations);
     verify_test_mod_inventory(root, &mut violations);
-    verify_experiment_fence(root, &mut violations);
+    verify_production_fences(root, &mut violations);
     violations.extend(verify_evidence_records(root));
 
     match tracked_paths(root) {
@@ -181,10 +178,15 @@ fn declares_unsafe_prohibition(source: &str) -> bool {
         .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
 }
 
-fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
+fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
     let production_manifests = CRATE_NAMES
         .iter()
         .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            REGISTRY_MOD_NAMES
+                .iter()
+                .map(|name| format!("registry/mods/{name}/Cargo.toml")),
+        )
         .chain(
             TEST_MOD_NAMES
                 .iter()
@@ -197,7 +199,6 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
         )
         .chain([
             "tests/conformance/Cargo.toml".to_owned(),
-            "tools/ravel-cli/Cargo.toml".to_owned(),
             "tools/ravel-xtask/Cargo.toml".to_owned(),
         ]);
 
@@ -205,14 +206,9 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
         let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
             continue;
         };
-        if manifest.contains("ravel-spike") || manifest.contains("experiments/") {
-            violations.push(format!(
-                "production crate depends on an experiment: {relative}"
-            ));
-        }
         if manifest.contains(r#"unsafe_code = "allow""#) {
             violations.push(format!(
-                "unsafe code is permitted outside the experiment boundary: {relative}"
+                "unsafe code is permitted in a maintained crate: {relative}"
             ));
         }
     }
@@ -220,7 +216,7 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
     verify_testkit_fence(root, violations);
 
     let mut sources = Vec::new();
-    for directory in ["crates", "test-mods", "tools", "tests"] {
+    for directory in ["crates", "registry/mods", "test-mods", "tools", "tests"] {
         collect_files(&root.join(directory), &mut sources);
     }
     for path in sources {
@@ -238,7 +234,7 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
         }) {
             let relative = path.strip_prefix(root).unwrap_or(&path);
             violations.push(format!(
-                "unsafe code is permitted outside the experiment boundary: {}",
+                "unsafe code is permitted in a maintained crate: {}",
                 relative.display()
             ));
         }
@@ -250,6 +246,11 @@ fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
         .iter()
         .filter(|name| **name != "ravel-testkit")
         .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            REGISTRY_MOD_NAMES
+                .iter()
+                .map(|name| format!("registry/mods/{name}/Cargo.toml")),
+        )
         .chain(
             TEST_MOD_NAMES
                 .iter()
@@ -277,10 +278,13 @@ fn maintained_rust_roots(root: &Path) -> Vec<String> {
     CRATE_NAMES
         .iter()
         .map(|name| format!("crates/{name}/src/lib.rs"))
+        .chain(
+            REGISTRY_MOD_NAMES
+                .iter()
+                .map(|name| format!("registry/mods/{name}/src/lib.rs")),
+        )
         .chain([
             "tests/conformance/src/lib.rs".to_owned(),
-            "tools/ravel-cli/src/lib.rs".to_owned(),
-            "tools/ravel-cli/src/main.rs".to_owned(),
             "tools/ravel-xtask/src/lib.rs".to_owned(),
             "tools/ravel-xtask/src/main.rs".to_owned(),
         ])
@@ -337,8 +341,6 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
         "fixture",
         "pack",
         "package",
-        "performance-collector",
-        "performance-result",
         "provenance",
         "runtime-inputs",
         "saved-data",

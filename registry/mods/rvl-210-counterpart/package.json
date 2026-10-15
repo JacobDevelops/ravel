@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_210_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-210 Counterpart",
+  "description": "Ravel counterpart for RVL-210: the wave's foundation seed, owning the quantity vocabulary, the wire and value-channel contracts, the query grammar and the registration framework its dependents declare against.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "ffd5475e4cf936e9f5c5998e8243563cb14fa5b34a9980d52f9ac954ebb3616e"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "bff7d53cf7edfdae251760cecdf13a184114b25724b4bc79df1cfffaee96f129"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "2ff86052939e6c6298629148e9e9f218e0644db878b53381e92bfd1f902f78d5"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "3d354eb23550d3282cf21a1edc9c90e4d49b490432bba37f0c82dfa3ebfcc709"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "53aee2926a9e262c45e5af6ecb5c29fd85c74948d9d9da2ed8341257b55e8821"
+      },
+      {
+        "path": "generated/commands.txt",
+        "sha256": "30b114b42dd7d517c09cfe70627caa6b220430008073aafda41e50abc8b617de"
+      },
+      {
+        "path": "generated/settings.json",
+        "sha256": "e711ca7365c381e4a536dc171615e028c1acb8a51983b7f8c3c272f2ceaaadc7"
+      },
+      {
+        "path": "src/capabilities.rs",
+        "sha256": "aea385a5185b7fa0212a39dcc80d35bae48611f49992925076027d722979fab2"
+      },
+      {
+        "path": "src/channel.rs",
+        "sha256": "a863e590be51c55fb30b75b85c3f371a595b63bbe961b0c96a4874e6ac9267af"
+      },
+      {
+        "path": "src/commands.rs",
+        "sha256": "bc3093bfc63ad58116e960108e30091ca32d94fae29bdac95630dab65c8a2771"
+      },
+      {
+        "path": "src/declarations.rs",
+        "sha256": "91e35e1c36663cbd4fff9ef3d4cf9fe81dd23c5b6403d9765716673689bd95b5"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "0ce0477938648ac591369a948aca19af2d41623c19efc55cf3b6e8aaa5db1144"
+      },
+      {
+        "path": "src/helpers.rs",
+        "sha256": "05c97ddb763c9bbd4bd0811ced1c4d4689006c62ed15370e49479d6cce46cda5"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "3b87664c9f63c3bd0863cc95b9ce78454ec1f1839778b76fda2fd487daa4554b"
+      },
+      {
+        "path": "src/menus.rs",
+        "sha256": "ead6374059e01fef7908ce70687a29ea537b5c5ea6476719d5b71ae7d6b13cee"
+      },
+      {
+        "path": "src/persistence.rs",
+        "sha256": "b5718962bc95b503eddc2243be51056a21e7967154cdf446a6fc69fb59c3af30"
+      },
+      {
+        "path": "src/quantity.rs",
+        "sha256": "6d73d2449abc2b2f873161520a1f148ade399a45949ee3544b9b4ee44f28d3b4"
+      },
+      {
+        "path": "src/query.rs",
+        "sha256": "e8c534b08aef576df30c56deb8bca2ffa345df5abfdc1f47e5a9e7887188c387"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "4f158a4d53e8dd43b1c0ae7261b5d04690c5fa94bbdfb12f1a16ead154ba71b4"
+      },
+      {
+        "path": "src/shapes.rs",
+        "sha256": "93ad2bc418f2accfea1f4318dbb56f75719773edea3c6e201b3f5638a08575b2"
+      },
+      {
+        "path": "src/storage.rs",
+        "sha256": "3884a67c765854d2a14024655e62f447f6b1e582dcf93ce394824dd069008268"
+      },
+      {
+        "path": "src/transport.rs",
+        "sha256": "8bc7f69ea40345353190b7874f708b76d2d38de5a433fb70ae3e5cbff38fd953"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "668bee664a22e3705a9d7d3e1ca35b4cf2fcde5507d11e68ae6bf483aaaeccee"
+  }
+}

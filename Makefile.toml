@@ -102,8 +102,10 @@ cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 tested="${CARGO_MAKE_WORKING_DIRECTORY}/target/ravel-jvm/tested-versions.txt"
 mkdir -p "$(dirname "$tested")"
 : >"$tested"
+selected_version="$RAVEL_MINECRAFT_VERSION"
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
+  export RAVEL_MINECRAFT_VERSION="$version"
   mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
     "$version_directory/adapter.toml" | head -n 1)"
   if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
@@ -121,6 +123,7 @@ for version_directory in minecraft/versions/*/; do
   # record that looks complete and names a version nothing proved.
   echo "tested: Minecraft $version" >>"$tested"
 done
+export RAVEL_MINECRAFT_VERSION="$selected_version"
 if ! grep -q '^tested: ' "$tested"; then
   echo "no tracked version was testable, so this task proved nothing" >&2
   exit 1
@@ -146,21 +149,6 @@ check-jsonschema --schemafile schemas/fixture.schema.json \
   tests/fixtures/descriptors/atm10-tts-2.0.2.json
 check-jsonschema --schemafile schemas/runtime-inputs.schema.json \
   tests/fixtures/descriptors/runtime-inputs-1.21.1.json
-check-jsonschema --schemafile schemas/performance-collector.schema.json \
-  tests/performance/fixtures/collector-dry-run.json
-check-jsonschema --schemafile schemas/performance-result.schema.json \
-  tests/performance/fixtures/result-dry-run.json
-
-duplicate_event_fixture="$(mktemp)"
-trap 'rm -f "$duplicate_event_fixture"' EXIT
-jq '.events += [(.events[] | select(.kind == "process-start"))]' \
-  tests/performance/fixtures/collector-dry-run.json >"$duplicate_event_fixture"
-if check-jsonschema \
-  --schemafile schemas/performance-collector.schema.json \
-  "$duplicate_event_fixture"; then
-  echo "collector schema accepted a duplicate singleton event" >&2
-  exit 1
-fi
 '''
 
 [tasks."ravel:coverage"]
@@ -169,6 +157,7 @@ cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
 set -euo pipefail
+export PATH="$HOME/.cargo/bin:$PATH"
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 
 cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
@@ -324,6 +313,7 @@ jarsigner -keystore "$probe/keystore.p12" -storepass ravelprobe \
 
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
+  export RAVEL_MINECRAFT_VERSION="$version"
   mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
     "$version_directory/adapter.toml" | head -n 1)"
   if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
@@ -415,6 +405,7 @@ mkdir -p "$(dirname "$ran")"
 
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
+  export RAVEL_MINECRAFT_VERSION="$version"
   mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
     "$version_directory/adapter.toml" | head -n 1)"
   if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
@@ -451,94 +442,6 @@ if ! grep -q '^ran: ' "$ran"; then
   echo "the harness ran for no tracked version, so this task proved nothing" >&2
   exit 1
 fi
-'''
-
-[tasks."ravel:measure-loader-overhead"]
-description = "Measure loader overhead and set the M2 regression budget."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because a debug build would measure the profile rather than
-# the loader, and because the pack figures describe what an operator
-# would actually build.
-cargo build --locked --release -p ravel-spike-m2-loader-overhead
-./target/release/ravel-spike-m2-loader-overhead
-'''
-
-[tasks."ravel:measure-profiling-overhead"]
-description = "Measure what opt-in profiling costs when it is off and record its budget."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because the quantity measured is a branch that is not taken
-# and a debug build would measure the profile rather than the branch.
-cargo build --locked --release -p ravel-spike-m3-profiling-overhead
-./target/release/ravel-spike-m3-profiling-overhead
-'''
-
-[tasks."ravel:measure-outward-crossing"]
-description = "Measure the three ways a mod's game action could reach the running game."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because the quantity measured is a boundary crossing and a
-# debug build would measure the profile rather than the crossing.
-cargo build --locked --release -p ravel-spike-m6-outward-crossing
-./target/release/ravel-spike-m6-outward-crossing
-'''
-
-[tasks."ravel:verify-budget"]
-description = "Compare the recorded runs against the regression budget."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Every recorded run at once, because the budget spans more than one
-# record and no single run measures all of it. A limit that no run
-# measured is a violation, which is what keeps a metric from being
-# dropped and read as having passed.
-cargo run --locked -p ravel-xtask -- verify budget \
-  evidence/m2/loader-overhead.json \
-  evidence/m3/profiling-overhead.json
-'''
-
-[tasks."ravel:measure-pack-compile"]
-description = "Measure what a pack-sized set of realistic mods costs to compile."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because the figures describe what a player's machine would
-# actually build, and the generated packs are built in release too.
-cargo build --locked --release -p ravel-spike-m3-pack-compile
-./target/release/ravel-spike-m3-pack-compile
-'''
-
-[tasks."ravel:measure-pack-compile-variants"]
-description = "Measure the four-core, dependency-graph, and link-time pack compile variants."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Splices into the record the curve wrote, so that record has to exist
-# and its numbers are left exactly as they were measured.
-cargo build --locked --release -p ravel-spike-m3-pack-compile
-./target/release/ravel-spike-m3-pack-compile --variants
 '''
 
 [tasks."ravel:verify-stack"]
@@ -602,50 +505,32 @@ cargo run --locked -p ravel-xtask -- verify milestone "${1^^}"
 [tasks."ravel:fixture-reconstruct"]
 description = "Reconstruct the pinned fixture under the ignored local boundary."
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-cargo run --locked -p ravel-cli -- fixture reconstruct
-'''
+command = "cargo"
+args = [
+  "run",
+  "--locked",
+  "-p",
+  "ravel-xtask",
+  "--",
+  "fixture",
+  "reconstruct",
+  "${@}",
+]
 
 [tasks."ravel:fixture-verify"]
 description = "Verify pinned fixture versions, counts, and hashes."
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-cargo run --locked -p ravel-cli -- fixture verify
-'''
-
-[tasks."ravel:baseline"]
-description = "Validate a named performance profile and its dry-run contract."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-set -- initial dry-run
-if [[ "$#" -ne 2 || "$1" != "initial" || "$2" != "dry-run" ]]; then
-  echo "usage: ravel-baseline initial dry-run" >&2
-  echo "native capture remains an operator-run procedure" >&2
-  exit 2
-fi
-
-taplo format --check tests/performance/profiles/initial.toml
-check-jsonschema --schemafile schemas/performance-collector.schema.json \
-  tests/performance/fixtures/collector-dry-run.json
-check-jsonschema --schemafile schemas/performance-result.schema.json \
-  tests/performance/fixtures/result-dry-run.json
-jq --exit-status \
-  '.captureMode == "dry-run" and .profile.id == "initial" and .profile.version == 3' \
-  tests/performance/fixtures/collector-dry-run.json >/dev/null
-jq --exit-status \
-  '.captureMode == "dry-run" and .profile.id == "initial" and .profile.version == 3' \
-  tests/performance/fixtures/result-dry-run.json >/dev/null
-'''
+command = "cargo"
+args = [
+  "run",
+  "--locked",
+  "-p",
+  "ravel-xtask",
+  "--",
+  "fixture",
+  "verify",
+  "${@}",
+]
 
 [tasks."ravel:verify"]
 # Sequential dependencies preserve the shared generated-Java tree and verdict ordering.
@@ -663,40 +548,24 @@ dependencies = [
   "ravel:verify-java",
   "ravel:verify-jvm",
   "ravel:verify-gate-versions",
-  "ravel:verify-budget",
+  "ravel:registry-verify",
   "ravel:verify-stack",
 ]
 
-[tasks."ravel:tracy"]
-description = "Build Tracy 0.13.1 with frame CSV export."
+[tasks."ravel:host-build"]
+description = "Build an instance host from its installed packages."
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-root="${CARGO_MAKE_WORKING_DIRECTORY}"
-tools="$root/target/tools/tracy"
-source="$tools/source"
-patch="$root/tests/performance/collectors/tracy-csvexport-frames.patch"
-patch_hash="$(sha256sum "$patch")"
-source_key="0.13.1:${patch_hash%% *}"
-mkdir -p "$tools/bin"
-if [[ "$(cat "$source/.ravel-patched" 2>/dev/null || true)" != "$source_key" ]]; then
-  archive="$(mktemp)"
-  trap 'rm -f "$archive"' EXIT
-  curl --fail --location --retry 3 \
-    https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz -o "$archive"
-  echo "d4efc50ebcb0bfcfdbba148995aeb75044c0d80f5d91223aebfaa8fa9e563d2b  $archive" | sha256sum --check
-  rm -rf "$source"
-  mkdir -p "$source"
-  tar -xzf "$archive" --strip-components=1 -C "$source"
-  git -C "$source" apply "$patch"
-  printf '%s\n' "$source_key" > "$source/.ravel-patched"
-fi
-for tool in capture csvexport; do
-  # Command-line tools need no native file picker or its desktop dependencies.
-  cmake -S "$source/$tool" -B "$tools/build-$tool" \
-    -DCMAKE_BUILD_TYPE=Release -DNO_FILESELECTOR=ON
-  cmake --build "$tools/build-$tool" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-$(getconf _NPROCESSORS_ONLN)}"
-  install -m755 "$tools/build-$tool/tracy-$tool" "$tools/bin/tracy-$tool"
-done
-'''
+command = "cargo"
+args = ["run", "--locked", "-p", "ravel-xtask", "--", "host", "build", "${@}"]
+
+[tasks."ravel:registry-verify"]
+description = "Verify the in-repository registry counterparts and contracts."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+command = "bash"
+args = ["registry/checks/verify.sh"]
+
+[tasks."ravel:registry-verify-fixture"]
+description = "Verify registry contracts including local fixture evidence."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+command = "bash"
+args = ["registry/checks/verify.sh", "--fixture"]

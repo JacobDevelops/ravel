@@ -1,0 +1,69 @@
+{
+  "attribution": [],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "reviewedAt": null,
+    "reviewedBy": "unreviewed; this record and specifications/m6-foundation/RVL-053.md were produced by a single hand in one pass, no independent review. The specification's confidence markers and coverage statement stand in for the absent second reader and are weaker than one.",
+    "status": "private-only",
+    "notes": "The read source lives only in the public repository's ignored fixture tree and is not tracked. The specification is tracked at specifications/m6-foundation/RVL-053.md. Neither is publishable while the names surface is unresolved."
+  },
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Read at the source; reading and reimplementing permitted. The specification and implementation carry no upstream identifier, which checks/verify-counterparts.sh identifier rules were run over."
+    },
+    {
+      "surface": "behaviour",
+      "status": "cleared",
+      "basis": "The inventory records sourceUse as permitted for this entry."
+    },
+    {
+      "surface": "names",
+      "status": "unresolved",
+      "basis": "No trademark grant; the original's name and content identifiers remain unresolved. The specification and counterpart name nothing after the original."
+    },
+    {
+      "surface": "textures",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "models",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "sounds",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "branding",
+      "status": "not-applicable"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-08-29T00:00:00Z",
+      "category": "source-code",
+      "locator": "pinned modpack artifact, read into the public repository's ignored fixture tree",
+      "producedBy": "M6-W4 reader (single pass)",
+      "revision": "as pinned by the ATM11 0.2.1 inventory",
+      "use": "Read to write specifications/m6-foundation/RVL-053.md. Binary files were not read as behaviour."
+    },
+    {
+      "accessedAt": "2026-08-29T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm11-0.2.1/plans.json",
+      "producedBy": "M5 inventory",
+      "revision": "as frozen by M5",
+      "use": "The claim this record checks: sourceUse permitted, method source-informed-reimplementation. Confirmed."
+    }
+  ],
+  "subject": {
+    "id": "RVL-053",
+    "kind": "other",
+    "originalAuthor": "see attribution",
+    "originalProject": "a tiered personal storage-drive mod",
+    "version": "artifact 4.2.1-beta for the pinned pack"
+  }
+}

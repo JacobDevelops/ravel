@@ -1,0 +1,17 @@
+slot	absent	integer	long	short	boolean	text	stack	compound
+exactly:absent	yes	no	no	no	no	no	no	no
+optional:absent	yes	no	no	no	no	no	no	no
+exactly:integer	no	yes	no	no	no	no	no	no
+optional:integer	yes	yes	no	no	no	no	no	no
+exactly:long	no	no	yes	no	no	no	no	no
+optional:long	yes	no	yes	no	no	no	no	no
+exactly:short	no	no	no	yes	no	no	no	no
+optional:short	yes	no	no	yes	no	no	no	no
+exactly:boolean	no	no	no	no	yes	no	no	no
+optional:boolean	yes	no	no	no	yes	no	no	no
+exactly:text	no	no	no	no	no	yes	no	no
+optional:text	yes	no	no	no	no	yes	no	no
+exactly:stack	no	no	no	no	no	no	yes	no
+optional:stack	yes	no	no	no	no	no	yes	no
+exactly:compound	no	no	no	no	no	no	no	yes
+optional:compound	yes	no	no	no	no	no	no	yes

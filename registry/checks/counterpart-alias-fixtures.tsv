@@ -1,0 +1,11 @@
+# name	verdict	required diagnostic
+clean	pass	valid package-root alias source is sanitized only after exact evidence
+unknown-key	fail	has a malformed aliases.json
+malformed-id	fail	has a malformed aliases.json
+duplicate-source	fail	has a malformed aliases.json
+duplicate-target	fail	has a malformed aliases.json
+wrong-canonical	fail	aliases.json names RVL-191 instead of RVL-190
+missing-evidence	fail	without an exact save-compatibility requirement
+negative-evidence	fail	without an exact save-compatibility requirement
+nested-aliases	fail	carries an upstream identifier: cyclopscore
+newline-filename	fail	carries an upstream identifier: cyclopscore

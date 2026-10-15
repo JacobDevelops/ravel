@@ -1,0 +1,14 @@
+contract	direction	version
+rvl_120_counterpart:screen_data_in	to-server	1
+rvl_120_counterpart:screen_data_out	to-client	1
+rvl_120_counterpart:style_choice	to-server	1
+rvl_120_counterpart:manual_request	to-server	1
+rvl_120_counterpart:list_request	to-server	1
+rvl_120_counterpart:typed_command	to-server	1
+rvl_120_counterpart:global_command	to-server	1
+rvl_120_counterpart:data_request	to-server	1
+rvl_120_counterpart:preferences	to-client	1
+rvl_120_counterpart:screen_values	to-client	1
+rvl_120_counterpart:command_result	to-client	1
+rvl_120_counterpart:global_client_command	to-client	1
+rvl_120_counterpart:requested_data	to-client	1

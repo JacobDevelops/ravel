@@ -1,0 +1,69 @@
+{
+  "attribution": [],
+  "implementationMethod": "source-informed",
+  "publication": {
+    "reviewedAt": null,
+    "reviewedBy": "unreviewed; produced by a single hand in one pass, no independent review; the specification's confidence markers stand in for the absent second reader.",
+    "status": "private-only",
+    "notes": "Read source in the ignored fixture tree; specification tracked at specifications/m6-foundation/RVL-089.md; not publishable while names unresolved."
+  },
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Read at source; reimplementation permitted; no upstream identifier carried, verified by checks/verify-counterparts.sh identifier rules."
+    },
+    {
+      "surface": "behaviour",
+      "status": "cleared",
+      "basis": "sourceUse permitted per inventory."
+    },
+    {
+      "surface": "names",
+      "status": "unresolved",
+      "basis": "No trademark grant; nothing named after the original."
+    },
+    {
+      "surface": "textures",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "models",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "sounds",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "branding",
+      "status": "not-applicable"
+    }
+  ],
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "accessedAt": "2026-08-29T00:00:00Z",
+      "category": "source-code",
+      "locator": "pinned modpack artifact, read into the ignored fixture tree",
+      "producedBy": "M6-W4 reader (single pass)",
+      "revision": "as pinned by the ATM11 0.2.1 inventory",
+      "use": "Read to write specifications/m6-foundation/RVL-089.md."
+    },
+    {
+      "accessedAt": "2026-08-29T00:00:00Z",
+      "category": "metadata",
+      "locator": "inventory/atm11-0.2.1/plans.json",
+      "producedBy": "M5 inventory",
+      "revision": "as frozen by M5",
+      "use": "Confirms sourceUse permitted, source-informed method."
+    }
+  ],
+  "subject": {
+    "id": "RVL-089",
+    "kind": "other",
+    "originalAuthor": "see attribution",
+    "originalProject": "a toast-notification filter",
+    "version": "as pinned"
+  }
+}

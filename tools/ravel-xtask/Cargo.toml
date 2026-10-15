@@ -8,10 +8,11 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-# The digest subcommand hashes a package the way the loader hashes one, by asking
-# the loader's own verifier rather than by holding a second opinion about what a
-# package's digest is.
 ravel-package.workspace = true
+ravel-build.workspace = true
+ravel-loader.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
 

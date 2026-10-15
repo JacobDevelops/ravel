@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_086_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-086 Counterpart",
+  "description": "Ravel counterpart for RVL-086: the client-presentation cluster's leaf, its crafting-grid repair, its tool refusals and its one item-level value.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "b5382fb5593daed2f9379c70c69afbe9f8ffa4eba168cd6469c78484127f36bc"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "829d816061931249b2ad87e919749f760bebfed24a8cc60e2239c94a750b257b"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "40002aaf64d22750ce650bd059dfd41b81d01cc7443d83ec9bcc18c526c3b58a"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "f3c4961e260113b43b1df6d19cd02f488d3e62c6b0b19a868c6d1f1d819b2a20"
+      },
+      {
+        "path": "generated/census.json",
+        "sha256": "e10704fd64ce425dc81e32eddcb825e2cdf798561212769a4ccabfd4c5c7762d"
+      },
+      {
+        "path": "generated/refusal.txt",
+        "sha256": "a159f5370b3d71fae9f34b97225058ba4a65b310249a11fe9c2095b104b66732"
+      },
+      {
+        "path": "generated/settings.txt",
+        "sha256": "8f0b5a13b29f818cb1b2280cebecd7541dcac82842821e35099a619fad8b029d"
+      },
+      {
+        "path": "src/attractor.rs",
+        "sha256": "72a7c62b4e63226688fc74fbef554b9b852d4c90de07a773b949d553ed4c6414"
+      },
+      {
+        "path": "src/census.rs",
+        "sha256": "93bc9be32362d199f4dec3662e67d17fc2714b8d411c3f10317b7e31498a879e"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "da2297b14a8c304415d4b9599caad27ae49bdf6d74e0ed8d147c717c2cce29ac"
+      },
+      {
+        "path": "src/effects.rs",
+        "sha256": "dd71b57a2fe69da0bb6ae697eaa73b9ecdfa65cd9f675bb3b622234ac5bf0da9"
+      },
+      {
+        "path": "src/harvest.rs",
+        "sha256": "5880617696fb6fb5cd857a9adfbe53b94e450e2165f40057d0ec2f137fe419b5"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "2602eb12db8a5e3c84a6ab53879947cdbd11dc20b53643e89ebbd245a73fc11e"
+      },
+      {
+        "path": "src/matching.rs",
+        "sha256": "d818cc00ea268db0cc385982e87d24127950435cce24f6a16836d28f80ab97c9"
+      },
+      {
+        "path": "src/overrides.rs",
+        "sha256": "80eec0c5636d770b931b0407ce5eecbb780ceb93e37b84d0c116467fdd5adb94"
+      },
+      {
+        "path": "src/refusal.rs",
+        "sha256": "d738c110fabff5195f797223087b244eb40f31d1e55902c24e5ae693dafc48e9"
+      },
+      {
+        "path": "src/repair.rs",
+        "sha256": "bc8ad3047a26545d9607e0489900fbbacdb2c32cf1b3573876b9fc42ab9a8c44"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "0b32e23548cb5ac5b8e80c69ccd81c6de6324dd2b6742e64b0dc31d0941382d1"
+      },
+      {
+        "path": "src/tooltip.rs",
+        "sha256": "291caedd7ab7a695519738896c3c984dff91291ebc651091cd10052e1dc95e50"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "7d2507fcc423de4836dbe639e62c5c41fca5d7c35f79bc6b89799e5ada8bbe96"
+  }
+}

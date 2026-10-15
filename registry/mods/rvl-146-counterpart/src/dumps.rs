@@ -1,0 +1,138 @@
+//! The generated documents this package writes into `generated/`.
+//!
+//! Nothing here holds data of its own. Each document is rendered from the
+//! functions the rest of the crate already exposes, so a change to the wire
+//! format or to what a slot admits shows up as a changed document rather than
+//! as a stale one. [`documents`] returns every document as a package-relative
+//! path and its rendered text, and the inline test below rebuilds the whole set
+//! and compares it against the bytes on disk.
+//!
+//! Every document is tab-separated, is ordered by the crate's own listing order
+//! rather than by anything the renderer chooses, and ends with a newline.
+
+use std::fmt::Write as _;
+
+use crate::menus::Slot;
+use crate::transport::{Action, Argument, ArgumentKind, TagNumbering, write};
+
+/// The one argument value each kind is tabulated with.
+///
+/// The value is immaterial to both tables — a slot reads the kind alone, and the
+/// encoding table is about the shape a kind occupies rather than about a
+/// payload — so each is the smallest value that exercises its field.
+fn sample(kind: ArgumentKind) -> Argument {
+    match kind {
+        ArgumentKind::Absent => Argument::Absent,
+        ArgumentKind::Integer => Argument::Integer(-1),
+        ArgumentKind::Long => Argument::Long(-1),
+        ArgumentKind::Short => Argument::Short(-1),
+        ArgumentKind::Boolean => Argument::Boolean(true),
+        ArgumentKind::Text => Argument::Text("ab".to_owned()),
+        ArgumentKind::Stack => Argument::Stack(vec![0x0a, 0x00]),
+        ArgumentKind::Compound => Argument::Compound(vec![0x0a, 0x00]),
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut rendered = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(rendered, "{byte:02x}");
+    }
+    rendered
+}
+
+/// Renders the wire table: what each of the eight argument kinds is called, the
+/// tag it travels as under the placeholder numbering, whether that numbering
+/// reads the tag back as the same kind, and the body a one-argument action
+/// carrying it occupies.
+#[must_use]
+pub fn wire_table() -> String {
+    let numbering = TagNumbering::placeholder();
+    let mut rendered = String::from("kind\ttag\treverse\tbytes\tbody\n");
+    for kind in ArgumentKind::ALL {
+        let tag = numbering.number(kind);
+        let reverse = numbering.kind(tag).map_or("-", ArgumentKind::as_str);
+        let action = Action::carrying("a", vec![sample(kind)]);
+        let body = write(&action, &numbering);
+        let (length, encoded) = body.as_ref().map_or_else(
+            |refused| (0, format!("refused: {refused}")),
+            |bytes| (bytes.len(), hex(bytes)),
+        );
+        let _ = writeln!(
+            rendered,
+            "{}\t{tag}\t{reverse}\t{length}\t{encoded}",
+            kind.as_str()
+        );
+    }
+    rendered
+}
+
+/// Renders the slot table: every slot this package can express, against every
+/// argument kind, saying which arguments the slot admits.
+///
+/// Both axes are the crate's own exhaustive listings, so the table is the whole
+/// of the admittance relation and not a sample of it.
+#[must_use]
+pub fn slot_table() -> String {
+    let mut rendered = String::from("slot");
+    for kind in ArgumentKind::ALL {
+        rendered.push('\t');
+        rendered.push_str(kind.as_str());
+    }
+    rendered.push('\n');
+    for kind in ArgumentKind::ALL {
+        for (form, slot) in [
+            ("exactly", Slot::Exactly(kind)),
+            ("optional", Slot::Optional(kind)),
+        ] {
+            let _ = write!(rendered, "{form}:{}", kind.as_str());
+            for offered in ArgumentKind::ALL {
+                rendered.push('\t');
+                rendered.push_str(if slot.admits(&sample(offered)) {
+                    "yes"
+                } else {
+                    "no"
+                });
+            }
+            rendered.push('\n');
+        }
+    }
+    rendered
+}
+
+/// Every generated document, as a package-relative path and its rendered text.
+#[must_use]
+pub fn documents() -> Vec<(&'static str, String)> {
+    vec![
+        ("generated/slots.txt", slot_table()),
+        ("generated/transport.txt", wire_table()),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::documents;
+    use std::{env, fs, path::Path};
+
+    #[test]
+    fn the_generated_documents_regenerate_byte_for_byte() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let regenerating = env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
+        for (relative, rendered) in documents() {
+            assert!(
+                rendered.ends_with('\n'),
+                "{relative} does not end with a newline"
+            );
+            let path = root.join(relative);
+            if regenerating {
+                let parent = path.parent().expect("a document sits in a directory");
+                fs::create_dir_all(parent).expect("the generated directory is writable");
+                fs::write(&path, rendered.as_bytes()).expect("the document is writable");
+            } else {
+                let on_disk = fs::read_to_string(&path)
+                    .unwrap_or_else(|error| panic!("{relative} could not be read: {error}"));
+                assert_eq!(on_disk, rendered, "{relative} has drifted from the crate");
+            }
+        }
+    }
+}

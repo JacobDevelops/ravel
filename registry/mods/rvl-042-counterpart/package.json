@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "id": "rvl_042_counterpart",
+  "version": "0.1.0",
+  "displayName": "RVL-042 Counterpart",
+  "description": "Ravel counterpart for RVL-042: the wave's shared library of flags, tag selection, persistence and arithmetic.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "1.21.1"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [],
+  "authors": [
+    {
+      "name": "Ravel registry maintainers"
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "repository": "urn:ravel-registry:source",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "1d7f45e0e180df356ac61a0cab4a19fa3247a9d03024780519c312ad8e3cc972"
+      },
+      {
+        "path": "NOTES.md",
+        "sha256": "15e2e13e16fd19f22edb546ba32ef324aa00a83d7354641023676ec13f082157"
+      },
+      {
+        "path": "aliases.json",
+        "sha256": "f72c5f7d64718cd834e0928a2873fa39d704cf4d3a1cbb46029ef9dc03a13a9b"
+      },
+      {
+        "path": "assets-provenance.json",
+        "sha256": "118968fe6b63310642220d277bd058b7b045ea05a026c1b4393eeb811b7abb99"
+      },
+      {
+        "path": "generated/geometry.txt",
+        "sha256": "176fbcb992961edc1865ba0c94a9191ace033d098cac24fdcf7b50f1e7ba9138"
+      },
+      {
+        "path": "generated/reusable.txt",
+        "sha256": "3537caf76a134e700f576c005cdec0c84f2f3c47a5fa6d120070e50e05626732"
+      },
+      {
+        "path": "generated/settings.json",
+        "sha256": "29872bfc017b3170ff9fa1d77a331b2388e7c7c9d0b6996032adc42b44e5c941"
+      },
+      {
+        "path": "src/arithmetic.rs",
+        "sha256": "4141513165a571577f16669f53e8ba080ac6a0df38f9912c500e041e9a501368"
+      },
+      {
+        "path": "src/dumps.rs",
+        "sha256": "79a1c4a49d62d8ec4b71aca96cea737fcbb798b38b0ccdfea6b113d271c66e37"
+      },
+      {
+        "path": "src/flags.rs",
+        "sha256": "1157b041fef8497350a80394d81433ddd4b2d4c745ecf12be6c45a9ef6699ca1"
+      },
+      {
+        "path": "src/inventory.rs",
+        "sha256": "94f1afbd5e8f4e345b5dd1b488d0ef752b791cabebec28479762dbcb83a614be"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "8c5617d92b95599f3d2e6705c08ee625acb50c86e6eb8f79ce5ad80f9023e0b0"
+      },
+      {
+        "path": "src/reusable.rs",
+        "sha256": "149a9b755cc2db6a5e6d77de0e9b39d932fce801945071b07f4979e862da48f5"
+      },
+      {
+        "path": "src/selection.rs",
+        "sha256": "d971e0798dfa7bb1246eed9004d66f43febaa9242a0f7bea14655369674a8534"
+      },
+      {
+        "path": "src/settings.rs",
+        "sha256": "50591fbf8ebea07ca7bd6ca55d06b14ae74c9d506eed114bf3660b575d1307c3"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "dbb2a46a2a0a2a892533564f745cf246c70c6603aed804e59070886152b1ff23"
+  }
+}

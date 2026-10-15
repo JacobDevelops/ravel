@@ -339,19 +339,17 @@ general desktop automation.
 The system validator imports `yaml`, which is not guaranteed to exist in the
 ambient Python. Run
 `.agents/skills/capture-ravel-evidence/scripts/validate.sh`; it supplies PyYAML
-through an ephemeral Nix Python environment. A plain
-`nix shell nixpkgs#python3Packages.pyyaml` is insufficient because it does not
-place the module on that shell's Python import path.
+through `uv run --with pyyaml python` in an ephemeral Python environment.
 
 The system `generate_openai_yaml.py` helper has the same import requirement.
-Run it through `nix-shell -p 'python3.withPackages (packages:
-[ packages.pyyaml ])' --run ...`, and shell-quote every `--interface` value so
+Run it through `uv run --with pyyaml python /path/to/generate_openai_yaml.py`,
+and shell-quote every `--interface` value so
 the literal `$capture-ravel-evidence` in `default_prompt` is not expanded.
 
 ## Coverage gate hides the measured percentage
 
-If `devenv tasks run ravel:verify` or `ravel:coverage` reports only an execution
-failure after all tests pass, expose the workspace line result directly:
+If `cargo make ravel:verify` or `cargo make ravel:coverage` needs a more
+focused coverage summary, expose the workspace line result directly:
 
 ```console
 cargo llvm-cov nextest --workspace --all-features --summary-only

@@ -118,31 +118,26 @@ const MILESTONE_MANIFESTS: &[(&str, &str)] = &[
 const ROOT_FILES: &[&str] = &[
     ".cargo/config.toml",
     ".config/nextest.toml",
-    ".envrc",
+    ".github/workflows/ci.yml",
     ".gitignore",
     ".markdownlint.yaml",
-    ".tangled/workflows/ci.yml",
     "AGENTS.md",
     "CLAUDE.md",
     "Cargo.lock",
     "Cargo.toml",
     "LICENSE-APACHE",
     "LICENSE-MIT",
+    "Makefile.toml",
     "README.md",
     "ROADMAP.md",
     "SPEC.md",
     "deny.toml",
-    "devenv.lock",
-    "devenv.nix",
-    "devenv.yaml",
     "docs/architecture/m1-measurement-gate.md",
     "docs/decisions/README.md",
     "evidence/m1/README.md",
     "evidence/m2/README.md",
     "docs/runbooks/darwin-verification.md",
     "experiments/README.md",
-    "flake.lock",
-    "flake.nix",
     "jvm/README.md",
     "jvm/bootstrap/dev/ravel/jvm/Agent.java",
     "jvm/bootstrap/dev/ravel/jvm/HookTarget.java",
@@ -159,10 +154,7 @@ const ROOT_FILES: &[&str] = &[
     "jvm/screen/template/RavelSettingsScreen.java.in",
     "jvm/screen/template/Wire.java.in",
     "minecraft/README.md",
-    "nix/ci.nix",
-    "nix/common.nix",
-    "nix/darwin.nix",
-    "nix/linux.nix",
+    "mise.toml",
     "rust-toolchain.toml",
     "rustfmt.toml",
     "schemas/configuration-override.schema.json",
@@ -2246,10 +2238,8 @@ fn verify_hook_name_literals(
 
 /// Where the shape check records the versions it held the transformer to.
 ///
-/// `devenv tasks run` shows neither stdout nor stderr of a task that succeeds,
-/// so a check that speaks only by printing is invisible in the gate that runs
-/// it. The file is the fact, and it is written from the versions that held
-/// rather than from the versions that were opened.
+/// A persistent record survives task runners that hide successful task output.
+/// It records the versions that held rather than merely the versions opened.
 const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
 
 /// Where in a target's parameter list one of the transformer's loads sits.
@@ -3397,7 +3387,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
 /// The closure rules that do not turn on a review verdict.
 ///
 /// `ravel:verify` is what `AGENTS.md` tells every agent to run, and it ran no
-/// milestone closure rule at all: `ravel:verify-milestone:*` was a separate,
+/// milestone closure rule at all: `ravel:verify-milestone m<N>` was a separate,
 /// opt-in task, so `revision.changeId` provenance, schema conformance and the
 /// recorded arithmetic were checked only by whoever thought to ask. Moving the
 /// whole of closure into `ravel:verify` was not available, because M1, M2 and M3
@@ -5399,7 +5389,7 @@ const MANIFEST_INVARIANTS: &[(&str, &str)] = &[
 
 /// The closure rules only the independent review's verdict can decide.
 ///
-/// These stay in `ravel:verify-milestone:*`. M1, M2 and M3 record
+/// These stay in `ravel:verify-milestone m<N>`. M1, M2 and M3 record
 /// `review.result: "fail"`, which is a true statement about three open milestones
 /// rather than a broken repository, so `ravel:verify` cannot ask them and keep
 /// exiting zero — and greening them to make it possible would be the failure this
@@ -6164,12 +6154,13 @@ fn files_named(root: &Path, directory: &str, extension: &str) -> BTreeSet<String
 }
 
 /// The file that declares what `ravel:verify` runs, and the name of that gate.
-const GATE_DEFINITION: &str = "nix/common.nix";
+const GATE_DEFINITION: &str = "Makefile.toml";
 
 /// The record that lists the processes that gate ran.
 const M4_PROCESS_MATRIX: &str = "evidence/m4/linux-process-matrix.json";
 
 /// The prefix every row's command carries, and the whole of what makes it a task.
+// M4's frozen process matrix records devenv commands, not today's task runner.
 const TASK_COMMAND_PREFIX: &str = "devenv tasks run ";
 
 /// Reconciles the recorded gate processes against the gate that ran them.
@@ -6182,7 +6173,7 @@ const TASK_COMMAND_PREFIX: &str = "devenv tasks run ";
 /// nobody recomputes is a claim about the tree that the tree never answered — and
 /// the process list is the one an entire milestone's gate evidence rests on.
 ///
-/// So the list is compared against `nix/common.nix`'s own `after` list in both
+/// So the list is compared against `Makefile.toml`'s own `dependencies` list in both
 /// directions. A recorded process the gate does not run is an error, because that
 /// is a row whose exit status came from somewhere other than the run the record
 /// heads. A gate sub-task with no recorded row is an error too, because the
@@ -6246,36 +6237,35 @@ fn verify_m4_process_matrix(root: &Path, violations: &mut Vec<String>) {
     verify_recorded_exit_statuses(&record, violations);
 }
 
-/// Every sub-task `ravel:verify` declares in its `after` list.
+/// Every sub-task `ravel:verify` declares in its `dependencies` list.
 fn gate_sub_tasks(root: &Path) -> Result<BTreeSet<String>, String> {
     let source = fs::read_to_string(root.join(GATE_DEFINITION))
         .map_err(|error| format!("cannot read {GATE_DEFINITION}: {error}"))?;
+    let parsed = toml::from_str::<toml::Table>(&source)
+        .map_err(|error| format!("cannot parse {GATE_DEFINITION} as TOML: {error}"))?;
+    let dependencies = parsed
+        .get("tasks")
+        .and_then(|tasks| tasks.get("ravel:verify"))
+        .and_then(|gate| gate.get("dependencies"))
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| {
+            format!("{GATE_DEFINITION} must declare a dependencies array for ravel:verify")
+        })?;
     let mut names = BTreeSet::new();
-    let mut inside_gate = false;
-    let mut inside_list = false;
-    for line in source.lines().map(str::trim) {
-        if line.starts_with("\"ravel:verify\" =") {
-            inside_gate = true;
-            continue;
-        }
-        if !inside_gate {
-            continue;
-        }
-        if !inside_list {
-            inside_list = line.starts_with("after = [");
-            continue;
-        }
-        if line.starts_with(']') {
-            break;
-        }
-        let name = line.trim_matches('"');
-        if !name.is_empty() {
-            names.insert(name.to_owned());
-        }
+    for dependency in dependencies {
+        let name = dependency
+            .as_str()
+            .filter(|name| !name.trim().is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "{GATE_DEFINITION} ravel:verify dependencies must be nonempty task-name strings"
+                )
+            })?;
+        names.insert(name.to_owned());
     }
     if names.is_empty() {
         return Err(format!(
-            "{GATE_DEFINITION} states no after list for ravel:verify, so nothing says which \
+            "{GATE_DEFINITION} states no dependencies for ravel:verify, so nothing says which \
              sub-tasks the gate runs and no record of them can be reconciled"
         ));
     }
@@ -7532,6 +7522,7 @@ fn verify_redaction(document: &Path, subject: &str, violations: &mut Vec<String>
         "access_token=",
         "accesstoken=",
         "minecraft_access_token=",
+        // Historical CI credentials remain sensitive after the task-runner cutover.
         "tangled_token=",
         "aws_secret_access_key=",
         "atp_app_password=",
@@ -8512,10 +8503,7 @@ fn collect_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             let name = entry.file_name();
-            if !matches!(
-                name.to_str(),
-                Some(".git" | ".jj" | ".devenv" | ".direnv" | "target")
-            ) {
+            if !matches!(name.to_str(), Some(".git" | ".jj" | "target")) {
                 collect_files(&path, files);
             }
         } else if path.is_file() {
@@ -8684,6 +8672,7 @@ fn has_credential_assignment(line: &str) -> bool {
     let Some((name, value)) = line.split_once('=') else {
         return false;
     };
+    // Keep detecting historical CI credentials in retained evidence and source.
     if !matches!(
         name.trim(),
         "ATP_APP_PASSWORD" | "AWS_SECRET_ACCESS_KEY" | "MINECRAFT_ACCESS_TOKEN" | "TANGLED_TOKEN"
@@ -11156,9 +11145,8 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// The shapes the sequences are written for, and the record that says which
-    /// version was actually held to them. `devenv tasks run` prints nothing for a
-    /// task that succeeds, so a check that only printed would pass invisibly.
+    /// The shapes the sequences are written for, and the persistent record that
+    /// says which version was actually held to them, independent of task output.
     #[test]
     fn the_shapes_the_transformer_injects_against_are_recorded_by_version() {
         let root = seam_root("transformer-shape-held", &declared_seams());
@@ -11872,19 +11860,17 @@ mod tests {
     /// A root holding a gate definition that runs `tasks`, and one matrix record.
     fn process_matrix_root(label: &str, tasks: &[&str], matrix: &str) -> PathBuf {
         let root = temporary_root(label);
-        let mut after = String::new();
+        let mut dependencies = String::with_capacity(tasks.iter().map(|task| task.len() + 8).sum());
         for task in tasks {
-            after.push_str("          \"");
-            after.push_str(task);
-            after.push_str("\"\n");
+            dependencies.push_str("    \"");
+            dependencies.push_str(task);
+            dependencies.push_str("\",\n");
         }
-        fs::create_dir_all(root.join("nix")).expect("directory should be creatable");
         fs::write(
             root.join(GATE_DEFINITION),
             format!(
-                "  tasks = {{\n    \"ravel:verify-scaffold\".exec = \"x\";\n\
-                 \n    \"ravel:verify\" = {{\n      after = [\n{after}      ];\n\
-                 \x20     exec = \"true\";\n    }};\n  }};\n"
+                "[tasks.\"ravel:verify-scaffold\"]\ncommand = \"x\"\n\
+                 \n[tasks.\"ravel:verify\"]\ndependencies = [\n{dependencies}]\n"
             ),
         )
         .expect("gate definition should be writable");
@@ -11893,6 +11879,49 @@ mod tests {
         fs::write(milestone.join("linux-process-matrix.json"), matrix)
             .expect("record should be writable");
         root
+    }
+
+    #[test]
+    fn gate_dependencies_accept_inline_arrays_and_ignore_other_tasks() {
+        let root = temporary_root("gate-inline-dependencies");
+        fs::write(
+            root.join(GATE_DEFINITION),
+            "[tasks.other]\ndependencies = ['ravel:outside']\n\
+             [tasks.\"ravel:verify\"]\n\
+             dependencies = ['ravel:fmt', \"ravel:audit\"] # the gate only\n",
+        )
+        .expect("gate definition should be writable");
+
+        let names = super::gate_sub_tasks(&root).expect("gate dependencies should parse");
+
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            ["ravel:audit", "ravel:fmt"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn unreadable_gate_dependency_lists_are_rejected() {
+        let root = temporary_root("gate-invalid-dependencies");
+        for source in [
+            "[tasks.\"ravel:verify\"\ndependencies = ['ravel:fmt']",
+            "[tasks.other]\ndependencies = ['ravel:fmt']",
+            "[tasks.\"ravel:verify\"]\ncommand = 'true'",
+            "[tasks.\"ravel:verify\"]\ndependencies = 'ravel:fmt'",
+            "[tasks.\"ravel:verify\"]\ndependencies = []",
+            "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', 1]",
+            "[tasks.\"ravel:verify\"]\ndependencies = ['ravel:fmt', '  ']",
+        ] {
+            fs::write(root.join(GATE_DEFINITION), source)
+                .expect("gate definition should be writable");
+
+            assert!(
+                super::gate_sub_tasks(&root).is_err(),
+                "invalid dependencies were accepted: {source}"
+            );
+        }
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     #[test]
@@ -11932,11 +11961,11 @@ mod tests {
             violations,
             [
                 "evidence/m4/linux-process-matrix.json records ravel:this-task-does-not-exist \
-                 under processes, which nix/common.nix does not list among the sub-tasks \
+                 under processes, which Makefile.toml does not list among the sub-tasks \
                  ravel:verify runs; a row the gate never ran took its exit status from somewhere \
                  the record does not name",
                 "evidence/m4/linux-process-matrix.json omits ravel:audit from processes, which \
-                 nix/common.nix lists among the sub-tasks ravel:verify runs; a gate process with \
+                 Makefile.toml lists among the sub-tasks ravel:verify runs; a gate process with \
                  no row is how a failing one leaves a record that still reads complete",
             ]
         );
@@ -11988,7 +12017,7 @@ mod tests {
             violations,
             [
                 "evidence/m4/linux-process-matrix.json records ravel:fmt under checksOutsideTheGate \
-                 while nix/common.nix lists it among the sub-tasks ravel:verify runs; that section \
+                 while Makefile.toml lists it among the sub-tasks ravel:verify runs; that section \
                  is for checks the gate does not run and is not a way out of the reconciliation"
             ]
         );

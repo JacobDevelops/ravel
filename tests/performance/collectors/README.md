@@ -195,9 +195,10 @@ the profile's complete warm-up, measurement, and cool-down phases. The command
 refuses to overwrite an existing trace, rejects an empty result, and rejects
 workspace-local output outside a repository ignore boundary.
 
-The devenv patches Tracy 0.13.1's `tracy-csvexport` with
-`tracy-csvexport-frames.patch`. Export and validate the two required named
-frame sets with:
+Run `cargo make ravel:tracy` once to build Tracy 0.13.1's capture and export
+tools with `tracy-csvexport-frames.patch`. mise adds their output directory,
+`target/tools/tracy/bin/`, to PATH. Export and validate the two required
+named frame sets with:
 
 ```console
 cargo run --locked -p ravel-cli -- \

@@ -150,8 +150,8 @@ create_button=unmeasured
 
 for tool in xdotool openbox import wmctrl xdpyinfo glxinfo Xvfb jq; do
 	command -v "$tool" >/dev/null || {
-		echo "missing $tool; provision it from nixpkgs (xdotool, openbox," \
-			"imagemagick, wmctrl, xorg.xdpyinfo, mesa-demos, xorg.xvfb, jq)" >&2
+		echo "missing $tool; install it with your system package manager (xdotool, openbox," \
+			"imagemagick, wmctrl, xdpyinfo, mesa-utils, xvfb, jq)" >&2
 		exit 1
 	}
 done
@@ -738,9 +738,9 @@ fi
 
 # --- the verdict ------------------------------------------------------------
 #
-# `devenv tasks run` shows neither stdout nor stderr for a task that succeeds, so
-# a proof that only prints is invisible where it matters. This writes the file on
-# success and never on start, the way ravel-test writes tested-versions.txt.
+# cargo-make prints task output, but an evidence record must survive the terminal.
+# This writes the file only on success, never on start, the way ravel:test writes
+# tested-versions.txt.
 
 [[ "$failed" == no ]] || {
 	echo "the headless proof did not hold; see $(printf '%s' "$verdicts" | sanitize)" >&2

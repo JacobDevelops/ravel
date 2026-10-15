@@ -1,7 +1,7 @@
 [toolchain]
-channel = "1.95.0"
+channel = "nightly"
 profile = "minimal"
-components = ["clippy", "llvm-tools-preview", "rust-analyzer", "rustfmt"]
+components = ["clippy", "llvm-tools", "rust-analyzer", "rustfmt"]
 targets = [
   "aarch64-apple-darwin",
   # ADG-2 measures a WebAssembly mod-execution candidate, which needs a guest

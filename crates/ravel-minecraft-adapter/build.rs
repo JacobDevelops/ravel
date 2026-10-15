@@ -32,7 +32,7 @@ fn main() {
     // Rewriting a lock happens here because the generator refuses to build
     // against a lock it has drifted from, so nothing that depends on this crate
     // could run the writer. Asking for it is an explicit environment variable
-    // and a devenv task rather than a flag some ordinary build could set.
+    // and a cargo-make task rather than a flag some ordinary build could set.
     // The version data may hold several versions; this build emits one. Where
     // it holds exactly one, nothing has to be set.
     let selected = match generate::selection(std::env::var_os(generate::SELECTION)) {

@@ -373,6 +373,7 @@ fn escaped_paths_and_credentials_in_arrays_are_rejected() {
 
 #[test]
 fn authorization_bearer_values_are_rejected() {
+    // This replacement targets the frozen M0 fixture's historical devenv command.
     let path = altered_complete_fixture(
         "devenv tasks run ravel:verify",
         "curl -H Authorization: Bearer synthetic-launcher-token",

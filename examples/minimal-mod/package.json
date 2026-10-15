@@ -22,7 +22,7 @@
   ],
   "license": "MIT OR Apache-2.0",
   "source": {
-    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "repository": "https://github.com/JacobDevelops/ravel",
     "files": [
       {
         "path": "Cargo.toml",

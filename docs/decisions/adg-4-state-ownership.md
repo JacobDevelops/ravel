@@ -30,7 +30,7 @@ Measured on `x86_64-linux`, hardware profile `linux-reference-v1`, through the
 JNI boundary ADG-1 selected. Reproduce with:
 
 ```console
-devenv tasks run ravel:spike-adg-4
+cargo make ravel:spike-adg-4
 ```
 
 Results live in [`evidence/m1/spikes/adg-4/`](../../evidence/m1/spikes/adg-4/)

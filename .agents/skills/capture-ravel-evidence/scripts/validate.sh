@@ -18,7 +18,4 @@ if [[ ! -f "$validator" ]]; then
   exit 0
 fi
 
-printf -v validation_command 'python3 %q %q' "$validator" "$skill_root"
-exec nix-shell \
-  -p 'python3.withPackages (packages: [ packages.pyyaml ])' \
-  --run "$validation_command"
+exec uv run --with pyyaml python "$validator" "$skill_root"

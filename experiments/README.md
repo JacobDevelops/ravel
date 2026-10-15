@@ -18,12 +18,12 @@ reason: it is an instrument, and instruments stay out of the production graph.
 | [`m2-loader-overhead`](m2-loader-overhead/) | M2-W8, ADG-2 | what the pre-world loader costs, and what a linked pack-sized set costs to build |
 | [`m3-pack-compile`](m3-pack-compile/) | ADG-2 | what a pack-sized set of mods with real bodies costs to compile, cold and cached |
 
-Each ADG experiment has a task: `devenv tasks run ravel:spike-adg-<n>`. None of
+Each ADG experiment has a task: `cargo make ravel:spike-adg-<n>`. None of
 them authenticates or launches the game. `m2-loader-overhead` belongs to a work
 package rather than a gate and runs as
-`devenv tasks run ravel:measure-loader-overhead`; it writes an M2 record instead
+`cargo make ravel:measure-loader-overhead`; it writes an M2 record instead
 of a spike result, because the budget it sets is not a candidate comparison.
-`m3-pack-compile` runs as `devenv tasks run ravel:measure-pack-compile` and
+`m3-pack-compile` runs as `cargo make ravel:measure-pack-compile` and
 writes an M3 record for the same reason: it prices one of ADG-2's two open
 mechanisms rather than comparing candidates.
 
@@ -40,7 +40,7 @@ harness can read `/proc` while the process is still alive. A missing metric is
 recorded as `unavailable` with a reason; it is never reported as zero.
 
 Results belong in `evidence/m1/spikes/adg-<n>/<candidate>.json` and are checked
-by `devenv tasks run ravel:verify-spikes`.
+by `cargo make ravel:verify-spikes`.
 
 ## Boundaries
 

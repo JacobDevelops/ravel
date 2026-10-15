@@ -43,8 +43,8 @@ probe_text="ravel nested probe"
 
 for tool in xdotool openbox import wmctrl xdpyinfo glxinfo Xephyr; do
   command -v "$tool" >/dev/null || {
-    echo "missing $tool; provision it from nixpkgs (xdotool, openbox," \
-      "imagemagick, wmctrl, xorg.xdpyinfo, mesa-demos, xorg.xorgserver)" >&2
+    echo "missing $tool; install it with your system package manager (xdotool, openbox," \
+      "imagemagick, wmctrl, xdpyinfo, mesa-utils, xorg-server)" >&2
     exit 1
   }
 done

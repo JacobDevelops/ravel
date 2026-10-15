@@ -4,7 +4,7 @@ What Ravel's pre-world loader costs on Linux, what a linked pack-sized set costs
 to build, and the numeric budget those measurements set for M3.
 
 ```console
-devenv tasks run ravel:measure-loader-overhead
+cargo make ravel:measure-loader-overhead
 ```
 
 It writes [`evidence/m2/loader-overhead.json`](../../evidence/m2/loader-overhead.json)

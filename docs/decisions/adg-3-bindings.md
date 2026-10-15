@@ -45,7 +45,7 @@ all. There is nothing to deobfuscate. What remains is who reads the jar.
 Measured on `x86_64-linux`, hardware profile `linux-reference-v1`. Reproduce with:
 
 ```console
-devenv tasks run ravel:spike-adg-3
+cargo make ravel:spike-adg-3
 ```
 
 Results live in [`evidence/m1/spikes/adg-3/`](../../evidence/m1/spikes/adg-3/)

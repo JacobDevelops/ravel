@@ -2,7 +2,7 @@
 
 Where the project actually is, as of 2026-09-03. `ROADMAP.md` is the dependency-ordered plan and
 `evidence/` records what each closed milestone measured; this file is the current state of play and the
-honest distance to the goal. It goes stale — trust `devenv tasks run ravel:verify-milestone:<id>` over
+honest distance to the goal. It goes stale — trust `cargo make ravel:verify-milestone <id>` over
 anything written here.
 
 ## The goal
@@ -298,10 +298,10 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
 
 ## Next
 
-- The JVM harness ran only at 26.1.2 until the per-version loop landed: `devenv tasks run` drops an
-  exported `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` had always taken the default, and run
-  directly at 1.21.1 the screen drivers fail to compile because the generated screens live in the
-  obfuscated package while the harness sources name them by Mojang name. Linked names themselves are
+- The JVM harness ran only at 26.1.2 until the per-version loop landed: the old task environment
+  dropped an exported `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` had always taken the default.
+  Run directly at 1.21.1, the screen drivers failed to compile because the generated screens lived in
+  the obfuscated package while the harness sources named them by Mojang name. Linked names themselves are
   covered: the generator resolves every declared reflected member through each version's mapping and
   requires the linked class file to declare it. What no gate has run is the `Members` lookup at
   runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
@@ -348,7 +348,7 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   the same way on a plain launch. The plain mods screen passed. Fixed: the wrap now goes through
   `StringSplitter.splitLines`, whose real return type is text on both versions, and the stub
   generator carries a collection member's element type from the class file's signature, so the
-  crashing mapping is now a compile error under `ravel-verify-java` wherever the 1.21.1 mapping is
+  crashing mapping is now a compile error under `ravel:verify-java` wherever the 1.21.1 mapping is
   present. Launch 20 (2026-09-03) closed both crashes: the notice draws and Profiling draws. But at the game's GUI
   scale the mods screen has six rows, so the notice showed one line of seven and the settings entry was cut,
   both counted in the summary. The row budget is now a scrolling list: the notice lines, the mod rows and the
@@ -461,8 +461,8 @@ Prefer the check that runs regardless of which path, which machine, and whether 
 reaches it. And prove a check by mutation: break its input and require a nonzero exit. A check nobody
 has seen fail is not a check.
 
-Note also that `devenv tasks run` shows neither stdout nor stderr for a task that succeeds, so anything
-that announces itself by printing is invisible where it matters. Write the fact to a file and fail
+The old task runner hid stdout and stderr for successful tasks. cargo-make prints task output,
+but a terminal message alone is still not durable evidence. Write the fact to a file and fail
 outright when nothing was verifiable.
 
 Write that record when the work *succeeds*, never when it starts. `ravel-test` recorded
@@ -472,9 +472,11 @@ layer down.
 
 ## Traps that cost real time
 
-- Setting `RAVEL_MINECRAFT_VERSION` as a prefix to `devenv shell` does nothing. devenv exports its own
-  `env` over what it inherits, silently, so a "successful" 1.21.1 build quietly builds 26.1.2. It has
-  to go inside: `devenv shell -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'`.
+- The old shell environment silently replaced an inherited `RAVEL_MINECRAFT_VERSION`, so a
+  "successful" 1.21.1 build could actually build 26.1.2. With mise activated, select the build directly:
+  `RAVEL_MINECRAFT_VERSION=1.21.1 cargo build`. Without activation, put the override inside the child:
+  `mise exec -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'`; prefixing `mise exec` itself
+  still lets its configured default replace the inherited value.
 - Generating 1.21.1 needs its published mapping, not just its jars — `generate::run` reads `client.txt`
   on every build under a translating source, lock path included. That file is untracked local material,
   so 1.21.1 is skipped on every machine but this one. Both new checks record the skip rather than

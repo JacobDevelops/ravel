@@ -1,11 +1,7 @@
 # Cargo and local build output
 /target/
-/result
-/result-*
 
-# devenv and editor state
-/.devenv/
-/.direnv/
+# Editor state
 .env
 .env.*
 !.env.example

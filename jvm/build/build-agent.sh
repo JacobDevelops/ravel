@@ -3,7 +3,7 @@
 # hook class.
 #
 # The jar is a build product and is never tracked. It is built here rather than
-# by a devenv task because it needs a JDK's `javac` and `jar`, which the pinned
+# by a cargo-make task because it needs a JDK's `javac` and `jar`, which the pinned
 # game runtime does not ship, and because nothing in the verify gate consumes it.
 set -euo pipefail
 

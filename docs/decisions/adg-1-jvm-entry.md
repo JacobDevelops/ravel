@@ -41,7 +41,7 @@ Measured on `x86_64-linux`, hardware profile `linux-reference-v1`, against the
 pinned Minecraft 26.1.2 client jar. Reproduce with:
 
 ```console
-devenv tasks run ravel:spike-adg-1
+cargo make ravel:spike-adg-1
 ```
 
 Results live in [`evidence/m1/spikes/adg-1/`](../../evidence/m1/spikes/adg-1/)

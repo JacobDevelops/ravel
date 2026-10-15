@@ -12,7 +12,7 @@ wiring and are not admissible M9 acceptance evidence.
 Run the cross-platform dry-run entry point with:
 
 ```console
-devenv tasks run ravel:baseline
+cargo make ravel:baseline
 ```
 
 The local task deliberately accepts only the `initial` profile in `dry-run`

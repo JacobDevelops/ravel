@@ -59,7 +59,7 @@ tracked `mappings.lock` when the jar is absent, and the transformer names no gam
 type, so it compiles without the game on its class path.
 
 The jar is never tracked — `.jar` is a forbidden tracked extension and
-`ravel-verify-scaffold` enforces it. It is built deterministically (fixed entry
+`ravel:verify-scaffold` enforces it. It is built deterministically (fixed entry
 timestamps, sorted entries) so its hash can be recorded as evidence.
 
 ## Launching with it
@@ -127,7 +127,7 @@ A launch is the only thing that proves Ravel reaches the official client, and
 provable without it, and `harness/` is where:
 
 ```console
-devenv tasks run ravel:verify-jvm
+cargo make ravel:verify-jvm
 ```
 
 That runs all four steps for every tracked version and is inside `ravel:verify`,

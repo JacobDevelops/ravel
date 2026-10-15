@@ -249,7 +249,7 @@ behaviour that already existed.
   done, kept because it is why the export is where it is. Nothing in the
   repository set `RAVEL_MINECRAFT_VERSION`, and nothing had to while one
   directory was tracked. From the moment a second one is, a plain `cargo build`,
-  `cargo test` and `devenv tasks run ravel:verify` each reach the refusal this
+  `cargo test` and `cargo make ravel:verify` each reach the refusal this
   record decided, so each entry point has to export a selection first. The sweep
   above being done did not do this and was not the place for it: it is a
   precondition of tracking a second directory, owed before

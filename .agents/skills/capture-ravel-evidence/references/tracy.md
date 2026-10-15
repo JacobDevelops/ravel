@@ -9,6 +9,9 @@
   `Server Tick` around each integrated-server tick.
 - The exporter omits continuous, unnamed, VSync, and incomplete frame events.
 
+Run `cargo make ravel:tracy` once before capture. It builds the patched tools
+in `target/tools/tracy/bin/`, which mise adds to PATH.
+
 ## Capture
 
 Start the capture collector independently of the game window:
@@ -52,15 +55,15 @@ Indices must begin at zero and remain contiguous within each frame set.
 
 - `patch: malformed patch`: regenerate the patch from the exact pinned source
   with `diff -u`; do not hand-count hunk lengths.
-- Patched tool still behaves like the previous build: refresh devenv's
-  evaluation cache before rebuilding or testing:
+- Patched tool still behaves like the previous build: rebuild it and check
+  that the command resolves to `target/tools/tracy/bin/`:
 
   ```console
-  devenv shell --refresh-eval-cache -- tracy-csvexport --help
+  cargo make ravel:tracy
+  command -v tracy-csvexport
+  tracy-csvexport --help
   ```
 
-  Without the refresh, devenv may reuse the derivation evaluated before the
-  patch changed.
 - `PRId64` compile failure: include `<inttypes.h>` in the patched C++ source.
 - No named frames: confirm Minecraft launched with `--tracy`, the capture
   attached before the measurement window, and export uses `--frames`.

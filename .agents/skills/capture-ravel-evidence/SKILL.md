@@ -138,7 +138,7 @@ recording, validating, or joining marker, Linux memory, or Tracy timestamps.
 - Compare requested duration with trace span and expected sample volume.
 - Reject partial, mismatched, unknown, or estimated data where the profile
   requires exact values.
-- Run the narrow tests during iteration and `devenv tasks run ravel:verify`
+- Run the narrow tests during iteration and `cargo make ravel:verify`
   before claiming a repository change is done.
 - Obtain an independent code review after nontrivial changes.
 

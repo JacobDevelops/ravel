@@ -29,7 +29,7 @@ maintenance obligation for as long as Ravel exists.
 Reproduce with:
 
 ```console
-devenv tasks run ravel:spike-adg-5
+cargo make ravel:spike-adg-5
 ```
 
 The result is in
@@ -92,7 +92,7 @@ gate:
 3. Point the runner at the launcher's output:
 
    ```console
-   devenv shell -- ./target/release/ravel-spike-adg-5-prism --launch-log <instance log>
+   ./target/release/ravel-spike-adg-5-prism --launch-log <instance log>
    ```
 
    It redacts the account's session arguments, records only the hash of the

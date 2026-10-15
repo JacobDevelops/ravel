@@ -12,9 +12,8 @@ the same pack costs on the Java mod ecosystem. Safe Rust mods compiled to native
 code are how it gets there.
 
 The canonical repository is
-[`tangled.org/jacobdevelops.tngl.sh/ravel`](https://tangled.org/jacobdevelops.tngl.sh/ravel).
-Continuous integration uses the Tangled Spindle workflow under
-`.tangled/workflows/`.
+[`github.com/JacobDevelops/ravel`](https://github.com/JacobDevelops/ravel).
+Continuous integration uses GitHub Actions in `.github/workflows/ci.yml`.
 
 The repository is at M3, the credible loader prototype. A milestone is closed
 when [`evidence/`](evidence/) holds its `manifest.json`, so that directory is
@@ -44,17 +43,12 @@ and [`examples/`](examples/) holds the worked mods.
 
 ## Development
 
-The fast development gate is:
+Run `mise install` once, then activate mise in your shell or prefix commands with
+`mise exec --`. Rustup provisions the undated nightly in `rust-toolchain.toml`.
+The development and CI gate is:
 
 ```console
-devenv tasks run ravel:verify
-```
-
-The full environment gate used by Tangled also builds the pinned devenv and
-flake checks:
-
-```console
-devenv tasks run ravel:verify-environment
+cargo make ravel:verify
 ```
 
 The underlying code checks can also be run individually:
@@ -68,7 +62,7 @@ cargo test --workspace --doc
 cargo deny check
 ```
 
-Tangled Spindles currently provide the Linux gate. M0 through M10 are
+GitHub Actions provides the Linux gate. M0 through M10 are
 Linux-first; Apple Silicon verification is deferred until Linux M10 has already
 passed. When the post-Linux-M10 Mac phase begins, native verification runs on an
 actual `aarch64-darwin` host using

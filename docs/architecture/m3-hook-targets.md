@@ -36,7 +36,7 @@ those entries are ADG-7's world persistence seams, tabled under
 [World save and load](#world-save-and-load--m3-w4); they arrived after this
 paragraph was first written, which is why the four counts in it are now gated.
 `verify_hook_inventory_document` in [`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs)
-derives all four from `hooks.toml` itself on every `ravel-verify-scaffold` and
+derives all four from `hooks.toml` itself on every `ravel:verify-scaffold` and
 fails when this file disagrees, so the sentence above cannot go stale behind the
 inventory again. A handle parameter there is a reference-type parameter of a
 method entry's descriptor other than `java/lang/String`, which the generator

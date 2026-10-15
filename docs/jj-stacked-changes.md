@@ -2,8 +2,8 @@
 
 Ravel tracks history as a stack of changes, not a stream of commits. Every change carries a change id that
 survives rewriting, so a change is a living unit of work: you keep editing it until it is right, and only its
-commit hash moves. The remote is Tangled, which maps each change id to one pull request and shows reviewers
-the interdiff between rounds.
+commit hash moves. The canonical remote is GitHub; the repository's stacked-change
+policy remains the same regardless of hosting.
 
 Fixing work by appending another commit is a git workaround for immutable history. It does not apply here and
 it destroys the property the review model depends on.
@@ -14,8 +14,8 @@ it destroys the property the review model depends on.
 jj config set --repo git.write-change-id-header true
 ```
 
-Change ids are then written into the git commits, which is what lets Tangled recognise a revised change as
-the same pull request instead of a new one. `ravel-verify-stack` fails until this is set.
+Change ids are then written into exported git commits, preserving change identity across rewrites.
+`cargo make ravel:verify-stack` fails until this is set.
 
 ## Working
 
@@ -83,8 +83,8 @@ jj git push -c @        # create the bookmark for this change and push the stack
 jj git push             # push revised changes onto the same pull requests
 ```
 
-On Tangled, choose "Submit as stacked PRs" the first time so each change becomes its own pull request. Later
-pushes of a revised change are expected and produce a new review round with an interdiff, not a new PR.
+On GitHub, create a pull request per reviewable bookmark, targeting the preceding bookmark for a
+dependent change. Keep the same bookmarks when revising; GitHub does not map change ids to PRs.
 
 ## Not this
 
@@ -94,5 +94,5 @@ pushes of a revised change are expected and produce a new review round with an i
 - Undescribed changes anywhere behind `@`, empty or not. An empty change with a conventional message is a
   planned slot; an empty change with no message is litter, so abandon it (`jj abandon <change>`).
 
-`devenv tasks run ravel:verify-stack` checks the last two, plus unresolved conflicts, and runs as part of
+`cargo make ravel:verify-stack` checks the last two, plus unresolved conflicts, and runs as part of
 `ravel:verify`.

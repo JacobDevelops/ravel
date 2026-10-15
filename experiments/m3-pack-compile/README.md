@@ -13,7 +13,7 @@ the figure came from one-struct crates and is a floor rather than a prediction.
 This replaces it with a higher floor.
 
 ```console
-devenv tasks run ravel:measure-pack-compile
+cargo make ravel:measure-pack-compile
 ```
 
 It writes [`evidence/m3/pack-compile.json`](../../evidence/m3/pack-compile.json)
@@ -41,7 +41,7 @@ used, so the two records line up point for point:
 ## The variants
 
 ```console
-devenv tasks run ravel:measure-pack-compile-variants
+cargo make ravel:measure-pack-compile-variants
 ```
 
 Three things about the curve above are not what a player gets, and each is

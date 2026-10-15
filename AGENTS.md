@@ -24,32 +24,32 @@ per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink
 
 ## Environment
 
-Everything runs inside the devenv shell, which direnv loads automatically. If `cargo` is not on `PATH`,
-run it as `devenv shell -- <command>`. The toolchain is pinned to Rust 1.95.0 and edition 2024; do not
-add a rustup override or bump the channel. The first build needs network access for the cargo registry.
+Everything runs with mise: run `mise install` once, then activate mise in your shell or use
+`mise exec -- <command>`. Rustup manages the undated nightly toolchain in `rust-toolchain.toml`,
+with edition 2024. The first build needs network access for the cargo registry.
 
 ## Verify before claiming done
 
 ```console
-devenv tasks run ravel:verify
+cargo make ravel:verify
 ```
 
 That gate runs formatting, typecheck, lint, tests, coverage, dependency audit, and the scaffold contract.
-The individual scripts are `ravel-format`, `ravel-typecheck`, `ravel-lint`, `ravel-test`, `ravel-coverage`,
-`ravel-audit`, and `ravel-verify-scaffold`.
+The individual tasks are `ravel:fmt`, `ravel:typecheck`, `ravel:lint`, `ravel:test`, `ravel:coverage`,
+`ravel:audit`, and `ravel:verify-scaffold`.
 
-Formatting and lint cover Nix, shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
-pass `ravel-format`. Report the real output. Never state that a gate passed without running it.
+Formatting and lint cover shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
+pass `cargo make ravel:fmt`. Report the real output. Never state that a gate passed without running it.
 
 `ravel:verify` checks every milestone manifest for the things the repository decides: schema conformance,
 `revision.changeId` provenance, digest binding, and the recorded arithmetic. It deliberately does not ask
 whether a milestone is closed. Whether the independent review passed and whether any finding is blocking are
 verdicts a manifest records rather than facts the gate derives, so a green `ravel:verify` says the evidence is
-intact and says nothing about closure. Closure is `devenv tasks run ravel:verify-milestone:<id>`, and an open
+intact and says nothing about closure. Closure is `cargo make ravel:verify-milestone <id>`, and an open
 milestone exits 1 there and is expected to. Ask that task which milestones are closed; do not trust a list
 written here, and do not write one — a milestone closes and this sentence would go stale unnoticed.
 
-The gate prints a green test summary even when it fails. Judge it by the exit status.
+Judge the gate by its exit status, not an individual task's test summary.
 
 ## Hard rules
 
@@ -71,7 +71,7 @@ The gate prints a green test summary even when it fails. Judge it by the exit st
   names its subject — and follow the mechanism the ADR selected. Configuration is declared in data and
   Ravel-owned screens are drawn in Java.
 - Never track mod JARs, official Minecraft or modpack assets, credentials, private worlds, or raw captures.
-  Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel-verify-scaffold`
+  Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel:verify-scaffold`
   enforces this and will fail the gate.
 - Adding or removing a crate or test mod means updating `CRATE_NAMES` or `TEST_MOD_NAMES` in
   [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and the workspace dependency list in
@@ -98,7 +98,7 @@ your first commit in a session; it holds the commands and the review loop.
 - Never push and never create or merge a pull request without explicit approval in the current turn.
   Stopping at a described local change is completion. When approval exists, pushing a revised change is the
   normal path, not a force push to apologise for.
-- `devenv tasks run ravel:verify-stack` enforces this contract and runs inside `ravel:verify`.
+- `cargo make ravel:verify-stack` enforces this contract and runs inside `ravel:verify`.
 
 ## Scope
 

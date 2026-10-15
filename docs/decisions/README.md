@@ -4,7 +4,7 @@ One record per architecture decision gate, and seven records that are not gates.
 one states what was decided, the Linux evidence it rests on, what was rejected and
 why, and what the evidence does not cover. Results live in
 [`evidence/m1/spikes/`](../../evidence/m1/spikes/) and are checked by
-`devenv tasks run ravel:verify-spikes`.
+`cargo make ravel:verify-spikes`.
 
 A decision is not accepted because it is plausible. It is accepted because a
 rejection is explicit, the limits are written down, and one of two things holds: a
@@ -76,13 +76,13 @@ gate has neither. All of the tasks need the pinned local fixtures described in
 of them authenticates or launches the game.
 
 ```console
-devenv tasks run ravel:spike-adg-1
-devenv tasks run ravel:spike-adg-2
-devenv tasks run ravel:spike-adg-3
-devenv tasks run ravel:spike-adg-4
-devenv tasks run ravel:spike-adg-5
+cargo make ravel:spike-adg-1
+cargo make ravel:spike-adg-2
+cargo make ravel:spike-adg-3
+cargo make ravel:spike-adg-4
+cargo make ravel:spike-adg-5
 ./jvm/harness/run-datafix-byte-preservation.sh # ADG-7 pinned fixer measurement
-devenv tasks run ravel:measure-outward-crossing # not a gate; see below
+cargo make ravel:measure-outward-crossing # not a gate; see below
 ```
 
 The last task belongs to [Carrying an action outward](carrying-an-action-outward.md),

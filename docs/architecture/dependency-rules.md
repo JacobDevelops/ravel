@@ -36,7 +36,7 @@ stable contracts toward concrete host internals.
   no fixture-only argument, no crate added. What it generates names that version
   and never the pinned one. Two rules hold the boundary in place: no file under
   `crates/` may spell either version's name or any game class name either
-  version's data supplies, in either spelling, which `ravel-verify-scaffold`
+  version's data supplies, in either spelling, which `ravel:verify-scaffold`
   enforces over both directories; and a hook id is the one version-derived name a
   general crate may hold, which is why the fixture reviews the pinned version's
   own id set mapped onto its own classes. That sweep reads `crates/` and nothing

@@ -495,7 +495,7 @@ fn render_binding(adapter: &Adapter, inventory: &Inventory, resolved: &[Resolved
         text,
         "//! Generated from the pinned Minecraft {} inputs. Do not edit.\n\
          //!\n\
-         //! Source of names: {}. Regenerate with `devenv tasks run ravel:spike-adg-3`.\n\
+         //! Source of names: {}. Regenerate with `cargo make ravel:spike-adg-3`.\n\
          \n\
          /// One hook target, resolved against the pinned jar.\n\
          pub struct Target {{\n\

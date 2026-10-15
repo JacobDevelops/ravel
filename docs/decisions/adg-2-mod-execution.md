@@ -269,7 +269,7 @@ pack compile priced the mechanism this record selects.
 Measured on `x86_64-linux`, hardware profile `linux-reference-v1`. Reproduce with:
 
 ```console
-devenv tasks run ravel:spike-adg-2
+cargo make ravel:spike-adg-2
 ```
 
 Results live in [`evidence/m1/spikes/adg-2/`](../../evidence/m1/spikes/adg-2/)
@@ -341,8 +341,8 @@ Measured on the same `x86_64-linux` profile, `rustc` 1.95.0, release profile,
 sixteen build jobs unless a variant says otherwise. Reproduce with:
 
 ```console
-devenv tasks run ravel:measure-pack-compile
-devenv tasks run ravel:measure-pack-compile-variants
+cargo make ravel:measure-pack-compile
+cargo make ravel:measure-pack-compile-variants
 ```
 
 The result is [`pack-compile.json`](../../evidence/m3/pack-compile.json). The mod

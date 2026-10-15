@@ -29,8 +29,8 @@ The source archive and embedded manifest SHA-256 digests are recorded in
 Reconstruct and verify it only under the ignored local boundary:
 
 ```console
-devenv tasks run ravel:fixture-reconstruct
-devenv tasks run ravel:fixture-verify
+cargo make ravel:fixture-reconstruct
+cargo make ravel:fixture-verify
 ```
 
 These commands use the descriptor's CurseForge CDN URL, admit the archive only

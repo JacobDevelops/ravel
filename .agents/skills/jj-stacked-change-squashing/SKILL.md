@@ -1,6 +1,6 @@
 ---
 name: jj-stacked-change-squashing
-description: "Tangled-remote jj repos only: squash a path into the highest change owning it, recover botched batches with op restore, never squash in plain repos."
+description: "Stacked jj repos only: squash a path into the highest change owning it, recover botched batches with op restore, never squash in plain repos."
 user-invocable: false
 origin: auto-extracted
 ---
@@ -8,17 +8,19 @@ origin: auto-extracted
 # jj stacked changes: squash targeting and recovery
 
 **Extracted:** 2026-07-31
-**Context:** jj repos whose remote is a tangled knot, where the review unit is a
-stack of rewritten changes rather than appended commits.
+**Context:** jj repos whose declared review unit is a stack of rewritten changes
+rather than appended commits, regardless of remote host.
 
 ## Applies only to stacked repos
 
+Read the repository's `AGENTS.md` first. Ravel explicitly uses stacked changes,
+including on GitHub, so set `JJ_STACKED=1` for this repository.
+
 ```console
-jj git remote list | grep -qE 'tangled\.org|knot' && echo stacked || echo plain
+test "${JJ_STACKED:-0}" = 1 && echo stacked || echo plain
 ```
 
-Override with `JJ_STACKED=1` / `JJ_STACKED=0` when detection is wrong: a knot on a
-custom domain, or a tangled repo to be treated plainly.
+Use `JJ_STACKED=0` for a repository whose declared workflow is append-only.
 
 **If this reports `plain`, do not squash at all.** Squashing is banned outside the
 stacked workflow — revise by appending instead, and stop reading here. Everything

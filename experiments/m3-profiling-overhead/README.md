@@ -7,7 +7,7 @@ two are statements the collectors make about themselves and live in
 measures the third.
 
 ```console
-devenv tasks run ravel:measure-profiling-overhead
+cargo make ravel:measure-profiling-overhead
 ```
 
 It writes

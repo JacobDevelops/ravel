@@ -113,7 +113,7 @@ the two are not the same thing.
   `unsafe`, and the property is stronger than an exception plus a local `expect`,
   which would put an unsafe-permitting attribute in Ravel's own source. If that
   reasoning is ever rejected, the fallback is an exception, not a silent
-  relaxation — and `ravel-verify-scaffold` currently fails any `allow` or `expect`
+  relaxation — and `ravel:verify-scaffold` currently fails any `allow` or `expect`
   of `unsafe_code` under `crates/`, so the fallback needs a tooling change and
   cannot be taken by accident.
 - Ravel must not quietly weaken this rule. If safe wrappers make the loader

@@ -4,7 +4,7 @@
 #
 # This is a measurement and not a gate. It needs the restricted pinned client jar
 # and a real Minecraft library root, neither of which `ravel:verify` can assume,
-# so nothing in the gate graph runs it and no devenv task wraps it. ADG-7 records
+# so nothing in the gate graph runs it and no cargo-make task wraps it. ADG-7 records
 # what it measured, at which revision, and what would have to change for this to
 # become a gate.
 set -euo pipefail

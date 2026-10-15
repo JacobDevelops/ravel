@@ -284,7 +284,7 @@ generalised. The completeness instance above is the same failure taken one level
 further, against the mechanism built to watch the first one.
 
 The public consequence of that triage is carried in M5's evidence manifest and
-reconciled by `devenv tasks run ravel:verify-milestone:m5`, which binds the
+reconciled by `cargo make ravel:verify-milestone m5`, which binds the
 private tables by digest without disclosing them.
 
 ## Consequences

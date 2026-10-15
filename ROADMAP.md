@@ -97,12 +97,11 @@ Every work package has:
 5. an evidence manifest;
 6. an independent review record when the change is nontrivial.
 
-The repository-native fast and environment gate commands will be:
+The repository-native verification and milestone closure commands are:
 
 ```text
-devenv tasks run ravel:verify
-devenv tasks run ravel:verify-environment
-devenv tasks run ravel:verify-milestone:m<N>
+cargo make ravel:verify
+cargo make ravel:verify-milestone m<N>
 ```
 
 The milestone task wraps:
@@ -111,9 +110,8 @@ The milestone task wraps:
 cargo run -p ravel-xtask -- verify milestone M<N>
 ```
 
-M0-W2 creates these commands. `ravel:verify` is the fast code-policy graph.
-`ravel:verify-environment` runs `devenv test` and `nix flake check`, with
-`devenv test` executing the same code-policy graph inside the pinned shell.
+M0-W2 creates these commands. `ravel:verify` is the code-policy graph, run
+locally and by GitHub Actions after mise provisions the tools.
 
 ### Evidence contract
 
@@ -122,7 +120,7 @@ Each milestone produces `evidence/m<N>/manifest.json` conforming to
 
 - milestone and work-package IDs;
 - Ravel revision and dirty-state status;
-- exact Minecraft, Prism, fixture, Java, Rust, Nix, and devenv versions;
+- exact Minecraft, Prism, fixture, Java, mise, and Rust toolchain versions;
 - platform, architecture, hardware profile, and relevant system settings;
 - input artifact names and cryptographic hashes;
 - commands executed, exit status, start time, duration, and log hashes;
@@ -150,12 +148,8 @@ cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
 cargo deny check
 ```
 
-The complete `ravel:verify-environment` gate additionally runs:
-
-```text
-devenv test
-nix flake check
-```
+GitHub Actions runs `cargo make ravel:verify` with the tools from `mise.toml`
+and the rustup-managed toolchain from `rust-toolchain.toml`.
 
 Additional policies:
 
@@ -169,10 +163,10 @@ Additional policies:
   counterpart library, complete pack, constrained performance, and progression
   evidence already accepted. No macOS build, launch, capture, packaging,
   verification, or platform-specific investigation belongs in M0 through M10.
-- Tangled Spindles provide the Linux gate. Because Spindle engines are
-  Linux-based, any future Darwin gate runs on an actual `aarch64-darwin`
-  machine via `docs/runbooks/darwin-verification.md`; a Linux evaluation never
-  substitutes for required Mac evidence once that post-M10 phase begins.
+- GitHub Actions provides the Linux gate. Any future Darwin gate runs on an
+  actual `aarch64-darwin` machine via `docs/runbooks/darwin-verification.md`;
+  a Linux evaluation never substitutes for required Mac evidence once that
+  post-M10 phase begins.
 - A gate rejects untracked restricted fixture patterns, credential patterns,
   forbidden loader artifacts, or maintained Rust that permits unsafe code.
 
@@ -247,9 +241,9 @@ ravel/
 │   └── config.toml                 # aliases and target-neutral Cargo policy
 ├── .config/
 │   └── nextest.toml                # deterministic test profiles and retries policy
-├── .tangled/
+├── .github/
 │   └── workflows/
-│       └── ci.yml                  # Spindle pipeline mirroring the verification tasks
+│       └── ci.yml                  # GitHub Actions verification gate
 ├── crates/
 │   ├── ravel-core/                 # IDs, versions, sides, capability and lifecycle types
 │   ├── ravel-package/              # package/manifest schemas and integrity contract
@@ -336,12 +330,6 @@ ravel/
 ├── evidence/
 │   ├── m0/ ... m11/                 # sanitized manifests and small summaries
 │   └── hardware/                    # non-identifying reference profiles
-├── nix/
-│   ├── common.nix
-│   ├── linux.nix
-│   ├── darwin.nix
-│   └── ci.nix
-├── .envrc
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml
@@ -351,11 +339,8 @@ ravel/
 ├── ROADMAP.md
 ├── SPEC.md
 ├── deny.toml
-├── devenv.lock
-├── devenv.nix
-├── devenv.yaml
-├── flake.lock
-├── flake.nix
+├── mise.toml                       # pinned tools and development environment
+├── Makefile.toml                   # cargo-make tasks
 ├── rust-toolchain.toml
 └── rustfmt.toml
 ```
@@ -478,94 +463,39 @@ repository never consumes private source paths, private crate dependencies, or
 private fixture content. General SDK gaps discovered privately return as
 capability proposals plus original public test-mod acceptance cases.
 
-## Nix and devenv design
+## mise and cargo-make design
 
-`devenv` is the canonical local task surface. Tangled Spindle CI runs
-`devenv test` and `nix flake check` in a Nixery environment. Nix pins the tools
-and native dependencies; Cargo remains the Rust build system. Spindle covers
-Linux only. The Darwin runbook is dormant until the post-Linux-M10 Apple
-Silicon phase begins.
+`mise.toml` pins development tools and sets the default Minecraft selection,
+Cargo colour, and backtraces. Run `mise install` once, then activate mise in
+the shell or use `mise exec -- <command>`. Rust remains rustup-managed:
+`rust-toolchain.toml` selects undated `nightly`, with rustfmt, clippy, and
+llvm-tools. Cargo remains the Rust build system.
 
-cargo2nix is intentionally deferred during M0. At this stage, committing a
-generated `Cargo.nix` would duplicate the rapidly changing Cargo dependency
-graph without producing a Nix-owned runtime artifact. Re-evaluate it after
-ADG-1 and ADG-2, before M2 packages the first runnable mod, when per-crate Nix
-caching, native dependency wiring, or distributable Nix package outputs can
-justify the additional generated file and regeneration gate.
+`Makefile.toml` is the canonical task surface: `cargo make ravel:verify` runs
+the code-policy graph locally and in `.github/workflows/ci.yml`.
+`cargo make ravel:verify-milestone <id>` checks milestone closure separately.
+Individual task names keep the `ravel:` prefix. Formatting covers Rust,
+shell, TOML, and Markdown; lint covers clippy, shell, and workflow checks.
 
-### Root files
+Run `cargo make ravel:tracy` once to build Tracy 0.13.1's capture and CSV
+export tools with `tests/performance/collectors/tracy-csvexport-frames.patch`.
+The tools live in `target/tools/tracy/bin/`, on the mise environment's PATH.
+CMake is provisioned by mise; the host supplies the C/C++ compiler and
+native build dependencies.
 
-- `devenv.yaml` declares devenv inputs and pinning policy.
-- `devenv.lock` records their exact revisions.
-- `devenv.nix` imports the modules under `nix/`, enables Rust using
-  `languages.rust.toolchainFile = ./rust-toolchain.toml`, and declares tasks,
-  tests, packages, environment variables, and git hooks.
-- `flake.nix` is a thin export for `x86_64-linux` and `aarch64-darwin`
-  `devShells` and checks. It imports the same Nix modules and contains no
-  duplicate package or task list.
-- `flake.lock` pins the flake-facing inputs.
-- `rust-toolchain.toml` pins an exact stable Rust release, minimal profile,
-  `rustfmt`, `clippy`, and the two initial compilation targets. WebAssembly
-  targets are added only if ADG-2 selects them.
+The host also supplies coreutils, git, curl, archive utilities, pkg-config,
+and Linux capture tools such as perf, procps, sysstat, vulkan-tools,
+openbox, and xdotool. macOS hosts need Bash 4+ and GNU findutils/coreutils from
+the system package manager (for example, `brew install bash findutils coreutils`),
+with their binaries ahead of the system tools on PATH: the task scripts use
+GNU `find` and Bash's `mapfile`. Apple system tools such as Instruments remain
+native host prerequisites for the post-Linux-M10 Apple Silicon phase. A development
+JDK is not evidence of the game's runtime: record the Java runtime actually
+used by the pinned Minecraft/Prism workload.
 
-M0-W1 records the exact supported devenv version and establishes a parity check
-between `devenv test` and `nix flake check`. If maintaining both lock surfaces
-causes input drift, the thin flake is generated and checked from the canonical
-devenv inputs rather than maintaining duplicate package definitions.
-
-### Environment contents
-
-Common packages include Cargo/Rust tools, `jj`, `git`, `pkg-config`, archive and
-hash tools, `jq`, a licence/advisory checker, nextest, llvm-cov, and benchmark
-utilities.
-
-Linux-only packages include the approved process/memory samplers, `perf`,
-Vulkan diagnostics, and native link dependencies selected by ADG-1/2. Darwin
-configuration contains only Nix-provided build dependencies; Apple system tools
-such as Instruments are documented prerequisites and invoked through guarded
-collector scripts.
-
-The game JDK is not guessed. M0 reads the pinned Minecraft/Prism metadata,
-records the required Java runtime, and then pins the matching development JDK
-where loader tooling needs one. This avoids turning a convenience JDK into an
-unreviewed runtime decision.
-
-Use `lib.optionals pkgs.stdenv.isLinux` and
-`lib.optionals pkgs.stdenv.isDarwin` for packages and `lib.mkIf`/`lib.mkMerge`
-for platform modules. Unsupported platforms fail with a clear message.
-
-### Canonical tasks
-
-| Task | Purpose |
-| --- | --- |
-| `ravel:fmt` | Rust, Nix, shell, TOML and Markdown formatting checks |
-| `ravel:typecheck` | `cargo check` for workspace targets and features |
-| `ravel:lint` | clippy, Nix lint and shell lint |
-| `ravel:test` | nextest, doctests, compile tests and schema tests |
-| `ravel:coverage` | llvm-cov with the workspace floor |
-| `ravel:audit` | advisories, licences, duplicate dependency policy |
-| `ravel:verify-scaffold` | topology, schema, version-boundary and tracked-file policy |
-| `ravel:verify` | dependency-ordered aggregate of the preceding tasks |
-| `ravel:verify-environment` | complete pinned devenv and Nix flake gates |
-| `ravel:fixture-reconstruct` | authorized local reconstruction into ignored paths |
-| `ravel:fixture-verify` | manifest count and content hash verification |
-| `ravel:baseline` | run a named platform/workload profile |
-| `ravel:verify-milestone` | validate an evidence bundle against a milestone |
-
-Git hooks run fast formatting, lint, schema, secret, and forbidden-file checks.
-The Tangled Spindle pipeline runs the complete Linux environment gate. Native
-Darwin evidence is introduced only in the post-Linux-M10 platform phase. Hooks
-never replace CI.
-CLI launch commands are limited to reproducible development/test invocation and
-handoff to a Prism-managed instance. They do not own authentication, Minecraft
-installation, instance management, pack acquisition, or general launcher UI.
-
-Current configuration guidance used by this plan:
-
-- [devenv Rust language configuration](https://github.com/cachix/devenv/blob/main/docs/src/languages/rust.md)
-- [devenv cross-platform recipe](https://github.com/cachix/devenv/blob/main/docs/src/recipes/cross-platform.md)
-- [devenv pinning](https://github.com/cachix/devenv/blob/main/docs/src/pinning.md)
-- [devenv flake-parts integration](https://github.com/cachix/devenv/blob/main/docs/src/guides/using-with-flake-parts.md)
+CLI launch commands are limited to reproducible development/test invocation
+and handoff to a Prism-managed instance. They do not own authentication,
+Minecraft installation, instance management, pack acquisition, or launcher UI.
 
 ## Milestone roadmap
 
@@ -577,7 +507,7 @@ only with the single M9 comparison pair.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M0-W1 | Initialize Cargo, Nix, and devenv roots | none | root manifests, locks, platform modules, pinned Rust | `devenv test` and `nix flake check` pass on Linux |
+| M0-W1 | Initialize Cargo and mise roots | none | root manifests, pinned tools, rustup nightly | `cargo make ravel:verify` passes on Linux |
 | M0-W2 | Create verification and evidence skeleton | M0-W1 | `ravel-xtask`, evidence/schema contract, base CI | a deliberately incomplete M0 bundle is rejected; a synthetic complete bundle passes |
 | M0-W3 | Define fixture manifest and ignore policy | M0-W1 | pinned metadata, authorized-source descriptors, ignore/secret rules | fixture and secret canaries are rejected from the tracked tree |
 | M0-W4 | Implement fixture reconstruction and hashing | M0-W3 | CLI command and local-only fixture output | exact MC/NeoForge/ATM versions, expected reference count, and all recorded hashes verify |
@@ -585,7 +515,7 @@ only with the single M9 comparison pair.
 | M0-W6 | Record Linux hardware, Java, Prism, and launch inputs | M0-W3 | sanitized Linux hardware profile and exact runtime metadata | clean-machine runbook reproduces vanilla launch on Linux |
 | M0-W7 | Prove Linux vanilla and official ATM11 launch | M0-W4..W6 | Linux launch result bundle and workload attestation | vanilla and official ATM11 reach a playable world through Prism; credentials and restricted content are absent from evidence |
 | M0-W8 | Define M1 architecture measurement gate | M0-W7 | reviewed metric and failure-action plan | every M1 candidate reports comparable Linux memory, startup, call-cost, allocation, packaging, and failure evidence without requiring an M0 baseline |
-| M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `devenv tasks run ravel:verify-milestone:m0` passes; tracked-tree audit is clean |
+| M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `cargo make ravel:verify-milestone m0` passes; tracked-tree audit is clean |
 
 M0 may download authorized files only into ignored local paths. A failed rights,
 hash, count, or redaction check blocks the gate.
@@ -1229,7 +1159,7 @@ distribution, rollback, and private-history isolation.
 | JVM hook mechanism | ADG-1 / M1 | discharged; amended before M3-W3 on what enters the game process |
 | Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is closed as a breaking schema-v1-in-place migration |
 | Binding extraction and generation | ADG-3 / M1 | discharged, with one surface partly outside it: the agent jar's persistence adapter resolves game classes and members by name, and the pinned files cover some of the classes and none of the rest. `net.minecraft.client.Minecraft`, `net.minecraft.server.MinecraftServer` and `net.minecraft.world.level.storage.SavedDataStorage` are hook targets in `hooks.toml` and in `mappings.lock`, so a rename of one of those classes shows up in a re-pin diff. **An earlier wording of this row said none of them was pinned, which was wrong and understated the coverage; this is the correction.** What no pinned file holds is `LevelResource`, `DataFixers`, every member name and arity, the two `LevelResource` field constants, and the three-argument `SavedDataStorage` constructor — which is what `Persistence.java`'s comment at the lookup has said all along. `verify_persistence_reflection` pins the class set and cannot see a rename. Bringing the rest of the surface under `stubs.toml` and `mappings.lock` needs the stub-seed and lock re-pin ceremony against the pinned jar. **No work package owns that yet.** M3's packages are closed and none named it; M4-W1 to M4-W8 do not either. It belongs with the version-adapter re-pin work. An earlier reading of this row ruled that **M4-W6 is the first gate that cannot honestly pass without it**, because proving version isolation against a second version is exactly what an unpinned reflective surface defeats. **That ruling is retracted here, and the reason is that it was too broad.** The reflective surface it names lives in the agent jar, which is neither a general crate nor the shared adapter, so what it leaves in doubt is a drift claim over the agent jar — M4-W8's territory — rather than W6's claim that the shared adapter and the general crates carry no version. W6 proves that claim against a synthetic second version's data in `tests/fixtures/public/versions/`, and that fixture cannot reach the reflective surface at all: it declares no jar, so there is no class for a name to resolve against and nothing for a rename to break. No version of W6 could have discharged this row, which is what makes refusing W6 for not discharging it the wrong ruling rather than an unmet one. The re-pin ceremony is what closes this row, and no package has performed one. Until a package owns it and runs it, no milestone may claim drift coverage for the agent jar's persistence adapter |
-| Whether Ravel can run the 1.21.1 target it names | M8 | Ravel supports more than one Minecraft version and the current target is Minecraft 1.21.1, the version All the Mods 10: To the Sky 2.0.2 runs on. **`minecraft/versions/1.21.1/` exists, generates, and the whole suite passes against it.** Its jar and published mapping are pinned by [`tests/fixtures/descriptors/runtime-inputs-1.21.1.json`](tests/fixtures/descriptors/runtime-inputs-1.21.1.json) through 1.21.1's own version metadata and sit hash-verified under `tests/fixtures/local/tooling/minecraft-1.21.1/`. The directory carries twenty-nine of 26.1.2's thirty-seven reviewed hooks: twenty-seven that resolve unchanged, plus `world.open-persistence` and `screen.title-menu-options` re-reviewed at drifted descriptors and carried rather than dropped because `jvm/bootstrap`'s `Transformer` names those seams. The other eight are declared non-goals with a reason each, as data rather than prose, so a caller naming one is told it named a decision rather than a typo. Three mechanisms landed to make it possible: every build entry point exports a selection, screen templates name roles that each version's `stubs.toml` binds to a class and a member, and a version whose API genuinely differs overrides the shared template under `jvm/screen/template/<version>/`. `ravel-test` now runs the suite once per tracked version rather than once against the selected one, which is the check that would have caught the twelve failures a 1.21.1 selection produced the first time anyone named it; a version whose restricted mapping is absent is skipped loudly rather than silently. What is still owed is recorded where a reader will look rather than here: the agent jar's `Persistence` still spells 26.1.2's member names and arities, so 1.21.1's saved-data half compiles and is not driven, which [`adg-7-world-persistence.md`](docs/decisions/adg-7-world-persistence.md) states and which is the same unowned re-pin the ADG-3 row above describes. **Nothing here has ever started a 1.21.1 process with Ravel attached**, so until a launch exercises it no milestone may claim the 1.21.1 target runs and no document may say Ravel runs on 1.21.1 today |
+| Whether Ravel can run the 1.21.1 target it names | M8 | Ravel supports more than one Minecraft version and the current target is Minecraft 1.21.1, the version All the Mods 10: To the Sky 2.0.2 runs on. **`minecraft/versions/1.21.1/` exists, generates, and the whole suite passes against it.** Its jar and published mapping are pinned by [`tests/fixtures/descriptors/runtime-inputs-1.21.1.json`](tests/fixtures/descriptors/runtime-inputs-1.21.1.json) through 1.21.1's own version metadata and sit hash-verified under `tests/fixtures/local/tooling/minecraft-1.21.1/`. The directory carries twenty-nine of 26.1.2's thirty-seven reviewed hooks: twenty-seven that resolve unchanged, plus `world.open-persistence` and `screen.title-menu-options` re-reviewed at drifted descriptors and carried rather than dropped because `jvm/bootstrap`'s `Transformer` names those seams. The other eight are declared non-goals with a reason each, as data rather than prose, so a caller naming one is told it named a decision rather than a typo. Three mechanisms landed to make it possible: every build entry point exports a selection, screen templates name roles that each version's `stubs.toml` binds to a class and a member, and a version whose API genuinely differs overrides the shared template under `jvm/screen/template/<version>/`. `ravel:test` now runs the suite once per tracked version rather than once against the selected one, which is the check that would have caught the twelve failures a 1.21.1 selection produced the first time anyone named it; a version whose restricted mapping is absent is skipped loudly rather than silently. What is still owed is recorded where a reader will look rather than here: the agent jar's `Persistence` still spells 26.1.2's member names and arities, so 1.21.1's saved-data half compiles and is not driven, which [`adg-7-world-persistence.md`](docs/decisions/adg-7-world-persistence.md) states and which is the same unowned re-pin the ADG-3 row above describes. **Nothing here has ever started a 1.21.1 process with Ravel attached**, so until a launch exercises it no milestone may claim the 1.21.1 target runs and no document may say Ravel runs on 1.21.1 today |
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
 | Stock Prism versus minimal patch | ADG-5 / M1 | discharged; the library-path argument does not work and ADG-5's amendment chose the fix — `System.load` on a path given by a `-D` property. No work package owns building it, so the native half has no conformance claim until one does |
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
@@ -1249,7 +1179,7 @@ distribution, rollback, and private-history isolation.
 The plan is ready for M0 implementation. The first local change sequence should
 be:
 
-1. M0-W1: initialize the Cargo workspace and Nix/devenv environment without
+1. M0-W1: initialize the Cargo workspace and mise environment without
    choosing ADG-1 through ADG-4.
 2. M0-W2: implement the evidence schema, `ravel-xtask` gate skeleton, and CI
    parity.

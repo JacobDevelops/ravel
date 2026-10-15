@@ -3,7 +3,7 @@
 Status: accepted during M6-W2. An action a mod asks for reaches the game as an
 instruction the Java adapter performs, and Rust calls no game method. Measured:
 [`evidence/m6/outward-crossing.json`](../../evidence/m6/outward-crossing.json),
-re-runnable with `devenv tasks run ravel:measure-outward-crossing`.
+re-runnable with `cargo make ravel:measure-outward-crossing`.
 
 This record takes no ADG number, for the reason
 [`README.md`](README.md) gives about the two records that already do not:

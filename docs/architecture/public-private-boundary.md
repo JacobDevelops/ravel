@@ -14,7 +14,7 @@ source-derived notes.
 The private workspace is a separate repository beside this one, not an ignored
 directory inside it, so the boundary is a repository boundary rather than a
 pattern somebody has to keep correct. It is not named here, and no tracked file
-in this repository names it: `ravel-verify-scaffold` sweeps every tracked file
+in this repository names it: `ravel:verify-scaffold` sweeps every tracked file
 for that name and for any manifest whose path dependency resolves outside this
 checkout, and reports either as a violation. A document that started naming the
 private workspace would be the first sign the split had stopped being a split,

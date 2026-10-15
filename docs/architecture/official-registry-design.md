@@ -155,7 +155,7 @@ Design properties, each with the reason:
 
 - **The two trees never mix, and a check enforces it.** Original sources live only
   in the gitignored working tree; nothing there is ever copied into the registry
-  tree. The public repo's `ravel-verify-scaffold` sweep and the private
+  tree. The public repo's `ravel:verify-scaffold` sweep and the private
   workspace's `verify-boundary.sh` fail the gate on any tracked file that carries
   those contents or even names the private workspace — so the separation is
   enforced, not merely intended (see §7.1).
@@ -381,7 +381,7 @@ material may be written):
 Two rules keep these from leaking, and both are enforced rather than asserted:
 
 - **The public repo never names the private workspace or its fixture contents.**
-  `ravel-verify-scaffold` sweeps every tracked file for that name and for any
+  `ravel:verify-scaffold` sweeps every tracked file for that name and for any
   manifest whose path dependency resolves outside the checkout, and fails the gate
   on either. So a stray reference to one of these directories from tracked code is
   caught, not trusted to reviewer vigilance.

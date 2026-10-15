@@ -277,9 +277,7 @@
         "prism",
         "fixture",
         "java",
-        "rust",
-        "nix",
-        "devenv"
+        "rust"
       ],
       "properties": {
         "minecraft": {
@@ -304,6 +302,9 @@
           "$ref": "#/$defs/versionText"
         },
         "devenv": {
+          "$ref": "#/$defs/versionText"
+        },
+        "mise": {
           "$ref": "#/$defs/versionText"
         }
       }

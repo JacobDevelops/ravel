@@ -406,8 +406,8 @@ mod tests {
 
         let order = stages.resolve().expect("one contributor resolves");
         assert_eq!(order.at("after_terrain"), [owner]);
-        assert!(order.at("after_entities").is_empty());
-        assert!(order.at("a_stage_nobody_publishes").is_empty());
+        assert_eq!(order.at("after_entities"), []);
+        assert_eq!(order.at("a_stage_nobody_publishes"), []);
     }
 
     #[test]
@@ -441,12 +441,12 @@ mod tests {
 
         assert_eq!(refusal.unknown_stage(), "a_stage_nobody_publishes");
         // Nothing was recorded, so the declaration still resolves.
-        assert!(
+        assert_eq!(
             stages
                 .resolve()
                 .expect("nothing was declared")
-                .at("after_terrain")
-                .is_empty()
+                .at("after_terrain"),
+            []
         );
     }
 
@@ -491,7 +491,7 @@ mod tests {
             .expect_err("an order against nothing is refused rather than dropped");
 
         assert_eq!(refusal.unknown_contributors(), [absent]);
-        assert!(refusal.cycle().is_empty());
+        assert_eq!(refusal.cycle(), []);
         assert_eq!(refusal.unknown_stage(), "");
     }
 

@@ -194,7 +194,7 @@ fn command_line_verifies_tracy_frames_without_desktop_input() {
         String::from_utf8_lossy(&output.stdout),
         "Verified 2 client frames and 2 integrated-server ticks.\n"
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
 
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -251,7 +251,7 @@ fn command_line_exports_only_the_pinned_tracy_frame_sets() {
             csv.display()
         )
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     assert_eq!(
         fs::read_to_string(&csv).expect("exported CSV should be readable"),
         format!(
@@ -307,7 +307,7 @@ fn command_line_captures_tracy_without_desktop_input() {
             trace.display()
         )
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     assert_eq!(
         fs::read_to_string(&trace).expect("trace should be readable"),
         "synthetic trace"

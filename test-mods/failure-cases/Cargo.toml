@@ -7,8 +7,5 @@ license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
-[dependencies]
-ravel-sdk.workspace = true
-
 [lints]
 workspace = true

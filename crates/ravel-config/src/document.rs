@@ -219,7 +219,7 @@ mod tests {
             assert_eq!(error.failure_kind(), None);
             assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
             assert!(error.quotes_untrusted_text());
-            assert!(!error.diagnostic().text().is_empty());
+            assert_ne!(error.diagnostic().text(), "");
         }
     }
 }

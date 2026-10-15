@@ -623,7 +623,7 @@ mod tests {
             }
         );
         assert!(refusal.to_string().contains("absent:prices"), "{refusal}");
-        assert!(consumer.reached.is_empty());
+        assert_eq!(consumer.reached, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -777,7 +777,7 @@ mod tests {
         let machine = machine(vec![entry("plain", &[Side::DedicatedServer])]);
         let opened =
             open_services(&machine, &mut [&mut plain]).expect("nothing to resolve resolves");
-        assert!(opened.order().is_empty());
+        assert_eq!(opened.order(), []);
     }
 
     /// A consumer that declares a service optional and carries on without it.
@@ -932,7 +932,7 @@ mod tests {
 
         assert_eq!(opened.order(), [id("consumer")]);
         assert_eq!(consumer.absent, [service("absent", "prices")]);
-        assert!(consumer.reached.is_empty());
+        assert_eq!(consumer.reached, [] as [std::string::String; 0]);
     }
 
     #[test]

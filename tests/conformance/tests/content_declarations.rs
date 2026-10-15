@@ -294,7 +294,7 @@ fn a_declaration_that_names_illegal_content_is_refused_before_any_barrier() {
             "{path:?} is not a legal content path"
         );
     }
-    assert!(declaration.entries().is_empty());
+    assert_eq!(declaration.entries(), []);
 }
 
 // ---------------------------------------------------------------- conflicts ---
@@ -452,7 +452,7 @@ fn a_tag_cannot_hold_a_member_from_a_registry_it_does_not_group() {
             member: block,
         })
     );
-    assert!(declaration.tag_members(&items).is_empty());
+    assert_eq!(declaration.tag_members(&items), []);
 }
 
 #[test]

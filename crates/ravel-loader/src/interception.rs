@@ -336,7 +336,7 @@ mod tests {
 
         assert_eq!(round.asked(), [id(LEDGER)]);
         assert_eq!(round.outcome(), Outcome::Proceed);
-        assert!(elsewhere.seen.is_empty());
+        assert_eq!(elsewhere.seen, [] as [ravel_host_api::Occasion; 0]);
     }
 
     /// A mod that declares nothing is neither asked nor an obstacle.
@@ -365,9 +365,9 @@ mod tests {
 
         let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
 
-        assert!(round.asked().is_empty());
+        assert_eq!(round.asked(), []);
         assert_eq!(round.outcome(), Outcome::Proceed);
-        assert!(guard.seen.is_empty());
+        assert_eq!(guard.seen, [] as [ravel_host_api::Occasion; 0]);
     }
 
     /// A declaration that names another mod is refused rather than believed.

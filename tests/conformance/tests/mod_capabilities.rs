@@ -114,7 +114,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
     drop(mods);
     assert_eq!(commands.invocations(), [invocation]);
     // Nothing else was asked, so a command is routed and not broadcast.
-    assert!(events.observed().is_empty());
+    assert_eq!(events.observed(), []);
     assert_eq!(resources.reloads(), 0);
 }
 
@@ -139,7 +139,7 @@ fn a_broadcast_reaches_every_mod_and_each_one_acts_on_what_it_cares_about() {
     // is what the default implementation of `observe` is for.
     assert_eq!(events.observed(), [GameEvent::ResourcesReloaded]);
     assert_eq!(resources.reloads(), 1);
-    assert!(commands.invocations().is_empty());
+    assert_eq!(commands.invocations(), []);
 }
 
 #[test]
@@ -249,9 +249,12 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
     let machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
 
-    assert!(machine.audience(GameEvent::ClientTick).is_empty());
+    assert_eq!(
+        machine.audience(GameEvent::ClientTick),
+        [] as [ravel_core::ModId; 0]
+    );
     let ignored = broadcast(&machine, &mut mods, GameEvent::ClientTick).expect("an empty audience");
-    assert!(ignored.received().is_empty());
+    assert_eq!(ignored.received(), []);
 
     let ticked = broadcast(&machine, &mut mods, GameEvent::ServerTick).expect("the set is running");
     assert_eq!(
@@ -409,7 +412,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
         &CommandInvocation::new(CommandsMod::new().key("warp"), Side::Client, Vec::new()),
     )
     .expect("routing found the owner");
-    assert!(delivery.received().is_empty());
+    assert_eq!(delivery.received(), []);
     match delivery.failure() {
         Some(HostError::Refused { mod_id, detail, .. }) => {
             assert_eq!(mod_id, &id("commands"));
@@ -464,8 +467,8 @@ fn a_mod_that_fails_on_an_event_ends_the_broadcast_and_the_ones_after_it_never_s
     // The mod ahead of the failure acted and the one behind it did not, which
     // is what makes the failure attributable to one mod.
     assert_eq!(first.reloads(), 1);
-    assert!(second.observed().is_empty());
-    assert!(third.invocations().is_empty());
+    assert_eq!(second.observed(), []);
+    assert_eq!(third.invocations(), []);
 }
 
 #[test]
@@ -504,7 +507,7 @@ fn nothing_is_delivered_before_the_set_reaches_running() {
     drop(mods);
     // `SPEC.md` §14 puts every registration before `Running`, so a mod that saw
     // an event here would be acting before its own content existed.
-    assert!(events.observed().is_empty());
+    assert_eq!(events.observed(), []);
 }
 
 #[test]
@@ -532,7 +535,7 @@ fn a_command_nobody_claimed_is_refused_by_name() {
 
     assert_eq!(refused, DispatchRefused::Unclaimed { key: orphan });
     drop(mods);
-    assert!(commands.invocations().is_empty());
+    assert_eq!(commands.invocations(), []);
 }
 
 #[test]
@@ -563,7 +566,7 @@ fn a_set_missing_a_mod_the_plan_names_delivers_to_nobody() {
     drop(short);
     // The supplied mod is ahead of the missing one in the plan and still saw
     // nothing: the whole set is checked before anyone reacts.
-    assert!(events.observed().is_empty());
+    assert_eq!(events.observed(), []);
 }
 
 #[test]

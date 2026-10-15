@@ -679,10 +679,13 @@ mod tests {
             &mut mods,
         );
 
-        assert!(machine.audience(GameEvent::ClientTick).is_empty());
+        assert_eq!(
+            machine.audience(GameEvent::ClientTick),
+            [] as [ravel_core::ModId; 0]
+        );
         let delivery =
             broadcast(&machine, &mut mods, GameEvent::ClientTick).expect("an empty audience");
-        assert!(delivery.received().is_empty());
+        assert_eq!(delivery.received(), []);
         assert!(delivery.is_complete());
 
         // A server tick on the same set is delivered, so the empty audience
@@ -733,7 +736,7 @@ mod tests {
                 state: LifecycleState::Validated,
             }
         );
-        assert!(only.seen.is_empty());
+        assert_eq!(only.seen, [] as [ravel_host_api::GameEvent; 0]);
         assert_eq!(refused.failure_kind(), None);
         assert!(!refused.quotes_untrusted_text());
     }
@@ -764,7 +767,7 @@ mod tests {
         }
 
         // The third mod is never asked, so it cannot act on a set that failed.
-        assert!(third.seen.is_empty());
+        assert_eq!(third.seen, [] as [ravel_host_api::GameEvent; 0]);
     }
 
     #[test]
@@ -793,7 +796,7 @@ mod tests {
         );
         // The first mod is in the audience and ahead of the missing one, and it
         // still saw nothing: the whole set is checked before anyone reacts.
-        assert!(first.seen.is_empty());
+        assert_eq!(first.seen, [] as [ravel_host_api::GameEvent; 0]);
     }
 
     #[test]
@@ -821,7 +824,7 @@ mod tests {
         assert!(delivery.is_complete());
 
         assert_eq!(first.ran, [invocation]);
-        assert!(second.ran.is_empty());
+        assert_eq!(second.ran, [] as [ravel_host_api::CommandInvocation; 0]);
     }
 
     #[test]
@@ -843,7 +846,7 @@ mod tests {
         .expect_err("nothing claimed it");
         assert_eq!(refused, DispatchRefused::Unclaimed { key: orphan });
         assert!(refused.to_string().contains("no mod claimed"));
-        assert!(only.ran.is_empty());
+        assert_eq!(only.ran, [] as [ravel_host_api::CommandInvocation; 0]);
     }
 
     #[test]
@@ -884,7 +887,7 @@ mod tests {
                 state: LifecycleState::Constructed,
             }
         );
-        assert!(only.ran.is_empty());
+        assert_eq!(only.ran, [] as [ravel_host_api::CommandInvocation; 0]);
     }
 
     #[test]
@@ -933,7 +936,7 @@ mod tests {
             &CommandInvocation::new(owned, Side::Client, Vec::new()),
         )
         .expect("the owner runs, so routing succeeded");
-        assert!(delivery.received().is_empty());
+        assert_eq!(delivery.received(), []);
         // A mod that claims a command name and does not implement it has told a
         // player the command exists, so the default is a refusal and not a
         // silent success.
@@ -986,7 +989,7 @@ mod tests {
             assert_eq!(refused.lifecycle_state(), state);
             assert_eq!(refused.failure_kind(), None);
             assert!(!refused.quotes_untrusted_text());
-            assert!(!refused.to_string().is_empty());
+            assert_ne!(refused.to_string(), "");
         }
     }
 
@@ -997,7 +1000,7 @@ mod tests {
             failure: None,
         };
         assert!(empty.is_complete());
-        assert!(empty.received().is_empty());
+        assert_eq!(empty.received(), []);
         assert_eq!(empty.failure(), None);
     }
 
@@ -1010,7 +1013,7 @@ mod tests {
                     .any(|side| event.happens_on(side)),
                 "{event} happens nowhere"
             );
-            assert!(!event.as_str().is_empty());
+            assert_ne!(event.as_str(), "");
             assert_eq!(event.to_string(), event.as_str());
         }
 
@@ -1106,7 +1109,7 @@ mod tests {
         assert_eq!(delivered.received(), [id("second_mod")]);
         assert!(delivered.is_complete());
         assert_eq!(second.received, [packet_id("second_mod:ping")]);
-        assert!(first.received.is_empty());
+        assert_eq!(first.received, [] as [ravel_network::PacketId; 0]);
     }
 
     #[test]
@@ -1234,7 +1237,7 @@ mod tests {
                 mod_id: id("server_only"),
             })
         );
-        assert!(host.received.is_empty());
+        assert_eq!(host.received, [] as [ravel_network::PacketId; 0]);
     }
 
     #[test]
@@ -1279,7 +1282,7 @@ mod tests {
                 state: LifecycleState::Validated,
             })
         );
-        assert!(host.received.is_empty());
+        assert_eq!(host.received, [] as [ravel_network::PacketId; 0]);
     }
 
     #[test]
@@ -1324,7 +1327,7 @@ mod tests {
         let delivered = deliver_packet(&machine, &mut [&mut host], &sent)
             .expect("the routing succeeded and the mod declined");
 
-        assert!(delivered.received().is_empty());
+        assert_eq!(delivered.received(), []);
         assert!(!delivered.is_complete());
         let failure = delivered.failure().expect("the mod refused");
         assert_eq!(failure.mod_id(), &id("example_mod"));

@@ -116,7 +116,7 @@ mod tests {
             .expect_err("a world is refused when what shaped it is gone");
 
         assert_eq!(refusal.missing(), [WorldShapingMod::declared_id().clone()]);
-        assert!(refusal.arrived().is_empty());
+        assert_eq!(refusal.arrived(), []);
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
             .expect_err("a world is refused when something new would shape it");
 
         assert_eq!(refusal.arrived(), [arrival]);
-        assert!(refusal.missing().is_empty());
+        assert_eq!(refusal.missing(), []);
     }
 
     #[test]

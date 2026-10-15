@@ -163,8 +163,8 @@ mod tests {
         let events = EventsMod::new();
         assert_eq!(events.id(), &MOD_ID.parse::<ModId>().expect("a legal id"));
         assert_eq!(EventsMod::default(), events);
-        assert!(events.steps().is_empty());
-        assert!(events.observed().is_empty());
+        assert_eq!(events.steps(), []);
+        assert_eq!(events.observed(), []);
     }
 
     #[test]

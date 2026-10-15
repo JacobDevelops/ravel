@@ -166,7 +166,7 @@ fn a_valid_package_reaches_every_spec_state_in_order() {
 
     assert_eq!(completed.plan().side(), Side::Client);
     assert_eq!(completed.plan().order(), [id("example_mod")]);
-    assert!(completed.plan().discouraged().is_empty());
+    assert_eq!(completed.plan().discouraged(), []);
     assert_eq!(
         completed.states_of(&id("example_mod")),
         [

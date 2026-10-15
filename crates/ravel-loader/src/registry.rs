@@ -224,7 +224,7 @@ mod tests {
                 owner: id("first_mod"),
             }
         );
-        assert!(window.claimed().is_empty());
+        assert_eq!(window.claimed(), []);
         // A conflict is the mod's whole account of the refusal: nothing is held
         // back, so the loader has nothing extra to report.
         assert!(window.unexpected().is_none());

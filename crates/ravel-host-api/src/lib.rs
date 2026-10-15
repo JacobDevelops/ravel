@@ -804,7 +804,7 @@ mod tests {
 
         host.register(&mut table)
             .expect("the default claims nothing");
-        assert!(table.claimed().is_empty());
+        assert_eq!(table.claimed(), []);
     }
 
     #[test]
@@ -839,7 +839,7 @@ mod tests {
         assert!(error.to_string().contains("other_mod"), "{error}");
 
         // The mod gave up on the first refusal, so it never reached the item.
-        assert!(table.claimed().is_empty());
+        assert_eq!(table.claimed(), []);
     }
 
     #[test]

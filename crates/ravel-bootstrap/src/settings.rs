@@ -903,7 +903,10 @@ mod tests {
         let rows = screen(None, None).rows();
 
         assert_eq!(row(&rows, "render.quality").choices, ["fast", "fancy"]);
-        assert!(row(&rows, "render.fancy").choices.is_empty());
+        assert_eq!(
+            row(&rows, "render.fancy").choices,
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -1057,7 +1060,10 @@ mod tests {
 
         let answer = screen.save(&edits("example_mod", &[("render.quality", "fancy")]));
 
-        assert!(refusals(&answer).is_empty());
+        assert_eq!(
+            refusals(&answer),
+            [] as [(std::string::String, std::string::String); 0]
+        );
         let row = screen.row("render.quality");
         assert_eq!(row.value, "fast", "the session keeps the old value");
         assert_eq!(row.restart_pending, "true");

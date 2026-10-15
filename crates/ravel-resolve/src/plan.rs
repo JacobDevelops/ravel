@@ -123,7 +123,7 @@ mod tests {
 
         assert_eq!(plan.side(), Side::DedicatedServer);
         assert_eq!(plan.order(), [id("example_library"), id("example_mod")]);
-        assert!(plan.discouraged().is_empty());
+        assert_eq!(plan.discouraged(), []);
     }
 
     #[test]

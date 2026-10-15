@@ -331,7 +331,7 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
         !off.report().is_on(),
         "an off profiler reported itself as running"
     );
-    assert!(off.report().mods().is_empty());
+    assert_eq!(off.report().mods(), []);
 }
 
 #[test]

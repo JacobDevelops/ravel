@@ -642,7 +642,7 @@ mod tests {
             config.source(&key("render.distance")),
             Some(ValueSource::Default)
         );
-        assert!(config.rejected().is_empty());
+        assert_eq!(config.rejected(), []);
         assert!(!config.restart_pending());
     }
 
@@ -1047,7 +1047,7 @@ mod tests {
             relaunched.value(&key("server.motd")),
             Some(&json!("the pack's server"))
         );
-        assert!(relaunched.rejected().is_empty());
+        assert_eq!(relaunched.rejected(), []);
         // A second pass changes nothing, which is what makes it a round trip.
         assert_eq!(relaunched.player_document().to_json(), written);
     }
@@ -1069,7 +1069,7 @@ mod tests {
             assert_eq!(error.failure_kind(), None);
             assert_eq!(error.lifecycle_state(), LifecycleState::Resolved);
             assert!(!error.quotes_untrusted_text());
-            assert!(!error.diagnostic().text().is_empty());
+            assert_ne!(error.diagnostic().text(), "");
         }
     }
 }

@@ -683,8 +683,8 @@ mod tests {
     #[test]
     fn an_empty_package_set_resolves_to_an_empty_plan() {
         let plan = resolve(&[], Side::Client).expect("nothing to resolve");
-        assert!(plan.order().is_empty());
-        assert!(plan.discouraged().is_empty());
+        assert_eq!(plan.order(), []);
+        assert_eq!(plan.discouraged(), []);
         assert_eq!(plan.side(), Side::Client);
     }
 
@@ -836,7 +836,10 @@ mod tests {
             order(&packages, Side::DedicatedServer),
             ["example_server_mod"]
         );
-        assert!(order(&packages, Side::IntegratedServer).is_empty());
+        assert_eq!(
+            order(&packages, Side::IntegratedServer),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -972,7 +975,7 @@ mod tests {
             r#"[{ "id": "example_rival", "relationship": "discouraged", "version": "*" }]"#,
         )];
         let plan = resolve(&packages, Side::Client).expect("nothing to discourage");
-        assert!(plan.discouraged().is_empty());
+        assert_eq!(plan.discouraged(), []);
     }
 
     #[test]

@@ -247,8 +247,11 @@ mod tests {
         let progression = Progression::default();
         assert!(progression.is_empty());
         assert_eq!(progression.states().count(), 0);
-        assert!(progression.dangling().is_empty());
-        assert!(progression.unreachable().is_empty());
+        assert_eq!(
+            progression.dangling(),
+            [] as [(ravel_core::ContentId, ravel_core::ContentId); 0]
+        );
+        assert_eq!(progression.unreachable(), [] as [ravel_core::ContentId; 0]);
         assert_eq!(progression.state(&state("start")), None);
     }
 
@@ -265,8 +268,11 @@ mod tests {
             .declare(state("first"), [], Some(gate("lantern")))
             .expect("a legal step");
 
-        assert!(backwards.unreachable().is_empty());
-        assert!(backwards.dangling().is_empty());
+        assert_eq!(backwards.unreachable(), [] as [ravel_core::ContentId; 0]);
+        assert_eq!(
+            backwards.dangling(),
+            [] as [(ravel_core::ContentId, ravel_core::ContentId); 0]
+        );
         assert_eq!(
             backwards
                 .state(&state("first"))

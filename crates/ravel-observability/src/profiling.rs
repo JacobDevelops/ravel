@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(entered, 1, "the body still runs with profiling off");
         assert!(!report.is_on());
         assert_eq!(report.ticks(), 0);
-        assert!(report.mods().is_empty());
+        assert_eq!(report.mods(), []);
     }
 
     #[test]
@@ -745,7 +745,7 @@ mod tests {
     fn every_spec_metric_states_what_m3_can_say_about_it() {
         assert_eq!(Metric::ALL.len(), 12);
         for metric in Metric::ALL {
-            assert!(!metric.name().is_empty());
+            assert_ne!(metric.name(), "");
             assert!(matches!(metric.unit(), "bytes" | "nanoseconds" | "count"));
             match metric.support() {
                 Support::Exact => assert!(metric.support().detail().is_none()),

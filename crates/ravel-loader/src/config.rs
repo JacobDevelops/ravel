@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(configured.order(), [id("first_mod"), id("second_mod")]);
         assert_eq!(first.applied, Some(4), "the author's default");
         assert_eq!(second.applied, Some(9), "the pack's override");
-        assert!(configured.dropped().is_empty());
+        assert_eq!(configured.dropped(), []);
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
         )
         .expect("a mod with nothing to configure configures");
 
-        assert!(configured.order().is_empty());
+        assert_eq!(configured.order(), []);
         assert_eq!(silent.applied, None);
     }
 
@@ -415,7 +415,7 @@ mod tests {
         )
         .expect("a parked mod takes no part");
 
-        assert!(configured.order().is_empty());
+        assert_eq!(configured.order(), []);
         assert_eq!(client.applied, None);
     }
 

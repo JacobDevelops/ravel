@@ -392,11 +392,11 @@ mod tests {
             String::from_utf8(written.bytes()).expect("the record is UTF-8"),
             r#"{"format":1,"shaping":[]}"#
         );
-        assert!(
+        assert_eq!(
             ShapingRecord::read(&written.bytes())
                 .expect("an empty record reads back")
-                .mods()
-                .is_empty()
+                .mods(),
+            []
         );
     }
 
@@ -409,7 +409,7 @@ mod tests {
             .expect_err("a world is refused when what shaped it is gone");
 
         assert_eq!(refusal.missing(), [id("probe")]);
-        assert!(refusal.arrived().is_empty());
+        assert_eq!(refusal.arrived(), []);
         assert!(refusal.to_string().contains("probe"));
     }
 
@@ -422,7 +422,7 @@ mod tests {
             .expect_err("a world is refused when something new would shape it");
 
         assert_eq!(refusal.arrived(), [id("probe")]);
-        assert!(refusal.missing().is_empty());
+        assert_eq!(refusal.missing(), []);
     }
 
     #[test]

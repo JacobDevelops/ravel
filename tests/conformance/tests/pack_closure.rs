@@ -140,7 +140,7 @@ fn the_pack_this_suite_is_written_against_is_one_whose_four_closures_hold() {
             .file(&path(&format!("assets/{owner}/lang/en_us.json")))
             .is_some()
     );
-    assert!(validated.overrides().is_empty());
+    assert_eq!(validated.overrides(), []);
 }
 
 // -------------------------------------------------------- dependency closure ---

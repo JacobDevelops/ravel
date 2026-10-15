@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(NetworkingMod::declared_id(), &expected);
         assert_eq!(NetworkingMod::new().id(), &expected);
         assert_eq!(NetworkingMod::new(), NetworkingMod::default());
-        assert!(NetworkingMod::new().answered().is_empty());
+        assert_eq!(NetworkingMod::new().answered(), []);
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
             .expect_err("the body ends early");
         assert_eq!(error.mod_id(), NetworkingMod::declared_id());
         assert_eq!(error.state(), LifecycleState::Running);
-        assert!(host.answered().is_empty());
+        assert_eq!(host.answered(), []);
 
         // And the whole payload is accepted, so the refusal is about the cut.
         host.receive_packet(&arriving(full))
@@ -362,7 +362,7 @@ mod tests {
             host.receive_packet(&on_client),
             Err(ModError::Refused { .. })
         ));
-        assert!(host.answered().is_empty());
+        assert_eq!(host.answered(), []);
     }
 }
 

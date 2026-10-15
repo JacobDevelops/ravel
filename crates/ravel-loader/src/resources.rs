@@ -285,7 +285,7 @@ mod tests {
             1,
             "a silent mod generates nothing"
         );
-        assert!(supplied.set().overrides().is_empty());
+        assert_eq!(supplied.set().overrides(), []);
     }
 
     /// Two mods, one path: the later supplies it and the shadowed one is named.
@@ -339,7 +339,7 @@ mod tests {
 
         let supplied = open_resources(&machine, &mods).expect("a parked mod refuses nothing");
 
-        assert!(supplied.generated().is_empty());
+        assert_eq!(supplied.generated(), []);
         assert_eq!(supplied.bytes(&path("assets/client.json")), None);
     }
 

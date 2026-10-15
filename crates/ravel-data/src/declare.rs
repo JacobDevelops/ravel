@@ -693,7 +693,7 @@ mod tests {
     fn an_empty_declaration_owns_its_mod_and_declares_nothing() {
         let declaration = declaration();
         assert_eq!(declaration.owner(), &owner());
-        assert!(declaration.entries().is_empty());
+        assert_eq!(declaration.entries(), []);
         assert_eq!(declaration.tags().count(), 0);
         assert_eq!(declaration.locales().count(), 0);
         assert_eq!(declaration.resources().count(), 0);
@@ -819,16 +819,15 @@ mod tests {
         declaration
             .tag(&lanterns, &foreign)
             .expect("a tag is not a claim on its members");
-        assert!(declaration.entries().is_empty());
+        assert_eq!(declaration.entries(), []);
         assert_eq!(declaration.tag_members(&lanterns), [foreign]);
     }
 
     #[test]
     fn a_tag_nothing_declared_has_no_members_rather_than_no_answer() {
-        assert!(
-            declaration()
-                .tag_members(&tag(ContentKind::Item, "lanterns"))
-                .is_empty()
+        assert_eq!(
+            declaration().tag_members(&tag(ContentKind::Item, "lanterns")),
+            []
         );
     }
 

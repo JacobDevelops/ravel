@@ -613,7 +613,7 @@ mod tests {
             // leaves the package.
             assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
             assert!(error.quotes_untrusted_text());
-            assert!(!error.diagnostic().text().is_empty());
+            assert_ne!(error.diagnostic().text(), "");
         }
     }
 

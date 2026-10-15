@@ -36,10 +36,10 @@
 //! outbound leg has not been performed by a launched game. This crate names both
 //! boundaries as traits a driver implements — [`GameView`] and [`GameDriver`] —
 //! so a run is written, ordered and asserted against them now.
-//! The driver can be built against a launched game without changing this model. [`run`] is the loop that
-//! drives a scenario against them, so what a live driver has to supply is the
-//! two traits and nothing else: the order of carry, observe, evaluate and
-//! record is decided here rather than re-derived by each caller.
+//! The driver can be built against a launched game without changing this model.
+//! [`run`] is the loop that drives a scenario against them, so what a live driver
+//! has to supply is the two traits and nothing else: the order of carry, observe,
+//! evaluate and record is decided here rather than re-derived by each caller.
 //!
 //! # What the run never does
 //!
@@ -704,8 +704,8 @@ mod tests {
         let scenario = Scenario::new("empty", Side::Client);
         assert_eq!(scenario.name(), "empty");
         assert_eq!(scenario.side(), Side::Client);
-        assert!(scenario.steps().is_empty());
-        assert!(scenario.checkpoints().is_empty());
+        assert_eq!(scenario.steps(), []);
+        assert_eq!(scenario.checkpoints(), []);
     }
 
     #[test]
@@ -876,7 +876,7 @@ mod tests {
     fn checkpoint_names_and_order_are_consistent() {
         for (index, checkpoint) in ProgressionCheckpoint::ALL.into_iter().enumerate() {
             assert_eq!(usize::from(checkpoint.order()), index);
-            assert!(!checkpoint.as_str().is_empty());
+            assert_ne!(checkpoint.as_str(), "");
         }
     }
 }

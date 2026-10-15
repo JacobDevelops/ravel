@@ -401,7 +401,10 @@ mod tests {
             } else {
                 assert_eq!(host.work_done(), [BUILT_THE_OVERLAY]);
                 assert!(host.has_overlay());
-                assert!(host.drawn().expect("the client holds them").is_empty());
+                assert_eq!(
+                    host.drawn().expect("the client holds them"),
+                    [] as [String; 0]
+                );
             }
             assert_eq!(host.side(), side);
         }
@@ -549,7 +552,10 @@ mod tests {
             host.receive_packet(&arriving(payload, Side::Client))
                 .expect_err("the payload is not one overlay");
             assert_eq!(host.work_done(), [BUILT_THE_OVERLAY]);
-            assert!(host.drawn().expect("the client holds them").is_empty());
+            assert_eq!(
+                host.drawn().expect("the client holds them"),
+                [] as [String; 0]
+            );
         }
     }
 

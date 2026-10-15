@@ -34,13 +34,10 @@ jni = "0.22.4"
 miniz_oxide = "0.8.9"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
-ravel-acceptance = { path = "crates/ravel-acceptance", version = "0.0.0" }
-ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
 ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
 ravel-example-content-mod = { path = "examples/content-mod", version = "0.0.0" }
-ravel-example-guide-snippets = { path = "examples/guide-snippets", version = "0.0.0" }
 ravel-example-minimal-mod = { path = "examples/minimal-mod", version = "0.0.0" }
 ravel-example-stateful-mod = { path = "examples/stateful-mod", version = "0.0.0" }
 ravel-host-api = { path = "crates/ravel-host-api", version = "0.0.0" }
@@ -57,8 +54,6 @@ ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
 ravel-spike-adg-2-guest = { path = "experiments/adg-2-guest", version = "0.0.0" }
-ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0.0.0" }
-ravel-spike-adg-5-prism = { path = "experiments/adg-5-prism", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-test-mod-audio = { path = "test-mods/audio", version = "0.0.0" }
 ravel-test-mod-client-only = { path = "test-mods/client-only", version = "0.0.0" }
@@ -78,7 +73,6 @@ ravel-test-mod-saved-data = { path = "test-mods/saved-data", version = "0.0.0" }
 ravel-test-mod-server-data = { path = "test-mods/server-data", version = "0.0.0" }
 ravel-test-mod-server-only = { path = "test-mods/server-only", version = "0.0.0" }
 ravel-test-mod-world-shaping = { path = "test-mods/world-shaping", version = "0.0.0" }
-waystone-ledger = { path = "test-mods/waystone-ledger", version = "0.2.0" }
 ravel-build = { path = "crates/ravel-build", version = "0.0.0" }
 ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
@@ -89,6 +83,9 @@ serde_json = "1.0.151"
 sha2 = "0.11.0"
 syn = { version = "3.0.3", features = ["full"] }
 toml = "1.1.4"
+
+[workspace.lints.cargo]
+default = "deny"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

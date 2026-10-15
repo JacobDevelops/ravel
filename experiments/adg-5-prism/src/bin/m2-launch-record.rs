@@ -460,7 +460,7 @@ mod tests {
             core_mod_files: 0,
         };
 
-        assert!(instance.loader_components().is_empty());
+        assert_eq!(instance.loader_components(), [] as [&str; 0]);
         assert!(instance.without_another_loader());
     }
 

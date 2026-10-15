@@ -171,7 +171,10 @@ mod tests {
         assert_eq!(taken[0].entry(), ENTRY);
         assert_eq!(taken[0].owner(), AudioMod::declared_id());
         assert_eq!(taken[0].side(), Side::Client);
-        assert!(audio.take_play_requests().is_empty());
+        assert_eq!(
+            audio.take_play_requests(),
+            [] as [ravel_sdk::audio::PlayRequest; 0]
+        );
     }
 
     /// Every event but the client tick asks for nothing.
@@ -182,7 +185,10 @@ mod tests {
             audio.observe(event).expect("the mod accepts every event");
         }
 
-        assert!(audio.take_play_requests().is_empty());
+        assert_eq!(
+            audio.take_play_requests(),
+            [] as [ravel_sdk::audio::PlayRequest; 0]
+        );
     }
 
     /// Every side, checked from one list rather than one side at a time, so a

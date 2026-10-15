@@ -458,7 +458,8 @@ pub struct ChildTrial {
 ///
 /// # Errors
 ///
-/// Returns an error when the child cannot start, reports nothing usable, times out, or exits unsuccessfully.
+/// Returns an error when the child cannot start, reports nothing usable, times
+/// out, or exits unsuccessfully.
 pub fn run_child_trial<S: AsRef<std::ffi::OsStr>>(
     program: &str,
     arguments: &[S],
@@ -549,7 +550,8 @@ fn next_line(
 /// Writes one spike result where the milestone gate expects to find it, unless a
 /// record is already there.
 ///
-/// Existing records are digest-bound by milestone manifests, so a rerun must delete the record deliberately.
+/// Existing records are digest-bound by milestone manifests, so a rerun must
+/// delete the record deliberately.
 ///
 /// Returns whether the record was written.
 ///
@@ -805,8 +807,8 @@ mod tests {
     fn the_runtime_a_trial_will_use_is_identified_and_compared_to_the_pin() {
         let runtime = super::java_runtime("0.0.0").expect("a JDK should be on the path");
 
-        assert!(!runtime.version.is_empty());
-        assert!(!runtime.runtime.is_empty());
+        assert_ne!(runtime.version, "");
+        assert_ne!(runtime.runtime, "");
         assert!(!runtime.pinned, "0.0.0 cannot be the pinned runtime");
 
         let same = super::java_runtime(&runtime.version).expect("a JDK should be on the path");

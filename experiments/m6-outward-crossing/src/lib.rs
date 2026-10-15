@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn an_instruction_array_is_one_fixed_width_record_per_action() {
         assert_eq!(instructions(4).len(), 4 * INSTRUCTION_BYTES);
-        assert!(instructions(0).is_empty());
+        assert_eq!(instructions(0), [] as [u8; 0]);
     }
 
     #[test]

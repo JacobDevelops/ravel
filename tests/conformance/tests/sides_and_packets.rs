@@ -632,7 +632,7 @@ fn a_length_prefix_past_the_end_is_refused_with_the_length_it_claimed() {
     let (failure, server) = ping_arriving(hostile, ping_id());
     let failure = failure.expect("a length prefix past the end");
     assert!(failure.contains("4294967295"), "{failure}");
-    assert!(server.answered().is_empty());
+    assert_eq!(server.answered(), []);
 }
 
 #[test]
@@ -643,7 +643,7 @@ fn a_payload_with_bytes_left_over_is_refused_rather_than_read_as_the_packet_insi
     let (failure, server) = ping_arriving(trailing, ping_id());
     let failure = failure.expect("a byte nothing accounts for");
     assert!(failure.contains("accounts for"), "{failure}");
-    assert!(server.answered().is_empty());
+    assert_eq!(server.answered(), []);
 }
 
 #[test]
@@ -655,7 +655,7 @@ fn a_payload_written_under_another_version_is_refused_rather_than_misread() {
     let (failure, server) = ping_arriving(other.clone(), ping_id());
     let failure = failure.expect("another version");
     assert!(failure.contains("version"), "{failure}");
-    assert!(server.answered().is_empty());
+    assert_eq!(server.answered(), []);
 
     // And the wire error says which version each end speaks, rather than only that
     // something was wrong.
@@ -675,7 +675,7 @@ fn a_payload_written_under_another_contract_is_refused_by_name() {
     let (failure, server) = ping_arriving(encode(&Overlay::new(Vec::new())), ping_id());
     let failure = failure.expect("the payload is an overlay");
     assert!(failure.contains(&overlay_id().to_string()), "{failure}");
-    assert!(server.answered().is_empty());
+    assert_eq!(server.answered(), []);
 }
 
 #[test]
@@ -690,5 +690,5 @@ fn a_delivery_naming_one_contract_and_carrying_another_is_refused() {
 
     let failure = failure.expect("the label and the payload disagree");
     assert!(failure.contains(&other.to_string()), "{failure}");
-    assert!(server.answered().is_empty());
+    assert_eq!(server.answered(), []);
 }

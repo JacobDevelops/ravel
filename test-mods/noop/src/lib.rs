@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn a_fresh_instance_has_been_taken_nowhere() {
-        assert!(NoopMod::new().entered().is_empty());
+        assert_eq!(NoopMod::new().entered(), []);
     }
 
     #[test]

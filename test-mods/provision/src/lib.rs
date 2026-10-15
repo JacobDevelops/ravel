@@ -178,10 +178,9 @@ mod tests {
             provision.providers_of(LIBRARY),
             [ProvisionMod::declared_id()]
         );
-        assert!(
-            provision
-                .providers_of("a_library_nobody_declares")
-                .is_empty()
+        assert_eq!(
+            provision.providers_of("a_library_nobody_declares"),
+            [] as [&ravel_sdk::ModId; 0]
         );
     }
 

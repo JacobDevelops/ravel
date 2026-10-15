@@ -230,7 +230,7 @@ fn a_world_is_refused_before_it_is_read_when_a_shaping_mod_is_gone() {
         .expect_err("a world is refused when what shaped it is gone");
 
     assert_eq!(refusal.missing(), [WorldShapingMod::declared_id().clone()]);
-    assert!(refusal.arrived().is_empty());
+    assert_eq!(refusal.arrived(), []);
 }
 
 #[test]

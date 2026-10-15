@@ -185,7 +185,7 @@ fn command_line_verifies_markers_without_desktop_input() {
         String::from_utf8_lossy(&output.stdout),
         "Verified 17 initial-v2 lifecycle markers.\n"
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
 
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -1205,7 +1205,7 @@ fn command_line_supervisor_preserves_java_signal_status() {
         .expect("signalled Linux supervisor should execute");
 
     assert_eq!(output.status.code(), Some(143));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     server.join().expect("fake recorder should join");
 
     fs::remove_dir_all(root).expect("temporary root should be removable");

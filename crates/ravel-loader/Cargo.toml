@@ -12,7 +12,6 @@ ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-data.workspace = true
 ravel-host-api.workspace = true
-ravel-minecraft.workspace = true
 ravel-network.workspace = true
 ravel-observability.workspace = true
 ravel-package.workspace = true

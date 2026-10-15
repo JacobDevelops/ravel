@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn a_version_one_world_that_held_nothing_becomes_an_empty_list() {
         let journal = opened(1, json!({ "entry": "" })).expect("the step runs");
-        assert!(journal.entries().is_empty());
+        assert_eq!(journal.entries(), [] as [String; 0]);
     }
 
     #[test]

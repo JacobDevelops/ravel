@@ -479,10 +479,10 @@ mod tests {
 
         assert_eq!(manifest.display_name, None);
         assert_eq!(manifest.description, None);
-        assert!(manifest.dependencies.is_empty());
-        assert!(manifest.resources.is_empty());
-        assert!(manifest.configuration_schemas.is_empty());
-        assert!(manifest.saved_data_versions.is_empty());
+        assert_eq!(manifest.dependencies, []);
+        assert_eq!(manifest.resources, []);
+        assert_eq!(manifest.configuration_schemas, []);
+        assert_eq!(manifest.saved_data_versions, []);
 
         let rendered = manifest.to_json();
         assert_eq!(

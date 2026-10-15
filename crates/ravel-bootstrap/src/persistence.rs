@@ -2097,7 +2097,10 @@ mod tests {
             .stage_world(WorldIdentity::of(FIRST), None, true)
             .expect("a new world stages");
 
-        assert!(runtime.persistence_observations().is_empty());
+        assert_eq!(
+            runtime.persistence_observations(),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]

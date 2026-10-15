@@ -423,9 +423,9 @@ mod tests {
     fn an_empty_report_opens_a_world_and_says_nothing() {
         let report = report();
         assert_eq!(report.world_access(), Ok(()));
-        assert!(report.refusals().is_empty());
-        assert!(report.notices().is_empty());
-        assert!(report.lines().is_empty());
+        assert_eq!(report.refusals(), []);
+        assert_eq!(report.notices(), []);
+        assert_eq!(report.lines(), [] as [std::string::String; 0]);
         assert_eq!(report.environment(), &environment());
     }
 

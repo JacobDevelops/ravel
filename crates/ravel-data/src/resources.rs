@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(set.supplier(&lang), Some(&base));
         assert_eq!(set.supplier(&model), Some(&other));
         assert!(!set.has_overrides());
-        assert!(set.overrides().is_empty());
+        assert_eq!(set.overrides(), []);
         assert_eq!(set.declared().len(), 2);
     }
 
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn an_empty_set_supplies_nothing_and_contests_nothing() {
         let set = ResourceSet::default();
-        assert!(set.declared().is_empty());
+        assert_eq!(set.declared(), []);
         assert!(!set.has_overrides());
         assert_eq!(set.supplier(&path("resources/lang/en.json")), None);
         assert_eq!(

@@ -265,7 +265,7 @@ mod tests {
         let data = GeneratedData::default();
         assert!(data.is_empty());
         assert_eq!(data.len(), 0);
-        assert!(data.files().is_empty());
+        assert_eq!(data.files(), []);
         assert_eq!(data.paths().count(), 0);
         assert_eq!(data.file(&path("anything.json")), None);
     }

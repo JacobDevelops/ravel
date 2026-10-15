@@ -434,7 +434,7 @@ mod tests {
             &MOD_ID.parse::<ModId>().expect("a legal mod id")
         );
         assert_eq!(SavedDataMod::default(), saved);
-        assert!(saved.entered().is_empty());
+        assert_eq!(saved.entered(), []);
         assert_eq!(saved.state(), &SavedState::default());
     }
 

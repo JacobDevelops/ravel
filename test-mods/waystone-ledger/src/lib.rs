@@ -1113,7 +1113,7 @@ mod tests {
         ledger
             .open_saved_data(None, &plan)
             .expect("absence is not a refusal");
-        assert!(ledger.waystones().is_empty());
+        assert_eq!(ledger.waystones(), []);
     }
 
     #[test]
@@ -1147,7 +1147,7 @@ mod tests {
             })
         );
         // The client learned a count, not the ledger.
-        assert!(ledger.waystones().is_empty());
+        assert_eq!(ledger.waystones(), []);
     }
 
     #[test]
@@ -1285,7 +1285,7 @@ mod tests {
 
         run(&mut ledger, &["forget", "home"]);
         assert_eq!(ledger.outcome(), &Outcome::Forgotten("home".to_owned()));
-        assert!(ledger.waystones().is_empty());
+        assert_eq!(ledger.waystones(), []);
     }
 
     /// The guide is explicit that *nothing* checks that a package's `id` and its

@@ -16,11 +16,17 @@ default = []
 # The generator is build-time tooling. It is compiled into the library only when
 # asked for, so the adapter that ships into the game process does not carry an
 # archive reader and a TOML parser it never calls.
-generate = ["dep:miniz_oxide", "dep:serde", "dep:sha2", "dep:toml"]
+generate = [
+  "dep:miniz_oxide",
+  "dep:ravel-core",
+  "dep:serde",
+  "dep:sha2",
+  "dep:toml",
+]
 
 [dependencies]
 miniz_oxide = { workspace = true, optional = true }
-ravel-core.workspace = true
+ravel-core = { workspace = true, optional = true }
 ravel-minecraft.workspace = true
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

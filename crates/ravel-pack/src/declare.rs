@@ -310,8 +310,8 @@ mod tests {
         assert_eq!(pack.version(), &Version::new(0, 2, 1));
         assert_eq!(pack.members().count(), 0);
         assert_eq!(pack.settings().count(), 0);
-        assert!(pack.supplied().is_empty());
-        assert!(pack.references().is_empty());
+        assert_eq!(pack.supplied(), []);
+        assert_eq!(pack.references(), []);
         assert!(pack.progression().is_empty());
         assert_eq!(pack.pinned(&id("example_mod")), None);
     }

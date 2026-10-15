@@ -242,7 +242,7 @@ mod tests {
             &MOD_ID.parse::<ModId>().expect("a legal mod id")
         );
         assert_eq!(RegistriesMod::default(), registries);
-        assert!(registries.registered().is_empty());
+        assert_eq!(registries.registered(), []);
     }
 
     #[test]

@@ -231,7 +231,7 @@ mod tests {
             &MOD_ID.parse::<ModId>().expect("a legal mod id")
         );
         assert_eq!(CommandsMod::default(), commands);
-        assert!(commands.invocations().is_empty());
+        assert_eq!(commands.invocations(), []);
     }
 
     #[test]
@@ -309,7 +309,7 @@ mod tests {
         assert!(error.to_string().contains("needs a subcommand"), "{error}");
         assert_eq!(error.state(), LifecycleState::Running);
         assert_eq!(error.mod_id().as_str(), MOD_ID);
-        assert!(commands.invocations().is_empty());
+        assert_eq!(commands.invocations(), []);
 
         // The same root with an argument is accepted, so the refusal is about
         // the arguments and not about the command.

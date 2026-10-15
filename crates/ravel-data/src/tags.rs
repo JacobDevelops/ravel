@@ -466,8 +466,8 @@ mod tests {
         let set = TagSet::default();
         let lanterns = tag(ContentKind::Item, "lanterns");
         assert!(set.is_empty());
-        assert!(set.members(&lanterns).is_empty());
-        assert!(set.contributors(&lanterns).is_empty());
+        assert_eq!(set.members(&lanterns), []);
+        assert_eq!(set.contributors(&lanterns), []);
         assert_eq!(set, TagSet::merged(Vec::<&ContentDeclaration>::new()));
     }
 }

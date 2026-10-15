@@ -1525,12 +1525,12 @@ mod tests {
             LifecycleMachine::new(Side::DedicatedServer, Vec::new()).expect("empty plan");
         assert_eq!(machine.side(), Side::DedicatedServer);
         assert_eq!(machine.order().count(), 0);
-        assert!(machine.transcript().is_empty());
+        assert_eq!(machine.transcript(), []);
         assert!(machine.registration_barrier_closed());
         machine
             .advance_all(LifecycleState::Validated)
             .expect("legal");
-        assert!(machine.transcript().is_empty());
+        assert_eq!(machine.transcript(), []);
         machine.world_access().expect("nothing blocks an empty set");
         machine.request_save().expect("nothing halted an empty set");
     }

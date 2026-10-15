@@ -804,9 +804,7 @@ version = "0.0.0"
 dependencies = [
  "ravel-build",
  "ravel-loader",
- "ravel-pack",
  "ravel-package",
- "ravel-testkit",
  "rustix",
  "serde",
  "serde_json",
@@ -963,7 +961,6 @@ dependencies = [
  "ravel-core",
  "ravel-data",
  "ravel-host-api",
- "ravel-minecraft",
  "ravel-network",
  "ravel-observability",
  "ravel-package",
@@ -977,7 +974,6 @@ name = "ravel-minecraft"
 version = "0.0.0"
 dependencies = [
  "jni",
- "ravel-core",
  "serde_json",
 ]
 
@@ -1208,16 +1204,10 @@ dependencies = [
 [[package]]
 name = "ravel-test-mod-dependency-base"
 version = "0.0.0"
-dependencies = [
- "ravel-sdk",
-]
 
 [[package]]
 name = "ravel-test-mod-dependency-consumer"
 version = "0.0.0"
-dependencies = [
- "ravel-sdk",
-]
 
 [[package]]
 name = "ravel-test-mod-events"
@@ -1231,9 +1221,6 @@ dependencies = [
 [[package]]
 name = "ravel-test-mod-failure-cases"
 version = "0.0.0"
-dependencies = [
- "ravel-sdk",
-]
 
 [[package]]
 name = "ravel-test-mod-inter-mod-service"
@@ -1348,7 +1335,6 @@ dependencies = [
  "ravel-loader",
  "ravel-package",
  "ravel-resolve",
- "ravel-sdk",
  "serde_json",
  "sha2 0.11.0",
 ]

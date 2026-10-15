@@ -150,18 +150,18 @@ impl HookTarget {
 /// ```
 ///
 /// A JNI local reference belongs to one thread, and the borrow carries that too.
-/// The test uses a *scoped* thread deliberately: an ordinary `spawn` also
-/// requires `'static`, so it would fail even for a handle that had lost its
-/// lifetime entirely, and would keep passing for the wrong reason. A scoped
-/// thread requires only `Send`, which isolates the thread route:
+/// `jni` makes `JObject` `Send` only at `'static`, so a handle borrowed for a
+/// call's local lifetime cannot be sent, and the compiler names that lifetime as
+/// the reason. The test asks for `Send` directly rather than spawning a thread,
+/// so no spawn-specific bound can be what refuses it:
 ///
-/// ```compile_fail,E0277
+/// ```compile_fail,E0521
 /// use ravel_minecraft::JavaHandle;
 ///
+/// fn require_send<T: Send>(_: T) {}
+///
 /// fn hand_off(handle: JavaHandle<'_>) {
-///     std::thread::scope(|scope| {
-///         scope.spawn(move || drop(handle));
-///     });
+///     require_send(handle);
 /// }
 /// ```
 ///

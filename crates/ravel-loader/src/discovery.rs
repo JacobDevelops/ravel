@@ -525,8 +525,11 @@ mod tests {
         fs::create_dir_all(&root).expect("an instance is creatable");
 
         let discovered = discover(&root).expect("no packages is not a failure");
-        assert!(discovered.packages().is_empty());
-        assert!(discovered.manifests().is_empty());
+        assert_eq!(discovered.packages(), []);
+        assert_eq!(
+            discovered.manifests(),
+            [] as [ravel_package::PackageManifest; 0]
+        );
         fs::remove_dir_all(&root).expect("cleanup");
     }
 

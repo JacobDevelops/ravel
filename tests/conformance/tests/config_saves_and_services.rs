@@ -495,7 +495,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
         &BTreeMap::new(),
     )
     .expect("a mod with no settings has nothing to read");
-    assert!(configured.order().is_empty());
+    assert_eq!(configured.order(), []);
 }
 
 #[test]

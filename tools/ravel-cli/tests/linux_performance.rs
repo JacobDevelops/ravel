@@ -511,7 +511,7 @@ fn command_line_captures_linux_memory_without_desktop_input() {
             csv.display()
         )
     );
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     assert_eq!(
         parse_linux_memory_csv(Cursor::new(
             fs::read_to_string(&csv).expect("capture should be readable")

@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(refusal.library(), "shared_maths");
         assert!(refusal.has_no_provider());
         assert_eq!(refusal.unsatisfied(), [consumer]);
-        assert!(refusal.providers().is_empty());
+        assert_eq!(refusal.providers(), []);
     }
 
     #[test]
@@ -470,7 +470,7 @@ mod tests {
 
         assert_eq!(refusal.library(), "shared_maths");
         assert_eq!(refusal.providers(), [first, second]);
-        assert!(refusal.unsatisfied().is_empty());
+        assert_eq!(refusal.unsatisfied(), []);
         assert!(matches!(refusal, ProvisionRefused::Contested { .. }));
     }
 
@@ -499,7 +499,10 @@ mod tests {
         provision.requires(&consumer, "shared_maths", range("^2"));
 
         assert_eq!(provision.providers_of("shared_maths"), [&provider]);
-        assert!(provision.providers_of("shared_words").is_empty());
+        assert_eq!(
+            provision.providers_of("shared_words"),
+            [] as [&ravel_core::ModId; 0]
+        );
         assert_eq!(
             provision
                 .resolve()
@@ -523,7 +526,7 @@ mod tests {
             .expect_err("a version nothing can read answers no range");
 
         assert_eq!(refusal.library(), "shared_maths");
-        assert!(refusal.unsatisfied().is_empty());
+        assert_eq!(refusal.unsatisfied(), []);
         assert!(refusal.to_string().contains("the latest one"), "{refusal}");
         assert!(matches!(
             refusal,

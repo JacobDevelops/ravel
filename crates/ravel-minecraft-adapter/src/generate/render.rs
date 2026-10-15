@@ -1393,7 +1393,7 @@ pub(super) fn stub_java(
         } else {
             stub_field(stub, member, &modifiers, &name, &descriptor, mapping)
         };
-        let _ = writeln!(text, "{}", rendered.map_err(&unsupported)?);
+        let _ = writeln!(text, "{}", rendered.map_err(unsupported)?);
     }
 
     let _ = writeln!(text, "}}");
@@ -1964,7 +1964,7 @@ mod tests {
                 parameters(&descriptor).expect("valid"),
                 vec![parameter.clone()]
             );
-            assert!(!parameter.java().is_empty());
+            assert_ne!(parameter.java(), "");
             assert!(parameter.rust().starts_with("::jni::"));
             assert!(parameter.value("x").contains("HookValue::"));
         }

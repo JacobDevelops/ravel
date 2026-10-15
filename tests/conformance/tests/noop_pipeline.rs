@@ -245,7 +245,7 @@ fn the_no_op_package_reaches_every_state_a_successful_run_can_reach_in_order_on_
 
         assert_eq!(completed.plan().side(), side);
         assert_eq!(completed.plan().order(), std::slice::from_ref(&mod_id));
-        assert!(completed.plan().discouraged().is_empty());
+        assert_eq!(completed.plan().discouraged(), []);
         assert_eq!(completed.states_of(&mod_id), expected, "{side:?}");
         assert_eq!(
             noop.entered(),

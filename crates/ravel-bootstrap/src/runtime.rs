@@ -979,7 +979,7 @@ mod tests {
 
         let ran = &log.lock().expect("nothing panicked").ran;
         assert_eq!(ran.len(), 1);
-        assert!(ran[0].arguments.is_empty());
+        assert_eq!(ran[0].arguments, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -1021,7 +1021,10 @@ mod tests {
         let outcome = runtime.observe(&target(COMMAND), &[HookValue::Int(1)]);
 
         assert_eq!(outcome, HookOutcome::Proceed);
-        assert!(log.lock().expect("nothing panicked").ran.is_empty());
+        assert_eq!(
+            log.lock().expect("nothing panicked").ran,
+            [] as [ravel_host_api::CommandInvocation; 0]
+        );
     }
 
     #[test]

@@ -915,7 +915,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [format!("{RESERVED_PREFIX}pack.json")]
         );
-        assert!(validated.overrides().is_empty());
+        assert_eq!(validated.overrides(), []);
 
         let manifest = validated
             .file(&path(&format!("{RESERVED_PREFIX}pack.json")))

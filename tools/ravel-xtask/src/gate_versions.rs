@@ -6,7 +6,7 @@ use std::path::Path;
 
 use ravel_minecraft_generate::{Eligibility, adapter_facts};
 
-use crate::version_boundary::{VersionEligibility, tracked_versions};
+use crate::version_boundary::{VersionAdapters, tracked_versions};
 
 struct Record {
     path: &'static str,
@@ -77,7 +77,7 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
         return report;
     }
 
-    let mut eligibility = VersionEligibility::new();
+    let mut eligibility = VersionAdapters::new();
     let mut unavailable = BTreeSet::new();
     for version in &versions {
         let facts = match adapter_facts(root, version) {
@@ -88,7 +88,6 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
             }
         };
         let value = facts.eligibility;
-        eligibility.insert(version.clone(), value);
         if facts
             .mapping_inputs
             .iter()
@@ -96,6 +95,7 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
         {
             unavailable.insert(version.as_str());
         }
+        eligibility.insert(version.clone(), facts);
         let generation_only = value == Eligibility::GenerationOnly;
         if generation_only {
             report.notices.push(format!(
@@ -128,7 +128,7 @@ fn verify_record(
     root: &Path,
     record: &Record,
     versions: &[String],
-    eligibility: &VersionEligibility,
+    eligibility: &VersionAdapters,
     unavailable: &BTreeSet<&str>,
     report: &mut GateVersionsReport,
 ) {
@@ -141,7 +141,9 @@ fn verify_record(
     };
     let mut reached_live = false;
     for version in versions {
-        let generation_only = eligibility.get(version) == Some(&Eligibility::GenerationOnly);
+        let generation_only = eligibility
+            .get(version)
+            .is_some_and(|facts| facts.eligibility == Eligibility::GenerationOnly);
         let verb = match (generation_only, record.verb) {
             (true, "tested") => "built",
             (true, "ran") => "NOT-YET-RUN",
@@ -185,6 +187,10 @@ fn verify_record(
             reached_live = true;
         }
     }
+    verify_live_coverage(record, reached_live, report);
+}
+
+fn verify_live_coverage(record: &Record, reached_live: bool, report: &mut GateVersionsReport) {
     if !reached_live {
         report.violations.push(format!(
             "{} records no live-eligible version {} actually reached, so no live coverage \

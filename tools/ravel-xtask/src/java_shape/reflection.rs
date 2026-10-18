@@ -1,21 +1,23 @@
-//! Declared reflective roles and their reachability from shared Java sources.
+//! Declared reflective roles and their reachability from the compiled Java adapter.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use ravel_minecraft_generate::Eligibility;
 use serde::Deserialize;
 
-use super::{AGENT_JAR_SOURCES, REFLECTION_FILE, java_sources};
+use super::{
+    AGENT_JAR_SOURCES, AGENT_SOURCE_MANIFEST, REFLECTION_FILE, agent_source_manifest,
+    compiled_bootstrap_source, java_sources,
+};
 use crate::text::{read_text, relative_label};
-use crate::version_boundary::{VERSION_DATA, VersionEligibility};
+use crate::version_boundary::{VERSION_DATA, VersionAdapters};
 
 pub(super) const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 
 pub(super) struct ReflectiveSurface {
     path: String,
     roles: Vec<Reflected>,
-    eligibility: Eligibility,
+    legacy_adapter: bool,
 }
 
 pub(super) struct Reflected {
@@ -23,22 +25,23 @@ pub(super) struct Reflected {
     class: String,
     runtime: String,
     pub(super) descriptors: Vec<String>,
+    members: Vec<String>,
 }
 
 pub(super) fn reflective_surfaces(
     root: &Path,
-    eligibility: &VersionEligibility,
+    adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) -> Vec<ReflectiveSurface> {
-    let mut surfaces = Vec::with_capacity(eligibility.len());
-    for (version, &eligibility) in eligibility {
+    let mut surfaces = Vec::with_capacity(adapters.len());
+    for (version, facts) in adapters {
         let path = format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}");
         match read_text(root, Path::new(&path)) {
             Ok(text) => match declared_roles(&text, &path) {
                 Ok(roles) => surfaces.push(ReflectiveSurface {
                     path,
                     roles,
-                    eligibility,
+                    legacy_adapter: facts.legacy_adapter,
                 }),
                 Err(violation) => violations.push(violation),
             },
@@ -65,6 +68,7 @@ struct ReflectedRole {
 
 #[derive(Deserialize)]
 struct ReflectedMember {
+    name: Option<String>,
     descriptor: Option<String>,
 }
 
@@ -78,6 +82,11 @@ pub(super) fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, S
             name: role.name,
             class: role.class,
             runtime: role.runtime,
+            members: role
+                .member
+                .iter()
+                .filter_map(|member| member.name.clone())
+                .collect(),
             descriptors: role
                 .member
                 .into_iter()
@@ -94,10 +103,12 @@ pub(super) fn verify_persistence_reflection_roles(
     violations: &mut Vec<String>,
 ) {
     for surface in surfaces {
-        if surface.eligibility == Eligibility::GenerationOnly {
-            verify_generation_reflection(surface, violations);
-            continue;
+        if surface.legacy_adapter {
+            verify_legacy_reflection(surface, violations);
         }
+        let compiled = |(relative, _): &&(String, String)| {
+            compiled_bootstrap_source(Path::new(relative), surface.legacy_adapter)
+        };
         let declaring = &surface.path;
         let declared: Vec<&str> = surface
             .roles
@@ -105,7 +116,7 @@ pub(super) fn verify_persistence_reflection_roles(
             .map(|role| role.name.as_str())
             .collect();
 
-        for (relative, role) in spelled {
+        for (relative, role) in spelled.iter().filter(compiled) {
             if !declared.contains(&role.as_str()) {
                 violations.push(format!(
                     "{relative} resolves the game class {GAME_NAMES}.{role} and {declaring} \
@@ -116,7 +127,7 @@ pub(super) fn verify_persistence_reflection_roles(
         }
 
         let mut used: Vec<&str> = Vec::new();
-        for (relative, constant) in reached {
+        for (relative, constant) in reached.iter().filter(compiled) {
             match declaring_role(constant, &declared) {
                 Some(role) => used.push(role),
                 None => violations.push(format!(
@@ -129,35 +140,123 @@ pub(super) fn verify_persistence_reflection_roles(
 
         let reached: BTreeSet<&str> = spelled
             .iter()
+            .filter(compiled)
             .map(|(_, role)| role.as_str())
             .chain(used.iter().copied())
             .collect();
 
-        for role in &surface.roles {
-            let inside = format!("L{};", role.class.replace('.', "/"));
-            let passed_to_a_reached_lookup = surface.roles.iter().any(|reaching| {
-                reached.contains(reaching.name.as_str())
-                    && reaching
-                        .descriptors
-                        .iter()
-                        .any(|descriptor| descriptor.contains(&inside))
-            });
-            if !reached.contains(role.name.as_str()) && !passed_to_a_reached_lookup {
-                violations.push(format!(
-                    "{declaring} declares the role {} for {} and no source under \
-                     {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
-                     surface drifted rather than that it is pinned",
-                    role.name, role.class
-                ));
-            }
+        verify_role_reachability(surface, &reached, violations);
+    }
+}
+
+fn verify_role_reachability(
+    surface: &ReflectiveSurface,
+    reached: &BTreeSet<&str>,
+    violations: &mut Vec<String>,
+) {
+    // Modern constants directly close over this tree. Legacy names also serve generated
+    // screen/persistence templates and harness-only roles, validated by the generator's
+    // template/member resolution and tracked-inventory test. Direct bootstrap usage alone
+    // cannot establish that a legacy declaration is unused.
+    for role in surface.roles.iter().filter(|_| !surface.legacy_adapter) {
+        let inside = format!("L{};", role.class.replace('.', "/"));
+        let passed_to_a_reached_lookup = surface.roles.iter().any(|reaching| {
+            reached.contains(reaching.name.as_str())
+                && reaching
+                    .descriptors
+                    .iter()
+                    .any(|descriptor| descriptor.contains(&inside))
+        });
+        if !reached.contains(role.name.as_str()) && !passed_to_a_reached_lookup {
+            violations.push(format!(
+                "{} declares the role {} for {} and no source under \
+                 {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
+                 surface drifted rather than that it is pinned",
+                surface.path, role.name, role.class
+            ));
         }
     }
 }
 
-fn verify_generation_reflection(surface: &ReflectiveSurface, violations: &mut Vec<String>) {
+fn quoted_argument(text: &str) -> Option<&str> {
+    text.trim().strip_prefix('"')?.strip_suffix('"')
+}
+
+fn verify_legacy_lookups(
+    surface: &ReflectiveSurface,
+    relative: &str,
+    source: &str,
+    violations: &mut Vec<String>,
+) {
+    let anchors = [
+        ("", "LegacyNames.className(", 0, false),
+        ("", "LegacyNames.member(", 0, true),
+        ("", "LegacyAccess.type(", 0, false),
+        ("", "LegacyAccess.call(", 0, true),
+        ("", "LegacyAccess.field(", 0, true),
+        ("", "LegacyAccess.create(", 0, false),
+        ("/LegacyCommand.java", "type(", 0, false),
+        ("/LegacyCommand.java", "member(", 0, true),
+        ("/LegacyPersistence.java", "call(", 1, true),
+    ];
+    for (file, anchor, index, member_lookup) in anchors {
+        if !relative.ends_with(file) {
+            continue;
+        }
+        for (at, _) in source.match_indices(anchor) {
+            if !anchor.contains('.')
+                && source[..at].chars().next_back().is_some_and(|character| {
+                    character == '.' || character.is_ascii_alphanumeric() || character == '_'
+                })
+            {
+                continue;
+            }
+            let tail = &source[at + anchor.len()..];
+            let arguments = tail.split(')').next().unwrap_or(tail);
+            let mut arguments = arguments.split(',').skip(index);
+            let Some(role) = arguments.next().and_then(quoted_argument) else {
+                continue;
+            };
+            let member = if member_lookup {
+                arguments.next().and_then(quoted_argument)
+            } else if anchor == "LegacyAccess.create(" {
+                Some("<init>")
+            } else {
+                None
+            };
+            verify_legacy_lookup(surface, relative, role, member, violations);
+        }
+    }
+}
+
+fn verify_legacy_lookup(
+    surface: &ReflectiveSurface,
+    relative: &str,
+    role: &str,
+    member: Option<&str>,
+    violations: &mut Vec<String>,
+) {
+    let Some(declaration) = surface.roles.iter().find(|declared| declared.name == role) else {
+        violations.push(format!(
+            "{relative} resolves legacy role {role} but {} declares no such role",
+            surface.path
+        ));
+        return;
+    };
+    if let Some(member) = member
+        && !declaration.members.iter().any(|name| name == member)
+    {
+        violations.push(format!(
+            "{relative} resolves legacy member {role}#{member} but {} declares no such member",
+            surface.path
+        ));
+    }
+}
+
+fn verify_legacy_reflection(surface: &ReflectiveSurface, violations: &mut Vec<String>) {
     if surface.roles.is_empty() {
         violations.push(format!(
-            "{} declares no generation-only reflected roles",
+            "{} declares no legacy reflected roles",
             surface.path
         ));
     }
@@ -169,7 +268,7 @@ fn verify_generation_reflection(surface: &ReflectiveSurface, violations: &mut Ve
             || !names.insert(role.name.as_str())
         {
             violations.push(format!(
-                "{} has an empty or duplicate generation-only reflected role {}",
+                "{} has an empty or duplicate legacy reflected role {}",
                 surface.path, role.name
             ));
         }
@@ -258,10 +357,14 @@ pub(super) fn generated_constants(source: &str, class: &str) -> Vec<String> {
 
 pub(crate) fn verify_persistence_reflection(
     root: &Path,
-    eligibility: &VersionEligibility,
+    adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    let surfaces = reflective_surfaces(root, eligibility, violations);
+    if let Err(error) = agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+        violations.push(error);
+        return;
+    }
+    let surfaces = reflective_surfaces(root, adapters, violations);
 
     let sources = java_sources(&root.join(AGENT_JAR_SOURCES), violations);
     if sources.is_empty() {
@@ -276,8 +379,20 @@ pub(crate) fn verify_persistence_reflection(
     let mut reached: Vec<(String, String)> = Vec::new();
     for path in &sources {
         let relative = relative_label(root, path);
+        let selected = Path::new(&relative);
+        if !surfaces
+            .iter()
+            .any(|surface| compiled_bootstrap_source(selected, surface.legacy_adapter))
+        {
+            continue;
+        }
         match read_text(root, path) {
             Ok(source) => {
+                for surface in surfaces.iter().filter(|surface| {
+                    surface.legacy_adapter && compiled_bootstrap_source(selected, true)
+                }) {
+                    verify_legacy_lookups(surface, &relative, &source, violations);
+                }
                 for name in game_class_literals(&source) {
                     violations.push(format!(
                         "{relative} spells the game class {name} as a literal; \

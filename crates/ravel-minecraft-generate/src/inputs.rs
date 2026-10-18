@@ -46,6 +46,8 @@ pub(super) struct PinnedVersion {
 pub struct AdapterFacts {
     /// Runtime admission policy declared by this version.
     pub eligibility: Eligibility,
+    /// Whether generation selects the disjoint legacy Java adapter and templates.
+    pub legacy_adapter: bool,
     /// Mapping documents followed by any required mapping normalizer tool JAR.
     pub mapping_inputs: Vec<String>,
 }
@@ -164,6 +166,7 @@ pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, Generat
         .collect();
     Ok(AdapterFacts {
         eligibility: adapter.eligibility,
+        legacy_adapter: adapter.is_legacy(),
         mapping_inputs,
     })
 }

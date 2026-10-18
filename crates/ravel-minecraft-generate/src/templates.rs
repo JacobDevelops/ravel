@@ -1395,10 +1395,6 @@ com.example.util.Held -> com.example.util.Held:
             .expect("the tracked templates should render against an obfuscated mapping");
             assert_ne!(screens.java, [], "{version} renders real screen support");
             if legacy {
-                assert_eq!(
-                    pinned.adapter.eligibility,
-                    inputs::Eligibility::GenerationOnly
-                );
                 assert!(
                     screens.templates.iter().all(|path| {
                         path.starts_with(pinned.directory.join("templates/screen"))

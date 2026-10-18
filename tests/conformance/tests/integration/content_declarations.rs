@@ -9,8 +9,9 @@ use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Sid
 use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId, TagSet};
 use ravel_example_content_mod::{ContentMod, MODEL, RECIPE};
 use ravel_host_api::{HostError, Mod, Registrar};
-use ravel_host_runtime::{Member, compose};
+use ravel_host_runtime::{LaunchError, Member, compose};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_package::PackageManifest;
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
 use ravel_sdk::resources::RelativePath;
@@ -679,6 +680,60 @@ fn every_generated_document_is_legal_json_and_ends_in_one_newline() {
     }
 }
 
+// Outside the example's declared range, admission refusal is the obligation instead.
+fn compose_content(
+    game: &std::path::Path,
+    side: Side,
+) -> Option<ravel_bootstrap_runtime::Composition> {
+    let package = include_str!("../../../../examples/content-mod/package.json");
+    let manifest = PackageManifest::parse(package).expect("the shipped manifest is valid");
+    let running = ravel_bootstrap_runtime::environment().minecraft;
+    let version = running
+        .parse::<ravel_core::Version>()
+        .expect("the selected Minecraft release has a semantic version");
+    let compatible = manifest.compatibility.minecraft.iter().any(|declared| {
+        declared
+            .as_str()
+            .parse::<ravel_core::VersionRange>()
+            .expect("the content example declares Minecraft ranges")
+            .matches(&version)
+    });
+    let composed = compose(
+        game,
+        side,
+        vec![Member {
+            package: package.to_owned(),
+            host: Box::new(ContentMod::new()),
+        }],
+    );
+    if compatible {
+        Some(composed.expect("the compatible shipped example should compose"))
+    } else {
+        let expected = ravel_package::CompatibilityError::Minecraft {
+            declared: manifest
+                .compatibility
+                .minecraft
+                .iter()
+                .map(|range| range.as_str().to_owned())
+                .collect(),
+            running,
+        };
+        assert!(
+            matches!(composed, Err(LaunchError::Compatibility(actual)) if actual == expected),
+            "composition must reject the example with its declared compatibility error"
+        );
+        assert_eq!(
+            std::fs::read_dir(game)
+                .expect("the refused game directory is readable")
+                .count(),
+            0,
+            "incompatible content must be refused before composition writes files"
+        );
+        std::fs::remove_dir_all(game).expect("the refused game directory is removable");
+        None
+    }
+}
+
 // Exercise the same composition path as the host, not only the mod's generator.
 #[test]
 fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
@@ -688,19 +743,14 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let ravel_bootstrap_runtime::Composition {
+    let Some(ravel_bootstrap_runtime::Composition {
         machine,
         resources: supplied,
         ..
-    } = compose(
-        &game,
-        Side::DedicatedServer,
-        vec![Member {
-            package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()),
-        }],
-    )
-    .expect("the shipped example should compose");
+    }) = compose_content(&game, Side::DedicatedServer)
+    else {
+        return;
+    };
     assert_eq!(
         machine.state(ContentMod::declared_id()),
         Ok(LifecycleState::Running)
@@ -750,15 +800,11 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let ravel_bootstrap_runtime::Composition { resources, .. } = compose(
-        &game,
-        Side::Client,
-        vec![Member {
-            package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()),
-        }],
-    )
-    .expect("the shipped example should compose");
+    let Some(ravel_bootstrap_runtime::Composition { resources, .. }) =
+        compose_content(&game, Side::Client)
+    else {
+        return;
+    };
 
     let written = write_resource_pack(&game, &resources).expect("the pack should write");
 
@@ -840,15 +886,9 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let composition = compose(
-        &game,
-        Side::IntegratedServer,
-        vec![Member {
-            package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()),
-        }],
-    )
-    .expect("the shipped example should compose");
+    let Some(composition) = compose_content(&game, Side::IntegratedServer) else {
+        return;
+    };
 
     let world = game.join("saves").join("New World");
     std::fs::create_dir_all(&world).expect("a writable world directory");

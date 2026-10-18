@@ -1,6 +1,6 @@
 # Minecraft 1.12.2 version data
 
-This version carries 29 reviewed hooks and records 15 non-goals. The original
+This version carries 29 reviewed hooks and records 14 non-goals. The original
 22 hooks are supplemented by seven bridges: `legacy.world-open`,
 `legacy.world-open-integrated`, `legacy.command-install`, `legacy.command-execute`,
 `legacy.item-fire-damage`, `legacy.title-init`, and `legacy.global-palette-size`.
@@ -94,12 +94,12 @@ output with `RAVEL_MINECRAFT_VERSION=1.12.2 cargo xtask generate java`.
 these must be refreshed before lock generation can admit changed source inputs.
 Generated lock pins must likewise be refreshed together, never patched by hand.
 
-Eligibility is explicitly `generation-only`: locks, Java generation, adapter
-building, and Java compilation are checked, but adapter tests and all thirteen
-live-harness sections remain named not-yet-run obligations. This is not evidence
-of Minecraft starting, gameplay parity, or a runtime harness passing. The modern
-versions retain their full test and harness requirements when acquired local
-inputs are present. Absent local inputs produce a named `SKIPPED` report, not
-live-support proof. Lock-only generation permits all declared game/library jars
-absent; a partial fixture set fails naming the missing jar instead of bypassing
-checks.
+Eligibility is explicitly `live`: locks, Java generation, adapter tests and all
+thirteen capability-selected JVM harness sections are required alongside the
+modern versions. Official integrated save/reopen and connected dedicated
+server/restart acceptance exercised all 29 hooks; see the
+[legacy launch runbook](../../../docs/runbooks/legacy-launch.md). This does not
+establish native counterpart gameplay parity or progression acceptance.
+Absent local inputs produce a named `SKIPPED` report, not live-support proof.
+Lock-only generation permits all declared game/library jars absent; a partial
+fixture set fails naming the missing jar instead of bypassing checks.

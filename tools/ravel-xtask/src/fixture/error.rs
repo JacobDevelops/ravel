@@ -89,3 +89,67 @@ impl fmt::Display for FixtureError {
 }
 
 impl std::error::Error for FixtureError {}
+
+#[cfg(test)]
+mod tests {
+    use super::FixtureError;
+    use std::error::Error;
+
+    #[test]
+    fn message_variants_preserve_the_original_diagnostic() {
+        let constructors: [fn(String) -> FixtureError; 5] = [
+            FixtureError::Io,
+            FixtureError::Json,
+            FixtureError::InvalidDescriptor,
+            FixtureError::Archive,
+            FixtureError::Download,
+        ];
+        for constructor in constructors {
+            for message in ["", "fixture failed: café\nwith context"] {
+                let error = constructor(message.to_owned());
+                assert_eq!(error.to_string(), message);
+                assert!(error.source().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn mismatch_variants_identify_the_field_and_expected_and_observed_values() {
+        let cases = [
+            (
+                FixtureError::HashMismatch {
+                    artifact: "archive",
+                    expected: "abc123".to_owned(),
+                    actual: "def456".to_owned(),
+                },
+                "archive SHA-256 mismatch: expected abc123, observed def456",
+            ),
+            (
+                FixtureError::MetadataMismatch {
+                    field: "version",
+                    expected: "1.0".to_owned(),
+                    actual: "2.0".to_owned(),
+                },
+                "fixture manifest version mismatch: expected 1.0, observed 2.0",
+            ),
+            (
+                FixtureError::ReferenceCountMismatch {
+                    expected: 3,
+                    actual: 0,
+                },
+                "fixture manifest reference count mismatch: expected 3, observed 0",
+            ),
+            (
+                FixtureError::DuplicateReference {
+                    project_id: 42,
+                    file_id: 123,
+                },
+                "fixture manifest repeats CurseForge project 42 file 123",
+            ),
+        ];
+        for (error, message) in cases {
+            assert_eq!(error.to_string(), message);
+            assert!(error.source().is_none());
+        }
+    }
+}

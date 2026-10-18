@@ -36,9 +36,35 @@ mkdir -p "$classes"
 # deliberately does not generate.
 sources=()
 adapter_sources=()
-for source in Boot Agent Transformer HookTarget Members; do
-	sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java")
-done
+source_manifest="$root/jvm/build/agent-sources.txt"
+if [ ! -s "$source_manifest" ]; then
+	echo "missing agent source manifest: $source_manifest" >&2
+	exit 1
+fi
+core_sources=()
+modern_sources=()
+declare -A listed_sources=()
+while read -r group source extra || [ -n "$group$source$extra" ]; do
+	if [[ -n "$extra" || ! "$source" =~ ^[A-Za-z][A-Za-z0-9]*$ ]]; then
+		echo "malformed agent source manifest: $source_manifest" >&2
+		exit 1
+	fi
+	if [[ -v "listed_sources[$source]" ]]; then
+		echo "duplicate agent source: $source" >&2
+		exit 1
+	fi
+	listed_sources["$source"]=true
+	case "$group" in
+		core) core_sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java") ;;
+		modern) modern_sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java") ;;
+		*) echo "unknown agent source group: $group" >&2; exit 1 ;;
+	esac
+done <"$source_manifest"
+if [ "${#core_sources[@]}" -eq 0 ] || [ "${#modern_sources[@]}" -eq 0 ]; then
+	echo "agent source manifest needs core and modern sources" >&2
+	exit 1
+fi
+sources+=("${core_sources[@]}")
 
 # No game classes belong on this compile path; adapters resolve them at runtime.
 legacy=false
@@ -47,9 +73,7 @@ if grep -q 'LEGACY_ADAPTER = true' "$generated/dev/ravel/jvm/Hook.java"; then
 	mapfile -d '' adapter_sources < <(find "$root/jvm/bootstrap/dev/ravel/jvm" -maxdepth 1 -name 'Legacy*.java' -print0 | sort -z)
 	mapfile -d '' generated_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
 else
-	for source in Content Datapack Outward Persistence Screens; do
-		sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java")
-	done
+	sources+=("${modern_sources[@]}")
 	mapfile -d '' generated_sources < <(find "$generated" -name '*.java' ! -name 'LegacyNames.java' -print0 | sort -z)
 fi
 sources+=("${adapter_sources[@]}" "${generated_sources[@]}")

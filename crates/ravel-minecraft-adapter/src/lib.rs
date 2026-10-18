@@ -21,6 +21,7 @@ mod tests {
     use std::path::Path;
 
     use ravel_minecraft::{HookId, HookKind};
+    use ravel_minecraft_generate::{Kind, hook_inventory};
 
     use super::{pinned, target};
 
@@ -64,17 +65,26 @@ mod tests {
     }
 
     #[test]
-    fn the_table_carries_both_a_method_and_a_field_target() {
-        assert!(
-            pinned::TARGETS
+    fn the_table_carries_the_target_kinds_the_inventory_declares() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("the crate lives under crates/<name>");
+        let inventory = hook_inventory(root, pinned::MINECRAFT_VERSION)
+            .expect("the selected adapter owns a valid reviewed inventory");
+        assert_eq!(pinned::TARGETS.len(), inventory.hooks.len());
+        for hook in inventory.hooks {
+            let expected = match hook.kind {
+                Kind::StaticMethod => HookKind::StaticMethod,
+                Kind::InstanceMethod => HookKind::InstanceMethod,
+                Kind::StaticField => HookKind::StaticField,
+                Kind::InstanceField => HookKind::InstanceField,
+            };
+            let generated = pinned::TARGETS
                 .iter()
-                .any(|target| target.kind() == HookKind::StaticMethod)
-        );
-        assert!(
-            pinned::TARGETS
-                .iter()
-                .any(|target| target.kind() == HookKind::InstanceField),
-            "field extraction is what proves the generator reads more than methods"
-        );
+                .find(|target| target.id().as_str() == hook.id)
+                .expect("every reviewed hook reaches the target table");
+            assert_eq!(generated.kind(), expected, "{}", hook.id);
+        }
     }
 }

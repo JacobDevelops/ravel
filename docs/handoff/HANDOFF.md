@@ -35,18 +35,12 @@ must come from the integration owner's results for the current tree, not old cou
 
 ## WP4 acceptance boundary
 
-- Minecraft 1.12.2 remains generation-only even though official live acceptance
-  passed (see below). Promotion is blocked on gate semantics, not on the port:
-  with `live`, `ravel:test` runs the whole workspace suite at 1.12.2, and 6 of
-  3,952 tests fail on modern-only obligations. Three `content_declarations`
-  conformance tests compose `examples/content-mod`, which correctly declares
-  `>=1.21.0, <27.0.0`. The adapter test
-  `the_table_carries_both_a_method_and_a_field_target` requires an
-  `InstanceField` hook target, and the legacy inventory has none. The xtask
-  `java_shape` and `scaffold` reflection checks require `reflection.toml` to
-  declare the modern `GameNames` roles used by shared `Content.java` and
-  `Outward.java`, which the legacy source closure does not compile. Promotion
-  needs live obligations gated on the `legacy-1-12` capability, not on eligibility.
+- Minecraft 1.12.2 is live: official live acceptance passed (see below), and
+  `ravel:test` includes its workspace suite. Content examples are selected by
+  their declared Minecraft compatibility; hook assertions follow the actual
+  inventory, and reflection obligations follow the compiled Java source closure.
+  The `legacy-1-12` capability selects legacy implementations independently of
+  live eligibility.
 - Keep native access limited to the named `dev.ravel.agent` module and the four
   existing LWJGL modules. Do not grant unnamed modules native access; narrator/JNA
   remains intentionally unsupported.
@@ -69,7 +63,7 @@ must come from the integration owner's results for the current tree, not old cou
 - Integration checks now pass for the legacy agent/screen build, official linkage
   scan (3,310 classes and 726 references), platform math/shutdown/loader checks,
   generator/runtime/package suites, and all-targets clippy. The full verification
-  gate passes with 3,952 tests for each modern version and 92.93% line coverage.
+  gate includes all three live versions and enforces the workspace line-coverage floor.
   Generic transformation covers all 29 reviewed hooks, typed
   execution and descriptor refusals, palette call provenance, hierarchy,
   initialization, side selection, loader identity, and JNI semantic boundaries.

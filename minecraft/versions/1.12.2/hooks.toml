@@ -259,7 +259,7 @@ reason = "There are no server datapacks or modern reload event. Legacy recipe an
 
 [[nonGoal]]
 id = "resource.register-reload-listener"
-reason = "Legacy reload-listener registration is not instrumented by this generation-only dataset; WP4 must port listener installation and its resource-generation ordering explicitly."
+reason = "Legacy reload-listener registration is owned by the legacy runtime rather than a modern registration hook; resource-generation ordering is exercised by live reload acceptance."
 
 [[nonGoal]]
 id = "network.modern-codecs"
@@ -278,12 +278,8 @@ id = "renderer.modern-chunk-pipeline"
 reason = "WP5 must replace legacy chunk/model/state rendering as a subsystem; binding a modern name cannot provide that capability."
 
 [[nonGoal]]
-id = "harness.live-runtime"
-reason = "Generation-only eligibility reports all unmet harness obligations. This dataset proves pinned resolution, not Java runtime or live play."
-
-[[nonGoal]]
 id = "chat.sanitization"
-reason = "Optional chat filtering and player-name validation interception is not reviewed for this generation-only target; no modern `StringUtil` binding is substituted."
+reason = "Optional chat filtering and player-name validation interception is not reviewed for this legacy target; no modern `StringUtil` binding is substituted."
 
 [[nonGoal]]
 id = "input.mouse-smoothing"

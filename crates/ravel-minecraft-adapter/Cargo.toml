@@ -17,5 +17,8 @@ ravel-minecraft.workspace = true
 [build-dependencies]
 ravel-minecraft-generate.workspace = true
 
+[dev-dependencies]
+ravel-minecraft-generate.workspace = true
+
 [lints]
 workspace = true

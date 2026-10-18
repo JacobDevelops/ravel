@@ -135,6 +135,12 @@ Additional local records include `evidence-harness-agent/`,
 missing obligations, actual process exits, persistence visit counts and errors.
 No tracked acceptance evidence is rewritten by these tasks.
 
+Minecraft 1.12.2 is live-eligible. The default verification matrix runs its
+workspace tests and all thirteen JVM harness sections alongside the modern
+versions. Package compatibility, hook inventory and the compiled Java source
+closure determine the applicable obligations; legacy support does not require
+modern-only content or reflection roles.
+
 The agent commands add `-javaagent:target/ravel-jvm/ravel-agent.jar` and
 `-Dravel.host=target/release/libravel_bootstrap.so` as absolute paths. To use
 an independently retained pair, set `RAVEL_LEGACY_AGENT` and

@@ -72,9 +72,9 @@ cargo make ravel:verify-jvm
 ```
 
 This gate starts a JVM and runs the harness for every live-eligible tracked
-version. It is part of `ravel:verify`. Minecraft 1.12.2 currently declares
-`eligibility = "generation-only"`: no modern stand-in harness is run for it,
-and reconciliation reports every live obligation as not yet run.
+version. It is part of `ravel:verify`. Minecraft 1.12.2 is live-eligible and
+runs the legacy source closure and all thirteen harness sections, rather than
+modern stand-in implementations.
 The harness tests agent startup and native crossings, but only a real game
 launch proves attachment to the official client; one is recorded in
 [`evidence/m2/prism-launch.json`](../evidence/m2/prism-launch.json).
@@ -137,9 +137,8 @@ agent resolves. Guava and DataFixerUpper names are not mapped game names;
 ### What each version proves, and what it does not
 
 Every live-eligible version must run all thirteen sections. Eligibility defaults
-to `live`; 1.21.1 and 26.1.2 cannot downgrade to generation-only. The explicit
-1.12.2 generation-only declaration requires generated Java compilation and an
-adapter build, not adapter tests, harness coverage, playability, or live support.
+to `live`; all three tracked versions declare live support. The legacy capability
+selects its own source closure without weakening adapter-test or harness coverage.
 
 `cargo xtask version-matrix <minecraft>` prints `live`, `generation-only`, or
 `unavailable: <first absent path> is absent` for the selected version. Acquire
@@ -147,8 +146,8 @@ the named pinned input and rerun to discover any next missing input. Matrix
 tasks report missing local fixtures loudly as `SKIPPED`, not as a successful
 compilation, test, or live run.
 
-The generation-only harness is explicitly recorded as `NOT-YET-RUN`; adapter
-tests and all thirteen live harness sections remain not-yet-met obligations.
+Generation-only eligibility remains available for a future legacy dataset that
+has not yet met its adapter-test and thirteen live harness obligations.
 
 The legacy adapter uses the official client and dedicated-server jars with
 Feather build 31 mappings. `sourceJavaRelease = 8` describes the upstream

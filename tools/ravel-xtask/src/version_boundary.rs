@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_minecraft_generate::{Eligibility, adapter_facts};
+use ravel_minecraft_generate::{AdapterFacts, Eligibility, adapter_facts};
 
 use crate::hooks::{HookInventory, hook_counts, hook_inventory};
 use crate::text::{read_text, relative_label};
@@ -49,7 +49,7 @@ pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub(crate) type VersionEligibility = BTreeMap<String, Eligibility>;
+pub(crate) type VersionAdapters = BTreeMap<String, AdapterFacts>;
 
 /// Reports matrix eligibility from typed manifest data and its actual mapping input.
 pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
@@ -80,7 +80,7 @@ pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
 pub(crate) fn verify_version_directories(
     root: &Path,
     violations: &mut Vec<String>,
-) -> (VersionEligibility, Vec<HookInventory>) {
+) -> (VersionAdapters, Vec<HookInventory>) {
     let mut eligibility = BTreeMap::new();
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
@@ -134,7 +134,7 @@ fn verify_version_file(
     root: &Path,
     version: &str,
     file: &str,
-    eligibility: &mut VersionEligibility,
+    eligibility: &mut VersionAdapters,
     violations: &mut Vec<String>,
 ) {
     let relative = format!("{VERSION_DATA}/{version}/{file}");
@@ -148,7 +148,7 @@ fn verify_version_file(
     if file == "adapter.toml" {
         match adapter_facts(root, version) {
             Ok(facts) => {
-                eligibility.insert(version.to_owned(), facts.eligibility);
+                eligibility.insert(version.to_owned(), facts);
             }
             Err(error) => violations.push(error.to_string()),
         }

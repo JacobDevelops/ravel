@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_minecraft_generate::{Eligibility, Kind};
+use ravel_minecraft_generate::Kind;
 
 use crate::hooks::HookInventory;
 use crate::text::{read_text, relative_label};
 use crate::tracked::collect_files;
-use crate::version_boundary::{VERSION_DATA, VersionEligibility, tracked_versions};
+use crate::version_boundary::{VERSION_DATA, VersionAdapters, tracked_versions};
 
 pub(crate) mod reflection;
 
@@ -36,22 +36,21 @@ const HOOK_NAME_MATCH: &str = "hookMethod().equals(\"";
 pub(crate) fn verify_hook_name_literals(
     root: &Path,
     inventories: &[HookInventory],
-    eligibility: &VersionEligibility,
+    adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    let flattened = |name: &str| -> String {
-        name.chars()
-            .filter(char::is_ascii_alphanumeric)
-            .flat_map(char::to_lowercase)
-            .collect()
-    };
-    let parsed = inventories
-        .iter()
-        .filter(|inventory| uses_bootstrap(eligibility, inventory))
-        .collect::<Vec<_>>();
+    if let Err(error) = agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+        violations.push(error);
+        return;
+    }
 
     for path in java_sources(&root.join(AGENT_JAR_SOURCES), violations) {
         let relative = relative_label(root, &path);
+        let selected = Path::new(&relative);
+        if !compiled_bootstrap_source(selected, false) && !compiled_bootstrap_source(selected, true)
+        {
+            continue;
+        }
         let source = match read_text(root, &path) {
             Ok(source) => source,
             Err(error) => {
@@ -59,34 +58,161 @@ pub(crate) fn verify_hook_name_literals(
                 continue;
             }
         };
-        let mut rest = source.as_str();
-        while let Some(at) = rest.find(HOOK_NAME_MATCH) {
-            rest = &rest[at + HOOK_NAME_MATCH.len()..];
-            let Some((literal, tail)) = rest.split_once('"') else {
-                break;
-            };
-            rest = tail;
-            for inventory in &parsed {
-                if !inventory
-                    .hooks
-                    .iter()
-                    .any(|hook| flattened(&hook.id) == flattened(literal))
-                {
-                    violations.push(format!(
-                        "{relative} matches the generated hook {literal} and {} declares no hook \
-                         it is rendered from; the hook names are per-version data, so a seam one \
-                         version declares under another id renders another name here, every \
-                         comparison is false, and the transform is silently not applied",
-                        inventory.path
-                    ));
-                }
+        if compiled_bootstrap_source(selected, false) {
+            let modern = source
+                .split(HOOK_NAME_MATCH)
+                .skip(1)
+                .filter_map(|tail| tail.split('"').next());
+            verify_hook_literals(&relative, modern, false, inventories, adapters, violations);
+        }
+        if compiled_bootstrap_source(selected, true) {
+            let legacy = legacy_hook_literals(&source);
+            verify_hook_literals(
+                &relative,
+                legacy.into_iter(),
+                true,
+                inventories,
+                adapters,
+                violations,
+            );
+        }
+    }
+}
+
+fn verify_hook_literals<'a>(
+    relative: &str,
+    literals: impl Iterator<Item = &'a str>,
+    legacy: bool,
+    inventories: &[HookInventory],
+    adapters: &VersionAdapters,
+    violations: &mut Vec<String>,
+) {
+    let matches = |name: &str, literal: &str| {
+        name.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
+            .eq(literal
+                .chars()
+                .filter(char::is_ascii_alphanumeric)
+                .flat_map(char::to_lowercase))
+    };
+    for literal in literals {
+        for inventory in inventories.iter().filter(|inventory| {
+            adapters
+                .get(&inventory.version)
+                .is_some_and(|facts| facts.legacy_adapter == legacy)
+        }) {
+            if !inventory
+                .hooks
+                .iter()
+                .any(|hook| matches(&hook.id, literal))
+            {
+                violations.push(format!(
+                    "{relative} matches the generated hook {literal} and {} declares no hook \
+                     it is rendered from; the transform is silently not applied",
+                    inventory.path
+                ));
             }
         }
     }
 }
 
-fn uses_bootstrap(eligibility: &VersionEligibility, inventory: &HookInventory) -> bool {
-    eligibility.get(&inventory.version) == Some(&Eligibility::Live)
+fn legacy_hook_literals(source: &str) -> Vec<&str> {
+    let mut literals = Vec::new();
+    for anchor in ["switch (target.hookMethod())", "switch (id)"] {
+        for tail in source.split(anchor).skip(1) {
+            let Some((_, body)) = tail.split_once('{') else {
+                continue;
+            };
+            let mut depth = 1;
+            let end = body
+                .char_indices()
+                .find_map(|(index, character)| {
+                    match character {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                    (depth == 0).then_some(index)
+                })
+                .unwrap_or(body.len());
+            for case in body[..end].split("case ").skip(1) {
+                let labels = case.split("->").next().unwrap_or(case);
+                literals.extend(
+                    labels
+                        .split('"')
+                        .enumerate()
+                        .filter_map(|(index, literal)| (index % 2 == 1).then_some(literal)),
+                );
+            }
+        }
+    }
+    for anchor in ["Agent.isInstalled(\"", "id.equals(\""] {
+        literals.extend(
+            source
+                .split(anchor)
+                .skip(1)
+                .filter_map(|tail| tail.split('"').next()),
+        );
+    }
+    literals.sort_unstable();
+    literals.dedup();
+    literals
+}
+
+fn uses_modern_bootstrap(adapters: &VersionAdapters, inventory: &HookInventory) -> bool {
+    adapters
+        .get(&inventory.version)
+        .is_some_and(|facts| !facts.legacy_adapter)
+}
+
+const AGENT_SOURCE_MANIFEST: &str = include_str!("../../../jvm/build/agent-sources.txt");
+
+fn agent_source_manifest(text: &str) -> Result<Vec<(&str, &str)>, String> {
+    let mut sources = Vec::with_capacity(text.lines().count());
+    for line in text.lines() {
+        let mut fields = line.split_whitespace();
+        let (Some(group), Some(name), None) = (fields.next(), fields.next(), fields.next()) else {
+            return Err(format!("malformed agent source manifest row: {line}"));
+        };
+        if !matches!(group, "core" | "modern")
+            || !name.starts_with(|character: char| character.is_ascii_alphabetic())
+            || !name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric())
+            || sources.iter().any(|(_, source)| *source == name)
+        {
+            return Err(format!("malformed agent source manifest row: {line}"));
+        }
+        sources.push((group, name));
+    }
+    if !["core", "modern"]
+        .iter()
+        .all(|group| sources.iter().any(|(mode, _)| mode == group))
+    {
+        return Err("agent source manifest needs core and modern sources".to_owned());
+    }
+    Ok(sources)
+}
+
+/// Shares build-agent.sh's manifest and its top-level-only legacy source glob.
+fn compiled_bootstrap_source(path: &Path, legacy: bool) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    if parent != Path::new("jvm/bootstrap/dev/ravel/jvm")
+        || path.extension().is_none_or(|extension| extension != "java")
+    {
+        return false;
+    }
+    let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    AGENT_SOURCE_MANIFEST.lines().any(|line| {
+        let mut fields = line.split_whitespace();
+        let mode = fields.next();
+        fields.next() == Some(name) && (mode == Some("core") || !legacy)
+    }) || legacy && name.starts_with("Legacy")
 }
 
 pub(crate) const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
@@ -189,21 +315,19 @@ pub(crate) fn verify_menu_row_placement(root: &Path, violations: &mut Vec<String
 pub(crate) fn verify_transformer_shape(
     root: &Path,
     inventories: &[HookInventory],
-    eligibility: &VersionEligibility,
+    adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    if !inventories
+    let inventories: Vec<_> = inventories
         .iter()
-        .any(|inventory| uses_bootstrap(eligibility, inventory))
-    {
+        .filter(|inventory| uses_modern_bootstrap(adapters, inventory))
+        .collect();
+    if inventories.is_empty() {
         return;
     }
     let mut held = Vec::new();
     let mut named = 0;
     for inventory in inventories {
-        if !uses_bootstrap(eligibility, inventory) {
-            continue;
-        }
         let before = violations.len();
         let mut seams = 0;
         for seam in &TRANSFORMER_SEAMS {

@@ -4,7 +4,7 @@ schemaVersion = 1
 minecraft = "1.12.2"
 javaRelease = 27
 sourceJavaRelease = 8
-eligibility = "generation-only"
+eligibility = "live"
 capabilities = ["legacy-1-12"]
 mappingSource = "feather-tiny-mappings"
 
@@ -51,7 +51,7 @@ upstream = "https://piston-meta.mojang.com/v1/packages/6e69e85d0f85f4f4b9e12dd99
 
 [inputs.hookInventory]
 path = "minecraft/versions/1.12.2/hooks.toml"
-sha256 = "00c9e92ac0141aa4786631ab7e921235544af80ff3830f6ecffd571b0fec02c2"
+sha256 = "dfb2d491d8f56600ee2dd7f5e476cd8fd5d135de00874349b62c82b6300db220"
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.12.2/stubs.toml"

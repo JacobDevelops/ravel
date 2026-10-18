@@ -13,6 +13,108 @@ use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{VERSION_DATA, verify_version_directories};
 
 #[test]
+fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
+    use super::{AGENT_SOURCE_MANIFEST, agent_source_manifest, compiled_bootstrap_source};
+    let sources = agent_source_manifest(AGENT_SOURCE_MANIFEST)?;
+    for (group, name) in sources {
+        let path = PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/{name}.java"));
+        assert!(compiled_bootstrap_source(&path, false), "{name}");
+        assert_eq!(
+            compiled_bootstrap_source(&path, true),
+            group == "core",
+            "{name}"
+        );
+        assert!(!compiled_bootstrap_source(
+            &path.with_extension("java.in"),
+            false
+        ));
+        let nested = PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/nested/{name}.java"));
+        assert!(!compiled_bootstrap_source(&nested, false));
+        assert!(!compiled_bootstrap_source(&nested, true));
+    }
+    assert!(compiled_bootstrap_source(
+        std::path::Path::new("jvm/bootstrap/dev/ravel/jvm/LegacyContent.java"),
+        true
+    ));
+    for malformed in [
+        "",
+        "core Boot\n",
+        "other Boot\nmodern Content\n",
+        "core Boot extra\nmodern Content\n",
+        "core Boot\nmodern Boot\n",
+    ] {
+        assert!(agent_source_manifest(malformed).is_err(), "{malformed}");
+    }
+    let build = include_str!("../../../../jvm/build/build-agent.sh");
+    assert!(build.contains("jvm/build/agent-sources.txt"));
+    assert!(build.contains("-maxdepth 1 -name 'Legacy*.java'"));
+    Ok(())
+}
+
+#[test]
+fn live_legacy_dispatch_literals_are_held_to_the_legacy_inventory()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = reflection_root("legacy-dispatch", "");
+    let directory = root.join(VERSION_DATA).join("26.1.2");
+    fs::write(
+        directory.join("adapter.toml"),
+        adapter_document("26.1.2", "generation-only", None).replace("'generation-only'", "'live'"),
+    )?;
+    fs::write(
+        directory.join("hooks.toml"),
+        format!(
+            "schemaVersion = 1\nminecraft = '26.1.2'\n{}",
+            seam("legacy.client-tick", "instance-method", "()V")
+        ),
+    )?;
+    let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
+    let transformer = "boolean modern = target.hookMethod().equals(\"worldOpenPersistence\");\n\
+        switch (target.hookMethod()) { case \"legacyClientTick\" -> run(); }\n";
+    fs::write(sources.join("Transformer.java"), transformer)?;
+    fs::write(
+        sources.join("LegacyRuntime.java"),
+        "switch (id) { case \"legacyClientTick\" -> run(); }\n",
+    )?;
+    fs::write(
+        sources.join("LegacyPersistence.java"),
+        "boolean installed = Agent.isInstalled(\"legacyClientTick\");\n",
+    )?;
+    let mut violations = Vec::new();
+    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    for filename in [
+        "Transformer.java",
+        "LegacyRuntime.java",
+        "LegacyPersistence.java",
+    ] {
+        let path = sources.join(filename);
+        let original = fs::read_to_string(&path)?;
+        fs::write(&path, original.replace("legacyClientTick", "legacyMissing"))?;
+        verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(violations[0].contains(filename), "{violations:?}");
+        assert!(violations[0].contains("legacyMissing"), "{violations:?}");
+        violations.clear();
+        fs::write(path, original)?;
+    }
+    let refusal = "if (!id.equals(\"legacyClientTick\")) return false;\n";
+    let runtime = sources.join("LegacyRuntime.java");
+    fs::write(&runtime, refusal)?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::write(
+        &runtime,
+        refusal.replace("legacyClientTick", "legacyMissing"),
+    )?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("legacyMissing"), "{violations:?}");
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn inventories_follow_toml_string_and_comment_rules() {
     let root = seam_root(
         "hook-toml-rules",
@@ -56,7 +158,10 @@ fn malformed_hooks_and_missing_ids_are_reported_before_consumers() {
         let mut violations = Vec::new();
         let (eligibility, inventories) = verify_version_directories(&root, &mut violations);
         assert_eq!(eligibility.len(), 1);
-        assert_eq!(eligibility.get("26.1.2"), Some(&Eligibility::Live));
+        assert_eq!(
+            eligibility.get("26.1.2").map(|facts| facts.eligibility),
+            Some(Eligibility::Live)
+        );
         assert!(inventories.is_empty(), "{inventories:?}");
         assert_eq!(violations.len(), 1, "{violations:?}");
         assert!(violations[0].contains(diagnostic), "{violations:?}");
@@ -116,6 +221,88 @@ fn generation_only_reflection_does_not_invent_modern_bootstrap_roles() {
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn live_legacy_reflection_uses_the_compiled_adapter_closure()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = reflection_root(
+        "live-legacy-reflection",
+        "String one = GameNames.ONE;\nObject read = GameMembers.ONE_READ;\n",
+    );
+    let version = "0.0.0-test";
+    version_directory(&root, version, &[]);
+    let directory = root.join(VERSION_DATA).join(version);
+    fs::write(
+        directory.join("adapter.toml"),
+        adapter_document(version, "generation-only", None).replace("'generation-only'", "'live'"),
+    )?;
+    let source = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
+    fs::write(
+        source.join("Agent.java"),
+        "String shared = GameNames.SHARED;\n",
+    )?;
+    let modern = root.join(VERSION_DATA).join("26.1.2").join(REFLECTION_FILE);
+    add_shared_reflection_role(&modern)?;
+    fs::write(source.join("Outward.java"), "String one = GameNames.ONE;\n")?;
+    fs::write(
+        source.join("LegacyContent.java"),
+        "Class<?> role = LegacyNames.className(\"LEGACY_ONLY\");\n\
+         Object read = LegacyAccess.call(\"LEGACY_ONLY\", \"read\", null);\n",
+    )?;
+    let reflection = directory.join(REFLECTION_FILE);
+    let roles = "minecraft = '0.0.0-test'\n[[reflected]]\nname = 'LEGACY_ONLY'\nclass = 'legacy.Storage'\n\
+                 runtime = 'abc'\n[[reflected.member]]\nname = 'read'\ndescriptor = '()V'\n\
+                 [[reflected]]\nname = 'SHARED'\nclass = 'shared.Entry'\nruntime = 'shared.Entry'\n";
+    fs::write(&reflection, roles)?;
+    let mut violations = Vec::new();
+    let (adapters, _) = verify_version_directories(&root, &mut violations);
+    assert!(adapters[version].legacy_adapter);
+    assert_eq!(adapters[version].eligibility, Eligibility::Live);
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+
+    fs::write(
+        source.join("LegacyContent.java"),
+        "Class<?> missing = LegacyNames.className(\"MISSING\");\n\
+         Object read = LegacyAccess.call(\"LEGACY_ONLY\", \"missing\", null);\n",
+    )?;
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(
+        violations
+            .iter()
+            .all(|message| message.contains("LegacyContent.java"))
+    );
+    violations.clear();
+    fs::write(source.join("LegacyContent.java"), "")?;
+    fs::write(
+        &reflection,
+        roles.replace("name = 'SHARED'", "name = 'UNUSED_SHARED'"),
+    )?;
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("Agent.java"), "{violations:?}");
+    violations.clear();
+    fs::write(&reflection, roles.replace("()V", "not-a-descriptor"))?;
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("invalid descriptor"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn add_shared_reflection_role(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    fs::write(
+        path,
+        fs::read_to_string(path)?
+            + "\n[[reflected]]\nname = 'SHARED'\n\
+        class = 'shared.Entry'\nruntime = 'shared.Entry'\n",
+    )?;
+    Ok(())
 }
 
 #[test]
@@ -345,11 +532,14 @@ fn a_hook_name_every_version_declares_is_accepted() {
 }
 
 #[test]
-fn generation_only_hooks_are_not_modern_transformer_seams() {
-    let root = reflection_root(
-        "legacy-not-bootstrap",
+fn live_legacy_capability_hooks_are_not_modern_transformer_seams() {
+    let root = reflection_root("legacy-not-bootstrap", "");
+    fs::write(
+        root.join(AGENT_JAR_SOURCES)
+            .join("dev/ravel/jvm/Transformer.java"),
         "boolean seam = target.hookMethod().equals(\"worldOpenPersistence\");\n",
-    );
+    )
+    .unwrap_or_else(|error| panic!("shared transformer should be writable: {error}"));
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
         format!(
@@ -361,7 +551,7 @@ fn generation_only_hooks_are_not_modern_transformer_seams() {
     version_directory(&root, "1.12.2", &[]);
     fs::write(
         root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
-        adapter_document("1.12.2", "generation-only", None),
+        adapter_document("1.12.2", "generation-only", None).replace("'generation-only'", "'live'"),
     )
     .expect("legacy adapter should be writable");
     let hooks = root.join(format!("{VERSION_DATA}/1.12.2/hooks.toml"));
@@ -391,10 +581,13 @@ fn generation_only_hooks_are_not_modern_transformer_seams() {
         "{violations:?}"
     );
     assert_eq!(eligibility.len(), 2);
-    assert_eq!(eligibility.get("26.1.2"), Some(&Eligibility::Live));
     assert_eq!(
-        eligibility.get("1.12.2"),
-        Some(&Eligibility::GenerationOnly)
+        eligibility.get("26.1.2").map(|facts| facts.eligibility),
+        Some(Eligibility::Live)
+    );
+    assert_eq!(
+        eligibility.get("1.12.2").map(|facts| facts.eligibility),
+        Some(Eligibility::Live)
     );
     assert_eq!(inventories.len(), 1);
     assert_eq!(inventories[0].version, "26.1.2");
@@ -408,7 +601,7 @@ fn generation_only_hooks_are_not_modern_transformer_seams() {
 }
 
 #[test]
-fn shape_checks_share_validated_eligibility_without_rereading_adapters() {
+fn shape_checks_share_validated_adapter_facts_without_rereading_adapters() {
     let root = reflection_root("shared-eligibility", "String one = GameNames.ONE;\n");
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),

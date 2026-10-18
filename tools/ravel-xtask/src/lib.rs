@@ -47,7 +47,7 @@ const CRATE_NAMES: &[&str] = &[
     "ravel-sdk-macros",
     "ravel-host-api",
     "ravel-host-runtime",
-    "ravel-bootstrap",
+    "ravel-bootstrap-runtime",
     "ravel-composed-host",
     "ravel-build",
     "ravel-minecraft",

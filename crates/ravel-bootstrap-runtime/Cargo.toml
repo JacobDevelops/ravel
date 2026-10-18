@@ -1,5 +1,5 @@
 [package]
-name = "ravel-bootstrap"
+name = "ravel-bootstrap-runtime"
 description = "Safe hook runtime and JVM crossings for Ravel hosts"
 version = "0.0.0"
 edition.workspace = true

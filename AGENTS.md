@@ -58,7 +58,7 @@ Judge the gate by its exit status, not an individual task's test summary.
 
 ## Hard rules
 
-- Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap` included, and no
+- Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap-runtime` included, and no
   exception exists. The table in
   [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md) is empty and
   stays empty unless deliberately changed. Lints follow loke-rs (root `Cargo.toml`): `clippy::all`,

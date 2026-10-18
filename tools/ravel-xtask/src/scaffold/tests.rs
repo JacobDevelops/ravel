@@ -11,7 +11,7 @@ use crate::test_support::{adapter_document, temporary_root, version_directory};
 fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
     let root = temporary_root("fence-unsafe");
     seed_production_manifests(&root);
-    let crate_root = root.join("crates/ravel-bootstrap/src");
+    let crate_root = root.join("crates/ravel-bootstrap-runtime/src");
     fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
     fs::write(
         crate_root.join("lib.rs"),
@@ -25,7 +25,7 @@ fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
     assert_eq!(
         violations,
         ["unsafe code is permitted in a maintained crate: \
-             crates/ravel-bootstrap/src/lib.rs"]
+             crates/ravel-bootstrap-runtime/src/lib.rs"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -85,7 +85,7 @@ fn invalid_adapters_are_reported_once_by_the_overall_scaffold_check() {
 #[test]
 fn unreadable_production_text_reports_the_read_failure() {
     let root = temporary_root("fence-unreadable");
-    let directory = root.join("crates/ravel-bootstrap/src");
+    let directory = root.join("crates/ravel-bootstrap-runtime/src");
     fs::create_dir_all(&directory).expect("crate directory should be creatable");
     for path in [
         directory.join("lib.rs"),

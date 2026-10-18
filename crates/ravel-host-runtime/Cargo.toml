@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 jni.workspace = true
-ravel-bootstrap.workspace = true
+ravel-bootstrap-runtime.workspace = true
 ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-host-api.workspace = true

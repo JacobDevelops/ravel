@@ -74,7 +74,7 @@ stable contracts toward concrete host internals.
   above this crate names `JObject` — an observer sees a handle's declared class
   and whether it is null, and no JNI type at all. Only `JavaHandle::new` names
   one, and it is public solely because the generated exports that call it are
-  compiled into `ravel-bootstrap`. The SDK does not depend on this crate, so a
+  compiled into `ravel-bootstrap-runtime`. The SDK does not depend on this crate, so a
   mod reaches it through nothing the SDK offers and needs it for nothing; a change
   that puts it in a mod's graph must seal that constructor rather than move the
   dependency.
@@ -103,7 +103,7 @@ stable contracts toward concrete host internals.
   the checkout; authorized ignored local fixtures remain runtime test inputs,
   never package or source dependencies.
 
-- `ravel-bootstrap` is the safe JNI integration runtime, built as an rlib and linked
+- `ravel-bootstrap-runtime` is the safe JNI integration runtime, built as an rlib and linked
   into a host cdylib. Only host crates (`ravel-host-runtime` and the cdylib hosts)
   may depend on it. The composed host and player-generated hosts own the JVM-loadable
   `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.

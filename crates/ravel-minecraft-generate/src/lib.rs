@@ -1850,7 +1850,7 @@ mod tests {
     ///
     /// The hook ids are the exception that proves the rule. `ravel-minecraft` says
     /// an id is the only name that survives a game update, and general crates name
-    /// ids: `ravel-bootstrap` projects events from them. So the fixture reviews the
+    /// ids: `ravel-bootstrap-runtime` projects events from them. So the fixture reviews the
     /// same id set the pinned version does, and the assertion below is that both
     /// tables answer to every one of them. A general crate needs no edit for a
     /// second version precisely because that set is what it depends on.

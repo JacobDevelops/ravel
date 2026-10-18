@@ -25,7 +25,7 @@ noak = "=0.7.0"
 proguard = { version = "=5.10.4", default-features = false }
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
-ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
+ravel-bootstrap-runtime = { path = "crates/ravel-bootstrap-runtime", version = "0.0.0" }
 ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }

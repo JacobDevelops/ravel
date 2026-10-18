@@ -573,7 +573,7 @@ fn write_driver(instance: &Path) -> PathBuf {
              ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
              ravel-generated-host = {{ path = \"../ravel/host\" }}\n\
              ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n\
-             ravel-bootstrap = {{ path = \"{root}/crates/ravel-bootstrap\" }}\n",
+             ravel-bootstrap-runtime = {{ path = \"{root}/crates/ravel-bootstrap-runtime\" }}\n",
             root = root.display()
         ),
     )
@@ -745,7 +745,6 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
         assert!(host["dependencies"][name].get("workspace").is_none());
         assert!(!dependencies.contains_key(name));
     }
-    assert!(host["dependencies"].get("ravel-bootstrap").is_none());
     assert!(
         host["dependencies"]
             .get("ravel-bootstrap-runtime")

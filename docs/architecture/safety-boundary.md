@@ -25,7 +25,7 @@ The list is empty, and that is a finding rather than an aspiration. M1 spent mos
 of its length believing otherwise: an exported symbol carrying the JNI-mangled
 callback name looked like a declaration the runtime resolves rather than a call a
 wrapper can hide, so `SPEC.md` §3.3 was drafted to admit exactly one such operation
-in `ravel-bootstrap`.
+in `ravel-bootstrap-runtime`.
 
 The M1-W8 review refuted the premise. The pinned `jni` 0.22.4 ships
 `#[jni::jni_mangle("class", "method")]`, which emits the export itself, and a crate
@@ -37,7 +37,7 @@ binding generator emits it, so the declaration is generated rather than written.
 
 Two consequences worth stating:
 
-- **`ravel-bootstrap` is an ordinary crate.** It keeps `#![forbid(unsafe_code)]`
+- **`ravel-bootstrap-runtime` is an ordinary crate.** It keeps `#![forbid(unsafe_code)]`
   like every other, needs no lint relaxation, and no crate has to keep it out of
   its dependency graph on safety grounds. The layering rules in
   [`dependency-rules.md`](dependency-rules.md) still apply for their own reasons.

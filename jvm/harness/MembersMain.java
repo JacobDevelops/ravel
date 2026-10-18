@@ -13,7 +13,7 @@ import net.minecraft.util.SmoothDouble;
  *
  * <p>A field is not a call target. The generator emits no export and no
  * prologue for one — {@code render.rs} skips every hook whose kind is not a
- * method, and {@code ravel-bootstrap} asserts that no export dispatches through
+ * method, and {@code ravel-bootstrap-runtime} asserts that no export dispatches through
  * a field's constant — so there is no rewritten field body to run and no
  * crossing to count. What a field entry claims is narrower and is what this
  * proves: the class the transformer actually rewrote still declares that member

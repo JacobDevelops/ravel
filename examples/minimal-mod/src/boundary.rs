@@ -85,7 +85,7 @@
 //! # Failing: the JVM entry crate is not reachable
 //!
 //! `docs/architecture/dependency-rules.md` says the SDK never re-exports
-//! `ravel-bootstrap` and a mod cannot reach it. It is not a dependency of this
+//! `ravel-bootstrap-runtime` and a mod cannot reach it. It is not a dependency of this
 //! crate and not in `ravel-sdk`'s closure, so the name does not resolve.
 //!
 //! ```compile_fail,E0432

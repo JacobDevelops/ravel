@@ -15,8 +15,8 @@ preserve `#![forbid(unsafe_code)]` in every Ravel crate; that does not imply eve
 ## Inventory
 
 Paths are repository-relative. LOC means physical lines, including comments/tests; production boundaries are called out
-to avoid inflating savings. `B` = `crates/ravel-bootstrap/src/`; `G` = `crates/ravel-minecraft-generate/src/`; `J` =
-`jvm/bootstrap/dev/ravel/jvm/`.
+to avoid inflating savings. `B` = `crates/ravel-bootstrap-runtime/src/`;
+`G` = `crates/ravel-minecraft-generate/src/`; `J` = `jvm/bootstrap/dev/ravel/jvm/`.
 
 | Subsystem                                                  | Files and measured LOC                                                                                                                                                                           | Existing implementation / unsafe supplier                                                                                                                                                 |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -44,7 +44,7 @@ fn scaffold_contract_covers_every_planned_crate() {
         "ravel-sdk",
         "ravel-sdk-macros",
         "ravel-host-api",
-        "ravel-bootstrap",
+        "ravel-bootstrap-runtime",
         "ravel-composed-host",
         "ravel-minecraft",
         "ravel-minecraft-adapter",

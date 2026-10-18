@@ -24,7 +24,7 @@ const AUTHOR_DEPENDENCY: &str = "ravel-sdk";
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
 const FORBIDDEN: &[(&str, &str)] = &[
-    ("ravel-bootstrap", "the JVM entry crate"),
+    ("ravel-bootstrap-runtime", "the JVM entry crate"),
     ("ravel-minecraft", "the only crate that names a JNI type"),
     ("ravel-minecraft-adapter", "the pinned version's internals"),
     ("ravel-minecraft-generate", "build-time source generation"),
@@ -603,7 +603,7 @@ fn every_forbidden_crate_this_test_names_still_exists_to_be_forbidden() {
 #[test]
 fn rust_import_names_follow_library_targets_rather_than_package_names() {
     assert_eq!(
-        rust_import_name("ravel-bootstrap"),
+        rust_import_name("ravel-bootstrap-runtime"),
         "ravel_bootstrap_runtime"
     );
     assert_eq!(rust_import_name("ravel-composed-host"), "ravel_bootstrap");

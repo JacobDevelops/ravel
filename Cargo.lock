@@ -307,7 +307,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ravel-bootstrap"
+name = "ravel-bootstrap-runtime"
 version = "0.0.0"
 dependencies = [
  "jni",
@@ -370,7 +370,7 @@ dependencies = [
 name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
- "ravel-bootstrap",
+ "ravel-bootstrap-runtime",
  "ravel-composed-host",
  "ravel-config",
  "ravel-core",
@@ -484,7 +484,7 @@ name = "ravel-host-runtime"
 version = "0.0.0"
 dependencies = [
  "jni",
- "ravel-bootstrap",
+ "ravel-bootstrap-runtime",
  "ravel-config",
  "ravel-core",
  "ravel-host-api",

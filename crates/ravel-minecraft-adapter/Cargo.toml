@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 build = "build.rs"
-# The generated hook surface is published to `ravel-bootstrap` through build
+# The generated hook surface is published to `ravel-bootstrap-runtime` through build
 # script metadata, which Cargo forwards only for a package declaring `links`.
 links = "ravel-minecraft-adapter"
 

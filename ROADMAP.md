@@ -419,7 +419,7 @@ mechanism nor authorizes publication. See the
 `mise.toml` pins development tools and sets the default Minecraft selection,
 Cargo colour, and backtraces. Run `mise install` once, then activate mise in
 the shell or use `mise exec -- <command>`. Rust remains rustup-managed:
-`rust-toolchain.toml` pins a dated nightly with edition 2024 and nightly Cargo
+`rust-toolchain.toml` tracks the nightly channel with edition 2024 and nightly Cargo
 lint support; `rust-version = 1.95` in `Cargo.toml` declares the minimum.
 Cargo remains the Rust build system.
 

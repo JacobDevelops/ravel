@@ -29,7 +29,7 @@ Project skills live in [`.agents/skills/`](.agents/skills/).
 ## Environment
 
 Everything runs with mise: run `mise install` once, then activate mise in your shell or use
-`mise exec -- <command>`. Rustup manages the dated nightly toolchain pinned in
+`mise exec -- <command>`. Rustup manages the nightly toolchain channel selected in
 `rust-toolchain.toml`, with edition 2024 and nightly Cargo lint support.
 The first build needs network access for the cargo registry.
 

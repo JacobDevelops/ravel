@@ -939,10 +939,18 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
             .expect("same channel")
             .fingerprint()
     );
+    let installed: toml::Table = original.parse().expect("installation toolchain");
+    let changed_channel = if installed["toolchain"]["channel"].as_str() == Some("nightly") {
+        "stable"
+    } else {
+        "nightly"
+    };
     fs::write(
         root.join("rust-toolchain.toml"),
-        "[toolchain]\nchannel = \"nightly-2026-10-10\"\ncomponents = [\"clippy\"]\n\
-         targets = [\"aarch64-apple-darwin\"]\n",
+        format!(
+            "[toolchain]\nchannel = {changed_channel:?}\ncomponents = [\"clippy\"]\n\
+             targets = [\"aarch64-apple-darwin\"]\n"
+        ),
     )
     .expect("changed channel");
     let second = plan(&discovered, &root).expect("second plan");
@@ -951,7 +959,7 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
         .expect("toolchain");
     assert_eq!(
         toolchain["toolchain"]["channel"].as_str(),
-        Some("nightly-2026-10-10")
+        Some(changed_channel)
     );
     assert_eq!(toolchain["toolchain"].as_table().expect("table").len(), 2);
     assert_ne!(first.fingerprint(), second.fingerprint());

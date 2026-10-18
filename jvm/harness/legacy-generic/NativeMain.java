@@ -88,6 +88,8 @@ public final class NativeMain {
         LegacyRenderer.enter("legacyRendererFrame", null);
         long initial = LegacyRenderer.currentGeneration();
         require(initial > 0 && LegacyRenderer.accepts(initial), "no renderer generation");
+        captureAdmission(initial);
+        snapshot(initial);
         LegacyRenderer.armStaleProof();
         Object queued = constructedRendererTask();
         require(LegacyRenderer.staleProofReady(), "transformed constructor did not capture initialized receiver");
@@ -106,6 +108,8 @@ public final class NativeMain {
         LegacyRenderer.enter("legacyResourceReload", null);
         long reloaded = LegacyRenderer.currentGeneration();
         require(reloaded > initial && !LegacyRenderer.accepts(initial), "reload retained old task token");
+        require(Hook.ravelRendererSnapshot(initial, new int[5832], new byte[5832]).length == 0,
+                "retired snapshot batch accepted");
         require(LegacyRenderer.injectStaleProof(), "injected stale task observation was not rejected");
         LegacyRenderer.enter("legacyRendererWorker", queued);
         LegacyRenderer.exit("legacyRendererCompile", null, queued);
@@ -127,6 +131,50 @@ public final class NativeMain {
         LegacyRenderer.exit("legacyRendererCompile", null, retained[retained.length - 1]);
         require(LegacyRenderer.count(7) == compiled + 1, "bounded overflow relabelled untracked task");
         java.lang.ref.Reference.reachabilityFence(retained);
+    }
+
+    private static void snapshot(long generation) {
+        int[] states = new int[5832];
+        byte[] light = new byte[5832];
+        for (int i = 0; i < states.length; i++) {
+            states[i] = ((i * 179) & 1048575) << 4 | (i & 15);
+            light[i] = (byte) i;
+        }
+        states[0] = 0;
+        states[5831] = 0xffffff;
+        long[] receipt = Hook.ravelRendererSnapshot(generation, states, light);
+        require(receipt.length == 6 && receipt[0] == 1 && receipt[1] > 0
+                && receipt[2] == 0 && receipt[3] == 5832 && receipt[4] == 29160
+                && receipt[5] > 0, "native dense state/light batch roundtrip failed");
+        require(Hook.ravelRendererSnapshot(generation, null, light).length == 0
+                && Hook.ravelRendererSnapshot(generation, states, null).length == 0
+                && Hook.ravelRendererSnapshot(generation, new int[5831], light).length == 0
+                && Hook.ravelRendererSnapshot(generation, states, new byte[5833]).length == 0
+                && Hook.ravelRendererSnapshot(0, states, light).length == 0,
+                "malformed snapshot batch accepted");
+        for (int invalid : new int[] {-1, 0x1000000}) {
+            states[0] = invalid;
+            require(Hook.ravelRendererSnapshot(generation, states, light).length == 0,
+                    "out-of-contract state key accepted");
+        }
+    }
+
+    // Pure admission checks intentionally do not stand in for live game-region evidence.
+    private static void captureAdmission(long generation) throws Exception {
+        long[] before = LegacyRenderer.snapshotMetrics();
+        LegacySectionSnapshot.capture(null, null, 0, false);
+        require(LegacyRenderer.snapshotMetrics()[7] == before[7] + 1,
+                "stale capture reached game access");
+        java.lang.reflect.Field field = LegacySectionSnapshot.class.getDeclaredField("BUSY");
+        field.setAccessible(true);
+        java.util.concurrent.atomic.AtomicBoolean busy =
+                (java.util.concurrent.atomic.AtomicBoolean) field.get(null);
+        require(busy.compareAndSet(false, true), "fixture unexpectedly entered busy capture");
+        try {
+            LegacySectionSnapshot.capture(null, null, generation, false);
+            require(LegacyRenderer.snapshotMetrics()[8] == before[8] + 1,
+                    "busy capture reached game access instead of skipping");
+        } finally { busy.set(false); }
     }
 
     private static Object constructedRendererTask() throws Exception {

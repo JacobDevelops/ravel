@@ -1,5 +1,7 @@
 package dev.ravel.jvm;
 
+import java.lang.reflect.Method;
+
 /** Exact descriptor-bound access to generated legacy roles. */
 final class LegacyAccess {
     private LegacyAccess() {
@@ -11,8 +13,11 @@ final class LegacyAccess {
 
     static Object call(String role, String member, Object receiver, Object... arguments)
             throws ReflectiveOperationException {
-        return Members.method(type(role), LegacyNames.member(role, member))
-                .invoke(receiver, arguments);
+        return method(role, member).invoke(receiver, arguments);
+    }
+
+    static Method method(String role, String member) throws ReflectiveOperationException {
+        return Members.method(type(role), LegacyNames.member(role, member));
     }
 
     static Object field(String role, String member, Object receiver)

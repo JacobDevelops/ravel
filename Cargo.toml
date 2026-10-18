@@ -42,6 +42,7 @@ ravel-network = { path = "crates/ravel-network", version = "0.0.0" }
 ravel-observability = { path = "crates/ravel-observability", version = "0.0.0" }
 ravel-pack = { path = "crates/ravel-pack", version = "0.0.0" }
 ravel-package = { path = "crates/ravel-package", version = "0.0.0" }
+ravel-renderer = { path = "crates/ravel-renderer", version = "0.0.0" }
 ravel-resolve = { path = "crates/ravel-resolve", version = "0.0.0" }
 ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }

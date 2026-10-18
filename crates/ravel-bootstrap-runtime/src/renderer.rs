@@ -1,8 +1,9 @@
 //! Process/client-scoped renderer observations, independent of runtime selection.
 //!
-//! Only copied scalars cross this seam: no game handles, meshes, callbacks or GL
-//! submission. The first admitted frame/reload observation pins the Java client
-//! thread for this process. Workers may observe compile/task activity only after that.
+//! Only copied scalars and bounded primitive batches cross this seam: no game
+//! handles, meshes, callbacks or GL submission. The first admitted frame/reload
+//! observation pins the Java client thread for this process. Workers may observe
+//! compile/task activity only after that.
 //!
 //! Event 0 queries the authoritative generation without claiming a thread. All
 //! other events require the exact current token. Reload/unload invalidate it;
@@ -17,9 +18,11 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use jni::EnvUnowned;
-use jni::objects::JClass;
+use jni::objects::{JByteArray, JClass, JIntArray, JLongArray};
 use jni::sys::{JNI_FALSE, jboolean, jint, jlong};
+use jni::{Env, EnvUnowned};
+
+mod snapshot;
 
 // Shared wire values with the Java renderer observer (not raw hook IDs).
 const CURRENT: jint = 0;
@@ -127,6 +130,33 @@ pub fn ravel_renderer_accept<'local>(
             .unwrap_or_else(PoisonError::into_inner)
             .accepts(generation),
     )
+}
+
+/// Compares every compactly decoded cell with a bounded vanilla state/light batch.
+///
+/// Returns `[1, native_bytes, mismatched_cells, compared_cells, copy_bytes,
+/// scratch_bound_bytes]`, or an empty array for invalid/stale/busy input. No
+/// snapshot or game reference survives admission.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererSnapshot")]
+pub fn ravel_renderer_snapshot<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    generation: jlong,
+    states: JIntArray<'local>,
+    light: JByteArray<'local>,
+) -> JLongArray<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> jni::errors::Result<JLongArray<'local>> {
+            let receipt = snapshot::admit(&RENDERER, generation, || {
+                snapshot::copy_and_compare(env, generation, &states, &light)
+            })?;
+            let values = receipt.as_ref().map_or(&[][..], |values| &values[..]);
+            let result = JLongArray::new(env, values.len())?;
+            result.set_region(env, 0, values)?;
+            Ok(result)
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 #[cfg(test)]

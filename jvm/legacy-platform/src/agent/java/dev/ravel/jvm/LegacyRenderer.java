@@ -3,7 +3,7 @@ package dev.ravel.jvm;
 import java.util.WeakHashMap;
 import java.lang.reflect.Field;
 
-/** Observes vanilla work; task identities stay on the Java side of the scalar native boundary. */
+/** Observes vanilla work; only owned numeric batches cross the native boundary. */
 public final class LegacyRenderer {
     private static final int TASK_LIMIT = 4096;
     // The pinned ChunkCompileTask inherits Object equality/hashCode; weak keys retain no game task.
@@ -39,11 +39,28 @@ public final class LegacyRenderer {
     static void exit(String id, Object receiver, Object first) throws ReflectiveOperationException {
         switch (id) {
             case "legacyRendererTaskCreate" -> capture(receiver);
-            case "legacyRendererCompile" -> normalReturn(7, first, false);
+            case "legacyRendererCompile" -> compileReturn(receiver, first);
             case "legacyRendererWorkerComplete" -> callbackReturn(receiver);
             default -> { }
         }
     }
+
+    private static void compileReturn(Object chunk, Object task) throws ReflectiveOperationException {
+        Long generation;
+        boolean retainProof;
+        synchronized (LegacyRenderer.class) {
+            generation = TASKS.get(task);
+            retainProof = LegacyRuntime.PROOF && proofArmed;
+        }
+        normalReturn(7, task, false);
+        if (generation != null && chunk != null)
+            LegacySectionSnapshot.capture(chunk, task, generation, retainProof);
+    }
+
+    public static long[] snapshotMetrics() { return LegacySectionSnapshot.metrics(); }
+    public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
+    public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
+    public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }
 
     private static synchronized void callbackReturn(Object receiver) throws ReflectiveOperationException {
         if (TASKS.isEmpty()) return;

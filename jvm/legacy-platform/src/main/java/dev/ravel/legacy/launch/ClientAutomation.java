@@ -118,6 +118,7 @@ final class ClientAutomation implements Runnable {
             requireLiveProbes();
             if (Boolean.getBoolean("ravel.legacy.acceptance")) {
                 await(() -> (boolean) rendererType().getMethod("staleProofReady").invoke(null));
+                await(() -> (boolean) rendererType().getMethod("snapshotProofReady").invoke(null));
                 rendererBeforeReload = rendererMetric("currentGeneration");
             }
             requireSeed();
@@ -213,13 +214,48 @@ final class ClientAutomation implements Runnable {
         require(worker, "Renderer worker thread not observed");
         require(rendererMetric("ownerThread") == onGame(() -> Thread.currentThread().threadId()),
                 "Renderer owner is not the client game thread");
+        String snapshots = snapshotProof();
         Files.writeString(evidence.resolve("renderer.json"),
                 "{\"beforeReload\":" + rendererBeforeReload + ",\"afterReload\":" + rendererAfterReload
                 + ",\"afterUnload\":" + rendererAfterUnload + ",\"reopened\":" + rendererReopened
                 + ",\"finalUnload\":" + finalUnload + ",\"staleRejected\":" + rendererStaleRejected
                 + ",\"ownerThread\":" + rendererMetric("ownerThread")
                 + ",\"injectedStaleObservationRejected\":" + rendererInjectedStaleRejected
-                + ",\"workerObserved\":" + worker + ",\"seams\":{" + counts + "}}\n");
+                + ",\"workerObserved\":" + worker + ",\"snapshot\":" + snapshots
+                + ",\"seams\":{" + counts + "}}\n");
+    }
+
+    private String snapshotProof() throws Exception {
+        long[] values = (long[]) rendererType().getMethod("snapshotMetrics").invoke(null);
+        String[] names = {"captures", "totalBytes", "maxBytes", "totalNanos", "maxNanos",
+                "mismatches", "cells", "rejected", "skipped", "borderCells", "lastThread",
+                "lastGeneration", "nonAirCells", "adjacentVariation", "maxNativeCopyBytes",
+                "maxNativeScratchBytes", "staleCaptureRejections", "workerCaptures",
+                "oracleChecks", "oracleMismatches", "oracleBorderChecks",
+                "oracleRetryCells", "oracleRetryCandidates"};
+        require(values.length == names.length && values[0] > 0 && values[1] > 0
+                && values[2] > 0 && values[3] > 0 && values[4] > 0 && values[5] == 0
+                && values[6] == values[0] * 5832 && values[9] == values[0] * 1736
+                && values[10] > 0 && values[11] > 0 && values[12] > 0 && values[13] > 0
+                && values[14] == 29160 && values[15] > 0 && values[16] > 0 && values[17] > 0
+                && values[18] == 125 && values[19] == 0 && values[20] == 98
+                && values[22] >= 0 && values[21] >= values[22] && values[21] <= values[22] * 125,
+                "Snapshot proof missing bounded vanilla nonair/border roundtrip or stale rejection");
+        StringBuilder json = new StringBuilder("{\"seed\":8675309,\"edge\":18,"
+                + "\"comparison\":\"decoded-vs-Java-copied-post-compile-region\","
+                + "\"light\":\"raw-stored-sky-and-block-not-combined-mesh-light\","
+                + "\"oracle\":\"coordinate-only-same-mappings\","
+                + "\"modelKeys\":\"state-derived-not-baked-model-identities\","
+                + "\"timingSampleLimit\":4096,\"maxConcurrentCaptures\":1,"
+                + "\"javaBatchBytes\":29160,\"retainedStaleProofBytes\":29160,"
+                + "\"maxJavaBatchPayloadBytes\":58320");
+        for (int i = 0; i < names.length; i++)
+            json.append(",\"").append(names[i]).append("\":").append(values[i]);
+        for (int percent : new int[] {50, 95, 99}) {
+            long nanos = (long) rendererType().getMethod("snapshotPercentile", int.class).invoke(null, percent);
+            json.append(",\"p").append(percent).append("Nanos\":").append(nanos);
+        }
+        return json.append('}').toString();
     }
 
     private void reloadResources() throws Exception {
@@ -248,6 +284,7 @@ final class ClientAutomation implements Runnable {
         rendererInjectedStaleRejected = onGame(() ->
                 (boolean) rendererType().getMethod("injectStaleProof").invoke(null));
         require(rendererInjectedStaleRejected, "Injected old-task normal return was not rejected");
+        await(() -> (boolean) rendererType().getMethod("injectStaleSnapshotProof").invoke(null));
     }
 
     private void requirePausedHooks() throws Exception {

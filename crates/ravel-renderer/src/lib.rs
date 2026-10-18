@@ -1,0 +1,233 @@
+#![forbid(unsafe_code)]
+
+//! Observational, owned section snapshots, not a world mirror or mesh renderer.
+//!
+//! The 16-cube core includes a full one-cell border. Coordinates `0..18` denote
+//! section origin minus one through origin plus sixteen, in `((y * 18) + z) * 18 + x`
+//! order. State keys are numeric block ids shifted left four bits, plus metadata.
+//! Model keys currently identify render states only: no geometry is captured.
+//! Callers must check the live generation before and after copying game data.
+
+use std::mem::{size_of, size_of_val};
+
+/// Core section edge, excluding neighbours.
+pub const SECTION_EDGE: usize = 16;
+/// Edge including both neighbour cells.
+pub const SNAPSHOT_EDGE: usize = SECTION_EDGE + 2;
+/// Exact required length of each capture input.
+pub const CELL_COUNT: usize = SNAPSHOT_EDGE * SNAPSHOT_EDGE * SNAPSHOT_EDGE;
+/// Largest accepted numeric block id.
+pub const MAX_BLOCK_ID: u32 = 0x000f_ffff;
+/// Largest accepted packed block id and metadata.
+pub const MAX_STATE_KEY: u32 = (MAX_BLOCK_ID << 4) | 15;
+/// Generation must fit a positive Java long.
+pub const MAX_GENERATION: u64 = 0x7fff_ffff_ffff_ffff;
+/// Every cell may have its own palette entry.
+pub const MAX_PALETTE_ENTRIES: usize = CELL_COUNT;
+/// Successful capture makes at most four heap allocations, including transient palette scratch.
+pub const MAX_CAPTURE_ALLOCATIONS: usize = 4;
+/// Worst-case retained heap payload; allocator metadata is excluded.
+pub const MAX_HEAP_BYTES: usize = CELL_COUNT * (size_of::<u32>() + size_of::<u16>() + 1);
+/// Retained object plus its maximum heap payload, excluding allocator metadata.
+pub const MAX_TOTAL_BYTES: usize = size_of::<SectionSnapshot>() + MAX_HEAP_BYTES;
+/// Maximum input cells visited; there are no retries or world-size-dependent work.
+pub const MAX_CAPTURE_CELL_VISITS: usize = CELL_COUNT;
+/// Hard upper bound on open-addressing comparisons across a capture.
+pub const MAX_CAPTURE_PALETTE_PROBES: usize = CELL_COUNT * CELL_COUNT;
+
+const LOOKUP_SLOTS: usize = 8192;
+const EMPTY_SLOT: u16 = u16::MAX;
+
+const _: () = {
+    assert!(LOOKUP_SLOTS.is_power_of_two());
+    assert!(LOOKUP_SLOTS > CELL_COUNT);
+    assert!(CELL_COUNT < 65_535);
+};
+
+/// Fixed-array stack scratch payload during capture, excluding scalar locals and stack frames.
+pub const MAX_CAPTURE_STACK_SCRATCH_BYTES: usize = LOOKUP_SLOTS * size_of::<u16>();
+/// Fixed-size heap palette scratch payload during capture.
+pub const MAX_CAPTURE_HEAP_SCRATCH_BYTES: usize = CELL_COUNT * size_of::<u32>();
+/// Total bounded scratch payload during capture, excluding scalar locals and stack frames.
+pub const MAX_CAPTURE_SCRATCH_BYTES: usize =
+    MAX_CAPTURE_STACK_SCRATCH_BYTES + MAX_CAPTURE_HEAP_SCRATCH_BYTES;
+
+/// An invalid snapshot input; rejection never retains the supplied arrays.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SnapshotError {
+    /// Generation is zero or cannot be represented as a positive Java long.
+    InvalidGeneration,
+    /// Both inputs must describe the complete core and border.
+    InvalidLengths {
+        /// Supplied state count.
+        states: usize,
+        /// Supplied packed-light count.
+        light: usize,
+    },
+    /// A state is negative or exceeds the numeric id/metadata contract.
+    InvalidState {
+        /// Index in capture order.
+        index: usize,
+        /// Rejected packed state.
+        state: i32,
+    },
+    /// The bounded palette cannot represent another entry.
+    PaletteLimit,
+}
+
+/// Decoded value copied from a snapshot; it cannot mutate the snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Cell {
+    state: u32,
+    light: u8,
+}
+
+impl Cell {
+    /// Packed numeric block id and four-bit metadata, without truncation.
+    pub fn state_key(self) -> u32 {
+        self.state
+    }
+
+    /// Numeric block id, preserving ids above the historical twelve-bit range.
+    pub fn block_id(self) -> u32 {
+        self.state >> 4
+    }
+
+    /// Four-bit block metadata.
+    pub fn metadata(self) -> u8 {
+        self.state.to_le_bytes()[0] & 15
+    }
+
+    /// Render-state identity, not a baked model or geometry handle.
+    pub fn model_key(self) -> u32 {
+        self.state
+    }
+
+    /// Sky light in the upper nibble, block light in the lower nibble.
+    pub fn packed_light(self) -> u8 {
+        self.light
+    }
+
+    /// Sky-light level from zero to fifteen.
+    pub fn sky_light(self) -> u8 {
+        self.light >> 4
+    }
+
+    /// Block-light level from zero to fifteen.
+    pub fn block_light(self) -> u8 {
+        self.light & 15
+    }
+}
+
+/// Immutable local palette, compact cell indices and packed light, with no game references.
+#[derive(Debug, Eq, PartialEq)]
+pub struct SectionSnapshot {
+    generation: u64,
+    palette: Box<[u32]>,
+    indices: Box<[u16]>,
+    light: Box<[u8]>,
+}
+
+impl SectionSnapshot {
+    /// Copies exactly one bordered section, deduplicating state/model identities in
+    /// first-occurrence order. Only three exact-size heap slices survive capture.
+    /// Work is capped by `MAX_CAPTURE_CELL_VISITS` and `MAX_CAPTURE_PALETTE_PROBES`.
+    pub fn capture(generation: u64, states: &[i32], light: &[u8]) -> Result<Self, SnapshotError> {
+        if generation == 0 || generation > MAX_GENERATION {
+            return Err(SnapshotError::InvalidGeneration);
+        }
+        if states.len() != CELL_COUNT || light.len() != CELL_COUNT {
+            return Err(SnapshotError::InvalidLengths {
+                states: states.len(),
+                light: light.len(),
+            });
+        }
+        let mut palette = vec![0; MAX_PALETTE_ENTRIES].into_boxed_slice();
+        let mut indices = vec![0; CELL_COUNT].into_boxed_slice();
+        let mut slots = [EMPTY_SLOT; LOOKUP_SLOTS];
+        let mut palette_len = 0;
+        for (index, &state) in states.iter().enumerate() {
+            let key = u32::try_from(state)
+                .ok()
+                .filter(|&key| key <= MAX_STATE_KEY)
+                .ok_or(SnapshotError::InvalidState { index, state })?;
+            indices[index] = intern(key, &mut palette, &mut palette_len, &mut slots)?;
+        }
+        Ok(Self {
+            generation,
+            palette: Box::from(&palette[..palette_len]),
+            indices,
+            light: Box::from(light),
+        })
+    }
+
+    /// Resource/world generation supplied at capture.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Number of deduplicated state/model identities.
+    pub fn palette_len(&self) -> usize {
+        self.palette.len()
+    }
+
+    /// Decodes a linear cell index; out-of-range indices return `None`.
+    pub fn cell(&self, index: usize) -> Option<Cell> {
+        let &palette_index = self.indices.get(index)?;
+        Some(Cell {
+            state: self.palette[usize::from(palette_index)],
+            light: self.light[index],
+        })
+    }
+
+    /// Decodes bordered coordinates; all faces, edges and corners are preserved.
+    pub fn cell_at(&self, x: usize, y: usize, z: usize) -> Option<Cell> {
+        if x >= SNAPSHOT_EDGE || y >= SNAPSHOT_EDGE || z >= SNAPSHOT_EDGE {
+            return None;
+        }
+        self.cell(((y * SNAPSHOT_EDGE) + z) * SNAPSHOT_EDGE + x)
+    }
+
+    /// Exact retained heap payload, excluding allocator metadata.
+    pub fn heap_bytes(&self) -> usize {
+        size_of_val(self.palette.as_ref())
+            + size_of_val(self.indices.as_ref())
+            + size_of_val(self.light.as_ref())
+    }
+
+    /// Object size plus retained heap payload, excluding allocator metadata.
+    pub fn total_bytes(&self) -> usize {
+        size_of::<Self>() + self.heap_bytes()
+    }
+}
+
+fn intern(
+    key: u32,
+    palette: &mut [u32],
+    palette_len: &mut usize,
+    slots: &mut [u16; LOOKUP_SLOTS],
+) -> Result<u16, SnapshotError> {
+    let bytes = key.wrapping_mul(0x9e37_79b9).to_le_bytes();
+    let mut slot = usize::from(u16::from_le_bytes([bytes[2], bytes[3]]) >> 3);
+    for _ in 0..CELL_COUNT {
+        let entry = slots[slot];
+        if entry == EMPTY_SLOT {
+            let index = u16::try_from(*palette_len).map_err(|_| SnapshotError::PaletteLimit)?;
+            let target = palette
+                .get_mut(*palette_len)
+                .ok_or(SnapshotError::PaletteLimit)?;
+            *target = key;
+            *palette_len += 1;
+            slots[slot] = index;
+            return Ok(index);
+        }
+        if palette[usize::from(entry)] == key {
+            return Ok(entry);
+        }
+        slot = (slot + 1) & (LOOKUP_SLOTS - 1);
+    }
+    Err(SnapshotError::PaletteLimit)
+}
+
+#[cfg(test)]
+mod tests;

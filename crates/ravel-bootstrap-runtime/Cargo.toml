@@ -24,6 +24,7 @@ ravel-minecraft.workspace = true
 ravel-minecraft-adapter.workspace = true
 ravel-network.workspace = true
 ravel-observability.workspace = true
+ravel-renderer.workspace = true
 ravel-save.workspace = true
 semver.workspace = true
 serde_json.workspace = true

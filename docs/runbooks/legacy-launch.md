@@ -240,6 +240,43 @@ released. Renderer assertions supplement resource/atlas and persistence checks;
 a hook's presence alone does not establish generation ordering or a replacement
 renderer. Software-rendered Xvfb execution remains functional-only.
 
+### Bounded section capture
+
+WP5 slice 3 observes the pinned `RenderChunk.compile` seam without suppressing
+vanilla compilation. The compiling task's Java owner copies a 16³ section with
+a complete one-cell border: 18³ (5,832) cells, x fastest, then z, then y.
+Each cell supplies the numeric block identity and metadata plus packed raw stored
+sky/block light, not combined mesh light. The border includes faces, edges and
+corners; it is not six face-only neighbours. Java retains all game objects and
+performs the source reads after compilation, not during vanilla's mesh reads.
+
+The primitive-array JNI crossing is one batch per admitted capture, not one
+crossing per block. Rust validates the fixed input lengths and generation, builds
+an immutable compact palette snapshot, and compares every decoded state/light
+cell against the copied post-compile region values before reporting its byte
+accounting. This is not an atomic world transaction or proof of earlier vanilla
+mesh inputs. The observational snapshot is then discarded. State/model lookup
+keys are not baked model geometry, texture ownership or a replacement mesher.
+
+The retained palette uses four bytes per distinct numeric state/model lookup
+identity, two bytes per cell palette index, and one packed-light byte per cell:
+`17,496 + 4 × palette_entries` heap bytes, with at most 5,832 entries and
+40,824 heap bytes. The Rust snapshot object is additional. Capture scratch
+payload is at most 39,712 bytes: a 23,328-byte heap palette and 16,384-byte stack
+lookup table, excluding scalar locals and stack frames. Java and JNI input-copy
+primitive-array payloads are each 29,160
+bytes per batch. Acceptance retains one additional Java batch for a stale-input
+proof, so its Java-array payload bound is 58,320 bytes. These are payload bounds,
+not total RSS or allocator/JVM-header accounting; simultaneous observational
+storage is not a memory saving.
+
+Reload/unload generation rejection supplements, rather than replaces, vanilla
+task cancellation. An admitted snapshot is not permission for a later upload.
+The existing live fixed-seed acceptance records capture observations alongside
+the renderer lifecycle proof. Xvfb timing remains functional-only; physical
+capture timings must disclose scene/settings and cannot establish renderer
+savings while both the vanilla renderer and observational copies still run.
+
 ## JVM permissions
 
 In the vanilla baseline, the four LWJGL3 Java modules receive exactly

@@ -277,6 +277,8 @@ fn written_declarations() -> &'static str {
          \x20   public static native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);\n\n\
          \x20   /** Whether completed renderer work still belongs to the active generation. */\n\
          \x20   public static native boolean ravelRendererAccept(long generation);\n\n\
+         \x20   /** Bounded batch; returns [accepted, bytes, mismatches, cells, copyBytes, scratchBoundBytes], or empty if refused. */\n\
+         \x20   public static native long[] ravelRendererSnapshot(long generation, int[] states, byte[] light);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

@@ -34,6 +34,34 @@ def renderer_proof(path: Path, started: float) -> dict:
             and proof['ownerThread'] > 0
             and all(proof['seams'].get(name, 0) > 0 for name in RENDERER_SEAMS)):
         raise RuntimeError('Renderer generation ordering, stale rejection or seam proof missing')
+    snapshot = proof['snapshot']
+    count = snapshot['captures']
+    if not (count > 0 and snapshot['seed'] == 8675309 and snapshot['edge'] == 18
+            and snapshot['comparison'] == 'decoded-vs-Java-copied-post-compile-region'
+            and snapshot['light'] == 'raw-stored-sky-and-block-not-combined-mesh-light'
+            and snapshot['oracle'] == 'coordinate-only-same-mappings'
+            and snapshot['modelKeys'] == 'state-derived-not-baked-model-identities'
+            and snapshot['maxConcurrentCaptures'] == 1
+            and snapshot['timingSampleLimit'] == 4096
+            and snapshot['javaBatchBytes'] == 29160
+            and snapshot['retainedStaleProofBytes'] == 29160
+            and snapshot['maxJavaBatchPayloadBytes'] == 58320
+            and snapshot['maxNativeCopyBytes'] == 29160 and snapshot['maxNativeScratchBytes'] > 0
+            and snapshot['cells'] == count * 5832 and snapshot['borderCells'] == count * 1736
+            and snapshot['mismatches'] == 0 and snapshot['nonAirCells'] > 0
+            and snapshot['adjacentVariation'] > 0 and snapshot['workerCaptures'] > 0
+            and snapshot['oracleChecks'] == 125 and snapshot['oracleMismatches'] == 0
+            and snapshot['oracleBorderChecks'] == 98
+            and snapshot['oracleRetryCandidates'] >= 0
+            and snapshot['oracleRetryCandidates'] <= snapshot['oracleRetryCells']
+            <= snapshot['oracleRetryCandidates'] * 125
+            and snapshot['staleCaptureRejections'] > 0
+            and snapshot['lastThread'] > 0 and snapshot['lastGeneration'] > 0
+            and snapshot['rejected'] >= 0 and snapshot['skipped'] >= 0
+            and 0 < snapshot['maxBytes'] <= snapshot['totalBytes']
+            and 0 < snapshot['p50Nanos'] <= snapshot['p95Nanos'] <= snapshot['p99Nanos']
+            <= snapshot['maxNanos'] <= snapshot['totalNanos']):
+        raise RuntimeError('Bounded vanilla snapshot roundtrip, timing or stale capture proof missing')
     return proof
 
 

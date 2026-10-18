@@ -288,13 +288,15 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
 - **Risks:** incorrect transparency/culling, snapshot races, native use-after-free, memory moved off heap rather than
   saved, modern-GL-only design excluding Jacob's machines. [Design risk analysis; Nothirium multiple-backend precedent
   above]
-- **Status:** slices 1 and 2 completed: [vanilla baseline](vanilla-baseline.md) and
-  [pinned renderer lifecycle contract](../../../docs/runbooks/legacy-launch.md#renderer-lifecycle-observations).
-  The official live run observed frame/terrain/layer/update, compile/callback normal returns and uploads; generations
-  advanced across resource reload and world unload/reopen. A proof-only stale observation of a real captured task
-  was rejected through the production observer path. Java retains game/GL ownership; Rust owns the scalar generation
-  barrier outside SDK. This is functional lifecycle proof, not successful mesh-publication or performance evidence;
-  the replacement renderer and resource savings remain unproved.
+- **Status:** slices 1–3 completed: [vanilla baseline](vanilla-baseline.md),
+  [pinned renderer lifecycle contract](../../../docs/runbooks/legacy-launch.md#renderer-lifecycle-observations)
+  and [bounded observational section snapshots](section-snapshots.md).
+  Official live reload/unload/reopen advances generations and rejects retired task observations and actual
+  retired section batches. Java reads the post-compile region on its compilation thread; Rust validates every
+  decoded state/light cell against the copied batch, with separate live coordinate-oracle samples.
+  Java retains game/model/GL ownership; Rust owns scalar generations and compact immutable values outside SDK.
+  This is functional lifecycle/copy proof, not successful mesh publication, an atomic world transaction or
+  matched performance evidence; the replacement renderer and resource savings remain unproved.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

@@ -320,6 +320,7 @@ dependencies = [
  "ravel-minecraft-adapter",
  "ravel-network",
  "ravel-observability",
+ "ravel-renderer",
  "ravel-save",
  "ravel-test-mod-audio",
  "ravel-test-mod-commands",
@@ -589,6 +590,10 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
+
+[[package]]
+name = "ravel-renderer"
+version = "0.0.0"
 
 [[package]]
 name = "ravel-resolve"

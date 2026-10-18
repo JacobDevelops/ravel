@@ -229,13 +229,36 @@ class AgentTests(unittest.TestCase):
                                 agent.main()
 
 
-class LiveTests(unittest.TestCase):
-    def test_renderer_proof_requires_ordered_generations_and_every_seam(self):
-        proof = {'beforeReload': 2, 'afterReload': 3, 'afterUnload': 4,
-                 'reopened': 4, 'finalUnload': 5, 'staleRejected': True,
-                 'ownerThread': 1, 'workerObserved': True,
-                 'injectedStaleObservationRejected': True,
-                 'seams': {name: 1 for name in live.RENDERER_SEAMS}}
+def renderer_proof_fixture():
+    return {'beforeReload': 2, 'afterReload': 3, 'afterUnload': 4,
+            'reopened': 4, 'finalUnload': 5, 'staleRejected': True,
+            'ownerThread': 1, 'workerObserved': True,
+            'injectedStaleObservationRejected': True,
+            'seams': {name: 1 for name in live.RENDERER_SEAMS},
+            'snapshot': {
+                'captures': 2, 'seed': 8675309, 'edge': 18,
+                'comparison': 'decoded-vs-Java-copied-post-compile-region',
+                'light': 'raw-stored-sky-and-block-not-combined-mesh-light',
+                'oracle': 'coordinate-only-same-mappings',
+                'modelKeys': 'state-derived-not-baked-model-identities',
+                'maxConcurrentCaptures': 1, 'timingSampleLimit': 4096,
+                'javaBatchBytes': 29160, 'retainedStaleProofBytes': 29160,
+                'maxJavaBatchPayloadBytes': 58320,
+                'maxNativeCopyBytes': 29160, 'maxNativeScratchBytes': 39712,
+                'cells': 11664, 'borderCells': 3472, 'mismatches': 0,
+                'nonAirCells': 1, 'adjacentVariation': 1, 'workerCaptures': 1,
+                'oracleChecks': 125, 'oracleMismatches': 0, 'oracleBorderChecks': 98,
+                'oracleRetryCells': 0, 'oracleRetryCandidates': 0,
+                'staleCaptureRejections': 1, 'lastThread': 2, 'lastGeneration': 4,
+                'rejected': 0, 'skipped': 1, 'maxBytes': 100, 'totalBytes': 200,
+                'p50Nanos': 10, 'p95Nanos': 20, 'p99Nanos': 30,
+                'maxNanos': 40, 'totalNanos': 80}}
+
+
+class RendererProofTests(unittest.TestCase):
+    def test_generations_seams_and_freshness(self):
+        proof = renderer_proof_fixture()
+        proof['snapshot'].update(oracleRetryCells=7, oracleRetryCandidates=2)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'renderer.json'
             path.write_text(json.dumps(proof))
@@ -251,6 +274,37 @@ class LiveTests(unittest.TestCase):
             path.write_text(json.dumps(proof))
             with self.assertRaises(RuntimeError):
                 live.renderer_proof(path, float('inf'))
+
+    def test_bounded_vanilla_roundtrip_and_timing(self):
+        proof = renderer_proof_fixture()
+        snapshot = proof['snapshot']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'renderer.json'
+            for key, invalid in (('captures', 0), ('seed', 1), ('edge', 16),
+                                 ('comparison', 'receipt-only'), ('modelKeys', 'baked'),
+                                 ('maxConcurrentCaptures', 2), ('timingSampleLimit', 0),
+                                 ('javaBatchBytes', 0), ('retainedStaleProofBytes', 0),
+                                 ('maxJavaBatchPayloadBytes', 29160),
+                                 ('maxNativeCopyBytes', 0), ('maxNativeScratchBytes', 0),
+                                 ('cells', 5832), ('borderCells', 0), ('mismatches', 1),
+                                 ('nonAirCells', 0), ('adjacentVariation', 0),
+                                 ('workerCaptures', 0), ('staleCaptureRejections', 0),
+                                 ('oracleChecks', 0), ('oracleChecks', 126), ('oracleMismatches', 1),
+                                 ('oracleBorderChecks', 0), ('light', 'combined-mesh-light'),
+                                 ('oracleRetryCells', -1), ('oracleRetryCandidates', -1),
+                                 ('oracleRetryCells', 1), ('oracleRetryCandidates', 1),
+                                 ('oracle', 'independent-mapping-oracle'),
+                                 ('lastThread', 0), ('lastGeneration', 0),
+                                 ('rejected', -1), ('skipped', -1), ('maxBytes', 0),
+                                 ('totalBytes', 1), ('p50Nanos', 0), ('p95Nanos', 9),
+                                 ('p99Nanos', 19), ('maxNanos', 29), ('totalNanos', 39)):
+                with self.subTest(snapshotField=key):
+                    path.write_text(json.dumps(proof | {'snapshot': snapshot | {key: invalid}}))
+                    with self.assertRaises(RuntimeError):
+                        live.renderer_proof(path, 0)
+
+
+class LiveTests(unittest.TestCase):
 
     def test_counts_requires_native_crossing_named_module_and_no_agent_failure(self):
         lines = ('1 hook invocations reached native code',

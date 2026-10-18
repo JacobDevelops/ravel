@@ -357,16 +357,19 @@ mod tests {
             assert!(java.contains(declaration), "{declaration}");
         }
         let modern = hook_java(&adapter(), &[]);
-        assert_eq!(modern.matches("public static native ").count(), 16);
+        assert_eq!(modern.matches("public static native ").count(), 17);
         assert_eq!(
             java.matches("public static native ").count(),
-            shapes.len() + 16 + 8
+            shapes.len() + 17 + 8
         );
         for rendered in [&java, &modern] {
             assert!(rendered.contains(
                 "native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);"
             ));
             assert!(rendered.contains("native boolean ravelRendererAccept(long generation);"));
+            assert!(rendered.contains(
+                "native long[] ravelRendererSnapshot(long generation, int[] states, byte[] light);"
+            ));
         }
         assert!(!modern.contains("\"legacyRenderer"));
     }

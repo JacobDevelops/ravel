@@ -52,6 +52,7 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
         "ravelProfilingReport",
         "ravelRendererEvent",
         "ravelRendererAccept",
+        "ravelRendererSnapshot",
     ] {
         assert!(expected.remove(unused));
     }
@@ -61,7 +62,7 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
 }
 
 #[test]
-fn renderer_semantic_natives_keep_the_shared_scalar_only_contract() {
+fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
     let generator = include_str!("../../../../crates/ravel-minecraft-generate/src/render/hooks.rs");
     let renderer_names: Vec<_> = generator
         .split("public static native ")
@@ -70,11 +71,19 @@ fn renderer_semantic_natives_keep_the_shared_scalar_only_contract() {
         .filter_map(|(head, _)| head.split_whitespace().last())
         .filter(|name| name.starts_with("ravelRenderer"))
         .collect();
-    assert_eq!(renderer_names.len(), 2, "exactly two renderer declarations");
+    assert_eq!(
+        renderer_names.len(),
+        3,
+        "exactly three renderer declarations"
+    );
     assert_eq!(
         renderer_names.into_iter().collect::<BTreeSet<_>>(),
-        BTreeSet::from(["ravelRendererAccept", "ravelRendererEvent"]),
-        "no additional renderer crossing may bypass the scalar-only contract"
+        BTreeSet::from([
+            "ravelRendererAccept",
+            "ravelRendererEvent",
+            "ravelRendererSnapshot",
+        ]),
+        "renderer crossings carry only scalars and bounded primitive batches"
     );
     let (_, shared) = generator
         .split_once("fn written_declarations()")
@@ -88,6 +97,11 @@ fn renderer_semantic_natives_keep_the_shared_scalar_only_contract() {
             vec!["int", "long", "long", "boolean"],
         ),
         ("ravelRendererAccept", "boolean", vec!["long"]),
+        (
+            "ravelRendererSnapshot",
+            "long[]",
+            vec!["long", "int[]", "byte[]"],
+        ),
     ] {
         assert!(
             names.contains(name),
@@ -104,7 +118,7 @@ fn renderer_semantic_natives_keep_the_shared_scalar_only_contract() {
                 .map(|argument| argument.split_whitespace().next().expect("parameter type"))
                 .collect::<Vec<_>>(),
             parameters,
-            "{name} must carry scalar identities, never SDK renderer objects"
+            "{name} must carry copied primitives, never SDK renderer objects"
         );
         assert_eq!(shared.matches(&marker).count(), 1, "{name}");
     }

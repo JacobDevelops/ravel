@@ -614,3 +614,92 @@ runtime = "bxn$2"
 [[reflected.member]]
 name = "f_1403720"
 descriptor = "Lnet/minecraft/client/render/world/ChunkCompileTask;"
+
+# Worker-local vanilla region; state-derived keys are not baked model identities.
+[[reflected]]
+name = "LEGACY_RENDER_CHUNK"
+class = "net.minecraft.client.render.world.RenderChunk"
+runtime = "bxr"
+[[reflected.member]]
+name = "region"
+descriptor = "Lnet/minecraft/world/WorldRegion;"
+[[reflected.member]]
+name = "origin"
+descriptor = "Lnet/minecraft/util/math/BlockPos$Mutable;"
+[[reflected.member]]
+name = "pendingTask"
+descriptor = "Lnet/minecraft/client/render/world/ChunkCompileTask;"
+[[reflected.member]]
+name = "taskLock"
+descriptor = "Ljava/util/concurrent/locks/ReentrantLock;"
+
+[[reflected]]
+name = "LEGACY_COMPILE_TASK"
+class = "net.minecraft.client.render.world.ChunkCompileTask"
+runtime = "bxl"
+[[reflected.member]]
+name = "isCancelled"
+descriptor = "()Z"
+[[reflected.member]]
+name = "getCompiledChunk"
+descriptor = "()Lnet/minecraft/client/render/world/CompiledChunk;"
+
+[[reflected]]
+name = "LEGACY_WORLD_REGION"
+class = "net.minecraft.world.WorldRegion"
+runtime = "and"
+[[reflected.member]]
+name = "getLight"
+descriptor = "(Lnet/minecraft/world/LightType;Lnet/minecraft/util/math/BlockPos;)I"
+
+[[reflected]]
+name = "LEGACY_WORLD_VIEW"
+class = "net.minecraft.world.WorldView"
+runtime = "amy"
+[[reflected.member]]
+name = "getBlockState"
+descriptor = "(Lnet/minecraft/util/math/BlockPos;)Lnet/minecraft/block/state/BlockState;"
+
+[[reflected]]
+name = "LEGACY_BLOCK_STATE"
+class = "net.minecraft.block.state.BlockState"
+runtime = "awt"
+[[reflected.member]]
+name = "getBlock"
+descriptor = "()Lnet/minecraft/block/Block;"
+
+[[reflected]]
+name = "LEGACY_LIGHT_TYPE"
+class = "net.minecraft.world.LightType"
+runtime = "ana"
+[[reflected.member]]
+name = "SKY"
+descriptor = "Lnet/minecraft/world/LightType;"
+[[reflected.member]]
+name = "BLOCK"
+descriptor = "Lnet/minecraft/world/LightType;"
+
+[[reflected]]
+name = "LEGACY_MUTABLE_BLOCK_POS"
+class = "net.minecraft.util.math.BlockPos$Mutable"
+runtime = "et$a"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(III)V"
+[[reflected.member]]
+name = "set"
+descriptor = "(III)Lnet/minecraft/util/math/BlockPos$Mutable;"
+
+[[reflected]]
+name = "LEGACY_VEC3I"
+class = "net.minecraft.util.math.Vec3i"
+runtime = "fq"
+[[reflected.member]]
+name = "getX"
+descriptor = "()I"
+[[reflected.member]]
+name = "getY"
+descriptor = "()I"
+[[reflected.member]]
+name = "getZ"
+descriptor = "()I"

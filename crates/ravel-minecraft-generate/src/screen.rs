@@ -959,19 +959,7 @@ com.example.util.Held -> com.example.util.Held:
     fn roles_over(seeds: &Seeds, reflected: &[(&str, &str)], hooks: &[(&str, &str)]) -> Roles {
         Roles::new(
             seeds,
-            &inputs::Reflection {
-                schema_version: 1,
-                minecraft: String::from("0.0.0"),
-                classes: reflected
-                    .iter()
-                    .map(|(name, class)| inputs::Reflected {
-                        name: (*name).to_owned(),
-                        class: (*class).to_owned(),
-                        runtime: (*class).to_owned(),
-                        members: Vec::new(),
-                    })
-                    .collect(),
-            },
+            &crate::test_fixtures::reflection(reflected),
             &inputs::Inventory {
                 schema_version: 1,
                 minecraft: String::from("0.0.0"),

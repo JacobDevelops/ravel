@@ -195,8 +195,9 @@ fn internal(class: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::inputs::{Hook, Kind, Reflected, ReflectedMember, Seed};
+    use super::super::inputs::{Hook, Kind, ReflectedMember, Seed};
     use super::*;
+    use crate::test_fixtures::reflection as surface;
 
     fn seeds(bound: &[(&str, &str)]) -> Seeds {
         Seeds {
@@ -207,22 +208,6 @@ mod tests {
                 .map(|(role, class)| Seed {
                     role: (*role).to_owned(),
                     class: (*class).to_owned(),
-                    members: Vec::new(),
-                })
-                .collect(),
-        }
-    }
-
-    fn surface(bound: &[(&str, &str)]) -> Reflection {
-        Reflection {
-            schema_version: 1,
-            minecraft: String::from("0.0.0"),
-            classes: bound
-                .iter()
-                .map(|(name, class)| Reflected {
-                    name: (*name).to_owned(),
-                    class: (*class).to_owned(),
-                    runtime: (*class).to_owned(),
                     members: Vec::new(),
                 })
                 .collect(),

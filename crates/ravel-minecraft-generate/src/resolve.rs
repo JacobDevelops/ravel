@@ -286,22 +286,12 @@ mod tests {
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
     use super::{classfile, from_jar, from_lock};
+    use crate::test_fixtures::identity_version as pinned;
 
     /// The mapping every reviewed name already agrees with.
     fn identity() -> Mapping {
         Mapping::read(MappingSource::UnobfuscatedClassFiles, "")
             .expect("the identity needs no text")
-    }
-
-    fn pinned() -> PinnedVersion {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the crate lives under crates/<name>");
-        // The version whose class files are the mapping: these tests assert on a
-        // lock whose linked names are its reviewed ones, which is what an
-        // unobfuscated source gives and an obfuscated one does not.
-        inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings())
     }
 
     fn tracked_lock(pinned: &PinnedVersion) -> String {

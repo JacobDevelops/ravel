@@ -414,3 +414,285 @@ impl Spelling {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde::de::DeserializeOwned;
+
+    use super::{
+        Adapter, BoundMember, Eligibility, Hook, HookSide, Input, Inputs, Inventory, Lookup,
+        MappingNamespaces, NonGoal, PackFormat, Reflected, ReflectedMember, Reflection, Seed,
+        SeedMember, Seeds, Spelling,
+    };
+
+    const HOOK: &str = "\
+id = \"tick\"\nclass = \"example.Game\"\nmember = \"tick\"\n\
+descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n";
+    const PACK_FORMAT: &str = "\
+resource = 7\nresourceMinor = 0\ndata = 11\ndataMinor = 0\nspelling = \"pack-format\"\n";
+    const INPUTS: &str = "\
+clientJar = { path = \"client.jar\" }\nversionManifest = { path = \"version.json\" }\n\
+hookInventory = { path = \"hooks.toml\" }\nstubSeeds = { path = \"seeds.toml\" }\n\
+reflectiveSurface = { path = \"reflection.toml\" }\nmappingsLock = { path = \"mappings.lock\" }\n\
+stubsLock = { path = \"stubs.lock\" }\n";
+    const ADAPTER: &str = "\
+schemaVersion = 1\nminecraft = \"test\"\njavaRelease = 25\n\
+mappingSource = \"unobfuscated-class-files\"\n\
+packFormat = { resource = 7, resourceMinor = 0, data = 11, dataMinor = 0, spelling = \"pack-format\" }\n\
+inputs = { clientJar = { path = \"a\" }, versionManifest = { path = \"b\" }, \
+hookInventory = { path = \"c\" }, stubSeeds = { path = \"d\" }, \
+reflectiveSurface = { path = \"e\" }, mappingsLock = { path = \"f\" }, \
+stubsLock = { path = \"g\" } }\n";
+
+    fn refused<T: DeserializeOwned>(text: &str, diagnostic: &str) {
+        match toml::from_str::<T>(text) {
+            Err(error) => assert!(error.to_string().contains(diagnostic), "{error}"),
+            Ok(_) => panic!("schema accepted a document requiring refusal: {text}"),
+        }
+    }
+
+    fn required_fields<T: DeserializeOwned>(
+        text: &str,
+        fields: &[&str],
+    ) -> Result<(), toml::de::Error> {
+        toml::from_str::<T>(text)?;
+        refused::<T>(
+            &format!("{text}unknown = true\n"),
+            "unknown field `unknown`",
+        );
+        for field in fields {
+            let prefix = format!("{field} =");
+            let without_field = text
+                .lines()
+                .filter(|line| !line.starts_with(&prefix))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert_ne!(without_field, text.trim_end(), "{field}");
+            refused::<T>(&without_field, &format!("missing field `{field}`"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn hook_fields_are_required_but_behavior_flags_default() -> Result<(), toml::de::Error> {
+        required_fields::<Hook>(
+            HOOK,
+            &["id", "class", "member", "descriptor", "kind", "capability"],
+        )?;
+        let hook: Hook = toml::from_str(HOOK)?;
+        assert_eq!(hook.side, HookSide::Shared);
+        assert!(!hook.refuses);
+        assert_eq!(hook.title_menu_row, None);
+        let explicit: Hook = toml::from_str(&format!(
+            "{HOOK}side = \"client-only\"\nrefuses = true\ntitleMenuRow = -2\n"
+        ))?;
+        assert_eq!(explicit.side, HookSide::ClientOnly);
+        assert!(explicit.refuses);
+        assert_eq!(explicit.title_menu_row, Some(-2));
+        refused::<Hook>(&format!("{HOOK}title_menu_row = 1\n"), "unknown field");
+        Ok(())
+    }
+
+    #[test]
+    fn inventory_requires_hooks_but_defaults_only_non_goals() -> Result<(), toml::de::Error> {
+        let text = "schemaVersion = 1\nminecraft = \"test\"\nhook = []\n";
+        required_fields::<Inventory>(text, &["schemaVersion", "minecraft", "hook"])?;
+        let inventory: Inventory = toml::from_str(text)?;
+        assert!(inventory.hooks.is_empty());
+        assert!(inventory.non_goals.is_empty());
+        let explicit: Inventory = toml::from_str(&format!(
+            "{text}nonGoal = [{{ id = \"absent\", reason = \"not reviewed\" }}]\n"
+        ))?;
+        assert_eq!(explicit.non_goals.len(), 1);
+        required_fields::<NonGoal>(
+            "id = \"absent\"\nreason = \"not reviewed\"\n",
+            &["id", "reason"],
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn seeds_require_members_and_bound_members_reject_extra_fields() -> Result<(), toml::de::Error>
+    {
+        required_fields::<Seeds>(
+            "schemaVersion = 1\nminecraft = \"test\"\nstub = []\n",
+            &["schemaVersion", "minecraft", "stub"],
+        )?;
+        required_fields::<Seed>(
+            "role = \"screen\"\nclass = \"example.Screen\"\nmembers = []\n",
+            &["role", "class", "members"],
+        )?;
+        required_fields::<BoundMember>("role = \"open\"\nmember = \"a\"\n", &["role", "member"])?;
+        let bound: BoundMember = toml::from_str("role = \"open\"\nmember = \"a\"\n")?;
+        assert!(bound.parameters.is_none());
+        let seed: Seed = toml::from_str(
+            "role = \"screen\"\nclass = \"example.Screen\"\n\
+             members = [\"tick\", { role = \"open\", member = \"a\", parameters = [\"int\"] }]\n",
+        )?;
+        assert!(matches!(&seed.members[0], SeedMember::Same(name) if name == "tick"));
+        assert_eq!(seed.members[1].role(), "open");
+        assert_eq!(seed.members[1].member(), "a");
+        assert!(seed.members[1].parameters().is_some());
+        refused::<Seed>(
+            "role = \"screen\"\nclass = \"example.Screen\"\n\
+             members = [{ role = \"open\", member = \"a\", typo = true }]\n",
+            "did not match any variant",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reflection_requires_classes_but_class_members_default() -> Result<(), toml::de::Error> {
+        required_fields::<Reflection>(
+            "schemaVersion = 1\nminecraft = \"test\"\nreflected = []\n",
+            &["schemaVersion", "minecraft", "reflected"],
+        )?;
+        let text = "name = \"GAME\"\nclass = \"example.Game\"\nruntime = \"a\"\n";
+        required_fields::<Reflected>(text, &["name", "class", "runtime"])?;
+        let reflected: Reflected = toml::from_str(text)?;
+        assert!(reflected.members.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn reflected_members_require_exactly_one_lookup() -> Result<(), toml::de::Error> {
+        for fields in ["", "descriptor = \"()V\"\nparameters = 0\n"] {
+            refused::<ReflectedMember>(
+                &format!("name = \"tick\"\n{fields}"),
+                "tick must declare exactly one of descriptor or parameters",
+            );
+        }
+        required_fields::<ReflectedMember>("name = \"tick\"\ndescriptor = \"()V\"\n", &["name"])?;
+        let descriptor: ReflectedMember =
+            toml::from_str("name = \"tick\"\ndescriptor = \"()V\"\n")?;
+        assert_eq!(descriptor.lookup, Lookup::Descriptor("()V".to_owned()));
+        let parameters: ReflectedMember = toml::from_str("name = \"tick\"\nparameters = 0\n")?;
+        assert_eq!(parameters.lookup, Lookup::Parameters(0));
+        refused::<ReflectedMember>("name = \"tick\"\nparameters = -1\n", "invalid value");
+        Ok(())
+    }
+
+    #[test]
+    fn input_path_is_required_but_pin_metadata_is_optional() -> Result<(), toml::de::Error> {
+        required_fields::<Input>("path = \"client.jar\"\n", &["path"])?;
+        let input: Input = toml::from_str("path = \"client.jar\"\n")?;
+        assert!(input.sha256.is_none());
+        assert!(input.bytes.is_none());
+        assert!(input.upstream.is_none());
+        let pinned: Input = toml::from_str(
+            "path = \"client.jar\"\nsha256 = \"digest\"\nbytes = 0\n\
+             upstream = \"https://example.invalid/client.jar\"\n",
+        )?;
+        assert_eq!(pinned.sha256.as_deref(), Some("digest"));
+        assert_eq!(pinned.bytes, Some(0));
+        assert_eq!(
+            pinned.upstream.as_deref(),
+            Some("https://example.invalid/client.jar")
+        );
+        refused::<Input>("path = \"client.jar\"\nbytes = -1\n", "invalid value");
+        Ok(())
+    }
+
+    #[test]
+    fn inputs_require_declared_surfaces_without_requiring_optional_jars()
+    -> Result<(), toml::de::Error> {
+        required_fields::<Inputs>(
+            INPUTS,
+            &[
+                "clientJar",
+                "versionManifest",
+                "hookInventory",
+                "stubSeeds",
+                "reflectiveSurface",
+                "mappingsLock",
+                "stubsLock",
+            ],
+        )?;
+        let inputs: Inputs = toml::from_str(INPUTS)?;
+        assert!(inputs.server_jar.is_none());
+        assert!(inputs.client_mappings.is_none());
+        assert!(inputs.mapping_io_jar.is_none());
+        assert!(inputs.data_fixer_jar.is_none());
+        refused::<Inputs>(
+            &INPUTS.replace(
+                "clientJar = { path = \"client.jar\" }",
+                "clientJar = { path = \"client.jar\", typo = true }",
+            ),
+            "unknown field `typo`",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn adapter_requires_configuration_but_defaults_explicitly_optional_policy()
+    -> Result<(), toml::de::Error> {
+        required_fields::<Adapter>(
+            ADAPTER,
+            &[
+                "schemaVersion",
+                "minecraft",
+                "javaRelease",
+                "mappingSource",
+                "packFormat",
+                "inputs",
+            ],
+        )?;
+        let adapter: Adapter = toml::from_str(ADAPTER)?;
+        assert_eq!(adapter.eligibility, Eligibility::Live);
+        assert_eq!(adapter.capabilities, []);
+        assert!(adapter.mapping_namespaces.is_none());
+        assert!(adapter.source_java_release.is_none());
+        assert_eq!(adapter.effective_source_java_release(), 25);
+        let explicit: Adapter = toml::from_str(&format!(
+            "{ADAPTER}eligibility = \"generation-only\"\ncapabilities = [\"legacy-1-12\"]\n\
+             sourceJavaRelease = 8\nmappingNamespaces = {{ runtime = \"a\", reviewed = \"b\" }}\n"
+        ))?;
+        assert_eq!(explicit.eligibility, Eligibility::GenerationOnly);
+        assert!(explicit.is_legacy());
+        assert_eq!(explicit.effective_source_java_release(), 8);
+        assert!(explicit.mapping_namespaces.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn pack_minors_and_mapping_namespaces_are_required_not_inferred() -> Result<(), toml::de::Error>
+    {
+        required_fields::<PackFormat>(
+            PACK_FORMAT,
+            &["resource", "resourceMinor", "data", "dataMinor", "spelling"],
+        )?;
+        let pack: PackFormat = toml::from_str(PACK_FORMAT)?;
+        assert_eq!(pack.resource_minor, 0);
+        assert_eq!(pack.data_minor, 0);
+        assert_eq!(pack.spelling, Spelling::PackFormat);
+        let alternative: PackFormat =
+            toml::from_str(&PACK_FORMAT.replace("pack-format", "min-max-format"))?;
+        assert_eq!(alternative.spelling, Spelling::MinMaxFormat);
+        required_fields::<MappingNamespaces>(
+            "runtime = \"a\"\nreviewed = \"b\"\n",
+            &["runtime", "reviewed"],
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn enum_typos_are_refused_instead_of_becoming_defaults() {
+        for text in [
+            HOOK.replace("instance-method", "method"),
+            format!("{HOOK}side = \"client\"\n"),
+        ] {
+            refused::<Hook>(&text, "unknown variant");
+        }
+        for text in [
+            ADAPTER.replace("unobfuscated-class-files", "community-mappings"),
+            format!("{ADAPTER}eligibility = \"live-typo\"\n"),
+            format!("{ADAPTER}capabilities = [\"legacy\"]\n"),
+        ] {
+            refused::<Adapter>(&text, "unknown variant");
+        }
+        refused::<PackFormat>(
+            &PACK_FORMAT.replace("pack-format", "pack_format"),
+            "unknown variant",
+        );
+    }
+}

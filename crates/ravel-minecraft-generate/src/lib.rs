@@ -17,6 +17,9 @@ mod stub_render;
 mod stubs;
 mod tiny;
 
+#[cfg(test)]
+mod test_fixtures;
+
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
@@ -252,11 +255,11 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
 
     write_atomically(
         &pinned.directory.join("mappings.lock"),
-        &render::lock(&pinned.adapter, &resolved),
+        &render::locks::lock(&pinned.adapter, &resolved),
     )?;
     write_atomically(
         &pinned.directory.join("stubs.lock"),
-        &render::stub_lock(&pinned.adapter, &stubbed),
+        &render::locks::stub_lock(&pinned.adapter, &stubbed),
     )?;
     // Update pins with their locks so the next build accepts the new contents.
     inputs::repin_locks(root, &pinned.directory, &pinned.adapter.inputs)
@@ -388,13 +391,13 @@ fn compose(
         )
     };
 
-    let lock = render::lock(&pinned.adapter, &resolved);
+    let lock = render::locks::lock(&pinned.adapter, &resolved);
     if lock != tracked {
         return Err(GenerateError::Drift(
             "what resolved is not what mappings.lock pins; regenerate it deliberately".to_owned(),
         ));
     }
-    let stub_lock = render::stub_lock(&pinned.adapter, &stubbed);
+    let stub_lock = render::locks::stub_lock(&pinned.adapter, &stubbed);
     if stub_lock != tracked_stubs {
         return Err(GenerateError::Drift(
             "what the seeds resolve to is not what stubs.lock pins; regenerate it deliberately"
@@ -451,7 +454,7 @@ fn compose_render(
     lock: String,
     stub_lock: String,
 ) -> Result<Rendered, GenerateError> {
-    let shapes = render::shapes(&pinned.inventory, resolved)?;
+    let shapes = render::shape::shapes(&pinned.inventory, resolved)?;
     let stub_java = stubbed
         .iter()
         .map(|stub| stub_render::stub_java(&pinned.adapter, stub, mapping))
@@ -478,15 +481,15 @@ fn compose_render(
         );
     }
     Ok(Rendered {
-        bindings: render::bindings(&pinned.adapter, &pinned.inventory, resolved),
-        exports: render::exports(&shapes),
-        hook_java: render::hook_java(&pinned.adapter, &shapes),
-        game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
-        game_members_java: render::game_members(&pinned.adapter, &pinned.surface, mapping)?,
-        menu_layout_java: render::menu_layout(&pinned.adapter, &pinned.inventory),
+        bindings: render::bindings::bindings(&pinned.adapter, &pinned.inventory, resolved),
+        exports: render::exports::exports(&shapes),
+        hook_java: render::hooks::hook_java(&pinned.adapter, &shapes),
+        game_names_java: render::names::game_names(&pinned.adapter, &pinned.surface),
+        game_members_java: render::names::game_members(&pinned.adapter, &pinned.surface, mapping)?,
+        menu_layout_java: render::names::menu_layout(&pinned.adapter, &pinned.inventory),
         java_release: format!("{}\n", pinned.adapter.java_release),
         agent_release: format!("{}\n", pinned.adapter.java_release.max(AGENT_RELEASE_FLOOR)),
-        screen_names_java: render::screen_names(&pinned.adapter, &screens.names),
+        screen_names_java: render::names::screen_names(&pinned.adapter, &screens.names),
         lock,
         stub_lock,
         stub_java,

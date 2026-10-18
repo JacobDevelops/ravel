@@ -554,12 +554,13 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::super::classfile::{self, ACC_PUBLIC};
-    use super::super::inputs::{self, MappingSource, PinnedVersion, SeedMember, Seeds};
+    use super::super::inputs::{MappingSource, PinnedVersion, SeedMember, Seeds};
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
     use super::{
         Bound, GenerateError, Lock, Stub, argument, element_of, from_jar, from_lock, names_in,
     };
+    use crate::test_fixtures::identity_version as pinned;
 
     fn declared(descriptor: &str, signature: Option<&str>) -> classfile::Member {
         classfile::Member {
@@ -690,17 +691,6 @@ mod tests {
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
     }
 
-    fn pinned() -> PinnedVersion {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the crate lives under crates/<name>");
-        // The version whose class files are the mapping: these tests assert on a
-        // lock whose linked names are its reviewed ones, which is what an
-        // unobfuscated source gives and an obfuscated one does not.
-        inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings())
-    }
-
     fn tracked_lock(pinned: &PinnedVersion) -> String {
         std::fs::read_to_string(pinned.directory.join("stubs.lock"))
             .expect("the tracked stub lock should be readable")
@@ -713,12 +703,12 @@ mod tests {
         let stubs =
             from_lock(&tracked, &pinned.adapter, &pinned.seeds).expect("the modern lock resolves");
         assert_eq!(
-            super::super::render::stub_lock(&pinned.adapter, &stubs),
+            super::super::render::locks::stub_lock(&pinned.adapter, &stubs),
             tracked
         );
         let modern = pinned.adapter.clone();
         pinned.adapter.inputs.data_fixer_jar = None;
-        let absent = super::super::render::stub_lock(&pinned.adapter, &stubs);
+        let absent = super::super::render::locks::stub_lock(&pinned.adapter, &stubs);
         assert!(!absent.contains("dataFixerJarSha256"));
         from_lock(&absent, &pinned.adapter, &pinned.seeds)
             .expect("a library-free lock matches a library-free adapter");

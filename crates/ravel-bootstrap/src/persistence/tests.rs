@@ -1910,7 +1910,7 @@ fn every_java_spelling_of_a_staged_answer_is_the_number_rust_gives_it() {
     };
     let adapter = read("jvm/bootstrap/dev/ravel/jvm/Datapack.java");
     let standin = read("jvm/harness/initialization/dev/ravel/jvm/Hook.java");
-    let generator = read("crates/ravel-minecraft-generate/src/render.rs");
+    let generator = read("crates/ravel-minecraft-generate/src/render/hooks.rs");
 
     let nothing = i32::from(StagedPack::Nothing);
     let unchanged = i32::from(StagedPack::Unchanged);

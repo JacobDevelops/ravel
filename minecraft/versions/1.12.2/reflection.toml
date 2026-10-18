@@ -605,3 +605,12 @@ runtime = "axs"
 [[reflected.member]]
 name = "<init>"
 descriptor = "()V"
+
+# Captured task on the successful asynchronous renderer publication callback.
+[[reflected]]
+name = "LEGACY_RENDERER_COMPLETION"
+class = "net.minecraft.client.render.world.ChunkRenderWorker$2"
+runtime = "bxn$2"
+[[reflected.member]]
+name = "f_1403720"
+descriptor = "Lnet/minecraft/client/render/world/ChunkCompileTask;"

@@ -16,15 +16,22 @@ pub(crate) use screens::{verify_screen_overrides, verify_screen_templates};
 pub(crate) use transformer::{verify_menu_row_placement, verify_transformer_shape};
 
 const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
+const LEGACY_AGENT_SOURCES: &str = "jvm/legacy-platform/src/agent/java/dev/ravel/jvm";
 
 pub(crate) const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
 
 pub(crate) const REFLECTION_FILE: &str = "reflection.toml";
 
-fn java_sources(root: &Path, directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
+fn java_sources(root: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
     let mut sources = Vec::new();
-    if let Err(error) = collect_files(root, directory, &mut sources) {
-        violations.push(error);
+    for relative in [AGENT_JAR_SOURCES, LEGACY_AGENT_SOURCES] {
+        let directory = root.join(relative);
+        if relative == LEGACY_AGENT_SOURCES && !directory.exists() {
+            continue;
+        }
+        if let Err(error) = collect_files(root, &directory, &mut sources) {
+            violations.push(error);
+        }
     }
     sources.retain(|path| {
         path.extension()
@@ -50,7 +57,7 @@ pub(crate) fn verify_hook_name_literals(
         }
     };
 
-    for path in java_sources(root, &root.join(AGENT_JAR_SOURCES), violations) {
+    for path in java_sources(root, violations) {
         let relative = relative_label(root, &path);
         let selected = Path::new(&relative);
         let modern = compiled_bootstrap_source(selected, false, &manifest);
@@ -69,7 +76,8 @@ pub(crate) fn verify_hook_name_literals(
             let modern = source
                 .split(HOOK_NAME_MATCH)
                 .skip(1)
-                .filter_map(|tail| tail.split('"').next());
+                .filter_map(|tail| tail.split('"').next())
+                .filter(|literal| !legacy || !literal.starts_with("legacy"));
             verify_hook_literals(&relative, modern, false, inventories, adapters, violations);
         }
         if legacy {
@@ -162,6 +170,15 @@ fn legacy_hook_literals(source: &str) -> Vec<&str> {
                 .filter_map(|tail| tail.split('"').next()),
         );
     }
+    // Shared Transformer code also has direct comparisons for legacy-only
+    // constructor handling. Keep those checked against legacy inventories.
+    literals.extend(
+        source
+            .split(HOOK_NAME_MATCH)
+            .skip(1)
+            .filter_map(|tail| tail.split('"').next())
+            .filter(|literal| literal.starts_with("legacy")),
+    );
     literals.sort_unstable();
     literals.dedup();
     literals
@@ -201,17 +218,21 @@ fn compiled_bootstrap_source(path: &Path, legacy: bool, manifest: &[(&str, &str)
     let Some(parent) = path.parent() else {
         return false;
     };
-    if parent != Path::new("jvm/bootstrap/dev/ravel/jvm")
-        || path.extension().is_none_or(|extension| extension != "java")
-    {
+    if path.extension().is_none_or(|extension| extension != "java") {
+        return false;
+    }
+    let bootstrap = parent == Path::new("jvm/bootstrap/dev/ravel/jvm");
+    let legacy_platform = parent == Path::new(LEGACY_AGENT_SOURCES);
+    if !(bootstrap || legacy && legacy_platform) {
         return false;
     }
     let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
         return false;
     };
-    manifest
-        .iter()
-        .any(|(group, source)| *source == name && (*group == "core" || !legacy))
+    (bootstrap
+        && manifest
+            .iter()
+            .any(|(group, source)| *source == name && (*group == "core" || !legacy)))
         || legacy && name.starts_with("Legacy")
 }
 

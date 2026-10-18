@@ -230,6 +230,28 @@ class AgentTests(unittest.TestCase):
 
 
 class LiveTests(unittest.TestCase):
+    def test_renderer_proof_requires_ordered_generations_and_every_seam(self):
+        proof = {'beforeReload': 2, 'afterReload': 3, 'afterUnload': 4,
+                 'reopened': 4, 'finalUnload': 5, 'staleRejected': True,
+                 'ownerThread': 1, 'workerObserved': True,
+                 'injectedStaleObservationRejected': True,
+                 'seams': {name: 1 for name in live.RENDERER_SEAMS}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'renderer.json'
+            path.write_text(json.dumps(proof))
+            self.assertEqual(live.renderer_proof(path, 0), proof)
+            for change in ({'afterReload': 2}, {'afterUnload': 3}, {'reopened': 3},
+                           {'finalUnload': 4}, {'staleRejected': False},
+                           {'workerObserved': False}, {'ownerThread': 0},
+                           {'injectedStaleObservationRejected': False},
+                           {'seams': {'frame': 1}}):
+                path.write_text(json.dumps(proof | change))
+                with self.assertRaises(RuntimeError):
+                    live.renderer_proof(path, 0)
+            path.write_text(json.dumps(proof))
+            with self.assertRaises(RuntimeError):
+                live.renderer_proof(path, float('inf'))
+
     def test_counts_requires_native_crossing_named_module_and_no_agent_failure(self):
         lines = ('1 hook invocations reached native code',
                  'nativeAccess agent=dev.ravel.agent:true platform=false',

@@ -17,6 +17,24 @@ SECTIONS = {'cluster', 'content', 'hierarchy', 'initialization', 'load', 'member
 SUPPLEMENTAL = {'legacy.world-open', 'legacy.world-open-integrated', 'legacy.command-install',
                 'legacy.command-execute', 'legacy.item-fire-damage', 'legacy.title-init',
                 'legacy.global-palette-size'}
+RENDERER_SEAMS = ('reload', 'unload', 'frame', 'terrain', 'layer', 'update',
+                  'compileNormalReturn', 'taskCallbackNormalReturn', 'upload')
+
+
+def renderer_proof(path: Path, started: float) -> dict:
+    if not path.is_file() or path.stat().st_mtime < started:
+        raise RuntimeError(f'No fresh renderer proof: {path}')
+    proof = json.loads(path.read_text())
+    generations = [proof[key] for key in
+                   ('beforeReload', 'afterReload', 'afterUnload', 'reopened', 'finalUnload')]
+    before, reload, unload, reopened, final = generations
+    if not (0 < before < reload < unload <= reopened < final
+            and proof['staleRejected'] is True and proof['workerObserved'] is True
+            and proof['injectedStaleObservationRejected'] is True
+            and proof['ownerThread'] > 0
+            and all(proof['seams'].get(name, 0) > 0 for name in RENDERER_SEAMS)):
+        raise RuntimeError('Renderer generation ordering, stale rejection or seam proof missing')
+    return proof
 
 
 def launch(action: str, connected: bool = False, suffix: str = '') -> dict[str, object]:
@@ -89,6 +107,11 @@ def main() -> None:
     processes = [launch('client-agent'), launch('server-agent', connected=True)]
     persistence = {}
     errors = []
+    renderer = {}
+    try:
+        renderer = renderer_proof(WORK / 'evidence-xvfb-agent/renderer.json', started)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as failure:
+        errors.append(f'Renderer lifecycle: {failure}')
     try:
         integrated = WORK / 'evidence-xvfb-agent'
         for name in ('first', 'reopened'):
@@ -126,6 +149,7 @@ def main() -> None:
                                      'reviewedHooks': {k: v for k, v in hooks.items() if k not in SUPPLEMENTAL},
                                      'supplementalHooks': {k: v for k, v in hooks.items() if k in SUPPLEMENTAL},
                                      'sections': sorted(sections), 'persistence': persistence,
+                                     'renderer': renderer,
                                      'missingHooks': missing_hooks, 'missingSections': missing_sections,
                                      'errors': errors, 'passed': passed}, indent=2) + '\n').encode())
     if not passed:

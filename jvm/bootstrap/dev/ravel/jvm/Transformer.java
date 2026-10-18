@@ -571,7 +571,7 @@ public final class Transformer implements ClassFileTransformer {
                     builder.invokestatic(HOOK, "legacyObserve",
                             MethodTypeDesc.ofDescriptor("(Ljava/lang/String;)V"));
                 }
-                if (legacyEntry() || legacyExit()) {
+                if ((legacyEntry() || legacyExit()) && !target.hookMethod().equals("legacyRendererTaskCreate")) {
                     enterLegacy(builder);
                 }
                 if (isWorldOpen(target)) {
@@ -605,6 +605,8 @@ public final class Transformer implements ClassFileTransformer {
             if (legacyExit()
                     && element instanceof ReturnInstruction instruction
                     && instruction.typeKind() == returnKind) {
+                // A constructor receiver is usable only after vanilla initialization succeeded.
+                if (target.hookMethod().equals("legacyRendererTaskCreate")) enterLegacy(builder);
                 exitLegacy(builder);
             }
             builder.with(element);
@@ -618,7 +620,10 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyServerTick", "legacyPayloadClient", "legacyPayloadServer",
                         "legacyResourceReload", "legacyRecipeRegister", "legacyWorldOpen",
                         "legacyWorldOpenIntegrated", "legacyWorldSave",
-                        "legacyCommandExecute", "legacyItemFireDamage" -> true;
+                        "legacyCommandExecute", "legacyItemFireDamage",
+                        "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",
+                        "legacyRendererUpdate",
+                        "legacyRendererUpload", "legacyRendererUnload", "legacyRendererClose" -> true;
                 default -> false;
             };
         }
@@ -629,7 +634,8 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyBlockStateFromMetadata", "legacyBlockMetadataFromState",
                         "legacyItemMetadata", "legacyResourceReload", "legacyAtlasReload",
                         "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated",
-                        "legacyScreenOpen", "legacyTitleInit" -> true;
+                        "legacyScreenOpen", "legacyTitleInit", "legacyRendererCompile",
+                        "legacyRendererWorkerComplete", "legacyRendererTaskCreate" -> true;
                 default -> false;
             };
         }
@@ -640,7 +646,8 @@ public final class Transformer implements ClassFileTransformer {
             legacyFirst = builder.allocateLocal(TypeKind.REFERENCE);
             legacySecond = builder.allocateLocal(TypeKind.REFERENCE);
             legacyNumber = builder.allocateLocal(TypeKind.INT);
-            receiver(builder);
+            if (target.hookMethod().equals("legacyRendererTaskCreate")) builder.aload(0);
+            else receiver(builder);
             builder.astore(legacyReceiver);
             captureReference(builder, legacyFirst, firstParameter());
             captureReference(builder, legacySecond, secondParameter());
@@ -678,6 +685,7 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyScreenOpen",
                         "legacyBlockMetadataFromState", "legacyCommandExecute",
                         "legacyItemFireDamage" -> 0;
+                case "legacyRendererCompile" -> 3;
                 default -> -1;
             };
         }
@@ -811,6 +819,15 @@ public final class Transformer implements ClassFileTransformer {
                 case "legacyWorldOpen", "legacyWorldOpenIntegrated" -> "instance:(LLJLL)V";
                 case "legacyCommandExecute" -> "instance:(LL)I";
                 case "legacyItemFireDamage" -> "instance:(LF)Z";
+                case "legacyRendererFrame", "legacyRendererClose" -> "instance:()V";
+                case "legacyRendererTerrain" -> "instance:(LDLIZ)V";
+                case "legacyRendererLayer" -> "instance:(LDIL)I";
+                case "legacyRendererUpdate" -> "instance:(J)V";
+                case "legacyRendererCompile" -> "instance:(FFFL)V";
+                case "legacyRendererWorker", "legacyRendererWorkerComplete",
+                        "legacyRendererUpload" -> "instance:(L)V";
+                case "legacyRendererUnload" -> "instance:(LL)V";
+                case "legacyRendererTaskCreate" -> "instance:(LLD)V";
                 default -> null;
             };
             if (expected == null) {

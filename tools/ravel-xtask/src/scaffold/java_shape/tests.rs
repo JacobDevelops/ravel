@@ -40,6 +40,25 @@ fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
         true,
         &sources
     ));
+    for (name, legacy) in [
+        ("LegacyRenderer.java", true),
+        ("LegacyOther.java", true),
+        ("Boot.java", false),
+        ("Content.java", false),
+        ("LegacyRenderer.java.in", false),
+        ("nested/LegacyRenderer.java", false),
+    ] {
+        let path = PathBuf::from(super::LEGACY_AGENT_SOURCES).join(name);
+        assert_eq!(
+            compiled_bootstrap_source(&path, true, &sources),
+            legacy,
+            "{name}"
+        );
+        assert!(
+            !compiled_bootstrap_source(&path, false, &sources),
+            "modern source closure must exclude legacy-platform/{name}"
+        );
+    }
     for malformed in [
         "",
         "core Boot\n",
@@ -52,6 +71,7 @@ fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
     let build = include_str!("../../../../../jvm/build/build-agent.sh");
     assert!(build.contains("jvm/build/agent-sources.txt"));
     assert!(build.contains("-maxdepth 1 -name 'Legacy*.java'"));
+    assert!(build.contains(super::LEGACY_AGENT_SOURCES));
     Ok(())
 }
 
@@ -78,9 +98,7 @@ fn agent_source_selection_uses_the_supplied_manifest() -> Result<(), String> {
     Ok(())
 }
 
-#[test]
-fn live_legacy_dispatch_literals_are_held_to_the_legacy_inventory()
--> Result<(), Box<dyn std::error::Error>> {
+fn mixed_dispatch_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let root = reflection_root("legacy-dispatch", "");
     let directory = root.join(VERSION_DATA).join("26.1.2");
     fs::write(
@@ -90,12 +108,29 @@ fn live_legacy_dispatch_literals_are_held_to_the_legacy_inventory()
     fs::write(
         directory.join("hooks.toml"),
         format!(
-            "schemaVersion = 1\nminecraft = '26.1.2'\n{}",
-            seam("legacy.client-tick", "instance-method", "()V")
+            "schemaVersion = 1\nminecraft = '26.1.2'\n{}{}",
+            seam("legacy.client-tick", "instance-method", "()V"),
+            seam("legacy.renderer-task-create", "instance-method", "()V")
         ),
     )?;
+    version_directory(&root, "1.21.1", &[]);
+    fs::write(
+        root.join(VERSION_DATA).join("1.21.1/hooks.toml"),
+        format!(
+            "schemaVersion = 1\nminecraft = '1.21.1'\n{}",
+            seam("world.open-persistence", "instance-method", "()V")
+        ),
+    )?;
+    Ok(root)
+}
+
+#[test]
+fn live_legacy_dispatch_literals_are_held_to_the_legacy_inventory()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = mixed_dispatch_root()?;
     let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
     let transformer = "boolean modern = target.hookMethod().equals(\"worldOpenPersistence\");\n\
+        boolean legacy = target.hookMethod().equals(\"legacyClientTick\");\n\
         switch (target.hookMethod()) { case \"legacyClientTick\" -> run(); }\n";
     fs::write(sources.join("Transformer.java"), transformer)?;
     fs::write(
@@ -137,6 +172,68 @@ fn live_legacy_dispatch_literals_are_held_to_the_legacy_inventory()
     verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(violations[0].contains("legacyMissing"), "{violations:?}");
+    violations.clear();
+    fs::write(&runtime, refusal)?;
+    fs::write(
+        sources.join("Transformer.java"),
+        transformer.replace("worldOpenPersistence", "modernMissing"),
+    )?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("modernMissing"), "{violations:?}");
+    assert!(
+        violations[0].contains("1.21.1/hooks.toml"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn direct_legacy_literals_are_checked_only_on_their_compiled_side()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = mixed_dispatch_root()?;
+    let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
+    let transformer = sources.join("Transformer.java");
+    let direct = "boolean task = target.hookMethod().equals(\"legacyRendererTaskCreate\");\n";
+    fs::write(&transformer, direct)?;
+    let mut violations = Vec::new();
+    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+
+    // This name appears only in a direct comparison, never a dispatch switch.
+    fs::write(
+        &transformer,
+        direct.replace("legacyRendererTaskCreate", "legacyMissingDirectOnly"),
+    )?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("legacyMissingDirectOnly"),
+        "{violations:?}"
+    );
+    assert!(
+        violations[0].contains("26.1.2/hooks.toml"),
+        "{violations:?}"
+    );
+
+    // A modern-only source must not hide a legacy-prefixed literal merely
+    // because a different compiled source can legitimately use that name.
+    violations.clear();
+    fs::write(&transformer, direct)?;
+    fs::write(sources.join("Content.java"), direct)?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("Content.java"), "{violations:?}");
+    assert!(
+        violations[0].contains("legacyRendererTaskCreate"),
+        "{violations:?}"
+    );
+    assert!(
+        violations[0].contains("1.21.1/hooks.toml"),
+        "{violations:?}"
+    );
     fs::remove_dir_all(root)?;
     Ok(())
 }
@@ -316,6 +413,102 @@ fn live_legacy_reflection_uses_the_compiled_adapter_closure()
         violations[0].contains("invalid descriptor"),
         "{violations:?}"
     );
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn legacy_renderer_completion_field_is_pinned_in_tracked_reflection()
+-> Result<(), Box<dyn std::error::Error>> {
+    let tracked = toml::from_str::<toml::Value>(include_str!(
+        "../../../../../minecraft/versions/1.12.2/reflection.toml"
+    ))?;
+    let completion: Vec<_> = tracked["reflected"]
+        .as_array()
+        .expect("tracked reflection roles")
+        .iter()
+        .filter(|role| role["name"].as_str() == Some("LEGACY_RENDERER_COMPLETION"))
+        .collect();
+    assert_eq!(completion.len(), 1);
+    let completion = completion[0];
+    assert_eq!(
+        completion["class"].as_str(),
+        Some("net.minecraft.client.render.world.ChunkRenderWorker$2")
+    );
+    assert_eq!(completion["runtime"].as_str(), Some("bxn$2"));
+    let members = completion["member"].as_array().expect("completion members");
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0]["name"].as_str(), Some("f_1403720"));
+    assert_eq!(
+        members[0]["descriptor"].as_str(),
+        Some("Lnet/minecraft/client/render/world/ChunkCompileTask;")
+    );
+    Ok(())
+}
+
+#[test]
+fn legacy_renderer_completion_field_is_checked_in_the_compiled_closure()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = reflection_root(
+        "legacy-renderer-completion",
+        "String one = GameNames.ONE;\n",
+    );
+    version_directory(&root, "1.12.2", &[]);
+    let directory = root.join(VERSION_DATA).join("1.12.2");
+    fs::write(
+        directory.join("adapter.toml"),
+        adapter_document("1.12.2", "generation-only", None).replace("'generation-only'", "'live'"),
+    )?;
+    let sources = root.join(super::LEGACY_AGENT_SOURCES);
+    fs::create_dir_all(&sources)?;
+    let source = sources.join("LegacyRenderer.java");
+    fs::write(
+        &source,
+        "Field task = Members.field(LegacyAccess.type(\"LEGACY_RENDERER_COMPLETION\"), \
+         LegacyNames.member(\"LEGACY_RENDERER_COMPLETION\", \"f_1403720\"));\n",
+    )?;
+    let reflection = directory.join(REFLECTION_FILE);
+    let roles = "minecraft = '1.12.2'\n[[reflected]]\n\
+        name = 'LEGACY_RENDERER_COMPLETION'\n\
+        class = 'net.minecraft.client.render.world.ChunkRenderWorker$2'\nruntime = 'bxn$2'\n\
+        [[reflected.member]]\nname = 'f_1403720'\n\
+        descriptor = 'Lnet/minecraft/client/render/world/ChunkCompileTask;'\n";
+    fs::write(&reflection, roles)?;
+    let mut violations = Vec::new();
+    let (adapters, _) = verify_version_directories(&root, &mut violations);
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    for (changed, diagnostic, expected_count) in [
+        (
+            roles.replace("f_1403720", "task"),
+            "LEGACY_RENDERER_COMPLETION#f_1403720",
+            1,
+        ),
+        (
+            roles.replace("LEGACY_RENDERER_COMPLETION", "OTHER_COMPLETION"),
+            "legacy role LEGACY_RENDERER_COMPLETION",
+            2,
+        ),
+        (
+            roles.replace(
+                "Lnet/minecraft/client/render/world/ChunkCompileTask;",
+                "Lnet.minecraft.client.render.world.ChunkCompileTask;",
+            ),
+            "invalid descriptor",
+            1,
+        ),
+    ] {
+        fs::write(&reflection, changed)?;
+        violations.clear();
+        verify_persistence_reflection(&root, &adapters, &mut violations);
+        assert_eq!(violations.len(), expected_count, "{violations:?}");
+        assert!(
+            violations
+                .iter()
+                .all(|violation| violation.contains(diagnostic)),
+            "{violations:?}"
+        );
+    }
     fs::remove_dir_all(root)?;
     Ok(())
 }

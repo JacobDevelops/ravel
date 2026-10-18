@@ -320,6 +320,55 @@ mod tests {
         assert!(!java.contains("LegacyCommand."));
         assert!(!java.contains("LegacyPersistence."));
         assert!(!java.contains("native void ravelLegacyEvent"));
+        assert!(!java.contains("\"legacyRenderer"));
+    }
+
+    #[test]
+    fn renderer_observations_erase_game_types_and_keep_scalar_semantics_shared() {
+        let (inventory, resolved) = reviewed(&[
+            ("legacy.renderer-frame", "example.Client", "runGame", "()V"),
+            (
+                "legacy.renderer-compile",
+                "example.Chunk",
+                "compile",
+                "(FFFLexample/Task;)V",
+            ),
+            (
+                "legacy.renderer-task-create",
+                "example.Task",
+                "<init>",
+                "(Lexample/Chunk;Lexample/Type;D)V",
+            ),
+            (
+                "legacy.renderer-worker-complete",
+                "example.Worker$2",
+                "onSuccess",
+                "(Ljava/util/List;)V",
+            ),
+        ]);
+        let shapes = shapes(&inventory, &resolved).expect("renderer shapes");
+        let java = hook_java(&adapter(), &shapes);
+        for declaration in [
+            "native void legacyRendererFrame();",
+            "native void legacyRendererCompile(float argument0, float argument1, float argument2, Object argument3);",
+            "native void legacyRendererTaskCreate(Object argument0, Object argument1, double argument2);",
+            "native void legacyRendererWorkerComplete(Object argument0);",
+        ] {
+            assert!(java.contains(declaration), "{declaration}");
+        }
+        let modern = hook_java(&adapter(), &[]);
+        assert_eq!(modern.matches("public static native ").count(), 16);
+        assert_eq!(
+            java.matches("public static native ").count(),
+            shapes.len() + 16 + 8
+        );
+        for rendered in [&java, &modern] {
+            assert!(rendered.contains(
+                "native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);"
+            ));
+            assert!(rendered.contains("native boolean ravelRendererAccept(long generation);"));
+        }
+        assert!(!modern.contains("\"legacyRenderer"));
     }
 
     #[test]

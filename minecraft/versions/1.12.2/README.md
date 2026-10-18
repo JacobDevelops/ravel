@@ -1,12 +1,22 @@
 # Minecraft 1.12.2 version data
 
-This version carries 29 reviewed hooks and records 14 non-goals. The original
+This version carries 40 reviewed hooks and records 14 non-goals. The original
 22 hooks are supplemented by seven bridges: `legacy.world-open`,
 `legacy.world-open-integrated`, `legacy.command-install`, `legacy.command-execute`,
 `legacy.item-fire-damage`, `legacy.title-init`, and `legacy.global-palette-size`.
 `hooks.toml` records semantic targets and unsupported optional surfaces
 separately; these are legacy operations, not modern member names substituted
 into old jars. The scaffold checks these inventory counts.
+
+Eleven additional client-only renderer observers cover the frame, terrain setup,
+block-layer rendering, chunk updates, rebuild compile-body returns, task creation,
+worker entry, callback-body returns, vertex-buffer uploads, world replacement,
+and client shutdown. Task generations are associated at constructor completion,
+before queueing; every world replacement invalidates outstanding work.
+Compile-body and success-callback normal returns can include early aborts or
+cancelled tasks, so neither proves successful compilation or publication.
+These lifecycle observations do not replace the vanilla renderer or establish
+WP5 renderer replacement or performance acceptance.
 
 `adapter.toml` pins Mojang's official client and dedicated-server jars, Feather
 build 31's merged Tiny mappings, the mapping-io normalizer, and the official

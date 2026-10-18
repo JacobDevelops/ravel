@@ -578,6 +578,16 @@ mod tests {
 
     /// The first reviewed hook, with an archive holding the class it names.
     fn one_hook(flags: u16) -> (super::Inventory, Vec<u8>) {
+        hook_declarations(flags, 1, None, None)
+    }
+
+    /// Varies the official declarations without changing reviewed mapping inputs.
+    fn hook_declarations(
+        flags: u16,
+        count: u16,
+        member: Option<&str>,
+        descriptor: Option<&str>,
+    ) -> (super::Inventory, Vec<u8>) {
         let mut inventory = pinned().inventory;
         inventory.hooks.truncate(1);
         let hook = inventory.hooks[0].clone();
@@ -588,18 +598,27 @@ mod tests {
         class.extend(0_u16.to_be_bytes()); // minor
         class.extend(69_u16.to_be_bytes()); // major
         class.extend(5_u16.to_be_bytes()); // constant pool count
-        for text in [hook.member.as_str(), hook.descriptor.as_str(), "Fixture"] {
+        for text in [
+            member.unwrap_or(&hook.member),
+            descriptor.unwrap_or(&hook.descriptor),
+            "Fixture",
+        ] {
             class.push(1); // modified UTF-8
             class.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             class.extend(text.as_bytes());
         }
         class.push(7); // class
         class.extend(3_u16.to_be_bytes());
-        // access flags, this, super, interfaces, fields, one method, then the
-        // method's flags, name index, descriptor index, and both attribute counts.
-        for value in [0_u16, 4, 0, 0, 0, 1, flags, 1, 2, 0, 0] {
+        // access flags, this, super, interfaces, fields, then method count.
+        for value in [0_u16, 4, 0, 0, 0, count] {
             class.extend(value.to_be_bytes());
         }
+        for _ in 0..count {
+            for value in [flags, 1, 2, 0] {
+                class.extend(value.to_be_bytes());
+            }
+        }
+        class.extend(0_u16.to_be_bytes());
         (inventory, fixture::stored(&entry, &class))
     }
 
@@ -621,6 +640,133 @@ mod tests {
         assert_eq!(resolved[0].runtime_member, resolved[0].member);
         assert_eq!(resolved[0].runtime_descriptor, resolved[0].descriptor);
         assert!(resolved[0].is_static);
+    }
+
+    /// Keeps malformed declarations behind otherwise valid reviewed mappings.
+    fn exact_one_error(count: u16, member: Option<&str>, descriptor: Option<&str>) -> String {
+        let (inventory, bytes) = hook_declarations(0x0008, count, member, descriptor);
+        let archive = fixture::parse(bytes).expect("synthetic official jar");
+        from_jar(&archive, &inventory, &identity())
+            .expect_err("an official declaration must resolve exactly once")
+            .to_string()
+    }
+
+    #[test]
+    fn wrong_official_descriptor_is_refused_even_when_the_name_matches() {
+        let error = exact_one_error(1, None, Some("()V"));
+        assert!(error.contains("resolves 0 times"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_official_name_never_selects_a_nearby_member() {
+        let error = exact_one_error(1, Some("missing"), None);
+        assert!(error.contains("resolves 0 times"), "{error}");
+    }
+
+    #[test]
+    fn duplicate_exact_declarations_are_refused_instead_of_choosing_first() {
+        let error = exact_one_error(2, None, None);
+        assert!(error.contains("resolves 2 times"), "{error}");
+    }
+
+    /// Emits multiple declarations so overload selection uses official class bytes.
+    fn overloaded_class(methods: &[(&str, &str)]) -> Vec<u8> {
+        let count = u16::try_from(methods.len()).expect("small fixture");
+        let capacity = 37
+            + methods
+                .iter()
+                .map(|(name, descriptor)| 14 + name.len() + descriptor.len())
+                .sum::<usize>();
+        let mut bytes = Vec::with_capacity(capacity);
+        bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
+        for value in [0_u16, 69, count * 2 + 3] {
+            bytes.extend(value.to_be_bytes());
+        }
+        for text in methods
+            .iter()
+            .flat_map(|(name, descriptor)| [*name, *descriptor])
+            .chain(["Fixture"])
+        {
+            bytes.push(1);
+            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+            bytes.extend(text.as_bytes());
+        }
+        bytes.push(7);
+        bytes.extend((count * 2 + 1).to_be_bytes());
+        for value in [0_u16, count * 2 + 2, 0, 0, 0, count] {
+            bytes.extend(value.to_be_bytes());
+        }
+        for index in 0..count {
+            for value in [0_u16, index * 2 + 1, index * 2 + 2, 0] {
+                bytes.extend(value.to_be_bytes());
+            }
+        }
+        bytes.extend(0_u16.to_be_bytes());
+        bytes
+    }
+
+    #[test]
+    fn tiny_compile_selection_distinguishes_equal_descriptors_with_different_names() {
+        let mapping = Mapping::tiny(
+            "C\tRenderChunk\tbxr\nC\tTask\tbxl\n\
+             M\tRenderChunk\trebuildTranslucent\t(FFFLTask;)V\ta\n\
+             M\tRenderChunk\tcompile\t(FFFLTask;)V\tb\n",
+        )
+        .expect("normalized Feather shapes");
+        let mut inventory = pinned().inventory;
+        inventory.hooks.truncate(1);
+        let hook = &mut inventory.hooks[0];
+        hook.class = "RenderChunk".to_owned();
+        hook.member = "compile".to_owned();
+        hook.descriptor = "(FFFLTask;)V".to_owned();
+        hook.kind = inputs::Kind::InstanceMethod;
+        let methods = [("a", "(FFFLbxl;)V"), ("b", "(FFFLbxl;)V")];
+        let bytes = overloaded_class(&methods);
+        let archive = fixture::parse(fixture::stored("bxr.class", &bytes)).expect("official jar");
+        let resolved = from_jar(&archive, &inventory, &mapping).expect("exact compile method");
+        assert_eq!(resolved[0].runtime_member, "b");
+        assert_eq!(resolved[0].runtime_descriptor, "(FFFLbxl;)V");
+        let wrong = overloaded_class(&methods[..1]);
+        let archive = fixture::parse(fixture::stored("bxr.class", &wrong)).expect("wrong jar");
+        let error = from_jar(&archive, &inventory, &mapping).expect_err("resort is not compile");
+        assert!(error.to_string().contains("resolves 0 times"), "{error}");
+    }
+
+    #[test]
+    fn tiny_terrain_selection_distinguishes_one_name_with_three_descriptors() {
+        let mapping = Mapping::tiny(
+            "C\tWorldRenderer\tbuy\nC\tEntity\tvg\nC\tCuller\tbxy\nC\tBlockLayer\tamm\n\
+             M\tWorldRenderer\tsetupRender\t(LEntity;DLCuller;IZ)V\ta\n\
+             M\tWorldRenderer\trender\t(LBlockLayer;DILEntity;)I\ta\n\
+             M\tWorldRenderer\tcompileChunksUntil\t(J)V\ta\n",
+        )
+        .expect("normalized Feather overloads");
+        let methods = [
+            ("a", "(Lvg;DLbxy;IZ)V"),
+            ("a", "(Lamm;DILvg;)I"),
+            ("a", "(J)V"),
+        ];
+        let bytes = overloaded_class(&methods);
+        let archive = fixture::parse(fixture::stored("buy.class", &bytes)).expect("official jar");
+        for ((member, descriptor), (_, runtime_descriptor)) in [
+            ("setupRender", "(LEntity;DLCuller;IZ)V"),
+            ("render", "(LBlockLayer;DILEntity;)I"),
+            ("compileChunksUntil", "(J)V"),
+        ]
+        .into_iter()
+        .zip(methods)
+        {
+            let mut inventory = pinned().inventory;
+            inventory.hooks.truncate(1);
+            let hook = &mut inventory.hooks[0];
+            hook.class = "WorldRenderer".to_owned();
+            hook.member = member.to_owned();
+            hook.descriptor = descriptor.to_owned();
+            hook.kind = inputs::Kind::InstanceMethod;
+            let resolved = from_jar(&archive, &inventory, &mapping).expect("exact overload");
+            assert_eq!(resolved[0].runtime_member, "a");
+            assert_eq!(resolved[0].runtime_descriptor, runtime_descriptor);
+        }
     }
 
     #[test]

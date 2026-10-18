@@ -70,7 +70,9 @@ sources+=("${core_sources[@]}")
 legacy=false
 if grep -q 'LEGACY_ADAPTER = true' "$generated/dev/ravel/jvm/Hook.java"; then
 	legacy=true
-	mapfile -d '' adapter_sources < <(find "$root/jvm/bootstrap/dev/ravel/jvm" -maxdepth 1 -name 'Legacy*.java' -print0 | sort -z)
+	mapfile -d '' adapter_sources < <(find "$root/jvm/bootstrap/dev/ravel/jvm" \
+		"$root/jvm/legacy-platform/src/agent/java/dev/ravel/jvm" \
+		-maxdepth 1 -name 'Legacy*.java' -print0 | sort -z)
 	mapfile -d '' generated_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
 else
 	sources+=("${modern_sources[@]}")

@@ -53,6 +53,110 @@ fn a_hook_inventory_is_counted_by_kind_and_by_handle_parameter() {
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
+fn legacy_renderer_expected_method_shapes() -> [(&'static str, &'static str); 11] {
+    [
+        ("legacy.renderer-frame", "()V"),
+        (
+            "legacy.renderer-terrain",
+            "(Lnet/minecraft/entity/Entity;DLnet/minecraft/client/render/Culler;IZ)V",
+        ),
+        (
+            "legacy.renderer-layer",
+            "(Lnet/minecraft/client/render/block/BlockLayer;DILnet/minecraft/entity/Entity;)I",
+        ),
+        ("legacy.renderer-update", "(J)V"),
+        (
+            "legacy.renderer-compile",
+            "(FFFLnet/minecraft/client/render/world/ChunkCompileTask;)V",
+        ),
+        (
+            "legacy.renderer-task-create",
+            "(Lnet/minecraft/client/render/world/RenderChunk;Lnet/minecraft/client/render/world/ChunkCompileTask$Type;D)V",
+        ),
+        (
+            "legacy.renderer-worker",
+            "(Lnet/minecraft/client/render/world/ChunkCompileTask;)V",
+        ),
+        ("legacy.renderer-worker-complete", "(Ljava/util/List;)V"),
+        ("legacy.renderer-upload", "(Ljava/nio/ByteBuffer;)V"),
+        (
+            "legacy.renderer-unload",
+            "(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V",
+        ),
+        ("legacy.renderer-close", "()V"),
+    ]
+}
+
+#[test]
+fn legacy_renderer_inventory_pins_every_client_only_method_shape() {
+    let root = crate::test_support::repository_root();
+    let inventory = hook_inventory(&root, "1.12.2").expect("legacy inventory should parse");
+    let expected = legacy_renderer_expected_method_shapes();
+    let renderer: Vec<_> = inventory
+        .hooks
+        .iter()
+        .filter(|hook| hook.id.starts_with("legacy.renderer-"))
+        .collect();
+    assert_eq!(renderer.len(), expected.len());
+    for (hook, (id, descriptor)) in renderer.iter().zip(expected) {
+        assert_eq!(hook.id, id);
+        assert_eq!(
+            hook.kind,
+            ravel_minecraft_generate::Kind::InstanceMethod,
+            "{id}"
+        );
+        assert_eq!(hook.descriptor, descriptor, "{id}");
+    }
+}
+
+#[test]
+fn legacy_renderer_inventory_marks_each_method_client_only() {
+    let root = crate::test_support::repository_root();
+    let inventory = hook_inventory(&root, "1.12.2").expect("legacy inventory should parse");
+    let renderer: Vec<_> = inventory
+        .hooks
+        .iter()
+        .filter(|hook| hook.id.starts_with("legacy.renderer-"))
+        .collect();
+    // HookFact intentionally omits side; hold the dedicated-server exemption to
+    // the reviewed declarations rather than inferring it from class names.
+    let source = fs::read_to_string(root.join(&inventory.path))
+        .expect("legacy inventory should be readable");
+    let document = toml::from_str::<toml::Value>(&source).expect("legacy inventory should be TOML");
+    let hooks = document["hook"].as_array().expect("hook declarations");
+    for hook in renderer {
+        let declared: Vec<_> = hooks
+            .iter()
+            .filter(|entry| entry["id"].as_str() == Some(hook.id.as_str()))
+            .collect();
+        assert_eq!(declared.len(), 1, "{}", hook.id);
+        assert_eq!(
+            declared[0]["side"].as_str(),
+            Some("client-only"),
+            "{}",
+            hook.id
+        );
+        if hook.id == "legacy.renderer-task-create" {
+            assert_eq!(declared[0]["member"].as_str(), Some("<init>"));
+            assert_eq!(
+                hook.class,
+                "net.minecraft.client.render.world.ChunkCompileTask"
+            );
+        }
+    }
+    for version in ["1.21.1", "26.1.2"] {
+        let modern = hook_inventory(&root, version).expect("modern inventory should parse");
+        assert!(!modern.hooks.is_empty(), "{version}");
+        assert!(
+            modern
+                .hooks
+                .iter()
+                .all(|hook| !hook.id.starts_with("legacy.")),
+            "{version} must retain its modern hook surface"
+        );
+    }
+}
+
 #[test]
 fn the_hook_document_fails_on_every_count_that_no_longer_matches_the_inventory() {
     let counts = HookCounts {

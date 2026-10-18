@@ -120,6 +120,99 @@ static = false
 runtimeClass = "bib"
 runtimeMember = "f"
 
+[target."legacy.renderer-frame"]
+class = "net/minecraft/client/Minecraft"
+member = "runGame"
+descriptor = "()V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "az"
+
+[target."legacy.renderer-terrain"]
+class = "net/minecraft/client/render/world/WorldRenderer"
+member = "setupRender"
+descriptor = "(Lnet/minecraft/entity/Entity;DLnet/minecraft/client/render/Culler;IZ)V"
+static = false
+runtimeClass = "buy"
+runtimeMember = "a"
+runtimeDescriptor = "(Lvg;DLbxy;IZ)V"
+
+[target."legacy.renderer-layer"]
+class = "net/minecraft/client/render/world/WorldRenderer"
+member = "render"
+descriptor = "(Lnet/minecraft/client/render/block/BlockLayer;DILnet/minecraft/entity/Entity;)I"
+static = false
+runtimeClass = "buy"
+runtimeMember = "a"
+runtimeDescriptor = "(Lamm;DILvg;)I"
+
+[target."legacy.renderer-update"]
+class = "net/minecraft/client/render/world/WorldRenderer"
+member = "compileChunksUntil"
+descriptor = "(J)V"
+static = false
+runtimeClass = "buy"
+runtimeMember = "a"
+
+[target."legacy.renderer-compile"]
+class = "net/minecraft/client/render/world/RenderChunk"
+member = "compile"
+descriptor = "(FFFLnet/minecraft/client/render/world/ChunkCompileTask;)V"
+static = false
+runtimeClass = "bxr"
+runtimeMember = "b"
+runtimeDescriptor = "(FFFLbxl;)V"
+
+[target."legacy.renderer-task-create"]
+class = "net/minecraft/client/render/world/ChunkCompileTask"
+member = "<init>"
+descriptor = "(Lnet/minecraft/client/render/world/RenderChunk;Lnet/minecraft/client/render/world/ChunkCompileTask$Type;D)V"
+static = false
+runtimeClass = "bxl"
+runtimeDescriptor = "(Lbxr;Lbxl$b;D)V"
+
+[target."legacy.renderer-worker"]
+class = "net/minecraft/client/render/world/ChunkRenderWorker"
+member = "runTask"
+descriptor = "(Lnet/minecraft/client/render/world/ChunkCompileTask;)V"
+static = false
+runtimeClass = "bxn"
+runtimeMember = "a"
+runtimeDescriptor = "(Lbxl;)V"
+
+[target."legacy.renderer-worker-complete"]
+class = "net/minecraft/client/render/world/ChunkRenderWorker$2"
+member = "onSuccess"
+descriptor = "(Ljava/util/List;)V"
+static = false
+runtimeClass = "bxn$2"
+runtimeMember = "a"
+
+[target."legacy.renderer-upload"]
+class = "net/minecraft/client/render/vertex/VertexBuffer"
+member = "upload"
+descriptor = "(Ljava/nio/ByteBuffer;)V"
+static = false
+runtimeClass = "cdz"
+runtimeMember = "a"
+
+[target."legacy.renderer-unload"]
+class = "net/minecraft/client/Minecraft"
+member = "setWorld"
+descriptor = "(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "a"
+runtimeDescriptor = "(Lbsb;Ljava/lang/String;)V"
+
+[target."legacy.renderer-close"]
+class = "net/minecraft/client/Minecraft"
+member = "shutdown"
+descriptor = "()V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "h"
+
 [target."legacy.atlas-reload"]
 class = "net/minecraft/client/render/texture/TextureAtlas"
 member = "loadAndStitch"

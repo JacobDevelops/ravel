@@ -161,6 +161,11 @@ stable contracts toward concrete host internals.
   commands and world-save interceptions carry the executing integrated-server side
   even when the distribution is a client. World-open and save crossings are exposed
   as `open_world_data` and `save_world_data`.
+  Renderer lifecycle generations also belong to bootstrap runtime, outside the
+  SDK closure. Java supplies copied event, generation and thread scalars; Rust
+  owns the generation barrier and stale-generation admission. Worker observations
+  do not require the integrated server's thread-selected composition. Java keeps
+  game references, vanilla task identity, context ownership and all GL calls.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

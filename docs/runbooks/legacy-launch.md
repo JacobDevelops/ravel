@@ -183,6 +183,63 @@ Adapter callback counters alone are not gameplay proof. Missing fixture
 blockstate and item models log warnings only. Rendering stayed vanilla, and no
 performance claim is made.
 
+## Renderer lifecycle observations
+
+WP5 slice 2 adds pinned, client-only renderer observations without replacing
+vanilla compilation, uploads or drawing. Feather's frame member is named
+`Minecraft.runGame()V` in build 31; `runGameLoop` is a conceptual target name,
+not a reviewed alias. The generator must resolve each named member exactly once
+against the pinned official client jar, including its descriptor and side.
+
+The reviewed Feather-to-official table is below. Named owners are under
+`net.minecraft`: `Minecraft` is `client.Minecraft`, `WorldRenderer`,
+`RenderChunk`, `ChunkCompileTask` and `ChunkRenderWorker` are under
+`client.render.world`, and `VertexBuffer` is under `client.render.vertex`.
+Descriptors retain full named packages in `hooks.toml`; here the official
+descriptor makes each bytecode target unambiguous.
+
+| Concept | Feather member | Named descriptor | Official target |
+| --- | --- | --- | --- |
+| Frame (`runGameLoop`) | `Minecraft.runGame` | `()V` | `bib.az()V` |
+| Terrain (`setupTerrain`) | `WorldRenderer.setupRender` | `(Lnet/minecraft/entity/Entity;DLnet/minecraft/client/render/Culler;IZ)V` | `buy.a(Lvg;DLbxy;IZ)V` |
+| Layer (`renderBlockLayer`) | `WorldRenderer.render` | `(Lnet/minecraft/client/render/block/BlockLayer;DILnet/minecraft/entity/Entity;)I` | `buy.a(Lamm;DILvg;)I` |
+| Update (`updateChunks`) | `WorldRenderer.compileChunksUntil` | `(J)V` | `buy.a(J)V` |
+| Rebuild (`rebuildChunk`) | `RenderChunk.compile` | `(FFFLnet/minecraft/client/render/world/ChunkCompileTask;)V` | `bxr.b(FFFLbxl;)V` |
+| Task creation | `ChunkCompileTask.<init>` | `(Lnet/minecraft/client/render/world/RenderChunk;Lnet/minecraft/client/render/world/ChunkCompileTask$Type;D)V` | `bxl.<init>(Lbxr;Lbxl$b;D)V` |
+| Worker | `ChunkRenderWorker.runTask` | `(Lnet/minecraft/client/render/world/ChunkCompileTask;)V` | `bxn.a(Lbxl;)V` |
+| Upload callback return (not publication proof) | `ChunkRenderWorker$2.onSuccess` | `(Ljava/util/List;)V` | `bxn$2.a(Ljava/util/List;)V` |
+| Upload | `VertexBuffer.upload` | `(Ljava/nio/ByteBuffer;)V` | `cdz.a(Ljava/nio/ByteBuffer;)V` |
+| Resource reload (existing) | `Minecraft.reloadResources` | `()V` | `bib.f()V` |
+| World teardown | `Minecraft.setWorld` | `(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V` | `bib.a(Lbsb;Ljava/lang/String;)V` |
+| Close | `Minecraft.shutdown` | `()V` | `bib.h()V` |
+
+The receiver source is in `jvm/legacy-platform/src/agent/java`; the agent build
+packages it in the shared bootstrap module so it can call `Hook` without a
+duplicate platform class. It identifies the render/context owner, keeps vanilla
+references on the Java side, and copies event, generation and thread scalars to Rust.
+Bootstrap runtime owns the process/client generation independently of the
+integrated server's selected composition. Resource reload and world teardown
+invalidate prior generations. A completion check admits only the exact current
+positive generation; it is a point-in-time check, not a lease authorizing later
+GL submission. Observing stale vanilla work never suppresses that work.
+Compile and upload-callback hooks observe normal method return, not proof of
+successful mesh compilation or publication: vanilla can return early for an
+aborted or cancelled task. Generation admission is independent of that outcome.
+Task tokens are captured on successful construction before queueing, so queued
+work cannot acquire a newer token merely by starting after invalidation. A
+bounded, weak-key Java association is removed at upload-callback return; an
+unknown or overflow-refused task never acquires a token at worker entry.
+
+The live sequence drives frame observations, F3+T reload, world replacement,
+unload and reopen. In proof mode only, one real task and its original association
+are retained across reload for an injected stale observation through the normal
+completion receiver; its rejection must not increase accepted completion counts.
+This is a deterministic observer admission probe, not a claim that a naturally
+racing vanilla callback was observed. The bounded proof reference is then
+released. Renderer assertions supplement resource/atlas and persistence checks;
+a hook's presence alone does not establish generation ordering or a replacement
+renderer. Software-rendered Xvfb execution remains functional-only.
+
 ## JVM permissions
 
 In the vanilla baseline, the four LWJGL3 Java modules receive exactly

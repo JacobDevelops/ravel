@@ -11,6 +11,7 @@ mod outward;
 mod packs;
 mod persistence;
 mod profiling;
+mod renderer;
 mod runtime;
 mod settings;
 mod side;
@@ -48,6 +49,7 @@ pub mod exports {
         ravel_write_staged_datapack, ravel_write_world_datapack,
     };
     pub use crate::profiling::ravel_profiling_report;
+    pub use crate::renderer::{ravel_renderer_accept, ravel_renderer_event};
     pub use crate::settings::{
         ravel_save_settings, ravel_settings_crossings, ravel_settings_document,
     };

@@ -112,6 +112,106 @@ descriptor = "()V"
 kind = "instance-method"
 capability = "Observe the legacy client resource reload entry; WP4 must establish one generation barrier spanning resource listeners, models and atlas. This is not a server datapack reload."
 
+# Client renderer observations pin Feather's actual names, not MCP aliases.
+[[hook]]
+id = "legacy.renderer-frame"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "runGame"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe the outer client frame; Feather names the runGameLoop body runGame."
+
+[[hook]]
+id = "legacy.renderer-terrain"
+side = "client-only"
+class = "net.minecraft.client.render.world.WorldRenderer"
+member = "setupRender"
+descriptor = "(Lnet/minecraft/entity/Entity;DLnet/minecraft/client/render/Culler;IZ)V"
+kind = "instance-method"
+capability = "Observe terrain visibility setup on the client render owner thread."
+
+[[hook]]
+id = "legacy.renderer-layer"
+side = "client-only"
+class = "net.minecraft.client.render.world.WorldRenderer"
+member = "render"
+descriptor = "(Lnet/minecraft/client/render/block/BlockLayer;DILnet/minecraft/entity/Entity;)I"
+kind = "instance-method"
+capability = "Observe a block-layer render without replacing its returned chunk count."
+
+[[hook]]
+id = "legacy.renderer-update"
+side = "client-only"
+class = "net.minecraft.client.render.world.WorldRenderer"
+member = "compileChunksUntil"
+descriptor = "(J)V"
+kind = "instance-method"
+capability = "Observe the client chunk update budget independently of worker compilation."
+
+[[hook]]
+id = "legacy.renderer-compile"
+side = "client-only"
+class = "net.minecraft.client.render.world.RenderChunk"
+member = "compile"
+descriptor = "(FFFLnet/minecraft/client/render/world/ChunkCompileTask;)V"
+kind = "instance-method"
+capability = "Observe rebuild compile-body normal returns, including early aborts; this does not prove successful compilation or cover transparency resort tasks."
+
+[[hook]]
+id = "legacy.renderer-task-create"
+side = "client-only"
+class = "net.minecraft.client.render.world.ChunkCompileTask"
+member = "<init>"
+descriptor = "(Lnet/minecraft/client/render/world/RenderChunk;Lnet/minecraft/client/render/world/ChunkCompileTask$Type;D)V"
+kind = "instance-method"
+capability = "Associate a newly constructed task with the current generation before it can enter a pending worker queue."
+
+[[hook]]
+id = "legacy.renderer-worker"
+side = "client-only"
+class = "net.minecraft.client.render.world.ChunkRenderWorker"
+member = "runTask"
+descriptor = "(Lnet/minecraft/client/render/world/ChunkCompileTask;)V"
+kind = "instance-method"
+capability = "Observe worker processing of a task whose renderer generation was captured at construction."
+
+[[hook]]
+id = "legacy.renderer-worker-complete"
+side = "client-only"
+class = "net.minecraft.client.render.world.ChunkRenderWorker$2"
+member = "onSuccess"
+descriptor = "(Ljava/util/List;)V"
+kind = "instance-method"
+capability = "Observe the nonbridge FutureCallback.onSuccess body returning normally, including cancelled-task early exits; this does not prove successful publication."
+
+[[hook]]
+id = "legacy.renderer-upload"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.VertexBuffer"
+member = "upload"
+descriptor = "(Ljava/nio/ByteBuffer;)V"
+kind = "instance-method"
+capability = "Observe the client-owner OpenGL vertex-buffer upload without crossing a renderer object into the SDK."
+
+[[hook]]
+id = "legacy.renderer-unload"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "setWorld"
+descriptor = "(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Observe every central world replacement, including nonnull replacements, and invalidate outstanding renderer work."
+
+[[hook]]
+id = "legacy.renderer-close"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "shutdown"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe client shutdown before renderer teardown and invalidate outstanding work."
+
 [[hook]]
 id = "legacy.atlas-reload"
 side = "client-only"

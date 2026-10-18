@@ -23,6 +23,7 @@ fn handwritten_java_natives_match_the_rust_exports() {
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/outward.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/persistence/crossings.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/profiling.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/renderer.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/settings.rs"),
         include_str!("../../../../crates/ravel-composed-host/src/lib.rs"),
     ];
@@ -42,17 +43,69 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
         .split_once("fn written_declarations()")
         .expect("modern handwritten declarations");
     let mut expected = java_names(modern, "public static native ");
-    // This harness exercises initialization and persistence, not the screen readers.
-    for screen in [
+    // This harness exercises initialization and persistence, not screen readers or rendering.
+    for unused in [
         "ravelSettingsDocument",
         "ravelSaveSettings",
         "ravelSettingsCrossings",
         "ravelModSurface",
         "ravelProfilingReport",
+        "ravelRendererEvent",
+        "ravelRendererAccept",
     ] {
-        assert!(expected.remove(screen));
+        assert!(expected.remove(unused));
     }
     // Legacy semantic natives belong to the legacy harness, not this modern stand-in.
     let harness = include_str!("../../../../jvm/harness/initialization/dev/ravel/jvm/Hook.java");
     assert_eq!(java_names(harness, "public static "), expected);
+}
+
+#[test]
+fn renderer_semantic_natives_keep_the_shared_scalar_only_contract() {
+    let generator = include_str!("../../../../crates/ravel-minecraft-generate/src/render/hooks.rs");
+    let renderer_names: Vec<_> = generator
+        .split("public static native ")
+        .skip(1)
+        .filter_map(|declaration| declaration.split_once('('))
+        .filter_map(|(head, _)| head.split_whitespace().last())
+        .filter(|name| name.starts_with("ravelRenderer"))
+        .collect();
+    assert_eq!(renderer_names.len(), 2, "exactly two renderer declarations");
+    assert_eq!(
+        renderer_names.into_iter().collect::<BTreeSet<_>>(),
+        BTreeSet::from(["ravelRendererAccept", "ravelRendererEvent"]),
+        "no additional renderer crossing may bypass the scalar-only contract"
+    );
+    let (_, shared) = generator
+        .split_once("fn written_declarations()")
+        .expect("shared handwritten declarations");
+    let shared = shared.replace("\\n\\", " ").replace("\\x20", " ");
+    let names = java_names(&shared, "public static native ");
+    for (name, returned, parameters) in [
+        (
+            "ravelRendererEvent",
+            "long",
+            vec!["int", "long", "long", "boolean"],
+        ),
+        ("ravelRendererAccept", "boolean", vec!["long"]),
+    ] {
+        assert!(
+            names.contains(name),
+            "{name} must be shared, not legacy-only"
+        );
+        let marker = format!("public static native {returned} {name}(");
+        let (_, tail) = shared
+            .split_once(&marker)
+            .expect("renderer native return type");
+        let (arguments, _) = tail.split_once(')').expect("renderer native parameters");
+        assert_eq!(
+            arguments
+                .split(',')
+                .map(|argument| argument.split_whitespace().next().expect("parameter type"))
+                .collect::<Vec<_>>(),
+            parameters,
+            "{name} must carry scalar identities, never SDK renderer objects"
+        );
+        assert_eq!(shared.matches(&marker).count(), 1, "{name}");
+    }
 }

@@ -90,4 +90,5 @@ section load
 launch cluster-client "$client" client cluster
 launch cluster-server "$server" dedicated-server cluster
 section cluster
+launch renderer-client "$client" client renderer
 printf 'legacy generic evidence: %s\n' "$work"

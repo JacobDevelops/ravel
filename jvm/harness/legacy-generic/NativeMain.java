@@ -81,8 +81,73 @@ public final class NativeMain {
         require(before.equals(Hook.ravelModSurface()), "second entry reinstalled the runtime");
         if (arguments[1].equals("load")) load();
         if (arguments[1].equals("cluster")) cluster(expectedSide);
+        if (arguments[1].equals("renderer")) renderer();
         System.out.println("legacy " + arguments[1] + " side=" + expectedSide + " checked");
     }
+    private static void renderer() throws Exception {
+        LegacyRenderer.enter("legacyRendererFrame", null);
+        long initial = LegacyRenderer.currentGeneration();
+        require(initial > 0 && LegacyRenderer.accepts(initial), "no renderer generation");
+        LegacyRenderer.armStaleProof();
+        Object queued = constructedRendererTask();
+        require(LegacyRenderer.staleProofReady(), "transformed constructor did not capture initialized receiver");
+        long compiled = LegacyRenderer.count(7);
+        Thread worker = new Thread(() -> {
+            try {
+                LegacyRenderer.exit("legacyRendererCompile", null, queued);
+            } catch (ReflectiveOperationException failure) {
+                throw new AssertionError(failure);
+            }
+        });
+        worker.start();
+        worker.join();
+        require(LegacyRenderer.count(7) == compiled + 1 && LegacyRenderer.workerObserved(),
+                "worker compile normal return did not preserve task generation");
+        LegacyRenderer.enter("legacyResourceReload", null);
+        long reloaded = LegacyRenderer.currentGeneration();
+        require(reloaded > initial && !LegacyRenderer.accepts(initial), "reload retained old task token");
+        require(LegacyRenderer.injectStaleProof(), "injected stale task observation was not rejected");
+        LegacyRenderer.enter("legacyRendererWorker", queued);
+        LegacyRenderer.exit("legacyRendererCompile", null, queued);
+        require(LegacyRenderer.count(7) == compiled + 1, "queued old task relabelled on worker entry");
+        LegacyRenderer.exit("legacyRendererCompile", null, new Object());
+        require(LegacyRenderer.count(7) == compiled + 1, "untracked task acquired current token");
+        LegacyRenderer.enter("legacyRendererUnload", new Object());
+        long replaced = LegacyRenderer.currentGeneration();
+        require(replaced > reloaded && !LegacyRenderer.accepts(reloaded),
+                "nonnull world replacement retained old task token");
+        LegacyRenderer.enter("legacyRendererUnload", null);
+        require(LegacyRenderer.currentGeneration() > replaced && !LegacyRenderer.accepts(replaced),
+                "unload retained old task token");
+        Object[] retained = new Object[4097];
+        for (int index = 0; index < retained.length; index++) {
+            retained[index] = new Object();
+            LegacyRenderer.exit("legacyRendererTaskCreate", retained[index], null);
+        }
+        LegacyRenderer.exit("legacyRendererCompile", null, retained[retained.length - 1]);
+        require(LegacyRenderer.count(7) == compiled + 1, "bounded overflow relabelled untracked task");
+        java.lang.ref.Reference.reachabilityFence(retained);
+    }
+
+    private static Object constructedRendererTask() throws Exception {
+        HookTarget mapped = java.util.Arrays.stream(Hook.TARGETS)
+                .filter(hook -> hook.hookMethod().equals("legacyRendererTaskCreate")).findFirst().orElseThrow();
+        HookTarget fixture = new HookTarget("fixture/TrackedRendererTask", "<init>",
+                "(Ljava/lang/Object;Ljava/lang/Object;D)V", false,
+                mapped.hookMethod(), mapped.hookDescriptor());
+        byte[] original = GenericMain.target(fixture);
+        byte[] transformed = new Transformer(new HookTarget[] {fixture}, true).transform(
+                null, NativeMain.class.getClassLoader(), fixture.internalClass(), null, null, original);
+        require(transformed != null, "task constructor fixture was not transformed");
+        class Child extends ClassLoader {
+            Child() { super(NativeMain.class.getClassLoader()); }
+            Class<?> define() { return defineClass(null, transformed, 0, transformed.length); }
+        }
+        return new Child().define().getConstructor(Object.class, Object.class, double.class)
+                .newInstance(new Object(), new Object(), 0.0);
+    }
+
+
     private static void load() throws ReflectiveOperationException {
         HookTarget observation = java.util.Arrays.stream(Hook.TARGETS)
                 .filter(target -> target.hookDescriptor().equals("()V")).findFirst().orElseThrow();

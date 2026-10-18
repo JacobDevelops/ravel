@@ -6,8 +6,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::{
-    AGENT_JAR_SOURCES, AGENT_SOURCE_MANIFEST, REFLECTION_FILE, agent_source_manifest,
-    compiled_bootstrap_source, java_sources,
+    AGENT_JAR_SOURCES, AGENT_SOURCE_MANIFEST, LEGACY_AGENT_SOURCES, REFLECTION_FILE,
+    agent_source_manifest, compiled_bootstrap_source, java_sources,
 };
 use crate::text::{read_text, relative_label};
 use crate::version_boundary::{VERSION_DATA, VersionAdapters};
@@ -171,8 +171,8 @@ fn verify_role_reachability(
         if !reached.contains(role.name.as_str()) && !passed_to_a_reached_lookup {
             violations.push(format!(
                 "{} declares the role {} for {} and no source under \
-                 {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
-                 surface drifted rather than that it is pinned",
+                 {AGENT_JAR_SOURCES} or {LEGACY_AGENT_SOURCES} resolves it; a declared name \
+                 nothing uses says the surface drifted rather than that it is pinned",
                 surface.path, role.name, role.class
             ));
         }
@@ -357,7 +357,7 @@ pub(crate) fn verify_persistence_reflection(
     };
     let surfaces = reflective_surfaces(root, adapters, violations);
 
-    let sources = java_sources(root, &root.join(AGENT_JAR_SOURCES), violations);
+    let sources = java_sources(root, violations);
     if sources.is_empty() {
         violations.push(format!(
             "{AGENT_JAR_SOURCES} holds no Java source, so no game class the agent jar resolves is \

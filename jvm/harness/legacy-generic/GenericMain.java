@@ -78,6 +78,66 @@ public final class GenericMain {
         }
     }
 
+    private static void adapterFixtureTests(HookTarget hook, MethodModel method) {
+            boolean entry = java.util.Set.of("legacyBlockRegister", "legacyItemRegister", "legacyClientTick",
+                    "legacyServerTick", "legacyPayloadClient", "legacyPayloadServer", "legacyResourceReload",
+                    "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyWorldSave",
+                    "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",
+                    "legacyRendererUpdate",
+                    "legacyRendererUpload", "legacyRendererUnload", "legacyRendererClose")
+                    .contains(hook.hookMethod());
+            boolean exit = java.util.Set.of("legacyBootstrap", "legacyBlockRegister", "legacyItemRegister",
+                    "legacyBlockStateFromMetadata", "legacyBlockMetadataFromState", "legacyItemMetadata",
+                    "legacyResourceReload", "legacyAtlasReload", "legacyRecipeRegister", "legacyWorldOpen",
+                    "legacyWorldOpenIntegrated", "legacyScreenOpen", "legacyTitleInit",
+                    "legacyRendererCompile", "legacyRendererWorkerComplete",
+                    "legacyRendererTaskCreate").contains(hook.hookMethod());
+            require(calls(method, "dev/ravel/jvm/Hook", "legacyEnter") == (entry ? 1 : 0),
+                    "wrong reviewed entry adapter " + hook);
+            require(calls(method, "dev/ravel/jvm/Hook", "legacyExit") == (exit ? 1 : 0),
+                    "wrong reviewed success adapter " + hook);
+    }
+
+    private static void rendererFixtureTests(HookTarget hook, MethodModel method) {
+            if (hook.hookMethod().equals("legacyRendererTaskCreate")) {
+                long receivers = method.code().orElseThrow().elementStream()
+                        .filter(element -> element instanceof java.lang.classfile.instruction.LoadInstruction load
+                                && load.typeKind() == TypeKind.REFERENCE && load.slot() == 0).count();
+                require(receivers == 2, "constructor success failed to load initialized receiver");
+            }
+            if (java.util.Set.of("legacyRendererCompile", "legacyRendererWorkerComplete",
+                    "legacyRendererTaskCreate").contains(hook.hookMethod())) {
+                byte[] mixed = ClassFile.of().build(ClassDesc.ofInternalName(hook.internalClass()),
+                        builder -> builder.withMethodBody(hook.member(),
+                                MethodTypeDesc.ofDescriptor(hook.descriptor()), ClassFile.ACC_PUBLIC, code -> {
+                                    if (hook.member().equals("<init>")) {
+                                        code.aload(0).invokespecial(ClassDesc.of("java.lang.Object"), "<init>",
+                                                MethodTypeDesc.ofDescriptor("()V"));
+                                    }
+                                    code.iconst_0().ifThen(branch -> branch.aconst_null().athrow());
+                                    code.return_();
+                                }));
+                byte[] transformed = new Transformer(new HookTarget[] {hook}, true).transform(
+                        null, GenericMain.class.getClassLoader(), hook.internalClass(), null, null, mixed);
+                require(transformed != null, "mixed renderer seam was not transformed");
+                MethodModel branching = ClassFile.of().parse(transformed).methods().getFirst();
+                require(calls(branching, "dev/ravel/jvm/Hook", "legacyExit") == 1,
+                        "mixed renderer seam lost normal-return observation");
+                var elements = branching.code().orElseThrow().elementStream().toList();
+                int thrown = -1;
+                int exited = -1;
+                for (int index = 0; index < elements.size(); index++) {
+                    if (elements.get(index) instanceof java.lang.classfile.Instruction instruction
+                            && instruction.opcode() == java.lang.classfile.Opcode.ATHROW) thrown = index;
+                    if (elements.get(index) instanceof InvokeInstruction invoke
+                            && invoke.owner().asInternalName().equals("dev/ravel/jvm/Hook")
+                            && invoke.name().equalsString("legacyExit")) exited = index;
+                }
+                require(thrown >= 0 && exited > thrown,
+                        "normal-return observation moved before exceptional branch");
+            }
+    }
+
     public static void main(String[] arguments) {
         require(Hook.LEGACY_ADAPTER, "not the legacy adapter");
         missingEntryBeforeStartup();
@@ -89,7 +149,11 @@ public final class GenericMain {
                 "legacyRecipeRegister", "legacySavedDataDirty", "legacySavedDataLoad", "legacySavedDataSet",
                 "legacySavedDataSave", "legacyWorldSave", "legacyScreenOpen", "legacyScreenDraw",
                 "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyCommandInstall",
-                "legacyCommandExecute", "legacyItemFireDamage", "legacyTitleInit", "legacyGlobalPaletteSize"));
+                "legacyCommandExecute", "legacyItemFireDamage", "legacyTitleInit", "legacyGlobalPaletteSize",
+                "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",
+                "legacyRendererUpdate", "legacyRendererCompile", "legacyRendererWorker",
+                "legacyRendererWorkerComplete", "legacyRendererUpload", "legacyRendererUnload",
+                "legacyRendererClose", "legacyRendererTaskCreate"));
         for (HookTarget hook : Hook.TARGETS) required.remove(hook.hookMethod());
         require(required.isEmpty(), "missing original/supplemental legacy hooks: " + required);
         for (HookTarget hook : Hook.TARGETS) {
@@ -109,18 +173,8 @@ public final class GenericMain {
                     candidate.methodName().equalsString(hook.member())).findFirst().orElseThrow();
             require(calls(method, "dev/ravel/jvm/Hook", hook.hookMethod()) == 1, "missing native prologue " + hook);
             require(calls(method, "dev/ravel/jvm/Hook", "legacyObserve") == 1, "missing observation " + hook);
-            boolean entry = java.util.Set.of("legacyBlockRegister", "legacyItemRegister", "legacyClientTick",
-                    "legacyServerTick", "legacyPayloadClient", "legacyPayloadServer", "legacyResourceReload",
-                    "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyWorldSave")
-                    .contains(hook.hookMethod());
-            boolean exit = java.util.Set.of("legacyBootstrap", "legacyBlockRegister", "legacyItemRegister",
-                    "legacyBlockStateFromMetadata", "legacyBlockMetadataFromState", "legacyItemMetadata",
-                    "legacyResourceReload", "legacyAtlasReload", "legacyRecipeRegister", "legacyWorldOpen",
-                    "legacyWorldOpenIntegrated", "legacyScreenOpen", "legacyTitleInit").contains(hook.hookMethod());
-            require(calls(method, "dev/ravel/jvm/Hook", "legacyEnter") == (entry ? 1 : 0),
-                    "wrong reviewed entry adapter " + hook);
-            require(calls(method, "dev/ravel/jvm/Hook", "legacyExit") == (exit ? 1 : 0),
-                    "wrong reviewed success adapter " + hook);
+            adapterFixtureTests(hook, method);
+            rendererFixtureTests(hook, method);
             for (String wrapper : java.util.List.of("Integer", "Long", "Float", "Double", "Boolean")) {
                 require(calls(method, "java/lang/" + wrapper, "valueOf") == 0, "boxing allocation " + hook);
             }

@@ -273,6 +273,10 @@ fn written_declarations() -> &'static str {
          \x20    * @param profilingRequested whether this launch requested opt-in profiling\n\
          \x20    */\n\
          \x20   public static native void ravelInitialize(int side, boolean profilingRequested);\n\n\
+         \x20   /** Scalar renderer lifecycle event; returns the current generation. */\n\
+         \x20   public static native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);\n\n\
+         \x20   /** Whether completed renderer work still belongs to the active generation. */\n\
+         \x20   public static native boolean ravelRendererAccept(long generation);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

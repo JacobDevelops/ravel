@@ -67,6 +67,13 @@ Ravel into a Java mod host.
   call-scoped opaque `JavaHandle` references and return results without retaining
   a mirror. A mirror needs measured justification and a way to detect divergence;
   batching reduces boundary traffic without duplicating state.
+- **Renderer lifecycle.** Legacy renderer hooks are observational: vanilla still
+  compiles, uploads and draws. Java identifies the render/context owner and
+  copies bounded lifecycle scalars to bootstrap runtime; Rust owns a monotonic
+  generation that invalidates prior work at resource reload and world teardown.
+  Stale-generation admission is separate from observing a vanilla completion,
+  and does not cancel or suppress vanilla execution. No renderer type or game
+  reference crosses into the SDK.
 - **Launcher integration.** Prism owns authentication, downloads, Java selection
   and launch; Ravel uses stock instance arguments rather than a launcher fork.
   The generated `Hook` loads the native library with `System.load` from the

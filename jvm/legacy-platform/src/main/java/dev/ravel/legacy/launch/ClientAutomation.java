@@ -34,6 +34,12 @@ final class ClientAutomation implements Runnable {
     private String saveName;
     private final long started = System.nanoTime();
     private long pollingDeadline;
+    private long rendererBeforeReload;
+    private long rendererAfterReload;
+    private long rendererAfterUnload;
+    private long rendererReopened;
+    private boolean rendererStaleRejected;
+    private boolean rendererInjectedStaleRejected;
 
     ClientAutomation(ClassLoader loader, Path evidence) {
         this.loader = loader;
@@ -57,18 +63,7 @@ final class ClientAutomation implements Runnable {
                 connectDedicated(server);
                 return;
             }
-            button(1);
-            await(() -> onGame(() -> screenIs("bok")));
-            button(3);
-            await(() -> onGame(() -> screenIs("boi")));
-            configureWorld();
-            snapshot("02-create-world");
-            button(0);
-            await(() -> onGame(() -> field(game, "f") != null && field(game, "h") != null));
-            waitTicks(100);
-            requireLiveProbes();
-            requireSeed();
-            if (Boolean.getBoolean("ravel.legacy.acceptance")) reloadResources();
+            createIntegratedWorld();
             AudioAcceptance.play(evidence);
             snapshot("03-world");
             walkAndLook();
@@ -88,10 +83,16 @@ final class ClientAutomation implements Runnable {
             snapshot("06-pause");
             button(1);
             await(() -> onGame(() -> field(game, "f") == null));
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) {
+                rendererAfterUnload = rendererMetric("currentGeneration");
+                require(rendererAfterUnload > rendererAfterReload, "Renderer unload did not retire generation");
+                rendererStaleRejected &= !rendererAccepts(rendererAfterReload);
+            }
             snapshot("07-saved-menu");
             checkpoint("integrated-first.dat");
             reopen();
             checkpoint("integrated-reopened.dat");
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) rendererProof();
             Files.writeString(evidence.resolve("automation.complete"),
                     "seed=8675309\nactions=click-menu,type-worldname,type-seed,create,audio-playing,ticks,walk,look,wheel,resize,fullscreen,save-quit,reopen\n"
                     + "durationMillis=" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + "\n");
@@ -100,6 +101,27 @@ final class ClientAutomation implements Runnable {
             failure.printStackTrace();
             System.exit(2);
         }
+    }
+
+    private void createIntegratedWorld() throws Exception {
+            button(1);
+            await(() -> onGame(() -> screenIs("bok")));
+            button(3);
+            await(() -> onGame(() -> screenIs("boi")));
+            configureWorld();
+            snapshot("02-create-world");
+            if (Boolean.getBoolean("ravel.legacy.acceptance"))
+                rendererType().getMethod("armStaleProof").invoke(null);
+            button(0);
+            await(() -> onGame(() -> field(game, "f") != null && field(game, "h") != null));
+            waitTicks(100);
+            requireLiveProbes();
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) {
+                await(() -> (boolean) rendererType().getMethod("staleProofReady").invoke(null));
+                rendererBeforeReload = rendererMetric("currentGeneration");
+            }
+            requireSeed();
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) reloadResources();
     }
 
     private void requireLiveProbes() throws Exception {
@@ -156,6 +178,50 @@ final class ClientAutomation implements Runnable {
         return (long) Class.forName("dev.ravel.jvm.LegacyRuntime").getMethod(method).invoke(null);
     }
 
+    private Class<?> rendererType() throws ClassNotFoundException {
+        return Class.forName("dev.ravel.jvm.LegacyRenderer");
+    }
+
+    private long rendererMetric(String name) throws ReflectiveOperationException {
+        return (long) rendererType().getMethod(name).invoke(null);
+    }
+
+    private boolean rendererAccepts(long generation) throws ReflectiveOperationException {
+        return (boolean) rendererType().getMethod("accepts", long.class).invoke(null, generation);
+    }
+
+    private long rendererCount(int event) throws ReflectiveOperationException {
+        return (long) rendererType().getMethod("count", int.class).invoke(null, event);
+    }
+
+    private void rendererProof() throws Exception {
+        long finalUnload = rendererMetric("currentGeneration");
+        require(rendererAfterReload > rendererBeforeReload && rendererReopened >= rendererAfterUnload
+                && finalUnload > rendererReopened, "Renderer generations out of order");
+        rendererStaleRejected &= !rendererAccepts(rendererReopened);
+        require(rendererStaleRejected && rendererAccepts(finalUnload), "Renderer stale token accepted");
+        String[] seams = {"reload", "unload", "frame", "terrain", "layer", "update",
+                "compileNormalReturn", "taskCallbackNormalReturn", "upload"};
+        StringBuilder counts = new StringBuilder();
+        for (int event = 1; event <= 9; event++) {
+            long count = rendererCount(event);
+            require(count > 0, "Renderer seam not observed: " + seams[event - 1]);
+            if (event > 1) counts.append(',');
+            counts.append('"').append(seams[event - 1]).append("\":").append(count);
+        }
+        boolean worker = (boolean) rendererType().getMethod("workerObserved").invoke(null);
+        require(worker, "Renderer worker thread not observed");
+        require(rendererMetric("ownerThread") == onGame(() -> Thread.currentThread().threadId()),
+                "Renderer owner is not the client game thread");
+        Files.writeString(evidence.resolve("renderer.json"),
+                "{\"beforeReload\":" + rendererBeforeReload + ",\"afterReload\":" + rendererAfterReload
+                + ",\"afterUnload\":" + rendererAfterUnload + ",\"reopened\":" + rendererReopened
+                + ",\"finalUnload\":" + finalUnload + ",\"staleRejected\":" + rendererStaleRejected
+                + ",\"ownerThread\":" + rendererMetric("ownerThread")
+                + ",\"injectedStaleObservationRejected\":" + rendererInjectedStaleRejected
+                + ",\"workerObserved\":" + worker + ",\"seams\":{" + counts + "}}\n");
+    }
+
     private void reloadResources() throws Exception {
         long reloads = hookCount("legacy.resource-reload");
         long atlases = hookCount("legacy.atlas-reload");
@@ -176,6 +242,12 @@ final class ClientAutomation implements Runnable {
                 + " atlases=" + hookCount("legacy.atlas-reload")
                 + " completedGeneration=" + resourceMetric("completedResourceGeneration")
                 + " atlasGeneration=" + resourceMetric("atlasResourceGeneration") + "\n");
+        rendererAfterReload = rendererMetric("currentGeneration");
+        rendererStaleRejected = !rendererAccepts(rendererBeforeReload);
+        require(rendererStaleRejected, "Renderer reload accepted retired generation");
+        rendererInjectedStaleRejected = onGame(() ->
+                (boolean) rendererType().getMethod("injectStaleProof").invoke(null));
+        require(rendererInjectedStaleRejected, "Injected old-task normal return was not rejected");
     }
 
     private void requirePausedHooks() throws Exception {
@@ -393,6 +465,11 @@ final class ClientAutomation implements Runnable {
         await(() -> onGame(() -> invoke(field(field(game, "m"), "v"), "f", new Class<?>[0]) != null));
         button(1);
         await(() -> onGame(() -> field(game, "f") != null && field(game, "h") != null));
+        if (Boolean.getBoolean("ravel.legacy.acceptance")) {
+            rendererReopened = rendererMetric("currentGeneration");
+            require(rendererAccepts(rendererReopened) && !rendererAccepts(rendererAfterReload),
+                    "Renderer reopen accepted old generation");
+        }
         requireSeed();
         snapshot("08-reopened");
         key(KeyEvent.VK_ESCAPE);

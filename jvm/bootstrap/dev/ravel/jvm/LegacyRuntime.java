@@ -44,6 +44,7 @@ public final class LegacyRuntime {
 
     public static void enter(String id, Object receiver, Object first, Object second, int number) {
         try {
+            LegacyRenderer.enter(id, first);
             switch (id) {
                 case "legacyBlockRegister" -> registration(BLOCKS, first, second, number, false);
                 case "legacyItemRegister" -> registration(ITEMS, first, second, number, false);
@@ -80,6 +81,7 @@ public final class LegacyRuntime {
     public static void exit(String id, Object receiver, Object first, Object second,
             int number, Object result, int resultNumber) {
         try {
+            LegacyRenderer.exit(id, receiver, first);
             switch (id) {
                 case "legacyBootstrap" -> install();
                 case "legacyBlockRegister" -> registration(BLOCKS, first, second, number, true);

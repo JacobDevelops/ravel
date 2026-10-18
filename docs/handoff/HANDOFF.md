@@ -80,6 +80,50 @@ See [dependency rules](../architecture/dependency-rules.md) for runtime ownershi
   stderr descriptor, because the game's redirected streams drop output after logger
   shutdown.
 
+## Where work stopped
+
+Work halted by request after WP5 slice 4. The gate and the legacy live acceptance pass on the
+tip; renderer status and measurements live in `ROADMAP.md`, `registry/notes/sevtech/sevtech-plan.md`
+and the slice notes beside it (`vanilla-baseline.md`, `mesh-workers.md`).
+
+- WP5 slices 1–4 are done: matched vanilla baselines on JDK 27 and Java 8, twelve pinned renderer
+  lifecycle hooks with a generation counter, bounded immutable section snapshots, and bounded Rust
+  mesh and visibility workers. Vanilla still renders; no speedup or memory saving is claimed.
+- Slice 5 is next: Java-owned bounded batched GL upload and submission from the
+  generation-qualified CPU meshes. Worker results currently cross JNI as checked diagnostics and
+  their buffers are discarded, so slice 5 adds explicit bounded buffer transfer, ownership and
+  acknowledgement without weakening transactional completion or generation cancellation. Java
+  alone owns GL. Reject incomplete or unsupported results rather than drawing missing geometry,
+  keep draw order and reload/unload/close cleanup, and measure copy, upload and buffer residency.
+  State classification is geometry-only; model, texture and ambient-occlusion fidelity must be
+  settled for whatever slice 5 draws. Slices 6 (translucency, animation, reload) and 7 (default
+  cutover and locked acceptance trials) follow; WP6, WP8 and WP9 are untouched.
+- The Rust toolchain tracks the moving `nightly` channel by request, so a new nightly can turn the
+  gate red without a code change.
+
+## Open refinement findings
+
+The round-11 holistic review left 109 findings open in the local `numen refine` state. These are
+real defects rather than style:
+
+- Tags from different mods are not merged at launch: `ravel_loader::open_resources` treats each
+  tag file as an ordinary resource where the later mod wins, although the SDK and the content
+  guide promise merging. `TagSet::merged` is reached only from `ravel-pack` validation.
+- `docs/guide/limits.md` says world shaping produces output, but no host path reads it.
+- The player build fingerprint hashes the literal toolchain channel, so a nightly update does
+  not invalidate cached builds; it should include the resolved `rustc` version.
+- rvl-120's `bounded_count` caps a length prefix at `i32::MAX`, producing a frame whose length can
+  disagree with its body.
+- The xtask fixture descriptor admits lowercase-only SHA-256 text but compares case-insensitively.
+- Optional mods: dependency `order` defaults to "after" while the manifest docs say unordered, an
+  out-of-range optional dependency blocks resolution, and a broken settings layer stops every mod
+  without attribution.
+- rvl-002 and rvl-321 return errors for malformed service requests, which fails the providing mod
+  instead of refusing the request.
+- Doc drift: the `broadcast` comment still promises silent wrong-side completion, the first-mod
+  guide teaches a path `ravel-sdk` dependency that player builds cannot install, and its
+  `ModError::Refused` prose predates the sentence-only error.
+
 ## Research pointers
 
 - `registry/notes/sevtech/sevtech-plan.md`: work-package design and dependencies.

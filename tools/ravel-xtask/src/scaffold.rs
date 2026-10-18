@@ -10,7 +10,7 @@ use crate::evidence::accounting::verify_accounting;
 use crate::evidence::manifest::verify_evidence_records;
 use crate::json::read_json;
 use crate::text::{read_text, relative_label};
-use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};
+use crate::tracked::{collect_files, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
     verify_version_boundary, verify_version_directories, verify_version_readmes,
 };
@@ -92,8 +92,8 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     let members = maintained_members(root, &mut violations);
 
     for relative in required_scaffold_paths() {
-        if !root.join(&relative).is_file() {
-            violations.push(format!("missing required file: {relative}"));
+        if let Err(error) = crate::text::require_file(root, &relative) {
+            violations.push(error);
         }
     }
 
@@ -122,7 +122,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_production_fences(root, &members, &mut violations);
     violations.extend(verify_evidence_records(root));
 
-    match tracked_paths(root) {
+    match crate::vcs::tracked_files(root, None) {
         Ok(paths) => {
             violations.extend(verify_tracked_paths(paths.iter().map(String::as_str)));
             violations.extend(verify_tracked_contents(root, &paths));
@@ -169,7 +169,7 @@ fn verify_production_fences(root: &Path, members: &[String], violations: &mut Ve
 
     let mut sources = Vec::new();
     for directory in ["crates", "registry/mods", "test-mods", "tools", "tests"] {
-        if let Err(error) = collect_files(&root.join(directory), &mut sources) {
+        if let Err(error) = collect_files(root, &root.join(directory), &mut sources) {
             violations.push(error);
         }
     }
@@ -333,7 +333,7 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
     ] {
         let relative = format!("schemas/{schema}.schema.json");
         let path = root.join(&relative);
-        match read_json(&path) {
+        match read_json(root, &path) {
             Ok(document)
                 if document.is_object()
                     && document["$schema"] == "https://json-schema.org/draft/2020-12/schema" => {}

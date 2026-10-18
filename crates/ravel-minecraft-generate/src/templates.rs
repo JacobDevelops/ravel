@@ -174,7 +174,7 @@ pub(super) fn render(
     let all = referenced.union(&declared).cloned().collect();
     let linked = linked_classes(&all, roles, stubs, mapping, purpose)?;
     let NameSpace { unnamed, split } = name_space;
-    every_name_is_nameable(&read, purpose, &linked, unnamed)?;
+    verify_names_packaged(&read, purpose, &linked, unnamed)?;
     let screens = (!unnamed).then_some(SCREEN_PACKAGE);
     let owned = match purpose {
         Purpose::Screen => screens,
@@ -241,7 +241,13 @@ fn render_location(
     } else {
         let relative = owned.map_or_else(
             || format!("{}.java", template.name),
-            |package| format!("{}/{}.java", package.replace('.', "/"), template.name),
+            |package| {
+                format!(
+                    "{}/{}.java",
+                    classfile::internal_name(package),
+                    template.name
+                )
+            },
         );
         Ok((owned.map(str::to_owned), template.name.clone(), relative))
     }
@@ -329,7 +335,7 @@ fn unresolved_role(template: &Template<'_>, role: &str) -> GenerateError {
 }
 
 /// Rejects unnamed-package references from packaged sources.
-fn every_name_is_nameable(
+fn verify_names_packaged(
     read: &[Template<'_>],
     purpose: Purpose,
     linked: &BTreeMap<String, String>,
@@ -574,7 +580,7 @@ pub(super) fn name_space(
             let class = roles
                 .class(role)
                 .map_err(|error| in_template(&template, error))?;
-            linked.push(mapping.runtime_class(&class).to_owned());
+            linked.push(mapping.runtime_class_or_self(&class).to_owned());
         }
     }
     let names = || linked.iter().map(String::as_str);
@@ -653,7 +659,7 @@ fn linked_classes(
                 classfile::source_name(&class)
             )));
         }
-        let name = mapping.runtime_class(&class).to_owned();
+        let name = mapping.runtime_class_or_self(&class).to_owned();
         let last = classfile::split(&name).1.to_owned();
         // Two roles for one class are two words for one thing, which is what a
         // class the reflective surface and the stub seeds both name is. Two
@@ -788,7 +794,7 @@ fn member_name(
         .declared_member(role, member_role)?
         .map(|declared| {
             mapping
-                .linked_member(&class, &declared.member, &declared.descriptor)
+                .runtime_member_or_self(&class, &declared.member, &declared.descriptor)
                 .map(|linked| linked.0)
         })
         .transpose()?;
@@ -862,7 +868,7 @@ fn seeded_member_name(
         .iter()
         .map(|declared| {
             mapping
-                .linked_member(class, &declared.name, &declared.descriptor)
+                .runtime_member_or_self(class, &declared.name, &declared.descriptor)
                 .map(|linked| linked.0)
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -1232,7 +1238,7 @@ com.example.util.Held -> com.example.util.Held:
     fn obfuscating(stubs: &[Stub]) -> Mapping {
         let mut text = String::new();
         for (index, stub) in stubs.iter().enumerate() {
-            writeln!(text, "{} -> o{index}:", stub.class.replace('/', "."))
+            writeln!(text, "{} -> o{index}:", classfile::source_name(&stub.class))
                 .expect("writing to a String cannot fail");
             let mut renamed: BTreeMap<&str, String> = BTreeMap::new();
             for member in &stub.members {

@@ -30,11 +30,11 @@ Host integrations use one profiler-taking loader entry point per operation:
 `broadcast`, `deliver_command`, and `deliver_packet`. A halted set has a distinct
 `DispatchRefused::Halted` refusal rather than an inactive-recipient refusal.
 
-There is a second filter and it is the one that surprises people. An event that
-does not happen on the running side at all has an empty audience — a client tick
-on a dedicated server reaches nobody, and that is not because no mod happened to
-be client-side. So `ClientTick` arms in a server-side mod are dead code rather
-than rare code, and a mod counting ticks has to say which side it counts on.
+An event that cannot happen on the running side is refused with
+`DispatchRefused::EventWrongSide` before any mod receives it. A client tick on a
+dedicated server is an invalid broadcast, not an empty audience. `ClientTick`
+arms in a server-side mod are therefore dead code rather than rare code, and a
+mod counting ticks has to say which side it counts on.
 
 **There is no hooks module and you never name a hook.** A hook is a host-side
 target in a Minecraft version's data, resolved against that version's mappings.

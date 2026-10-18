@@ -10,7 +10,7 @@ fn file_collection_refuses_missing_or_non_directory_roots() {
     fs::write(&plain, "not a directory").expect("file should be writable");
     for directory in [root.join("missing"), plain] {
         let mut files = Vec::new();
-        let error = super::collect_files(&directory, &mut files)
+        let error = super::collect_files(&root, &directory, &mut files)
             .expect_err("an unreadable directory must refuse the sweep");
         assert!(error.starts_with("cannot read "), "{error}");
         assert_eq!(files, Vec::<std::path::PathBuf>::new());
@@ -26,7 +26,7 @@ fn file_collection_recurses_without_scanning_build_or_vcs_trees() {
         fs::write(root.join(directory).join("source.rs"), "").expect("file should be writable");
     }
     let mut files = Vec::new();
-    super::collect_files(&root, &mut files).expect("the tree should be readable");
+    super::collect_files(&root, &root, &mut files).expect("the tree should be readable");
     assert_eq!(files, [root.join("nested/source.rs")]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -50,7 +50,8 @@ fn file_collection_excludes_only_private_fixture_tree() {
         fs::write(path, "").expect("maintained fixture source should be writable");
     }
     let mut files = Vec::new();
-    super::collect_files(&root, &mut files).expect("private fixtures must not enter the sweep");
+    super::collect_files(&root, &root, &mut files)
+        .expect("private fixtures must not enter the sweep");
     files.sort();
     expected.sort();
     assert_eq!(files, expected);
@@ -65,9 +66,12 @@ fn file_collection_propagates_nested_metadata_errors() {
     fs::create_dir(&nested).expect("directory should be creatable");
     std::os::unix::fs::symlink("absent", nested.join("broken"))
         .expect("symlink should be creatable");
-    let error = super::collect_files(&root, &mut Vec::new())
+    let error = super::collect_files(&root, &root, &mut Vec::new())
         .expect_err("nested metadata failures must propagate");
-    assert!(error.starts_with("cannot inspect broken:"), "{error}");
+    assert!(
+        error.starts_with("cannot inspect nested/broken:"),
+        "{error}"
+    );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -311,7 +315,7 @@ fn jj_inventory_excludes_untracked_and_ignored_files() {
         assert!(output.status.success(), "{output:?}");
     }
     assert_eq!(
-        crate::tracked::tracked_paths(&root).expect("jj inventory should be readable"),
+        crate::vcs::tracked_files(&root, None).expect("jj inventory should be readable"),
         [".gitignore", "tracked\nfile.txt"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -322,7 +326,7 @@ fn tracked_inventory_requires_version_control() {
     let root = temporary_root("no-vcs");
     fs::write(root.join("untracked.txt"), "sample").expect("sample should be writable");
     assert!(
-        crate::tracked::tracked_paths(&root)
+        crate::vcs::tracked_files(&root, None)
             .expect_err("a directory listing is not a tracked inventory")
             .contains("cannot list tracked files")
     );
@@ -398,7 +402,7 @@ fn invalid_tracked_manifest_reports_the_parse_error() {
 fn broken_jj_metadata_reports_the_underlying_error() {
     let root = temporary_root("broken-jj");
     fs::create_dir(root.join(".jj")).expect("jj marker should be creatable");
-    let error = super::tracked_paths(&root).expect_err("broken metadata should fail");
+    let error = crate::vcs::tracked_files(&root, None).expect_err("broken metadata should fail");
     let detail = error
         .strip_prefix("cannot list tracked files: jj: ")
         .expect("jj context should be preserved");

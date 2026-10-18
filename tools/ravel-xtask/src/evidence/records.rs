@@ -223,8 +223,9 @@ fn verify_revisions(
                 artifact.name,
                 violations,
             );
-        } else if !records.was_loaded(artifact.name) {
+        } else if !records.already_reported(artifact.name) {
             verify_uncached_revision(
+                root,
                 &directory.join(artifact.name),
                 &label,
                 artifact.name,
@@ -234,11 +235,17 @@ fn verify_revisions(
     }
 }
 
-fn verify_uncached_revision(path: &Path, label: &str, name: &str, violations: &mut Vec<String>) {
+fn verify_uncached_revision(
+    root: &Path,
+    path: &Path,
+    label: &str,
+    name: &str,
+    violations: &mut Vec<String>,
+) {
     if !path.is_file() {
         return;
     }
-    match read_json(path) {
+    match read_json(root, path) {
         Ok(value) => verify_trial_pins(&value, &mut Vec::with_capacity(8), label, name, violations),
         Err(error) => violations.push(error),
     }
@@ -436,7 +443,7 @@ pub(crate) fn verify_recorded_review(
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    match read_json(path) {
+    match read_json(root, path) {
         Ok(manifest) => verify_recorded_review_value(root, path, &manifest, tracked, violations),
         Err(error) => violations.push(error),
     }

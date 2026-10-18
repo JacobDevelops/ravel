@@ -51,6 +51,7 @@ fn a_spike_result_does_not_require_a_historical_change_identifier() {
     let gate = root.join("evidence/m1/spikes/adg-5");
     fs::create_dir_all(&gate).expect("spike directory should be creatable");
     let mut document = crate::json::read_json(
+        &repository,
         &repository.join("evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"),
     )
     .expect("recorded spike result should be readable");

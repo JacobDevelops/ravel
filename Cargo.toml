@@ -67,6 +67,10 @@ ravel-test-mod-world-shaping = { path = "test-mods/world-shaping", version = "0.
 ravel-build = { path = "crates/ravel-build", version = "0.0.0" }
 ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
+rvl-042-counterpart = { path = "registry/mods/rvl-042-counterpart", version = "0.1.0" }
+rvl-120-counterpart = { path = "registry/mods/rvl-120-counterpart", version = "0.1.0" }
+rvl-210-counterpart = { path = "registry/mods/rvl-210-counterpart", version = "0.1.0" }
+rvl-321-counterpart = { path = "registry/mods/rvl-321-counterpart", version = "0.1.0" }
 semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

@@ -77,7 +77,7 @@ pub(crate) fn game_members(
     .expect("writing to a String cannot fail");
     let mut written = BTreeSet::new();
     for reflected in &surface.classes {
-        let owner = reflected.class.replace('.', "/");
+        let owner = crate::classfile::internal_name(&reflected.class);
         for member in &reflected.members {
             let lookup = &member.lookup;
             let Lookup::Descriptor(descriptor) = lookup else {
@@ -151,7 +151,7 @@ pub(crate) fn legacy_names(
             text,
             "            case \"{}\" -> \"{}\";",
             reflected.name,
-            reflected.runtime.replace('/', ".")
+            crate::classfile::source_name(&reflected.runtime)
         )
         .expect("writing to a String cannot fail");
     }
@@ -167,7 +167,7 @@ pub(crate) fn legacy_names(
         .iter()
         .filter(|role| role.name.starts_with("LEGACY_"))
     {
-        let owner = reflected.class.replace('.', "/");
+        let owner = crate::classfile::internal_name(&reflected.class);
         for member in &reflected.members {
             let Lookup::Descriptor(descriptor) = &member.lookup else {
                 continue;

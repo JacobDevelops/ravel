@@ -4,7 +4,6 @@ use std::process::Command;
 
 use crate::json::read_json;
 use crate::test_support::{temporary_root, track_fixture_files};
-use crate::tracked::tracked_paths;
 
 mod artifacts;
 mod reviews;
@@ -76,12 +75,12 @@ fn verify_record_bindings(root: &Path) -> Vec<String> {
     }
     track_fixture_files(root);
     pin_default_record_inputs(root, &manifests);
-    let tracked = tracked_paths(root)
+    let tracked = crate::vcs::tracked_files(root, None)
         .expect("tracked paths should be readable")
         .into_iter()
         .collect();
     for path in manifests {
-        match read_json(&path) {
+        match read_json(root, &path) {
             Ok(manifest) => {
                 super::verify_recorded_manifest(
                     root,
@@ -101,7 +100,7 @@ fn verify_record_bindings(root: &Path) -> Vec<String> {
 fn pin_default_record_inputs(root: &Path, manifests: &[PathBuf]) {
     let mut unpinned = Vec::with_capacity(manifests.len());
     for path in manifests {
-        if let Ok(manifest) = read_json(path)
+        if let Ok(manifest) = read_json(root, path)
             && manifest.get("revision").is_none()
             && manifest.get("inputs").is_none()
         {

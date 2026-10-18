@@ -14,7 +14,10 @@ fn json_loading_preserves_nested_keys_and_values() {
     });
     fs::write(&path, expected.to_string()).expect("record should be writable");
 
-    assert_eq!(read_json(&path).expect("record should parse"), expected);
+    assert_eq!(
+        read_json(&root, &path).expect("record should parse"),
+        expected
+    );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -24,7 +27,7 @@ fn malformed_json_reports_its_location_without_exposing_the_absolute_path() {
     let path = root.join("record.json");
     fs::write(&path, "{\n  \"value\": ]\n}").expect("record should be writable");
 
-    let error = read_json(&path).expect_err("malformed JSON must be rejected");
+    let error = read_json(&root, &path).expect_err("malformed JSON must be rejected");
 
     assert!(
         error.starts_with("cannot parse JSON record.json:"),
@@ -38,7 +41,8 @@ fn malformed_json_reports_its_location_without_exposing_the_absolute_path() {
 #[test]
 fn unreadable_json_reports_a_redacted_file_name() {
     let root = temporary_root("json-missing");
-    let error = read_json(&root.join("missing.json")).expect_err("missing JSON must be rejected");
+    let error =
+        read_json(&root, &root.join("missing.json")).expect_err("missing JSON must be rejected");
 
     assert!(
         error.starts_with("cannot read JSON missing.json:"),
@@ -69,4 +73,24 @@ fn sums_require_every_operand_and_a_real_row_array() {
             .zip(number(&value, "/missing-total"))
             .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
     );
+}
+
+#[test]
+fn nested_json_diagnostics_use_the_supplied_repository_root() {
+    let root = temporary_root("json-rooted-diagnostic");
+    fs::create_dir_all(root.join("evidence/m7")).expect("record directory should exist");
+    let path = root.join("evidence/m7/summary.json");
+    let error = read_json(&root, &path).expect_err("missing record must refuse");
+    assert!(
+        error.starts_with("cannot read JSON evidence/m7/summary.json:"),
+        "{error}"
+    );
+    fs::write(&path, "{").expect("malformed record should write");
+    let error = read_json(&root, &path).expect_err("malformed record must refuse");
+    assert!(
+        error.starts_with("cannot parse JSON evidence/m7/summary.json:"),
+        "{error}"
+    );
+    assert!(!error.contains(&root.display().to_string()), "{error}");
+    fs::remove_dir_all(root).expect("temporary root should remove");
 }

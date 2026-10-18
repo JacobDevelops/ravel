@@ -384,6 +384,15 @@ pub(crate) struct Inputs {
     pub(crate) stubs_lock: Input,
 }
 
+impl Inputs {
+    /// The complete pinned jar set.
+    pub(crate) fn jars(&self) -> impl Iterator<Item = &Input> + Clone {
+        std::iter::once(&self.client_jar)
+            .chain(self.data_fixer_jar.as_ref())
+            .chain(self.server_jar.as_ref())
+    }
+}
+
 /// The tracked adapter inputs.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

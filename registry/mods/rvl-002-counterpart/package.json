@@ -41,7 +41,7 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "0fdd4804cf56dc8f433f6acd230c1a24b5e2d224fe4ceb7ac08aecfd2b624c91"
+        "sha256": "da9debfa47028f0106ae5b6e387246805f3ccf25674fabfe659da51a7bdb07f0"
       },
       {
         "path": "NOTES.md",

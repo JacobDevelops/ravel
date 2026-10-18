@@ -392,8 +392,8 @@ mod tests {
             .iter()
             .map(|hook| Resolved {
                 id: hook.id.clone(),
-                runtime_class: hook.class.replace('.', "/"),
-                mojang_class: hook.class.replace('.', "/"),
+                runtime_class: crate::classfile::internal_name(&hook.class),
+                mojang_class: crate::classfile::internal_name(&hook.class),
                 runtime_member: hook.member.clone(),
                 member: hook.member.clone(),
                 runtime_descriptor: hook.descriptor.clone(),

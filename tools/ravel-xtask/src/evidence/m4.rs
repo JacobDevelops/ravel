@@ -304,14 +304,13 @@ pub(crate) fn verify_m4_integrity(
     }
     if let Some(record) = records.carried(&M4_FIGURES) {
         verify_m4_process_matrix(record, violations);
-        verify_milestone_figures(record, manifest, &M4_FIGURES, violations);
+        verify_milestone_figures(Milestone::M4, record, manifest, &M4_FIGURES, violations);
     }
     records
 }
 
 const M4_FIGURES: CarriedFigures = CarriedFigures {
-    manifest: "evidence/m4/manifest.json",
-    record: M4_PROCESS_MATRIX,
+    record: "linux-process-matrix.json",
     subject: "gate run",
     arithmetic: &[],
     figures: &[

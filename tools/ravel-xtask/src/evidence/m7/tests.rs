@@ -83,7 +83,8 @@ fn a_balanced_library_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root.join("evidence/m7/library-summary.json")).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7/library-summary.json"))
+            .expect("summary should parse"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
@@ -244,7 +245,7 @@ fn every_m7_arithmetic_clause_refuses_a_record_that_breaks_it() {
         let mut violations = Vec::new();
 
         verify_arithmetic(
-            &read_json(&root.join("evidence/m7/library-summary.json"))
+            &read_json(&root, &root.join("evidence/m7/library-summary.json"))
                 .expect("summary should parse"),
             "evidence/m7/library-summary.json",
             M7_ARITHMETIC,
@@ -290,7 +291,8 @@ fn m7_audits_the_total_the_inventory_verified_or_a_correction_that_names_it() {
 
         verify_m7_verified_fixture_total(
             &root,
-            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+                .expect("summary should parse"),
             &mut violations,
         );
 
@@ -325,14 +327,16 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     .expect("inventory should be writable");
     let mut violations = Vec::new();
     verify_arithmetic(
-        &read_json(&root.join("evidence/m7/library-summary.json")).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7/library-summary.json"))
+            .expect("summary should parse"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
     );
     verify_m7_verified_fixture_total(
         &root,
-        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+            .expect("summary should parse"),
         &mut violations,
     );
     assert!(
@@ -349,7 +353,8 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     violations.clear();
     verify_m7_verified_fixture_total(
         &root,
-        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+            .expect("summary should parse"),
         &mut violations,
     );
     assert!(violations.is_empty(), "{violations:?}");
@@ -375,7 +380,7 @@ fn selected_workload_root(label: &str) -> (PathBuf, serde_json::Value) {
     )
     .expect("inventory should be writable");
     let path = root.join("evidence/m7/library-summary.json");
-    let mut record = read_json(&path).expect("summary should parse");
+    let mut record = read_json(&root, &path).expect("summary should parse");
     record["fixture"] = fixture;
     record["protocol"] = "m7-library-v2".into();
     (root, record)
@@ -401,11 +406,32 @@ fn selected_workload_uses_its_jar_inventory_not_historical_reference_totals() {
         let mut violations = Vec::new();
         verify_m7_verified_fixture_total(
             &root,
-            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+                .expect("summary should parse"),
             &mut violations,
         );
         assert_eq!(violations.is_empty(), accepted, "{label}: {violations:?}");
     }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn selected_workload_rejects_matching_uppercase_artifact_set_digests() {
+    let (root, mut record) = selected_workload_root("m7-uppercase-artifact-set");
+    record["fixture"]["artifactSet"]["sha256"] = "A".repeat(64).into();
+    fs::write(
+        root.join("registry/inventory/sevtech-ages-3.2.3/graph.json"),
+        serde_json::to_vec(&serde_json::json!({"fixture": record["fixture"]}))
+            .expect("inventory should serialize"),
+    )
+    .expect("inventory should be writable");
+    let mut violations = Vec::new();
+    verify_m7_verified_fixture_total(&root, &record, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("artifactSet") && violations[0].contains("sha256"),
+        "{violations:?}"
+    );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -468,7 +494,8 @@ fn selected_workload_requires_a_binding_and_matching_protocol() {
         let mut violations = Vec::new();
         verify_m7_verified_fixture_total(
             &root,
-            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+                .expect("summary should parse"),
             &mut violations,
         );
         assert!(!violations.is_empty(), "{protocol}: {violations:?}");
@@ -492,7 +519,7 @@ fn a_complete_m7_record_set_leaves_m7_closure_with_nothing_to_report() {
         &mut violations,
     );
     verify_m7_manifest(
-        &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &read_json(&root, &root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -556,7 +583,8 @@ fn every_m7_closure_clause_refuses_a_manifest_that_breaks_it() {
             &mut violations,
         );
         verify_m7_manifest(
-            &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+            &read_json(&root, &root.join("evidence/m7/manifest.json"))
+                .expect("manifest should parse"),
             &records,
             &mut violations,
         );
@@ -591,7 +619,7 @@ fn m7_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         &mut violations,
     );
     verify_m7_manifest(
-        &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &read_json(&root, &root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -621,7 +649,7 @@ fn m7_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         &mut violations,
     );
     verify_m7_manifest(
-        &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &read_json(&root, &root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -646,12 +674,14 @@ fn every_figure_m7_carries_is_recomputed_from_the_record() {
             &balanced_m7_manifest(),
         );
         let manifest = root.join("evidence/m7/manifest.json");
-        misstate_figure(&manifest, claimed_at);
+        misstate_figure(&root, &manifest, claimed_at);
         let mut violations = Vec::new();
 
         verify_milestone_figures(
-            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
-            &read_json(&manifest).expect("manifest should parse"),
+            crate::evidence::rules::Milestone::M7,
+            &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+                .expect("summary should parse"),
+            &read_json(&root, &manifest).expect("manifest should parse"),
             &M7_FIGURES,
             &mut violations,
         );
@@ -675,7 +705,8 @@ fn absent_fixture_totals_are_unreadable_not_matching_nulls() {
     let mut violations = Vec::new();
     verify_m7_verified_fixture_total(
         &root,
-        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+            .expect("summary should parse"),
         &mut violations,
     );
     assert_eq!(violations.len(), 1);
@@ -691,7 +722,8 @@ fn an_unparseable_fixture_total_reports_the_parse_error() {
     let mut violations = Vec::new();
     verify_m7_verified_fixture_total(
         &root,
-        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
+            .expect("summary should parse"),
         &mut violations,
     );
     assert_eq!(violations.len(), 1, "{violations:?}");
@@ -764,7 +796,8 @@ fn open_milestone_tolerates_absence_but_closure_requires_the_record() {
         &library_summary(259, "null"),
         &balanced_m7_manifest(),
     );
-    fs::remove_file(root.join(M7_FIGURES.record)).expect("summary should be removable");
+    fs::remove_file(root.join("evidence/m7").join(M7_FIGURES.record))
+        .expect("summary should be removable");
     let manifest: serde_json::Value =
         serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
     let mut violations = Vec::new();
@@ -789,7 +822,11 @@ fn open_milestone_tolerates_absence_but_closure_requires_the_record() {
 fn v2_correction_is_rejected_during_integrity_not_only_closure() {
     let (root, mut record) = selected_workload_root("m7-v2-correction-integrity");
     record["correction"] = serde_json::json!({"from":235,"total":259,"reason":"not allowed in v2"});
-    fs::write(root.join(M7_FIGURES.record), record.to_string()).expect("summary should write");
+    fs::write(
+        root.join("evidence/m7").join(M7_FIGURES.record),
+        record.to_string(),
+    )
+    .expect("summary should write");
     let manifest: serde_json::Value =
         serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
     let mut violations = Vec::new();
@@ -855,4 +892,31 @@ fn legacy_integrity_reports_an_invalid_fixture_once() {
     super::verify_m7_integrity(&root, &manifest, &mut violations);
     assert_eq!(violations, ["M7 v1 requires a null fixture"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn historical_fixture_failures_name_the_descriptor_not_the_evidence_rule() {
+    let malformed = super::parse_legacy_fixture_total("{")
+        .expect_err("malformed pinned descriptor must refuse");
+    assert!(
+        malformed.starts_with("cannot parse pinned historical fixture descriptor:"),
+        "{malformed}"
+    );
+    for source in ["{}", r#"{"manifest":{"expectedReferenceCount":"259"}}"#] {
+        assert_eq!(
+            super::parse_legacy_fixture_total(source),
+            Err(
+                "pinned historical fixture descriptor is missing numeric /manifest/expectedReferenceCount"
+                    .to_owned()
+            )
+        );
+    }
+    assert_eq!(
+        super::parse_legacy_fixture_total(r#"{"manifest":{"expectedReferenceCount":259}}"#),
+        Ok(259.0)
+    );
+    assert!(
+        super::legacy_fixture_total().is_ok(),
+        "the checked-in historical descriptor must parse and carry its total"
+    );
 }

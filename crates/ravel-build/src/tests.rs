@@ -343,6 +343,48 @@ fn a_cargo_manifest_that_names_no_crate_refuses_the_build() {
 }
 
 #[test]
+fn generated_dependency_and_host_names_refuse_during_planning() {
+    for name in [
+        "ravel-sdk",
+        "ravel_sdk",
+        "serde",
+        "serde_json",
+        "serde-json",
+        "jni",
+        "ravel-core",
+        "ravel_core",
+        "ravel-host-runtime",
+        "ravel_host_runtime",
+        "ravel-host_runtime",
+        "ravel_host-runtime",
+        "ravel-generated-host",
+        "ravel_generated_host",
+        "ravel-generated_host",
+        "ravel_generated-host",
+    ] {
+        let instance = instance("reserved-crate");
+        install(
+            &instance,
+            "installed",
+            "installed_mod",
+            name,
+            EXPORTING_SOURCE,
+        );
+        let discovered = discover(&instance).expect("an intact package");
+        let refused = plan(&discovered, &instance.join("missing-installation"))
+            .expect_err("reserved names refuse before reading installation inputs");
+        assert!(
+            matches!(&refused, BuildRefused::CargoManifest { directory, detail }
+                if directory == "installed" && detail.contains(name) && detail.contains("reserved")),
+            "{refused:?}"
+        );
+        assert_eq!(refused.lifecycle_state(), LifecycleState::Validated);
+        assert_eq!(refused.failure_kind(), None);
+        fs::remove_dir_all(&instance).expect("cleanup");
+    }
+}
+
+#[test]
 fn two_packages_building_one_crate_refuse_the_build() {
     let instance = instance("clash");
     install(
@@ -428,6 +470,7 @@ fn compiling_proof(cache: &Path) {
     a_second_instance_keeps_its_own_host(&library, cache);
     the_examples_this_repository_ships_install_and_compile(cache);
     a_package_naming_internal_workspace_dependencies_refuses(cache);
+    installed_peer_dependencies_follow_noncanonical_directories(cache);
     a_registry_mod_with_explicit_third_party_dependencies_compiles(cache);
     a_package_that_names_no_value_refuses(cache);
     a_version_naming_no_tracked_directory_refuses(&plan, &instance, cache);
@@ -753,8 +796,22 @@ fn generated_times(plan: &super::HostPlan, instance: &Path) -> Vec<std::time::Sy
 }
 
 #[test]
-fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() {
+fn generated_dependency_tables_expose_sdk_author_dependencies_and_planned_peers() {
     let instance = instance("dependency-boundary");
+    install(
+        &instance,
+        "renamed-provider",
+        "provider_mod",
+        "provider-crate",
+        EXPORTING_SOURCE,
+    );
+    install(
+        &instance,
+        "renamed-consumer",
+        "consumer_mod",
+        "consumer-crate",
+        EXPORTING_SOURCE,
+    );
     let plan = planned(&instance);
     let root: toml::Table = fs::read_to_string(ravel_root().join("Cargo.toml"))
         .expect("installation manifest")
@@ -767,11 +824,24 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
         .expect("dependencies");
     assert_eq!(
         dependencies.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["ravel-sdk", "serde", "serde_json"]
+        [
+            "consumer-crate",
+            "provider-crate",
+            "ravel-sdk",
+            "serde",
+            "serde_json",
+        ]
     );
     for name in ["serde", "serde_json"] {
         assert_eq!(dependencies[name], root["workspace"]["dependencies"][name]);
     }
+    for member in plan.members() {
+        assert_eq!(
+            dependencies[&member.crate_name]["path"].as_str(),
+            Some(format!("mods/{}", member.directory).as_str())
+        );
+    }
+    assert!(!dependencies.contains_key("jni"));
     assert_eq!(
         host["dependencies"]["jni"],
         root["workspace"]["dependencies"]["jni"]
@@ -787,6 +857,14 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
             .get("ravel-bootstrap-runtime")
             .is_none()
     );
+    assert_eq!(host["lib"]["name"].as_str(), Some(HOST_LIBRARY));
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn generated_workspace_keeps_installation_lock_and_minimal_toolchain() {
+    let instance = instance("installation-inputs");
+    let plan = planned(&instance);
     assert_eq!(
         plan.installation_lock(),
         fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock")
@@ -811,7 +889,6 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
             .len(),
         2
     );
-    assert_eq!(host["lib"]["name"].as_str(), Some(HOST_LIBRARY));
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 
@@ -1126,6 +1203,10 @@ fn generated_files_keep_odd_directory_and_crate_names_as_data() {
         workspace["workspace"]["members"][1].as_str(),
         Some(format!("mods/{directory}").as_str())
     );
+    assert_eq!(
+        workspace["workspace"]["dependencies"][&member.crate_name]["path"].as_str(),
+        Some(format!("mods/{directory}").as_str())
+    );
     let host: toml::Table =
         super::generate::host_manifest(&members, &ravel_root(), &toml::Table::new())
             .parse()
@@ -1262,6 +1343,37 @@ fn a_package_naming_internal_workspace_dependencies_refuses(cache: &Path) {
         refused.to_string().contains("workspace.dependencies"),
         "{refused}"
     );
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+fn installed_peer_dependencies_follow_noncanonical_directories(cache: &Path) {
+    let instance = instance("renamed-peer-dependencies");
+    install(
+        &instance,
+        "arbitrary-provider-directory",
+        "provider_mod",
+        "provider-crate",
+        &format!("{EXPORTING_SOURCE}\npub const VALUE: u8 = 7;\n"),
+    );
+    install_with(
+        &instance,
+        "arbitrary-consumer-directory",
+        "consumer_mod",
+        "consumer-crate",
+        &format!("{EXPORTING_SOURCE}\nconst _: u8 = provider_crate::VALUE;\n"),
+        "ravel-sdk.workspace = true\nprovider-crate.workspace = true\n",
+    );
+    let plan = planned(&instance);
+    let workspace: toml::Table = plan.files()["Cargo.toml"].parse().expect("valid workspace");
+    for member in plan.members() {
+        assert_eq!(
+            workspace["workspace"]["dependencies"][&member.crate_name]["path"].as_str(),
+            Some(format!("mods/{}", member.directory).as_str())
+        );
+    }
+    let library = build(&plan, &instance, cache, &game())
+        .expect("workspace peer dependencies resolve by crate name, not installed directory");
+    assert!(library.is_file());
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 

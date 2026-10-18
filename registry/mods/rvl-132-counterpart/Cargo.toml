@@ -10,7 +10,7 @@ categories = ["games"]
 
 [dependencies]
 ravel-sdk.workspace = true
-rvl-210-counterpart = { path = "../rvl-210-counterpart", version = "0.1.0" }
+rvl-210-counterpart.workspace = true
 
 [lints]
 workspace = true

@@ -57,10 +57,7 @@ fn inventory_artifacts(v: &Value) -> Result<(), String> {
         require(nonempty(row, "/holds"), "/holds")?;
         require(
             row["sha256"].as_str().is_some_and(|digest| {
-                digest.len() == 64
-                    && digest
-                        .bytes()
-                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                ravel_package::Sha256Digest::try_from(digest.to_owned()).is_ok()
             }),
             "/sha256 must be a lowercase SHA-256 digest",
         )?;
@@ -370,8 +367,7 @@ const M5_CARRIED_FIGURES: &[(&str, Figure)] = &[
 ];
 
 pub(crate) const M5_FIGURES: CarriedFigures = CarriedFigures {
-    manifest: "evidence/m5/manifest.json",
-    record: "evidence/m5/inventory-summary.json",
+    record: "inventory-summary.json",
     subject: "inventory",
     figures: M5_CARRIED_FIGURES,
     arithmetic: M5_ARITHMETIC,
@@ -384,7 +380,7 @@ pub(crate) fn verify_m5_integrity(
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M5, M5_RECORDS, violations);
     if let Some(record) = records.carried(&M5_FIGURES) {
-        verify_milestone_figures(record, manifest, &M5_FIGURES, violations);
+        verify_milestone_figures(Milestone::M5, record, manifest, &M5_FIGURES, violations);
     }
     records
 }

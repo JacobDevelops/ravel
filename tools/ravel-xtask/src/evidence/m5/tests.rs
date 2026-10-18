@@ -12,7 +12,8 @@ fn a_balanced_inventory_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root.join("evidence/m5/inventory-summary.json")).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+            .expect("summary should parse"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,
@@ -51,7 +52,8 @@ fn moving_one_part_of_an_inventory_total_stops_it_summing() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root.join("evidence/m5/inventory-summary.json")).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+            .expect("summary should parse"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,
@@ -76,7 +78,8 @@ fn an_entry_body_read_is_refused_however_the_record_reads() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root.join("evidence/m5/inventory-summary.json")).expect("summary should parse"),
+        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+            .expect("summary should parse"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,

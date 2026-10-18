@@ -135,8 +135,8 @@ pub(crate) fn mutate(document: &str, replacements: &[(&str, &str)]) -> String {
     mutated
 }
 
-pub(crate) fn misstate_figure(manifest: &Path, path: &str) {
-    let mut document = crate::json::read_json(manifest).expect("manifest should parse");
+pub(crate) fn misstate_figure(root: &Path, manifest: &Path, path: &str) {
+    let mut document = crate::json::read_json(root, manifest).expect("manifest should parse");
     *document
         .pointer_mut(path)
         .expect("carried figure should exist") = serde_json::json!(987_654);

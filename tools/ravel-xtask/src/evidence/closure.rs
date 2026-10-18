@@ -1,6 +1,6 @@
 //! Shared record predicates and carried-figure comparisons.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde_json::Value;
@@ -23,17 +23,16 @@ pub(crate) fn verify_arithmetic(
 }
 
 fn verify_carried_figures(
+    milestone: Milestone,
     manifest: &Value,
     record: &Value,
     carried: &CarriedFigures,
     violations: &mut Vec<String>,
 ) {
-    let CarriedFigures {
-        manifest: manifest_label,
-        record: record_label,
-        subject,
-        ..
-    } = carried;
+    let directory = milestone.directory();
+    let manifest_label = format!("{directory}/manifest.json");
+    let record_label = format!("{directory}/{}", carried.record);
+    let subject = carried.subject;
     for (pointer, derive) in carried.figures {
         let claimed = manifest.pointer(pointer).filter(|value| !value.is_null());
         let measured = derive(record).filter(|value| !value.is_null());
@@ -65,20 +64,22 @@ fn same_figure(claimed: &Value, measured: &Value) -> bool {
 
 #[derive(Default)]
 pub(crate) struct LoadedRecords {
-    values: BTreeMap<&'static str, Option<Value>>,
+    values: BTreeMap<&'static str, Value>,
+    reported: BTreeSet<&'static str>,
 }
 
 impl LoadedRecords {
     pub(crate) fn get(&self, name: &str) -> Option<&Value> {
-        self.values.get(name).and_then(Option::as_ref)
+        self.values.get(name)
     }
 
     pub(crate) fn carried(&self, figures: &CarriedFigures) -> Option<&Value> {
-        self.get(figures.record.rsplit('/').next()?)
+        self.get(figures.record)
     }
 
-    pub(crate) fn was_loaded(&self, name: &str) -> bool {
-        self.values.contains_key(name)
+    /// Whether loading already reported a failure for this record.
+    pub(crate) fn already_reported(&self, name: &str) -> bool {
+        self.reported.contains(name)
     }
 }
 pub(crate) struct RecordDefinition {
@@ -98,20 +99,22 @@ pub(crate) fn read_records(
     let mut records = LoadedRecords::default();
     for RecordDefinition { name, required, .. } in definitions {
         let relative = format!("{directory}/{name}");
-        let path = root.join(&relative);
-        if !path.is_file() {
-            if *required {
-                records.values.insert(*name, None);
-                violations.push(format!("missing required file: {relative}"));
+        let path = match crate::text::require_file(root, &relative) {
+            Ok(path) => path,
+            Err(error) => {
+                if *required {
+                    records.reported.insert(*name);
+                    violations.push(error);
+                }
+                continue;
             }
-            continue;
-        }
-        match read_json(&path) {
+        };
+        match read_json(root, &path) {
             Ok(record) => {
-                records.values.insert(*name, Some(record));
+                records.values.insert(*name, record);
             }
             Err(error) => {
-                records.values.insert(*name, None);
+                records.reported.insert(*name);
                 violations.push(error);
             }
         }
@@ -135,7 +138,7 @@ pub(crate) fn verify_closure_records(
     {
         let relative = format!("{directory}/{name}");
         let Some(record) = records.get(name) else {
-            if !records.was_loaded(name) {
+            if !records.already_reported(name) {
                 violations.push(format!(
                     "{milestone} closure requires the record {relative}"
                 ));
@@ -167,7 +170,6 @@ pub(crate) fn verify_manifest_closure(
 }
 
 pub(crate) struct CarriedFigures {
-    pub(crate) manifest: &'static str,
     pub(crate) record: &'static str,
     pub(crate) subject: &'static str,
     pub(crate) figures: &'static [(&'static str, Figure)],
@@ -175,13 +177,15 @@ pub(crate) struct CarriedFigures {
 }
 
 pub(crate) fn verify_milestone_figures(
+    milestone: Milestone,
     record: &Value,
     manifest: &Value,
     carried: &CarriedFigures,
     violations: &mut Vec<String>,
 ) {
-    verify_arithmetic(record, carried.record, carried.arithmetic, violations);
-    verify_carried_figures(manifest, record, carried, violations);
+    let label = format!("{}/{}", milestone.directory(), carried.record);
+    verify_arithmetic(record, &label, carried.arithmetic, violations);
+    verify_carried_figures(milestone, manifest, record, carried, violations);
 }
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ fn repeated_violations(label: &str, binding: Value) -> Vec<String> {
     let root = spike_root(label, "adg-3", &record);
     let mut violations = Vec::new();
     let paths = spike_result_paths(&root, "adg-3", "ADG-3", &mut violations);
-    verify_m1_manifest_repeated(&paths, &mut violations);
+    verify_m1_manifest_repeated(&root, &paths, &mut violations);
     fs::remove_dir_all(root).expect("temporary root should be removable");
     violations
 }
@@ -78,7 +78,7 @@ fn an_unparseable_repeated_record_is_refused() {
     fs::write(directory.join("result.json"), "not JSON").expect("record should be writable");
     let mut violations = Vec::new();
     let paths = spike_result_paths(&root, "adg-3", "ADG-3", &mut violations);
-    verify_m1_manifest_repeated(&paths, &mut violations);
+    verify_m1_manifest_repeated(&root, &paths, &mut violations);
     assert!(
         violations
             .iter()
@@ -143,7 +143,7 @@ fn a_matching_spike_does_not_hide_another_records_parse_error() {
     .expect("malformed record should be writable");
     let mut violations = Vec::new();
     let paths = spike_result_paths(&root, "adg-3", "ADG-3", &mut violations);
-    verify_m1_manifest_repeated(&paths, &mut violations);
+    verify_m1_manifest_repeated(&root, &paths, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
         violations[0].starts_with("cannot parse JSON"),
@@ -157,7 +157,7 @@ fn a_missing_spike_directory_reports_its_read_error() {
     let root = temporary_root("m1-repeated-missing-directory");
     let mut violations = Vec::new();
     let paths = spike_result_paths(&root, "adg-3", "ADG-3", &mut violations);
-    verify_m1_manifest_repeated(&paths, &mut violations);
+    verify_m1_manifest_repeated(&root, &paths, &mut violations);
     assert!(
         violations
             .iter()

@@ -28,10 +28,6 @@ Core owns identifiers, sides and lifecycle vocabulary. Declarative block/item
 behaviour belongs to `ravel-data`, with the SDK retaining its author-facing
 content reexports; its declaration failure is `ContentDeclarationError`, distinct
 from configuration declarations. Lifecycle errors retain typed registry keys.
-Client-only access distinguishes a wrong server side from a value never built,
-using `ClientOnlyError::WrongSide` and `ClientOnlyError::NotBuilt`.
-Identity-list diagnostics share `ModId::display_list`, which streams the canonical
-backtick-quoted spelling directly to the formatter without temporary joined strings.
 
 The build default stays 26.1.2 and 1.21.1 support remains. Forward proof targets
 immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on the exact JDK 27 pin in
@@ -103,12 +99,10 @@ Ravel into a Java mod host.
   failures across lifecycle driving, saves and bootstrap dispatch. Service,
   resource and configuration entry points use the same owner-participation
   and lifecycle rules; a refusing service provider is an error, not an absent
-  optional provider. `PipelineError::Drive` preserves the attributed drive error.
+  optional provider.
 - **Diagnostic publication.** `DiagnosticMessage::redacted` applies the shared
   core redactor rather than trusting a caller-supplied policy to assert safety.
   Tracked-text checks import the credential detector directly from core.
-  Profiling reports count host calls through `hook_calls`, without a second
-  name for the same measurement.
 - **Claims and checks.** Measured claims have an independent reading proved by
   mutation; judged claims carry per-input verdicts, reasons and bases in data,
   checked for two-way congruence with behaviour, and mechanisms disclose their

@@ -40,16 +40,16 @@ impl Mapping {
     }
 
     /// The internal name the JVM links for a reviewed internal name.
-    pub(super) fn runtime_class<'a>(&'a self, mojang: &'a str) -> &'a str {
+    pub(super) fn runtime_class_or_self<'a>(&'a self, mojang: &'a str) -> &'a str {
         match self {
             Self::Identity => mojang,
-            Self::NameMap(proguard) => proguard.runtime_class(mojang),
+            Self::NameMap(proguard) => proguard.runtime_class_or_self(mojang),
         }
     }
 
     /// The internal name the JVM links for a reviewed *game* class.
     ///
-    /// [`Self::runtime_class`] answers for any name at all, because a stub seed
+    /// [`Self::runtime_class_or_self`] answers for any name at all, because a stub seed
     /// may name a library class the published mapping never describes and
     /// passing that name through is the right answer. Every name in the
     /// reflective surface is a game class instead, so a mapping that does not
@@ -60,10 +60,13 @@ impl Mapping {
     /// # Errors
     ///
     /// Returns an error when a translating mapping does not name the class.
-    pub(super) fn linked_class<'a>(&'a self, mojang: &'a str) -> Result<&'a str, GenerateError> {
+    pub(super) fn require_runtime_class<'a>(
+        &'a self,
+        mojang: &'a str,
+    ) -> Result<&'a str, GenerateError> {
         match self {
             Self::Identity => Ok(mojang),
-            Self::NameMap(proguard) => proguard.linked_class(mojang),
+            Self::NameMap(proguard) => proguard.require_runtime_class(mojang),
         }
     }
 
@@ -77,7 +80,7 @@ impl Mapping {
 
     /// The archive entry holding one reviewed class's bytes.
     pub(super) fn entry(&self, mojang: &str) -> String {
-        format!("{}.class", self.runtime_class(mojang))
+        format!("{}.class", self.runtime_class_or_self(mojang))
     }
 
     /// The reviewed descriptor a linked descriptor came from.
@@ -94,7 +97,7 @@ impl Mapping {
 
     /// The reviewed name a linked member of one reviewed class came from.
     ///
-    /// This is the direction a stub seed needs, and [`Self::runtime_member`]
+    /// This is the direction a stub seed needs, and [`Self::require_runtime_member`]
     /// cannot serve it. A seed names a member and deliberately never a
     /// descriptor, because a name the class overloads is meant to stub every
     /// overload — and the forward direction is keyed on the descriptor precisely
@@ -124,11 +127,11 @@ impl Mapping {
     /// This is the inverse of [`Self::mojang_member`] and shares its
     /// pass-through: a member the mapping never named is emitted under the name
     /// it already carries, which is what a constructor and a library class's
-    /// members need. [`Self::runtime_member`] refuses that case instead, because
+    /// members need. [`Self::require_runtime_member`] refuses that case instead, because
     /// a hook target the mapping does not name is a hook nobody reviewed; a stub
     /// declares whatever the class file declares, and `<init>` is in every one of
     /// them.
-    pub(super) fn linked_member(
+    pub(super) fn runtime_member_or_self(
         &self,
         mojang_class: &str,
         member: &str,
@@ -136,7 +139,9 @@ impl Mapping {
     ) -> Result<(String, String), GenerateError> {
         match self {
             Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
-            Self::NameMap(proguard) => proguard.linked_member(mojang_class, member, descriptor),
+            Self::NameMap(proguard) => {
+                proguard.runtime_member_or_self(mojang_class, member, descriptor)
+            }
         }
     }
 
@@ -152,7 +157,7 @@ impl Mapping {
     /// # Errors
     ///
     /// Returns an error when the mapping names the class but not the member.
-    pub(super) fn runtime_member(
+    pub(super) fn require_runtime_member(
         &self,
         mojang_class: &str,
         member: &str,
@@ -160,7 +165,9 @@ impl Mapping {
     ) -> Result<(String, String), GenerateError> {
         match self {
             Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
-            Self::NameMap(proguard) => proguard.runtime_member(mojang_class, member, descriptor),
+            Self::NameMap(proguard) => {
+                proguard.require_runtime_member(mojang_class, member, descriptor)
+            }
         }
     }
 
@@ -175,10 +182,10 @@ impl Mapping {
         descriptor: &str,
     ) -> Result<(String, String), GenerateError> {
         if matches!(member, "<init>" | "<clinit>") {
-            let (_, linked) = self.linked_member(class, member, descriptor)?;
+            let (_, linked) = self.runtime_member_or_self(class, member, descriptor)?;
             return Ok((member.to_owned(), linked));
         }
-        self.runtime_member(class, member, descriptor)
+        self.require_runtime_member(class, member, descriptor)
     }
 
     /// Resolves an override whose reviewed name is recorded only on an ancestor.
@@ -195,17 +202,17 @@ impl Mapping {
             return self.reflected_member(class, member, descriptor);
         }
         let Self::NameMap(names) = self else {
-            return self.runtime_member(class, member, descriptor);
+            return self.require_runtime_member(class, member, descriptor);
         };
         if !names.inherited_hooks || kind != super::inputs::Kind::InstanceMethod {
-            return self.runtime_member(class, member, descriptor);
+            return self.require_runtime_member(class, member, descriptor);
         }
         if !names.classes.contains_key(class)
             || names.members.get(class).is_some_and(|members| {
                 members.contains_key(&(member.to_owned(), descriptor.to_owned()))
             })
         {
-            return self.runtime_member(class, member, descriptor);
+            return self.require_runtime_member(class, member, descriptor);
         }
         let direct = Err(GenerateError::Unresolved(format!(
             "the client mapping names {class} but not its {member}{descriptor}"
@@ -245,7 +252,7 @@ impl Mapping {
         member: &str,
         descriptor: &str,
     ) -> Result<std::collections::BTreeSet<(String, String)>, GenerateError> {
-        let mut pending = vec![self.runtime_class(class).to_owned()];
+        let mut pending = vec![self.runtime_class_or_self(class).to_owned()];
         let mut visited = std::collections::BTreeSet::new();
         let mut candidates = std::collections::BTreeSet::new();
         while let Some(runtime) = pending.pop() {
@@ -257,7 +264,7 @@ impl Mapping {
                 continue;
             }
             let bytes = archive.entry(&entry)?;
-            if runtime != self.runtime_class(class)
+            if runtime != self.runtime_class_or_self(class)
                 && let Some(pair) = names
                     .members
                     .get(self.mojang_class(&runtime))
@@ -322,7 +329,9 @@ pub(super) fn verify_reflection(
     mapping: &Mapping,
 ) -> Result<(), GenerateError> {
     for reflected in &surface.classes {
-        let resolved = binary(mapping.linked_class(&internal(&reflected.class))?);
+        let resolved = classfile::source_name(
+            mapping.require_runtime_class(&classfile::internal_name(&reflected.class))?,
+        );
         if resolved != reflected.runtime {
             return Err(GenerateError::Drift(format!(
                 "the reflective surface says {} links as {} but the mapping resolves it to \
@@ -350,7 +359,7 @@ pub(super) fn verify_reflected_members(
         if reflected.members.is_empty() {
             continue;
         }
-        let mojang = internal(&reflected.class);
+        let mojang = classfile::internal_name(&reflected.class);
         let bytes = archive.entry(&mapping.entry(&mojang))?;
         let declared = classfile::members(&bytes)
             .map_err(|error| GenerateError::Extraction(format!("{}: {error}", reflected.class)))?;
@@ -597,8 +606,8 @@ impl NameMap {
                     original,
                     obfuscated,
                 } => {
-                    let from = internal(original);
-                    let to = internal(obfuscated);
+                    let from = classfile::internal_name(original);
+                    let to = classfile::internal_name(obfuscated);
                     admit_class(&mut classes, &mut mojang, &from, &to, number)?;
                     declared.entry(from.clone()).or_default();
                     current = Some(from);
@@ -693,7 +702,7 @@ impl NameMap {
         })
     }
 
-    fn runtime_class<'a>(&'a self, mojang: &'a str) -> &'a str {
+    fn runtime_class_or_self<'a>(&'a self, mojang: &'a str) -> &'a str {
         self.classes.get(mojang).map_or(mojang, String::as_str)
     }
 
@@ -701,11 +710,11 @@ impl NameMap {
         self.mojang.get(runtime).map_or(runtime, String::as_str)
     }
 
-    fn linked_class(&self, mojang: &str) -> Result<&str, GenerateError> {
+    fn require_runtime_class(&self, mojang: &str) -> Result<&str, GenerateError> {
         self.classes.get(mojang).map(String::as_str).ok_or_else(|| {
             GenerateError::Unresolved(format!(
                 "the client mapping names no class {}",
-                mojang.replace('/', ".")
+                classfile::source_name(mojang)
             ))
         })
     }
@@ -722,7 +731,7 @@ impl NameMap {
             .map_or(member, String::as_str)
     }
 
-    fn linked_member(
+    fn runtime_member_or_self(
         &self,
         mojang_class: &str,
         member: &str,
@@ -741,7 +750,7 @@ impl NameMap {
         ))
     }
 
-    fn runtime_member(
+    fn require_runtime_member(
         &self,
         mojang_class: &str,
         member: &str,
@@ -756,7 +765,7 @@ impl NameMap {
             .ok_or_else(|| {
                 GenerateError::Unresolved(format!(
                     "the client mapping names {} but not its {member}{descriptor}",
-                    mojang_class.replace('/', ".")
+                    classfile::source_name(mojang_class)
                 ))
             })
     }
@@ -777,7 +786,7 @@ impl NameMap {
             .collect::<Vec<_>>();
         found.sort();
         found.dedup();
-        let readable = mojang_class.replace('/', ".");
+        let readable = classfile::source_name(mojang_class);
         match found.as_slice() {
             [] => Err(GenerateError::Unresolved(format!(
                 "the client mapping names {readable} but no {member} of it taking {parameters}"
@@ -880,12 +889,7 @@ fn verify_member_name(name: &str) -> Result<(), String> {
 /// Uses the shared JVM tokenizer rather than accepting malformed descriptors.
 fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
     if method {
-        let (parameters, returns) = classfile::method_types(descriptor)?;
-        for kind in parameters.into_iter().chain(std::iter::once(returns)) {
-            if let Some(name) = kind.class_name() {
-                verify_internal_class_name(name)?;
-            }
-        }
+        crate::verified_method_types(descriptor)?;
     } else {
         let kind = classfile::field_type(descriptor)?;
         if let Some(name) = kind.class_name() {
@@ -893,16 +897,6 @@ fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// The internal form of a name the mapping writes with dots.
-fn internal(name: &str) -> String {
-    name.replace('.', "/")
-}
-
-/// The binary form of an internal name, which is what `Class.forName` takes.
-fn binary(name: &str) -> String {
-    name.replace('/', ".")
 }
 
 /// The JVM descriptor of one source-form type.
@@ -924,7 +918,7 @@ fn descriptor_of(source: &str) -> Result<String, String> {
         "float" => "F".to_owned(),
         "double" => "D".to_owned(),
         "" => return Err(format!("{source} names no type")),
-        other => format!("L{};", internal(other)),
+        other => format!("L{};", classfile::internal_name(other)),
     };
     Ok("[".repeat(dimensions) + &core)
 }
@@ -999,16 +993,16 @@ com.example.Plain -> com.example.Plain:
     fn a_class_reads_both_ways_and_an_unnamed_one_reads_as_itself() {
         let mapping = parsed();
 
-        assert_eq!(mapping.runtime_class("com/example/Alpha"), "a");
+        assert_eq!(mapping.runtime_class_or_self("com/example/Alpha"), "a");
         assert_eq!(mapping.mojang_class("a"), "com/example/Alpha");
-        assert_eq!(mapping.runtime_class("com/example/Beta"), "b$c");
+        assert_eq!(mapping.runtime_class_or_self("com/example/Beta"), "b$c");
         assert_eq!(mapping.mojang_class("b$c"), "com/example/Beta");
         assert_eq!(
-            mapping.runtime_class("com/example/Plain"),
+            mapping.runtime_class_or_self("com/example/Plain"),
             "com/example/Plain"
         );
         assert_eq!(
-            mapping.runtime_class("java/lang/String"),
+            mapping.runtime_class_or_self("java/lang/String"),
             "java/lang/String"
         );
         assert_eq!(mapping.mojang_class("java/lang/String"), "java/lang/String");
@@ -1020,19 +1014,19 @@ com.example.Plain -> com.example.Plain:
 
         assert_eq!(
             mapping
-                .runtime_member("com/example/Alpha", "allowed", "(C)Z")
+                .require_runtime_member("com/example/Alpha", "allowed", "(C)Z")
                 .expect("the mapping names it"),
             ("a".to_owned(), "(C)Z".to_owned())
         );
         assert_eq!(
             mapping
-                .runtime_member("com/example/Alpha", "PATTERN", "Ljava/util/regex/Pattern;")
+                .require_runtime_member("com/example/Alpha", "PATTERN", "Ljava/util/regex/Pattern;")
                 .expect("a field is a member too"),
             ("f".to_owned(), "Ljava/util/regex/Pattern;".to_owned())
         );
         assert_eq!(
             mapping
-                .runtime_member("com/example/Alpha", "grid", "[[I")
+                .require_runtime_member("com/example/Alpha", "grid", "[[I")
                 .expect("an array field is a member too"),
             ("g".to_owned(), "[[I".to_owned())
         );
@@ -1041,7 +1035,7 @@ com.example.Plain -> com.example.Plain:
     /// The direction a stub seed reads, on the pair a class file declares.
     ///
     /// `widen` is the case the forward direction cannot answer: a stub seed
-    /// carries no descriptor, so nothing could hand `runtime_member` the one it
+    /// carries no descriptor, so nothing could hand `require_runtime_member` the one it
     /// is keyed on, and the linked descriptor is in the obfuscated name space
     /// besides.
     #[test]
@@ -1112,7 +1106,7 @@ com.example.Plain -> com.example.Plain:
 
         assert_eq!(
             mapping
-                .runtime_member(
+                .require_runtime_member(
                     "com/example/Alpha",
                     "widen",
                     "(Lcom/example/Beta;[I)Lcom/example/Beta;"
@@ -1125,7 +1119,7 @@ com.example.Plain -> com.example.Plain:
     #[test]
     fn a_named_class_whose_member_is_unnamed_is_refused_rather_than_passed_through() {
         let error = parsed()
-            .runtime_member("com/example/Alpha", "allowed", "(I)Z")
+            .require_runtime_member("com/example/Alpha", "allowed", "(I)Z")
             .expect_err("the mapping declares (C)Z and nothing else");
 
         assert!(error.to_string().contains("com.example.Alpha"), "{error}");
@@ -1136,7 +1130,7 @@ com.example.Plain -> com.example.Plain:
     fn a_class_the_mapping_never_names_keeps_its_members() {
         assert_eq!(
             parsed()
-                .runtime_member("com/example/Absent", "read", "()V")
+                .require_runtime_member("com/example/Absent", "read", "()V")
                 .expect("nothing describes it, so nothing translates it"),
             ("read".to_owned(), "()V".to_owned())
         );
@@ -1216,13 +1210,13 @@ com.example.Plain -> com.example.Plain:
 
         assert_eq!(
             mapping
-                .runtime_member("com/example/A", "read", "(Ljava/lang/String;[I)[I")
+                .require_runtime_member("com/example/A", "read", "(Ljava/lang/String;[I)[I")
                 .expect("line metadata is not part of a descriptor"),
             ("a".to_owned(), "(Ljava/lang/String;[I)[I".to_owned())
         );
         assert_eq!(
             mapping
-                .runtime_member("com/example/A", "tick", "()V")
+                .require_runtime_member("com/example/A", "tick", "()V")
                 .expect("a suffix does not require a minified line prefix"),
             ("b".to_owned(), "()V".to_owned())
         );
@@ -1265,7 +1259,7 @@ com.example.Plain -> com.example.Plain:
 
         assert_eq!(
             mapping
-                .runtime_member("com/example/A", "run", "()V")
+                .require_runtime_member("com/example/A", "run", "()V")
                 .expect("only the outer method declares the linked pair"),
             ("a".to_owned(), "()V".to_owned())
         );
@@ -1273,7 +1267,7 @@ com.example.Plain -> com.example.Plain:
         for name in ["tick", "com.example.B.tick"] {
             assert!(
                 mapping
-                    .runtime_member("com/example/A", name, "()V")
+                    .require_runtime_member("com/example/A", name, "()V")
                     .is_err(),
                 "an inline frame must not invent a declaration for {name}"
             );
@@ -1285,7 +1279,7 @@ com.example.Plain -> com.example.Plain:
         let mapping = NameMap::parse("com.example.A -> x:\n    # a member never follows\n")
             .expect("an indented comment is not a member");
 
-        assert_eq!(mapping.runtime_class("com/example/A"), "x");
+        assert_eq!(mapping.runtime_class_or_self("com/example/A"), "x");
     }
 
     #[test]
@@ -1306,7 +1300,7 @@ com.example.Plain -> com.example.Plain:
         .expect("the identity needs no text");
 
         assert_eq!(
-            mapping.runtime_class("com/example/Alpha"),
+            mapping.runtime_class_or_self("com/example/Alpha"),
             "com/example/Alpha"
         );
         assert_eq!(
@@ -1319,7 +1313,7 @@ com.example.Plain -> com.example.Plain:
         );
         assert_eq!(
             mapping
-                .runtime_member("com/example/Alpha", "allowed", "(C)Z")
+                .require_runtime_member("com/example/Alpha", "allowed", "(C)Z")
                 .expect("nothing to translate"),
             ("allowed".to_owned(), "(C)Z".to_owned())
         );
@@ -1334,11 +1328,11 @@ com.example.Plain -> com.example.Plain:
             let mapping = Mapping::read(MappingSource::OfficialProguardMappings, text)
                 .expect("a named class with no declared members is valid");
             mapping
-                .runtime_member("com/example/Alpha", "tick", "()V")
+                .require_runtime_member("com/example/Alpha", "tick", "()V")
                 .expect_err("a named class cannot pass an undeclared member through");
             assert_eq!(
                 mapping
-                    .runtime_member("com/example/Unmapped", "tick", "()V")
+                    .require_runtime_member("com/example/Unmapped", "tick", "()V")
                     .expect("unnamed library classes retain their names"),
                 ("tick".to_owned(), "()V".to_owned())
             );
@@ -1762,7 +1756,7 @@ com.example.Plain -> com.example.Plain:
         .expect_err("a constructor omitted from the class file is not invented");
         assert!(
             mapping
-                .runtime_member("com/example/Alpha", "unknown", "()V")
+                .require_runtime_member("com/example/Alpha", "unknown", "()V")
                 .is_err()
         );
     }
@@ -1989,11 +1983,11 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
     #[test]
     fn tiny_descriptors_and_overloads_resolve_in_both_directions() {
         let mapping = Mapping::tiny(NORMALIZED).expect("normalized mappings");
-        assert_eq!(mapping.runtime_class("reviewed/Alpha"), "a");
+        assert_eq!(mapping.runtime_class_or_self("reviewed/Alpha"), "a");
         assert_eq!(mapping.mojang_class("b"), "reviewed/Beta");
         assert_eq!(
             mapping
-                .runtime_member("reviewed/Alpha", "read", "(I)Lreviewed/Beta;")
+                .require_runtime_member("reviewed/Alpha", "read", "(I)Lreviewed/Beta;")
                 .expect("integer overload"),
             ("n".to_owned(), "(I)Lb;".to_owned())
         );
@@ -2003,7 +1997,7 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
         );
         assert_eq!(
             mapping
-                .linked_member("reviewed/Alpha", "value", "[Lreviewed/Beta;")
+                .runtime_member_or_self("reviewed/Alpha", "value", "[Lreviewed/Beta;")
                 .expect("the reviewed field must have an obfuscated counterpart"),
             ("f".to_owned(), "[Lb;".to_owned())
         );
@@ -2071,11 +2065,11 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
     #[test]
     fn tiny_does_not_treat_an_empty_mapped_class_as_an_unmapped_library() {
         let mapping = Mapping::tiny("C\tA\ta\n").expect("a class without members");
-        assert!(mapping.runtime_member("A", "tick", "()V").is_err());
-        assert!(mapping.linked_class("absent").is_err());
+        assert!(mapping.require_runtime_member("A", "tick", "()V").is_err());
+        assert!(mapping.require_runtime_class("absent").is_err());
         assert_eq!(
             mapping
-                .runtime_member("library/Type", "tick", "()V")
+                .require_runtime_member("library/Type", "tick", "()V")
                 .expect("unmapped library member"),
             ("tick".to_owned(), "()V".to_owned())
         );
@@ -2136,5 +2130,31 @@ mod descriptor_tests {
                 "{descriptor}"
             );
         }
+    }
+
+    #[test]
+    fn method_helpers_verify_parameter_and_return_class_names() {
+        for descriptor in [
+            "(Lgame/bad.name;)V",
+            "([Lgame//Level;)V",
+            "()Lgame/bad.name;",
+            "()[Lgame/;",
+            "(I)Vx",
+        ] {
+            assert!(
+                crate::descriptor_parameters(descriptor).is_err(),
+                "{descriptor}"
+            );
+            assert!(
+                crate::descriptor_handle_count(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
+        let descriptor = "(I[BLjava/lang/String;[[Lgame/Level;)Lgame/Level;";
+        assert_eq!(
+            crate::descriptor_parameters(descriptor).ok(),
+            Some(vec!["I", "[B", "Ljava/lang/String;", "[[Lgame/Level;"])
+        );
+        assert_eq!(crate::descriptor_handle_count(descriptor).ok(), Some(1));
     }
 }

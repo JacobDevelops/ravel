@@ -4,8 +4,11 @@
 //!
 //! Installed mods may reach only the installation-pinned dependency closure of
 //! `ravel-sdk`, `serde`, `serde_json`, and `num-traits`; direct internal path
-//! dependencies remain restricted to the SDK and other planned mods. Generated
-//! hosts may use other installation-pinned dependencies. Player workspaces keep
+//! dependencies remain restricted to the SDK and other planned mods. Planned
+//! peers inherit workspace dependencies mapped to their actual installed
+//! directories, independent of package names. Names reserved by generated
+//! dependencies and the host cannot name mods. Generated hosts may use other
+//! installation-pinned dependencies. Player workspaces keep
 //! the installation's Rust channel with the minimal profile, not its developer
 //! components or cross-compilation targets.
 
@@ -85,7 +88,8 @@ pub struct PlannedMember {
 /// Plans a host using installed package metadata and the caller's Ravel installation root.
 ///
 /// # Errors
-/// Returns a refusal for missing or invalid installation inputs, Cargo manifests, or duplicate crate names.
+/// Returns a refusal for missing or invalid installation inputs, Cargo manifests,
+/// or duplicate or reserved crate names.
 pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, BuildRefused> {
     let mut members = Vec::with_capacity(discovered.packages().len());
     for package in discovered.packages() {
@@ -179,15 +183,34 @@ fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {
                 directory: directory.to_owned(),
                 detail: error.to_string(),
             })?;
-    parsed
+    let name = parsed
         .get("package")
         .and_then(|package| package.get("name"))
         .and_then(toml::Value::as_str)
-        .map(str::to_owned)
         .ok_or_else(|| BuildRefused::CargoManifest {
             directory: directory.to_owned(),
             detail: "no `package.name` is declared".to_owned(),
-        })
+        })?;
+    // Match the identifiers Cargo exposes, including mixed hyphen/underscore spellings.
+    let ident = generate::crate_ident(name);
+    let host_dependency = generate::HOST_DEPENDENCIES.iter().any(|reserved| {
+        reserved
+            .bytes()
+            .map(|byte| if byte == b'-' { b'_' } else { byte })
+            .eq(ident.bytes())
+    });
+    if AUTHOR_DEPENDENCIES
+        .iter()
+        .any(|reserved| generate::crate_ident(reserved) == ident)
+        || host_dependency
+        || matches!(ident.as_str(), "ravel_sdk" | "jni" | "ravel_generated_host")
+    {
+        return Err(BuildRefused::CargoManifest {
+            directory: directory.to_owned(),
+            detail: format!("package.name `{name}` is reserved by the generated workspace"),
+        });
+    }
+    Ok(name.to_owned())
 }
 
 fn player_toolchain(document: &str) -> Result<String, BuildRefused> {

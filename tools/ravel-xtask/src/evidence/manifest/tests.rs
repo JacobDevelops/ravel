@@ -350,7 +350,7 @@ fn finding_anchors_report_a_source_read_failure_once_without_skipping_readable_s
         "risks": [finding],
     });
     let mut violations = Vec::new();
-    let tracked = crate::tracked::tracked_paths(&root)
+    let tracked = crate::vcs::tracked_files(&root, None)
         .expect("tracked paths should load")
         .into_iter()
         .collect();

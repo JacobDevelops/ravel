@@ -9,15 +9,7 @@ must come from the integration owner's results for the current tree, not old cou
 
 ## Runtime ownership context
 
-- Bootstrap owns `Composition` and its installed-package versions. Runtime construction
-  requires `LaunchContext`; installation consumes the composition and profiler and
-  returns `InstallError` on refusal.
-- Loader owns saved-data admission and callback attribution and outward-request dispatch.
-  Bootstrap owns game-pack writing and replacement paths (`replaced_paths`), and consumes
-  loader admission decisions. Interception attribution remains in bootstrap because loader
-  interception has no failure environment. `Round::refused_by` supplies save-veto ownership.
-- Failed owners' saved payloads remain opaque. Installed package metadata does not
-  substitute for the mod's actual readable saved-data declarations.
+See [dependency rules](../architecture/dependency-rules.md) for runtime ownership.
 
 ## Durable decisions and evidence boundaries
 
@@ -60,14 +52,10 @@ must come from the integration owner's results for the current tree, not old cou
 - Refresh the reviewed hook, stub, and reflection pins together with generated locks
   before generating Java bindings. Feather omits invariant initializer mappings;
   their resolution still requires exact translated descriptors and concrete bytecode.
-- Integration checks now pass for the legacy agent/screen build, official linkage
-  scan (3,310 classes and 726 references), platform math/shutdown/loader checks,
-  generator/runtime/package suites, and all-targets clippy. The full verification
-  gate includes all three live versions and enforces the workspace line-coverage floor.
-  Generic transformation covers all 29 reviewed hooks, typed
+- Generic transformation covers all 29 reviewed hooks, typed
   execution and descriptor refusals, palette call provenance, hierarchy,
   initialization, side selection, loader identity, and JNI semantic boundaries.
-- All thirteen offline harness sections pass: transformation, refusal, hierarchy,
+- Offline harness coverage includes transformation, refusal, hierarchy,
   initialization, side, load, cluster, content, members, outward, settings,
   screens, and persistence. Client-backed fixtures use the production loader's
   LWJGL2 reference rewriting with default JDK module roots resolved. Content
@@ -80,9 +68,6 @@ must come from the integration owner's results for the current tree, not old cou
   a client-directory fixture marker; native lock and invalid-value refusals pass.
 - Reflection shape validation distinguishes field and method descriptors.
   Runtime dispatch uses generated adapter capabilities rather than version names.
-- The port is split into four compiling changes: generated hook contracts, native
-  runtime and test mods, Java bridges, and acceptance harness/tasks/docs. Each
-  passes workspace all-targets/all-features clippy with warnings denied alone.
 - Official live acceptance passes: `cargo make ravel:legacy-agent-live` exited 0 with
   an integrated session and reopen, a connected-dedicated session and a dedicated
   restart. All 29 hooks appeared in fresh logs, and persisted native visits advanced

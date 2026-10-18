@@ -534,7 +534,7 @@ mod tests {
             let agent = runtime_sources(root);
             for reflected in &pinned.surface.classes {
                 if reflected.members.is_empty() {
-                    let named = format!("L{};", reflected.class.replace('.', "/"));
+                    let named = format!("L{};", crate::classfile::internal_name(&reflected.class));
                     assert!(
                         descriptors
                             .iter()
@@ -563,7 +563,7 @@ mod tests {
     }
 
     fn named_by_another_stub(lock: &str, class: &str) -> bool {
-        let internal = class.replace('.', "/");
+        let internal = crate::classfile::internal_name(class);
         lock.lines().any(|line| {
             (line.starts_with("extends")
                 || line.starts_with("implements")

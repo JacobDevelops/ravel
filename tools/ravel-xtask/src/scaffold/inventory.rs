@@ -4,7 +4,7 @@ use std::path::Path;
 use std::{collections::BTreeSet, fs};
 
 use crate::hooks::{HookCounts, HookInventory, hook_counts};
-use crate::text::{Side, compare_stated, read_text, stated_counts};
+use crate::text::{NumberAt, read_text, stated_counts, verify_stated_counts};
 use crate::tracked::collect_files;
 use crate::version_boundary::VERSION_DATA;
 
@@ -84,23 +84,33 @@ fn documented_versions(document: &str) -> BTreeSet<String> {
 fn hook_document_violations(document: &str, inventory: &str, counts: &HookCounts) -> Vec<String> {
     let mut violations = Vec::new();
     for (phrase, side, expected, subject) in [
-        (" entries to ", Side::After, counts.entries, "hook entries"),
+        (
+            " entries to ",
+            NumberAt::AfterPhrase,
+            counts.entries,
+            "hook entries",
+        ),
         (
             " methods and ",
-            Side::Before,
+            NumberAt::BeforePhrase,
             counts.methods,
             "method entries",
         ),
-        (" fields", Side::Before, counts.fields, "field entries"),
+        (
+            " fields",
+            NumberAt::BeforePhrase,
+            counts.fields,
+            "field entries",
+        ),
         (
             " handle parameters",
-            Side::Before,
+            NumberAt::BeforePhrase,
             counts.handles,
             "handle parameters",
         ),
     ] {
         let stated = stated_counts(document, phrase, side);
-        compare_stated(
+        verify_stated_counts(
             &stated,
             expected,
             || {
@@ -143,7 +153,7 @@ pub(crate) fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String
     };
     let mut guide = String::new();
     let mut documents = Vec::new();
-    if let Err(error) = collect_files(&root.join(GUIDE_DIRECTORY), &mut documents) {
+    if let Err(error) = collect_files(root, &root.join(GUIDE_DIRECTORY), &mut documents) {
         violations.push(error);
     }
     documents.sort();

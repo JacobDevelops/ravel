@@ -106,9 +106,7 @@ pub(crate) fn milestone_manifests(root: &Path) -> Result<Vec<(PathBuf, Milestone
         let relative = PathBuf::from("evidence")
             .join(name.as_ref())
             .join("manifest.json");
-        if !root.join(&relative).is_file() {
-            return Err(format!("missing required file: {}", relative.display()));
-        }
+        crate::text::require_file(root, &relative.to_string_lossy())?;
         manifests.push((relative, milestone));
     }
     if manifests.is_empty() {

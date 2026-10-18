@@ -98,7 +98,7 @@ fn a_balanced_counterpart_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root.join("evidence/m6/counterpart-summary.json"))
+        &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
             .expect("summary should parse"),
         "evidence/m6/counterpart-summary.json",
         M6_ARITHMETIC,
@@ -335,7 +335,7 @@ fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
         let mut violations = Vec::new();
 
         verify_arithmetic(
-            &read_json(&root.join("evidence/m6/counterpart-summary.json"))
+            &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
                 .expect("summary should parse"),
             "evidence/m6/counterpart-summary.json",
             M6_ARITHMETIC,
@@ -371,7 +371,7 @@ fn a_complete_m6_record_set_leaves_m6_closure_with_nothing_to_report() {
         &mut violations,
     );
     verify_m6_manifest(
-        &read_json(&manifest).expect("manifest should parse"),
+        &read_json(&root, &manifest).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -466,7 +466,7 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         &mut violations,
     );
     verify_m6_manifest(
-        &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+        &read_json(&root, &root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -496,7 +496,7 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         &mut violations,
     );
     verify_m6_manifest(
-        &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+        &read_json(&root, &root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
         &records,
         &mut violations,
     );
@@ -521,12 +521,14 @@ fn every_figure_m6_carries_is_recomputed_from_the_record() {
             &balanced_m6_manifest(),
         );
         let manifest = root.join("evidence/m6/manifest.json");
-        misstate_figure(&manifest, claimed_at);
+        misstate_figure(&root, &manifest, claimed_at);
         let mut violations = Vec::new();
 
         verify_milestone_figures(
-            &read_json(&root.join(M6_FIGURES.record)).expect("summary should parse"),
-            &read_json(&manifest).expect("manifest should parse"),
+            crate::evidence::rules::Milestone::M6,
+            &read_json(&root, &root.join("evidence/m6").join(M6_FIGURES.record))
+                .expect("summary should parse"),
+            &read_json(&root, &manifest).expect("manifest should parse"),
             &M6_FIGURES,
             &mut violations,
         );
@@ -558,7 +560,8 @@ fn every_m6_closure_clause_check(manifest_cases: &[ClosureCase<'_>]) {
             &mut violations,
         );
         verify_m6_manifest(
-            &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+            &read_json(&root, &root.join("evidence/m6/manifest.json"))
+                .expect("manifest should parse"),
             &records,
             &mut violations,
         );

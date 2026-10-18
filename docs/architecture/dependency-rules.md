@@ -21,13 +21,6 @@ stable contracts toward concrete host internals.
 - `ravel-core::paths` owns the instance-private layout: the `ravel` root,
   installed packages, pack configuration, generated host, and seeded-pack record.
   Discovery, configuration, generation, and startup import those constants.
-- Typed configuration reads, edits, and declaration lookup accept key names directly
-  without reparsing static names; unknown names report their original text.
-  Render contributions take `RenderStage`; text is admitted with `RenderStage::published`.
-  Ordering refusals name only actual cycle members, never innocent declarations
-  blocked downstream of a cycle.
-  Pack file supply refuses duplicate paths immediately and preserves the first
-  bytes. Owned shaping-record serialization is named `to_bytes`.
 - The SDK is a safe author-facing facade. It must not expose bootstrap details,
   generated JVM types, or Minecraft-version internals. Which Ravel crates it
   depends on is not listed here: `tests/conformance/tests/integration/sdk_boundary.rs` pins
@@ -42,6 +35,8 @@ stable contracts toward concrete host internals.
   they generate — is that crate's model, and `ravel-pack` reads the same
   declarations to check a pack's registry closure and to merge its members' tags;
   a model living in the facade would make a feature crate depend on the facade.
+  Generated resource and data directory names are Ravel's canonical layout;
+  version adapters translate that layout to the game's version-local spelling.
 - `ravel-minecraft-generate` is used only by build tooling and depends only on
   `ravel-core`, `serde`, `serde_json`, `sha2`, `toml`, `noak`, `zip` and `proguard`.
   `noak` retains raw JVM descriptors and decodes modified UTF-8; `zip` provides
@@ -55,15 +50,6 @@ stable contracts toward concrete host internals.
   maintaining a second schema. Its hooks module derives counts from those facts.
   Java-shape checks read version listing and eligibility from version_boundary;
   that dependency runs in one direction only.
-  Shared text loading, diagnostic paths and prose counts live in xtask's text
-  module, independent of JSON schema checks and milestone accounting rules.
-  Java source checks consume validated agent-manifest rows. Version-directory
-  checks distinguish prose presence, typed adapter admission and TOML pins.
-  Evidence checks share typed milestone closure tables and carried-record
-  lookups. Finding-anchor scans load each tracked Rust source once and report
-  read failures rather than treating unreadable sources as absent symbols.
-  Tracked inventories and historical input digests share one VCS boundary,
-  preferring jj and falling back to Git in plain checkouts, including CI.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's
@@ -146,6 +132,12 @@ stable contracts toward concrete host internals.
   supplied files, so failed optional interceptors contribute no pack bytes.
   Runtime saves use that owned cache instead of
   recollecting declarations or re-admitting conflicting claims.
+  Runtime construction requires a `LaunchContext`; installation returns an
+  `InstallError` rather than losing its admission failure. Loader owns saved-data
+  admission and outward-request dispatch, while bootstrap attributes interceptions
+  to their owners. Save veto ownership comes from `Round::refused_by`. Failed
+  owners' saved payloads remain opaque, and installed package metadata never
+  substitutes for a mod's saved-data declarations.
   Callback dispatch and world persistence borrow the environment owned by the
   runtime's pre-world report; hooks do not reconstruct version or platform strings.
   Bootstrap's pack module owns resource, staged-data, and world-data destinations,
@@ -184,9 +176,10 @@ stable contracts toward concrete host internals.
 
 - `ravel-build` generates a host and links none of it. It depends on
   `ravel-loader`, `ravel-package` and `ravel-core` to read what an instance holds,
-  and on nothing below them; the generated workspace hands an installed mod
-  `ravel-sdk` and nothing else, so a player's mod reaches no bootstrap, JVM or
-  version internal either.
+  and on nothing below them. The generated workspace lends installed mods
+  `ravel-sdk`, the supported serialization dependencies, and the instance's planned
+  peer crates. None of those author dependencies grants access to bootstrap, JVM,
+  or version internals.
 
 The [mechanisms overview](overview.md#mechanisms) describes the current boundaries:
 a mod is distributed as source the player's machine compiles, and every screen

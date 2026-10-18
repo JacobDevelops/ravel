@@ -98,15 +98,12 @@ pub(crate) fn verify_version_directories(
     let mut inventories = Vec::with_capacity(versions.len());
     for version in &versions {
         let prose = format!("{VERSION_DATA}/{version}/{VERSION_PROSE_FILE}");
-        if !root.join(&prose).is_file() {
-            violations.push(format!("missing required file: {prose}"));
+        if let Err(error) = crate::text::require_file(root, &prose) {
+            violations.push(error);
         }
         let adapter = format!("{VERSION_DATA}/{version}/adapter.toml");
-        let facts = if root.join(&adapter).is_file() {
-            adapter_facts(root, version).map_err(|error| error.to_string())
-        } else {
-            Err(format!("missing required file: {adapter}"))
-        };
+        let facts = crate::text::require_file(root, &adapter)
+            .and_then(|_| adapter_facts(root, version).map_err(|error| error.to_string()));
         for file in TOML_VERSION_FILES {
             verify_version_toml(root, version, file, violations);
         }
@@ -144,11 +141,14 @@ fn verified_hook_inventory(
 
 fn verify_version_toml(root: &Path, version: &str, file: &str, violations: &mut Vec<String>) {
     let relative = format!("{VERSION_DATA}/{version}/{file}");
-    if !root.join(&relative).is_file() {
-        violations.push(format!("missing required file: {relative}"));
-        return;
-    }
-    let text = match read_text(root, Path::new(&relative)) {
+    let path = match crate::text::require_file(root, &relative) {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let text = match read_text(root, &path) {
         Ok(text) => text,
         Err(error) => {
             violations.push(error);
@@ -225,17 +225,49 @@ pub(crate) fn verify_version_boundary(
     let Some((paths, versions)) = swept_versions(root, violations) else {
         return;
     };
+    let before_metadata = violations.len();
     let classes = version_class_names(root, &paths, inventories, violations);
+    let version_data = root.join(VERSION_DATA);
+    // Failed canonical admissions are absent from `inventories`; their missing classes
+    // must not turn an unmatched excuse into evidence that the excuse is stale.
+    let metadata_complete = violations.len() == before_metadata
+        && paths.iter().all(|directory| {
+            !directory.starts_with(&version_data)
+                || directory.file_name().is_some_and(|version| {
+                    inventories
+                        .iter()
+                        .any(|inventory| version == inventory.version.as_str())
+                })
+        });
+    let mut files = Vec::new();
+    let walk_complete = collect_files(root, &root.join("crates"), &mut files)
+        .map_err(|error| violations.push(error))
+        .is_ok();
+    verify_boundary_files(
+        root,
+        &files,
+        &versions,
+        &classes,
+        metadata_complete && walk_complete,
+        violations,
+    );
+}
+
+fn verify_boundary_files(
+    root: &Path,
+    files: &[PathBuf],
+    versions: &BTreeSet<String>,
+    classes: &[String],
+    scan_complete: bool,
+    violations: &mut Vec<String>,
+) {
     let excuses = VERSION_CLASS_EXCUSES
         .iter()
         .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
         .collect::<Vec<_>>();
     let mut excuse_matched = vec![false; excuses.len()];
 
-    let mut files = Vec::new();
-    if let Err(error) = collect_files(&root.join("crates"), &mut files) {
-        violations.push(error);
-    }
+    let mut unreadable = BTreeSet::new();
     for path in files {
         if !matches!(
             path.extension().and_then(|extension| extension.to_str()),
@@ -243,51 +275,75 @@ pub(crate) fn verify_version_boundary(
         ) {
             continue;
         }
-        let source = match read_text(root, &path) {
-            Ok(source) => source,
-            Err(error) => {
-                violations.push(error);
-                continue;
-            }
-        };
-        let relative = relative_label(root, &path);
-
-        if versions.iter().any(|version| source.contains(version)) {
-            violations.push(format!(
-                "hardcoded Minecraft version outside version data ({SWEPT_SCOPE}): {relative}"
-            ));
-        }
-
-        for class in &classes {
-            let dotted = class.replace('/', ".");
-            if !source.contains(class.as_str()) && !source.contains(&dotted) {
-                continue;
-            }
-            if let Some(index) = excuses
-                .iter()
-                .position(|(file, excused)| *file == relative && *excused == class.as_str())
-            {
-                excuse_matched[index] = true;
-                continue;
-            }
-            violations.push(format!(
-                "game class name from version data outside version data ({SWEPT_SCOPE}): \
-                 {relative} names {class}"
-            ));
+        if !verify_boundary_source(
+            root,
+            path,
+            versions,
+            classes,
+            &excuses,
+            &mut excuse_matched,
+            violations,
+        ) {
+            unreadable.insert(relative_label(root, path));
         }
     }
 
-    verify_class_excuses(&excuses, &excuse_matched, violations);
+    if scan_complete {
+        verify_class_excuses(&excuses, &excuse_matched, &unreadable, violations);
+    }
+}
+
+fn verify_boundary_source(
+    root: &Path,
+    path: &Path,
+    versions: &BTreeSet<String>,
+    classes: &[String],
+    excuses: &[(&str, &str)],
+    excuse_matched: &mut [bool],
+    violations: &mut Vec<String>,
+) -> bool {
+    let source = match read_text(root, path) {
+        Ok(source) => source,
+        Err(error) => {
+            violations.push(error);
+            return false;
+        }
+    };
+    let relative = relative_label(root, path);
+    if versions.iter().any(|version| source.contains(version)) {
+        violations.push(format!(
+            "hardcoded Minecraft version outside version data ({SWEPT_SCOPE}): {relative}"
+        ));
+    }
+    for class in classes {
+        let dotted = class.replace('/', ".");
+        if !source.contains(class.as_str()) && !source.contains(&dotted) {
+            continue;
+        }
+        if let Some(index) = excuses
+            .iter()
+            .position(|(file, excused)| *file == relative && *excused == class.as_str())
+        {
+            excuse_matched[index] = true;
+            continue;
+        }
+        violations.push(format!(
+            "game class name from version data outside version data ({SWEPT_SCOPE}): \
+             {relative} names {class}"
+        ));
+    }
+    true
 }
 
 fn verify_class_excuses(
     excuses: &[(&str, &str)],
     excuse_matched: &[bool],
+    unreadable: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
     for (index, matched) in excuse_matched.iter().enumerate() {
-        if !matched {
-            let (file, class) = excuses[index];
+        let (file, class) = excuses[index];
+        if !matched && !unreadable.contains(file) {
             violations.push(format!(
                 "stale version-class excuse: {file} no longer names {class}, \
                  so the excuse is unearned and has to go"

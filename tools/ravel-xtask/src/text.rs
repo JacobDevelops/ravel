@@ -1,7 +1,17 @@
 //! Shared text loading, diagnostic paths, and prose counts.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Resolves a required repository file, keeping missing-file diagnostics repository-relative.
+pub(crate) fn require_file(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let path = root.join(relative);
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!("missing required file: {relative}"))
+    }
+}
 
 pub(crate) fn read_text(root: &Path, path: &Path) -> Result<String, String> {
     let rooted;
@@ -17,27 +27,24 @@ pub(crate) fn read_text(root: &Path, path: &Path) -> Result<String, String> {
 
 pub(crate) fn relative_label(root: &Path, path: &Path) -> String {
     let label = path.strip_prefix(root).map_or_else(
-        |_| redacted_path(path),
+        |_| redacted_path(root, path),
         |relative| relative.display().to_string(),
     );
     label.replace('\\', "/")
 }
-pub(crate) fn redacted_path(path: &Path) -> String {
+pub(crate) fn redacted_path(root: &Path, path: &Path) -> String {
     if path.is_relative() {
         return path.display().to_string();
     }
-    std::env::current_dir()
-        .ok()
-        .and_then(|directory| path.strip_prefix(directory).ok().map(Path::to_path_buf))
-        .map_or_else(
-            || {
-                path.file_name().map_or_else(
-                    || "an unnamed path".to_owned(),
-                    |name| name.to_string_lossy().into_owned(),
-                )
-            },
-            |relative| relative.display().to_string(),
-        )
+    path.strip_prefix(root).map_or_else(
+        |_| {
+            path.file_name().map_or_else(
+                || "an unnamed path".to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            )
+        },
+        |relative| relative.display().to_string(),
+    )
 }
 const CARDINALS: [&str; 21] = [
     "zero",
@@ -149,7 +156,7 @@ fn window_is_noun(noun: &[&str], window: &[&str]) -> bool {
     })
 }
 
-pub(crate) fn compare_stated(
+pub(crate) fn verify_stated_counts(
     stated: &[usize],
     expected: usize,
     absent: impl FnOnce() -> String,
@@ -167,25 +174,25 @@ pub(crate) fn compare_stated(
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum Side {
-    Before,
-    After,
+pub(crate) enum NumberAt {
+    BeforePhrase,
+    AfterPhrase,
 }
 
-pub(crate) fn stated_counts(document: &str, phrase: &str, side: Side) -> Vec<usize> {
+pub(crate) fn stated_counts(document: &str, phrase: &str, side: NumberAt) -> Vec<usize> {
     let mut counts = Vec::new();
     let mut offset = 0;
     while let Some(found) = document[offset..].find(phrase) {
         let at = offset + found;
         offset = at + phrase.len();
         let digits = match side {
-            Side::Before => {
+            NumberAt::BeforePhrase => {
                 let head = document[..at].trim_end();
                 let start =
                     head.len() - head.chars().rev().take_while(char::is_ascii_digit).count();
                 &head[start..]
             }
-            Side::After => {
+            NumberAt::AfterPhrase => {
                 let tail = document[offset..].trim_start();
                 let end = tail.chars().take_while(char::is_ascii_digit).count();
                 &tail[..end]

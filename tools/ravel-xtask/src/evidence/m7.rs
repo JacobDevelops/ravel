@@ -16,15 +16,22 @@ use crate::evidence::closure::{
 };
 use crate::evidence::rules::{require, require_fields, require_rows, unique_by};
 
-fn legacy_fixture_total() -> Option<f64> {
-    static TOTAL: std::sync::LazyLock<Option<f64>> = std::sync::LazyLock::new(|| {
-        let descriptor: Value = serde_json::from_str(include_str!(
+fn legacy_fixture_total() -> Result<f64, String> {
+    static TOTAL: std::sync::LazyLock<Result<f64, String>> = std::sync::LazyLock::new(|| {
+        parse_legacy_fixture_total(include_str!(
             "../../../../tests/fixtures/descriptors/atm10-tts-2.0.2.json"
         ))
-        .ok()?;
-        number(&descriptor, "/manifest/expectedReferenceCount")
     });
-    *TOTAL
+    TOTAL.clone()
+}
+
+fn parse_legacy_fixture_total(source: &str) -> Result<f64, String> {
+    let descriptor: Value = serde_json::from_str(source)
+        .map_err(|error| format!("cannot parse pinned historical fixture descriptor: {error}"))?;
+    number(&descriptor, "/manifest/expectedReferenceCount").ok_or_else(|| {
+        "pinned historical fixture descriptor is missing numeric /manifest/expectedReferenceCount"
+            .to_owned()
+    })
 }
 
 fn library_protocol(v: &Value) -> Result<(), String> {
@@ -178,13 +185,13 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
             if v["protocol"] == "m7-library-v2" {
                 true
             } else {
-                number(v, "/entries/total")
-                    .zip(legacy_fixture_total())
-                    .is_some_and(|(total, expected)| total.total_cmp(&expected).is_eq())
-                    || (v["correction"].is_object()
-                        && number(v, "/correction/total")
-                            .zip(number(v, "/entries/total"))
-                            .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
+                legacy_fixture_total().map_or(true, |expected| {
+                    number(v, "/entries/total")
+                        .is_some_and(|total| total.total_cmp(&expected).is_eq())
+                }) || (v["correction"].is_object()
+                    && number(v, "/correction/total")
+                        .zip(number(v, "/entries/total"))
+                        .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
             }
         },
         "M7-W5 audits the pinned historical reference total or an explicit correction under v1, \
@@ -394,7 +401,10 @@ pub(crate) fn verify_m7_manifest(
 fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
     if record["protocol"] == "m7-library-v2" {
         if let Err(requirement) = library_protocol(record) {
-            violations.push(format!("{}: failed {requirement}", M7_FIGURES.record));
+            violations.push(format!(
+                "evidence/m7/{}: failed {requirement}",
+                M7_FIGURES.record
+            ));
             return;
         }
         verify_m7_workload_total(root, record, violations);
@@ -409,7 +419,7 @@ fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mu
     if !inventory.is_file() {
         return;
     }
-    let inventory = match read_json(&inventory) {
+    let inventory = match read_json(root, &inventory) {
         Ok(inventory) => inventory,
         Err(error) => {
             violations.push(error);
@@ -457,7 +467,7 @@ fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<St
         return;
     };
     let path = root.join(format!("registry/inventory/{id}/graph.json"));
-    let inventory = match read_json(&path) {
+    let inventory = match read_json(root, &path) {
         Ok(inventory) => inventory,
         Err(error) => {
             violations.push(error);
@@ -471,9 +481,8 @@ fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<St
     let digest = inventory
         .pointer("/fixture/artifactSet/sha256")
         .and_then(Value::as_str);
-    let valid_digest = digest.is_some_and(|digest| {
-        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-    });
+    let valid_digest = digest
+        .is_some_and(|digest| ravel_package::Sha256Digest::try_from(digest.to_owned()).is_ok());
     for (valid, requirement) in [
         (inventory["fixture"]["id"] == binding["id"], "fixture.id"),
         (
@@ -502,8 +511,7 @@ fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<St
 }
 
 const M7_FIGURES: CarriedFigures = CarriedFigures {
-    manifest: "evidence/m7/manifest.json",
-    record: "evidence/m7/library-summary.json",
+    record: "library-summary.json",
     subject: "library",
     figures: M7_CARRIED_FIGURES,
     arithmetic: M7_ARITHMETIC,
@@ -516,8 +524,13 @@ pub(crate) fn verify_m7_integrity(
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M7, M7_RECORDS, violations);
     if let Some(record) = records.carried(&M7_FIGURES) {
+        if record["protocol"] != "m7-library-v2"
+            && let Err(error) = legacy_fixture_total()
+        {
+            violations.push(error);
+        }
         verify_m7_verified_fixture_total(root, record, violations);
-        verify_milestone_figures(record, manifest, &M7_FIGURES, violations);
+        verify_milestone_figures(Milestone::M7, record, manifest, &M7_FIGURES, violations);
     }
     records
 }

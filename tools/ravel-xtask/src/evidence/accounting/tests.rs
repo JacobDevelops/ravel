@@ -89,7 +89,7 @@ fn the_void_budget_limits_are_the_ones_the_roadmap_declares() {
 
     verify_void_limits(
         &root,
-        &crate::json::read_json(&root.join("evidence/m2/loader-overhead.json"))
+        &crate::json::read_json(&root, &root.join("evidence/m2/loader-overhead.json"))
             .expect("budget should parse"),
         &mut violations,
     );

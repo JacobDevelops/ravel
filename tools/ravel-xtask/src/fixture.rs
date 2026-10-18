@@ -20,7 +20,7 @@ mod error;
 pub use error::FixtureError;
 mod policy;
 
-use policy::{is_safe_component, validate_descriptor};
+use policy::{is_safe_component, verify_descriptor};
 
 /// Public metadata needed to reconstruct an ignored local fixture.
 #[derive(Debug, Deserialize, Serialize)]
@@ -115,7 +115,7 @@ pub fn load_fixture_descriptor(path: &Path) -> Result<FixtureDescriptor, Fixture
             path.display()
         ))
     })?;
-    validate_descriptor(&descriptor)?;
+    verify_descriptor(&descriptor)?;
     Ok(descriptor)
 }
 
@@ -501,7 +501,7 @@ mod tests {
 
     use super::{
         CurseForgeManifest, CurseForgeReference, FixtureDescriptor, FixtureError,
-        MinecraftManifest, ModLoader, is_safe_component, remove_partial, validate_descriptor,
+        MinecraftManifest, ModLoader, is_safe_component, remove_partial, verify_descriptor,
         verify_manifest,
     };
 
@@ -538,6 +538,17 @@ mod tests {
         let mut descriptor = valid_descriptor();
         descriptor.source.sha256 = "not-a-digest".to_owned();
         assert_invalid(&descriptor, "source.sha256");
+    }
+
+    #[test]
+    fn descriptor_hashes_share_the_lowercase_package_digest_policy() {
+        let mut descriptor = valid_descriptor();
+        verify_descriptor(&descriptor).expect("lowercase digests should pass");
+        descriptor.source.sha256.make_ascii_uppercase();
+        assert_invalid(&descriptor, "source.sha256");
+        descriptor = valid_descriptor();
+        descriptor.manifest.sha256.make_ascii_uppercase();
+        assert_invalid(&descriptor, "manifest.sha256");
     }
 
     #[test]
@@ -595,7 +606,7 @@ mod tests {
     }
 
     fn assert_invalid(descriptor: &FixtureDescriptor, expected_message: &str) {
-        let error = validate_descriptor(descriptor)
+        let error = verify_descriptor(descriptor)
             .expect_err("the altered descriptor should violate fixture policy");
         assert!(error.to_string().contains(expected_message));
     }

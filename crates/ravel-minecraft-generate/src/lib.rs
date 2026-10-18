@@ -245,10 +245,7 @@ struct Rendered {
 /// Returns an error for missing or drifted inputs, an absent jar, or unresolved members.
 pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), GenerateError> {
     let pinned = inputs::pinned(root, selected)?;
-    for input in std::iter::once(&pinned.adapter.inputs.client_jar)
-        .chain(pinned.adapter.inputs.data_fixer_jar.as_ref())
-        .chain(pinned.adapter.inputs.server_jar.as_ref())
-    {
+    for input in pinned.adapter.inputs.jars() {
         let path = root.join(&input.path);
         if !path.is_file() {
             return Err(GenerateError::Input(format!(
@@ -281,9 +278,12 @@ pub struct RustGenerated {
 }
 
 /// Returns exact parameter descriptors after validating the complete method signature.
+///
+/// # Errors
+///
+/// Returns an error for malformed signatures or invalid internal class names.
 pub fn descriptor_parameters(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
-    let (parameters, _) =
-        classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    let (parameters, _) = verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
     Ok(parameters.into_iter().map(|kind| kind.descriptor).collect())
 }
 
@@ -293,28 +293,30 @@ pub fn descriptor_parameters(descriptor: &str) -> Result<Vec<&str>, GenerateErro
 ///
 /// Returns an error for incomplete types, invalid internal class names, or trailing input.
 pub fn descriptor_classes(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
-    let classes: Vec<_> = if descriptor.starts_with('(') {
+    if descriptor.starts_with('(') {
         let (parameters, returns) =
-            classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
-        parameters
+            verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
+        Ok(parameters
             .into_iter()
             .chain(std::iter::once(returns))
             .filter_map(classfile::DescriptorType::class_name)
-            .collect()
+            .collect())
     } else {
         let kind = classfile::field_type(descriptor).map_err(GenerateError::Unsupported)?;
-        kind.class_name().into_iter().collect()
-    };
-    for name in &classes {
-        mapping::verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
+        if let Some(name) = kind.class_name() {
+            mapping::verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
+        }
+        Ok(kind.class_name().into_iter().collect())
     }
-    Ok(classes)
 }
 
 /// Counts borrowed opaque handles, excluding copied strings and byte payloads.
+///
+/// # Errors
+///
+/// Returns an error for malformed signatures or invalid internal class names.
 pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError> {
-    let (parameters, _) =
-        classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    let (parameters, _) = verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
     Ok(parameters
         .into_iter()
         .filter(|kind| {
@@ -326,7 +328,30 @@ pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError>
         .count())
 }
 
+/// Validates class names in every parameter and the return type.
+fn verified_method_types(
+    descriptor: &str,
+) -> Result<
+    (
+        Vec<classfile::DescriptorType<'_>>,
+        classfile::DescriptorType<'_>,
+    ),
+    String,
+> {
+    let (parameters, returns) = classfile::method_types(descriptor)?;
+    for kind in parameters.iter().copied().chain(std::iter::once(returns)) {
+        if let Some(name) = kind.class_name() {
+            mapping::verify_internal_class_name(name)?;
+        }
+    }
+    Ok((parameters, returns))
+}
+
 /// Writes only Rust bindings and exports into `out`.
+///
+/// # Errors
+///
+/// Returns an error for invalid or drifted pinned inputs, unresolved members, or output I/O.
 pub fn generate_rust(
     root: &Path,
     out: &Path,
@@ -347,6 +372,10 @@ pub fn generate_rust(
 }
 
 /// Writes the selected version's Java trees for packaging and harness execution.
+///
+/// # Errors
+///
+/// Returns an error for invalid or drifted pinned inputs, unresolved members, or output I/O.
 pub fn generate_java(root: &Path, selected: Option<&str>) -> Result<JavaGenerated, GenerateError> {
     generate_java_and_inspect(root, selected, std::convert::identity)
 }
@@ -403,9 +432,7 @@ fn compose(
     inputs::verify_input(root, &pinned.adapter.inputs.mappings_lock)?;
     inputs::verify_input(root, &pinned.adapter.inputs.stubs_lock)?;
 
-    let jars = std::iter::once(&pinned.adapter.inputs.client_jar)
-        .chain(pinned.adapter.inputs.data_fixer_jar.as_ref())
-        .chain(pinned.adapter.inputs.server_jar.as_ref());
+    let jars = pinned.adapter.inputs.jars();
     let available = jars.clone().any(|input| root.join(&input.path).is_file());
     if available && let Some(missing) = jars.clone().find(|input| !root.join(&input.path).is_file())
     {
@@ -733,14 +760,8 @@ fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendere
         root.join(&pins.hook_inventory.path),
         root.join(&pins.stub_seeds.path),
         root.join(&pins.reflective_surface.path),
-        root.join(&pins.client_jar.path),
     ];
-    watched.extend(
-        pins.data_fixer_jar
-            .iter()
-            .chain(pins.server_jar.iter())
-            .map(|input| root.join(&input.path)),
-    );
+    watched.extend(pins.jars().map(|input| root.join(&input.path)));
     watched.push(root.join(&pins.version_manifest.path));
     watched.extend(
         pins.client_mappings
@@ -2015,9 +2036,10 @@ mod tests {
 
         // The stub half is version data too, so it moves with the rest.
         for seed in &second.seeds.stubs {
-            let stub = generated
-                .stubs
-                .join(format!("{}.java", seed.class.replace('.', "/")));
+            let stub = generated.stubs.join(format!(
+                "{}.java",
+                crate::classfile::internal_name(&seed.class)
+            ));
             let text = std::fs::read_to_string(&stub).expect("the seeded class should be stubbed");
             assert!(text.contains(version), "{text}");
         }
@@ -2219,7 +2241,7 @@ mod tests {
         for reflected in &pinned.surface.classes {
             writeln!(mapping, "{} -> {}:", reflected.class, reflected.runtime)
                 .expect("write mapping class");
-            let owner = reflected.class.replace('.', "/");
+            let owner = crate::classfile::internal_name(&reflected.class);
             let mut members = BTreeSet::new();
             for stub in stubs.iter().filter(|stub| stub.class == owner) {
                 members.extend(
@@ -2229,7 +2251,7 @@ mod tests {
                 );
             }
             for hook in &pinned.inventory.hooks {
-                if hook.class.replace('.', "/") == owner {
+                if crate::classfile::internal_name(&hook.class) == owner {
                     members.insert((hook.member.as_str(), hook.descriptor.as_str()));
                 }
             }

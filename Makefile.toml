@@ -263,16 +263,16 @@ fi
 '''
 
 # Shipped packages teach package authors; check digests without rewriting drift.
-# Discover example and registry manifests so new installable packages cannot escape.
+# Discover example, test-mod and registry manifests so installable packages cannot escape.
 [tasks."ravel:verify-example-package"]
-description = "Check every example and registry package's manifest digests."
+description = "Check every example, test-mod and registry package's manifest digests."
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
 set -euo pipefail
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 checked=0
-for manifest in examples/*/package.json registry/mods/*/package.json; do
+for manifest in examples/*/package.json test-mods/*/package.json registry/mods/*/package.json; do
   [ -e "$manifest" ] || continue
   cargo run --locked -q -p ravel-xtask -- package digests --check "$(dirname "$manifest")"
   checked=$((checked + 1))

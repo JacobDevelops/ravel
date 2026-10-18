@@ -13,8 +13,6 @@ use crate::evidence::rules::{
 use crate::evidence::{findings, m0, m1, m2, m3, m4, m5, m6, m7, records};
 use crate::json::{array, number, read_json};
 
-use crate::tracked::tracked_paths;
-
 /// Recomputes every digest a milestone manifest records for its own results.
 #[must_use]
 pub fn verify_evidence_records(root: &Path) -> Vec<String> {
@@ -22,7 +20,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         Ok(manifests) => manifests,
         Err(error) => return vec![error],
     };
-    let tracked = match tracked_paths(root) {
+    let tracked = match crate::vcs::tracked_files(root, None) {
         Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
         Err(error) => return vec![error],
     };
@@ -30,7 +28,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
     let sources = findings::FindingSources::load(root, &tracked, &mut violations);
     for (path, milestone) in manifests {
         let path = root.join(path);
-        match read_json(&path) {
+        match read_json(root, &path) {
             Ok(manifest) => {
                 let records = verify_manifest_integrity(
                     root,
@@ -64,7 +62,7 @@ pub fn verify_milestone(root: &Path, milestone: &str) -> Vec<String> {
     };
     let relative = format!("{}/manifest.json", milestone.directory());
     let path = root.join(&relative);
-    let document = match read_json(&path) {
+    let document = match read_json(root, &path) {
         Ok(document) => document,
         Err(error) => return vec![error],
     };
@@ -81,7 +79,7 @@ pub fn verify_evidence_manifest(root: &Path, path: &Path, milestone: &str) -> Ve
         Ok(milestone) => milestone,
         Err(error) => return vec![error],
     };
-    match read_json(path) {
+    match read_json(root, path) {
         Ok(document) => verify_document(root, path, milestone, &document),
         Err(error) => vec![error],
     }
@@ -94,16 +92,16 @@ fn verify_document(
     document: &Value,
 ) -> Vec<String> {
     let mut violations = Vec::new();
-    let tracked = if document.is_object() {
-        match tracked_paths(root) {
-            Ok(paths) => Some(paths.into_iter().collect::<BTreeSet<_>>()),
-            Err(error) => {
-                violations.push(error);
-                None
-            }
+    if !document.is_object() {
+        verify_manifest_integrity(root, path, milestone, document, None, &mut violations);
+        return violations;
+    }
+    let tracked = match crate::vcs::tracked_files(root, None) {
+        Ok(paths) => Some(paths.into_iter().collect::<BTreeSet<_>>()),
+        Err(error) => {
+            violations.push(error);
+            None
         }
-    } else {
-        None
     };
     let sources = tracked
         .as_ref()
@@ -116,9 +114,6 @@ fn verify_document(
         sources.as_ref(),
         &mut violations,
     );
-    if !document.is_object() {
-        return violations;
-    }
     verify_manifest_closure(document, MANIFEST_VERDICTS, &mut violations);
     if let Some(paths) = tracked {
         records::verify_recorded_review_value(root, path, document, &paths, &mut violations);

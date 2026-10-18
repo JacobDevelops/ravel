@@ -46,7 +46,7 @@ impl Roles {
             bound.entry(seed.role.clone()).or_default().push(Binding {
                 list: "stubs.toml",
                 key: "stub role",
-                class: internal(&seed.class),
+                class: classfile::internal_name(&seed.class),
             });
             seeded
                 .entry(seed.role.clone())
@@ -60,7 +60,7 @@ impl Roles {
                 .push(Binding {
                     list: "reflection.toml",
                     key: "reflected name",
-                    class: internal(&reflected.class),
+                    class: classfile::internal_name(&reflected.class),
                 });
             for member in &reflected.members {
                 match &member.lookup {
@@ -83,7 +83,7 @@ impl Roles {
             bound.entry(hook.id.clone()).or_default().push(Binding {
                 list: "hooks.toml",
                 key: "hook id",
-                class: internal(&hook.class),
+                class: classfile::internal_name(&hook.class),
             });
             declared
                 .entry((hook.id.clone(), hook.member.clone()))
@@ -186,11 +186,6 @@ impl Roles {
             .and_then(|found| found.first())
             .map(|binding| binding.list)
     }
-}
-
-/// A reviewed class name as the tracked files write it, in internal form.
-fn internal(class: &str) -> String {
-    class.replace('.', "/")
 }
 
 #[cfg(test)]

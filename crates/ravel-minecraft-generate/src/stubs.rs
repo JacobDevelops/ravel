@@ -117,7 +117,7 @@ pub(super) fn from_jar(
     let mut referenced = BTreeSet::new();
 
     for seed in &seeds.stubs {
-        let class = seed.class.replace('.', "/");
+        let class = classfile::internal_name(&seed.class);
         let read = read_members(archives, mapping, &class)?;
         let declared = from_jar_declared(&read, mapping, &class)?;
         let mut selected = Vec::new();
@@ -396,7 +396,7 @@ pub(super) fn from_lock(
     // is the half that can be: every seeded class is present, and every member
     // name the seed list asks for resolves to at least one declaration.
     for seed in &seeds.stubs {
-        let class = seed.class.replace('.', "/");
+        let class = classfile::internal_name(&seed.class);
         let stub = lock
             .stubs
             .iter()
@@ -434,7 +434,10 @@ fn read_class(
         .iter()
         .find(|archive| archive.holds(&entry))
         .ok_or_else(|| {
-            GenerateError::Unresolved(format!("no pinned jar carries {}", class.replace('/', ".")))
+            GenerateError::Unresolved(format!(
+                "no pinned jar carries {}",
+                classfile::source_name(class)
+            ))
         })?;
     archive.entry(&entry)
 }
@@ -749,7 +752,10 @@ mod tests {
             .map(|stub| &stub.class)
             .collect::<BTreeSet<_>>();
         for seed in &pinned.seeds.stubs {
-            assert!(names.contains(&seed.class.replace('.', "/")), "{seed:?}");
+            assert!(
+                names.contains(&classfile::internal_name(&seed.class)),
+                "{seed:?}"
+            );
         }
         assert!(
             stubs.iter().any(|stub| !stub.members.is_empty()),
@@ -768,7 +774,7 @@ mod tests {
             .seeds
             .stubs
             .iter()
-            .map(|seed| seed.class.replace('.', "/"))
+            .map(|seed| classfile::internal_name(&seed.class))
             .collect::<BTreeSet<_>>();
         assert!(
             stubs.iter().any(|stub| !seeded.contains(&stub.class)),
@@ -880,7 +886,7 @@ mod tests {
     fn a_lock_that_lost_a_seeded_class_or_member_is_refused() {
         let pinned = pinned();
         let tracked = tracked_lock(&pinned);
-        let first = pinned.seeds.stubs[0].class.replace('.', "/");
+        let first = classfile::internal_name(&pinned.seeds.stubs[0].class);
         let member = pinned.seeds.stubs[0].members[0].member();
 
         let without_class = tracked.replace(&format!("class = \"{first}\""), "class = \"a/Ghost\"");

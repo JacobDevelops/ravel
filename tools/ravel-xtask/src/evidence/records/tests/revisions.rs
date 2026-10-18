@@ -9,7 +9,6 @@ use sha2::{Digest as _, Sha256};
 use crate::evidence::records;
 use crate::json::read_json;
 use crate::test_support::{RECORDED_RUN, temporary_root};
-use crate::tracked::tracked_paths;
 
 use super::{HELLO_DIGEST, pinned_input_root, verify_record_bindings};
 
@@ -193,7 +192,7 @@ fn an_input_revision_must_name_a_visible_commit_not_a_revset() {
 }
 
 fn verify_admitted_revisions(root: &Path, path: &Path, violations: &mut Vec<String>) {
-    let manifest = read_json(path).expect("manifest should parse");
+    let manifest = read_json(root, path).expect("manifest should parse");
     let artifacts = records::Artifacts::deserialize(&manifest).expect("artifacts should parse");
     records::verify_revisions(
         root,
@@ -210,7 +209,7 @@ fn verify_recorded_inputs(
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let manifest = read_json(path).expect("manifest should parse");
+    let manifest = read_json(root, path).expect("manifest should parse");
     let artifacts = records::Artifacts::deserialize(&manifest).expect("artifacts should parse");
     records::verify_inputs(
         root,
@@ -264,7 +263,7 @@ fn git_checkout_recomputes_input_digests_without_a_jj_workspace() {
     assert!(!root.join(".jj").exists());
     fs::write(root.join("input.txt"), "working tree differs\n")
         .expect("working input should be rewritable after pinning");
-    let tracked = tracked_paths(&root)
+    let tracked = crate::vcs::tracked_files(&root, None)
         .expect("Git input inventory should be readable")
         .into_iter()
         .collect();

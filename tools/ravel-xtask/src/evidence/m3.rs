@@ -15,7 +15,7 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, number};
 use crate::text::read_text;
-use crate::text::{Side, compare_stated, numbers_before, stated_counts};
+use crate::text::{NumberAt, numbers_before, stated_counts, verify_stated_counts};
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
@@ -360,8 +360,17 @@ fn matrix_count(matrix: &Value, pointer: &str) -> Result<usize, String> {
 
 #[derive(Clone, Copy)]
 enum CampaignCountMatcher {
-    Phrase(&'static str, Side),
+    Phrase(&'static str, NumberAt),
     Words(&'static [&'static str]),
+}
+
+impl CampaignCountMatcher {
+    fn label(self) -> Cow<'static, str> {
+        match self {
+            Self::Phrase(phrase, _) => Cow::Borrowed(phrase),
+            Self::Words(words) => Cow::Owned(words.join(" ")),
+        }
+    }
 }
 
 fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> Vec<String> {
@@ -370,42 +379,43 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
     let document = document.as_str();
     for (matcher, expected, subject, absent_subject) in [
         (
-            CampaignCountMatcher::Phrase(" callable targets", Side::Before),
+            CampaignCountMatcher::Phrase(" callable targets", NumberAt::BeforePhrase),
             derived.targets,
             "callable targets",
-            "callable targets",
+            None,
         ),
         (
-            CampaignCountMatcher::Phrase(" classes in the reviewed inventory", Side::Before),
+            CampaignCountMatcher::Phrase(
+                " classes in the reviewed inventory",
+                NumberAt::BeforePhrase,
+            ),
             derived.classes,
             "classes in the reviewed inventory",
-            "classes in the reviewed inventory",
+            None,
         ),
         (
-            CampaignCountMatcher::Phrase("moved from ", Side::After),
+            CampaignCountMatcher::Phrase("moved from ", NumberAt::AfterPhrase),
             derived.prior,
             "callable targets before the count moved",
-            "callable targets before the count moved",
+            None,
         ),
         (
             CampaignCountMatcher::Words(&["surface", "launches"]),
             derived.launches,
             "surface launches",
-            "launches in the surface campaign",
+            Some("launches in the surface campaign"),
         ),
     ] {
         let stated = match matcher {
             CampaignCountMatcher::Phrase(phrase, side) => stated_counts(document, phrase, side),
             CampaignCountMatcher::Words(words) => numbers_before(document, words),
         };
-        compare_stated(
+        verify_stated_counts(
             &stated,
             expected,
             || {
-                let phrase = match matcher {
-                    CampaignCountMatcher::Phrase(phrase, _) => Cow::Borrowed(phrase),
-                    CampaignCountMatcher::Words(words) => Cow::Owned(words.join(" ")),
-                };
+                let phrase = matcher.label();
+                let absent_subject = absent_subject.unwrap_or(subject);
                 format!(
                     "{CAMPAIGN_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it \
                      is held to {CAMPAIGN_MATRIX}'s {expected} {absent_subject}"
@@ -472,7 +482,7 @@ fn verify_lifecycle_counts(
     declared: usize,
     violations: &mut Vec<String>,
 ) {
-    compare_stated(
+    verify_stated_counts(
         stated,
         declared,
         || {

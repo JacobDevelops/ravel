@@ -466,8 +466,7 @@ pub(crate) fn verify_m6_manifest(
 }
 
 const M6_FIGURES: CarriedFigures = CarriedFigures {
-    manifest: "evidence/m6/manifest.json",
-    record: "evidence/m6/counterpart-summary.json",
+    record: "counterpart-summary.json",
     subject: "counterpart set",
     figures: M6_CARRIED_FIGURES,
     arithmetic: M6_ARITHMETIC,
@@ -480,7 +479,7 @@ pub(crate) fn verify_m6_integrity(
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M6, M6_RECORDS, violations);
     if let Some(record) = records.carried(&M6_FIGURES) {
-        verify_milestone_figures(record, manifest, &M6_FIGURES, violations);
+        verify_milestone_figures(Milestone::M6, record, manifest, &M6_FIGURES, violations);
     }
     records
 }

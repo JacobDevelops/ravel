@@ -115,7 +115,7 @@ pub(super) fn from_jar(
     let mut resolved = Vec::new();
 
     for hook in &inventory.hooks {
-        let mojang_class = hook.class.replace('.', "/");
+        let mojang_class = classfile::internal_name(&hook.class);
         // Each class is read once, however many hooks it holds.
         if !classes.contains_key(hook.class.as_str()) {
             let bytes = archive.entry(&mapping.entry(&mojang_class))?;
@@ -170,7 +170,7 @@ pub(super) fn from_jar(
 
         resolved.push(Resolved {
             id: hook.id.clone(),
-            runtime_class: mapping.runtime_class(&mojang_class).to_owned(),
+            runtime_class: mapping.runtime_class_or_self(&mojang_class).to_owned(),
             mojang_class,
             member: hook.member.clone(),
             runtime_member: member.name.clone(),
@@ -280,7 +280,7 @@ pub(super) fn from_lock(
         let pinned = lock.targets.get(&hook.id).ok_or_else(|| {
             GenerateError::Drift(format!("mappings.lock pins no target for {}", hook.id))
         })?;
-        let mojang_class = hook.class.replace('.', "/");
+        let mojang_class = classfile::internal_name(&hook.class);
         if pinned.class != mojang_class
             || pinned.member != hook.member
             || pinned.descriptor != hook.descriptor
@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(resolved.len(), pinned.inventory.hooks.len());
         for (hook, target) in pinned.inventory.hooks.iter().zip(&resolved) {
             assert_eq!(target.id, hook.id);
-            assert_eq!(target.mojang_class, hook.class.replace('.', "/"));
+            assert_eq!(target.mojang_class, classfile::internal_name(&hook.class));
             assert_eq!(target.runtime_class, target.mojang_class);
             assert_eq!(target.descriptor, hook.descriptor);
             assert_eq!(target.is_static, hook.kind.is_static());
@@ -537,7 +537,7 @@ mod tests {
         let mut inventory = pinned().inventory;
         inventory.hooks.truncate(1);
         let hook = inventory.hooks[0].clone();
-        let entry = format!("{}.class", hook.class.replace('.', "/"));
+        let entry = format!("{}.class", classfile::internal_name(&hook.class));
 
         let mut class = Vec::new();
         class.extend(0xCAFE_BABE_u32.to_be_bytes());

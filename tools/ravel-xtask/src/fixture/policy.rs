@@ -6,7 +6,7 @@ use super::{FixtureDescriptor, FixtureError};
 
 const ALLOWED_DOWNLOAD_PREFIX: &str = "https://mediafilez.forgecdn.net/";
 
-pub(super) fn validate_descriptor(descriptor: &FixtureDescriptor) -> Result<(), FixtureError> {
+pub(super) fn verify_descriptor(descriptor: &FixtureDescriptor) -> Result<(), FixtureError> {
     if descriptor.schema_version != 1 {
         return Err(FixtureError::InvalidDescriptor(
             "fixture descriptor schemaVersion must equal 1".to_owned(),
@@ -64,9 +64,9 @@ pub(super) fn validate_descriptor(descriptor: &FixtureDescriptor) -> Result<(), 
         ("source.sha256", descriptor.source.sha256.as_str()),
         ("manifest.sha256", descriptor.manifest.sha256.as_str()),
     ] {
-        if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if ravel_package::Sha256Digest::try_from(hash.to_owned()).is_err() {
             return Err(FixtureError::InvalidDescriptor(format!(
-                "fixture descriptor {field} must be a 64-character hexadecimal SHA-256"
+                "fixture descriptor {field} must be a lowercase 64-character hexadecimal SHA-256"
             )));
         }
     }

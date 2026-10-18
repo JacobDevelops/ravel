@@ -7,11 +7,11 @@ use std::process::Command;
 use crate::text::redacted_path;
 use serde_json::Value;
 
-pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
+pub(crate) fn read_json(root: &Path, path: &Path) -> Result<Value, String> {
     let bytes = fs::read(path)
-        .map_err(|error| format!("cannot read JSON {}: {error}", redacted_path(path)))?;
+        .map_err(|error| format!("cannot read JSON {}: {error}", redacted_path(root, path)))?;
     serde_json::from_slice(&bytes)
-        .map_err(|error| format!("cannot parse JSON {}: {error}", redacted_path(path)))
+        .map_err(|error| format!("cannot parse JSON {}: {error}", redacted_path(root, path)))
 }
 
 pub(crate) fn array<'a>(value: &'a Value, pointer: &str) -> &'a [Value] {
@@ -58,7 +58,7 @@ pub(crate) fn schema_matches(root: &Path, schema: &str, document: &Path) -> Resu
         Some(1) => Ok(false),
         code => Err(format!(
             "cannot validate {} with {schema}: check-jsonschema exited {code:?}: {}",
-            redacted_path(document),
+            redacted_path(root, document),
             String::from_utf8_lossy(&output.stderr).trim()
         )),
     }

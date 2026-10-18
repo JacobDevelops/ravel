@@ -17,7 +17,7 @@ pub(crate) fn stub_java(
 ) -> Result<(String, String), GenerateError> {
     let unsupported =
         |detail: String| GenerateError::Unsupported(format!("{}: {detail}", stub.class));
-    let linked = mapping.runtime_class(&stub.class);
+    let linked = mapping.runtime_class_or_self(&stub.class);
     let (package, simple) = split(linked);
 
     let mut text = String::with_capacity(stub.members.len() * 192 + 1024);
@@ -46,7 +46,7 @@ pub(crate) fn stub_java(
     for member in &stub.members {
         let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
         let (name, descriptor) =
-            mapping.linked_member(&stub.class, &member.name, &member.descriptor)?;
+            mapping.runtime_member_or_self(&stub.class, &member.name, &member.descriptor)?;
         let rendered = if member.method {
             stub_method(
                 stub,
@@ -89,7 +89,7 @@ fn declaration(stub: &Stub, mapping: &Mapping, simple: &str) -> String {
         write!(
             declaration,
             " extends {}",
-            source_name(mapping.runtime_class(parent))
+            source_name(mapping.runtime_class_or_self(parent))
         )
         .expect("writing to a String cannot fail");
     }
@@ -105,7 +105,7 @@ fn declaration(stub: &Stub, mapping: &Mapping, simple: &str) -> String {
             &stub
                 .implements
                 .iter()
-                .map(|name| source_name(mapping.runtime_class(name)))
+                .map(|name| source_name(mapping.runtime_class_or_self(name)))
                 .collect::<Vec<_>>()
                 .join(", "),
         );
@@ -187,7 +187,7 @@ fn argument(recorded: &str, mapping: &Mapping) -> Result<String, String> {
     Ok(format!(
         "{}{}",
         bound.java(),
-        source_name(mapping.runtime_class(class))
+        source_name(mapping.runtime_class_or_self(class))
     ))
 }
 
@@ -197,7 +197,7 @@ fn chained_super(stub: &Stub, mapping: &Mapping) -> Result<String, String> {
         return Ok(String::new());
     };
     let (_, linked) = mapping
-        .linked_member(&stub.class, "<init>", recorded)
+        .runtime_member_or_self(&stub.class, "<init>", recorded)
         .map_err(|error| error.to_string())?;
     let (parameters, _) = signature(&linked)?;
     Ok(format!("        super({});\n", placeholders(&parameters)))

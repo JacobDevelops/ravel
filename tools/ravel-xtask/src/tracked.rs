@@ -140,22 +140,22 @@ fn resolves_outside_root(directory: &str, value: &str) -> bool {
     false
 }
 
-/// Lists version-controlled files through jj, or Git in a plain checkout.
-pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
-    crate::vcs::tracked_files(root, None)
-}
-
 pub(crate) fn collect_files(
     root: &Path,
+    directory: &Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
-    let entries = fs::read_dir(root)
-        .map_err(|error| format!("cannot read {}: {error}", crate::text::redacted_path(root)))?;
+    let entries = fs::read_dir(directory).map_err(|error| {
+        format!(
+            "cannot read {}: {error}",
+            crate::text::redacted_path(root, directory)
+        )
+    })?;
     for entry in entries {
         let entry = entry.map_err(|error| {
             format!(
                 "cannot read {} entry: {error}",
-                crate::text::redacted_path(root)
+                crate::text::redacted_path(root, directory)
             )
         })?;
         let path = entry.path();
@@ -166,14 +166,14 @@ pub(crate) fn collect_files(
             .map_err(|error| {
                 format!(
                     "cannot inspect {}: {error}",
-                    crate::text::redacted_path(&path)
+                    crate::text::redacted_path(root, &path)
                 )
             })?
             .file_type();
         if kind.is_dir() {
             let name = entry.file_name();
             if !matches!(name.to_str(), Some(".git" | ".jj" | "target")) {
-                collect_files(&path, files)?;
+                collect_files(root, &path, files)?;
             }
         } else if kind.is_file() {
             files.push(path);

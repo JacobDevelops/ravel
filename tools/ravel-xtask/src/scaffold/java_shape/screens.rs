@@ -12,7 +12,7 @@ pub(super) const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
 
 pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>) {
     let directory = root.join(SCREEN_JAR_SOURCES);
-    let templates = screen_templates(&directory, violations);
+    let templates = screen_templates(root, &directory, violations);
     if templates.is_empty() {
         violations.push(format!(
             "{SCREEN_JAR_SOURCES} holds no screen template, so the screen jar is generated from \
@@ -163,9 +163,9 @@ fn outside_placeholders(source: &str) -> String {
     text
 }
 
-fn screen_templates(directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
+fn screen_templates(root: &Path, directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
     let mut templates = Vec::new();
-    if let Err(error) = collect_files(directory, &mut templates) {
+    if let Err(error) = collect_files(root, directory, &mut templates) {
         violations.push(error);
     }
     templates.retain(|path| {

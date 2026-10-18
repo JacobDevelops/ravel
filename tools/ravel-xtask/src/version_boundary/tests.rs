@@ -794,3 +794,157 @@ fn version_references_use_complete_descriptor_tokens() {
     super::collect_version_classes(&value, &mut classes, &mut references);
     assert_eq!(references, ["game/Level", "game/Screen", "game/Widget"]);
 }
+
+#[test]
+fn unreadable_excused_source_does_not_make_its_excuse_stale() {
+    let root = temporary_root("version-excuse-unreadable");
+    version_directory(&root, "26.1.2", &[]);
+    let file = VERSION_CLASS_EXCUSES[0].0;
+    let path = root.join(file);
+    fs::create_dir_all(path.parent().expect("source has a parent"))
+        .expect("source directory should exist");
+    fs::write(&path, [0xff]).expect("invalid UTF-8 should write");
+    let mut violations = Vec::new();
+    verify_version_boundary(&root, &[], &mut violations);
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|message| message.starts_with(&format!("cannot read {file}:")))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    assert!(
+        !violations.iter().any(|message| {
+            message.starts_with("stale version-class excuse:") && message.contains(file)
+        }),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn incomplete_crate_walk_does_not_claim_class_excuses_are_stale() {
+    let root = temporary_root("version-excuse-walk-failure");
+    version_directory(&root, "26.1.2", &[]);
+    fs::write(root.join("crates"), "not a directory").expect("walk failure should be writable");
+    let mut violations = Vec::new();
+    verify_version_boundary(&root, &[], &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|message| message.starts_with("cannot read crates:")),
+        "{violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|message| message.starts_with("stale version-class excuse:")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn incomplete_version_metadata_keeps_findings_without_stale_excuses() {
+    for (file, bytes) in [
+        ("hooks.toml", b"[[hook]\n".as_slice()),
+        ("stubs.toml", b"broken = [\n".as_slice()),
+        ("mappings.lock", b"\xff".as_slice()),
+        ("reflection.toml", b"broken = [\n".as_slice()),
+    ] {
+        let root = temporary_root(&format!("version-boundary-incomplete-{file}"));
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(root.join(VERSION_DATA).join("26.1.2").join(file), bytes)
+            .expect("broken version metadata should be writable");
+        let source = root.join("crates/ravel-core/src");
+        fs::create_dir_all(&source).expect("source directory should be creatable");
+        fs::write(source.join("lib.rs"), "26.1.2 net.minecraft.client.One")
+            .expect("source should be writable");
+        let mut violations = Vec::new();
+        let (_, inventories) = verify_version_directories(&root, &mut violations);
+        verify_version_boundary(&root, &inventories, &mut violations);
+        assert!(
+            violations.iter().any(|message| message.contains(file)),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.starts_with("hardcoded Minecraft version")),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains("names net/minecraft/client/One")),
+            "{violations:?}"
+        );
+        assert!(
+            !violations
+                .iter()
+                .any(|message| message.starts_with("stale version-class excuse:")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should remove");
+    }
+}
+
+#[test]
+fn failed_public_hook_admission_does_not_finalize_class_excuses() {
+    let root = temporary_root("version-boundary-incomplete-public-hooks");
+    version_directory(&root, "99.1.0", &[]);
+    let canonical = root.join(VERSION_DATA).join("99.1.0");
+    fs::write(canonical.join("hooks.toml"), "[[hook]\n")
+        .expect("broken hook inventory should be writable");
+    let public = root.join("tests/fixtures/public/versions");
+    fs::create_dir_all(&public).expect("public versions directory should be creatable");
+    fs::rename(canonical, public.join("99.1.0")).expect("fixture should be relocatable");
+    let source = root.join("crates/ravel-core/src");
+    fs::create_dir_all(&source).expect("source directory should be creatable");
+    fs::write(source.join("lib.rs"), "net.minecraft.client.One")
+        .expect("source should be writable");
+    let mut violations = Vec::new();
+    verify_version_boundary(&root, &[], &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|message| message.contains("cannot parse hooks.toml"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|message| message.contains("names net/minecraft/client/One")),
+        "{violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|message| message.starts_with("stale version-class excuse:")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn incomplete_walk_still_sweeps_the_files_it_collected() {
+    let root = temporary_root("version-boundary-partial-walk");
+    let source = root.join("crates/ravel-core/src");
+    fs::create_dir_all(&source).expect("source directory should be creatable");
+    let path = source.join("lib.rs");
+    fs::write(&path, "26.1.2 net.minecraft.client.One").expect("source should be writable");
+    let versions = std::collections::BTreeSet::from(["26.1.2".to_owned()]);
+    let classes = vec!["net/minecraft/client/One".to_owned()];
+    let mut violations = Vec::new();
+    super::verify_boundary_files(&root, &[path], &versions, &classes, false, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(
+        violations[0].starts_with("hardcoded Minecraft version"),
+        "{violations:?}"
+    );
+    assert!(
+        violations[1].contains("names net/minecraft/client/One"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}

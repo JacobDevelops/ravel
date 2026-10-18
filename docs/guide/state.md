@@ -87,8 +87,8 @@ impl Mod for CopperLanterns {
 Read declared settings with `LayeredConfiguration::integer`, `boolean`, `text`,
 or the matching typed accessor. These methods report missing keys and wrong
 shapes rather than turning them into an absent value. Map those errors through
-`ModError::from_display`, and use checked conversions when an integer becomes
-an unsigned or platform-sized count.
+`ModError::from_display`. Use `integer_in::<T>` for unsigned or platform-sized
+counts so range failures retain the setting's key.
 
 For saved payloads and other JSON-shaped data, use the SDK's `JsonValue` and
 `json!` exports. A mod that needs serde's serialization functions can explicitly
@@ -232,11 +232,12 @@ that crosses between mods at run time, so it is deliberately narrow. A
 you may only offer to answer names in your own namespace.
 
 Declare both halves in `service_declaration`: what you answer, and what you need
-answered. The loader orders providers before consumers and refuses a set whose
-services do not resolve — a service nothing answers, or two mods requiring each
-other — naming the offender, before any mod starts. The `ServiceDirectory` you
-are handed in `use_services` reaches providers opened earlier in dependency order,
-after all mods register and before any enters `Running`.
+answered. The loader orders providers before consumers. An unanswered required
+service fails its consumer before any mod starts: an optional consumer is isolated,
+while a required consumer's failure refuses the set. Cycles refuse the set and
+name their members. The `ServiceDirectory` you are handed in `use_services` reaches
+providers opened earlier in dependency order, after all mods register and before
+any enters `Running`.
 
 A provider parked on this side is a service nothing answers. If you require a
 service from a client-only mod, your mod does not start on a dedicated server.
@@ -259,7 +260,7 @@ fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 ```
 
 `use_if_present` makes one dependency optional: a missing provider no longer
-refuses the set. Everything else is the same. A provider that
+fails your mod. Everything else is the same. A provider that
 *is* running is still composed before you, so you never get told a mod is missing
 because you happened to be composed first, and calling an optionally declared
 service is legal rather than `Undeclared`.

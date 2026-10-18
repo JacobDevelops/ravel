@@ -132,7 +132,7 @@ pub(super) fn split(class: &str) -> (Option<String>, &str) {
     class
         .rsplit_once('/')
         .map_or((None, class), |(package, simple)| {
-            (Some(package.replace('/', ".")), simple)
+            (Some(source_name(package)), simple)
         })
 }
 
@@ -176,6 +176,11 @@ pub(super) fn alias(class: &str, split_name_space: bool) -> String {
 /// An internal class name as Java source writes it.
 pub(super) fn source_name(class: &str) -> String {
     class.replace('/', ".")
+}
+
+/// A dotted binary class name in JVM internal form.
+pub(super) fn internal_name(class: &str) -> String {
+    class.replace('.', "/")
 }
 
 /// Access flag marking a member as static.

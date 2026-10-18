@@ -100,7 +100,7 @@ fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
 
     verify_campaign_inventory(
         &root,
-        &read_json(&root.join(super::CAMPAIGN_MATRIX)).expect("matrix should parse"),
+        &read_json(&root, &root.join(super::CAMPAIGN_MATRIX)).expect("matrix should parse"),
         &mut violations,
     );
 
@@ -109,7 +109,7 @@ fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
 
 fn tracked_record(name: &str) -> Value {
     let root = crate::test_support::repository_root();
-    read_json(&root.join("evidence/m3").join(name)).expect("tracked M3 record should parse")
+    read_json(&root, &root.join("evidence/m3").join(name)).expect("tracked M3 record should parse")
 }
 
 #[test]

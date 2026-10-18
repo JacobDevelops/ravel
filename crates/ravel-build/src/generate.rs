@@ -1,13 +1,15 @@
 //! Generated workspace manifests and host source.
 //!
-//! Mods inherit only the SDK and author serialization dependencies. JNI, core,
-//! and runtime are direct host dependencies, never workspace exports.
+//! Mods inherit the SDK, author serialization dependencies, and planned peers.
+//! JNI, core, and runtime are direct host dependencies, never workspace exports.
 
 use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::{ENTRY_FUNCTION, PlannedMember};
 use ravel_core::paths::{HOST_DIRECTORY, HOST_LIBRARY, PACKAGES_DIRECTORY};
+
+pub(super) const HOST_DEPENDENCIES: [&str; 2] = ["ravel-core", "ravel-host-runtime"];
 
 pub(super) fn workspace_manifest(
     members: &[PlannedMember],
@@ -25,6 +27,12 @@ pub(super) fn workspace_manifest(
         "ravel-sdk".to_owned(),
         path_dependency(&ravel_root.join("crates/ravel-sdk")),
     );
+    for member in members {
+        dependencies.insert(
+            member.crate_name.clone(),
+            path_dependency(&Path::new(PACKAGES_DIRECTORY).join(&member.directory)),
+        );
+    }
     serialize(&table([(
         "workspace",
         table([
@@ -54,7 +62,7 @@ pub(super) fn host_manifest(
     jni_dependency: &toml::Table,
 ) -> String {
     let mut dependencies = jni_dependency.clone();
-    for name in ["ravel-core", "ravel-host-runtime"] {
+    for name in HOST_DEPENDENCIES {
         dependencies.insert(
             name.to_owned(),
             path_dependency(&ravel_root.join("crates").join(name)),

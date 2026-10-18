@@ -274,7 +274,7 @@ fn verify_legacy_reflection(surface: &ReflectiveSurface, violations: &mut Vec<St
             ));
         }
         for descriptor in &role.descriptors {
-            if let Err(error) = validate_member_descriptor(descriptor) {
+            if let Err(error) = verify_member_descriptor(descriptor) {
                 violations.push(format!(
                     "{} role {} declares invalid descriptor {descriptor}: {error}",
                     surface.path, role.name
@@ -285,23 +285,10 @@ fn verify_legacy_reflection(surface: &ReflectiveSurface, violations: &mut Vec<St
 }
 
 /// Reflection descriptors name either a method or exactly one non-void field type.
-fn validate_member_descriptor(
+fn verify_member_descriptor(
     descriptor: &str,
 ) -> Result<(), ravel_minecraft_generate::GenerateError> {
-    use ravel_minecraft_generate::{GenerateError, descriptor_parameters};
-
-    if descriptor.starts_with('(') {
-        return descriptor_parameters(descriptor).map(|_| ());
-    }
-    // A single method parameter uses the field grammar, including its ban on void.
-    let signature = format!("({descriptor})V");
-    let parameters = descriptor_parameters(&signature)?;
-    if parameters.len() != 1 {
-        return Err(GenerateError::Unsupported(format!(
-            "{descriptor} must declare exactly one field type"
-        )));
-    }
-    Ok(())
+    ravel_minecraft_generate::descriptor_classes(descriptor).map(drop)
 }
 
 pub(super) const GAME_NAMES: &str = "GameNames";
@@ -370,7 +357,7 @@ pub(crate) fn verify_persistence_reflection(
     };
     let surfaces = reflective_surfaces(root, adapters, violations);
 
-    let sources = java_sources(&root.join(AGENT_JAR_SOURCES), violations);
+    let sources = java_sources(root, &root.join(AGENT_JAR_SOURCES), violations);
     if sources.is_empty() {
         violations.push(format!(
             "{AGENT_JAR_SOURCES} holds no Java source, so no game class the agent jar resolves is \

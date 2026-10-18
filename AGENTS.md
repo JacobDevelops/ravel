@@ -13,8 +13,7 @@ and M7 remains open.
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.
 
-Project skills live once in [`.agents/skills/`](.agents/skills/) and are exposed to Claude Code through
-per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink; never copy the directory.
+Project skills live in [`.agents/skills/`](.agents/skills/).
 
 ## Read before changing code
 

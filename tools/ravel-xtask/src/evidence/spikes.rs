@@ -64,7 +64,7 @@ pub(crate) fn spike_result_paths(
 
 fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
     let label = relative_label(root, path);
-    let document = match read_json(path) {
+    let document = match read_json(root, path) {
         Ok(document) => document,
         Err(error) => {
             violations.push(error);

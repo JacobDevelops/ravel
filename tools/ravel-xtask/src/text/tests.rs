@@ -19,7 +19,7 @@ fn stated_count_comparison_reports_absence_and_each_mismatch() {
         ),
     ] {
         let mut violations = Vec::new();
-        super::compare_stated(
+        super::verify_stated_counts(
             stated,
             3,
             || "absent".to_owned(),
@@ -32,17 +32,16 @@ fn stated_count_comparison_reports_absence_and_each_mismatch() {
 
 #[test]
 fn gate_output_never_names_an_absolute_path() {
-    let absolute = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("evidence/m0/manifest.json");
+    let root = Path::new("/repository");
+    let absolute = root.join("evidence/m0/manifest.json");
 
-    assert_eq!(redacted_path(&absolute), "evidence/m0/manifest.json");
+    assert_eq!(redacted_path(root, &absolute), "evidence/m0/manifest.json");
     assert_eq!(
-        redacted_path(Path::new("evidence/m0/manifest.json")),
+        redacted_path(root, Path::new("evidence/m0/manifest.json")),
         "evidence/m0/manifest.json"
     );
     assert_eq!(
-        redacted_path(Path::new("/somewhere/else/manifest.json")),
+        redacted_path(root, Path::new("/somewhere/else/manifest.json")),
         "manifest.json"
     );
 }
@@ -196,4 +195,19 @@ fn a_count_before_a_noun_excludes_unrelated_following_numbers() {
         ),
         [3]
     );
+}
+
+#[test]
+fn required_files_have_one_repository_relative_absence_policy() {
+    let root = temporary_root("required-file");
+    assert_eq!(
+        super::require_file(&root, "nested/required.txt"),
+        Err("missing required file: nested/required.txt".to_owned())
+    );
+    fs::create_dir_all(root.join("nested/required.txt")).expect("directory should exist");
+    assert!(super::require_file(&root, "nested/required.txt").is_err());
+    let file = root.join("nested/present.txt");
+    fs::write(&file, "present").expect("required file should write");
+    assert_eq!(super::require_file(&root, "nested/present.txt"), Ok(file));
+    fs::remove_dir_all(root).expect("temporary root should remove");
 }

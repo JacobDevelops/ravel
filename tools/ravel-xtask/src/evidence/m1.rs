@@ -67,10 +67,10 @@ fn verify_m1_spike_results(root: &Path, violations: &mut Vec<String>) {
             violations.push(format!("M1 closure requires a recorded result for {gate}"));
         }
         if *directory == "adg-3" {
-            verify_m1_manifest_repeated(&paths, violations);
+            verify_m1_manifest_repeated(root, &paths, violations);
         }
         if *directory == "adg-5"
-            && !spike_records_match(&paths, violations, |record| {
+            && !spike_records_match(root, &paths, violations, |record| {
                 record["prismIntegration"]["stockLaunch"] == true
             })
         {
@@ -82,8 +82,8 @@ fn verify_m1_spike_results(root: &Path, violations: &mut Vec<String>) {
     }
 }
 
-fn verify_m1_manifest_repeated(paths: &[PathBuf], violations: &mut Vec<String>) {
-    let repeated = spike_records_match(paths, violations, |record| {
+fn verify_m1_manifest_repeated(root: &Path, paths: &[PathBuf], violations: &mut Vec<String>) {
+    let repeated = spike_records_match(root, paths, violations, |record| {
         let binding = &record["bindingGeneration"];
         nonempty(binding, "/outputSha256")
             && binding["repeatedOutputSha256"] == binding["outputSha256"]
@@ -100,13 +100,14 @@ fn verify_m1_manifest_repeated(paths: &[PathBuf], violations: &mut Vec<String>) 
 }
 
 fn spike_records_match(
+    root: &Path,
     paths: &[PathBuf],
     violations: &mut Vec<String>,
     predicate: fn(&Value) -> bool,
 ) -> bool {
     let mut matched = false;
     for path in paths {
-        match read_json(path) {
+        match read_json(root, path) {
             Ok(record) => matched |= predicate(&record),
             Err(error) => violations.push(error),
         }

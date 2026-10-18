@@ -55,9 +55,11 @@ a library, and install it into an instance to have it validated and compiled int
 a host. You cannot yet drop it into an instance and see it run.
 
 One thing to plan around while that is true: a generated workspace supplies
-`ravel-sdk`, `serde` and `serde_json` for mod dependencies. Inheriting any other
-`ravel-*` crate is refused: author code uses the SDK facade, not loader internals.
-Other dependencies must name their own versions rather than inherit one, and their exact
+`ravel-sdk`, `serde`, `serde_json` and the installed peer crates for mod dependencies.
+Peer paths follow their actual installation directories, not their crate names.
+Inheriting any other `ravel-*` crate is refused: author code uses the SDK facade,
+not loader internals. Other dependencies must name their own versions rather than
+inherit one, and their exact
 name, version, source and checksum must already be pinned by the Ravel installation's
 `Cargo.lock`, and belong to the SDK closure or the explicitly supported
 `serde`, `serde_json` and `num-traits` dependency closures. For example,
@@ -180,9 +182,10 @@ audio has both ends and no launched game has run them:
 Declaring against `render_stages`, and against the two interception points no
 hook resolves, is designing against a specification that is tested now and — for
 drawing — is not connected later. `world_shaping` and `server_data` are different:
-what they produce — a record a world stores, files a pack holds — is real output
-today, and only the game's reading of it waits on the same wiring every pack
-waits on.
+they produce real output today. World shaping writes a record the world stores;
+server-data declarations become entries in the installed world's data pack through
+`ContentDeclaration`, where datapack-capable adapters let Minecraft read them.
+The legacy adapter has no datapack output.
 
 **A shared library your mod provides is declared and nothing reads the
 declaration.** `provision` is the fourth surface in that state, and it is

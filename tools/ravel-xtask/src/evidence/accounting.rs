@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::evidence::rules::{Milestone, milestone_manifests};
-use crate::text::{compare_stated, numbers_after, numbers_before, read_text};
+use crate::text::{numbers_after, numbers_before, read_text, verify_stated_counts};
 
 const ROUND_COUNT_EXEMPT: [Milestone; 2] = [Milestone::M0, Milestone::M1];
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
@@ -16,8 +16,8 @@ fn verify_review_round_counts_for(
     violations: &mut Vec<String>,
 ) {
     for (record, documents) in round_count_subjects(manifests) {
-        if !root.join(&record).is_file() {
-            violations.push(format!("missing required file: {record}"));
+        if let Err(error) = crate::text::require_file(root, &record) {
+            violations.push(error);
         }
         for relative in documents {
             if !root.join(&relative).exists() {
@@ -142,7 +142,7 @@ fn verify_review_blocking_counts_for(
 
         let mut stated = numbers_before(summary, &["blocking", "findings"]);
         stated.extend(numbers_after(summary, &["blocking", "findings"]));
-        compare_stated(
+        verify_stated_counts(
             &stated,
             total,
             || {
@@ -173,22 +173,18 @@ fn verify_manifest_percentages_for(
         match read_text(root, Path::new(&relative)) {
             Ok(manifest) => {
                 for line in manifest.lines().filter(|line| line.contains('%')) {
-                    let figure = line
-                        .split('%')
-                        .next()
-                        .map(|head| {
-                            head.chars()
-                                .rev()
-                                .take_while(|character| {
-                                    character.is_ascii_digit() || *character == '.'
-                                })
-                                .collect::<String>()
-                                .chars()
-                                .rev()
-                                .collect::<String>()
-                        })
-                        .filter(|figure| !figure.is_empty())
-                        .unwrap_or_else(|| "a percentage".to_owned());
+                    let head = line.split('%').next().unwrap_or("");
+                    let start = head.len()
+                        - head
+                            .chars()
+                            .rev()
+                            .take_while(|character| character.is_ascii_digit() || *character == '.')
+                            .count();
+                    let figure = if start == head.len() {
+                        "a percentage"
+                    } else {
+                        &head[start..]
+                    };
                     violations.push(format!(
                         "{relative} writes {figure}% into {milestone}'s prose; no gate recomputes \
                          a percentage a manifest states, so it belongs in the record that \

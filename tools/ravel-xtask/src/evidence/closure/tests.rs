@@ -19,9 +19,11 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
     .expect("manifest should be writable");
     let mut violations = Vec::new();
 
-    let manifest = crate::json::read_json(&manifest).expect("manifest should parse");
+    let manifest = crate::json::read_json(&root, &manifest).expect("manifest should parse");
     verify_milestone_figures(
-        &crate::json::read_json(&root.join(M5_FIGURES.record)).expect("summary should parse"),
+        crate::evidence::rules::Milestone::M5,
+        &crate::json::read_json(&root, &root.join("evidence/m5").join(M5_FIGURES.record))
+            .expect("summary should parse"),
         &manifest,
         &M5_FIGURES,
         &mut violations,
@@ -38,6 +40,8 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
         "violation was: {}",
         violations[0]
     );
+    assert!(violations[0].starts_with("evidence/m5/manifest.json records "));
+    assert!(violations[0].contains("while evidence/m5/inventory-summary.json derives "));
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -55,10 +59,16 @@ fn missing_and_malformed_records_report_once_before_closure() {
         let root = crate::test_support::temporary_root(label);
         fs::create_dir_all(root.join("evidence/m5")).expect("record directory should exist");
         if let Some(contents) = contents {
-            fs::write(root.join(M5_FIGURES.record), contents).expect("record should write");
+            fs::write(root.join("evidence/m5").join(M5_FIGURES.record), contents)
+                .expect("record should write");
         }
         let mut violations = Vec::new();
         let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+        assert!(records.get(M5_FIGURES.record).is_none());
+        assert_eq!(
+            records.already_reported(M5_FIGURES.record),
+            contents.is_some()
+        );
         verify_closure_records(Milestone::M5, &records, RECORDS, &mut violations);
         assert_eq!(violations.len(), 1, "{label}: {violations:?}");
         assert!(violations[0].contains("inventory-summary.json"));
@@ -82,7 +92,8 @@ fn closure_uses_the_loaded_record_and_names_the_failed_clause() {
     );
     let mut violations = Vec::new();
     let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
-    fs::remove_file(root.join(M5_FIGURES.record)).expect("loaded record should be removable");
+    fs::remove_file(root.join("evidence/m5").join(M5_FIGURES.record))
+        .expect("loaded record should be removable");
     verify_closure_records(Milestone::M5, &records, RECORDS, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -143,6 +154,7 @@ fn carried_figures_lookup_uses_the_loaded_record_name() {
     let root = summary_root("carried-record-key", &balanced_summary());
     let mut violations = Vec::new();
     let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+    assert!(!records.already_reported(M5_FIGURES.record));
     assert!(violations.is_empty(), "{violations:?}");
     assert_eq!(
         records.carried(&M5_FIGURES),

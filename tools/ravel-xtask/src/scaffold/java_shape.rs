@@ -21,9 +21,9 @@ pub(crate) const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-
 
 pub(crate) const REFLECTION_FILE: &str = "reflection.toml";
 
-fn java_sources(directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
+fn java_sources(root: &Path, directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
     let mut sources = Vec::new();
-    if let Err(error) = collect_files(directory, &mut sources) {
+    if let Err(error) = collect_files(root, directory, &mut sources) {
         violations.push(error);
     }
     sources.retain(|path| {
@@ -50,7 +50,7 @@ pub(crate) fn verify_hook_name_literals(
         }
     };
 
-    for path in java_sources(&root.join(AGENT_JAR_SOURCES), violations) {
+    for path in java_sources(root, &root.join(AGENT_JAR_SOURCES), violations) {
         let relative = relative_label(root, &path);
         let selected = Path::new(&relative);
         let modern = compiled_bootstrap_source(selected, false, &manifest);

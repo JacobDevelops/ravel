@@ -171,21 +171,41 @@ fn parse_tracked_paths(output: &[u8]) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn collect_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
+pub(crate) fn collect_files(
+    root: &Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(root)
+        .map_err(|error| format!("cannot read {}: {error}", crate::text::redacted_path(root)))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "cannot read {} entry: {error}",
+                crate::text::redacted_path(root)
+            )
+        })?;
         let path = entry.path();
-        if path.is_dir() {
+        if path.ends_with(Path::new("tests/fixtures/local")) {
+            continue;
+        }
+        let kind = fs::metadata(&path)
+            .map_err(|error| {
+                format!(
+                    "cannot inspect {}: {error}",
+                    crate::text::redacted_path(&path)
+                )
+            })?
+            .file_type();
+        if kind.is_dir() {
             let name = entry.file_name();
             if !matches!(name.to_str(), Some(".git" | ".jj" | "target")) {
-                collect_files(&path, files);
+                collect_files(&path, files)?;
             }
-        } else if path.is_file() {
+        } else if kind.is_file() {
             files.push(path);
         }
     }
+    Ok(())
 }
 
 fn is_forbidden_tracked_path(path: &str) -> bool {

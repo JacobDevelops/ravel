@@ -92,7 +92,8 @@ fn version_specific_crates_and_production_literals_are_rejected() {
     version_specific_crates_fixture(&root);
     let mut violations = Vec::new();
 
-    verify_version_boundary(&root, &mut violations);
+    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    verify_version_boundary(&root, &inventories, &mut violations);
 
     assert!(
         violations
@@ -168,19 +169,20 @@ fn a_version_whose_inventory_cannot_be_counted_is_reported() {
     version_directory(&root, "26.1.2", &[]);
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
-        "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[hook]]\nid = \"an.id\"\n",
+        "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[hook]]\nid = \"an.id\"\n\
+         class = 'net.minecraft.Thing'\nmember = 'member'\ndescriptor = '()V'\n\
+         capability = 'Carry the reviewed hook.'\n",
     )
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
     verify_version_directories(&root, &mut violations);
 
-    assert_eq!(
-        violations,
-        [
-            "cannot count minecraft/versions/26.1.2/hooks.toml: a `[[hook]]` entry declares no \
-          kind or no descriptor"
-        ]
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("cannot parse hooks.toml")
+            && violations[0].contains("missing field `kind`"),
+        "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -191,7 +193,7 @@ fn a_version_whose_inventory_declares_no_hook_is_reported() {
     version_directory(&root, "26.1.2", &[]);
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
-        "schemaVersion = 1\nminecraft = \"26.1.2\"\n",
+        "schemaVersion = 1\nminecraft = \"26.1.2\"\nhook = []\n",
     )
     .expect("version data should be writable");
     let mut violations = Vec::new();
@@ -362,9 +364,10 @@ fn unreadable_and_malformed_class_inventory_files_are_reported() {
     let directory = root.join(format!("{VERSION_DATA}/26.1.2"));
     fs::remove_file(directory.join("hooks.toml")).expect("hook file should be removable");
     fs::create_dir(directory.join("hooks.toml")).expect("unreadable hook path should be creatable");
-    fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
     let mut violations = Vec::new();
-    version_class_names(&root, &[directory], &mut violations);
+    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
+    version_class_names(&root, &[directory], &inventories, &mut violations);
     assert_eq!(violations.len(), 2, "{violations:?}");
     assert!(violations[0].contains("cannot read") && violations[0].contains("hooks.toml"));
     assert!(violations[1].contains("cannot parse") && violations[1].contains("stubs.toml"));
@@ -386,7 +389,8 @@ fn a_reflected_class_name_is_version_data_the_boundary_sweep_reads() {
     let directories = version_directories(&root, &[VERSION_DATA])
         .expect("version directories should be readable");
     let mut violations = Vec::new();
-    let classes = version_class_names(&root, &directories, &mut violations);
+    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let classes = version_class_names(&root, &directories, &inventories, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
 
     assert!(
@@ -493,7 +497,9 @@ fn version_specific_crates_fixture(root: &Path) {
 
     fs::write(
         root.join("minecraft/versions/test-version/hooks.toml"),
-        "class = \"com.testgame.Thing\"\n\
+        "schemaVersion = 1\nminecraft = 'test-version'\n[[hook]]\nid = 'an.id'\n\
+         kind = 'instance-method'\nmember = 'member'\ncapability = 'Carry the reviewed hook.'\n\
+         class = \"com.testgame.Thing\"\n\
          descriptor = \"(Lcom/testgame/Other;Ljava/lang/String;)V\"\n",
     )
     .expect("version data should be writable");
@@ -511,4 +517,229 @@ fn version_specific_crates_fixture(root: &Path) {
         "// com.testgame.Thing, com/testgame/Other, java/lang/String\n",
     )
     .expect("test source should be writable");
+}
+
+#[test]
+fn version_readmes_follow_the_adapter_inventory_and_its_reviewed_counts() {
+    let root = temporary_root("version-readme-counts");
+    version_directory(&root, "26.1.2", &[]);
+    let directory = root.join(VERSION_DATA).join("26.1.2");
+    let hooks =
+        fs::read_to_string(directory.join("hooks.toml")).expect("fixture hooks should be readable");
+    fs::write(
+        directory.join("reviewed-hooks.toml"),
+        format!("{hooks}\n[[nonGoal]]\nid = 'other'\nreason = 'Not carried.'\n"),
+    )
+    .expect("reviewed hooks should be writable");
+    fs::write(
+        directory.join("adapter.toml"),
+        adapter_document("26.1.2", "live", None).replace("/hooks.toml", "/reviewed-hooks.toml"),
+    )
+    .expect("adapter should be writable");
+    let readme = directory.join(VERSION_PROSE_FILE);
+    fs::write(
+        &readme,
+        "carries 1 reviewed hooks and records 1 non-goals\n",
+    )
+    .expect("README should be writable");
+    fs::remove_file(directory.join("hooks.toml")).expect("stray hooks should be removable");
+    let mut violations = Vec::new();
+    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    assert_eq!(inventories.len(), 1);
+    super::verify_version_readmes(&root, &inventories, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+
+    for stale in [
+        "carries 2 reviewed hooks and records 1 non-goals\n",
+        "carries 1 reviewed hooks and records 0 non-goals\n",
+    ] {
+        fs::write(&readme, stale).expect("stale README should be writable");
+        super::verify_version_readmes(&root, &inventories, &mut violations);
+        assert_eq!(
+            violations,
+            [
+                "minecraft/versions/26.1.2/README.md does not state \"carries 1 reviewed hooks \
+              and records 1 non-goals\", which is what \
+              minecraft/versions/26.1.2/reviewed-hooks.toml declares"
+            ]
+        );
+        violations.clear();
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn version_admission_reports_unreadable_version_directories() {
+    let root = temporary_root("version-readme-missing-directory");
+    let mut violations = Vec::new();
+    let (eligibility, inventories) = verify_version_directories(&root, &mut violations);
+    assert!(eligibility.is_empty());
+    assert!(inventories.is_empty());
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with("cannot read minecraft/versions:"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn boundary_classes_follow_the_admitted_inventory_not_stray_default_hooks() {
+    let root = temporary_root("version-boundary-inventory-path");
+    version_directory(&root, "26.1.2", &[]);
+    let directory = root.join(VERSION_DATA).join("26.1.2");
+    let hooks = fs::read_to_string(directory.join("hooks.toml"))
+        .expect("fixture inventory should be readable");
+    fs::write(
+        directory.join("reviewed-hooks.toml"),
+        hooks.replace("net.minecraft.client.One", "net.minecraft.ReviewedOnly"),
+    )
+    .expect("selected inventory should be writable");
+    fs::write(
+        directory.join("adapter.toml"),
+        adapter_document("26.1.2", "live", None).replace("/hooks.toml", "/reviewed-hooks.toml"),
+    )
+    .expect("adapter should be writable");
+    fs::remove_file(directory.join("hooks.toml")).expect("default inventory should be removable");
+    let source = root.join("crates/ravel-core/src");
+    fs::create_dir_all(&source).expect("production source directory should be creatable");
+    fs::write(
+        source.join("lib.rs"),
+        "const REVIEWED: &str = \"net.minecraft.ReviewedOnly\";\n\
+         const STRAY: &str = \"net.minecraft.StrayOnly\";\n",
+    )
+    .expect("production source should be writable");
+    let mut violations = Vec::new();
+    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    for stray in [false, true] {
+        if stray {
+            fs::write(
+                directory.join("hooks.toml"),
+                hooks.replace("net.minecraft.client.One", "net.minecraft.StrayOnly"),
+            )
+            .expect("stray default inventory should be writable");
+        }
+        verify_version_boundary(&root, &inventories, &mut violations);
+        assert_eq!(
+            violations
+                .iter()
+                .filter(|message| message
+                    .contains("crates/ravel-core/src/lib.rs names net/minecraft/ReviewedOnly"))
+                .count(),
+            1,
+            "{violations:?}"
+        );
+        assert!(
+            !violations
+                .iter()
+                .any(|message| message.contains("names net/minecraft/StrayOnly")),
+            "{violations:?}"
+        );
+        assert!(
+            !violations
+                .iter()
+                .any(|message| message.contains("cannot read") && message.contains("hooks.toml")),
+            "{violations:?}"
+        );
+        violations.clear();
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn public_fixture_inventory_paths_supply_the_classes_the_boundary_sweeps() {
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let relative = "tests/fixtures/public/versions/99.0.0-synthetic";
+    let fixture = checkout.join(relative);
+    let mut violations = Vec::new();
+    let classes = version_class_names(
+        &checkout,
+        std::slice::from_ref(&fixture),
+        &[],
+        &mut violations,
+    );
+    assert!(violations.is_empty(), "{violations:?}");
+    assert!(
+        classes.contains(&"org/exampleengine/text/TextRules".to_owned()),
+        "{classes:?}"
+    );
+
+    let root = temporary_root("version-boundary-public-fixture");
+    let relocated = root.join(relative);
+    hook_only_public_fixture(&root, &fixture, &relocated);
+    assert!(
+        !root
+            .join("minecraft/versions/99.0.0-synthetic/hooks.toml")
+            .exists()
+    );
+    verify_version_boundary(&root, &[], &mut violations);
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|message| message
+                .contains("crates/ravel-core/src/lib.rs names org/exampleengine/HookOnlyAdmission"))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|message| message.contains("cannot read") || message.contains("cannot parse")),
+        "{violations:?}"
+    );
+    violations.clear();
+    let broken_version = "99.1.0-broken";
+    version_directory(&root, broken_version, &[]);
+    let canonical = root.join(VERSION_DATA).join(broken_version);
+    fs::write(canonical.join("hooks.toml"), "[[hook]\n")
+        .expect("malformed sibling inventory should be writable");
+    let broken = root
+        .join("tests/fixtures/public/versions")
+        .join(broken_version);
+    fs::rename(canonical, &broken).expect("broken fixture should be relocatable");
+    let classes = version_class_names(&root, &[broken, relocated], &[], &mut violations);
+    assert!(
+        classes.contains(&"org/exampleengine/HookOnlyAdmission".to_owned()),
+        "{classes:?}"
+    );
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("cannot parse hooks.toml"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn hook_only_public_fixture(root: &Path, fixture: &Path, relocated: &Path) {
+    fs::create_dir_all(relocated).expect("public fixture directory should be creatable");
+    for file in [
+        "adapter.toml",
+        "hooks.toml",
+        "stubs.toml",
+        "mappings.lock",
+        "reflection.toml",
+    ] {
+        fs::copy(fixture.join(file), relocated.join(file))
+            .expect("real fixture inputs should be copied");
+    }
+    let hooks = fs::read_to_string(relocated.join("hooks.toml"))
+        .expect("copied hook inventory should be readable");
+    fs::write(
+        relocated.join("hooks.toml"),
+        hooks.replace(
+            "org.exampleengine.text.TextRules",
+            "org.exampleengine.HookOnlyAdmission",
+        ),
+    )
+    .expect("inventory-only class should be writable");
+    let source = root.join("crates/ravel-core/src");
+    fs::create_dir_all(&source).expect("production source directory should be creatable");
+    fs::write(
+        source.join("lib.rs"),
+        "const FIXTURE_CLASS: &str = \"org.exampleengine.HookOnlyAdmission\";\n",
+    )
+    .expect("production source should be writable");
 }

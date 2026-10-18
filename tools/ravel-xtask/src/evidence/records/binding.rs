@@ -7,7 +7,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use super::Review;
-use crate::json::{read_text, relative_label};
+use crate::text::{read_text, relative_label};
 
 pub(super) fn verify_review(
     root: &Path,
@@ -137,7 +137,7 @@ pub(super) fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut
         violations.push(format!("{label} records its own digest, which cannot bind"));
         return;
     }
-    let relative = relative_label(root, &path).replace('\\', "/");
+    let relative = relative_label(root, &path);
     if !tracked.contains(&relative) {
         violations.push(format!(
             "{label} records a {kind} that the repository does not track, so its digest binds \

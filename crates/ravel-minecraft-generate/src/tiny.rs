@@ -60,14 +60,14 @@ fn java_executable() -> Result<PathBuf, GenerateError> {
         .map_err(|error| {
             GenerateError::Input(format!(
                 "cannot run mapping-io Java executable {}: {error}",
-                java.display()
+                inputs::file_name(&java.to_string_lossy())
             ))
         })?;
     let diagnostic = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
         return Err(GenerateError::Input(format!(
             "cannot determine mapping-io Java version using {}: {}",
-            java.display(),
+            inputs::file_name(&java.to_string_lossy()),
             diagnostic.trim()
         )));
     }
@@ -86,7 +86,7 @@ fn java_executable() -> Result<PathBuf, GenerateError> {
     if major.parse::<u32>().map_or(true, |major| major < 11) {
         return Err(GenerateError::Input(format!(
             "mapping-io normalization requires Java 11 or newer; {} reports {version}; set JAVA_HOME to a supported JDK",
-            java.display()
+            inputs::file_name(&java.to_string_lossy())
         )));
     }
     Ok(java)

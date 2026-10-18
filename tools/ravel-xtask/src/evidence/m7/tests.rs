@@ -288,7 +288,11 @@ fn m7_audits_the_total_the_inventory_verified_or_a_correction_that_names_it() {
         );
         let mut violations = Vec::new();
 
-        verify_m7_verified_fixture_total(&root, &mut violations);
+        verify_m7_verified_fixture_total(
+            &root,
+            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &mut violations,
+        );
 
         assert_eq!(
             violations.is_empty(),
@@ -326,7 +330,11 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
         M7_ARITHMETIC,
         &mut violations,
     );
-    verify_m7_verified_fixture_total(&root, &mut violations);
+    verify_m7_verified_fixture_total(
+        &root,
+        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &mut violations,
+    );
     assert!(
         !violations.is_empty(),
         "235 without a correction must not close v1"
@@ -339,7 +347,11 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     fs::remove_file(root.join("evidence/m5/inventory-summary.json"))
         .expect("inventory should be removable");
     violations.clear();
-    verify_m7_verified_fixture_total(&root, &mut violations);
+    verify_m7_verified_fixture_total(
+        &root,
+        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &mut violations,
+    );
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -387,7 +399,11 @@ fn selected_workload_uses_its_jar_inventory_not_historical_reference_totals() {
         )
         .expect("summary should be writable");
         let mut violations = Vec::new();
-        verify_m7_verified_fixture_total(&root, &mut violations);
+        verify_m7_verified_fixture_total(
+            &root,
+            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &mut violations,
+        );
         assert_eq!(violations.is_empty(), accepted, "{label}: {violations:?}");
     }
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -397,7 +413,7 @@ fn selected_workload_uses_its_jar_inventory_not_historical_reference_totals() {
 fn selected_workload_requires_a_binding_and_matching_protocol() {
     let (root, record) = selected_workload_root("m7-sevtech-protocol");
     let path = root.join("evidence/m7/library-summary.json");
-    assert!(super::library_record(&record));
+    assert!(super::library_record(&record).is_ok());
     assert!((M7_ARITHMETIC[3].0)(&record));
     fs::write(
         &path,
@@ -407,7 +423,13 @@ fn selected_workload_requires_a_binding_and_matching_protocol() {
     let mut manifest: serde_json::Value =
         serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
     let mut violations = Vec::new();
-    verify_m7_manifest(&root, &manifest, &mut violations);
+    let records = crate::evidence::closure::read_records(
+        &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(&manifest, &records, &mut violations);
     assert!(
         violations
             .iter()
@@ -416,11 +438,17 @@ fn selected_workload_requires_a_binding_and_matching_protocol() {
     );
     manifest["benchmarks"]["protocolVersion"] = "m7-library-v2".into();
     violations.clear();
-    verify_m7_manifest(&root, &manifest, &mut violations);
+    let records = crate::evidence::closure::read_records(
+        &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(&manifest, &records, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
     let mut fractional = record.clone();
     fractional["entries"]["total"] = serde_json::json!(259.0);
-    assert!(!super::library_record(&fractional));
+    assert!(super::library_record(&fractional).is_err());
     for (protocol, fixture) in [
         ("m7-library-v2", serde_json::Value::Null),
         ("m7-library-v1", record["fixture"].clone()),
@@ -431,14 +459,18 @@ fn selected_workload_requires_a_binding_and_matching_protocol() {
         stripped["correction"] = serde_json::json!({
             "from": 324, "total": 259, "reason": "binding removed"
         });
-        assert!(!super::library_record(&stripped));
+        assert!(super::library_record(&stripped).is_err());
         fs::write(
             &path,
             serde_json::to_vec(&stripped).expect("summary should serialize"),
         )
         .expect("summary should be writable");
         let mut violations = Vec::new();
-        verify_m7_verified_fixture_total(&root, &mut violations);
+        verify_m7_verified_fixture_total(
+            &root,
+            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+            &mut violations,
+        );
         assert!(!violations.is_empty(), "{protocol}: {violations:?}");
     }
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -453,9 +485,15 @@ fn a_complete_m7_record_set_leaves_m7_closure_with_nothing_to_report() {
     );
     let mut violations = Vec::new();
 
-    verify_m7_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(
         &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -511,9 +549,15 @@ fn every_m7_closure_clause_refuses_a_manifest_that_breaks_it() {
         );
         let mut violations = Vec::new();
 
-        verify_m7_manifest(
+        let records = crate::evidence::closure::read_records(
             &root,
+            crate::evidence::rules::Milestone::M7,
+            super::M7_RECORDS,
+            &mut violations,
+        );
+        verify_m7_manifest(
             &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+            &records,
             &mut violations,
         );
 
@@ -540,9 +584,15 @@ fn m7_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
     );
     let mut violations = Vec::new();
 
-    verify_m7_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(
         &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -564,9 +614,15 @@ fn m7_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         .expect("summary should be removable");
     let mut violations = Vec::new();
 
-    verify_m7_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(
         &read_json(&root.join("evidence/m7/manifest.json")).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -594,7 +650,7 @@ fn every_figure_m7_carries_is_recomputed_from_the_record() {
         let mut violations = Vec::new();
 
         verify_milestone_figures(
-            &root,
+            &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
             &read_json(&manifest).expect("manifest should parse"),
             &M7_FIGURES,
             &mut violations,
@@ -617,7 +673,11 @@ fn absent_fixture_totals_are_unreadable_not_matching_nulls() {
     fs::write(root.join("evidence/m5/inventory-summary.json"), "{}")
         .expect("inventory should be writable");
     let mut violations = Vec::new();
-    verify_m7_verified_fixture_total(&root, &mut violations);
+    verify_m7_verified_fixture_total(
+        &root,
+        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &mut violations,
+    );
     assert_eq!(violations.len(), 1);
     assert!(violations[0].contains("cannot both be read"));
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -629,7 +689,11 @@ fn an_unparseable_fixture_total_reports_the_parse_error() {
     fs::write(root.join("evidence/m5/inventory-summary.json"), "not JSON")
         .expect("inventory should be writable");
     let mut violations = Vec::new();
-    verify_m7_verified_fixture_total(&root, &mut violations);
+    verify_m7_verified_fixture_total(
+        &root,
+        &read_json(&root.join(M7_FIGURES.record)).expect("summary should parse"),
+        &mut violations,
+    );
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
         violations[0].contains("inventory-summary.json"),
@@ -646,9 +710,9 @@ fn an_unparseable_fixture_total_reports_the_parse_error() {
 fn library_schema_refuses_nonnumeric_wave_dependencies() {
     let mut record: serde_json::Value =
         serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
-    assert!(super::library_record(&record));
+    assert!(super::library_record(&record).is_ok());
     record["waves"][1]["dependsOn"] = serde_json::json!(["0"]);
-    assert!(!super::library_record(&record));
+    assert!(super::library_record(&record).is_err());
 }
 
 #[test]
@@ -658,7 +722,13 @@ fn a_malformed_library_summary_reports_the_parse_failure() {
     fs::write(root.join("evidence/m7/library-summary.json"), "not JSON")
         .expect("record should be writable");
     let mut violations = Vec::new();
-    verify_m7_manifest(&root, &serde_json::json!({}), &mut violations);
+    let records = crate::evidence::closure::read_records(
+        &root,
+        crate::evidence::rules::Milestone::M7,
+        super::M7_RECORDS,
+        &mut violations,
+    );
+    verify_m7_manifest(&serde_json::json!({}), &records, &mut violations);
     assert!(
         violations
             .iter()
@@ -669,5 +739,120 @@ fn a_malformed_library_summary_reports_the_parse_failure() {
             == 1,
         "{violations:?}"
     );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn v2_shape_failure_is_not_an_arithmetic_failure() {
+    let (root, mut record) = selected_workload_root("m7-v2-shape-clause");
+    record["fixture"] = serde_json::Value::Null;
+    assert_eq!(
+        super::library_record(&record),
+        Err("/fixture must be an object for v2".to_owned())
+    );
+    assert!(
+        (M7_ARITHMETIC[3].0)(&record),
+        "v2 protocol shape belongs to the record validator"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn open_milestone_tolerates_absence_but_closure_requires_the_record() {
+    let root = m7_root(
+        "m7-open-record-absence",
+        &library_summary(259, "null"),
+        &balanced_m7_manifest(),
+    );
+    fs::remove_file(root.join(M7_FIGURES.record)).expect("summary should be removable");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
+    let mut violations = Vec::new();
+    let records = super::verify_m7_integrity(&root, &manifest, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    verify_m7_manifest(&manifest, &records, &mut violations);
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|violation| {
+                violation.as_str()
+                    == "M7 closure requires the record evidence/m7/library-summary.json"
+            })
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn v2_correction_is_rejected_during_integrity_not_only_closure() {
+    let (root, mut record) = selected_workload_root("m7-v2-correction-integrity");
+    record["correction"] = serde_json::json!({"from":235,"total":259,"reason":"not allowed in v2"});
+    fs::write(root.join(M7_FIGURES.record), record.to_string()).expect("summary should write");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
+    let mut violations = Vec::new();
+    super::verify_m7_integrity(&root, &manifest, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("/correction")),
+        "{violations:?}"
+    );
+    assert!(
+        super::library_record(&record).is_err(),
+        "closure must reject it too"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn wave_failure_points_to_the_wave_not_the_root_entries_ledger() {
+    let (root, mut record) = selected_workload_root("m7-wave-row-clause");
+    record["waves"][0]["entries"] = serde_json::Value::Null;
+    assert_eq!(
+        super::library_record(&record),
+        Err("/waves/0/entries".to_owned())
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn legacy_integrity_does_not_newly_require_a_protocol_field() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
+    record
+        .as_object_mut()
+        .expect("summary should be an object")
+        .remove("protocol");
+    let root = m7_root(
+        "m7-open-no-protocol",
+        &record.to_string(),
+        &balanced_m7_manifest(),
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
+    let mut violations = Vec::new();
+    super::verify_m7_integrity(&root, &manifest, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn legacy_integrity_reports_an_invalid_fixture_once() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
+    record["fixture"] = serde_json::json!({"id":"not-valid-for-v1"});
+    let root = m7_root(
+        "m7-v1-fixture-once",
+        &record.to_string(),
+        &balanced_m7_manifest(),
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
+    let mut violations = Vec::new();
+    super::verify_m7_integrity(&root, &manifest, &mut violations);
+    assert_eq!(violations, ["M7 v1 requires a null fixture"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

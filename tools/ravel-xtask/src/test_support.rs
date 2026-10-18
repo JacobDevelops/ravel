@@ -13,10 +13,23 @@ pub(crate) const PASS_RECORD: &str = "Result: PASS\n";
 pub(crate) const PASS_RECORD_DIGEST: &str =
     "d2bcd3b6eb96afdab9d8fa0b8333538ff07cfd0764afc5a3854976209bef21e2";
 
+pub(crate) fn hook_inventories(
+    root: &Path,
+    versions: &[String],
+) -> Result<Vec<ravel_minecraft_generate::HookInventory>, String> {
+    versions
+        .iter()
+        .map(|version| crate::hooks::hook_inventory(root, version))
+        .collect()
+}
+
 pub(crate) fn version_directory(root: &Path, version: &str, without: &[&str]) {
     let directory = root.join(format!("{VERSION_DATA}/{version}"));
     fs::create_dir_all(&directory).expect("version directory should be creatable");
-    for file in VERSION_FILES {
+    for file in VERSION_FILES
+        .into_iter()
+        .chain(std::iter::once("hooks.toml"))
+    {
         if without.contains(&file) {
             continue;
         }
@@ -24,8 +37,9 @@ pub(crate) fn version_directory(root: &Path, version: &str, without: &[&str]) {
             VERSION_PROSE_FILE => format!("# Minecraft {version}\n"),
             "hooks.toml" => format!(
                 "schemaVersion = 1\nminecraft = \"{version}\"\n\n[[hook]]\nid = \
-                 \"level.tick\"\nkind = \"instance-method\"\nmember = \
-                 \"tick\"\ndescriptor = \"()V\"\n"
+                 \"level.tick\"\nclass = \"net.minecraft.client.One\"\nkind = \
+                 \"instance-method\"\nmember = \"tick\"\ndescriptor = \"()V\"\n\
+                 capability = \"Tick the level.\"\n"
             ),
             REFLECTION_FILE => format!(
                 "schemaVersion = 1\nminecraft = \"{version}\"\n\n[[reflected]]\nname = \

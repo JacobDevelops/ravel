@@ -364,9 +364,15 @@ fn a_complete_m6_record_set_leaves_m6_closure_with_nothing_to_report() {
     let manifest = root.join("evidence/m6/manifest.json");
     let mut violations = Vec::new();
 
-    verify_m6_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M6,
+        super::M6_RECORDS,
+        &mut violations,
+    );
+    verify_m6_manifest(
         &read_json(&manifest).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -453,9 +459,15 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
     );
     let mut violations = Vec::new();
 
-    verify_m6_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M6,
+        super::M6_RECORDS,
+        &mut violations,
+    );
+    verify_m6_manifest(
         &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -477,9 +489,15 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
         .expect("summary should be removable");
     let mut violations = Vec::new();
 
-    verify_m6_manifest(
+    let records = crate::evidence::closure::read_records(
         &root,
+        crate::evidence::rules::Milestone::M6,
+        super::M6_RECORDS,
+        &mut violations,
+    );
+    verify_m6_manifest(
         &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+        &records,
         &mut violations,
     );
 
@@ -507,7 +525,7 @@ fn every_figure_m6_carries_is_recomputed_from_the_record() {
         let mut violations = Vec::new();
 
         verify_milestone_figures(
-            &root,
+            &read_json(&root.join(M6_FIGURES.record)).expect("summary should parse"),
             &read_json(&manifest).expect("manifest should parse"),
             &M6_FIGURES,
             &mut violations,
@@ -533,9 +551,15 @@ fn every_m6_closure_clause_check(manifest_cases: &[ClosureCase<'_>]) {
         );
         let mut violations = Vec::new();
 
-        verify_m6_manifest(
+        let records = crate::evidence::closure::read_records(
             &root,
+            crate::evidence::rules::Milestone::M6,
+            super::M6_RECORDS,
+            &mut violations,
+        );
+        verify_m6_manifest(
             &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
+            &records,
             &mut violations,
         );
 
@@ -555,7 +579,7 @@ fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["rewriteIntegrity"]["mutationProof"]["sourceInjection"] = serde_json::json!({});
-    assert!(!super::counterpart_record(&record));
+    assert!(super::counterpart_record(&record).is_err());
     assert!(!M6_ARITHMETIC[20].0(&record));
 }
 
@@ -563,10 +587,32 @@ fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
 fn counterpart_schema_refuses_string_counts_and_duplicate_ids() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
-    assert!(super::counterpart_record(&record));
+    assert!(super::counterpart_record(&record).is_ok());
     record["counterparts"][1]["id"] = serde_json::json!("c1");
-    assert!(!super::counterpart_record(&record));
+    assert!(super::counterpart_record(&record).is_err());
     record["counterparts"][1]["id"] = serde_json::json!("c2");
     record["totals"]["observableAreas"] = serde_json::json!("10");
-    assert!(!super::counterpart_record(&record));
+    assert!(super::counterpart_record(&record).is_err());
+}
+
+#[test]
+fn counterpart_failure_names_the_frozen_wave_clause() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
+    record["wave"]["frozen"] = serde_json::json!(false);
+    assert_eq!(
+        super::counterpart_record(&record),
+        Err("/wave/frozen".to_owned())
+    );
+}
+
+#[test]
+fn counterpart_failure_points_to_the_actual_row_field() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
+    record["counterparts"][0]["observableAreas"] = serde_json::Value::Null;
+    assert_eq!(
+        super::counterpart_record(&record),
+        Err("/counterparts/0/observableAreas".to_owned())
+    );
 }

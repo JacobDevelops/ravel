@@ -1,11 +1,12 @@
 //! Shared record predicates and carried-figure comparisons.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::evidence::manifest::verify_redaction_value;
-use crate::evidence::rules::{Figure, Rule};
+use crate::evidence::rules::verify_redaction_value;
+use crate::evidence::rules::{Figure, Milestone, RecordRule, Rule};
 use crate::json::read_json;
 
 pub(crate) fn verify_arithmetic(
@@ -62,33 +63,81 @@ fn same_figure(claimed: &Value, measured: &Value) -> bool {
             })
 }
 
-pub(crate) fn verify_closure_records(
+#[derive(Default)]
+pub(crate) struct LoadedRecords {
+    values: BTreeMap<&'static str, Option<Value>>,
+}
+
+impl LoadedRecords {
+    pub(crate) fn get(&self, name: &str) -> Option<&Value> {
+        self.values.get(name).and_then(Option::as_ref)
+    }
+
+    pub(crate) fn was_loaded(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
+}
+pub(crate) type RecordDefinition = (&'static str, RecordRule, &'static str);
+
+pub(crate) fn read_records(
     root: &Path,
-    milestone: &str,
-    directory: &str,
-    records: &[(&str, Rule, &str)],
+    milestone: Milestone,
+    definitions: &[RecordDefinition],
     violations: &mut Vec<String>,
-) {
-    for (name, rule, description) in records {
+) -> LoadedRecords {
+    let directory = format!("evidence/{}", milestone.as_str().to_ascii_lowercase());
+    let mut records = LoadedRecords::default();
+    for (name, _, _) in definitions {
         let relative = format!("{directory}/{name}");
         let path = root.join(&relative);
+        // Most records are optional until closure; M2/M3 retain their earlier integrity requirements.
         if !path.is_file() {
-            violations.push(format!(
-                "{milestone} closure requires the record {relative}"
-            ));
+            if matches!(
+                (milestone, *name),
+                (Milestone::M2, "loader-overhead.json")
+                    | (Milestone::M3, "linux-process-matrix.json")
+            ) {
+                records.values.insert(*name, None);
+                violations.push(format!("missing required file: {relative}"));
+            }
             continue;
         }
         match read_json(&path) {
             Ok(record) => {
-                if !rule(&record) {
-                    violations.push(format!(
-                        "{milestone} closure requires {description}: {relative}"
-                    ));
-                }
-                verify_redaction_value(&record, &relative, violations);
+                records.values.insert(*name, Some(record));
             }
-            Err(error) => violations.push(error),
+            Err(error) => {
+                records.values.insert(*name, None);
+                violations.push(error);
+            }
         }
+    }
+    records
+}
+
+pub(crate) fn verify_closure_records(
+    milestone: Milestone,
+    records: &LoadedRecords,
+    definitions: &[RecordDefinition],
+    violations: &mut Vec<String>,
+) {
+    let directory = format!("evidence/{}", milestone.as_str().to_ascii_lowercase());
+    for (name, rule, description) in definitions {
+        let relative = format!("{directory}/{name}");
+        let Some(record) = records.get(name) else {
+            if !records.was_loaded(name) {
+                violations.push(format!(
+                    "{milestone} closure requires the record {relative}"
+                ));
+            }
+            continue;
+        };
+        if let Err(requirement) = rule(record) {
+            violations.push(format!(
+                "{milestone} closure requires {description}: {relative}: failed {requirement}"
+            ));
+        }
+        verify_redaction_value(record, &relative, violations);
     }
 }
 
@@ -101,22 +150,13 @@ pub(crate) struct CarriedFigures {
 }
 
 pub(crate) fn verify_milestone_figures(
-    root: &Path,
+    record: &Value,
     manifest: &Value,
     carried: &CarriedFigures,
     violations: &mut Vec<String>,
 ) {
-    let path = root.join(carried.record);
-    if !path.is_file() {
-        return;
-    }
-    match read_json(&path) {
-        Ok(record) => {
-            verify_arithmetic(&record, carried.record, carried.arithmetic, violations);
-            verify_carried_figures(manifest, &record, carried, violations);
-        }
-        Err(error) => violations.push(error),
-    }
+    verify_arithmetic(record, carried.record, carried.arithmetic, violations);
+    verify_carried_figures(manifest, record, carried, violations);
 }
 
 #[cfg(test)]

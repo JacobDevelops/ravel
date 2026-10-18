@@ -7,7 +7,7 @@ use ravel_minecraft_generate::Eligibility;
 use serde::Deserialize;
 
 use super::{AGENT_JAR_SOURCES, REFLECTION_FILE, java_sources};
-use crate::json::{read_text, relative_label};
+use crate::text::{read_text, relative_label};
 use crate::version_boundary::{VERSION_DATA, VersionEligibility};
 
 pub(super) const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
@@ -243,7 +243,7 @@ pub(crate) fn verify_persistence_reflection(
 ) {
     let surfaces = reflective_surfaces(root, eligibility, violations);
 
-    let sources = java_sources(&root.join(AGENT_JAR_SOURCES));
+    let sources = java_sources(&root.join(AGENT_JAR_SOURCES), violations);
     if sources.is_empty() {
         violations.push(format!(
             "{AGENT_JAR_SOURCES} holds no Java source, so no game class the agent jar resolves is \

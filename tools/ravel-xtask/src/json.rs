@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use crate::text::redacted_path;
 use serde_json::Value;
 
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
@@ -11,26 +12,6 @@ pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("cannot read JSON {}: {error}", redacted_path(path)))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("cannot parse JSON {}: {error}", redacted_path(path)))
-}
-
-pub(crate) fn read_text(root: &Path, path: &Path) -> Result<String, String> {
-    let rooted;
-    let resolved = if path.is_absolute() || path.starts_with(root) {
-        path
-    } else {
-        rooted = root.join(path);
-        &rooted
-    };
-    fs::read_to_string(resolved)
-        .map_err(|error| format!("cannot read {}: {error}", relative_label(root, path)))
-}
-
-pub(crate) fn relative_label(root: &Path, path: &Path) -> String {
-    let label = path.strip_prefix(root).map_or_else(
-        |_| redacted_path(path),
-        |relative| relative.display().to_string(),
-    );
-    label.replace('\\', "/")
 }
 
 pub(crate) fn array<'a>(value: &'a Value, pointer: &str) -> &'a [Value] {
@@ -49,24 +30,6 @@ pub(crate) fn nonempty(value: &Value, pointer: &str) -> bool {
         .pointer(pointer)
         .and_then(Value::as_str)
         .is_some_and(|text| !text.is_empty())
-}
-
-pub(crate) fn redacted_path(path: &Path) -> String {
-    if path.is_relative() {
-        return path.display().to_string();
-    }
-    std::env::current_dir()
-        .ok()
-        .and_then(|directory| path.strip_prefix(directory).ok().map(Path::to_path_buf))
-        .map_or_else(
-            || {
-                path.file_name().map_or_else(
-                    || "an unnamed path".to_owned(),
-                    |name| name.to_string_lossy().into_owned(),
-                )
-            },
-            |relative| relative.display().to_string(),
-        )
 }
 
 pub(crate) fn schema_matches(root: &Path, schema: &str, document: &Path) -> Result<bool, String> {

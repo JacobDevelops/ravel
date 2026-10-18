@@ -87,7 +87,13 @@ fn missing_inventory_numbers_do_not_balance_as_nulls() {
 fn a_malformed_inventory_summary_reports_the_parse_failure() {
     let root = summary_root("m5-malformed-summary", "not JSON");
     let mut violations = Vec::new();
-    super::verify_m5_manifest(&root, &serde_json::json!({}), &mut violations);
+    let records = crate::evidence::closure::read_records(
+        &root,
+        crate::evidence::rules::Milestone::M5,
+        super::M5_RECORDS,
+        &mut violations,
+    );
+    super::verify_m5_manifest(&serde_json::json!({}), &records, &mut violations);
     assert!(
         violations
             .iter()
@@ -100,4 +106,53 @@ fn a_malformed_inventory_summary_reports_the_parse_failure() {
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn complete_inventory_summary() -> serde_json::Value {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&balanced_summary()).expect("summary should parse");
+    record["milestone"] = "M5".into();
+    record["workPackage"] = "M5-W8".into();
+    record["protocol"] = "m5-inventory-v1".into();
+    record["result"] = "pass".into();
+    record["disclosure"] = serde_json::json!({
+        "readObservation": {"bound": "Metadata observations only"},
+        "judgedClaims": [{"claim": "Source-use verdict", "basis": "judged", "decidedBy": "inventory reviewer"}],
+    });
+    for (field, count) in [
+        ("classFiles", 4),
+        ("models", 2),
+        ("textures", 2),
+        ("recipes", 2),
+        ("nestedJars", 0),
+    ] {
+        record["surfaces"][field] = count.into();
+    }
+    record["boundArtifacts"][0]["sha256"] = "0".repeat(64).into();
+    record["boundArtifacts"][0]["class"] = "material".into();
+    record["primitiveScan"] = serde_json::json!({"class": "machinery"});
+    record["machineryAmendments"] = serde_json::json!([]);
+    record
+}
+
+#[test]
+fn inventory_numbers_identify_the_missing_field() {
+    let mut record = complete_inventory_summary();
+    assert!(super::inventory_record(&record).is_ok());
+    record["reads"]["archiveReads"] = serde_json::Value::Null;
+    assert_eq!(
+        super::inventory_record(&record),
+        Err("/reads/archiveReads".to_owned())
+    );
+}
+
+#[test]
+fn bound_artifact_hashes_remain_lowercase_only_and_name_the_row() {
+    let mut record = complete_inventory_summary();
+    assert!(super::inventory_record(&record).is_ok());
+    record["boundArtifacts"][0]["sha256"] = "A".repeat(64).into();
+    assert_eq!(
+        super::inventory_record(&record),
+        Err("/boundArtifacts/0/sha256 must be a lowercase SHA-256 digest".to_owned(),)
+    );
 }

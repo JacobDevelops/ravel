@@ -33,6 +33,32 @@ fn gate_versions_root(label: &str, versions: &[&str], harness: &str) -> PathBuf 
 }
 
 #[test]
+fn an_unreadable_record_reports_the_io_error_not_absence() {
+    let root = gate_versions_root(
+        "gate-unreadable",
+        &["26.1.2"],
+        &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"),
+    );
+    let path = root.join("target/ravel-jvm/tested-versions.txt");
+    fs::remove_file(&path).expect("record should be removable");
+    fs::create_dir(&path).expect("directory should be creatable");
+    let error = fs::read_to_string(&path).expect_err("a directory is not a record");
+    let violations = verify_gate_versions(&root).violations;
+    assert!(
+        violations.iter().any(|message| message.contains(&format!(
+            "cannot read target/ravel-jvm/tested-versions.txt: {error}"
+        ))),
+        "{violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|message| message.contains("is absent"))
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_version_that_ran_every_section_raises_nothing() {
     let root = gate_versions_root(
         "gate-versions-clean",

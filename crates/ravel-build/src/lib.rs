@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use ravel_core::ModId;
 use ravel_loader::Discovered;
 use ravel_package::Sha256Digest;
 use sha2::{Digest, Sha256};
@@ -34,7 +35,7 @@ pub struct HostPlan {
     files: BTreeMap<String, String>,
     installation_lock: String,
     members: Vec<PlannedMember>,
-    fingerprint: String,
+    fingerprint: Sha256Digest,
 }
 
 impl HostPlan {
@@ -58,7 +59,7 @@ impl HostPlan {
 
     /// Returns the generated-byte digest, not Cargo's build-cache key.
     #[must_use]
-    pub fn fingerprint(&self) -> &str {
+    pub const fn fingerprint(&self) -> &Sha256Digest {
         &self.fingerprint
     }
 }
@@ -67,7 +68,7 @@ impl HostPlan {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlannedMember {
     /// The identity its manifest declares.
-    pub mod_id: String,
+    pub mod_id: ModId,
     /// The directory it is installed under.
     pub directory: String,
     /// The Cargo package name its own `Cargo.toml` declares.
@@ -94,7 +95,7 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
             });
         }
         members.push(PlannedMember {
-            mod_id: package.manifest().id.as_str().to_owned(),
+            mod_id: package.manifest().id.clone(),
             directory,
             crate_name,
         });
@@ -131,7 +132,7 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
     digest.update(installation_lock.as_bytes());
     let mut bytes = [0_u8; 32];
     bytes.copy_from_slice(&digest.finalize());
-    let fingerprint = Sha256Digest::from_bytes(bytes).to_string();
+    let fingerprint = Sha256Digest::from_bytes(bytes);
 
     Ok(HostPlan {
         files,

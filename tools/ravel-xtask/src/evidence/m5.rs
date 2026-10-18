@@ -1,5 +1,7 @@
 //! M5 closure rules.
 
+use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::rules::Milestone;
 use std::path::Path;
 
 use serde_json::Value;
@@ -8,121 +10,146 @@ use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation,
 };
-use crate::json::{array, nonempty, number, read_json};
+use crate::json::{array, nonempty, number};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::manifest::require_manifest_rule;
+use crate::evidence::rules::{
+    RecordRule, require, require_fields, require_manifest_rule, require_nonempty_array,
+    require_rows, unique_by,
+};
 
-fn inventory_record(v: &Value) -> bool {
-    v["milestone"] == "M5"
-        && v["workPackage"] == "M5-W8"
-        && v["protocol"] == "m5-inventory-v1"
-        && matches!(v["result"].as_str(), Some("pass" | "provisional"))
-        && nonempty(v, "/disclosure/readObservation/bound")
-        && v.pointer("/disclosure/judgedClaims")
-            .is_some_and(Value::is_array)
-        && !array(v, "/disclosure/judgedClaims").is_empty()
-        && array(v, "/disclosure/judgedClaims").iter().all(|row| {
-            nonempty(row, "/claim") && row["basis"] == "judged" && nonempty(row, "/decidedBy")
-        })
-        && inventory_numbers(v)
-        && v["boundArtifacts"].is_array()
-        && !array(v, "/boundArtifacts").is_empty()
-        && array(v, "/boundArtifacts").iter().all(|row| {
-            nonempty(row, "/name")
-                && nonempty(row, "/holds")
-                && row["sha256"].as_str().is_some_and(|digest| {
-                    digest.len() == 64
-                        && digest
-                            .bytes()
-                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-                })
-                && matches!(row["class"].as_str(), Some("material" | "machinery"))
-        })
-        && array(v, "/boundArtifacts")
+fn inventory_record(v: &Value) -> Result<(), String> {
+    require(v["milestone"] == "M5", "/milestone must be M5")?;
+    require(v["workPackage"] == "M5-W8", "/workPackage must be M5-W8")?;
+    require(
+        v["protocol"] == "m5-inventory-v1",
+        "/protocol must be m5-inventory-v1",
+    )?;
+    require(
+        matches!(v["result"].as_str(), Some("pass" | "provisional")),
+        "/result must be pass, provisional",
+    )?;
+    inventory_disclosure(v)?;
+    inventory_numbers(v)?;
+    inventory_artifacts(v)?;
+    inventory_amendments(v)
+}
+
+fn inventory_disclosure(v: &Value) -> Result<(), String> {
+    require(
+        nonempty(v, "/disclosure/readObservation/bound"),
+        "/disclosure/readObservation/bound",
+    )?;
+    require_rows(v, "/disclosure/judgedClaims", |row| {
+        require(nonempty(row, "/claim"), "/claim")?;
+        require(row["basis"] == "judged", "/basis must be judged")?;
+        require(nonempty(row, "/decidedBy"), "/decidedBy")?;
+
+        Ok(())
+    })?;
+    Ok(())
+}
+
+fn inventory_artifacts(v: &Value) -> Result<(), String> {
+    let artifacts = array(v, "/boundArtifacts");
+    require_rows(v, "/boundArtifacts", |row| {
+        require(nonempty(row, "/name"), "/name")?;
+        require(nonempty(row, "/holds"), "/holds")?;
+        require(
+            row["sha256"].as_str().is_some_and(|digest| {
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            }),
+            "/sha256 must be a lowercase SHA-256 digest",
+        )?;
+        require(
+            matches!(row["class"].as_str(), Some("material" | "machinery")),
+            "/class must be material or machinery",
+        )?;
+
+        Ok(())
+    })?;
+    require(
+        unique_by(artifacts, |left, right| left["name"] == right["name"]),
+        "/boundArtifacts unique name",
+    )
+}
+
+fn inventory_amendments(v: &Value) -> Result<(), String> {
+    require(
+        v["primitiveScan"]["class"] == "machinery",
+        "/primitiveScan/class must be machinery",
+    )?;
+    require(
+        v["machineryAmendments"].is_array(),
+        "/machineryAmendments must be an array",
+    )?;
+    for (index, row) in array(v, "/machineryAmendments").iter().enumerate() {
+        inventory_amendment(v, row)
+            .map_err(|requirement| format!("/machineryAmendments/{index}{requirement}"))?;
+    }
+    Ok(())
+}
+
+fn inventory_amendment(v: &Value, row: &Value) -> Result<(), String> {
+    require(nonempty(row, "/milestone"), "/milestone")?;
+    require(nonempty(row, "/reason"), "/reason")?;
+    require(row["figures"].is_array(), "/figures must be an array")?;
+    for (index, entry) in require_nonempty_array(row, "/entries")?.iter().enumerate() {
+        if !array(v, "/boundArtifacts")
             .iter()
-            .enumerate()
-            .all(|(index, row)| {
-                array(v, "/boundArtifacts")[..index]
-                    .iter()
-                    .all(|other| other["name"] != row["name"])
-            })
-        && v["primitiveScan"]["class"] == "machinery"
-        && v["machineryAmendments"].is_array()
-        && array(v, "/machineryAmendments").iter().all(|row| {
-            nonempty(row, "/milestone")
-                && nonempty(row, "/reason")
-                && row["entries"].is_array()
-                && !array(row, "/entries").is_empty()
-                && row["figures"].is_array()
-                && array(row, "/entries").iter().all(|entry| {
-                    array(v, "/boundArtifacts").iter().any(|artifact| {
-                        artifact["class"] == "machinery" && artifact.get("name") == Some(entry)
-                    })
-                })
-        })
+            .any(|artifact| artifact["class"] == "machinery" && artifact.get("name") == Some(entry))
+        {
+            return Err(format!("/entries/{index} must name bound machinery"));
+        }
+    }
+    Ok(())
 }
 
-fn inventory_numbers(v: &Value) -> bool {
-    [
-        (
-            "/artifacts",
-            &["total", "catalogued", "uncatalogued", "planned"][..],
-        ),
-        (
-            "/graph",
-            &[
-                "nodes",
-                "resolvedNodes",
-                "blockedNodes",
-                "edges",
-                "resolvedEdges",
-                "blockedEdges",
-                "clusters",
-                "largestCluster",
-            ][..],
-        ),
-        (
-            "/rights/sourceUse",
-            &["permitted", "conditional", "prohibited", "unresolved"][..],
-        ),
-        (
-            "/surfaces",
-            &[
-                "classFiles",
-                "models",
-                "textures",
-                "recipes",
-                "catalogued",
-                "unclassified",
-                "nestedJars",
-            ][..],
-        ),
-        (
-            "/plans",
-            &[
-                "planned",
-                "readingSource",
-                "notReadingSource",
-                "dependencyEdges",
-                "canonicalIds",
-            ][..],
-        ),
-        (
-            "/reads",
-            &["producersWatched", "archiveReads", "entryBodyReads"][..],
-        ),
-    ]
-    .iter()
-    .all(|(section, fields)| {
-        v.pointer(section).is_some_and(|row| {
-            row.is_object() && fields.iter().all(|field| row[*field].is_number())
-        })
-    }) && v["rights"].is_object()
-        && v["rights"]["publishable"].is_number()
+fn inventory_numbers(v: &Value) -> Result<(), String> {
+    require_fields(
+        v,
+        &[
+            "/artifacts/total",
+            "/artifacts/catalogued",
+            "/artifacts/uncatalogued",
+            "/artifacts/planned",
+            "/graph/nodes",
+            "/graph/resolvedNodes",
+            "/graph/blockedNodes",
+            "/graph/edges",
+            "/graph/resolvedEdges",
+            "/graph/blockedEdges",
+            "/graph/clusters",
+            "/graph/largestCluster",
+            "/rights/sourceUse/permitted",
+            "/rights/sourceUse/conditional",
+            "/rights/sourceUse/prohibited",
+            "/rights/sourceUse/unresolved",
+            "/surfaces/classFiles",
+            "/surfaces/models",
+            "/surfaces/textures",
+            "/surfaces/recipes",
+            "/surfaces/catalogued",
+            "/surfaces/unclassified",
+            "/surfaces/nestedJars",
+            "/plans/planned",
+            "/plans/readingSource",
+            "/plans/notReadingSource",
+            "/plans/dependencyEdges",
+            "/plans/canonicalIds",
+            "/reads/producersWatched",
+            "/reads/archiveReads",
+            "/reads/entryBodyReads",
+            "/rights/publishable",
+        ],
+        Value::is_number,
+    )
 }
 
-const M5_RECORDS: &[(&str, Rule, &str)] = &[(
+const M5_RECORDS: &[(&str, RecordRule, &str)] = &[(
     "inventory-summary.json",
     inventory_record,
     "an inventory summary carrying every aggregate as a number, a digest over every \
@@ -131,7 +158,11 @@ const M5_RECORDS: &[(&str, Rule, &str)] = &[(
      which of its claims rest on judgement",
 )];
 
-pub(crate) fn verify_m5_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m5_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
     require_manifest_rule(
         manifest,
         |v| {
@@ -173,11 +204,12 @@ pub(crate) fn verify_m5_manifest(root: &Path, manifest: &Value, violations: &mut
         violations,
     );
 
-    verify_closure_records(root, "M5", "evidence/m5", M5_RECORDS, violations);
+    verify_closure_records(Milestone::M5, records, M5_RECORDS, violations);
 
-    let record = root.join("evidence/m5/inventory-summary.json");
-    // The closure-record validator above owns read and parse diagnostics.
-    if read_json(&record).is_ok_and(|value| value["result"] == "provisional") {
+    if records
+        .get("inventory-summary.json")
+        .is_some_and(|value| value["result"] == "provisional")
+    {
         violations.push(
             "M5 closure requires final figures: evidence/m5/inventory-summary.json records itself \
              as provisional, which is a true statement about an inventory under repair and not \
@@ -365,8 +397,16 @@ pub(crate) const M5_FIGURES: CarriedFigures = CarriedFigures {
     arithmetic: M5_ARITHMETIC,
 };
 
-pub(crate) fn verify_m5_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_milestone_figures(root, manifest, &M5_FIGURES, violations);
+pub(crate) fn verify_m5_integrity(
+    root: &Path,
+    manifest: &Value,
+    violations: &mut Vec<String>,
+) -> LoadedRecords {
+    let records = read_records(root, Milestone::M5, M5_RECORDS, violations);
+    if let Some(record) = records.get(M5_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+        verify_milestone_figures(record, manifest, &M5_FIGURES, violations);
+    }
+    records
 }
 
 #[cfg(test)]

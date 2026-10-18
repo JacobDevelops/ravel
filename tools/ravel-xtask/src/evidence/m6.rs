@@ -1,5 +1,7 @@
 //! M6 closure rules.
 
+use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::rules::Milestone;
 use std::path::Path;
 
 use serde_json::Value;
@@ -10,100 +12,132 @@ use crate::evidence::rules::{
 use crate::json::{array, nonempty, number};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::manifest::require_manifest_rule;
+use crate::evidence::rules::{
+    RecordRule, require, require_fields, require_manifest_rule, require_rows, unique_by,
+};
 
-fn counterpart_record(v: &Value) -> bool {
-    v["milestone"] == "M6"
-        && v["workPackage"] == "M6-W6"
-        && v["protocol"] == "m6-counterpart-v1"
-        && v["result"] == "pass"
-        && v["wave"].is_object()
-        && v["wave"]["frozen"] == true
-        && v["wave"]["entries"].is_array()
-        && !array(v, "/wave/entries").is_empty()
-        && array(v, "/wave/entries").iter().all(|row| {
-            nonempty(row, "/id") && nonempty(row, "/reason") && row["dependencies"].is_array()
-        })
-        && v["counterparts"].is_array()
-        && !array(v, "/counterparts").is_empty()
-        && array(v, "/counterparts").iter().all(counterpart_row)
-        && array(v, "/counterparts")
-            .iter()
-            .enumerate()
-            .all(|(index, row)| {
-                array(v, "/counterparts")[..index]
-                    .iter()
-                    .all(|other| other["id"] != row["id"])
-            })
-        && v["cluster"].is_object()
-        && nonempty(v, "/cluster/scenario")
-        && v["cluster"]["steps"].is_array()
-        && !array(v, "/cluster/steps").is_empty()
-        && array(v, "/cluster/steps")
-            .iter()
-            .all(|row| nonempty(row, "/name") && nonempty(row, "/result"))
-        && v["processValidation"].is_object()
-        && [
-            "template",
-            "checklist",
-            "evidenceSchema",
-            "secondCounterpart",
-        ]
-        .iter()
-        .all(|key| {
-            v["processValidation"][*key]
-                .as_str()
-                .is_some_and(|text| !text.is_empty())
-        })
-        && v["rewriteIntegrity"].is_object()
-        && v["rewriteIntegrity"]["enforcing"].is_boolean()
-        && ["lexicon", "identifierSet"].iter().all(|key| {
-            v["rewriteIntegrity"][*key]
-                .as_str()
-                .is_some_and(|text| !text.is_empty())
-        })
-        && [
-            "filesScanned",
-            "artifactsScanned",
-            "violations",
-            "specificationViolations",
-        ]
-        .iter()
-        .all(|key| v["rewriteIntegrity"][*key].is_number())
-        && v["rewriteIntegrity"]["mutationProof"].is_object()
-        && ["sourceInjection", "artifactInjection", "cleanRun"]
-            .iter()
-            .all(|key| v["rewriteIntegrity"]["mutationProof"][*key]["exitStatus"].is_number())
-        && v["totals"].is_object()
-        && [
-            "counterparts",
-            "observableAreas",
-            "declarableOnly",
-            "exercised",
-        ]
-        .iter()
-        .all(|key| v["totals"][*key].is_number())
+fn counterpart_record(v: &Value) -> Result<(), String> {
+    require(v["milestone"] == "M6", "/milestone must be M6")?;
+    require(v["workPackage"] == "M6-W6", "/workPackage must be M6-W6")?;
+    require(
+        v["protocol"] == "m6-counterpart-v1",
+        "/protocol must be m6-counterpart-v1",
+    )?;
+    require(v["result"] == "pass", "/result must be pass")?;
+    counterpart_wave(v)?;
+    let counterparts = array(v, "/counterparts");
+    require_rows(v, "/counterparts", counterpart_row)?;
+    require(
+        unique_by(counterparts, |left, right| left["id"] == right["id"]),
+        "/counterparts must have unique id",
+    )?;
+    counterpart_process(v)?;
+    rewrite_integrity_record(v)?;
+    require(v["totals"].is_object(), "/totals")?;
+    require_fields(
+        v,
+        &[
+            "/totals/counterparts",
+            "/totals/observableAreas",
+            "/totals/declarableOnly",
+            "/totals/exercised",
+        ],
+        Value::is_number,
+    )?;
+    Ok(())
 }
 
-fn counterpart_row(row: &Value) -> bool {
-    nonempty(row, "/id")
-        && nonempty(row, "/entry")
-        && row["specification"].is_object()
-        && matches!(
+fn counterpart_wave(v: &Value) -> Result<(), String> {
+    require(v["wave"].is_object(), "/wave")?;
+    require(v["wave"]["frozen"] == true, "/wave/frozen")?;
+    require_rows(v, "/wave/entries", |row| {
+        require(nonempty(row, "/id"), "/id")?;
+        require(nonempty(row, "/reason"), "/reason")?;
+        require(row["dependencies"].is_array(), "/dependencies")?;
+
+        Ok(())
+    })?;
+    Ok(())
+}
+
+fn counterpart_process(v: &Value) -> Result<(), String> {
+    require(v["cluster"].is_object(), "/cluster")?;
+    require(nonempty(v, "/cluster/scenario"), "/cluster/scenario")?;
+    require_rows(v, "/cluster/steps", |row| {
+        require(nonempty(row, "/name"), "/name")?;
+        require(nonempty(row, "/result"), "/result")?;
+
+        Ok(())
+    })?;
+    require_fields(
+        v,
+        &[
+            "/processValidation/template",
+            "/processValidation/checklist",
+            "/processValidation/evidenceSchema",
+            "/processValidation/secondCounterpart",
+        ],
+        |value| value.as_str().is_some_and(|text| !text.is_empty()),
+    )
+}
+
+fn rewrite_integrity_record(v: &Value) -> Result<(), String> {
+    require_fields(v, &["/rewriteIntegrity/enforcing"], Value::is_boolean)?;
+    require_fields(
+        v,
+        &[
+            "/rewriteIntegrity/lexicon",
+            "/rewriteIntegrity/identifierSet",
+        ],
+        |v| v.as_str().is_some_and(|s| !s.is_empty()),
+    )?;
+    require_fields(
+        v,
+        &[
+            "/rewriteIntegrity/filesScanned",
+            "/rewriteIntegrity/artifactsScanned",
+            "/rewriteIntegrity/violations",
+            "/rewriteIntegrity/specificationViolations",
+            "/rewriteIntegrity/mutationProof/sourceInjection/exitStatus",
+            "/rewriteIntegrity/mutationProof/artifactInjection/exitStatus",
+            "/rewriteIntegrity/mutationProof/cleanRun/exitStatus",
+        ],
+        Value::is_number,
+    )
+}
+
+fn counterpart_row(row: &Value) -> Result<(), String> {
+    require(nonempty(row, "/id"), "/id")?;
+    require(nonempty(row, "/entry"), "/entry")?;
+    require(row["specification"].is_object(), "/specification")?;
+    require(
+        matches!(
             row["specification"]["route"].as_str(),
             Some("source" | "observed")
-        )
-        && ["accepted", "structureReviewed", "carriesUpstreamIdentifier"]
-            .iter()
-            .all(|key| row["specification"][*key].is_boolean())
-        && ["observableAreas", "declarableOnly", "exercised"]
-            .iter()
-            .all(|key| row[*key].is_number())
-        && row["provenance"].is_object()
-        && row["provenance"]["complete"].is_boolean()
-        && ["total", "failed"]
-            .iter()
-            .all(|key| row["suites"][*key].is_number())
+        ),
+        "/specification/route must be source or observed",
+    )?;
+    require_fields(
+        row,
+        &[
+            "/specification/accepted",
+            "/specification/structureReviewed",
+            "/specification/carriesUpstreamIdentifier",
+        ],
+        Value::is_boolean,
+    )?;
+    require_fields(
+        row,
+        &["/observableAreas", "/declarableOnly", "/exercised"],
+        Value::is_number,
+    )?;
+    require(row["provenance"].is_object(), "/provenance")?;
+    require(
+        row["provenance"]["complete"].is_boolean(),
+        "/provenance/complete",
+    )?;
+    require_fields(row, &["/suites/total", "/suites/failed"], Value::is_number)?;
+    Ok(())
 }
 
 fn same_wave_entries(v: &Value) -> bool {
@@ -117,7 +151,7 @@ fn same_wave_entries(v: &Value) -> bool {
             .all(|entry| counterparts.iter().any(|row| row["entry"] == entry["id"]))
 }
 
-const M6_RECORDS: &[(&str, Rule, &str)] = &[(
+const M6_RECORDS: &[(&str, RecordRule, &str)] = &[(
     "counterpart-summary.json",
     counterpart_record,
     "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
@@ -387,7 +421,11 @@ const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
     ),
 ];
 
-pub(crate) fn verify_m6_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m6_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
     require_manifest_rule(
         manifest,
         |v| has_exact_work_packages(v, &["M6-W1", "M6-W2", "M6-W3", "M6-W4", "M6-W5", "M6-W6"]),
@@ -443,7 +481,7 @@ pub(crate) fn verify_m6_manifest(root: &Path, manifest: &Value, violations: &mut
         violations,
     );
 
-    verify_closure_records(root, "M6", "evidence/m6", M6_RECORDS, violations);
+    verify_closure_records(Milestone::M6, records, M6_RECORDS, violations);
 }
 
 const M6_FIGURES: CarriedFigures = CarriedFigures {
@@ -454,8 +492,16 @@ const M6_FIGURES: CarriedFigures = CarriedFigures {
     arithmetic: M6_ARITHMETIC,
 };
 
-pub(crate) fn verify_m6_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_milestone_figures(root, manifest, &M6_FIGURES, violations);
+pub(crate) fn verify_m6_integrity(
+    root: &Path,
+    manifest: &Value,
+    violations: &mut Vec<String>,
+) -> LoadedRecords {
+    let records = read_records(root, Milestone::M6, M6_RECORDS, violations);
+    if let Some(record) = records.get(M6_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+        verify_milestone_figures(record, manifest, &M6_FIGURES, violations);
+    }
+    records
 }
 
 #[cfg(test)]

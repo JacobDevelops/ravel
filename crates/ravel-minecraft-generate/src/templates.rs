@@ -89,6 +89,8 @@ struct Version<'a> {
 
 /// One template tree, and where this version keeps the sources it cannot share.
 pub(super) struct Tree<'a> {
+    /// Repository boundary retained only for redacted, unambiguous diagnostics.
+    pub(super) root: &'a Path,
     /// The shared templates every version renders unless it replaces one.
     pub(super) shared: &'a Path,
     /// This version's own, which live under its version data rather than beside
@@ -160,7 +162,7 @@ pub(super) fn render(
     } = templates(tree)?;
     let mut read = Vec::with_capacity(templates.len());
     for path in &templates {
-        read.push(template(path)?);
+        read.push(template(tree.root, path)?);
     }
 
     let TemplateRoles {
@@ -218,7 +220,7 @@ pub(super) fn render(
 }
 
 fn render_location(
-    template: &Template,
+    template: &Template<'_>,
     version: &Version<'_>,
     owned: Option<&str>,
     aliases: &mut Vec<(String, String)>,
@@ -252,7 +254,7 @@ struct TemplateRoles {
 }
 
 fn render_roles(
-    read: &[Template],
+    read: &[Template<'_>],
     purpose: Purpose,
     version_only: &BTreeSet<PathBuf>,
     roles: &Roles,
@@ -296,7 +298,10 @@ fn render_roles(
 /// # Errors
 ///
 /// Returns an error naming an unreachable addition and its role.
-pub(super) fn every_added_template_is_reached(rendered: &[&Sources]) -> Result<(), GenerateError> {
+pub(super) fn every_added_template_is_reached(
+    root: &Path,
+    rendered: &[&Sources],
+) -> Result<(), GenerateError> {
     let mut reached = BTreeSet::new();
     for sources in rendered {
         reached.extend(sources.referenced.iter().cloned());
@@ -307,7 +312,7 @@ pub(super) fn every_added_template_is_reached(rendered: &[&Sources]) -> Result<(
                 return Err(GenerateError::Input(format!(
                     "{} replaces no shared template and no source this version renders names the \
                      role {role}, so it is an override that outlived the template it shadowed",
-                    path.display()
+                    diagnostic_path(root, path)
                 )));
             }
         }
@@ -316,7 +321,7 @@ pub(super) fn every_added_template_is_reached(rendered: &[&Sources]) -> Result<(
 }
 
 /// The refusal a template naming a role nothing resolved earns, with the file.
-fn unresolved_role(template: &Template, role: &str) -> GenerateError {
+fn unresolved_role(template: &Template<'_>, role: &str) -> GenerateError {
     in_template(
         template,
         GenerateError::Unresolved(format!("no linked name was resolved for the role {role}")),
@@ -325,7 +330,7 @@ fn unresolved_role(template: &Template, role: &str) -> GenerateError {
 
 /// Rejects unnamed-package references from packaged sources.
 fn every_name_is_nameable(
-    read: &[Template],
+    read: &[Template<'_>],
     purpose: Purpose,
     linked: &BTreeMap<String, String>,
     unnamed: bool,
@@ -362,8 +367,13 @@ fn every_name_is_nameable(
 }
 
 /// Adds the template path to a version-data resolution error.
-fn in_template(template: &Template, error: GenerateError) -> GenerateError {
-    let named = |detail: String| format!("{}: {detail}", template.path.display());
+fn in_template(template: &Template<'_>, error: GenerateError) -> GenerateError {
+    let named = |detail: String| {
+        format!(
+            "{}: {detail}",
+            diagnostic_path(template.root, &template.path)
+        )
+    };
     match error {
         GenerateError::Input(detail) => GenerateError::Input(named(detail)),
         GenerateError::Drift(detail) => GenerateError::Drift(named(detail)),
@@ -377,7 +387,7 @@ fn in_template(template: &Template, error: GenerateError) -> GenerateError {
 ///
 /// Only stand-in trees permit additions; bindings handle class and member renames.
 fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
-    let mut found = in_directory(tree.shared)?;
+    let mut found = in_directory(tree.root, tree.shared)?;
     let mut overridden = BTreeSet::new();
     let mut added = BTreeSet::new();
     let overrides = &tree.overrides;
@@ -391,7 +401,7 @@ fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
         for entry in fs::read_dir(overrides).map_err(|error| {
             GenerateError::Input(format!(
                 "cannot read the screen templates at {}: {error}",
-                overrides.display()
+                diagnostic_path(tree.root, overrides)
             ))
         })? {
             let path = entry
@@ -403,11 +413,11 @@ fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
                 return Err(GenerateError::Input(format!(
                     "{} is a directory, and a version's screen templates are read from one \
                      level only, so anything inside it would be silently left out",
-                    path.display()
+                    diagnostic_path(tree.root, &path)
                 )));
             }
         }
-        for path in in_directory(overrides)? {
+        for path in in_directory(tree.root, overrides)? {
             let name = path.file_name().unwrap_or_default().to_owned();
             let replaced = found
                 .iter()
@@ -423,7 +433,7 @@ fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
                     Some(reason) => {
                         return Err(GenerateError::Input(format!(
                             "{} overrides no shared template, and {reason}",
-                            path.display()
+                            diagnostic_path(tree.root, &path)
                         )));
                     }
                 },
@@ -434,7 +444,7 @@ fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
         return Err(GenerateError::Input(format!(
             "{} holds no template this version renders, so the tree it feeds would be built \
              from nothing",
-            tree.shared.display()
+            diagnostic_path(tree.root, tree.shared)
         )));
     }
     found.sort();
@@ -457,12 +467,12 @@ struct Templates {
 }
 
 /// Every template directly inside one directory, in a stable order.
-fn in_directory(directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
+fn in_directory(root: &Path, directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
     let mut found = Vec::new();
     let entries = fs::read_dir(directory).map_err(|error| {
         GenerateError::Input(format!(
             "cannot read the screen templates at {}: {error}",
-            directory.display()
+            diagnostic_path(root, directory)
         ))
     })?;
     for entry in entries {
@@ -533,7 +543,9 @@ impl Placeholder {
 }
 
 /// One template, read once.
-struct Template {
+struct Template<'a> {
+    /// Root borrowed from the tree, never rendered into diagnostics.
+    root: &'a Path,
     /// Where it was read from, which is what a refusal names.
     path: PathBuf,
     /// The role or the Java class it renders.
@@ -556,7 +568,7 @@ pub(super) fn name_space(
 ) -> Result<NameSpace, GenerateError> {
     let mut linked = Vec::new();
     for path in templates(tree)?.rendered {
-        let template = template(&path)?;
+        let template = template(tree.root, &path)?;
         let declaration = (tree.purpose == Purpose::StandIn).then_some(template.name.as_str());
         let references = template
             .placeholders
@@ -583,9 +595,12 @@ pub(super) fn name_space(
 }
 
 /// Reads one template and everything its placeholders ask for.
-fn template(path: &Path) -> Result<Template, GenerateError> {
+fn template<'a>(root: &'a Path, path: &Path) -> Result<Template<'a>, GenerateError> {
     let text = fs::read_to_string(path).map_err(|error| {
-        GenerateError::Input(format!("cannot read {}: {error}", path.display()))
+        GenerateError::Input(format!(
+            "cannot read {}: {error}",
+            diagnostic_path(root, path)
+        ))
     })?;
     let name = path
         .file_name()
@@ -594,7 +609,7 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
         .ok_or_else(|| {
             GenerateError::Input(format!(
                 "{} is not named after the Java source it renders",
-                path.display()
+                diagnostic_path(root, path)
             ))
         })?
         .to_owned();
@@ -606,21 +621,31 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
         let end = after.find("}}").ok_or_else(|| {
             GenerateError::Input(format!(
                 "{} opens a placeholder it never closes",
-                path.display()
+                diagnostic_path(root, path)
             ))
         })?;
-        placeholders.push(
-            Placeholder::read(&after[..end])
-                .map_err(|detail| GenerateError::Input(format!("{}: {detail}", path.display())))?,
-        );
+        placeholders.push(Placeholder::read(&after[..end]).map_err(|detail| {
+            GenerateError::Input(format!("{}: {detail}", diagnostic_path(root, path)))
+        })?);
         rest = &after[end + 2..];
     }
     Ok(Template {
+        root,
         path: path.to_owned(),
         name,
         text,
         placeholders,
     })
+}
+
+/// Keeps tracked shared and override paths distinct without exposing the checkout.
+fn diagnostic_path<'a>(root: &Path, path: &'a Path) -> std::borrow::Cow<'a, str> {
+    path.strip_prefix(root)
+        .unwrap_or_else(|_| {
+            path.file_name()
+                .map_or_else(|| Path::new("input"), Path::new)
+        })
+        .to_string_lossy()
 }
 
 /// Resolves class roles, requiring screen references to exist in the stub tree.
@@ -681,7 +706,7 @@ pub(super) fn every_seeded_member_resolves(
 
 /// Expands placeholders without changing surrounding source text.
 fn expand(
-    template: &Template,
+    template: &Template<'_>,
     version: &Version<'_>,
     package: Option<&str>,
 ) -> Result<String, GenerateError> {
@@ -890,6 +915,7 @@ mod tests {
     /// files things.
     fn tree<'a>(shared: &'a Path, version: &str, purpose: Purpose) -> Tree<'a> {
         Tree {
+            root: shared,
             shared,
             overrides: shared.join(version),
             purpose,
@@ -2023,6 +2049,7 @@ com.example.util.Held -> com.example.util.Held:
         let root = staged_screen("split-published", TICKING);
         let bound = roles_over(&seeds(), &[("Ticker", "com.example.util.Held")], &[]);
         let sibling = Tree {
+            root: &root,
             shared: &root,
             overrides: root.join("0.0.0-none"),
             purpose: Purpose::Screen,
@@ -2293,6 +2320,7 @@ com.example.util.Held -> com.example.util.Held:
             "{{package}}\npublic class {{Clock}} {\n}\n",
         );
         let game = Tree {
+            root: shared.parent().expect("staged tree parent"),
             shared: &shared,
             overrides: overrides.clone(),
             purpose: Purpose::StandIn,
@@ -2316,7 +2344,7 @@ com.example.util.Held -> com.example.util.Held:
             "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n}\n",
         );
         let drivers = version_only_stand_in_driver(&naming);
-        every_added_template_is_reached(&[&render_game(), &drivers])
+        every_added_template_is_reached(game.root, &[&render_game(), &drivers])
             .expect("the driver in the other tree reaches the stand-in");
 
         let silent = staged_tree(
@@ -2326,7 +2354,8 @@ com.example.util.Held -> com.example.util.Held:
         );
         let quiet = version_only_stand_in_driver(&silent);
 
-        let Err(error) = every_added_template_is_reached(&[&render_game(), &quiet]) else {
+        let Err(error) = every_added_template_is_reached(game.root, &[&render_game(), &quiet])
+        else {
             panic!("nothing this version renders names the added stand-in");
         };
         let message = error.to_string();
@@ -2343,6 +2372,7 @@ com.example.util.Held -> com.example.util.Held:
 
     fn version_only_stand_in_driver(shared: &Path) -> Sources {
         let driver = Tree {
+            root: shared,
             shared,
             overrides: shared.join("0.0.0-none"),
             purpose: Purpose::Driver,
@@ -2506,5 +2536,48 @@ com.example.util.Held -> com.example.util.Held:
             unbound.to_string().contains("none of this version's"),
             "{unbound}"
         );
+    }
+}
+
+#[cfg(test)]
+mod path_redaction_tests {
+    use super::{in_directory, template};
+    #[test]
+    fn shared_and_override_labels_remain_distinct_inside_the_repository() {
+        let root = std::path::Path::new("/private/repository");
+        let shared = root.join("jvm/screen/template/Menu.java.in");
+        let overrides = root.join("minecraft/versions/test/screen/Menu.java.in");
+        assert_eq!(
+            super::diagnostic_path(root, &shared),
+            "jvm/screen/template/Menu.java.in"
+        );
+        assert_eq!(
+            super::diagnostic_path(root, &overrides),
+            "minecraft/versions/test/screen/Menu.java.in"
+        );
+    }
+
+    #[test]
+    fn unreadable_templates_never_name_local_parent_directories() {
+        let private = std::env::temp_dir()
+            .join(format!(
+                "ravel-private-template-path-{}",
+                std::process::id()
+            ))
+            .join("absent.java.in");
+        for error in [
+            template(private.parent().expect("private parent"), &private)
+                .err()
+                .expect("missing template"),
+            in_directory(private.parent().expect("private parent"), &private)
+                .expect_err("missing directory"),
+        ] {
+            let message = error.to_string();
+            assert!(message.contains("absent.java.in"), "{message}");
+            assert!(
+                !message.contains("ravel-private-template-path"),
+                "{message}"
+            );
+        }
     }
 }

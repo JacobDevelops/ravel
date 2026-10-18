@@ -312,32 +312,7 @@ pub fn scan_instance(root: &Path) -> InstanceScan {
         return scan;
     }
 
-    let metadata = launcher_metadata(root);
-    if metadata.is_empty() {
-        // A directory with no launcher metadata may be an instance laid out some
-        // other way, and this scan cannot tell. Saying so is the whole point:
-        // the alternative is an empty finding list that reads like a clean scan.
-        scan.conclusive = false;
-        scan.obstacles
-            .push("no launcher metadata was found, so the launch configuration was not scanned");
-    }
-    let declarations = metadata
-        .iter()
-        .filter_map(|path| fs::read_to_string(path).ok())
-        .collect::<Vec<_>>();
-    if declarations.len() != metadata.len() {
-        scan.conclusive = false;
-        scan.obstacles
-            .push("some launcher metadata could not be read, so its declarations were not scanned");
-    }
-    for marker in COMPONENT_MARKERS.iter().chain(LAUNCH_MARKERS) {
-        if declarations
-            .iter()
-            .any(|declaration| declaration.contains(marker.token))
-        {
-            scan.findings.push(finding(marker));
-        }
-    }
+    scan_launcher_declarations(root, &mut scan);
 
     for marker in PATCH_MARKERS {
         if root.join(marker.token).exists() {
@@ -379,6 +354,35 @@ pub fn scan_instance(root: &Path) -> InstanceScan {
     scan
 }
 
+fn scan_launcher_declarations(root: &Path, scan: &mut InstanceScan) {
+    let metadata = launcher_metadata(root, scan);
+    if metadata.is_empty() {
+        // A directory with no launcher metadata may be an instance laid out some
+        // other way, and this scan cannot tell. Saying so is the whole point:
+        // the alternative is an empty finding list that reads like a clean scan.
+        scan.conclusive = false;
+        scan.obstacles
+            .push("no launcher metadata was found, so the launch configuration was not scanned");
+    }
+    let declarations = metadata
+        .iter()
+        .filter_map(|path| fs::read_to_string(path).ok())
+        .collect::<Vec<_>>();
+    if declarations.len() != metadata.len() {
+        scan.conclusive = false;
+        scan.obstacles
+            .push("some launcher metadata could not be read, so its declarations were not scanned");
+    }
+    for marker in COMPONENT_MARKERS.iter().chain(LAUNCH_MARKERS) {
+        if declarations
+            .iter()
+            .any(|declaration| declaration.contains(marker.token))
+        {
+            scan.findings.push(finding(marker));
+        }
+    }
+}
+
 fn finding(marker: &Marker) -> Finding {
     Finding {
         loader: marker.loader,
@@ -388,22 +392,38 @@ fn finding(marker: &Marker) -> Finding {
 }
 
 /// The launcher metadata files that exist under an instance root.
-fn launcher_metadata(root: &Path) -> Vec<PathBuf> {
+fn launcher_metadata(root: &Path, scan: &mut InstanceScan) -> Vec<PathBuf> {
     let mut found = LAUNCHER_METADATA
         .iter()
         .map(|name| root.join(name))
         .filter(|path| path.is_file())
         .collect::<Vec<_>>();
-    let mut patches = fs::read_dir(root.join("patches"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension == "json")
-        })
-        .collect::<Vec<_>>();
+    let entries = match fs::read_dir(root.join("patches")) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return found,
+        Err(_) => {
+            scan.conclusive = false;
+            scan.obstacles
+                .push("the patches directory could not be read");
+            return found;
+        }
+    };
+    let mut patches = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            scan.conclusive = false;
+            scan.obstacles
+                .push("a patches directory entry could not be read");
+            continue;
+        };
+        let path = entry.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            patches.push(path);
+        }
+    }
     // Directory order is not stable across filesystems, and a report whose
     // finding order depends on that is not comparable between two runs.
     patches.sort();
@@ -458,6 +478,24 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{InstanceScan, scan_instance};
+
+    #[test]
+    fn unreadable_patches_make_a_scan_inconclusive_without_disclosing_paths() {
+        let root = temporary_root("patches-unreadable");
+        write(&root.join("mmc-pack.json"), r#"{"components":[]}"#);
+        write(&root.join("options.txt"), "");
+        write(&root.join("patches"), "not a directory");
+        let scan = scan_instance(&root);
+        assert!(!scan.conclusive);
+        assert!(
+            scan.obstacles
+                .contains(&"the patches directory could not be read"),
+            "{:?}",
+            scan.obstacles
+        );
+        assert!(!scan.to_json().contains(root.to_string_lossy().as_ref()));
+        remove(&root);
+    }
 
     /// The reason this module exists in the shape it does.
     ///

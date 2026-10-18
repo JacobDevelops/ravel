@@ -9,10 +9,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::evidence::manifest::{milestone_manifests, verify_manifest_integrity};
+use crate::evidence::closure::LoadedRecords;
 use crate::evidence::rules::Rule;
-use crate::json::{array, number, read_json, relative_label};
-use crate::tracked::tracked_paths;
+use crate::json::{array, number, read_json};
+use crate::text::relative_label;
 
 mod binding;
 
@@ -83,43 +83,12 @@ impl<'a> Artifacts<'a> {
     }
 }
 
-/// Recomputes every digest a milestone manifest records for its own results.
-#[must_use]
-pub fn verify_evidence_records(root: &Path) -> Vec<String> {
-    let manifests = match milestone_manifests(root) {
-        Ok(manifests) => manifests,
-        Err(error) => return vec![error],
-    };
-    if manifests.is_empty() {
-        return vec![
-            "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
-             vacuously"
-                .to_owned(),
-        ];
-    }
-    let tracked = match tracked_paths(root) {
-        Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
-        Err(error) => return vec![error],
-    };
-    let mut violations = Vec::new();
-    for (path, milestone) in manifests {
-        let path = root.join(path);
-        match read_json(&path) {
-            Ok(manifest) => {
-                verify_recorded_manifest(root, &path, &manifest, &tracked, &mut violations);
-                verify_manifest_integrity(root, &path, milestone, &manifest, &mut violations);
-            }
-            Err(error) => violations.push(error),
-        }
-    }
-    violations
-}
-
-fn verify_recorded_manifest(
+pub(crate) fn verify_recorded_manifest(
     root: &Path,
     path: &Path,
     manifest: &Value,
     tracked: &BTreeSet<String>,
+    records: &LoadedRecords,
     violations: &mut Vec<String>,
 ) {
     let artifacts = match Artifacts::deserialize(manifest) {
@@ -138,7 +107,7 @@ fn verify_recorded_manifest(
     }
     verify_inputs(root, path, manifest, &artifacts.inputs, tracked, violations);
     verify_recorded_run(root, path, manifest, violations);
-    verify_revisions(root, path, &artifacts, violations);
+    verify_revisions(root, path, &artifacts, records, violations);
     verify_admitted_inventory(root, path, &artifacts, tracked, violations);
 }
 
@@ -235,27 +204,44 @@ fn verify_revisions(
     root: &Path,
     path: &Path,
     artifacts: &Artifacts<'_>,
+    records: &LoadedRecords,
     violations: &mut Vec<String>,
 ) {
     let label = relative_label(root, path);
     let Some(directory) = path.parent() else {
         return;
     };
+    let mut inspected = BTreeSet::new();
     for artifact in artifacts.results() {
-        let record = directory.join(artifact.name);
-        if !record.is_file() {
+        if !inspected.insert(artifact.name) {
             continue;
         }
-        match read_json(&record) {
-            Ok(value) => verify_trial_pins(
-                &value,
+        if let Some(value) = records.get(artifact.name) {
+            verify_trial_pins(
+                value,
                 &mut Vec::with_capacity(8),
                 &label,
                 artifact.name,
                 violations,
-            ),
-            Err(error) => violations.push(error),
+            );
+        } else if !records.was_loaded(artifact.name) {
+            verify_uncached_revision(
+                &directory.join(artifact.name),
+                &label,
+                artifact.name,
+                violations,
+            );
         }
+    }
+}
+
+fn verify_uncached_revision(path: &Path, label: &str, name: &str, violations: &mut Vec<String>) {
+    if !path.is_file() {
+        return;
+    }
+    match read_json(path) {
+        Ok(value) => verify_trial_pins(&value, &mut Vec::with_capacity(8), label, name, violations),
+        Err(error) => violations.push(error),
     }
 }
 

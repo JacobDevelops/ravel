@@ -39,9 +39,9 @@ pub fn build_host(
         members: planned
             .members()
             .iter()
-            .map(|member| member.mod_id.clone())
+            .map(|member| member.mod_id.to_string())
             .collect(),
-        fingerprint: planned.fingerprint().to_owned(),
+        fingerprint: planned.fingerprint().to_string(),
         library,
     })
 }

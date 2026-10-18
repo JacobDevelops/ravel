@@ -1,5 +1,7 @@
 //! M7 closure rules.
 
+use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::rules::Milestone;
 use std::path::Path;
 
 use serde_json::Value;
@@ -10,7 +12,9 @@ use crate::evidence::rules::{
 use crate::json::{array, nonempty, number, read_json};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::manifest::require_manifest_rule;
+use crate::evidence::rules::{
+    RecordRule, require, require_fields, require_manifest_rule, require_rows, unique_by,
+};
 
 fn legacy_fixture_total() -> Option<f64> {
     static TOTAL: std::sync::LazyLock<Option<f64>> = std::sync::LazyLock::new(|| {
@@ -23,48 +27,91 @@ fn legacy_fixture_total() -> Option<f64> {
     *TOTAL
 }
 
-fn library_protocol(v: &Value) -> bool {
+fn library_protocol(v: &Value) -> Result<(), String> {
     match v["protocol"].as_str() {
-        Some("m7-library-v1") => v["fixture"].is_null(),
+        Some("m7-library-v1") => require(v["fixture"].is_null(), "/fixture must be null for v1"),
         Some("m7-library-v2") => {
-            v["fixture"].is_object()
-                && nonempty(v, "/fixture/id")
-                && v["fixture"]["artifactSet"].is_object()
-                && v["correction"].is_null()
-                && ["total", "accepted", "blocked", "unstarted"]
-                    .iter()
-                    .all(|key| v["entries"][*key].as_u64().is_some())
-                && v["entries"]["total"]
+            require(
+                v["fixture"].is_object(),
+                "/fixture must be an object for v2",
+            )?;
+            require(nonempty(v, "/fixture/id"), "/fixture/id")?;
+            require(
+                v["fixture"]["artifactSet"].is_object(),
+                "/fixture/artifactSet",
+            )?;
+            require(v["correction"].is_null(), "/correction must be null for v2")?;
+            require_fields(
+                v,
+                &[
+                    "/entries/total",
+                    "/entries/accepted",
+                    "/entries/blocked",
+                    "/entries/unstarted",
+                ],
+                |value| value.as_u64().is_some(),
+            )?;
+            require(
+                v["entries"]["total"]
                     .as_u64()
-                    .is_some_and(|total| total > 0)
+                    .is_some_and(|total| total > 0),
+                "v2 entries.total must be positive",
+            )
         }
-        _ => false,
+        _ => Err("/protocol must be m7-library-v1 or m7-library-v2".to_owned()),
     }
 }
 
-fn library_record(v: &Value) -> bool {
-    v["milestone"] == "M7"
-        && v["workPackage"] == "M7-W5"
-        && library_protocol(v)
-        && v["result"] == "pass"
-        && v["entries"].is_object()
-        && ["total", "accepted", "blocked", "unstarted"]
-            .iter()
-            .all(|key| v["entries"][*key].is_number())
-        && (v["correction"].is_null()
-            || (v["correction"].is_object()
-                && v["correction"]["from"].is_number()
-                && v["correction"]["total"].is_number()
-                && nonempty(v, "/correction/reason")))
-        && v["waves"].is_array()
-        && !array(v, "/waves").is_empty()
-        && array(v, "/waves").iter().all(|wave| {
-            wave["index"].is_number()
-                && wave["entries"].is_number()
-                && wave["dependsOn"].is_array()
-                && array(wave, "/dependsOn").iter().all(Value::is_number)
-        })
-        && [
+fn library_record(v: &Value) -> Result<(), String> {
+    require(v["milestone"] == "M7", "/milestone must be M7")?;
+    require(v["workPackage"] == "M7-W5", "/workPackage must be M7-W5")?;
+    library_protocol(v)?;
+    require(v["result"] == "pass", "/result must be pass")?;
+    require(v["entries"].is_object(), "/entries")?;
+    require_fields(
+        v,
+        &[
+            "/entries/total",
+            "/entries/accepted",
+            "/entries/blocked",
+            "/entries/unstarted",
+        ],
+        Value::is_number,
+    )?;
+    library_waves_and_correction(v)?;
+    library_counts(v)
+}
+
+fn library_waves_and_correction(v: &Value) -> Result<(), String> {
+    if !v["correction"].is_null() {
+        require(
+            v["correction"].is_object(),
+            "/correction must be an object or null",
+        )?;
+        require_fields(
+            v,
+            &["/correction/from", "/correction/total"],
+            Value::is_number,
+        )?;
+        require(nonempty(v, "/correction/reason"), "/correction/reason")?;
+    }
+    require_rows(v, "/waves", |wave| {
+        require_fields(wave, &["/index", "/entries"], Value::is_number)?;
+        require(wave["dependsOn"].is_array(), "/dependsOn must be an array")?;
+        require(
+            array(wave, "/dependsOn").iter().all(Value::is_number),
+            "/dependsOn must contain numbers",
+        )?;
+
+        Ok(())
+    })?;
+    Ok(())
+}
+
+fn library_counts(v: &Value) -> Result<(), String> {
+    require_fields(
+        v,
+        &[
             "/dependencies/resolved",
             "/dependencies/unresolved",
             "/registries/resolved",
@@ -79,12 +126,13 @@ fn library_record(v: &Value) -> bool {
             "/suites/packages/failed",
             "/suites/clusters/total",
             "/suites/clusters/failed",
-        ]
-        .iter()
-        .all(|path| v.pointer(path).is_some_and(Value::is_number))
+        ],
+        Value::is_number,
+    )?;
+    Ok(())
 }
 
-const M7_RECORDS: &[(&str, Rule, &str)] = &[(
+const M7_RECORDS: &[(&str, RecordRule, &str)] = &[(
     "library-summary.json",
     library_record,
     "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
@@ -127,7 +175,7 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     (
         |v| {
             if v["protocol"] == "m7-library-v2" {
-                library_protocol(v)
+                true
             } else {
                 number(v, "/entries/total")
                     .zip(legacy_fixture_total())
@@ -170,10 +218,8 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            array(v, "/waves").iter().enumerate().all(|(index, wave)| {
-                array(v, "/waves")[..index]
-                    .iter()
-                    .all(|other| other["index"].as_f64() != wave["index"].as_f64())
+            unique_by(array(v, "/waves"), |left, right| {
+                left["index"].as_f64() == right["index"].as_f64()
             })
         },
         "two waves sharing an index are one wave counted twice, and order is what a wave is for",
@@ -294,7 +340,11 @@ const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
     }),
 ];
 
-pub(crate) fn verify_m7_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m7_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
     require_manifest_rule(
         manifest,
         |v| {
@@ -342,36 +392,30 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest: &Value, violations: &mut
         violations,
     );
 
-    verify_closure_records(root, "M7", "evidence/m7", M7_RECORDS, violations);
-    // The closure-record validator above owns read and parse diagnostics.
-    if read_json(&root.join("evidence/m7/library-summary.json"))
-        .is_ok_and(|record| record["protocol"] != manifest["benchmarks"]["protocolVersion"])
+    verify_closure_records(Milestone::M7, records, M7_RECORDS, violations);
+    if records
+        .get("library-summary.json")
+        .is_some_and(|record| record["protocol"] != manifest["benchmarks"]["protocolVersion"])
     {
         violations.push("M7 manifest and library summary must use the same protocol".to_owned());
     }
 }
 
-fn verify_m7_verified_fixture_total(root: &Path, violations: &mut Vec<String>) {
-    let record = root.join("evidence/m7/library-summary.json");
-    if !record.is_file() {
-        return;
-    }
-    let record = match read_json(&record) {
-        Ok(record) => record,
-        Err(error) => {
-            violations.push(error);
+fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
+    if record["protocol"] == "m7-library-v2" {
+        if let Err(requirement) = library_protocol(record) {
+            violations.push(format!("{}: failed {requirement}", M7_FIGURES.record));
             return;
         }
-    };
-    if record["protocol"] == "m7-library-v2" {
-        verify_m7_workload_total(root, &record, violations);
+        verify_m7_workload_total(root, record, violations);
         return;
     }
     if !record["fixture"].is_null() {
-        violations.push("M7 v1 cannot carry a workload fixture binding".to_owned());
+        violations.push("M7 v1 requires a null fixture".to_owned());
         return;
     }
     let inventory = root.join("evidence/m5/inventory-summary.json");
+    // Historical M5 evidence is optional for isolated M7 closure records.
     if !inventory.is_file() {
         return;
     }
@@ -440,15 +484,30 @@ fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<St
     let valid_digest = digest.is_some_and(|digest| {
         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
     });
-    if inventory["fixture"]["id"] != binding["id"]
-        || count.is_none_or(|count| count == 0)
-        || !valid_digest
-        || inventory["fixture"]["artifactSet"] != binding["artifactSet"]
-        || record.pointer("/entries/total").and_then(Value::as_u64) != count
-    {
-        violations.push(format!(
-            "M7 fixture binding and entries.total must match {id}'s verified artifact-set count and digest"
-        ));
+    for (valid, requirement) in [
+        (inventory["fixture"]["id"] == binding["id"], "fixture.id"),
+        (
+            count.is_some_and(|count| count > 0),
+            "fixture.artifactSet.count must be positive",
+        ),
+        (
+            valid_digest,
+            "fixture.artifactSet.sha256 must be a SHA-256 digest",
+        ),
+        (
+            inventory["fixture"]["artifactSet"] == binding["artifactSet"],
+            "fixture.artifactSet",
+        ),
+        (
+            record.pointer("/entries/total").and_then(Value::as_u64) == count,
+            "entries.total",
+        ),
+    ] {
+        if !valid {
+            violations.push(format!(
+                "M7 fixture binding and entries.total must match {id}'s verified artifact-set count and digest: failed {requirement}"
+            ));
+        }
     }
 }
 
@@ -460,9 +519,17 @@ const M7_FIGURES: CarriedFigures = CarriedFigures {
     arithmetic: M7_ARITHMETIC,
 };
 
-pub(crate) fn verify_m7_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_m7_verified_fixture_total(root, violations);
-    verify_milestone_figures(root, manifest, &M7_FIGURES, violations);
+pub(crate) fn verify_m7_integrity(
+    root: &Path,
+    manifest: &Value,
+    violations: &mut Vec<String>,
+) -> LoadedRecords {
+    let records = read_records(root, Milestone::M7, M7_RECORDS, violations);
+    if let Some(record) = records.get(M7_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+        verify_m7_verified_fixture_total(root, record, violations);
+        verify_milestone_figures(record, manifest, &M7_FIGURES, violations);
+    }
+    records
 }
 
 #[cfg(test)]

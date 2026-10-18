@@ -419,12 +419,12 @@ fn verify_member(
         reflected.class,
         member.name,
         reflected.runtime,
-        holds(declared, linked.name())
+        describe_declared(declared, linked.name())
     )))
 }
 
 /// What one class file declares under a linked name, for a refusal to name.
-fn holds(declared: &[classfile::Member], name: &str) -> String {
+fn describe_declared(declared: &[classfile::Member], name: &str) -> String {
     let mut held = declared
         .iter()
         .filter(|member| member.name == name)
@@ -470,6 +470,26 @@ pub(super) struct NameMap {
     linked: BTreeMap<String, Reviewed>,
 }
 
+/// Admits the same class bijection for every supported mapping syntax.
+fn admit_class(
+    classes: &mut BTreeMap<String, String>,
+    mojang: &mut BTreeMap<String, String>,
+    from: &str,
+    to: &str,
+    number: usize,
+) -> Result<(), GenerateError> {
+    if classes.insert(from.to_owned(), to.to_owned()).is_some() {
+        return Err(unusable(number, &format!("{from} is mapped twice")));
+    }
+    if let Some(other) = mojang.insert(to.to_owned(), from.to_owned()) {
+        return Err(unusable(
+            number,
+            &format!("{other} and {from} both map to {to}"),
+        ));
+    }
+    Ok(())
+}
+
 impl NameMap {
     /// Admits normalized records through the common bidirectional checks.
     fn normalized(text: &str) -> Result<Self, GenerateError> {
@@ -489,17 +509,9 @@ impl NameMap {
             );
             match record {
                 (Some("C"), Some(from), Some(to), None, None, None) => {
-                    normalized_class(from).map_err(|detail| unusable(number, &detail))?;
-                    normalized_class(to).map_err(|detail| unusable(number, &detail))?;
-                    if classes.insert(from.to_owned(), to.to_owned()).is_some() {
-                        return Err(unusable(number, &format!("{from} is mapped twice")));
-                    }
-                    if let Some(other) = mojang.insert(to.to_owned(), from.to_owned()) {
-                        return Err(unusable(
-                            number,
-                            &format!("{other} and {from} both map to {to}"),
-                        ));
-                    }
+                    verify_internal_class_name(from).map_err(|detail| unusable(number, &detail))?;
+                    verify_internal_class_name(to).map_err(|detail| unusable(number, &detail))?;
+                    admit_class(&mut classes, &mut mojang, from, to, number)?;
                     declared.entry(from.to_owned()).or_default();
                 }
                 (
@@ -510,10 +522,11 @@ impl NameMap {
                     Some(runtime),
                     None,
                 ) => {
-                    normalized_class(owner).map_err(|detail| unusable(number, &detail))?;
-                    normalized_member(name).map_err(|detail| unusable(number, &detail))?;
-                    normalized_member(runtime).map_err(|detail| unusable(number, &detail))?;
-                    normalized_descriptor(descriptor, kind == "M")
+                    verify_internal_class_name(owner)
+                        .map_err(|detail| unusable(number, &detail))?;
+                    verify_member_name(name).map_err(|detail| unusable(number, &detail))?;
+                    verify_member_name(runtime).map_err(|detail| unusable(number, &detail))?;
+                    verify_descriptor(descriptor, kind == "M")
                         .map_err(|detail| unusable(number, &detail))?;
                     declared
                         .entry(owner.to_owned())
@@ -567,15 +580,7 @@ impl NameMap {
                 } => {
                     let from = internal(original);
                     let to = internal(obfuscated);
-                    if classes.insert(from.clone(), to.clone()).is_some() {
-                        return Err(unusable(number, &format!("{from} is mapped twice")));
-                    }
-                    if let Some(other) = mojang.insert(to.clone(), from.clone()) {
-                        return Err(unusable(
-                            number,
-                            &format!("{other} and {from} both map to {to}"),
-                        ));
-                    }
+                    admit_class(&mut classes, &mut mojang, &from, &to, number)?;
                     current = Some(from);
                 }
                 ProguardRecord::Field { .. } | ProguardRecord::Method { .. } => {
@@ -819,7 +824,7 @@ fn unusable(number: usize, detail: &str) -> GenerateError {
 }
 
 /// Validates an internal class name without treating a descriptor as a name.
-fn normalized_class(name: &str) -> Result<(), String> {
+fn verify_internal_class_name(name: &str) -> Result<(), String> {
     if name.split('/').any(str::is_empty)
         || name.chars().any(|character| {
             character.is_whitespace()
@@ -833,7 +838,7 @@ fn normalized_class(name: &str) -> Result<(), String> {
 }
 
 /// Validates one member name, retaining JVM constructor spellings.
-fn normalized_member(name: &str) -> Result<(), String> {
+fn verify_member_name(name: &str) -> Result<(), String> {
     if name.is_empty()
         || name.chars().any(|character| {
             character.is_whitespace()
@@ -847,7 +852,7 @@ fn normalized_member(name: &str) -> Result<(), String> {
 }
 
 /// Uses the shared JVM tokenizer rather than accepting malformed descriptors.
-fn normalized_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
+fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
     if method {
         classfile::method_types(descriptor)?;
     } else {
@@ -862,7 +867,7 @@ fn normalized_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
         let end = after
             .find(';')
             .ok_or_else(|| format!("{descriptor} has an unterminated class name"))?;
-        normalized_class(&after[..end])?;
+        verify_internal_class_name(&after[..end])?;
         rest = &after[end + 1..];
     }
     Ok(())
@@ -1115,6 +1120,23 @@ com.example.Plain -> com.example.Plain:
         ] {
             let error = NameMap::parse(mapping).expect_err("a collision must be refused");
 
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn normalized_classes_share_the_proguard_bijection_refusals() {
+        for (mapping, expected) in [
+            (
+                "C\tcom/example/A\tx\nC\tcom/example/B\tx\n",
+                "both map to x",
+            ),
+            (
+                "C\tcom/example/A\tx\nC\tcom/example/A\ty\n",
+                "is mapped twice",
+            ),
+        ] {
+            let error = NameMap::normalized(mapping).expect_err("class collision");
             assert!(error.to_string().contains(expected), "{error}");
         }
     }

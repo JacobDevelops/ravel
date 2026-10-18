@@ -1,29 +1,44 @@
 //! M3 closure rules.
 
+use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::rules::Milestone;
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::evidence::accounting::{Side, numbers_before, stated_counts};
 use crate::evidence::closure::verify_closure_records;
-use crate::evidence::manifest::require_manifest_rule;
+use crate::evidence::rules::require_manifest_rule;
 use crate::evidence::rules::{
-    Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
-    has_native_attestation,
+    RecordRule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
+    has_native_attestation, require,
 };
-use crate::json::{array, number, read_json, read_text};
+use crate::json::{array, number, read_json};
+use crate::text::read_text;
+use crate::text::{Side, numbers_before, stated_counts};
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
 const PERSISTENCE_HARNESS: &str = "jvm/harness/run-harness.sh";
 
-pub(crate) fn verify_m3_integrity(root: &Path, _: &Value, violations: &mut Vec<String>) {
-    verify_campaign_inventory(root, violations);
-    verify_harness_lifecycles(root, violations);
+pub(crate) fn verify_m3_integrity(
+    root: &Path,
+    _: &Value,
+    violations: &mut Vec<String>,
+) -> LoadedRecords {
+    let records = read_records(root, Milestone::M3, M3_RECORDS, violations);
+    if let Some(record) = records.get("linux-process-matrix.json") {
+        verify_campaign_inventory(root, record, violations);
+    }
+    verify_harness_lifecycles(root, Some(&records), violations);
+    records
 }
 
-pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m3_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
     require_manifest_rule(
         manifest,
         |value| {
@@ -72,24 +87,37 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
         "M3 recorded deviations and risks, and an empty finding set satisfies every rule phrased as a refusal, so closure requires them to still be there",
         violations,
     );
-    verify_closure_records(root, "M3", "evidence/m3", M3_RECORDS, violations);
+    verify_closure_records(Milestone::M3, records, M3_RECORDS, violations);
 }
 
-const M3_RECORDS: &[(&str, Rule, &str)] = &[
+const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
     (
         "class-loader-identity.json",
         |value| {
-            value["milestone"] == "M3"
-                && value["observed"]["sameObject"] == true
-                && value["conclusion"]["candidateTwoIsAvailable"] == true
-                && [
-                    "/rewrite/classesRewritten",
-                    "/rewrite/methodsRewritten",
-                    "/rewrite/nativeInvocations",
-                ]
-                .iter()
-                .all(|pointer| number(value, pointer).is_some_and(|count| count > 0.0))
-                && value["rewrite"]["reachedNativeCode"] == true
+            require(value["milestone"] == "M3", "/milestone must be M3")?;
+            require(
+                value["observed"]["sameObject"] == true,
+                "/observed/sameObject",
+            )?;
+            require(
+                value["conclusion"]["candidateTwoIsAvailable"] == true,
+                "/conclusion/candidateTwoIsAvailable",
+            )?;
+            for pointer in [
+                "/rewrite/classesRewritten",
+                "/rewrite/methodsRewritten",
+                "/rewrite/nativeInvocations",
+            ] {
+                require(
+                    number(value, pointer).is_some_and(|count| count > 0.0),
+                    pointer,
+                )?;
+            }
+            require(
+                value["rewrite"]["reachedNativeCode"] == true,
+                "/rewrite/reachedNativeCode",
+            )?;
+            Ok(())
         },
         "a class-loader identity record showing the loader that resolved a rewritten game class \
          is the system loader, measured in a launch that rewrote classes and reached native code",
@@ -97,17 +125,24 @@ const M3_RECORDS: &[(&str, Rule, &str)] = &[
     (
         "pack-compile.json",
         |value| {
-            value["milestone"] == "M3"
-                && value["gate"] == "ADG-2"
-                && value["protocol"] == "m3-pack-compile-v1"
-                && [
-                    "/compile/repeats",
-                    "/compile/baselineMilliseconds",
-                    "/compile/marginalColdMillisecondsPerMod",
-                    "/disk/toolchainBytes",
-                ]
-                .iter()
-                .all(|pointer| number(value, pointer).is_some_and(|count| count > 0.0))
+            require(value["milestone"] == "M3", "/milestone must be M3")?;
+            require(value["gate"] == "ADG-2", "/gate must be ADG-2")?;
+            require(
+                value["protocol"] == "m3-pack-compile-v1",
+                "/protocol must be m3-pack-compile-v1",
+            )?;
+            for pointer in [
+                "/compile/repeats",
+                "/compile/baselineMilliseconds",
+                "/compile/marginalColdMillisecondsPerMod",
+                "/disk/toolchainBytes",
+            ] {
+                require(
+                    number(value, pointer).is_some_and(|count| count > 0.0),
+                    pointer,
+                )?;
+            }
+            Ok(())
         },
         "a pack-compile record pricing ADG-2's source distribution with a repeated measurement, \
          a positive marginal per-mod cost, and the toolchain size the decision accepted",
@@ -115,21 +150,31 @@ const M3_RECORDS: &[(&str, Rule, &str)] = &[
     (
         "profiling-overhead.json",
         |value| {
-            value["milestone"] == "M3"
-                && value["workPackage"] == "M3-W6"
-                && value["budget"]["protocol"] == "m2-loader-budget-v1"
-                && value["budget"]["hardwareProfile"] == "linux-reference-v1"
-                && array(value, "/budget/limits").iter().any(|limit| {
-                    limit["metric"] == "profiling.off.perTick"
-                        && limit["operator"] == "less-than-or-equal"
-                        && number(limit, "/measured")
-                            .zip(number(limit, "/limit"))
-                            .is_some_and(|(measured, bound)| measured > 0.0 && measured <= bound)
-                })
-                && !array(value, "/collectors/attributionAccuracy").is_empty()
-                && value
+            require(value["milestone"] == "M3", "/milestone must be M3")?;
+            require(
+                value["workPackage"] == "M3-W6",
+                "/workPackage must be M3-W6",
+            )?;
+            require(
+                value["budget"]["protocol"] == "m2-loader-budget-v1",
+                "/budget/protocol must be m2-loader-budget-v1",
+            )?;
+            require(
+                value["budget"]["hardwareProfile"] == "linux-reference-v1",
+                "/budget/hardwareProfile must be linux-reference-v1",
+            )?;
+            profiling_off_tick_limit(value)?;
+            require(
+                !array(value, "/collectors/attributionAccuracy").is_empty(),
+                "/collectors/attributionAccuracy",
+            )?;
+            require(
+                value
                     .pointer("/collectors/unsupported")
-                    .is_some_and(Value::is_array)
+                    .is_some_and(Value::is_array),
+                "/collectors/unsupported",
+            )?;
+            Ok(())
         },
         "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
          per-mod attribution accuracy stated and the unsupported metrics named",
@@ -137,29 +182,78 @@ const M3_RECORDS: &[(&str, Rule, &str)] = &[
     (
         "linux-process-matrix.json",
         |value| {
-            value["milestone"] == "M3"
-            && value["workPackage"] == "M3-W7"
-            && value["result"] == "pass"
-            && ["/instance/withoutAnotherLoader", "/instance/stockComponentsExact",
-                "/screens/titleMenuButtonPresent", "/screens/allThreeOpenedInThisCampaign",
+            require(value["milestone"] == "M3", "/milestone must be M3")?;
+            require(
+                value["workPackage"] == "M3-W7",
+                "/workPackage must be M3-W7",
+            )?;
+            require(value["result"] == "pass", "/result must be pass")?;
+            for pointer in [
+                "/instance/withoutAnotherLoader",
+                "/instance/stockComponentsExact",
+                "/screens/titleMenuButtonPresent",
+                "/screens/allThreeOpenedInThisCampaign",
                 "/screens/settings/persistenceRoundTrip",
                 "/commandAndSavedData/vanillaCommandExecutedThroughInput",
                 "/commandAndSavedData/relaunchVerifiedExactValue",
                 "/worldPersistenceRoundTrip/createSaveExitReload/aggregateByteIdenticalAcrossTheRoundTrip",
                 "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/worldRefused",
-                "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/integratedServerNeverStarted"]
-                .iter().all(|pointer| value.pointer(pointer) == Some(&Value::Bool(true)))
-            && ["/instance/otherLoaderComponents", "/instance/modJars",
-                "/instance/recognizedLoaderModJars", "/rewrite/transformationFailures"]
-                .iter().all(|pointer| number(value, pointer) == Some(0.0))
-            && ["/rewrite/classesRewritten", "/rewrite/nativeInvocations"]
-                .iter().all(|pointer| number(value, pointer).is_some_and(|count| count > 0.0))
+                "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/integratedServerNeverStarted",
+            ] {
+                require(value.pointer(pointer) == Some(&Value::Bool(true)), pointer)?;
+            }
+            for pointer in [
+                "/instance/otherLoaderComponents",
+                "/instance/modJars",
+                "/instance/recognizedLoaderModJars",
+                "/rewrite/transformationFailures",
+            ] {
+                require(number(value, pointer) == Some(0.0), pointer)?;
+            }
+            for pointer in ["/rewrite/classesRewritten", "/rewrite/nativeInvocations"] {
+                require(
+                    number(value, pointer).is_some_and(|count| count > 0.0),
+                    pointer,
+                )?;
+            }
+            Ok(())
         },
         "a Linux process-matrix record showing every M3 surface passing natively in an instance \
          the scan proves holds no other loader, with the world round trip preserving bytes and \
          refusing a world it cannot read",
     ),
 ];
+fn profiling_off_tick_limit(value: &Value) -> Result<(), String> {
+    let mut failure = Err("/budget/limits must contain metric profiling.off.perTick".to_owned());
+    for (index, limit) in array(value, "/budget/limits")
+        .iter()
+        .enumerate()
+        .filter(|(_, limit)| limit["metric"] == "profiling.off.perTick")
+    {
+        let checked = (|| {
+            require(
+                limit["operator"] == "less-than-or-equal",
+                "/operator must be less-than-or-equal",
+            )?;
+            require(
+                number(limit, "/measured").is_some_and(|measured| measured > 0.0),
+                "/measured must be positive",
+            )?;
+            require(
+                number(limit, "/measured")
+                    .zip(number(limit, "/limit"))
+                    .is_some_and(|(measured, bound)| measured <= bound),
+                "/limit must not be below measured",
+            )
+        })();
+        if checked.is_ok() {
+            return Ok(());
+        }
+        failure = checked.map_err(|requirement| format!("/budget/limits/{index}{requirement}"));
+    }
+    failure
+}
+
 struct CampaignInventory {
     classes: usize,
     targets: usize,
@@ -167,20 +261,8 @@ struct CampaignInventory {
     launches: usize,
 }
 
-pub(crate) fn verify_campaign_inventory(root: &Path, violations: &mut Vec<String>) {
-    let matrix = root.join(CAMPAIGN_MATRIX);
-    if !matrix.is_file() {
-        violations.push(format!("missing required file: {CAMPAIGN_MATRIX}"));
-        return;
-    }
-    let matrix = match read_json(&matrix) {
-        Ok(matrix) => matrix,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let Some(derived) = campaign_inventory(&matrix, violations) else {
+pub(crate) fn verify_campaign_inventory(root: &Path, matrix: &Value, violations: &mut Vec<String>) {
+    let Some(derived) = campaign_inventory(matrix, violations) else {
         return;
     };
 
@@ -196,7 +278,7 @@ pub(crate) fn verify_campaign_inventory(root: &Path, violations: &mut Vec<String
             "callable targets its own target inventory enumerates",
         ),
     ] {
-        match matrix_count(&matrix, &format!("/rewrite/{field}")) {
+        match matrix_count(matrix, &format!("/rewrite/{field}")) {
             Ok(recorded) if recorded == expected => {}
             Ok(recorded) => violations.push(format!(
                 "{CAMPAIGN_MATRIX} records {field} {recorded} against the {expected} {subject}"
@@ -343,7 +425,11 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
     }
     violations
 }
-pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String>) {
+pub(crate) fn verify_harness_lifecycles(
+    root: &Path,
+    records: Option<&LoadedRecords>,
+    violations: &mut Vec<String>,
+) {
     let harness = match read_text(root, Path::new(PERSISTENCE_HARNESS)) {
         Ok(harness) => harness,
         Err(error) => {
@@ -365,9 +451,8 @@ pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String
     };
 
     for relative in [CAMPAIGN_DOCUMENT, CAMPAIGN_MATRIX] {
-        match read_text(root, Path::new(relative)) {
-            Ok(document) => {
-                let stated = numbers_before(&document, &["world", "lifecycles"]);
+        match lifecycle_counts(root, relative, records) {
+            Ok(Some(stated)) => {
                 if stated.is_empty() {
                     violations.push(format!(
                         "{relative} no longer writes a count against `world lifecycles`, so \
@@ -383,8 +468,49 @@ pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String
                     }
                 }
             }
+            Ok(None) => {}
             Err(error) => violations.push(error),
         }
+    }
+}
+
+fn lifecycle_counts(
+    root: &Path,
+    relative: &str,
+    records: Option<&LoadedRecords>,
+) -> Result<Option<Vec<usize>>, String> {
+    if relative == CAMPAIGN_DOCUMENT {
+        return read_text(root, Path::new(relative))
+            .map(|text| Some(numbers_before(&text, &["world", "lifecycles"])));
+    }
+    if let Some(records) = records {
+        return Ok(records
+            .get("linux-process-matrix.json")
+            .map(matrix_lifecycle_counts));
+    }
+    read_json(&root.join(relative)).map(|record| Some(matrix_lifecycle_counts(&record)))
+}
+
+fn matrix_lifecycle_counts(record: &Value) -> Vec<usize> {
+    let mut counts = Vec::new();
+    collect_lifecycle_counts(record, &mut counts);
+    counts
+}
+
+fn collect_lifecycle_counts(value: &Value, counts: &mut Vec<usize>) {
+    match value {
+        Value::String(text) => counts.extend(numbers_before(text, &["world", "lifecycles"])),
+        Value::Array(values) => {
+            for value in values {
+                collect_lifecycle_counts(value, counts);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values() {
+                collect_lifecycle_counts(value, counts);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }
 

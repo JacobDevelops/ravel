@@ -4,6 +4,74 @@ use crate::test_support::temporary_root;
 use crate::tracked::{parse_tracked_paths, verify_tracked_contents, verify_tracked_paths};
 
 #[test]
+fn file_collection_refuses_missing_or_non_directory_roots() {
+    let root = temporary_root("collect-unreadable");
+    let plain = root.join("plain");
+    fs::write(&plain, "not a directory").expect("file should be writable");
+    for directory in [root.join("missing"), plain] {
+        let mut files = Vec::new();
+        let error = super::collect_files(&directory, &mut files)
+            .expect_err("an unreadable directory must refuse the sweep");
+        assert!(error.starts_with("cannot read "), "{error}");
+        assert_eq!(files, Vec::<std::path::PathBuf>::new());
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn file_collection_recurses_without_scanning_build_or_vcs_trees() {
+    let root = temporary_root("collect-recursive");
+    for directory in ["nested", ".git", ".jj", "target"] {
+        fs::create_dir(root.join(directory)).expect("directory should be creatable");
+        fs::write(root.join(directory).join("source.rs"), "").expect("file should be writable");
+    }
+    let mut files = Vec::new();
+    super::collect_files(&root, &mut files).expect("the tree should be readable");
+    assert_eq!(files, [root.join("nested/source.rs")]);
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[cfg(unix)]
+#[test]
+fn file_collection_excludes_only_private_fixture_tree() {
+    let root = temporary_root("collect-fixture-boundary");
+    for directory in ["local", "public", "localized"] {
+        fs::create_dir_all(root.join("tests/fixtures").join(directory))
+            .expect("fixture directory should be creatable");
+    }
+    std::os::unix::fs::symlink("absent", root.join("tests/fixtures/local/broken"))
+        .expect("private fixture symlink should be creatable");
+    let mut expected = ["public", "localized"].map(|directory| {
+        root.join("tests/fixtures")
+            .join(directory)
+            .join("source.rs")
+    });
+    for path in &expected {
+        fs::write(path, "").expect("maintained fixture source should be writable");
+    }
+    let mut files = Vec::new();
+    super::collect_files(&root, &mut files).expect("private fixtures must not enter the sweep");
+    files.sort();
+    expected.sort();
+    assert_eq!(files, expected);
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[cfg(unix)]
+#[test]
+fn file_collection_propagates_nested_metadata_errors() {
+    let root = temporary_root("collect-nested-error");
+    let nested = root.join("nested");
+    fs::create_dir(&nested).expect("directory should be creatable");
+    std::os::unix::fs::symlink("absent", nested.join("broken"))
+        .expect("symlink should be creatable");
+    let error = super::collect_files(&root, &mut Vec::new())
+        .expect_err("nested metadata failures must propagate");
+    assert!(error.starts_with("cannot inspect broken:"), "{error}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn tracked_credential_paths_are_rejected() {
     let violations = verify_tracked_paths(["config/credentials.json", "docs/README.md"]);
 

@@ -14,9 +14,10 @@ use zip::read::{ZipFile, ZipFileEntry};
 use zip::result::{ZipError, ZipResult};
 use zip::unstable::stream::{ZipStreamReader, ZipStreamVisitor};
 
-use crate::error::FixtureError;
 use crate::hex_digest;
 
+mod error;
+pub use error::FixtureError;
 mod policy;
 
 use policy::{is_safe_component, validate_descriptor};

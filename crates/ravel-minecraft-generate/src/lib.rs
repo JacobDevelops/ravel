@@ -28,7 +28,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use error::GenerateError;
-pub use inputs::{AdapterFacts, Eligibility, adapter_facts};
+pub use inputs::{
+    AdapterFacts, Eligibility, HookFact, HookInventory, Kind, adapter_facts, hook_inventory,
+    hook_inventory_at,
+};
 
 /// The reading of the jar this generator performs, as recorded in the lock.
 const EXTRACTOR: &str = "classfile";
@@ -101,16 +104,15 @@ impl OutputLock {
                 Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
                     return Err(GenerateError::Input(format!(
                         "{} could not be taken: {error}",
-                        path.display()
+                        inputs::file_name(&path.to_string_lossy())
                     )));
                 }
                 Err(_) => {}
             }
             if waited.elapsed() > LOCK_WAIT_MAX {
                 return Err(GenerateError::Input(format!(
-                    "another build has held {} for longer than a build should take; if none is \
-                     running, delete it",
-                    path.display()
+                    "another build has held {OUTPUT_LOCK} for longer than a build should take; if none is \
+                     running, delete it"
                 )));
             }
             let stale = fs::metadata(&path)
@@ -124,7 +126,7 @@ impl OutputLock {
                     Err(error) => {
                         return Err(GenerateError::Input(format!(
                             "{} could not be removed after becoming stale: {error}",
-                            path.display()
+                            inputs::file_name(&path.to_string_lossy())
                         )));
                     }
                 }
@@ -143,7 +145,7 @@ impl OutputLock {
             .map_err(|error| {
                 GenerateError::Input(format!(
                     "{} could not be re-dated: {error}",
-                    self.path.display()
+                    inputs::file_name(&self.path.to_string_lossy())
                 ))
             })
     }
@@ -153,11 +155,9 @@ impl OutputLock {
         if self.path == root.join(OUTPUT_LOCK) {
             return Ok(());
         }
-        Err(GenerateError::Input(format!(
-            "{} does not guard the trees under {}",
-            self.path.display(),
-            root.display()
-        )))
+        Err(GenerateError::Input(
+            "the output lock does not guard the requested output trees".to_owned(),
+        ))
     }
 }
 
@@ -165,7 +165,10 @@ impl Drop for OutputLock {
     fn drop(&mut self) {
         // Drop cannot return an error; leave a failed cleanup for stale-lock recovery.
         if let Err(error) = fs::remove_file(&self.path) {
-            eprintln!("cannot remove output lock {}: {error}", self.path.display());
+            eprintln!(
+                "cannot remove output lock {}: {error}",
+                inputs::file_name(&self.path.to_string_lossy())
+            );
         }
     }
 }
@@ -537,6 +540,7 @@ fn sources(
         root.join(SCREEN_TEMPLATES)
     };
     let screen_tree = templates::Tree {
+        root,
         shared: &screens,
         overrides: screens.join(&pinned.adapter.minecraft),
         purpose: templates::Purpose::Screen,
@@ -545,18 +549,14 @@ fn sources(
     if legacy {
         let name_space = templates::name_space(&screen_tree, roles, mapping)?;
         let screens = render(&screen_tree, name_space)?;
-        return Ok([
-            screens,
-            templates::Sources::default(),
-            templates::Sources::default(),
-            templates::Sources::default(),
-        ]);
+        return Ok(screens_only(screens));
     }
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
     let game = root.join(HARNESS_STAND_IN_TEMPLATES);
     let driver = root.join(HARNESS_DRIVER_TEMPLATES);
     let sibling = root.join(HARNESS_SIBLING_TEMPLATES);
     let stand_ins = templates::Tree {
+        root,
         shared: &game,
         overrides: harness.join("game"),
         purpose: templates::Purpose::StandIn,
@@ -567,12 +567,14 @@ fn sources(
         screen_tree,
         stand_ins,
         templates::Tree {
+            root,
             shared: &driver,
             overrides: harness.join("driver"),
             purpose: templates::Purpose::Driver,
             stand_ins: true,
         },
         templates::Tree {
+            root,
             shared: &sibling,
             overrides: harness.join("sibling"),
             purpose: templates::Purpose::Screen,
@@ -583,10 +585,20 @@ fn sources(
     for tree in &trees {
         rendered.push(render(tree, name_space)?);
     }
-    templates::every_added_template_is_reached(&rendered.iter().collect::<Vec<_>>())?;
+    templates::every_added_template_is_reached(root, &rendered.iter().collect::<Vec<_>>())?;
     rendered
         .try_into()
         .map_err(|_| GenerateError::Input("one source set per template tree".to_owned()))
+}
+
+/// A legacy version draws screens without exposing a live game harness.
+fn screens_only(screens: templates::Sources) -> [templates::Sources; 4] {
+    [
+        screens,
+        templates::Sources::default(),
+        templates::Sources::default(),
+        templates::Sources::default(),
+    ]
 }
 
 /// Java outputs owned by the explicit generation step.
@@ -720,7 +732,7 @@ fn remove_output_trees(directories: &[&Path]) -> Result<(), GenerateError> {
             fs::remove_dir_all(directory).map_err(|error| {
                 GenerateError::Input(format!(
                     "{} could not be emptied: {error}",
-                    directory.display()
+                    inputs::file_name(&directory.to_string_lossy())
                 ))
             })?;
         }
@@ -745,7 +757,10 @@ fn load_mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mappi
 
 fn create_directory(directory: &Path) -> Result<(), GenerateError> {
     fs::create_dir_all(directory).map_err(|error| {
-        GenerateError::Input(format!("cannot create {}: {error}", directory.display()))
+        GenerateError::Input(format!(
+            "cannot create {}: {error}",
+            inputs::file_name(&directory.to_string_lossy())
+        ))
     })
 }
 
@@ -762,10 +777,43 @@ fn place(path: &Path, content: &str, digest: &mut String) -> Result<(), Generate
 fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
     let pending = path.with_extension(format!("pending{}", std::process::id()));
     fs::write(&pending, content).map_err(|error| {
-        GenerateError::Input(format!("cannot write {}: {error}", path.display()))
+        GenerateError::Input(format!(
+            "cannot write {}: {error}",
+            inputs::file_name(&path.to_string_lossy())
+        ))
     })?;
-    fs::rename(&pending, path)
-        .map_err(|error| GenerateError::Input(format!("cannot place {}: {error}", path.display())))
+    fs::rename(&pending, path).map_err(|error| {
+        GenerateError::Input(format!(
+            "cannot place {}: {error}",
+            inputs::file_name(&path.to_string_lossy())
+        ))
+    })
+}
+
+#[cfg(test)]
+mod path_redaction_tests {
+    use super::{create_directory, write_atomically};
+
+    #[test]
+    fn output_failures_name_files_without_local_directories() {
+        let root =
+            std::env::temp_dir().join(format!("ravel-private-output-path-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("private directory");
+        let blocker = root.join("blocker");
+        std::fs::write(&blocker, "not a directory").expect("blocking file");
+        let target = blocker.join("output.rs");
+        let refusals = [
+            create_directory(&target).expect_err("file blocks directory"),
+            write_atomically(&target, "output").expect_err("file blocks output"),
+        ];
+        for error in refusals {
+            let detail = error.to_string();
+            assert!(detail.contains("output.rs"), "{detail}");
+            assert!(!detail.contains("ravel-private-output-path"), "{detail}");
+            assert!(!detail.contains("blocker"), "{detail}");
+        }
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
 }
 
 #[cfg(test)]

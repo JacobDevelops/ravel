@@ -132,12 +132,12 @@ fn verify_record(
     unavailable: &BTreeSet<&str>,
     report: &mut GateVersionsReport,
 ) {
-    let Ok(text) = fs::read_to_string(root.join(record.path)) else {
-        report.violations.push(format!(
-            "{} is absent, so nothing says which versions {} covered; run it before this check",
-            record.path, record.task
-        ));
-        return;
+    let text = match read_record(root, record) {
+        Ok(text) => text,
+        Err(error) => {
+            report.violations.push(error);
+            return;
+        }
     };
     let mut reached_live = false;
     for version in versions {
@@ -192,6 +192,15 @@ fn verify_record(
             record.path, record.verb
         ));
     }
+}
+
+fn read_record(root: &Path, record: &Record) -> Result<String, String> {
+    fs::read_to_string(root.join(record.path)).map_err(|error| {
+        format!(
+            "cannot read {}: {error}; nothing says which versions {} covered; run it before this check",
+            record.path, record.task
+        )
+    })
 }
 
 fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Vec<String>) {

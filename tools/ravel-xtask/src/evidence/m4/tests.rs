@@ -87,7 +87,11 @@ fn a_surface_inventory_naming_what_the_repository_holds_is_accepted() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
 
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -103,7 +107,11 @@ fn a_surface_inventory_naming_what_the_repository_lost_is_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
 
     assert_eq!(
         violations,
@@ -127,7 +135,11 @@ fn a_surface_inventory_omitting_what_a_later_milestone_added_is_accepted() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
 
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -149,7 +161,11 @@ fn later_removals_do_not_rewrite_the_pinned_surface_inventory() {
     }
     fs::remove_dir_all(root.join("test-mods")).expect("historical mods should be removable");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -176,7 +192,7 @@ fn a_manifest_and_a_matrix_reporting_the_same_run_are_accepted() {
 
     let mut violations = Vec::new();
     verify_milestone_figures(
-        &root,
+        &read_json(&root.join(M4_FIGURES.record)).expect("summary should parse"),
         &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
         &M4_FIGURES,
         &mut violations,
@@ -198,7 +214,7 @@ fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
 
     let mut violations = Vec::new();
     verify_milestone_figures(
-        &root,
+        &read_json(&root.join(M4_FIGURES.record)).expect("summary should parse"),
         &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
         &M4_FIGURES,
         &mut violations,
@@ -239,13 +255,19 @@ fn a_historical_process_matrix_is_independent_of_the_current_makefile() {
     ] {
         fs::write(root.join("Makefile.toml"), source).expect("Makefile should be writable");
         let mut violations = Vec::new();
-        verify_m4_process_matrix(&root, &mut violations);
+        verify_m4_process_matrix(
+            &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+            &mut violations,
+        );
 
         assert!(violations.is_empty(), "{source}: {violations:?}");
     }
     fs::remove_file(root.join("Makefile.toml")).expect("Makefile should be removable");
     let mut violations = Vec::new();
-    verify_m4_process_matrix(&root, &mut violations);
+    verify_m4_process_matrix(
+        &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+        &mut violations,
+    );
 
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -262,7 +284,10 @@ fn a_failed_process_under_a_record_that_calls_itself_a_pass_is_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_process_matrix(&root, &mut violations);
+    verify_m4_process_matrix(
+        &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+        &mut violations,
+    );
 
     assert_eq!(
         violations,
@@ -291,7 +316,10 @@ fn a_task_recorded_both_inside_and_outside_the_gate_is_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_process_matrix(&root, &mut violations);
+    verify_m4_process_matrix(
+        &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+        &mut violations,
+    );
 
     assert_eq!(
         violations,
@@ -314,7 +342,10 @@ fn a_recorded_command_that_names_no_task_is_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_process_matrix(&root, &mut violations);
+    verify_m4_process_matrix(
+        &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+        &mut violations,
+    );
 
     assert_eq!(
         violations,
@@ -344,7 +375,12 @@ fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
             read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse");
         let mut violations = Vec::new();
 
-        verify_milestone_figures(&root, &manifest, &M4_FIGURES, &mut violations);
+        verify_milestone_figures(
+            &read_json(&root.join(M4_FIGURES.record)).expect("summary should parse"),
+            &manifest,
+            &M4_FIGURES,
+            &mut violations,
+        );
 
         assert_eq!(violations.len(), 5, "{violations:?}");
         for field in [
@@ -383,7 +419,10 @@ fn blank_missing_and_non_string_commands_preserve_both_failures() {
             .to_string(),
         );
         let mut violations = Vec::new();
-        verify_m4_process_matrix(&root, &mut violations);
+        verify_m4_process_matrix(
+            &read_json(&root.join(super::M4_PROCESS_MATRIX)).expect("matrix should parse"),
+            &mut violations,
+        );
         assert_eq!(violations.len(), 2, "{violations:?}");
         assert!(violations[0].contains("with no command"), "{violations:?}");
         assert!(violations[1].contains("`<no command>`"), "{violations:?}");
@@ -413,7 +452,11 @@ fn an_amended_inventory_uses_its_amendment_tree_not_the_manifest_input_baseline(
     assert!(output.status.success(), "{output:?}");
     fs::remove_file(root.join("docs/guide/amended.md")).expect("later removal should work");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -470,7 +513,11 @@ fn git_only_inventory_resolution_survives_later_removals() {
     fs::remove_dir_all(root.join("docs")).expect("later guide removal should work");
     fs::remove_dir_all(root.join("tests")).expect("later suite removal should work");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -479,7 +526,11 @@ fn git_only_inventory_resolution_survives_later_removals() {
 fn inventory_assets_do_not_count_as_guide_documents_or_conformance_suites() {
     let root = git_surface_root("surface-git-assets", "image.png", "fixture.json");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert_eq!(violations.len(), 2, "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -507,7 +558,11 @@ fn an_inventory_amendment_can_name_direct_suites_under_the_historical_test_root(
     assert!(output.status.success(), "{output:?}");
     fs::remove_file(historical).expect("later suite removal should work");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -547,7 +602,11 @@ fn historical_suite_root_requires_direct_rust_source_children() {
         assert!(output.status.success(), "{output:?}");
     }
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert_eq!(violations.len(), 2, "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -585,7 +644,11 @@ fn shallow_git_inventory_requires_complete_amendment_history() {
         .expect("git should be available");
     assert!(output.status.success(), "{output:?}");
     let mut violations = Vec::new();
-    verify_m4_surface(&shallow, &mut violations);
+    verify_m4_surface(
+        &shallow,
+        &read_json(&shallow.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert_eq!(
         violations,
         ["historical M4 inventory requires complete Git history; \
@@ -601,7 +664,11 @@ fn archive_inventory_without_repository_history_is_not_verifiable() {
     fs::create_dir_all(root.join("evidence/m4")).expect("directory should be creatable");
     fs::write(root.join("evidence/m4/sdk-surface.json"), "{}").expect("record should be writable");
     let mut violations = Vec::new();
-    verify_m4_surface(&root, &mut violations);
+    verify_m4_surface(
+        &root,
+        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
+        &mut violations,
+    );
     assert_eq!(
         violations,
         ["cannot verify historical M4 inventory: \

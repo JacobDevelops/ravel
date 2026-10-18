@@ -47,16 +47,30 @@ impl MappingSource {
 /// Shape of a hook target, which the class file's flags have to agree with.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Kind {
+pub enum Kind {
+    /// A class-level method.
     StaticMethod,
+    /// An object method.
     InstanceMethod,
+    /// A class-level field.
     StaticField,
+    /// An object field.
     InstanceField,
 }
 
 impl Kind {
+    /// The spelling used in reviewed inventory documents.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StaticMethod => "static-method",
+            Self::InstanceMethod => "instance-method",
+            Self::StaticField => "static-field",
+            Self::InstanceField => "instance-field",
+        }
+    }
+
     /// Whether the target is a method rather than a field.
-    pub(crate) const fn is_method(self) -> bool {
+    pub const fn is_method(self) -> bool {
         matches!(self, Self::StaticMethod | Self::InstanceMethod)
     }
 

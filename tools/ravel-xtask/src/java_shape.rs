@@ -3,14 +3,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_minecraft_generate::Eligibility;
+use ravel_minecraft_generate::{Eligibility, Kind};
 
-use crate::hooks::{DeclaredHooks, HookInventory, hook_counts, parse_hook_inventory};
-use crate::json::{read_text, relative_label};
+use crate::hooks::HookInventory;
+use crate::text::{read_text, relative_label};
 use crate::tracked::collect_files;
-use crate::version_boundary::{
-    VERSION_DATA, VERSION_PROSE_FILE, VersionEligibility, tracked_versions,
-};
+use crate::version_boundary::{VERSION_DATA, VersionEligibility, tracked_versions};
 
 pub(crate) mod reflection;
 
@@ -20,9 +18,11 @@ const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 
 pub(crate) const REFLECTION_FILE: &str = "reflection.toml";
 
-fn java_sources(directory: &Path) -> Vec<PathBuf> {
+fn java_sources(directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
     let mut sources = Vec::new();
-    collect_files(directory, &mut sources);
+    if let Err(error) = collect_files(directory, &mut sources) {
+        violations.push(error);
+    }
     sources.retain(|path| {
         path.extension()
             .is_some_and(|extension| extension == "java")
@@ -47,16 +47,10 @@ pub(crate) fn verify_hook_name_literals(
     };
     let parsed = inventories
         .iter()
-        .filter_map(|inventory| match parse_hook_inventory(&inventory.text) {
-            Ok(hooks) => uses_bootstrap(eligibility, inventory).then_some((inventory, hooks)),
-            Err(error) => {
-                violations.push(format!("{}: {error}", inventory.path));
-                None
-            }
-        })
+        .filter(|inventory| uses_bootstrap(eligibility, inventory))
         .collect::<Vec<_>>();
 
-    for path in java_sources(&root.join(AGENT_JAR_SOURCES)) {
+    for path in java_sources(&root.join(AGENT_JAR_SOURCES), violations) {
         let relative = relative_label(root, &path);
         let source = match read_text(root, &path) {
             Ok(source) => source,
@@ -72,8 +66,8 @@ pub(crate) fn verify_hook_name_literals(
                 break;
             };
             rest = tail;
-            for (inventory, hooks) in &parsed {
-                if !hooks
+            for inventory in &parsed {
+                if !inventory
                     .hooks
                     .iter()
                     .any(|hook| flattened(&hook.id) == flattened(literal))
@@ -95,7 +89,7 @@ fn uses_bootstrap(eligibility: &VersionEligibility, inventory: &HookInventory) -
     eligibility.get(&inventory.version) == Some(&Eligibility::Live)
 }
 
-const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
+pub(crate) const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
 
 #[derive(Clone, Copy)]
 enum Parameter {
@@ -198,23 +192,22 @@ pub(crate) fn verify_transformer_shape(
     eligibility: &VersionEligibility,
     violations: &mut Vec<String>,
 ) {
+    if !inventories
+        .iter()
+        .any(|inventory| uses_bootstrap(eligibility, inventory))
+    {
+        return;
+    }
     let mut held = Vec::new();
     let mut named = 0;
     for inventory in inventories {
-        let hooks = match parse_hook_inventory(&inventory.text) {
-            Ok(hooks) => hooks,
-            Err(error) => {
-                violations.push(format!("{}: {error}", inventory.path));
-                continue;
-            }
-        };
         if !uses_bootstrap(eligibility, inventory) {
             continue;
         }
         let before = violations.len();
         let mut seams = 0;
         for seam in &TRANSFORMER_SEAMS {
-            let Some((kind, descriptor)) = declared_hook(&hooks, seam.id) else {
+            let Some((kind, descriptor)) = declared_hook(inventory, seam.id) else {
                 continue;
             };
             seams += 1;
@@ -252,17 +245,18 @@ pub(crate) fn verify_transformer_shape(
 fn verify_seam_shape(
     inventory: &HookInventory,
     seam: &Seam,
-    kind: &str,
+    kind: Kind,
     descriptor: &str,
     violations: &mut Vec<String>,
 ) {
     let path = &inventory.path;
     let id = seam.id;
-    if seam.receiver && kind != "instance-method" {
+    if seam.receiver && kind != Kind::InstanceMethod {
         violations.push(format!(
             "{path} declares {id} as a {kind} and the transformer loads its receiver; local zero \
              is the first argument on a static method, so the injected call would hand the \
-             adapter an argument in place of the object the seam is about"
+             adapter an argument in place of the object the seam is about",
+            kind = kind.as_str()
         ));
     }
 
@@ -318,16 +312,16 @@ fn verify_seam_shape(
     }
 }
 
-fn declared_hook<'a>(inventory: &'a DeclaredHooks, id: &str) -> Option<(&'a str, &'a str)> {
+fn declared_hook<'a>(inventory: &'a HookInventory, id: &str) -> Option<(Kind, &'a str)> {
     let hook = inventory.hooks.iter().find(|hook| hook.id == id)?;
-    Some((hook.kind.as_deref()?, hook.descriptor.as_deref()?))
+    Some((hook.kind, &hook.descriptor))
 }
 
 const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
 
 pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>) {
     let directory = root.join(SCREEN_JAR_SOURCES);
-    let templates = screen_templates(&directory);
+    let templates = screen_templates(&directory, violations);
     if templates.is_empty() {
         violations.push(format!(
             "{SCREEN_JAR_SOURCES} holds no screen template, so the screen jar is generated from \
@@ -360,57 +354,27 @@ pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>)
     }
 }
 
-pub(crate) fn verify_version_readmes(root: &Path, violations: &mut Vec<String>) {
-    let Ok(versions) = tracked_versions(root) else {
-        return;
-    };
-    for version in versions {
-        let directory = root.join(VERSION_DATA).join(&version);
-        let inventory = match read_text(root, &directory.join("hooks.toml")) {
-            Ok(text) => text,
-            Err(error) => {
-                violations.push(error);
-                continue;
-            }
-        };
-        let Ok(counts) = hook_counts(&inventory) else {
-            continue;
-        };
-        let Ok(parsed) = parse_hook_inventory(&inventory) else {
-            continue;
-        };
-        let non_goals = parsed.non_goals.len();
-        let expected = format!(
-            "carries {} reviewed hooks and records {non_goals} non-goals",
-            counts.entries
-        );
-        let readme = format!("{VERSION_DATA}/{version}/README.md");
-        let prose = match read_text(root, &directory.join(VERSION_PROSE_FILE)) {
-            Ok(text) => text,
-            Err(error) => {
-                violations.push(error);
-                continue;
-            }
-        };
-        if !prose.contains(&expected) {
-            violations.push(format!(
-                "{readme} does not state \"{expected}\", which is what \
-                 {VERSION_DATA}/{version}/hooks.toml declares"
-            ));
-        }
-    }
-}
-
 pub(crate) fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>) {
     let directory = root.join(SCREEN_JAR_SOURCES);
     let Ok(versions) = tracked_versions(root) else {
         violations.push(format!("cannot read {VERSION_DATA}"));
         return;
     };
-    let Ok(entries) = fs::read_dir(&directory) else {
-        return;
+    let entries = match fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}: {error}"));
+            return;
+        }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!("cannot read {SCREEN_JAR_SOURCES} entry: {error}"));
+                continue;
+            }
+        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -423,46 +387,68 @@ pub(crate) fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>)
             ));
             continue;
         }
-        let Ok(overrides) = fs::read_dir(&path) else {
-            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}"));
-            continue;
+        verify_version_overrides(root, &directory, &path, &name, violations);
+    }
+}
+
+fn verify_version_overrides(
+    root: &Path,
+    directory: &Path,
+    path: &Path,
+    name: &str,
+    violations: &mut Vec<String>,
+) {
+    let overrides = match fs::read_dir(path) {
+        Ok(overrides) => overrides,
+        Err(error) => {
+            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}: {error}"));
+            return;
+        }
+    };
+    for over in overrides {
+        let over = match over {
+            Ok(over) => over,
+            Err(error) => {
+                violations.push(format!(
+                    "cannot read {SCREEN_JAR_SOURCES}/{name} entry: {error}"
+                ));
+                continue;
+            }
         };
-        for over in overrides.flatten() {
-            let file = over.file_name().to_string_lossy().into_owned();
-            if over.path().is_dir() {
-                violations.push(format!(
-                    "{SCREEN_JAR_SOURCES}/{name}/{file} is a directory, and a version's templates \
+        let file = over.file_name().to_string_lossy().into_owned();
+        if over.path().is_dir() {
+            violations.push(format!(
+                "{SCREEN_JAR_SOURCES}/{name}/{file} is a directory, and a version's templates \
                      are read from one level only, so anything inside it is left out silently"
-                ));
-                continue;
-            }
-            if !file.ends_with(SCREEN_TEMPLATE_SUFFIX) {
-                continue;
-            }
-            let shared = directory.join(&file);
-            if !shared.is_file() {
-                violations.push(format!(
-                    "{SCREEN_JAR_SOURCES}/{name}/{file} overrides no shared template, and the \
+            ));
+            continue;
+        }
+        if !file.ends_with(SCREEN_TEMPLATE_SUFFIX) {
+            continue;
+        }
+        let shared = directory.join(&file);
+        if !shared.is_file() {
+            violations.push(format!(
+                "{SCREEN_JAR_SOURCES}/{name}/{file} overrides no shared template, and the \
                      agent jar opens the same screens under every version"
-                ));
+            ));
+            continue;
+        }
+        let (left, right) = match (read_text(root, &shared), read_text(root, &over.path())) {
+            (Ok(left), Ok(right)) => (left, right),
+            (left, right) => {
+                violations.extend(left.err());
+                violations.extend(right.err());
                 continue;
             }
-            let (left, right) = match (read_text(root, &shared), read_text(root, &over.path())) {
-                (Ok(left), Ok(right)) => (left, right),
-                (left, right) => {
-                    violations.extend(left.err());
-                    violations.extend(right.err());
-                    continue;
-                }
-            };
-            if outside_placeholders(&left) == outside_placeholders(&right) {
-                violations.push(format!(
-                    "{SCREEN_JAR_SOURCES}/{name}/{file} differs from the shared template only \
+        };
+        if outside_placeholders(&left) == outside_placeholders(&right) {
+            violations.push(format!(
+                "{SCREEN_JAR_SOURCES}/{name}/{file} differs from the shared template only \
                      inside its placeholders, which is a rename. Bind the roles in \
                      {VERSION_DATA}/{name}/stubs.toml instead; a per-version source is for an API \
                      that genuinely differs, and this one buys a second copy to maintain"
-                ));
-            }
+            ));
         }
     }
 }
@@ -483,9 +469,11 @@ fn outside_placeholders(source: &str) -> String {
     text
 }
 
-fn screen_templates(directory: &Path) -> Vec<PathBuf> {
+fn screen_templates(directory: &Path, violations: &mut Vec<String>) -> Vec<PathBuf> {
     let mut templates = Vec::new();
-    collect_files(directory, &mut templates);
+    if let Err(error) = collect_files(directory, &mut templates) {
+        violations.push(error);
+    }
     templates.retain(|path| {
         path.to_str()
             .is_some_and(|name| name.ends_with(SCREEN_TEMPLATE_SUFFIX))

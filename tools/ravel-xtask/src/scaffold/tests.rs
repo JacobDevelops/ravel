@@ -1,11 +1,27 @@
 use std::fs;
 
-use crate::REGISTRY_MOD_NAMES;
 use crate::scaffold::{
     declares_unsafe_prohibition, maintained_rust_roots, required_scaffold_paths,
     verify_ignored_boundaries, verify_production_fences, verify_scaffold, verify_testkit_fence,
 };
 use crate::test_support::{adapter_document, temporary_root, version_directory};
+use crate::{CRATE_NAMES, REGISTRY_MOD_NAMES};
+
+#[test]
+fn unreadable_optional_example_directory_is_not_silently_skipped() {
+    let root = temporary_root("example-directory-unreadable");
+    let directory = root.join("crates").join(CRATE_NAMES[0]);
+    fs::create_dir_all(&directory).expect("crate directory should be creatable");
+    fs::write(directory.join("examples"), "not a directory").expect("file should be writable");
+    let mut violations = Vec::new();
+    maintained_rust_roots(&root, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with(&format!("cannot read crates/{}/examples:", CRATE_NAMES[0])),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
 
 #[test]
 fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
@@ -83,6 +99,100 @@ fn invalid_adapters_are_reported_once_by_the_overall_scaffold_check() {
 }
 
 #[test]
+fn malformed_hook_inventories_reach_the_final_scaffold_violations_once() {
+    let root = temporary_root("scaffold-malformed-hooks");
+    version_directory(&root, "26.1.2", &[]);
+    fs::write(
+        root.join("minecraft/versions/26.1.2/hooks.toml"),
+        "[[hook]\n",
+    )
+    .expect("malformed inventory should be writable");
+
+    let violations = verify_scaffold(&root);
+
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|message| message.contains("cannot parse hooks.toml"))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|message| message.contains("checked against nothing")),
+        "{violations:?}"
+    );
+    assert!(
+        !root
+            .join(crate::java_shape::TRANSFORMER_SHAPE_RECORD)
+            .exists()
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn malformed_inventories_do_not_hide_other_versions_seam_checks_or_records() {
+    let root = temporary_root("scaffold-mixed-hooks");
+    for (version, kind) in [
+        ("26.1.2", "instance-method"),
+        ("99.0.0-synthetic", "static-method"),
+    ] {
+        version_directory(&root, version, &[]);
+        fs::write(
+            root.join(format!("minecraft/versions/{version}/hooks.toml")),
+            format!(
+                "schemaVersion = 1\nminecraft = '{version}'\n[[hook]]\n\
+                 id = 'world.save-persistence'\nclass = 'net.minecraft.World'\n\
+                 member = 'save'\ndescriptor = '(ZZZ)Z'\nkind = '{kind}'\n\
+                 capability = 'Save the world.'\n"
+            ),
+        )
+        .expect("reviewed inventory should be writable");
+    }
+    version_directory(&root, "1.21.1", &[]);
+    fs::write(
+        root.join("minecraft/versions/1.21.1/hooks.toml"),
+        "[[hook]\n",
+    )
+    .expect("malformed inventory should be writable");
+
+    let violations = verify_scaffold(&root);
+
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|message| message.contains("cannot parse hooks.toml"))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|message| message.contains("the transformer loads its receiver"))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    assert!(
+        violations.iter().any(|message| message.contains(
+            "minecraft/versions/26.1.2/README.md does not state \
+             \"carries 1 reviewed hooks and records 0 non-goals\""
+        )),
+        "{violations:?}"
+    );
+    let record = fs::read_to_string(root.join(crate::java_shape::TRANSFORMER_SHAPE_RECORD))
+        .expect("valid inventory should retain its transformer record");
+    assert_eq!(
+        record,
+        "held: Minecraft 26.1.2 against 1 transformer seams\n"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn unreadable_production_text_reports_the_read_failure() {
     let root = temporary_root("fence-unreadable");
     let directory = root.join("crates/ravel-bootstrap-runtime/src");
@@ -94,7 +204,7 @@ fn unreadable_production_text_reports_the_read_failure() {
         fs::write(&path, [0xff]).expect("invalid UTF-8 fixture should be writable");
         let mut violations = Vec::new();
         verify_production_fences(&root, &mut violations);
-        let relative = crate::json::relative_label(&root, &path);
+        let relative = crate::text::relative_label(&root, &path);
         assert!(
             violations
                 .iter()
@@ -179,7 +289,7 @@ fn production_crates_cannot_depend_on_the_test_harness() {
 #[test]
 fn registry_roots_require_an_unsafe_prohibition() {
     let root = temporary_root("registry-roots");
-    let maintained = maintained_rust_roots(&root);
+    let maintained = maintained_rust_roots(&root, &mut Vec::new());
 
     for name in REGISTRY_MOD_NAMES {
         let relative = format!("registry/mods/{name}/src/lib.rs");

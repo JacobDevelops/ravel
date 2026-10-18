@@ -1018,7 +1018,7 @@ fn m3_closure_is_refused_when_a_record_is_missing_altogether() {
     );
 
     fs::remove_dir_all(&root).expect("evidence root should be removable");
-    let absent = "M3 closure requires the record evidence/m3/linux-process-matrix.json";
+    let absent = "missing required file: evidence/m3/linux-process-matrix.json";
     assert!(
         violations.iter().any(|violation| violation == absent),
         "expected {absent}, got {violations:?}"

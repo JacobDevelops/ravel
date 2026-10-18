@@ -3,9 +3,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::evidence::manifest::verify_redaction_value;
 use crate::evidence::rules::Rule;
-use crate::json::{array, nonempty, number, read_json, relative_label, schema_matches};
+use crate::evidence::rules::verify_redaction_value;
+use crate::json::{array, nonempty, number, read_json, schema_matches};
+use crate::text::relative_label;
 
 pub(crate) const SPIKE_GATES: &[(&str, &str)] = &[
     ("adg-1", "ADG-1"),

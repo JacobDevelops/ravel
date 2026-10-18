@@ -3,7 +3,7 @@
 
 use super::{Adapter, Eligibility, GenerateError, MappingSource, PackFormat, Spelling, file_name};
 
-pub(super) fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
+pub(super) fn verify_pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
     verify_capabilities(adapter)?;
     verify_mapping_configuration(adapter)?;
     match (
@@ -149,7 +149,8 @@ mod tests {
         for source in [None, Some(7), Some(27)] {
             let mut wrong = legacy.clone();
             wrong.source_java_release = source;
-            super::pinned_sources(&wrong).expect_err("legacy source release must be explicit");
+            super::verify_pinned_sources(&wrong)
+                .expect_err("legacy source release must be explicit");
         }
     }
 
@@ -157,12 +158,12 @@ mod tests {
     fn generation_only_is_an_explicit_legacy_admission() {
         let mut legacy = legacy_adapter();
         legacy.eligibility = super::Eligibility::GenerationOnly;
-        super::pinned_sources(&legacy).expect("legacy generation remains available");
+        super::verify_pinned_sources(&legacy).expect("legacy generation remains available");
         let mut modern: Adapter =
             toml::from_str(&document("unobfuscated-class-files", "")).expect("modern inputs");
         assert_eq!(modern.eligibility, super::Eligibility::Live);
         modern.eligibility = super::Eligibility::GenerationOnly;
-        super::pinned_sources(&modern).expect_err("modern obligations cannot be opted out");
+        super::verify_pinned_sources(&modern).expect_err("modern obligations cannot be opted out");
     }
 
     #[test]
@@ -172,7 +173,7 @@ mod tests {
         server.sha256 = None;
         server.bytes = Some(100);
         adapter.inputs.server_jar = Some(server.clone());
-        let error = super::pinned_sources(&adapter).expect_err("length is not identity");
+        let error = super::verify_pinned_sources(&adapter).expect_err("length is not identity");
         assert!(
             error.to_string().contains("serverJar must pin sha256"),
             "{error}"
@@ -180,7 +181,7 @@ mod tests {
         server.sha256 = Some("0".to_owned());
         server.upstream = Some("http://example.invalid/server.jar".to_owned());
         adapter.inputs.server_jar = Some(server);
-        let error = super::pinned_sources(&adapter).expect_err("insecure upstream");
+        let error = super::verify_pinned_sources(&adapter).expect_err("insecure upstream");
         assert!(
             error.to_string().contains("not an https address"),
             "{error}"
@@ -213,7 +214,7 @@ mod tests {
         adapter.capabilities.push(Capability::Legacy112);
         wrong.push(adapter);
         for adapter in wrong {
-            super::pinned_sources(&adapter).expect_err("legacy metadata is exact");
+            super::verify_pinned_sources(&adapter).expect_err("legacy metadata is exact");
         }
     }
 
@@ -229,7 +230,7 @@ mod tests {
             runtime: "official".to_owned(),
             reviewed: "named".to_owned(),
         });
-        let error = super::pinned_sources(&adapter).expect_err("upstreams require https");
+        let error = super::verify_pinned_sources(&adapter).expect_err("upstreams require https");
         assert!(
             error.to_string().contains("not an https address"),
             "{error}"
@@ -285,7 +286,7 @@ mod tests {
                 runtime: runtime.to_owned(),
                 reviewed: reviewed.to_owned(),
             });
-            let error = super::pinned_sources(&adapter)
+            let error = super::verify_pinned_sources(&adapter)
                 .expect_err("namespace validity does not depend on available artifacts");
             assert!(error.to_string().contains("distinct, nonempty"), "{error}");
         }
@@ -304,7 +305,7 @@ mod tests {
         normalizer.sha256 = None;
         normalizer.bytes = Some(100);
         adapter.inputs.mapping_io_jar = Some(normalizer);
-        let error = super::pinned_sources(&adapter)
+        let error = super::verify_pinned_sources(&adapter)
             .expect_err("equal length cannot establish executable jar identity");
         assert!(error.to_string().contains("must pin sha256"), "{error}");
     }

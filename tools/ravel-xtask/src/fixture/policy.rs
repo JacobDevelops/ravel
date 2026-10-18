@@ -2,8 +2,7 @@
 
 use std::path::{Component, Path};
 
-use super::FixtureDescriptor;
-use crate::error::FixtureError;
+use super::{FixtureDescriptor, FixtureError};
 
 const ALLOWED_DOWNLOAD_PREFIX: &str = "https://mediafilez.forgecdn.net/";
 

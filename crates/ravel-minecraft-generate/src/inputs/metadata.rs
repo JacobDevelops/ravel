@@ -18,7 +18,10 @@ pub(super) fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), 
         return Ok(());
     }
     let text = fs::read_to_string(&path).map_err(|error| {
-        GenerateError::Input(format!("{} is unreadable: {error}", path.display()))
+        GenerateError::Input(format!(
+            "{} is unreadable: {error}",
+            file_name(&adapter.inputs.version_manifest.path)
+        ))
     })?;
     if major_version(&text).is_none() && adapter.is_legacy() {
         let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {

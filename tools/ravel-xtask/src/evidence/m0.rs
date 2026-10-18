@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::evidence::manifest::require_manifest_rule;
 use crate::evidence::rules::has_exact_work_packages;
+use crate::evidence::rules::require_manifest_rule;
 use crate::json::array;
 
 pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>) {
@@ -71,6 +71,27 @@ fn m0_platform_matches(value: &Value) -> bool {
         && array(value, "/baselines")
             .iter()
             .any(|baseline| baseline["workload"] == "official-atm11")
+}
+
+pub(crate) fn verify_m0_admission(document: &Value, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        document,
+        |value| {
+            array(value, "/attestations").iter().any(|attestation| {
+                let mut workloads = array(attestation, "/workloads")
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>();
+                workloads.sort_unstable();
+                attestation["platform"] == "linux"
+                    && attestation["architecture"] == "x86_64"
+                    && array(attestation, "/workloads").len() == 2
+                    && workloads == ["official-atm11", "vanilla"]
+            })
+        },
+        "M0 closure requires a workload-bound native Linux attestation",
+        violations,
+    );
 }
 
 #[cfg(test)]

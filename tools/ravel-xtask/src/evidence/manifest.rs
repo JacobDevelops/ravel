@@ -1,120 +1,58 @@
-//! Manifest identity, closure dispatch, and redaction.
+//! Manifest identity and milestone dispatch.
 
-use std::fmt;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::collections::BTreeSet;
+use std::path::Path;
 
-use ravel_observability::contains_credential;
-use ravel_observability::redaction::CREDENTIAL_WORDS;
 use serde_json::Value;
 
-use crate::evidence::rules::{Rule, evidence_schema_matches};
+use crate::evidence::closure::LoadedRecords;
+use crate::evidence::rules::{
+    Milestone, Rule, any_string, evidence_schema_matches, milestone_manifests,
+    require_manifest_rule, verify_redaction_value,
+};
 use crate::evidence::{findings, m0, m1, m2, m3, m4, m5, m6, m7, records};
 use crate::json::{array, number, read_json};
+
 use crate::tracked::tracked_paths;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) enum Milestone {
-    M0,
-    M1,
-    M2,
-    M3,
-    M4,
-    M5,
-    M6,
-    M7,
-    M8,
-    M9,
-    M10,
-    M11,
-    M12,
-    M13,
-}
-
-impl Milestone {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::M0 => "M0",
-            Self::M1 => "M1",
-            Self::M2 => "M2",
-            Self::M3 => "M3",
-            Self::M4 => "M4",
-            Self::M5 => "M5",
-            Self::M6 => "M6",
-            Self::M7 => "M7",
-            Self::M8 => "M8",
-            Self::M9 => "M9",
-            Self::M10 => "M10",
-            Self::M11 => "M11",
-            Self::M12 => "M12",
-            Self::M13 => "M13",
-        }
-    }
-}
-
-impl fmt::Display for Milestone {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl FromStr for Milestone {
-    type Err = String;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        match text {
-            "M0" => Ok(Self::M0),
-            "M1" => Ok(Self::M1),
-            "M2" => Ok(Self::M2),
-            "M3" => Ok(Self::M3),
-            "M4" => Ok(Self::M4),
-            "M5" => Ok(Self::M5),
-            "M6" => Ok(Self::M6),
-            "M7" => Ok(Self::M7),
-            "M8" => Ok(Self::M8),
-            "M9" => Ok(Self::M9),
-            "M10" => Ok(Self::M10),
-            "M11" => Ok(Self::M11),
-            "M12" => Ok(Self::M12),
-            "M13" => Ok(Self::M13),
-            _ => Err(format!("invalid milestone ID: {text}")),
-        }
-    }
-}
-
-/// Discovers milestone directories; identity inside each document is checked separately.
-pub(crate) fn milestone_manifests(root: &Path) -> Result<Vec<(PathBuf, Milestone)>, String> {
-    let entries = fs::read_dir(root.join("evidence"))
-        .map_err(|error| format!("cannot read evidence directory: {error}"))?;
-    let mut manifests = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("cannot read evidence entry: {error}"))?;
-        let kind = entry
-            .file_type()
-            .map_err(|error| format!("cannot inspect evidence entry: {error}"))?;
-        if !kind.is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with('m') || !name[1..].bytes().all(|byte| byte.is_ascii_digit()) {
-            continue;
-        }
-        let milestone = name.to_ascii_uppercase().parse::<Milestone>()?;
-        let relative = PathBuf::from("evidence")
-            .join(name.as_ref())
-            .join("manifest.json");
-        if !root.join(&relative).is_file() {
-            return Err(format!("missing required file: {}", relative.display()));
-        }
-        manifests.push((relative, milestone));
-    }
+/// Recomputes every digest a milestone manifest records for its own results.
+#[must_use]
+pub fn verify_evidence_records(root: &Path) -> Vec<String> {
+    let manifests = match milestone_manifests(root) {
+        Ok(manifests) => manifests,
+        Err(error) => return vec![error],
+    };
     if manifests.is_empty() {
-        return Err("evidence directory contains no milestone manifests".to_owned());
+        return vec![
+            "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
+             vacuously"
+                .to_owned(),
+        ];
     }
-    manifests.sort_by_key(|(_, milestone)| *milestone);
-    Ok(manifests)
+    let tracked = match tracked_paths(root) {
+        Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
+        Err(error) => return vec![error],
+    };
+    let mut violations = Vec::new();
+    for (path, milestone) in manifests {
+        let path = root.join(path);
+        match read_json(&path) {
+            Ok(manifest) => {
+                let records =
+                    verify_manifest_integrity(root, &path, milestone, &manifest, &mut violations);
+                records::verify_recorded_manifest(
+                    root,
+                    &path,
+                    &manifest,
+                    &tracked,
+                    &records,
+                    &mut violations,
+                );
+            }
+            Err(error) => violations.push(error),
+        }
+    }
+    violations
 }
 
 /// Checks a milestone's closure, including its native-evidence admission policy.
@@ -159,7 +97,10 @@ fn verify_document(
     document: &Value,
 ) -> Vec<String> {
     let mut violations = Vec::new();
-    verify_manifest_integrity(root, path, milestone, document, &mut violations);
+    let records = verify_manifest_integrity(root, path, milestone, document, &mut violations);
+    if !document.is_object() {
+        return violations;
+    }
     for (rule, violation) in MANIFEST_VERDICTS {
         require_manifest_rule(document, rule, violation, &mut violations);
     }
@@ -176,12 +117,12 @@ fn verify_document(
     match milestone {
         Milestone::M0 => m0::verify_m0_manifest(document, &mut violations),
         Milestone::M1 => m1::verify_m1_manifest(root, document, &mut violations),
-        Milestone::M2 => m2::verify_m2_manifest(root, document, &mut violations),
-        Milestone::M3 => m3::verify_m3_manifest(root, document, &mut violations),
-        Milestone::M4 => m4::verify_m4_manifest(root, document, &mut violations),
-        Milestone::M5 => m5::verify_m5_manifest(root, document, &mut violations),
-        Milestone::M6 => m6::verify_m6_manifest(root, document, &mut violations),
-        Milestone::M7 => m7::verify_m7_manifest(root, document, &mut violations),
+        Milestone::M2 => m2::verify_m2_manifest(document, &records, &mut violations),
+        Milestone::M3 => m3::verify_m3_manifest(document, &records, &mut violations),
+        Milestone::M4 => m4::verify_m4_manifest(document, &records, &mut violations),
+        Milestone::M5 => m5::verify_m5_manifest(document, &records, &mut violations),
+        Milestone::M6 => m6::verify_m6_manifest(document, &records, &mut violations),
+        Milestone::M7 => m7::verify_m7_manifest(document, &records, &mut violations),
         Milestone::M8
         | Milestone::M9
         | Milestone::M10
@@ -199,10 +140,10 @@ pub(crate) fn verify_manifest_integrity(
     milestone: Milestone,
     document: &Value,
     violations: &mut Vec<String>,
-) {
+) -> LoadedRecords {
     if !document.is_object() {
         violations.push("milestone manifest must be a JSON object".to_owned());
-        return;
+        return LoadedRecords::default();
     }
     match evidence_schema_matches(root, path) {
         Ok(true) => {}
@@ -248,7 +189,7 @@ pub(crate) fn verify_manifest_integrity(
         | Milestone::M10
         | Milestone::M11
         | Milestone::M12
-        | Milestone::M13 => {}
+        | Milestone::M13 => LoadedRecords::default(),
     }
 }
 
@@ -357,85 +298,7 @@ fn verify_admitted_manifest(document: &Value, milestone: Milestone, violations: 
         violations,
     );
     if milestone == Milestone::M0 {
-        require_manifest_rule(
-            document,
-            |value| {
-                array(value, "/attestations").iter().any(|attestation| {
-                    let mut workloads = array(attestation, "/workloads")
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .collect::<Vec<_>>();
-                    workloads.sort_unstable();
-                    attestation["platform"] == "linux"
-                        && attestation["architecture"] == "x86_64"
-                        && array(attestation, "/workloads").len() == 2
-                        && workloads == ["official-atm11", "vanilla"]
-                })
-            },
-            "M0 closure requires a workload-bound native Linux attestation",
-            violations,
-        );
-    }
-}
-
-fn any_string(value: &Value, predicate: &impl Fn(&str) -> bool) -> bool {
-    match value {
-        Value::String(text) => predicate(text),
-        Value::Array(values) => values.iter().any(|value| any_string(value, predicate)),
-        Value::Object(values) => values.values().any(|value| any_string(value, predicate)),
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
-    }
-}
-
-pub(crate) fn verify_redaction_value(
-    document: &Value,
-    subject: &str,
-    violations: &mut Vec<String>,
-) {
-    let sensitive = any_string(document, &|text| {
-        let lower = text.to_ascii_lowercase();
-        [
-            "/home/",
-            "/users/",
-            ":\\users\\",
-            "/.minecraft",
-            "tests/fixtures/local/",
-            "evidence/private/",
-        ]
-        .iter()
-        .any(|pattern| lower.contains(pattern))
-            || contains_credential(text)
-    }) || credential_field(document, false);
-    if sensitive {
-        violations.push(format!("{subject} contains sensitive or local data"));
-    }
-}
-
-fn credential_field(value: &Value, sensitive_path: bool) -> bool {
-    match value {
-        Value::String(text) => sensitive_path && !text.is_empty(),
-        Value::Array(values) => values
-            .iter()
-            .any(|value| credential_field(value, sensitive_path)),
-        Value::Object(values) => values.iter().any(|(name, value)| {
-            let lower = name.to_ascii_lowercase();
-            credential_field(
-                value,
-                sensitive_path || CREDENTIAL_WORDS.iter().any(|word| lower.contains(word)),
-            )
-        }),
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
-    }
-}
-
-pub(crate) fn require_manifest_rule(
-    manifest: &Value,
-    rule: impl FnOnce(&Value) -> bool,
-    violation: &str,
-    violations: &mut Vec<String>,
-) {
-    if !rule(manifest) {
-        violations.push(violation.to_owned());
+        m0::verify_m0_admission(document, violations);
     }
 }
 

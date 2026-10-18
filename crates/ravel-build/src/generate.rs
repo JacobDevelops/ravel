@@ -116,7 +116,7 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
     let mut manifests = String::new();
     let mut pushes = String::new();
     for member in members {
-        let constant = member.mod_id.to_uppercase();
+        let constant = member.mod_id.as_str().to_uppercase();
         write!(
             manifests,
             "/// The manifest `{mod_id}` ships, read from the package itself.\n\

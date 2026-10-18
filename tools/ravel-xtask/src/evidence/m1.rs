@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::evidence::manifest::require_manifest_rule;
+use crate::evidence::rules::require_manifest_rule;
 use crate::evidence::spikes::{SPIKE_GATES, spike_result_paths};
 use crate::json::{array, nonempty, read_json};
 

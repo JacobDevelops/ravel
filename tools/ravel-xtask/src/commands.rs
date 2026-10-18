@@ -165,7 +165,12 @@ fn verify_archive(descriptor: &Path, archive: &Path) -> Result<(), Box<dyn Error
 }
 
 fn package_digests(directory: &Path, check: bool) -> ExitCode {
-    match ravel_xtask::refresh_digests(directory, check) {
+    let result = if check {
+        ravel_xtask::stale_digests(directory)
+    } else {
+        ravel_xtask::refresh_digests(directory)
+    };
+    match result {
         Err(refusals) => {
             eprintln!("Ravel package digests failed:");
             for refusal in refusals {
@@ -173,11 +178,11 @@ fn package_digests(directory: &Path, check: bool) -> ExitCode {
             }
             ExitCode::FAILURE
         }
-        Ok(ravel_xtask::DigestOutcome::Current) => {
+        Ok(stale) if stale.is_empty() => {
             println!("Every digest the manifest records is the digest of the file on disk.");
             ExitCode::SUCCESS
         }
-        Ok(ravel_xtask::DigestOutcome::Stale(stale)) => {
+        Ok(stale) => {
             if check {
                 eprintln!("Ravel package digests are stale:");
                 for entry in stale {

@@ -31,7 +31,7 @@ const EMPTY_OBJECT_DIGEST: &str =
 fn a_recorded_result_digest_is_recomputed_against_the_file() {
     let root = recorded_result_root("records-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -39,7 +39,7 @@ fn a_recorded_result_digest_is_recomputed_against_the_file() {
 fn a_recorded_result_digest_that_binds_nothing_is_reported() {
     let root = recorded_result_root("records-drift", "{\"changed\": true}\n", &"0".repeat(64));
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -66,7 +66,7 @@ fn a_manifest_cannot_record_its_own_digest_or_a_result_it_does_not_hold() {
     )
     .expect("manifest should be writable");
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -116,7 +116,7 @@ fn a_review_record_stating_another_verdict_than_the_manifest_is_reported() {
     ] {
         let root = reviewed_root("review-verdict", result, record, "review.md", digest);
 
-        let violations = verify_evidence_records(&root);
+        let violations = verify_record_bindings(&root);
 
         let stated = if result == "pass" { "fail" } else { "pass" };
         assert_eq!(
@@ -139,7 +139,7 @@ fn a_review_record_stating_no_verdict_is_reported() {
         "2f3630fd670787672c297ef4a9f7a4acb23eaa18c86ab35bc8940ca3363bde62",
     );
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -156,7 +156,7 @@ fn a_review_record_stating_no_verdict_is_reported() {
 fn a_recorded_review_digest_is_recomputed_against_the_tracked_record() {
     let root = recorded_review_root("review-match", PASS_RECORD, "review.md", PASS_RECORD_DIGEST);
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -164,7 +164,7 @@ fn a_recorded_review_digest_is_recomputed_against_the_tracked_record() {
 fn a_recorded_review_digest_that_binds_nothing_is_reported() {
     let root = recorded_review_root("review-drift", PASS_RECORD, "review.md", &"0".repeat(64));
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -184,7 +184,7 @@ fn a_review_record_named_by_title_is_reported() {
         PASS_RECORD_DIGEST,
     );
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -211,7 +211,7 @@ fn a_manifest_recording_no_review_record_is_left_to_the_milestone_gate() {
     )
     .expect("manifest should be writable");
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -235,7 +235,7 @@ fn recorded_baseline_root(label: &str, result: &str, digest: &str) -> PathBuf {
 fn a_recorded_baseline_digest_is_recomputed_against_the_tracked_file() {
     let root = recorded_baseline_root("baseline-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -243,7 +243,7 @@ fn a_recorded_baseline_digest_is_recomputed_against_the_tracked_file() {
 fn a_recorded_baseline_digest_that_binds_nothing_is_reported() {
     let root = recorded_baseline_root("baseline-drift", "{}\n", &"0".repeat(64));
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -271,7 +271,7 @@ fn a_baseline_naming_a_file_the_milestone_does_not_hold_is_reported() {
     )
     .expect("manifest should be writable");
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -353,7 +353,7 @@ fn a_tracked_record_its_manifest_does_not_name_is_reported() {
     write_admitted(&root, r#"{"dirty":false}"#, &revision);
     fs::write(root.join("evidence/m9/unnamed.json"), "{}\n").expect("record should be writable");
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -413,7 +413,7 @@ fn an_input_digest_is_recomputed_against_the_revision_the_manifest_pins() {
     let (root, revision) = pinned_input_root("inputs-match");
     write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -422,7 +422,7 @@ fn an_input_digest_that_binds_nothing_at_the_pinned_revision_is_reported() {
     let (root, revision) = pinned_input_root("inputs-drift");
     write_input_manifest(&root, &revision, "input.txt", &"0".repeat(64));
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -441,7 +441,7 @@ fn an_input_the_pinned_revision_does_not_hold_is_reported() {
     fs::write(root.join("later.txt"), "hello\n").expect("input should be writable");
     write_input_manifest(&root, &revision, "later.txt", HELLO_DIGEST);
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -459,7 +459,7 @@ fn an_input_the_repository_no_longer_holds_is_reported() {
     fs::remove_file(root.join("input.txt")).expect("input should be removable");
     write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -509,7 +509,7 @@ fn a_recorded_run_whose_numbers_agree_is_accepted() {
                 "lineCoveragePercent":85.97}}"#,
     );
 
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -523,7 +523,7 @@ fn a_recorded_run_whose_counts_do_not_sum_is_reported() {
     );
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         ["evidence/m9/manifest.json records test counts that do not sum to its total"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -534,7 +534,7 @@ fn a_recorded_run_with_no_test_result_and_no_coverage_is_reported() {
     let root = recorded_run_root("run-untested", r#"{"commands":[{"exitStatus":1}]}"#);
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         [
             "evidence/m9/manifest.json records a gate run but no test result",
             "evidence/m9/manifest.json records a gate run that did not succeed",
@@ -552,7 +552,7 @@ fn a_recorded_run_below_the_coverage_floor_is_reported() {
     );
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         ["evidence/m9/manifest.json records line coverage below the floor the gate enforces"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -563,7 +563,7 @@ fn an_evidence_tree_holding_no_manifest_is_reported() {
     let root = temporary_root("records-none");
     fs::create_dir_all(root.join("evidence")).expect("evidence directory should be creatable");
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert_eq!(
         violations,
@@ -580,7 +580,7 @@ fn a_manifest_recording_neither_a_run_nor_a_test_result_is_reported() {
     let root = recorded_run_root("run-silent", r#"{"milestone":"M9"}"#);
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         [
             "evidence/m9/manifest.json records neither a gate run nor a test result, so there is \
           nothing here a gate can hold it to"
@@ -608,7 +608,7 @@ fn a_baseline_result_named_by_description_is_reported() {
     .expect("manifest should be writable");
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         [
             "evidence/m9/manifest.json records a baseline result by description rather than by \
           path, so its digest binds nothing obtainable: the Linux vanilla launch summary"
@@ -636,7 +636,7 @@ fn a_digest_binding_an_untracked_file_is_reported() {
     .expect("manifest should be writable");
 
     assert_eq!(
-        verify_evidence_records(&root),
+        verify_record_bindings(&root),
         [
             "evidence/m9/manifest.json records a result that the repository does not track, so \
           its digest binds nothing a reader can obtain: ignored.json"
@@ -649,7 +649,7 @@ fn a_digest_binding_an_untracked_file_is_reported() {
 fn an_unparseable_manifest_cannot_answer_a_check() {
     let root = recorded_run_root("records-unparseable", "{not json\n");
 
-    let violations = verify_evidence_records(&root);
+    let violations = verify_record_bindings(&root);
 
     assert!(
         violations
@@ -670,7 +670,7 @@ fn recorded_artifact_root(label: &str, file: &str, record: &str, manifest: &str)
 }
 
 // These fixtures exercise artifact binding without claiming complete milestone integrity.
-fn verify_evidence_records(root: &Path) -> Vec<String> {
+fn verify_record_bindings(root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
     let manifests = fs::read_dir(root.join("evidence"))
         .expect("evidence directory should be readable")
@@ -697,7 +697,14 @@ fn verify_evidence_records(root: &Path) -> Vec<String> {
     for path in manifests {
         match read_json(&path) {
             Ok(manifest) => {
-                super::verify_recorded_manifest(root, &path, &manifest, &tracked, &mut violations);
+                super::verify_recorded_manifest(
+                    root,
+                    &path,
+                    &manifest,
+                    &tracked,
+                    &crate::evidence::closure::LoadedRecords::default(),
+                    &mut violations,
+                );
             }
             Err(error) => violations.push(error),
         }
@@ -708,7 +715,13 @@ fn verify_evidence_records(root: &Path) -> Vec<String> {
 fn verify_admitted_revisions(root: &Path, path: &Path, violations: &mut Vec<String>) {
     let manifest = read_json(path).expect("manifest should parse");
     let artifacts = super::Artifacts::deserialize(&manifest).expect("artifacts should parse");
-    super::verify_revisions(root, path, &artifacts, violations);
+    super::verify_revisions(
+        root,
+        path,
+        &artifacts,
+        &crate::evidence::closure::LoadedRecords::default(),
+        violations,
+    );
 }
 
 fn verify_recorded_inputs(
@@ -746,7 +759,7 @@ fn filenames_with_spaces_bind_results_baselines_and_reviews() {
     );
     fs::write(root.join("evidence/m9/closure review.md"), PASS_RECORD)
         .expect("review should be writable");
-    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    assert_eq!(verify_record_bindings(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -792,7 +805,8 @@ fn the_full_sweep_validates_m6_integrity_not_only_artifact_binding() {
             "notes":"evidence/private/redaction-canary"}"#,
     )
     .expect("manifest should be writable");
-    let violations = super::verify_evidence_records(&root);
+    track_fixture_files(&root);
+    let violations = crate::verify_evidence_records(&root);
     assert!(
         violations
             .iter()
@@ -820,7 +834,8 @@ fn the_full_sweep_rejects_unknown_milestone_directories() {
     let directory = root.join("evidence/m99");
     fs::create_dir_all(&directory).expect("directory should be creatable");
     fs::write(directory.join("manifest.json"), "{}\n").expect("manifest should be writable");
-    let violations = super::verify_evidence_records(&root);
+    track_fixture_files(&root);
+    let violations = crate::verify_evidence_records(&root);
     assert!(!violations.is_empty(), "{violations:?}");
     assert!(
         violations

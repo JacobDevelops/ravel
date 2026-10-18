@@ -100,7 +100,7 @@ pub(crate) fn replace_pin(
 
 /// The last path segment, which is all a recorded message may say about a file.
 pub(crate) fn file_name(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
 /// Hex-encoded SHA-256 of some bytes.
@@ -120,6 +120,13 @@ mod tests {
     use super::super::{parse, tracked_versions};
     use super::{file_name, sha256, verify_input};
     use crate::test_fixtures::repository_root;
+
+    #[test]
+    fn recorded_names_drop_unix_and_windows_parent_directories() {
+        assert_eq!(file_name("/private/work/hooks.toml"), "hooks.toml");
+        assert_eq!(file_name(r"C:\private\work\hooks.toml"), "hooks.toml");
+    }
+
     #[test]
     fn an_input_that_no_longer_hashes_to_its_pin_is_refused() {
         let root = repository_root();

@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::hooks::{HookCounts, hook_counts, hook_inventories};
+use crate::hooks::{HookCounts, hook_counts, hook_inventory};
 use crate::inventory::{
     GUIDE_DIRECTORY, HOOK_DOCUMENT, NETWORK_SOURCE, documented_versions, hook_document_violations,
     verify_guide_enumerations, verify_hook_inventory_document,
 };
-use crate::test_support::{temporary_root, version_directory};
+use crate::test_support::{adapter_document, hook_inventories, temporary_root, version_directory};
 use crate::version_boundary::tracked_versions;
 
 fn hook_entry(kind: &str, descriptor: &str) -> String {
@@ -18,23 +18,39 @@ fn hook_entry(kind: &str, descriptor: &str) -> String {
 
 #[test]
 fn a_hook_inventory_is_counted_by_kind_and_by_handle_parameter() {
-    let inventory = format!(
-        "schemaVersion = 1\n{}{}{}{}",
-        hook_entry("static-method", "(Ljava/lang/String;Z)Ljava/lang/String;"),
-        hook_entry(
-            "instance-method",
-            "([Ljava/lang/String;[JLjava/util/List;D)V"
+    let root = temporary_root("inventory-counts");
+    version_directory(&root, "26.1.2", &[]);
+    fs::write(
+        root.join("minecraft/versions/26.1.2/adapter.toml"),
+        adapter_document("26.1.2", "live", None).replace("/hooks.toml", "/reviewed-hooks.toml"),
+    )
+    .expect("adapter should be writable");
+    fs::write(
+        root.join("minecraft/versions/26.1.2/reviewed-hooks.toml"),
+        format!(
+            "schemaVersion = 1\nminecraft = '26.1.2'\n{}{}{}{}",
+            hook_entry("static-method", "(Ljava/lang/String;Z)Ljava/lang/String;"),
+            hook_entry(
+                "instance-method",
+                "([Ljava/lang/String;[JLjava/util/List;D)V"
+            ),
+            hook_entry("instance-method", "(I)Z"),
+            hook_entry("instance-field", "Z"),
         ),
-        hook_entry("instance-method", "(I)Z"),
-        hook_entry("instance-field", "Z"),
+    )
+    .expect("hook inventory should be writable");
+    let inventory = hook_inventory(&root, "26.1.2").expect("hook inventory should parse");
+    assert_eq!(
+        inventory.path,
+        "minecraft/versions/26.1.2/reviewed-hooks.toml"
     );
-
     let counts = hook_counts(&inventory).expect("the inventory should count");
 
     assert_eq!(counts.entries, 4);
     assert_eq!(counts.methods, 3);
     assert_eq!(counts.fields, 1);
     assert_eq!(counts.handles, 3);
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
@@ -129,7 +145,8 @@ fn a_hook_document_naming_no_single_version_is_refused() {
             &hook_inventories(
                 &root,
                 &tracked_versions(&root).expect("tracked versions should be readable"),
-            ),
+            )
+            .expect("hook inventories should be readable"),
             &mut violations,
         );
 
@@ -162,7 +179,8 @@ fn a_hook_document_naming_an_untracked_version_is_refused() {
         &hook_inventories(
             &root,
             &tracked_versions(&root).expect("tracked versions should be readable"),
-        ),
+        )
+        .expect("hook inventories should be readable"),
         &mut violations,
     );
 
@@ -189,7 +207,8 @@ fn the_tracked_hook_document_agrees_with_the_tracked_inventory() {
         &hook_inventories(
             &root,
             &tracked_versions(&root).expect("tracked versions should be readable"),
-        ),
+        )
+        .expect("hook inventories should be readable"),
         &mut violations,
     );
 

@@ -6,8 +6,8 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::manifest::Milestone;
-use crate::json::{read_text, relative_label};
+use super::rules::Milestone;
+use crate::text::{read_text, relative_label};
 use crate::tracked::tracked_paths;
 
 const RUST_DEFINITION_KEYWORDS: [&str; 8] = [

@@ -16,7 +16,7 @@ mod metadata;
 mod schema;
 mod semantics;
 
-use admission::pinned_sources;
+use admission::verify_pinned_sources;
 #[cfg(test)]
 pub(super) use integrity::replace_pin;
 pub(super) use integrity::{file_name, repin_locks, sha256, verify_input};
@@ -24,7 +24,7 @@ use metadata::verify_java_release;
 pub(super) use semantics::TITLE_MENU_SEAM;
 use semantics::{verify_non_goals, verify_roles, verify_title_menu_row};
 
-pub use schema::Eligibility;
+pub use schema::{Eligibility, Kind};
 
 pub(super) use schema::*;
 
@@ -50,6 +50,99 @@ pub struct AdapterFacts {
     pub mapping_inputs: Vec<String>,
 }
 
+/// The reviewed hook facts consumed by repository tooling.
+#[derive(Clone, Debug)]
+pub struct HookInventory {
+    /// Version whose adapter owns this inventory.
+    pub version: String,
+    /// Resolved inventory location, relative to the repository when inside it.
+    pub path: String,
+    /// Strictly parsed hook declarations.
+    pub hooks: Vec<HookFact>,
+    /// Number of explicitly reviewed non-goals.
+    pub non_goals: usize,
+}
+
+/// A hook's identity and JVM shape, without generator-only resolution details.
+#[derive(Clone, Debug)]
+pub struct HookFact {
+    /// Stable reviewed hook identity.
+    pub id: String,
+    /// Reviewed declaring class, as spelled by the inventory.
+    pub class: String,
+    /// Declared target shape.
+    pub kind: Kind,
+    /// JVM target descriptor.
+    pub descriptor: String,
+}
+
+/// Reads the strict inventory at the path owned by the selected adapter.
+///
+/// # Errors
+/// Returns an error for unreadable inventories, strict-schema violations,
+/// or declarations inconsistent with the adapter. Byte pins are checked at generation.
+pub fn hook_inventory(root: &Path, version: &str) -> Result<HookInventory, GenerateError> {
+    hook_inventory_at(root, &root.join(VERSIONS).join(version))
+}
+
+/// Reads the adapter-owned inventory from a tracked or public-fixture directory.
+///
+/// Paths under `minecraft/versions/<this version>` follow the supplied adapter
+/// directory, so a public fixture remains a drop-in version directory. Other
+/// declared inventory paths remain relative to `root`.
+///
+/// # Errors
+///
+/// Returns an error for invalid directory names, malformed declarations, or identity drift.
+pub fn hook_inventory_at(root: &Path, directory: &Path) -> Result<HookInventory, GenerateError> {
+    let version = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            GenerateError::Input("the version directory has no UTF-8 name".to_owned())
+        })?;
+    let adapter_label = directory
+        .strip_prefix(root)
+        .unwrap_or_else(|_| Path::new(version))
+        .join("adapter.toml");
+    let adapter = read_adapter_at(directory, version)
+        .map_err(|error| in_context(error, &adapter_label.to_string_lossy()))?;
+    let path = inventory_path(root, directory, &adapter);
+    let label = path
+        .strip_prefix(root)
+        .unwrap_or_else(|_| {
+            path.file_name()
+                .map_or_else(|| Path::new("inventory"), Path::new)
+        })
+        .to_string_lossy();
+    let inventory = read_inventory(&path, &adapter)
+        .map_err(|error| in_context(error, &format!("version {version}, {label}")))?;
+    Ok(HookInventory {
+        version: adapter.minecraft,
+        path: label.into_owned(),
+        hooks: inventory
+            .hooks
+            .into_iter()
+            .map(|hook| HookFact {
+                id: hook.id,
+                class: hook.class,
+                kind: hook.kind,
+                descriptor: hook.descriptor,
+            })
+            .collect(),
+        non_goals: inventory.non_goals.len(),
+    })
+}
+
+/// Relocates only an inventory declared inside this adapter's own version tree.
+fn inventory_path(root: &Path, directory: &Path, adapter: &Adapter) -> PathBuf {
+    let declared = Path::new(&adapter.inputs.hook_inventory.path);
+    let canonical = Path::new(VERSIONS).join(&adapter.minecraft);
+    declared
+        .strip_prefix(canonical)
+        .map_or_else(|_| root.join(declared), |suffix| directory.join(suffix))
+}
+
 /// Reads the typed adapter and applies the generator's admission policy.
 ///
 /// # Errors
@@ -58,19 +151,10 @@ pub struct AdapterFacts {
 pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, GenerateError> {
     let adapter = read_adapter(root, version)
         .and_then(|adapter| {
-            pinned_sources(&adapter)?;
+            verify_pinned_sources(&adapter)?;
             Ok(adapter)
         })
-        .map_err(|error| {
-            let context = |detail| format!("{VERSIONS}/{version}/adapter.toml: {detail}");
-            match error {
-                GenerateError::Input(detail) => GenerateError::Input(context(detail)),
-                GenerateError::Drift(detail) => GenerateError::Drift(context(detail)),
-                GenerateError::Unresolved(detail) => GenerateError::Unresolved(context(detail)),
-                GenerateError::Extraction(detail) => GenerateError::Extraction(context(detail)),
-                GenerateError::Unsupported(detail) => GenerateError::Unsupported(context(detail)),
-            }
-        })?;
+        .map_err(|error| in_context(error, &format!("{VERSIONS}/{version}/adapter.toml")))?;
     let mapping_inputs = adapter
         .inputs
         .client_mappings
@@ -84,8 +168,25 @@ pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, Generat
     })
 }
 
+/// Adds a tracked source label without inventing a location for declared inputs.
+fn in_context(error: GenerateError, label: &str) -> GenerateError {
+    let context = |detail| format!("{label}: {detail}");
+    match error {
+        GenerateError::Input(detail) => GenerateError::Input(context(detail)),
+        GenerateError::Drift(detail) => GenerateError::Drift(context(detail)),
+        GenerateError::Unresolved(detail) => GenerateError::Unresolved(context(detail)),
+        GenerateError::Extraction(detail) => GenerateError::Extraction(context(detail)),
+        GenerateError::Unsupported(detail) => GenerateError::Unsupported(context(detail)),
+    }
+}
+
 fn read_adapter(root: &Path, version: &str) -> Result<Adapter, GenerateError> {
-    let adapter: Adapter = parse(&root.join(VERSIONS).join(version).join("adapter.toml"))?;
+    read_adapter_at(&root.join(VERSIONS).join(version), version)
+}
+
+/// Shares adapter identity checks between generation and fixture inventory readers.
+fn read_adapter_at(directory: &Path, version: &str) -> Result<Adapter, GenerateError> {
+    let adapter: Adapter = parse(&directory.join("adapter.toml"))?;
     if adapter.minecraft != version {
         return Err(GenerateError::Drift(format!(
             "the version directory is named {version} but its adapter inputs pin {}",
@@ -101,7 +202,10 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     let mut names = Vec::new();
     let entries = fs::read_dir(&versions)
         .map_err(|error| GenerateError::Input(format!("cannot read the version data: {error}")))?;
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            GenerateError::Input(format!("cannot read a version data entry: {error}"))
+        })?;
         if entry.path().is_dir() {
             names.push(entry.file_name().to_string_lossy().into_owned());
         }
@@ -112,7 +216,36 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     let directory = versions.join(name);
     let adapter = read_adapter(root, name)?;
     verify_input(root, &adapter.inputs.hook_inventory)?;
-    let inventory: Inventory = parse(&root.join(&adapter.inputs.hook_inventory.path))?;
+    let inventory = read_inventory(&root.join(&adapter.inputs.hook_inventory.path), &adapter)?;
+
+    verify_input(root, &adapter.inputs.stub_seeds)?;
+    let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
+    if seeds.minecraft != adapter.minecraft || seeds.schema_version != adapter.schema_version {
+        return Err(GenerateError::Drift(format!(
+            "the stub seeds pin {} at schema {} but the adapter inputs pin {} at schema {}",
+            seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
+        )));
+    }
+    verify_roles(&seeds)?;
+
+    let surface = reflection(root, &adapter)?;
+
+    verify_pinned_sources(&adapter)?;
+
+    verify_java_release(root, &adapter)?;
+
+    Ok(PinnedVersion {
+        directory,
+        adapter,
+        inventory,
+        seeds,
+        surface,
+    })
+}
+
+/// Shares inventory identity and declaration checks with repository tooling.
+fn read_inventory(path: &Path, adapter: &Adapter) -> Result<Inventory, GenerateError> {
+    let inventory: Inventory = parse(path)?;
     if inventory.minecraft != adapter.minecraft {
         return Err(GenerateError::Drift(format!(
             "the inventory pins {} but the adapter inputs pin {}",
@@ -127,30 +260,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     }
     verify_non_goals(&inventory)?;
     verify_title_menu_row(&inventory)?;
-
-    verify_input(root, &adapter.inputs.stub_seeds)?;
-    let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
-    if seeds.minecraft != adapter.minecraft || seeds.schema_version != adapter.schema_version {
-        return Err(GenerateError::Drift(format!(
-            "the stub seeds pin {} at schema {} but the adapter inputs pin {} at schema {}",
-            seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
-        )));
-    }
-    verify_roles(&seeds)?;
-
-    let surface = reflection(root, &adapter)?;
-
-    pinned_sources(&adapter)?;
-
-    verify_java_release(root, &adapter)?;
-
-    Ok(PinnedVersion {
-        directory,
-        adapter,
-        inventory,
-        seeds,
-        surface,
-    })
+    Ok(inventory)
 }
 
 /// Reads the pinned reflection declaration and verifies its adapter identity.
@@ -224,7 +334,7 @@ pub(super) fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, Gene
 pub(super) fn tracked_versions(root: &Path) -> Vec<String> {
     let mut names = fs::read_dir(root.join(VERSIONS))
         .expect("the version data should be readable")
-        .flatten()
+        .map(|entry| entry.expect("every version data entry should be readable"))
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
@@ -475,12 +585,12 @@ class = \"net/minecraft/Unreferenced\"
         let text = document("unobfuscated-class-files", "")
             .replace("[inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n", "");
         let modern: Adapter = toml::from_str(&text).expect("an optional library parses");
-        let error = super::pinned_sources(&modern).expect_err("modern inputs require DFU");
+        let error = super::verify_pinned_sources(&modern).expect_err("modern inputs require DFU");
         assert!(
             error.to_string().contains("require dataFixerJar"),
             "{error}"
         );
-        super::pinned_sources(&legacy_adapter()).expect("legacy declares no DFU");
+        super::verify_pinned_sources(&legacy_adapter()).expect("legacy declares no DFU");
     }
 
     #[test]
@@ -575,5 +685,127 @@ mod adapter_fact_tests {
              generation-only eligibility requires legacy-1-12"
         );
         std::fs::remove_dir_all(root).expect("remove adapter fixture");
+    }
+}
+
+#[cfg(test)]
+mod hook_inventory_tests {
+    use std::fs;
+
+    use super::{Kind, fixtures, hook_inventory, hook_inventory_at, sha256};
+
+    const INVENTORY: &str = "\
+schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
+[[hook]]\nid = \"tick\"\nclass = \"example.Game\"\nmember = \"tick\"\n\
+descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
+[[nonGoal]]\nid = \"render\"\nreason = \"not carried\"\n";
+
+    fn write_inventory(root: &std::path::Path, inventory: &str) {
+        let adapter = fixtures::document("unobfuscated-class-files", "").replace(
+            "[inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"",
+            &format!(
+                "[inputs.hookInventory]\npath = \"reviewed.toml\"\nsha256 = \"{}\"",
+                sha256(inventory.as_bytes())
+            ),
+        );
+        fs::write(root.join("reviewed.toml"), inventory).expect("inventory");
+        fs::write(
+            root.join("minecraft/versions/0.0.0-test/adapter.toml"),
+            adapter,
+        )
+        .expect("adapter");
+    }
+
+    #[test]
+    fn canonical_inventory_paths_follow_relocated_adapters_and_label_the_actual_file() {
+        let root =
+            std::env::temp_dir().join(format!("ravel-relocated-hooks-{}", std::process::id()));
+        let tracked = root.join("minecraft/versions/0.0.0-test");
+        let fixture = root.join("tests/fixtures/public/versions/0.0.0-test");
+        fs::create_dir_all(&tracked).expect("tracked directory");
+        fs::create_dir_all(fixture.join("reviewed")).expect("fixture directory");
+        write_inventory(&root, INVENTORY);
+        let adapter = fs::read_to_string(tracked.join("adapter.toml")).expect("adapter");
+        fs::write(
+            fixture.join("adapter.toml"),
+            adapter.replace(
+                "reviewed.toml",
+                "minecraft/versions/0.0.0-test/reviewed/hooks.toml",
+            ),
+        )
+        .expect("relocated adapter");
+        let inventory = fixture.join("reviewed/hooks.toml");
+        fs::rename(root.join("reviewed.toml"), &inventory).expect("relocated inventory");
+        let facts = hook_inventory_at(&root, &fixture).expect("relocated hook facts");
+        let actual = "tests/fixtures/public/versions/0.0.0-test/reviewed/hooks.toml";
+        assert_eq!(facts.path, actual);
+        assert_eq!(facts.hooks[0].class, "example.Game");
+        fs::write(
+            &inventory,
+            INVENTORY.replace("instance-method", "unknown-kind"),
+        )
+        .expect("invalid relocated inventory");
+        let error = hook_inventory_at(&root, &fixture).expect_err("invalid fixture");
+        let detail = error.to_string();
+        assert!(
+            detail.contains(&format!("version 0.0.0-test, {actual}:")),
+            "{detail}"
+        );
+        assert!(
+            !detail.contains(&root.to_string_lossy().to_string()),
+            "{detail}"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn inventory_follows_adapter_path_and_refuses_schema_and_identity_drift() {
+        let root = std::env::temp_dir().join(format!("ravel-hook-facts-{}", std::process::id()));
+        fs::create_dir_all(root.join("minecraft/versions/0.0.0-test")).expect("version directory");
+        write_inventory(&root, INVENTORY);
+        let facts = hook_inventory(&root, "0.0.0-test").expect("typed inventory");
+        assert_eq!(facts.version, "0.0.0-test");
+        assert_eq!(facts.path, "reviewed.toml");
+        assert_eq!(facts.hooks.len(), 1);
+        assert_eq!(facts.hooks[0].id, "tick");
+        assert_eq!(facts.hooks[0].class, "example.Game");
+        assert_eq!(facts.hooks[0].kind, Kind::InstanceMethod);
+        assert_eq!(facts.hooks[0].descriptor, "()V");
+        assert_eq!(facts.non_goals, 1);
+        for (from, to, diagnostic) in [
+            ("instance-method", "unknown-kind", "unknown variant"),
+            ("capability = \"tick\"", "unknown = true", "unknown field"),
+            ("0.0.0-test", "other-version", "the inventory pins"),
+            (
+                "schemaVersion = 1",
+                "schemaVersion = 2",
+                "the inventory is schema",
+            ),
+        ] {
+            write_inventory(&root, &INVENTORY.replace(from, to));
+            let error = hook_inventory(&root, "0.0.0-test").expect_err("invalid inventory");
+            assert!(error.to_string().contains(diagnostic), "{error}");
+            let detail = error.to_string();
+            assert!(
+                detail.contains("version 0.0.0-test, reviewed.toml:"),
+                "{detail}"
+            );
+            assert!(
+                !detail.contains("minecraft/versions/0.0.0-test/reviewed.toml"),
+                "{detail}"
+            );
+        }
+        write_inventory(&root, INVENTORY);
+        let fixture = root.join("tests/fixtures/public/versions/0.0.0-test");
+        fs::create_dir_all(&fixture).expect("fixture directory");
+        fs::rename(
+            root.join("minecraft/versions/0.0.0-test/adapter.toml"),
+            fixture.join("adapter.toml"),
+        )
+        .expect("relocated adapter");
+        let fixture_facts = hook_inventory_at(&root, &fixture).expect("fixture inventory");
+        assert_eq!(fixture_facts.path, "reviewed.toml");
+        assert_eq!(fixture_facts.hooks[0].class, "example.Game");
+        fs::remove_dir_all(root).expect("cleanup");
     }
 }

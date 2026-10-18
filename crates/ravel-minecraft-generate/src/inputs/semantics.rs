@@ -85,14 +85,14 @@ pub(super) fn verify_roles(seeds: &Seeds) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
     let mut classes = BTreeSet::new();
     for seed in &seeds.stubs {
-        if !role_reference(&seed.role) {
+        if !is_role_reference(&seed.role) {
             return Err(GenerateError::Drift(format!(
                 "the stub seeds declare {} as a class role, which is not a name a template can \
                  write",
                 seed.role
             )));
         }
-        if !class_name(&seed.class) {
+        if !is_class_name(&seed.class) {
             return Err(GenerateError::Drift(format!(
                 "the stub seeds declare {} as a class, which is not one",
                 seed.class
@@ -113,7 +113,7 @@ pub(super) fn verify_roles(seeds: &Seeds) -> Result<(), GenerateError> {
         let mut members = BTreeSet::new();
         let mut bound = BTreeSet::new();
         for member in &seed.members {
-            if !member_reference(member.role()) || !member_reference(member.member()) {
+            if !is_member_reference(member.role()) || !is_member_reference(member.member()) {
                 return Err(GenerateError::Drift(format!(
                     "the stub seeds bind {}'s member role {} to {}, and one of the two is not a \
                      name a template can write",
@@ -143,7 +143,7 @@ pub(super) fn verify_roles(seeds: &Seeds) -> Result<(), GenerateError> {
 }
 
 /// Whether a value is spelled like a role a screen template can write.
-fn role_reference(value: &str) -> bool {
+fn is_role_reference(value: &str) -> bool {
     !value.is_empty()
         && value.starts_with(|first: char| first.is_ascii_alphabetic() || first == '_')
         && value.chars().all(|character| {
@@ -152,8 +152,8 @@ fn role_reference(value: &str) -> bool {
 }
 
 /// Whether a value is spelled like a member a seed list can bind.
-fn member_reference(value: &str) -> bool {
-    matches!(value, "<init>" | "<clinit>") || role_reference(value)
+fn is_member_reference(value: &str) -> bool {
+    matches!(value, "<init>" | "<clinit>") || is_role_reference(value)
 }
 
 /// Refuses a surface that cannot be rendered or cannot be checked.
@@ -164,16 +164,16 @@ fn member_reference(value: &str) -> bool {
 pub(super) fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
     for reflected in &surface.classes {
         for (what, value, legal) in [
-            ("role", &reflected.name, role_name(&reflected.name)),
+            ("role", &reflected.name, is_role_name(&reflected.name)),
             (
                 "runtime name",
                 &reflected.runtime,
-                class_name(&reflected.runtime),
+                is_class_name(&reflected.runtime),
             ),
             (
                 "reviewed name",
                 &reflected.class,
-                class_name(&reflected.class),
+                is_class_name(&reflected.class),
             ),
         ] {
             if !legal {
@@ -195,7 +195,7 @@ pub(super) fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> 
     for reflected in &surface.classes {
         let mut declared = BTreeSet::new();
         for member in &reflected.members {
-            if !member_name(&member.name) {
+            if !is_member_name(&member.name) {
                 return Err(GenerateError::Drift(format!(
                     "the reflective surface declares {} of {} as a member, which is not a member \
                      name",
@@ -218,7 +218,7 @@ pub(super) fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> 
 }
 
 /// Whether a value is a member name and nothing else.
-fn member_name(value: &str) -> bool {
+fn is_member_name(value: &str) -> bool {
     matches!(value, "<init>" | "<clinit>")
         || (!value.is_empty()
             && !value.starts_with(|first: char| first.is_ascii_digit())
@@ -228,7 +228,7 @@ fn member_name(value: &str) -> bool {
 }
 
 /// Whether a role is spelled the way the generated constants are.
-fn role_name(value: &str) -> bool {
+fn is_role_name(value: &str) -> bool {
     value.starts_with(|first: char| first.is_ascii_uppercase())
         && value.chars().all(|character| {
             character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
@@ -236,7 +236,7 @@ fn role_name(value: &str) -> bool {
 }
 
 /// Whether a value is a binary class name and nothing else.
-fn class_name(value: &str) -> bool {
+fn is_class_name(value: &str) -> bool {
     !value.is_empty()
         && value.split('.').all(|segment| {
             !segment.is_empty()

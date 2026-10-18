@@ -2,108 +2,11 @@
 
 use std::path::Path;
 
-use crate::evidence::manifest::{Milestone, milestone_manifests};
-use crate::json::read_text;
+use crate::evidence::rules::{Milestone, milestone_manifests};
+use crate::text::{numbers_after, numbers_before, read_text};
 
 const ROUND_COUNT_EXEMPT: [Milestone; 2] = [Milestone::M0, Milestone::M1];
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
-const CARDINALS: [&str; 21] = [
-    "zero",
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "ten",
-    "eleven",
-    "twelve",
-    "thirteen",
-    "fourteen",
-    "fifteen",
-    "sixteen",
-    "seventeen",
-    "eighteen",
-    "nineteen",
-    "twenty",
-];
-
-const TENS: [&str; 8] = [
-    "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
-];
-
-fn numeral(word: &str) -> Option<usize> {
-    let word = word
-        .trim_matches(|character: char| !character.is_alphanumeric())
-        .to_ascii_lowercase();
-    if !word.is_empty() && word.chars().all(|character| character.is_ascii_digit()) {
-        return word.parse().ok();
-    }
-    if let Some(count) = CARDINALS.iter().position(|spelled| *spelled == word) {
-        return Some(count);
-    }
-    if let Some(tens) = TENS.iter().position(|spelled| *spelled == word) {
-        return Some(tens_value(tens));
-    }
-    let (tens, unit) = word.split_once('-')?;
-    let tens = TENS.iter().position(|spelled| *spelled == tens)?;
-    let unit = CARDINALS.iter().position(|spelled| *spelled == unit)?;
-
-    if !(1..=9).contains(&unit) {
-        return None;
-    }
-    Some(tens_value(tens) + unit)
-}
-
-fn tens_value(at: usize) -> usize {
-    (at + 2) * 10
-}
-
-const COUNT_LOOKBACK: usize = 4;
-
-pub(crate) fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
-    let words: Vec<&str> = document.split_whitespace().collect();
-    let mut found = Vec::new();
-    for (at, window) in words.windows(noun.len()).enumerate() {
-        if !window_is_noun(noun, window) {
-            continue;
-        }
-        let from = at.saturating_sub(COUNT_LOOKBACK);
-        if let Some(count) = words[from..at].iter().rev().find_map(|word| numeral(word)) {
-            found.push(count);
-        }
-    }
-    found
-}
-
-pub(crate) fn numbers_after(document: &str, noun: &[&str]) -> Vec<usize> {
-    let words: Vec<&str> = document.split_whitespace().collect();
-    let mut found = Vec::new();
-    for (at, window) in words.windows(noun.len()).enumerate() {
-        if !window_is_noun(noun, window) {
-            continue;
-        }
-        let from = at + noun.len() + 1;
-        let to = (at + noun.len() + COUNT_LOOKBACK).min(words.len());
-        if from >= to {
-            continue;
-        }
-        if let Some(count) = words[from..to].iter().find_map(|word| numeral(word)) {
-            found.push(count);
-        }
-    }
-    found
-}
-
-fn window_is_noun(noun: &[&str], window: &[&str]) -> bool {
-    noun.iter().zip(window).all(|(expected, word)| {
-        word.trim_matches(|character: char| !character.is_alphanumeric())
-            .eq_ignore_ascii_case(expected)
-    })
-}
 
 const ROUND_NOUNS: [&str; 5] = ["rounds", "verdicts", "audits", "reviews", "iterations"];
 
@@ -325,37 +228,6 @@ fn verify_manifest_percentages_for(
             Err(error) => violations.push(error),
         }
     }
-}
-#[derive(Clone, Copy)]
-pub(crate) enum Side {
-    Before,
-    After,
-}
-
-pub(crate) fn stated_counts(document: &str, phrase: &str, side: Side) -> Vec<usize> {
-    let mut counts = Vec::new();
-    let mut offset = 0;
-    while let Some(found) = document[offset..].find(phrase) {
-        let at = offset + found;
-        offset = at + phrase.len();
-        let digits = match side {
-            Side::Before => {
-                let head = document[..at].trim_end();
-                let start =
-                    head.len() - head.chars().rev().take_while(char::is_ascii_digit).count();
-                &head[start..]
-            }
-            Side::After => {
-                let tail = document[offset..].trim_start();
-                let end = tail.chars().take_while(char::is_ascii_digit).count();
-                &tail[..end]
-            }
-        };
-        if let Ok(count) = digits.parse() {
-            counts.push(count);
-        }
-    }
-    counts
 }
 
 pub(crate) fn verify_milestone_accounting(

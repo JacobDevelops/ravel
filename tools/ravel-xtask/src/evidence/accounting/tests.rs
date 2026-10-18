@@ -1,7 +1,7 @@
 use std::fs;
 
 use super::{
-    numbers_before, round_count_restatements, round_count_subjects, verify_manifest_percentages,
+    round_count_restatements, round_count_subjects, verify_manifest_percentages,
     verify_review_blocking_counts,
 };
 use crate::evidence::m2::verify_void_limits;
@@ -40,57 +40,6 @@ fn review_sweep_discovers_later_milestones() {
     assert!(violations.is_empty(), "{violations:?}");
     assert_eq!(subjects[0].0, "evidence/m9/review.md");
     fs::remove_dir_all(root).expect("temporary root should remove");
-}
-
-#[test]
-fn a_count_is_read_against_its_noun_however_it_was_spelled_or_qualified() {
-    assert_eq!(
-        numbers_before("six independent rounds have run", &["rounds"]),
-        [6]
-    );
-    assert_eq!(
-        numbers_before("the five tracked independent M3-W8 rounds", &["rounds"]),
-        [5]
-    );
-    assert_eq!(numbers_before("5 rounds are tracked", &["rounds"]), [5]);
-    assert_eq!(
-        numbers_before("over nine world lifecycles", &["world", "lifecycles"]),
-        [9]
-    );
-
-    assert_eq!(
-        numbers_before("the fourth round of review", &["round"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("every round returned FAIL", &["rounds"]),
-        Vec::<usize>::new()
-    );
-}
-
-#[test]
-fn a_count_spelled_above_twenty_is_read_up_to_ninety_nine() {
-    assert_eq!(numbers_before("forty M3 review rounds", &["rounds"]), [40]);
-    assert_eq!(
-        numbers_before("twenty-one M3 review rounds", &["rounds"]),
-        [21]
-    );
-    assert_eq!(numbers_before("ninety-nine rounds", &["rounds"]), [99]);
-    assert_eq!(numbers_before("thirty rounds", &["rounds"]), [30]);
-
-    assert_eq!(
-        numbers_before("a hundred rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("thirty-thousand-entry rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("twenty-eleven rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
 }
 
 #[test]
@@ -140,7 +89,12 @@ fn the_void_budget_limits_are_the_ones_the_roadmap_declares() {
         .join("../..");
     let mut violations = Vec::new();
 
-    verify_void_limits(&root, &mut violations);
+    verify_void_limits(
+        &root,
+        &crate::json::read_json(&root.join("evidence/m2/loader-overhead.json"))
+            .expect("budget should parse"),
+        &mut violations,
+    );
 
     assert_eq!(violations, Vec::<String>::new());
 }

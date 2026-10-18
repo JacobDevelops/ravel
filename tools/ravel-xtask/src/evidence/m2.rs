@@ -1,13 +1,16 @@
 //! M2 closure rules.
 
+use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::rules::Milestone;
 use std::path::Path;
 
 use serde_json::Value;
 
 use crate::evidence::closure::verify_closure_records;
-use crate::evidence::manifest::require_manifest_rule;
-use crate::evidence::rules::{Rule, has_exact_benchmark_results, has_exact_work_packages};
-use crate::json::{array, nonempty, number, read_json, read_text};
+use crate::evidence::rules::{RecordRule, require, require_manifest_rule, require_rows, unique_by};
+use crate::evidence::rules::{has_exact_benchmark_results, has_exact_work_packages};
+use crate::json::{array, nonempty, number};
+use crate::text::read_text;
 
 const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
 
@@ -29,7 +32,11 @@ const VOID_LIMITS: &[(&str, &str)] = &[
     ),
 ];
 
-pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m2_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
     require_manifest_rule(
         manifest,
         |value| {
@@ -84,21 +91,31 @@ pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut
              for meaning, because it is {why}"
         );
     }
-    verify_closure_records(root, "M2", "evidence/m2", M2_RECORDS, violations);
+    verify_closure_records(Milestone::M2, records, M2_RECORDS, violations);
 }
 
-const M2_RECORDS: &[(&str, Rule, &str)] = &[
+const M2_RECORDS: &[(&str, RecordRule, &str)] = &[
     (
         "noop-pipeline.json",
         |value| {
-            let runs = array(value, "/runs");
-            !runs.is_empty() && runs.iter().all(|run| run["repeatedRunIsIdentical"] == true)
+            require_rows(value, "/runs", |run| {
+                require(
+                    run["repeatedRunIsIdentical"] == true,
+                    "/repeatedRunIsIdentical",
+                )
+            })
         },
         "a no-op pipeline record whose run is identical when repeated",
     ),
     (
         "pre-world-gate.json",
-        |value| value["gate"]["refusesWorldAccess"] == true && value["gate"]["ranModCode"] == false,
+        |value| {
+            require(
+                value["gate"]["refusesWorldAccess"] == true,
+                "/gate/refusesWorldAccess",
+            )?;
+            require(value["gate"]["ranModCode"] == false, "/gate/ranModCode")
+        },
         "a pre-world gate record showing invalid packages refused before any mod code ran",
     ),
     (
@@ -116,50 +133,92 @@ const M2_RECORDS: &[(&str, Rule, &str)] = &[
     ),
 ];
 
-fn m2_budget_limits(value: &Value) -> bool {
+fn m2_budget_limits(value: &Value) -> Result<(), String> {
     let limits = array(value, "/budget/limits");
-    !limits.is_empty()
-        && limits.iter().enumerate().all(|(index, limit)| {
-            nonempty(limit, "/metric")
-                && nonempty(limit, "/unit")
-                && limit["operator"] == "less-than-or-equal"
-                && number(limit, "/measured").is_some_and(|measured| {
-                    measured > 0.0 && number(limit, "/limit").is_some_and(|upper| upper > measured)
-                })
-                && !limits[..index]
-                    .iter()
-                    .any(|previous| previous["metric"] == limit["metric"])
-        })
+    require(
+        unique_by(limits, |left, right| left["metric"] == right["metric"]),
+        "/budget/limits unique metric",
+    )?;
+    require_rows(value, "/budget/limits", |limit| {
+        require(nonempty(limit, "/metric"), "/metric")?;
+        require(nonempty(limit, "/unit"), "/unit")?;
+        require(
+            limit["operator"] == "less-than-or-equal",
+            "/operator must be less-than-or-equal",
+        )?;
+        require(
+            number(limit, "/measured").is_some_and(|measured| measured > 0.0),
+            "/measured must be positive",
+        )?;
+        require(
+            number(limit, "/measured")
+                .zip(number(limit, "/limit"))
+                .is_some_and(|(measured, upper)| upper > measured),
+            "/limit must exceed measured",
+        )?;
+
+        Ok(())
+    })?;
+    Ok(())
 }
 
-fn m2_prism_launch(value: &Value) -> bool {
+fn m2_prism_launch(value: &Value) -> Result<(), String> {
     let launch = &value["launch"];
     let rewrite = &value["ravel"]["rewrite"];
-    launch["provesStockLaunch"] == true
-        && launch.get("objection").is_some_and(Value::is_null)
-        && launch["attestation"]["stockLauncher"] == true
-        && value["ravel"]["reachedGameProcess"] == true
-        && rewrite["reported"] == true
-        && rewrite["reachedRavel"] == true
-        && number(rewrite, "/classesRewritten").is_some_and(|count| count > 0.0)
-        && number(rewrite, "/methodsRewritten").is_some_and(|count| count > 0.0)
-        && number(rewrite, "/nativeInvocations").is_some_and(|count| count > 0.0)
-        && value["instance"]["withoutAnotherLoader"] == true
+    require(
+        launch["provesStockLaunch"] == true,
+        "/launch/provesStockLaunch",
+    )?;
+    require(
+        launch.get("objection").is_some_and(Value::is_null),
+        "/launch/objection",
+    )?;
+    require(
+        launch["attestation"]["stockLauncher"] == true,
+        "/launch/attestation/stockLauncher",
+    )?;
+    require(
+        value["ravel"]["reachedGameProcess"] == true,
+        "/ravel/reachedGameProcess",
+    )?;
+    require(rewrite["reported"] == true, "/ravel/rewrite/reported")?;
+    require(
+        rewrite["reachedRavel"] == true,
+        "/ravel/rewrite/reachedRavel",
+    )?;
+    require(
+        number(rewrite, "/classesRewritten").is_some_and(|count| count > 0.0),
+        "/ravel/rewrite/classesRewritten",
+    )?;
+    require(
+        number(rewrite, "/methodsRewritten").is_some_and(|count| count > 0.0),
+        "/ravel/rewrite/methodsRewritten",
+    )?;
+    require(
+        number(rewrite, "/nativeInvocations").is_some_and(|count| count > 0.0),
+        "/ravel/rewrite/nativeInvocations",
+    )?;
+    require(
+        value["instance"]["withoutAnotherLoader"] == true,
+        "/instance/withoutAnotherLoader",
+    )?;
+    Ok(())
 }
 
-pub(crate) fn verify_m2_integrity(root: &Path, _: &Value, violations: &mut Vec<String>) {
-    verify_void_limits(root, violations);
+pub(crate) fn verify_m2_integrity(
+    root: &Path,
+    _: &Value,
+    violations: &mut Vec<String>,
+) -> LoadedRecords {
+    let records = read_records(root, Milestone::M2, M2_RECORDS, violations);
+    if let Some(record) = records.get("loader-overhead.json") {
+        verify_void_limits(root, record, violations);
+    }
+    records
 }
 
-pub(crate) fn verify_void_limits(root: &Path, violations: &mut Vec<String>) {
-    let record = match read_json(&root.join(BUDGET_RECORD)) {
-        Ok(record) => record,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let recorded = array(&record, "/budget/limits");
+pub(crate) fn verify_void_limits(root: &Path, record: &Value, violations: &mut Vec<String>) {
+    let recorded = array(record, "/budget/limits");
     let roadmap = match read_text(root, Path::new("ROADMAP.md")) {
         Ok(roadmap) => roadmap,
         Err(error) => {

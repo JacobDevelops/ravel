@@ -217,7 +217,6 @@ fn a_plan_over_one_instance_is_the_same_bytes_every_time() {
 
     assert_eq!(first, second);
     assert_eq!(first.fingerprint(), second.fingerprint());
-    assert_eq!(first.fingerprint().len(), 64);
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 
@@ -800,7 +799,7 @@ fn a_malformed_installation_lock_is_refused_as_an_installation_input() {
 fn generated_files_keep_odd_directory_and_crate_names_as_data() {
     let directory = "odd\"]\n[patch.crates-io]\\name";
     let member = super::PlannedMember {
-        mod_id: "odd_mod".to_owned(),
+        mod_id: "odd_mod".parse().expect("valid mod id"),
         directory: directory.to_owned(),
         crate_name: "odd \"crate\"\\name".to_owned(),
     };

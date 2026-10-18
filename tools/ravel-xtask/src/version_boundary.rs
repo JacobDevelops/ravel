@@ -6,16 +6,15 @@ use std::path::{Path, PathBuf};
 
 use ravel_minecraft_generate::{Eligibility, adapter_facts};
 
-use crate::hooks::hook_counts;
-use crate::json::{read_text, relative_label};
+use crate::hooks::{HookInventory, hook_counts, hook_inventory};
+use crate::text::{read_text, relative_label};
 use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
 
-pub(crate) const VERSION_FILES: [&str; 7] = [
+pub(crate) const VERSION_FILES: [&str; 6] = [
     "README.md",
     "adapter.toml",
-    "hooks.toml",
     "mappings.lock",
     "reflection.toml",
     "stubs.lock",
@@ -77,17 +76,17 @@ pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
     .to_owned())
 }
 
-/// Validates version files and returns eligibility from their already-parsed adapters.
+/// Validates version inputs once and retains every admitted hook inventory.
 pub(crate) fn verify_version_directories(
     root: &Path,
     violations: &mut Vec<String>,
-) -> VersionEligibility {
+) -> (VersionEligibility, Vec<HookInventory>) {
     let mut eligibility = BTreeMap::new();
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
         Err(error) => {
             violations.push(error);
-            return eligibility;
+            return (eligibility, Vec::new());
         }
     };
     if versions.is_empty() {
@@ -95,15 +94,40 @@ pub(crate) fn verify_version_directories(
             "{VERSION_DATA} holds no version directory, so every check derived from version data \
              sweeps nothing and passes by having nothing to say"
         ));
-        return eligibility;
+        return (eligibility, Vec::new());
     }
 
+    let mut inventories = Vec::with_capacity(versions.len());
     for version in &versions {
         for file in VERSION_FILES {
             verify_version_file(root, version, file, &mut eligibility, violations);
         }
+        if eligibility.contains_key(version)
+            && let Some(inventory) = verified_hook_inventory(root, version, violations)
+        {
+            inventories.push(inventory);
+        }
     }
-    eligibility
+    (eligibility, inventories)
+}
+
+fn verified_hook_inventory(
+    root: &Path,
+    version: &str,
+    violations: &mut Vec<String>,
+) -> Option<HookInventory> {
+    let inventory = match hook_inventory(root, version) {
+        Ok(inventory) => inventory,
+        Err(error) => {
+            violations.push(error);
+            return None;
+        }
+    };
+    if let Err(error) = hook_counts(&inventory) {
+        violations.push(format!("cannot count {}: {error}", inventory.path));
+        return None;
+    }
+    Some(inventory)
 }
 
 fn verify_version_file(
@@ -146,17 +170,16 @@ fn verify_version_file(
     };
     match parsed.get("minecraft").and_then(toml::Value::as_str) {
         Some(declared) if declared == version => {}
-        Some(declared) => violations.push(format!(
-            "{relative} declares Minecraft {declared} while its directory is named {version}"
-        )),
-        None => violations.push(format!(
-            "{relative} declares no `minecraft` version for {VERSION_DATA}/{version}"
-        )),
-    }
-    if file == "hooks.toml"
-        && let Err(error) = hook_counts(&text)
-    {
-        violations.push(format!("cannot count {relative}: {error}"));
+        Some(declared) => {
+            violations.push(format!(
+                "{relative} declares Minecraft {declared} while its directory is named {version}"
+            ));
+        }
+        None => {
+            violations.push(format!(
+                "{relative} declares no `minecraft` version for {VERSION_DATA}/{version}"
+            ));
+        }
     }
 }
 
@@ -198,13 +221,17 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
     ),
 ];
 
-pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
+pub(crate) fn verify_version_boundary(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
     verify_version_boundary_crate_names(root, violations);
 
     let Some((paths, versions)) = swept_versions(root, violations) else {
         return;
     };
-    let classes = version_class_names(root, &paths, violations);
+    let classes = version_class_names(root, &paths, inventories, violations);
     let excuses = VERSION_CLASS_EXCUSES
         .iter()
         .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
@@ -212,7 +239,9 @@ pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>)
     let mut excuse_matched = vec![false; excuses.len()];
 
     let mut files = Vec::new();
-    collect_files(&root.join("crates"), &mut files);
+    if let Err(error) = collect_files(&root.join("crates"), &mut files) {
+        violations.push(error);
+    }
     for path in files {
         if !matches!(
             path.extension().and_then(|extension| extension.to_str()),
@@ -254,6 +283,14 @@ pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>)
         }
     }
 
+    verify_class_excuses(&excuses, &excuse_matched, violations);
+}
+
+fn verify_class_excuses(
+    excuses: &[(&str, &str)],
+    excuse_matched: &[bool],
+    violations: &mut Vec<String>,
+) {
     for (index, matched) in excuse_matched.iter().enumerate() {
         if !matched {
             let (file, class) = excuses[index];
@@ -289,17 +326,23 @@ fn swept_versions(
 fn version_class_names(
     root: &Path,
     directories: &[PathBuf],
+    inventories: &[HookInventory],
     violations: &mut Vec<String>,
 ) -> Vec<String> {
     let mut classes = BTreeSet::new();
     let mut references = Vec::new();
+    for inventory in inventories {
+        collect_hook_classes(inventory, &mut classes, &mut references);
+    }
+    let fixture_versions = root.join("tests/fixtures/public/versions");
     for directory in directories {
-        for file in [
-            "hooks.toml",
-            "stubs.toml",
-            "mappings.lock",
-            "reflection.toml",
-        ] {
+        if directory.starts_with(&fixture_versions) {
+            match ravel_minecraft_generate::hook_inventory_at(root, directory) {
+                Ok(inventory) => collect_hook_classes(&inventory, &mut classes, &mut references),
+                Err(error) => violations.push(error.to_string()),
+            }
+        }
+        for file in ["stubs.toml", "mappings.lock", "reflection.toml"] {
             let path = directory.join(file);
             let text = match read_text(root, &path) {
                 Ok(text) => text,
@@ -335,6 +378,17 @@ fn version_class_names(
     }
 
     classes.into_iter().collect()
+}
+
+fn collect_hook_classes(
+    inventory: &HookInventory,
+    classes: &mut BTreeSet<String>,
+    references: &mut Vec<String>,
+) {
+    for hook in &inventory.hooks {
+        classes.insert(hook.class.replace('.', "/"));
+        references.extend(descriptor_classes(&hook.descriptor));
+    }
 }
 
 fn collect_version_classes(
@@ -387,15 +441,56 @@ mod tests;
 
 fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>) {
     let crates = root.join("crates");
-    if let Ok(entries) = fs::read_dir(&crates) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if let Some(suffix) = name.strip_prefix("ravel-minecraft-")
-                && !matches!(suffix, "adapter" | "generate")
-            {
-                violations.push(format!("unexpected per-version Minecraft crate: {name}"));
+    let entries = match fs::read_dir(&crates) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!("cannot read crates: {error}"));
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!("cannot read crates entry: {error}"));
+                continue;
             }
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if let Some(suffix) = name.strip_prefix("ravel-minecraft-")
+            && !matches!(suffix, "adapter" | "generate")
+        {
+            violations.push(format!("unexpected per-version Minecraft crate: {name}"));
+        }
+    }
+}
+pub(crate) fn verify_version_readmes(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
+    for inventory in inventories {
+        let version = &inventory.version;
+        let directory = root.join(VERSION_DATA).join(version);
+        let non_goals = inventory.non_goals;
+        let expected = format!(
+            "carries {} reviewed hooks and records {non_goals} non-goals",
+            inventory.hooks.len()
+        );
+        let readme = format!("{VERSION_DATA}/{version}/README.md");
+        let prose = match read_text(root, &directory.join(VERSION_PROSE_FILE)) {
+            Ok(text) => text,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
+        };
+        if !prose.contains(&expected) {
+            violations.push(format!(
+                "{readme} does not state \"{expected}\", which is what {} declares",
+                inventory.path
+            ));
         }
     }
 }

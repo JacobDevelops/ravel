@@ -4,9 +4,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use crate::evidence::accounting::{Side, stated_counts};
 use crate::hooks::{HookCounts, HookInventory, hook_counts};
-use crate::json::read_text;
+use crate::text::{Side, read_text, stated_counts};
 use crate::tracked::collect_files;
 use crate::version_boundary::VERSION_DATA;
 use crate::{EXAMPLE_NAMES, TEST_MOD_NAMES};
@@ -42,6 +41,10 @@ pub(crate) fn verify_hook_inventory_document(
         .iter()
         .find(|inventory| &inventory.version == version)
     else {
+        // Admission already reports unreadable inputs for tracked versions.
+        if root.join(VERSION_DATA).join(version).is_dir() {
+            return;
+        }
         violations.push(format!(
             "{HOOK_DOCUMENT} states the counts of {VERSION_DATA}/{version}, which is not a \
              tracked version whose inventory can be read"
@@ -49,7 +52,7 @@ pub(crate) fn verify_hook_inventory_document(
         return;
     };
 
-    let counts = match hook_counts(&inventory.text) {
+    let counts = match hook_counts(inventory) {
         Ok(counts) => counts,
         Err(error) => {
             violations.push(format!("cannot count {}: {error}", inventory.path));
@@ -140,7 +143,9 @@ pub(crate) fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String
     };
     let mut guide = String::new();
     let mut documents = Vec::new();
-    collect_files(&root.join(GUIDE_DIRECTORY), &mut documents);
+    if let Err(error) = collect_files(&root.join(GUIDE_DIRECTORY), &mut documents) {
+        violations.push(error);
+    }
     documents.sort();
     for path in &documents {
         match read_text(root, path) {
@@ -309,12 +314,22 @@ pub(crate) fn verify_inventory(
     list: &str,
     violations: &mut Vec<String>,
 ) {
-    let Ok(entries) = fs::read_dir(root.join(directory)) else {
-        violations.push(format!("cannot read {directory}"));
-        return;
+    let entries = match fs::read_dir(root.join(directory)) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!("cannot read {directory}: {error}"));
+            return;
+        }
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!("cannot read {directory} entry: {error}"));
+                continue;
+            }
+        };
         if !entry.path().join("Cargo.toml").is_file() {
             continue;
         }

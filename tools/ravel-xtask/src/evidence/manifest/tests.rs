@@ -5,8 +5,9 @@ use std::process::Command;
 use crate::evidence::findings::{
     defined_rust_symbols, distinguishable_symbol, named_rust_symbols, sources_naming,
 };
-use crate::evidence::manifest::{Milestone, verify_milestone, verify_redaction_value};
+use crate::evidence::manifest::verify_milestone;
 use crate::evidence::records::visible_commit;
+use crate::evidence::rules::{Milestone, verify_redaction_value};
 use crate::test_support::{
     PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root, track_fixture_files,
 };
@@ -282,5 +283,42 @@ fn an_anchor_goes_stale_when_a_caller_appears_outside_its_path_set() {
     let naming = sources_naming(&root, &sources, "verify_something_narrow");
 
     assert_eq!(naming, vec!["source.rs", "elsewhere/caller.rs"]);
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn evidence_sweep_reports_a_malformed_closure_record_only_once() {
+    let root = temporary_root("sweep-malformed-closure");
+    let directory = root.join("evidence/m5");
+    fs::create_dir_all(&directory).expect("evidence directory should be creatable");
+    fs::write(directory.join("inventory-summary.json"), "not JSON").expect("record should write");
+    fs::write(directory.join("manifest.json"), serde_json::json!({
+        "schemaVersion": 1, "milestone": "M5",
+        "benchmarks": {"results": [{"name": "inventory-summary.json", "sha256": "0".repeat(64)}]},
+    }).to_string()).expect("manifest should write");
+    track_fixture_files(&root);
+    let violations = super::verify_evidence_records(&root);
+    let parse_errors = violations
+        .iter()
+        .filter(|violation| {
+            violation.starts_with("cannot parse JSON")
+                && violation.contains("inventory-summary.json")
+        })
+        .count();
+    assert_eq!(parse_errors, 1, "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn a_nonobject_manifest_does_not_misreport_existing_records_as_missing() {
+    let root = temporary_root("nonobject-manifest-records");
+    let directory = root.join("evidence/m5");
+    fs::create_dir_all(&directory).expect("evidence directory should be creatable");
+    let path = directory.join("manifest.json");
+    fs::write(&path, "[]").expect("manifest should write");
+    fs::write(directory.join("inventory-summary.json"), "{}")
+        .expect("existing record should write");
+    let violations = super::verify_evidence_manifest(&root, &path, "M5");
+    assert_eq!(violations, ["milestone manifest must be a JSON object"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

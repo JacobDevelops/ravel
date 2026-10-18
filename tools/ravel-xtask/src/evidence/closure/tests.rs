@@ -20,7 +20,12 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
     let mut violations = Vec::new();
 
     let manifest = crate::json::read_json(&manifest).expect("manifest should parse");
-    verify_milestone_figures(&root, &manifest, &M5_FIGURES, &mut violations);
+    verify_milestone_figures(
+        &crate::json::read_json(&root.join(M5_FIGURES.record)).expect("summary should parse"),
+        &manifest,
+        &M5_FIGURES,
+        &mut violations,
+    );
 
     assert_eq!(
         violations.len(),
@@ -32,6 +37,48 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
         violations[0].contains("records /environment/settings/inventory/artifacts 11 while"),
         "violation was: {}",
         violations[0]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn missing_and_malformed_records_report_once_before_closure() {
+    use super::{RecordDefinition, read_records, verify_closure_records};
+    use crate::evidence::rules::Milestone;
+    const RECORDS: &[RecordDefinition] = &[("inventory-summary.json", |_| Ok(()), "summary")];
+    for (label, contents) in [("absent", None), ("malformed", Some("not JSON"))] {
+        let root = crate::test_support::temporary_root(label);
+        fs::create_dir_all(root.join("evidence/m5")).expect("record directory should exist");
+        if let Some(contents) = contents {
+            fs::write(root.join(M5_FIGURES.record), contents).expect("record should write");
+        }
+        let mut violations = Vec::new();
+        let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+        verify_closure_records(Milestone::M5, &records, RECORDS, &mut violations);
+        assert_eq!(violations.len(), 1, "{label}: {violations:?}");
+        assert!(violations[0].contains("inventory-summary.json"));
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+}
+
+#[test]
+fn closure_uses_the_loaded_record_and_names_the_failed_clause() {
+    use super::{RecordDefinition, read_records, verify_closure_records};
+    use crate::evidence::rules::{Milestone, require};
+    const RECORDS: &[RecordDefinition] = &[(
+        "inventory-summary.json",
+        |value| require(value["wave"]["frozen"] == true, "wave.frozen"),
+        "a frozen wave",
+    )];
+    let root = summary_root("cached-record-clause", r#"{"wave":{"frozen":false}}"#);
+    let mut violations = Vec::new();
+    let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+    fs::remove_file(root.join(M5_FIGURES.record)).expect("loaded record should be removable");
+    verify_closure_records(Milestone::M5, &records, RECORDS, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("failed wave.frozen"),
+        "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

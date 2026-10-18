@@ -20,18 +20,6 @@ const OWNER_KEYS: [&str; 2] = ["path", "record"];
 /// The manifest key holding a digest.
 const DIGEST_KEY: &str = "sha256";
 
-/// What a run did, or why it did nothing.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DigestOutcome {
-    /// Every declared digest already matched the file on disk.
-    Current,
-    /// The digests these package-relative paths record were wrong.
-    ///
-    /// In write mode they have been rewritten; under `--check` nothing was
-    /// written and the paths are what a run without `--check` would fix.
-    Stale(Vec<StaleDigest>),
-}
-
 /// One declared file whose digest was not the digest of its bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaleDigest {
@@ -53,13 +41,31 @@ impl fmt::Display for StaleDigest {
     }
 }
 
-/// Refreshes, or under `check` only reports, the digests in a package manifest.
+/// Reports stale digests without modifying the package.
+pub fn stale_digests(directory: &Path) -> Result<Vec<StaleDigest>, Vec<String>> {
+    digest_update(directory).map(|update| update.stale)
+}
+
+/// Refreshes stale digests, returning the entries that were rewritten.
 ///
-/// # Errors
-///
-/// Returns read, parse, path, or ambiguous-rewrite failures. Nothing is written
-/// unless every declared file and replacement span can be resolved.
-pub fn refresh_digests(directory: &Path, check: bool) -> Result<DigestOutcome, Vec<String>> {
+/// Nothing is written unless every declared file and replacement span resolves.
+pub fn refresh_digests(directory: &Path) -> Result<Vec<StaleDigest>, Vec<String>> {
+    let update = digest_update(directory)?;
+    if update.stale.is_empty() {
+        return Ok(update.stale);
+    }
+    let rewritten = rewrite(&update.document, update.replacements);
+    write_manifest(directory, &rewritten)?;
+    Ok(update.stale)
+}
+
+struct DigestUpdate {
+    document: String,
+    stale: Vec<StaleDigest>,
+    replacements: Vec<(Span, String)>,
+}
+
+fn digest_update(directory: &Path) -> Result<DigestUpdate, Vec<String>> {
     let manifest_path = directory.join(MANIFEST_FILE);
     let document = fs::read_to_string(&manifest_path)
         .map_err(|error| vec![format!("`{MANIFEST_FILE}` could not be read: {error}")])?;
@@ -111,18 +117,18 @@ pub fn refresh_digests(directory: &Path, check: bool) -> Result<DigestOutcome, V
     if !refusals.is_empty() {
         return Err(refusals);
     }
-    if stale.is_empty() {
-        return Ok(DigestOutcome::Current);
-    }
-    if check {
-        return Ok(DigestOutcome::Stale(stale));
-    }
+    Ok(DigestUpdate {
+        document,
+        stale,
+        replacements,
+    })
+}
 
-    let rewritten = rewrite(&document, replacements);
+fn write_manifest(directory: &Path, rewritten: &str) -> Result<(), Vec<String>> {
     // A manifest this tool produced that the loader would refuse is worse than
     // the stale one it replaced, so the rewrite is parsed and verified before it
     // reaches the author's file rather than after.
-    let reparsed = PackageManifest::parse(&rewritten).map_err(|error| {
+    let reparsed = PackageManifest::parse(rewritten).map_err(|error| {
         vec![format!(
             "refreshing the digests would have produced a manifest that no longer parses: {error}"
         )]
@@ -133,9 +139,9 @@ pub fn refresh_digests(directory: &Path, check: bool) -> Result<DigestOutcome, V
              {error}"
         )]
     })?;
-    fs::write(&manifest_path, rewritten)
+    fs::write(directory.join(MANIFEST_FILE), rewritten)
         .map_err(|error| vec![format!("`{MANIFEST_FILE}` could not be written: {error}")])?;
-    Ok(DigestOutcome::Stale(stale))
+    Ok(())
 }
 
 fn record(
@@ -272,7 +278,7 @@ fn string_entries(document: &str) -> Vec<(String, Span)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DigestOutcome, MANIFEST_FILE, refresh_digests, string_entries};
+    use super::{MANIFEST_FILE, refresh_digests, stale_digests, string_entries};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -363,10 +369,8 @@ mod tests {
     #[test]
     fn a_stale_manifest_is_rewritten_and_then_reports_current() {
         let package = Package::new("rewritten");
-        let outcome = refresh_digests(package.path(), false).expect("the package is readable");
-        let DigestOutcome::Stale(stale) = outcome else {
-            panic!("a manifest of zeroes is stale");
-        };
+        let stale = refresh_digests(package.path()).expect("the package is readable");
+        assert!(!stale.is_empty(), "a manifest of zeroes is stale");
         assert_eq!(
             stale
                 .iter()
@@ -383,8 +387,8 @@ mod tests {
             "nothing but the digests is touched"
         );
         assert_eq!(
-            refresh_digests(package.path(), false).expect("still readable"),
-            DigestOutcome::Current,
+            refresh_digests(package.path()).expect("still readable"),
+            Vec::new(),
             "a second run has nothing to do and says so"
         );
     }
@@ -393,9 +397,17 @@ mod tests {
     fn check_reports_the_same_staleness_and_writes_nothing() {
         let package = Package::new("checked");
         let before = package.manifest_text();
-        let outcome = refresh_digests(package.path(), true).expect("the package is readable");
-        assert!(matches!(outcome, DigestOutcome::Stale(_)));
+        let stale = stale_digests(package.path()).expect("the package is readable");
+        assert_ne!(stale, Vec::new());
         assert_eq!(package.manifest_text(), before, "`--check` writes nothing");
+        assert_eq!(
+            refresh_digests(package.path()).expect("the stale package should refresh"),
+            stale
+        );
+        assert_eq!(
+            stale_digests(package.path()).expect("the package should read"),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -403,7 +415,7 @@ mod tests {
         let package = Package::new("missing");
         let before = package.manifest_text();
         fs::remove_file(package.path().join("src/lib.rs")).expect("the file was written");
-        let refusals = refresh_digests(package.path(), false).expect_err("a declared file is gone");
+        let refusals = refresh_digests(package.path()).expect_err("a declared file is gone");
         assert_eq!(
             refusals,
             ["the package declares `lib.rs` but does not contain it"]
@@ -415,7 +427,7 @@ mod tests {
     fn a_manifest_that_does_not_parse_is_refused_rather_than_rewritten() {
         let package = Package::new("unparsable");
         package.write(MANIFEST_FILE, "{ \"schemaVersion\": 1 }\n");
-        let refusals = refresh_digests(package.path(), false).expect_err("it is not a manifest");
+        let refusals = refresh_digests(package.path()).expect_err("it is not a manifest");
         assert_eq!(refusals.len(), 1);
         assert!(refusals[0].starts_with("`package.json` is not a package manifest:"));
     }
@@ -423,7 +435,7 @@ mod tests {
     #[test]
     fn an_absent_manifest_is_refused() {
         let directory = std::env::temp_dir().join("ravel-xtask-digests-absent");
-        let refusals = refresh_digests(&directory, true).expect_err("there is no manifest");
+        let refusals = stale_digests(&directory).expect_err("there is no manifest");
         assert_eq!(refusals.len(), 1);
         assert!(refusals[0].starts_with("`package.json` could not be read:"));
     }
@@ -431,7 +443,7 @@ mod tests {
     #[test]
     fn the_digest_a_rewrite_writes_is_the_digest_the_loader_computes() {
         let package = Package::new("agrees");
-        refresh_digests(package.path(), false).expect("the package is readable");
+        refresh_digests(package.path()).expect("the package is readable");
         let document = package.manifest_text();
         let manifest = ravel_package::PackageManifest::parse(&document).expect("it parses");
         ravel_package::verify_package(package.path(), &manifest)

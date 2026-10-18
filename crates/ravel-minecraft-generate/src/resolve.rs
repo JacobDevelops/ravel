@@ -183,7 +183,11 @@ pub(super) fn from_jar(
 }
 
 /// Refuses a lock whose header disagrees with the inputs it claims to describe.
-fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), GenerateError> {
+fn verify_lock_header(
+    lock: &Lock,
+    adapter: &Adapter,
+    inventory: &Inventory,
+) -> Result<(), GenerateError> {
     for (what, tracked, pinned) in [
         (
             "the version",
@@ -231,6 +235,15 @@ fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), G
             lock.server_jar_sha256
         )));
     }
+    verify_lock_shape(lock, adapter, inventory)
+}
+
+/// Verifies the lock format and the inventory cardinality it records.
+fn verify_lock_shape(
+    lock: &Lock,
+    adapter: &Adapter,
+    inventory: &Inventory,
+) -> Result<(), GenerateError> {
     if lock.schema_version != adapter.schema_version {
         return Err(GenerateError::Drift(format!(
             "mappings.lock is schema {} but the adapter inputs are schema {}",
@@ -261,7 +274,7 @@ pub(super) fn from_lock(
 ) -> Result<Vec<Resolved>, GenerateError> {
     let lock: Lock = toml::from_str(tracked)
         .map_err(|error| GenerateError::Input(format!("cannot parse mappings.lock: {error}")))?;
-    header(&lock, adapter, inventory)?;
+    verify_lock_header(&lock, adapter, inventory)?;
 
     let mut resolved = Vec::with_capacity(inventory.hooks.len());
     for hook in &inventory.hooks {

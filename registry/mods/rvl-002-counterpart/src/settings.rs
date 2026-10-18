@@ -11,8 +11,7 @@
 //! Five of the eight are published as named flags through the shared library
 //! under this entry's own namespace. Two further flags are *read* from the
 //! dependency's namespace and are never published here; [`consumed_flags`] names
-//! them, and the direction is what [`published_flags`] and that function keep
-//! apart.
+//! them, and [`publish`] keeps those separate from this entry's own flags.
 //!
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
@@ -182,15 +181,15 @@ impl Default for Settings {
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// Returns a typed access error if a key is missing or has the wrong kind.
+    /// Returns a typed access error if a key is missing, has the wrong kind, or exceeds its Rust type.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             drops_soul_chance: resolved.number(DROPS_SOUL_CHANCE)?,
             drops_scale_count: u32::try_from(resolved.integer(DROPS_SCALE_COUNT)?)
-                .expect("the declared range fits u32"),
+                .map_err(|_| ValueError::IntegerRange)?,
             crops_fertilisable: resolved.boolean(CROPS_FERTILISABLE)?,
             foods_effect_seconds: u32::try_from(resolved.integer(FOODS_EFFECT_SECONDS)?)
-                .expect("the declared range fits u32"),
+                .map_err(|_| ValueError::IntegerRange)?,
             world_lower: Deposits {
                 shard: resolved.boolean(WORLD_LOWER_SHARD_DEPOSIT)?,
                 essence: resolved.boolean(WORLD_LOWER_ESSENCE_DEPOSIT)?,
@@ -205,7 +204,7 @@ impl Settings {
 
 type FlagBinding = (&'static str, fn(&Settings) -> bool);
 
-const PUBLISHED: [FlagBinding; 5] = [
+pub(crate) const PUBLISHED: [FlagBinding; 5] = [
     (CROPS_FERTILISABLE, |settings| settings.crops_fertilisable),
     (WORLD_LOWER_SHARD_DEPOSIT, |settings| {
         settings.world_lower.shard
@@ -220,11 +219,6 @@ const PUBLISHED: [FlagBinding; 5] = [
         settings.world_outer.essence
     }),
 ];
-
-/// The five settings this entry republishes as named flags.
-pub fn published_flags() -> [&'static str; 5] {
-    PUBLISHED.map(|(key, _)| key)
-}
 
 /// Publishes those flags into the shared table under this entry's namespace.
 ///
@@ -270,8 +264,6 @@ mod tests {
     use super::*;
     use ravel_sdk::config::SettingSide;
     use ravel_sdk::{JsonValue, Side};
-    /// Whether any shipped setting would have to travel to a joining client.
-    #[must_use]
     fn travels_to_clients() -> bool {
         declaration().is_ok_and(|declared| {
             declared.settings().iter().any(|setting| {
@@ -283,8 +275,6 @@ mod tests {
         })
     }
 
-    /// Whether a setting is one a given side resolves at all.
-    #[must_use]
     fn resolved_on(key: &str, side: Side) -> bool {
         let Ok(key) = key.parse() else {
             return false;
@@ -295,19 +285,16 @@ mod tests {
                 .is_some_and(|setting| setting.side.applies_to(side))
         })
     }
-    impl Settings {
-        /// Whether a value is a legal reading of the named key.
-        #[must_use]
-        fn admits(key: &str, value: &JsonValue) -> bool {
-            let Ok(parsed) = key.parse() else {
-                return false;
-            };
-            declaration().is_ok_and(|declared| {
-                declared
-                    .setting(&parsed)
-                    .is_some_and(|setting| setting.value_schema.check(value).is_ok())
-            })
-        }
+
+    fn admits(key: &str, value: &JsonValue) -> bool {
+        let Ok(parsed) = key.parse() else {
+            return false;
+        };
+        declaration().is_ok_and(|declared| {
+            declared
+                .setting(&parsed)
+                .is_some_and(|setting| setting.value_schema.check(value).is_ok())
+        })
     }
 
     #[test]
@@ -317,6 +304,25 @@ mod tests {
         let resolved = LayeredConfiguration::resolve(declared, None, None)
             .expect("the changed declaration resolves");
         assert!(Settings::read(&resolved).is_err());
+    }
+
+    #[test]
+    fn a_widened_declaration_refuses_integers_outside_the_rust_type() {
+        for (maximum, default) in [("64", "8"), ("2147483647", "180")] {
+            let changed = DOCUMENT
+                .replace(
+                    &format!("\"maximum\": {maximum}"),
+                    "\"maximum\": 4294967296",
+                )
+                .replace(
+                    &format!("\"default\": {default},"),
+                    "\"default\": 4294967296,",
+                );
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the widened declaration resolves");
+            assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+        }
     }
 
     #[test]
@@ -376,23 +382,20 @@ mod tests {
 
     #[test]
     fn every_bound_the_document_states_is_a_bound_a_value_is_held_to() {
-        assert!(Settings::admits(DROPS_SOUL_CHANCE, &JsonValue::from(0.0)));
-        assert!(Settings::admits(DROPS_SOUL_CHANCE, &JsonValue::from(1.0)));
-        assert!(!Settings::admits(DROPS_SOUL_CHANCE, &JsonValue::from(1.5)));
-        assert!(!Settings::admits(DROPS_SOUL_CHANCE, &JsonValue::from(-0.1)));
-        assert!(Settings::admits(DROPS_SCALE_COUNT, &JsonValue::from(64)));
-        assert!(!Settings::admits(DROPS_SCALE_COUNT, &JsonValue::from(65)));
-        assert!(!Settings::admits(FOODS_EFFECT_SECONDS, &JsonValue::from(0)));
-        assert!(Settings::admits(FOODS_EFFECT_SECONDS, &JsonValue::from(1)));
-        assert!(Settings::admits(
+        assert!(admits(DROPS_SOUL_CHANCE, &JsonValue::from(0.0)));
+        assert!(admits(DROPS_SOUL_CHANCE, &JsonValue::from(1.0)));
+        assert!(!admits(DROPS_SOUL_CHANCE, &JsonValue::from(1.5)));
+        assert!(!admits(DROPS_SOUL_CHANCE, &JsonValue::from(-0.1)));
+        assert!(admits(DROPS_SCALE_COUNT, &JsonValue::from(64)));
+        assert!(!admits(DROPS_SCALE_COUNT, &JsonValue::from(65)));
+        assert!(!admits(FOODS_EFFECT_SECONDS, &JsonValue::from(0)));
+        assert!(admits(FOODS_EFFECT_SECONDS, &JsonValue::from(1)));
+        assert!(admits(
             FOODS_EFFECT_SECONDS,
             &JsonValue::from(MAXIMUM_EFFECT_SECONDS)
         ));
-        assert!(!Settings::admits(CROPS_FERTILISABLE, &JsonValue::from(1)));
-        assert!(!Settings::admits(
-            "nothing.declared",
-            &JsonValue::from(true)
-        ));
+        assert!(!admits(CROPS_FERTILISABLE, &JsonValue::from(1)));
+        assert!(!admits("nothing.declared", &JsonValue::from(true)));
     }
 
     #[test]
@@ -404,7 +407,7 @@ mod tests {
 
         let published: Vec<String> = table.published().map(ToString::to_string).collect();
         assert_eq!(published.len(), 5);
-        for key in published_flags() {
+        for (key, _) in PUBLISHED {
             let id = flag_id(key).expect("a legal flag name");
             assert!(published.contains(&id.to_string()));
             assert_eq!(id.namespace().as_str(), crate::MOD_ID);
@@ -439,8 +442,8 @@ mod tests {
         publish(&mut table, &settings).expect("legal flag bindings");
         let fertilisable = flag_id(CROPS_FERTILISABLE).expect("a legal flag name");
         let deposit = flag_id(WORLD_OUTER_SHARD_DEPOSIT).expect("a legal flag name");
-        assert!(table.holds(&fertilisable));
-        assert!(table.holds(&deposit), "both are published");
+        assert!(table.is_published(&fertilisable));
+        assert!(table.is_published(&deposit), "both are published");
         assert!(table.enabled(&fertilisable));
         assert!(!table.enabled(&deposit), "and one of them is off");
     }

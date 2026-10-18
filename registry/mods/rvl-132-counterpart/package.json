@@ -79,7 +79,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "8e9090a487cee6d9792ed6d685e5a90814a8b5b3b07f11edefe38413083f8878"
+        "sha256": "df65cfe1e08051a6ecc34ece213146ebd22e924516f2c238e8fbdd7447692f2f"
       },
       {
         "path": "src/forms.rs",
@@ -91,11 +91,11 @@
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "fb397aab207104f100ad2b0ac64dc63d1caf2ecf1099ad18fddcb9f55eb439c3"
+        "sha256": "8759230ade0c9a6537b193a5e48b270df0c9e701aba6a30d898a4e095c88c7f2"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "ea9aca72ba0017a666a14aa1528c6d2dbffae79640a9c272e2827f3eb96f8a75"
+        "sha256": "3dfcd7ef9f07675bc0abedbcb082f6db997b9ebe27f3fdbf38b47bf059ac4ea5"
       },
       {
         "path": "src/readings.rs",
@@ -111,7 +111,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "333a2355a70792ad126812533bfc017053cd68ab0f23f8e1625dbabcfaaaabb7"
+        "sha256": "d9d4b30483e9087de8c24b9b7379c9b2ab4c8ca269cbfbd361efa3d7aa381e9e"
       },
       {
         "path": "src/storage.rs",

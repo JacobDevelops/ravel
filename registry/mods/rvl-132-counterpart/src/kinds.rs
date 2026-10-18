@@ -1047,7 +1047,7 @@ impl Kinds {
     ///
     /// Returns [`NotRegistered::Unresolved`] naming the first of the three that
     /// is not there. Section two says this fails loudly rather than carrying on.
-    pub fn wire(&mut self) -> Result<usize, NotRegistered> {
+    pub fn subscribe_all(&mut self) -> Result<usize, NotRegistered> {
         for name in REGISTERED {
             if self.entry(name).is_none() {
                 return Err(NotRegistered::Unresolved {
@@ -1067,7 +1067,7 @@ impl Kinds {
 
     /// How many registered kinds are subscribed.
     #[must_use]
-    pub fn subscribed(&self) -> usize {
+    pub fn subscribed_count(&self) -> usize {
         self.registered
             .iter()
             .filter(|held| held.subscribed)
@@ -1584,19 +1584,19 @@ mod tests {
         kinds
             .register("other:gas", &Portion::CATEGORIES, false)
             .expect("a dependent's kind");
-        assert_eq!(kinds.subscribed(), 0);
-        assert_eq!(kinds.wire(), Ok(4));
-        assert_eq!(kinds.subscribed(), 4);
+        assert_eq!(kinds.subscribed_count(), 0);
+        assert_eq!(kinds.subscribe_all(), Ok(4));
+        assert_eq!(kinds.subscribed_count(), 4);
         assert!(kinds.entry("other:gas").expect("registered").subscribed);
     }
 
     #[test]
-    fn wiring_twice_subscribes_nothing_further() {
+    fn subscribing_twice_subscribes_nothing_further() {
         let mut kinds = Kinds::new();
         kinds.register_own().expect("a fresh registry");
-        assert_eq!(kinds.wire(), Ok(3));
-        assert_eq!(kinds.wire(), Ok(0));
-        assert_eq!(kinds.subscribed(), 3);
+        assert_eq!(kinds.subscribe_all(), Ok(3));
+        assert_eq!(kinds.subscribe_all(), Ok(0));
+        assert_eq!(kinds.subscribed_count(), 3);
     }
 
     #[test]
@@ -1606,12 +1606,12 @@ mod tests {
             .register(STACKABLE, &Stack::CATEGORIES, true)
             .expect("a fresh registry");
         assert_eq!(
-            kinds.wire(),
+            kinds.subscribe_all(),
             Err(NotRegistered::Unresolved {
                 name: PORTION.to_owned()
             })
         );
-        assert_eq!(kinds.subscribed(), 0);
+        assert_eq!(kinds.subscribed_count(), 0);
     }
 
     #[test]

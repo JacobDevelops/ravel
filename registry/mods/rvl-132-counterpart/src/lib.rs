@@ -325,7 +325,7 @@ impl Entry {
     /// Returns [`Refused::Kinds`] naming the first of the three that did not
     /// resolve. Section two says this fails loudly.
     pub fn common_setup(&mut self) -> Result<usize, Refused> {
-        let wired = self.kinds.wire().map_err(Refused::Kinds)?;
+        let wired = self.kinds.subscribe_all().map_err(Refused::Kinds)?;
         self.step = Step::SetUp;
         Ok(wired)
     }
@@ -600,7 +600,7 @@ mod tests {
             .map(|held| held.name.as_str())
             .collect();
         assert_eq!(names, REGISTERED);
-        assert_eq!(entry.kinds().subscribed(), 3);
+        assert_eq!(entry.kinds().subscribed_count(), 3);
         assert_eq!(entry.adapters().len(), 12);
         assert_eq!(entry.step(), Step::AdaptersInstalled);
     }
@@ -651,10 +651,11 @@ mod tests {
     #[test]
     fn the_entrys_brewing_view_carries_the_resolved_cap() {
         let mut entry = Entry::new();
-        entry.settings = Settings {
-            closure_cap: 42,
-            ..Settings::shipped()
-        };
+        let changed = settings::DOCUMENT.replace("\"default\": 7500", "\"default\": 42");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed defaults resolve");
+        entry.settings = Settings::read(&resolved).expect("a valid cap");
         let views = entry.recipe_views();
         let brewing = views
             .iter()
@@ -680,10 +681,7 @@ mod tests {
     #[test]
     fn the_abort_setting_turns_a_bundle_failure_into_a_refusal() {
         let mut entry = run_to_registered();
-        entry.settings = Settings {
-            abort_on_bundle_failure: true,
-            ..Settings::shipped()
-        };
+        entry.settings.abort_on_bundle_failure = true;
         assert!(matches!(
             entry.load_compatibility(None),
             Err(Refused::Bundle(_))
@@ -701,10 +699,7 @@ mod tests {
     fn a_resolved_ignore_list_rebuilds_the_comparator_the_kinds_are_built_against() {
         let mut entry = Entry::new();
         assert!(entry.comparator().ignored().next().is_none());
-        entry.settings = Settings {
-            ignored: vec!["wear".to_owned()],
-            ..Settings::shipped()
-        };
+        entry.settings.ignored = vec!["wear".to_owned()];
         entry.comparator = entry.settings.comparator().expect("a one-name list");
         assert_eq!(
             entry.comparator().ignored().collect::<Vec<&str>>(),

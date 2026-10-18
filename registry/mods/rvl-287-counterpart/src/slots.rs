@@ -529,7 +529,7 @@ impl Grid {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PerFaceSlots {
     sprites: Vec<TextureId>,
-    per_face: Vec<BTreeMap<u32, u32>>,
+    per_face: [BTreeMap<u32, u32>; 6],
     sprite_of: Vec<u32>,
 }
 
@@ -543,7 +543,7 @@ impl PerFaceSlots {
     #[must_use]
     pub fn assign(sets: [FlatSlots; 6]) -> Self {
         let mut sprites: Vec<TextureId> = Vec::new();
-        let mut per_face = vec![BTreeMap::new(); 6];
+        let mut per_face: [BTreeMap<u32, u32>; 6] = std::array::from_fn(|_| BTreeMap::new());
         let mut sprite_of: Vec<u32> = Vec::new();
 
         for (position, set) in sets.into_iter().enumerate() {
@@ -574,10 +574,8 @@ impl PerFaceSlots {
     /// against it falls back to index zero.
     #[must_use]
     pub fn index(&self, face: Face, slot: Slot) -> u32 {
-        let position = Face::ALL.iter().position(|held| *held == face).unwrap_or(0);
-        self.per_face
-            .get(position)
-            .and_then(|map| map.get(&slot.number()))
+        self.per_face[face.position()]
+            .get(&slot.number())
             .copied()
             .unwrap_or(0)
     }

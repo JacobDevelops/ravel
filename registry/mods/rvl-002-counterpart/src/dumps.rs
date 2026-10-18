@@ -145,6 +145,10 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, rendered) in documents() {
+            assert!(
+                rendered.ends_with('\n'),
+                "{relative} does not end with a newline"
+            );
             let path = root.join(relative);
             if regenerating {
                 let directory = path.parent().expect("a document sits in a directory");

@@ -348,7 +348,7 @@ impl Mod for Entry {
                 self.declaration.as_ref().map_err(Clone::clone)?;
             }
             LifecycleState::Running => {
-                self.framework.resolve();
+                self.framework.mark_resolved();
                 self.load_complete = true;
             }
             LifecycleState::Discovered

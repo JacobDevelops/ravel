@@ -89,9 +89,9 @@ are refused without registration or replacement of an existing dimension.
 | §14 the two commands and the two key bindings | implemented; claimed at the barrier and run from `run_command` | `src/commands.rs`, `src/lib.rs` |
 | §14 the leftover hand read | refused instead, declared | `src/commands.rs` |
 | §14 the one reply encoding and its bound | implemented | `src/commands.rs` |
-| §14 the ordering service, its five ranks and its counter | implemented, published across mods | `src/ordering.rs`, `src/channel.rs`, `src/lib.rs` |
+| §14 the ordering service, its five ranks and its counter | implemented, published across mods | `src/ordering.rs`, `src/services.rs`, `src/lib.rs` |
 | §15 the published obligations and what each one is here | implemented | `src/capabilities.rs` |
-| §15 the surface a dependent registers into | implemented; published across mods through Ravel's service seam | `src/channel.rs`, `src/lib.rs` |
+| §15 the surface a dependent registers into | implemented; published across mods through Ravel's service seam | `src/services.rs`, `src/lib.rs` |
 | §15 the registration window and every stated refusal | implemented | `src/capabilities.rs`, `src/capabilities/primitives.rs` |
 | §15 the two unimplemented subsystems | declarable only; published and declared unimplemented | `src/capabilities.rs` |
 | §15 the two render helpers | not carried, by §18's own exclusion | — |

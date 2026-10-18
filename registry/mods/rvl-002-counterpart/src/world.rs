@@ -257,7 +257,9 @@ mod tests {
                 "the switch is a declared setting"
             );
             assert!(
-                settings::published_flags().contains(&deposit.switch),
+                settings::PUBLISHED
+                    .iter()
+                    .any(|(key, _)| *key == deposit.switch),
                 "and a published flag"
             );
         }

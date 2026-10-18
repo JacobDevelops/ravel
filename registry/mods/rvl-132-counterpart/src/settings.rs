@@ -23,7 +23,7 @@ use ravel_sdk::config::{
 };
 
 use crate::data::{Comparator, MAX_IGNORED};
-use crate::recipes::{Closure, DEFAULT_CLOSURE_CAP, MAX_CLOSURE_CAP};
+use crate::recipes::Closure;
 
 /// The key an invalid recipe's treatment is switched under.
 pub const ABORT_ON_INVALID_RECIPE: &str = "recipes.abort_on_invalid";
@@ -187,7 +187,7 @@ impl From<ValueError> for Refused {
 }
 
 /// The values in force for one launch.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Settings {
     /// Whether an invalid recipe met while enumerating aborts loading.
     pub abort_on_invalid_recipe: bool,
@@ -197,42 +197,40 @@ pub struct Settings {
     pub ignored: Vec<String>,
     /// Whether every unequal-data comparison is logged.
     pub log_unequal_data: bool,
-    /// The brewing closure's cap.
-    pub closure_cap: usize,
+    closure: Closure,
 }
 
 impl Settings {
-    /// The values a build ships with, before anything is resolved.
+    /// The values declared by the packaged document, before any overrides.
     #[must_use]
     pub fn shipped() -> Self {
-        Self {
-            abort_on_invalid_recipe: false,
-            abort_on_bundle_failure: false,
-            ignored: Vec::new(),
-            log_unequal_data: false,
-            closure_cap: DEFAULT_CLOSURE_CAP,
-        }
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the shipped defaults resolve");
+        Self::read(&resolved).expect("declared settings have valid values")
     }
 
     /// Reads every declared setting from the resolved configuration.
     ///
-    /// Missing or wrongly typed values and ignored lists past either ceiling
-    /// are refused without partially applying the resolution.
+    /// Missing or wrongly typed values, out-of-range closure caps and ignored
+    /// lists past either ceiling are refused without partially applying the resolution.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
         let abort_on_invalid_recipe = resolved.boolean(ABORT_ON_INVALID_RECIPE)?;
         let abort_on_bundle_failure = resolved.boolean(ABORT_ON_BUNDLE_FAILURE)?;
         let log_unequal_data = resolved.boolean(LOG_UNEQUAL_DATA)?;
         let ignored = ignored_from(resolved.text(IGNORED_COMPONENTS)?)?;
         let cap = usize::try_from(resolved.integer(CLOSURE_CAP)?)
-            .ok()
-            .filter(|cap| *cap >= 1 && *cap <= MAX_CLOSURE_CAP)
-            .unwrap_or(DEFAULT_CLOSURE_CAP);
+            .map_err(|_| ValueError::IntegerRange)?;
+        let closure = Closure::new(cap).map_err(|_| ValueError::IntegerRange)?;
         Ok(Self {
             abort_on_invalid_recipe,
             abort_on_bundle_failure,
             ignored,
             log_unequal_data,
-            closure_cap: cap,
+            closure,
         })
     }
 
@@ -257,7 +255,7 @@ impl Settings {
     /// The brewing closure these values put in force.
     #[must_use]
     pub fn closure(&self) -> Closure {
-        Closure::new(self.closure_cap).unwrap_or_else(|_| Closure::shipped())
+        self.closure
     }
 }
 
@@ -452,15 +450,38 @@ mod tests {
     }
 
     #[test]
-    fn the_closure_is_rebuilt_from_the_cap_in_force() {
-        let mut settings = Settings::shipped();
-        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
-        settings.closure_cap = 40;
-        assert_eq!(settings.closure().cap(), 40);
-        settings.closure_cap = 0;
-        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
-        settings.closure_cap = MAX_CLOSURE_CAP + 1;
-        assert_eq!(settings.closure().cap(), DEFAULT_CLOSURE_CAP);
+    fn the_closure_carries_the_cap_in_force() {
+        let changed = DOCUMENT.replace("\"default\": 7500", "\"default\": 40");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed defaults resolve");
+        assert_eq!(
+            Settings::read(&resolved)
+                .expect("a valid cap")
+                .closure()
+                .cap(),
+            40
+        );
+    }
+
+    #[test]
+    fn a_widened_declaration_cannot_silently_default_an_out_of_range_cap() {
+        for cap in ["-1", "0", "100001", "9223372036854775807"] {
+            let changed = DOCUMENT
+                .replace(
+                    "\"minimum\": 1.0, \"maximum\": 100000.0",
+                    "\"minimum\": -1.0",
+                )
+                .replace("\"default\": 7500", &format!("\"default\": {cap}"));
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the widened declaration resolves");
+            assert_eq!(
+                Settings::read(&resolved),
+                Err(Refused::Value(ValueError::IntegerRange)),
+                "{cap}"
+            );
+        }
     }
 
     #[test]

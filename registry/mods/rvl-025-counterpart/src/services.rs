@@ -143,11 +143,11 @@ fn read_u32(value: &JsonValue) -> Option<u32> {
     u32::try_from(value.as_u64()?).ok()
 }
 
-fn optional_field<T>(
-    arguments: &JsonValue,
+fn optional_field<'a, T>(
+    arguments: &'a JsonValue,
     name: &str,
     default: T,
-    read: impl FnOnce(&JsonValue) -> Option<T>,
+    read: impl FnOnce(&'a JsonValue) -> Option<T>,
 ) -> Option<T> {
     arguments.get(name).map_or(Some(default), read)
 }
@@ -181,10 +181,11 @@ pub(super) fn answer_ordering(ordering: &mut Ordering, arguments: &JsonValue) ->
     };
     match action {
         "enqueue" => {
-            let dimension = arguments
-                .get("dimension")
-                .and_then(JsonValue::as_str)
-                .unwrap_or(DEFAULT_DIMENSION);
+            let Some(dimension) =
+                optional_field(arguments, "dimension", DEFAULT_DIMENSION, JsonValue::as_str)
+            else {
+                return json!({ "answered": false, "refused": "a call names no legal dimension" });
+            };
             let Some(rank) = arguments
                 .get("rank")
                 .and_then(JsonValue::as_u64)
@@ -192,10 +193,9 @@ pub(super) fn answer_ordering(ordering: &mut Ordering, arguments: &JsonValue) ->
             else {
                 return json!({ "answered": false, "refused": "a call names no legal rank" });
             };
-            let who = arguments
-                .get("who")
-                .and_then(JsonValue::as_str)
-                .unwrap_or_default();
+            let Some(who) = optional_field(arguments, "who", "", JsonValue::as_str) else {
+                return json!({ "answered": false, "refused": "a call names no legal requester" });
+            };
             match ordering.enqueue(dimension, rank, who) {
                 Ok(entry) => json!({ "answered": true, "stamp": entry.stamp }),
                 Err(refusal) => {
@@ -205,10 +205,11 @@ pub(super) fn answer_ordering(ordering: &mut Ordering, arguments: &JsonValue) ->
         }
         "stamp" => json!({ "answered": true, "stamp": ordering.stamp() }),
         "queued" => {
-            let dimension = arguments
-                .get("dimension")
-                .and_then(JsonValue::as_str)
-                .unwrap_or(DEFAULT_DIMENSION);
+            let Some(dimension) =
+                optional_field(arguments, "dimension", DEFAULT_DIMENSION, JsonValue::as_str)
+            else {
+                return json!({ "answered": false, "refused": "a call names no legal dimension" });
+            };
             json!({ "answered": true, "queued": ordering.queued(dimension) })
         }
         _ => json!({ "answered": false, "refused": "this entry publishes no such action" }),
@@ -563,5 +564,26 @@ mod tests {
             );
             assert_eq!(surface.read_dimension(&identifier), Some(&previous));
         }
+    }
+
+    #[test]
+    fn malformed_ordering_fields_are_refused_and_absent_fields_default() {
+        let mut ordering = Ordering::default();
+        for arguments in [
+            json!({ "action": "enqueue", "rank": 1, "dimension": 7 }),
+            json!({ "action": "enqueue", "rank": 1, "who": false }),
+            json!({ "action": "queued", "dimension": null }),
+        ] {
+            let response = answer_ordering(&mut ordering, &arguments);
+            assert_eq!(response["answered"], json!(false));
+            assert!(response["refused"].as_str().is_some());
+            assert_eq!(ordering.queued(DEFAULT_DIMENSION), 0);
+        }
+        let response = answer_ordering(&mut ordering, &json!({ "action": "enqueue", "rank": 1 }));
+        assert_eq!(response["answered"], json!(true));
+        assert_eq!(
+            answer_ordering(&mut ordering, &json!({ "action": "queued" }))["queued"],
+            json!(1)
+        );
     }
 }

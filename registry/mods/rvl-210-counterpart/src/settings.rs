@@ -339,7 +339,7 @@ impl Framework {
 
     /// Marks the framework as having resolved, which happens before a
     /// dependent's own setup runs.
-    pub const fn resolve(&mut self) {
+    pub const fn mark_resolved(&mut self) {
         self.resolved = true;
     }
 
@@ -642,7 +642,7 @@ mod tests {
     fn resolution_happens_before_a_dependent_s_own_setup_and_is_visible() {
         let mut framework = own_framework();
         assert!(!framework.resolved());
-        framework.resolve();
+        framework.mark_resolved();
         assert!(framework.resolved());
     }
 }

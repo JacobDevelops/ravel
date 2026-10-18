@@ -70,7 +70,8 @@ fn write_stack(writer: &mut PacketWriter, stack: &Stack) {
     writer.bool(stack.cyclable);
     writer.bool(stack.upgradable);
     writer.u32(stack.infusion);
-    let components = u32::try_from(stack.components.len()).unwrap_or(u32::MAX);
+    let components =
+        u32::try_from(stack.components.len()).expect("a packet list shorter than 2^32");
     writer.u32(components);
     for (name, value) in &stack.components {
         writer.text(name);
@@ -191,7 +192,7 @@ impl Packet for CardArguments {
     }
 
     fn write(&self, writer: &mut PacketWriter) {
-        writer.u32(u32::try_from(self.named.len()).unwrap_or(u32::MAX));
+        writer.u32(u32::try_from(self.named.len()).expect("a packet list shorter than 2^32"));
         for (name, value) in &self.named {
             writer.text(name);
             writer.text(value);
@@ -227,7 +228,7 @@ impl Packet for BrowserPattern {
     }
 
     fn write(&self, writer: &mut PacketWriter) {
-        writer.u32(u32::try_from(self.slots.len()).unwrap_or(u32::MAX));
+        writer.u32(u32::try_from(self.slots.len()).expect("a packet list shorter than 2^32"));
         for slot in &self.slots {
             writer.bool(slot.is_some());
             if let Some(stack) = slot {
@@ -371,7 +372,7 @@ impl Packet for ReadoutAnswer {
 
     fn write(&self, writer: &mut PacketWriter) {
         write_position(writer, self.at);
-        writer.u32(u32::try_from(self.shape.len()).unwrap_or(u32::MAX));
+        writer.u32(u32::try_from(self.shape.len()).expect("a packet list shorter than 2^32"));
         for (name, tag) in &self.shape {
             writer.text(name);
             writer.u32(u32::from(*tag));

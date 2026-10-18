@@ -43,7 +43,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::interception::InterceptionDeclaration;
-use ravel_sdk::network::{PacketDelivery, PacketReader};
+use ravel_sdk::network::{Packet, PacketDelivery};
 use ravel_sdk::prelude::*;
 use rvl_042_counterpart::flags::FlagTable;
 
@@ -319,16 +319,13 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let contract = Decisive::contract().map_err(ModError::from_display)?;
-        if &delivery.id != contract.id()
-            || delivery.direction != contract.direction()
-            || delivery.side != Side::Client
-        {
+        let contract = Decisive::contract();
+        if &delivery.id != contract.id() {
             return Ok(());
         }
-        let mut reader = PacketReader::new(&delivery.payload);
-        let decisive = Decisive::read(&mut reader).map_err(ModError::from_display)?;
-        reader.finish().map_err(ModError::from_display)?;
+        let decisive = delivery
+            .decode::<Decisive>()
+            .map_err(ModError::from_display)?;
         self.adopt(&decisive)
     }
 
@@ -432,12 +429,12 @@ mod tests {
                 .expect("the packaged flag names are legal");
             assert!(
                 entry.grouping().shown(entry.flags()).len() < listed,
-                "{flag} gates something"
+                "{flag:?} gates something"
             );
             assert_eq!(
                 entry.grouping().declared().len(),
                 listed,
-                "{flag} unlists rather than unregisters"
+                "{flag:?} unlists rather than unregisters"
             );
         }
     }
@@ -463,16 +460,16 @@ mod tests {
             .expect("the packaged flag names are legal");
         assert!(entry.configured());
         for (flag, _) in settings::FLAG_BINDINGS {
-            let id = rvl_042_counterpart::flags::FlagId::new(FLAG_NAMESPACE, flag)
+            let id = rvl_042_counterpart::flags::FlagId::new(FLAG_NAMESPACE, flag.name())
                 .expect("a legal identity");
-            assert!(!entry.flags().enabled(&id), "{flag} follows its switch");
+            assert!(!entry.flags().enabled(&id), "{flag:?} follows its switch");
         }
     }
 
     #[test]
     fn a_delivery_for_another_contract_is_left_alone_rather_than_decoded() {
         let mut entry = Entry::new();
-        let other = Toggle::contract().expect("a legal name");
+        let other = Toggle::contract();
         let delivery = PacketDelivery::new(
             other.id().clone(),
             other.direction(),
@@ -486,18 +483,48 @@ mod tests {
     }
 
     #[test]
-    fn a_decisive_frame_arriving_at_a_server_is_left_alone() {
-        let contract = Decisive::contract().expect("a legal name");
+    fn a_decisive_delivery_adopts_the_servers_settings() {
+        let server = Settings {
+            switches: [false; 14],
+            ..Settings::default()
+        };
+        let delivery = PacketDelivery::of(&server.decisive(), Side::Client)
+            .expect("the client receives deciding settings");
+        let mut entry = Entry::new();
+        entry.receive_packet(&delivery).expect("a valid frame");
+        assert_eq!(entry.settings().switches, server.switches);
+        assert!(entry.configured());
+    }
+
+    #[test]
+    fn a_decisive_delivery_refuses_another_version_before_adoption() {
+        let contract = Decisive::contract();
+        let mut writer = ravel_sdk::network::PacketWriter::default();
+        writer.text(&contract.id().to_string());
+        writer.u32(settings::PACKET_VERSION + 1);
+        Settings::default().decisive().write(&mut writer);
+        let delivery = PacketDelivery::new(
+            contract.id().clone(),
+            contract.direction(),
+            Side::Client,
+            writer.finish(),
+        );
+        let mut entry = Entry::new();
+        assert!(entry.receive_packet(&delivery).is_err());
+        assert!(!entry.configured());
+    }
+
+    #[test]
+    fn a_decisive_frame_arriving_at_a_server_is_refused() {
+        let contract = Decisive::contract();
         let mut entry = Entry::new();
         let delivery = PacketDelivery::new(
             contract.id().clone(),
             contract.direction(),
             Side::DedicatedServer,
-            settings::to_bytes(&|writer| Settings::default().decisive().write(writer)),
+            ravel_sdk::network::encode(&Settings::default().decisive()),
         );
-        entry
-            .receive_packet(&delivery)
-            .expect("a frame for the wrong side changes nothing");
+        assert!(entry.receive_packet(&delivery).is_err());
         assert!(
             !entry.configured(),
             "a server keeps the settings it decided"

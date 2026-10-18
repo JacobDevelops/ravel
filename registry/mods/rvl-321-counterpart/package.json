@@ -66,11 +66,11 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "f6141c5042898b4a9020243bc201d269c0a1aba3b5ab4ddd2fcf49280a137540"
+        "sha256": "90cbfaa334e4ae85718edb97192701b297069c9a500326f2fd81af469ad97dae"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "a095e9f69e1ca5a557f3525897fc41aca4393804891b3a988b1c61a8d03c904c"
+        "sha256": "fcbbf130955653d8e91f173e71897ba7a4dabf5dbd786a16fcb482102bd58dff"
       },
       {
         "path": "src/ground.rs",
@@ -86,7 +86,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "ebc2e8c1ca089265cce0d03127bd046b32d1e7af489e1449a7e08b6970e6db7d"
+        "sha256": "d4011430f1c166ee746a1e98d8e7bfcf3031a138fea2c5bed7d2d9a0ba110d67"
       },
       {
         "path": "src/machines.rs",
@@ -110,7 +110,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "dd2de1754ad01ecc368ce3a8aef3321ecfa6bd7e6da9cde15faf630ed3ceca84"
+        "sha256": "2852a8fc508082884081b7f7b502549db6fb5e7b6f5ea29ad4e13bd0a6e93dd9"
       },
       {
         "path": "src/world.rs",

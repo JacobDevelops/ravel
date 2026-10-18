@@ -34,7 +34,6 @@
 
 pub mod capabilities;
 pub mod census;
-mod channel;
 pub mod commands;
 pub mod data;
 pub mod dumps;
@@ -42,6 +41,7 @@ pub mod machines;
 pub mod matching;
 pub mod network;
 pub mod ordering;
+mod services;
 pub mod settings;
 pub mod shapes;
 pub mod storage;
@@ -605,13 +605,13 @@ impl Mod for Entry {
         let surface = Self::surface_service()?;
         let ordering = Self::ordering_service()?;
         if request.id == surface {
-            return Ok(ServiceResponse::new(channel::answer_surface(
+            return Ok(ServiceResponse::new(services::answer_surface(
                 &mut self.surface,
                 &request.arguments,
             )));
         }
         if request.id == ordering {
-            return Ok(ServiceResponse::new(channel::answer_ordering(
+            return Ok(ServiceResponse::new(services::answer_ordering(
                 &mut self.ordering,
                 &request.arguments,
             )));

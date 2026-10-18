@@ -71,7 +71,7 @@ pub fn harvest(
     clicked: &Clicked,
     server_side: bool,
 ) -> Option<Harvested> {
-    if !server_side || hand != Hand::Main || !settings.switch(Feature::CropHarvest) {
+    if !server_side || hand != Hand::Main || !settings.is_switched_on(Feature::CropHarvest) {
         return None;
     }
     if !clicked.mature {

@@ -149,6 +149,10 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, rendered) in documents() {
+            assert!(
+                rendered.ends_with('\n'),
+                "{relative} does not end with a newline"
+            );
             let path = root.join(relative);
             if regenerating {
                 std::fs::create_dir_all(path.parent().expect("a package-relative path"))
@@ -156,7 +160,7 @@ mod tests {
                 std::fs::write(&path, rendered.as_bytes()).expect("the document");
             } else {
                 let on_disk = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|_| panic!("{relative} is not in the package"));
+                    .unwrap_or_else(|error| panic!("{relative} is not in the package: {error}"));
                 assert_eq!(
                     on_disk, rendered,
                     "{relative} has drifted from what the crate derives"

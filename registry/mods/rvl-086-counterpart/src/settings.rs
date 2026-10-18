@@ -24,7 +24,7 @@ use ravel_sdk::config::{
 };
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
-    Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
+    Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
@@ -223,6 +223,54 @@ pub const COST_RANGE: (u32, u32) = (1, 8);
 /// The lowest and highest extra units an enchanted tool may cost.
 pub const ENCHANTMENT_COST_RANGE: (u32, u32) = (0, 8);
 
+/// A flag this package publishes over a feature switch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Flag {
+    TintedStone,
+    LightBlock,
+    FuelFragments,
+    WateringTools,
+    SieveMeshes,
+    Headpieces,
+    CombinedTools,
+    FirstTier,
+    FirstTierArmour,
+    FirstTierShearing,
+    SecondTier,
+    SecondTierArmour,
+    SecondTierShearing,
+    SweepingWide,
+    SweepingWideUpper,
+    SweepingTall,
+    SweepingTallUpper,
+}
+
+impl Flag {
+    /// The published name of this flag.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::TintedStone => "tinted_stone",
+            Self::LightBlock => "light_block",
+            Self::FuelFragments => "fuel_fragments",
+            Self::WateringTools => "watering_tools",
+            Self::SieveMeshes => "sieve_meshes",
+            Self::Headpieces => "headpieces",
+            Self::CombinedTools => "combined_tools",
+            Self::FirstTier => "first_tier",
+            Self::FirstTierArmour => "first_tier_armour",
+            Self::FirstTierShearing => "first_tier_shearing",
+            Self::SecondTier => "second_tier",
+            Self::SecondTierArmour => "second_tier_armour",
+            Self::SecondTierShearing => "second_tier_shearing",
+            Self::SweepingWide => "sweeping_wide",
+            Self::SweepingWideUpper => "sweeping_wide_upper",
+            Self::SweepingTall => "sweeping_tall",
+            Self::SweepingTallUpper => "sweeping_tall_upper",
+        }
+    }
+}
+
 /// The seventeen flags, each paired with the switch it reads.
 ///
 /// Three switches carry no flag and four switches carry more than one, which is
@@ -232,24 +280,24 @@ pub const ENCHANTMENT_COST_RANGE: (u32, u32) = (0, 8);
 ///
 /// Which four switches carry a second flag is **inferred**: the specification
 /// states the counts and the mis-binding but not the whole table.
-pub const FLAG_BINDINGS: [(&str, Feature); 17] = [
-    ("tinted_stone", Feature::TintedStone),
-    ("light_block", Feature::LightBlock),
-    ("fuel_fragments", Feature::FuelFragments),
-    ("watering_tools", Feature::WateringTools),
-    ("sieve_meshes", Feature::SieveMeshes),
-    ("headpieces", Feature::Headpieces),
-    ("combined_tools", Feature::CombinedTools),
-    ("first_tier", Feature::FirstTier),
-    ("first_tier_armour", Feature::FirstTier),
-    ("first_tier_shearing", Feature::FirstTier),
-    ("second_tier", Feature::SecondTier),
-    ("second_tier_armour", Feature::SecondTier),
-    ("second_tier_shearing", Feature::SecondTier),
-    ("sweeping_wide", Feature::SweepingWide),
-    ("sweeping_wide_upper", Feature::SweepingWide),
-    ("sweeping_tall", Feature::SweepingTall),
-    ("sweeping_tall_upper", Feature::SweepingTall),
+pub const FLAG_BINDINGS: [(Flag, Feature); 17] = [
+    (Flag::TintedStone, Feature::TintedStone),
+    (Flag::LightBlock, Feature::LightBlock),
+    (Flag::FuelFragments, Feature::FuelFragments),
+    (Flag::WateringTools, Feature::WateringTools),
+    (Flag::SieveMeshes, Feature::SieveMeshes),
+    (Flag::Headpieces, Feature::Headpieces),
+    (Flag::CombinedTools, Feature::CombinedTools),
+    (Flag::FirstTier, Feature::FirstTier),
+    (Flag::FirstTierArmour, Feature::FirstTier),
+    (Flag::FirstTierShearing, Feature::FirstTier),
+    (Flag::SecondTier, Feature::SecondTier),
+    (Flag::SecondTierArmour, Feature::SecondTier),
+    (Flag::SecondTierShearing, Feature::SecondTier),
+    (Flag::SweepingWide, Feature::SweepingWide),
+    (Flag::SweepingWideUpper, Feature::SweepingWide),
+    (Flag::SweepingTall, Feature::SweepingTall),
+    (Flag::SweepingTallUpper, Feature::SweepingTall),
 ];
 
 /// The declaration this counterpart packages.
@@ -664,7 +712,7 @@ impl Settings {
 
     /// Whether a declared feature switch is on.
     #[must_use]
-    pub const fn switch(&self, feature: Feature) -> bool {
+    pub const fn is_switched_on(&self, feature: Feature) -> bool {
         self.switches[feature.index()]
     }
 
@@ -749,19 +797,19 @@ pub const DECISIVE_PACKET: &str = "decisive_settings";
 /// The version this entry stamps on every payload it declares.
 pub const PACKET_VERSION: u32 = 1;
 
-impl Decisive {
-    /// The contract these settings travel under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path,
-    /// which for a constant is a packaging failure.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract(DECISIVE_PACKET, Direction::ToClient)
+impl Packet for Decisive {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ContentId::new(crate::Entry::declared_id().clone(), DECISIVE_PACKET)
+                    .expect("the packaged packet path is legal"),
+            ),
+            Direction::ToClient,
+            PACKET_VERSION,
+        )
     }
 
-    /// Writes the body.
-    pub fn write(&self, writer: &mut PacketWriter) {
+    fn write(&self, writer: &mut PacketWriter) {
         for switch in self.switches {
             writer.bool(switch);
         }
@@ -779,12 +827,7 @@ impl Decisive {
         writer.text(&self.tweak_ineffective);
     }
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell these settings.
-    pub fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let mut switches = [false; 14];
         for switch in &mut switches {
             *switch = reader.bool()?;
@@ -811,28 +854,6 @@ impl Decisive {
     }
 }
 
-/// Builds a contract this entry owns, at the one version it declares.
-///
-/// # Errors
-///
-/// Returns [`ContentIdError`] when the name is not a legal content path.
-pub fn contract(name: &str, direction: Direction) -> Result<PacketContract, ContentIdError> {
-    let id = ContentId::new(crate::Entry::declared_id().clone(), name)?;
-    Ok(PacketContract::new(
-        PacketId::new(id),
-        direction,
-        PACKET_VERSION,
-    ))
-}
-
-/// Writes a payload body to bytes.
-#[must_use]
-pub fn to_bytes(write: &dyn Fn(&mut PacketWriter)) -> Vec<u8> {
-    let mut writer = PacketWriter::default();
-    write(&mut writer);
-    writer.finish()
-}
-
 /// Binds the seventeen flags over the switches in force.
 ///
 /// Every flag is a constant read off the settings at the moment of binding,
@@ -849,8 +870,8 @@ pub fn publish(
     namespace: &str,
 ) -> Result<(), ContentIdError> {
     for (flag, key) in FLAG_BINDINGS {
-        let id = FlagId::new(namespace, flag)?;
-        table.publish_constant(id, settings.switch(key));
+        let id = FlagId::new(namespace, flag.name())?;
+        table.publish_constant(id, settings.is_switched_on(key));
     }
     Ok(())
 }
@@ -947,14 +968,6 @@ mod tests {
         assert_eq!(settings.tooltip_excluded, Matcher::parse("example:pick"));
     }
 
-    fn round_trip(sent: &Decisive) -> Decisive {
-        let bytes = to_bytes(&|writer| sent.write(writer));
-        let mut reader = PacketReader::new(&bytes);
-        let read = Decisive::read(&mut reader).expect("the payload round-trips");
-        reader.finish().expect("the payload is read whole");
-        read
-    }
-
     #[test]
     fn the_packaged_document_parses_and_declares_twenty_eight_settings() {
         let declaration = declaration().expect("the packaged document parses");
@@ -1034,8 +1047,8 @@ mod tests {
             let key = feature.key();
             let leaf = key.split_once('.').map_or(key, |(_, leaf)| leaf);
             assert!(
-                flag.starts_with(leaf),
-                "the flag {flag} reads {key}, which it is not named for"
+                flag.name().starts_with(leaf),
+                "the flag {flag:?} reads {key}, which it is not named for"
             );
         }
     }
@@ -1077,7 +1090,7 @@ mod tests {
     fn every_declared_feature_has_a_distinct_slot_and_ships_enabled() {
         for (index, feature) in Feature::ALL.into_iter().enumerate() {
             assert_eq!(feature.index(), index);
-            assert!(Settings::default().switch(feature));
+            assert!(Settings::default().is_switched_on(feature));
         }
     }
 
@@ -1098,19 +1111,22 @@ mod tests {
         settings.switches[Feature::TintedStone.index()] = false;
 
         let sent = settings.decisive();
-        assert_eq!(round_trip(&sent), sent);
+        assert_eq!(
+            ravel_sdk::network::decode::<Decisive>(&ravel_sdk::network::encode(&sent))
+                .expect("the payload round-trips"),
+            sent
+        );
 
-        let bytes = to_bytes(&|writer| sent.write(writer));
-        let mut short = PacketReader::new(&bytes[..bytes.len() - 1]);
+        let bytes = ravel_sdk::network::encode(&sent);
         assert!(
-            Decisive::read(&mut short).is_err(),
+            ravel_sdk::network::decode::<Decisive>(&bytes[..bytes.len() - 1]).is_err(),
             "a buffer that ends inside a field is refused rather than read short"
         );
     }
 
     #[test]
     fn the_deciding_payload_travels_to_a_client_under_this_entrys_version() {
-        let contract = Decisive::contract().expect("the declared name is legal");
+        let contract = Decisive::contract();
         assert_eq!(contract.direction(), Direction::ToClient);
         assert_eq!(contract.version(), PACKET_VERSION);
         assert_eq!(contract.id().id().path(), DECISIVE_PACKET);

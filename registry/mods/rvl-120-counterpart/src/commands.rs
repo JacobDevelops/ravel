@@ -245,9 +245,9 @@ impl std::error::Error for DeclarationRefused {}
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CommandKey {
     /// The namespace of the package that owns the command.
-    pub namespace: String,
+    namespace: String,
     /// The command's own name.
-    pub name: String,
+    name: String,
 }
 
 impl CommandKey {
@@ -275,6 +275,18 @@ impl CommandKey {
             namespace: namespace.to_owned(),
             name: name.to_owned(),
         })
+    }
+
+    /// Returns the namespace of the package that owns the command.
+    #[must_use]
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    /// Returns the command's own name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

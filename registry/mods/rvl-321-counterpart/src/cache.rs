@@ -13,9 +13,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ravel_sdk::content::{ContentId, ContentIdError};
+use ravel_sdk::content::ContentId;
 use ravel_sdk::network::{
-    Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
+    Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
 use ravel_sdk::prelude::*;
 
@@ -84,7 +84,7 @@ impl ItemData {
 /// dedicated one does.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Cache {
-    accepts: BTreeMap<String, Vec<String>>,
+    recipes_by_item: BTreeMap<String, Vec<String>>,
     materials: BTreeSet<String>,
 }
 
@@ -108,7 +108,7 @@ impl Cache {
     ) {
         for ingredient in ingredients {
             for entry in enumerates(ingredient) {
-                let held = self.accepts.entry(entry).or_default();
+                let held = self.recipes_by_item.entry(entry).or_default();
                 if !held.iter().any(|name| name == recipe) {
                     held.push(recipe.to_owned());
                 }
@@ -125,8 +125,8 @@ impl Cache {
 
     /// The recipes that accept an item.
     #[must_use]
-    pub fn accepts(&self, entry: &str) -> &[String] {
-        self.accepts.get(entry).map_or(&[], Vec::as_slice)
+    pub fn recipes_accepting(&self, entry: &str) -> &[String] {
+        self.recipes_by_item.get(entry).map_or(&[], Vec::as_slice)
     }
 
     /// Whether an item appears as a declared material in any ritual.
@@ -140,14 +140,14 @@ impl Cache {
 
     /// How many items the index holds.
     #[must_use]
-    pub fn len(&self) -> usize {
-        self.accepts.len()
+    pub fn indexed_item_count(&self) -> usize {
+        self.recipes_by_item.len()
     }
 
     /// Whether the index holds nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.accepts.is_empty() && self.materials.is_empty()
+        self.recipes_by_item.is_empty() && self.materials.is_empty()
     }
 }
 
@@ -184,53 +184,25 @@ impl Colours {
     }
 }
 
-/// The contract one of this entry's payloads travels under.
-///
-/// Fallible rather than assumed: a payload name is a content path and nothing
-/// here decides on the package's behalf that a constant is a legal one.
-///
-/// # Errors
-///
-/// Returns [`ContentIdError`] when the name is not a legal content path.
-pub fn contract(name: &str, direction: Direction) -> Result<PacketContract, ContentIdError> {
-    let id = ContentId::new(crate::Entry::declared_id().clone(), name)?;
-    Ok(PacketContract::new(
-        PacketId::new(id),
-        direction,
-        CHANNEL_VERSION,
-    ))
-}
-
-/// Writes a payload body to bytes.
-pub fn to_bytes(write: &dyn Fn(&mut PacketWriter)) -> Vec<u8> {
-    let mut writer = PacketWriter::default();
-    write(&mut writer);
-    writer.finish()
-}
-
 /// The unit payload that plays the experience-pickup sound on a client.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ExperienceSound;
 
-impl ExperienceSound {
-    /// The contract this payload travels under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract("experience_sound", Direction::ToClient)
+impl Packet for ExperienceSound {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ContentId::new(crate::Entry::declared_id().clone(), "experience_sound")
+                    .expect("a packaged payload name is a legal content path"),
+            ),
+            Direction::ToClient,
+            CHANNEL_VERSION,
+        )
     }
 
-    /// Writes the body, which carries nothing.
-    pub const fn write(&self, _writer: &mut PacketWriter) {}
+    fn write(&self, _writer: &mut PacketWriter) {}
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell this payload.
-    pub const fn read(_reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(_reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         Ok(Self)
     }
 }
@@ -244,38 +216,35 @@ pub struct CachePayload {
     pub materials: Vec<String>,
 }
 
-impl CachePayload {
-    /// The contract this payload travels under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract("ingredient_cache", Direction::ToClient)
+impl Packet for CachePayload {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ContentId::new(crate::Entry::declared_id().clone(), "ingredient_cache")
+                    .expect("a packaged payload name is a legal content path"),
+            ),
+            Direction::ToClient,
+            CHANNEL_VERSION,
+        )
     }
 
-    /// Writes the body.
-    pub fn write(&self, writer: &mut PacketWriter) {
-        writer.u32(u32::try_from(self.entries.len()).unwrap_or(u32::MAX));
+    fn write(&self, writer: &mut PacketWriter) {
+        writer.u32(u32::try_from(self.entries.len()).expect("entry count fits the wire length"));
         for (entry, recipes) in &self.entries {
             writer.text(entry);
-            writer.u32(u32::try_from(recipes.len()).unwrap_or(u32::MAX));
+            writer.u32(u32::try_from(recipes.len()).expect("recipe count fits the wire length"));
             for recipe in recipes {
                 writer.text(recipe);
             }
         }
-        writer.u32(u32::try_from(self.materials.len()).unwrap_or(u32::MAX));
+        writer
+            .u32(u32::try_from(self.materials.len()).expect("material count fits the wire length"));
         for material in &self.materials {
             writer.text(material);
         }
     }
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell this payload.
-    pub fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let count = reader.u32()?;
         let mut entries = Vec::new();
         for _ in 0..count {
@@ -303,31 +272,27 @@ pub struct ColourPayload {
     pub entries: Vec<(String, u32)>,
 }
 
-impl ColourPayload {
-    /// The contract this payload travels under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract("colour_map", Direction::ToClient)
+impl Packet for ColourPayload {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ContentId::new(crate::Entry::declared_id().clone(), "colour_map")
+                    .expect("a packaged payload name is a legal content path"),
+            ),
+            Direction::ToClient,
+            CHANNEL_VERSION,
+        )
     }
 
-    /// Writes the body.
-    pub fn write(&self, writer: &mut PacketWriter) {
-        writer.u32(u32::try_from(self.entries.len()).unwrap_or(u32::MAX));
+    fn write(&self, writer: &mut PacketWriter) {
+        writer.u32(u32::try_from(self.entries.len()).expect("colour count fits the wire length"));
         for (entry, colour) in &self.entries {
             writer.text(entry);
             writer.u32(*colour);
         }
     }
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell this payload.
-    pub fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let count = reader.u32()?;
         let mut entries = Vec::new();
         for _ in 0..count {
@@ -347,28 +312,24 @@ pub struct OffsetNudge {
     pub vertical: i32,
 }
 
-impl OffsetNudge {
-    /// The contract this payload travels under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract("offset_nudge", Direction::ToServer)
+impl Packet for OffsetNudge {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ContentId::new(crate::Entry::declared_id().clone(), "offset_nudge")
+                    .expect("a packaged payload name is a legal content path"),
+            ),
+            Direction::ToServer,
+            CHANNEL_VERSION,
+        )
     }
 
-    /// Writes the body.
-    pub fn write(&self, writer: &mut PacketWriter) {
+    fn write(&self, writer: &mut PacketWriter) {
         writer.u32(self.horizontal.cast_unsigned());
         writer.u32(self.vertical.cast_unsigned());
     }
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell this payload.
-    pub fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         Ok(Self {
             horizontal: reader.u32()?.cast_signed(),
             vertical: reader.u32()?.cast_signed(),
@@ -380,18 +341,6 @@ impl OffsetNudge {
 mod tests {
     use super::*;
     use rvl_042_counterpart::Stack;
-
-    fn round_trip<T, W, R>(sent: &T, write: W, read: R) -> T
-    where
-        W: Fn(&T, &mut PacketWriter),
-        R: Fn(&mut PacketReader<'_>) -> Result<T, WireError>,
-    {
-        let bytes = to_bytes(&|writer| write(sent, writer));
-        let mut reader = PacketReader::new(&bytes);
-        let value = read(&mut reader).expect("what was written reads back");
-        reader.finish().expect("nothing is left over");
-        value
-    }
 
     fn ritual() -> EightStation {
         EightStation {
@@ -420,7 +369,7 @@ mod tests {
     fn a_client_that_never_received_a_payload_accepts_nothing() {
         let cache = Cache::new();
         assert!(cache.is_empty());
-        assert_eq!(cache.accepts("a:anything").len(), 0);
+        assert_eq!(cache.recipes_accepting("a:anything").len(), 0);
         assert!(!cache.is_material("a:fuel"));
     }
 
@@ -435,12 +384,12 @@ mod tests {
             ],
             &enumerates,
         );
-        assert_eq!(cache.accepts("a:one"), ["test:recipe"]);
+        assert_eq!(cache.recipes_accepting("a:one"), ["test:recipe"]);
         assert!(
-            cache.accepts("a:container").is_empty(),
+            cache.recipes_accepting("a:container").is_empty(),
             "a non-simple ingredient enumerates nothing to key on"
         );
-        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.indexed_item_count(), 1);
     }
 
     #[test]
@@ -451,7 +400,7 @@ mod tests {
             Ingredient::Entry("a:one".parse().expect("item id")),
         ];
         cache.index("test:recipe", &twice, &enumerates);
-        assert_eq!(cache.accepts("a:one"), ["test:recipe"]);
+        assert_eq!(cache.recipes_accepting("a:one"), ["test:recipe"]);
     }
 
     #[test]
@@ -521,10 +470,10 @@ mod tests {
     #[test]
     fn the_four_payloads_are_declared_on_one_channel_at_one_version() {
         let contracts = [
-            ExperienceSound::contract().expect("a legal payload name"),
-            CachePayload::contract().expect("a legal payload name"),
-            ColourPayload::contract().expect("a legal payload name"),
-            OffsetNudge::contract().expect("a legal payload name"),
+            ExperienceSound::contract(),
+            CachePayload::contract(),
+            ColourPayload::contract(),
+            OffsetNudge::contract(),
         ];
         for held in &contracts {
             assert_eq!(held.version(), CHANNEL_VERSION);
@@ -540,7 +489,6 @@ mod tests {
                 Direction::ToServer,
             ]
         );
-        assert!(contract("", Direction::ToClient).is_err());
     }
 
     #[test]
@@ -552,7 +500,8 @@ mod tests {
             ],
             materials: vec!["a:fuel".to_owned()],
         };
-        let read = round_trip(&sent, CachePayload::write, CachePayload::read);
+        let read = ravel_sdk::network::decode::<CachePayload>(&ravel_sdk::network::encode(&sent))
+            .expect("the cache payload decodes");
         assert_eq!(read, sent);
     }
 
@@ -561,14 +510,14 @@ mod tests {
         let sent = ColourPayload {
             entries: vec![("a:one".to_owned(), 0x00ab_cdef)],
         };
-        let read = round_trip(&sent, ColourPayload::write, ColourPayload::read);
+        let read = ravel_sdk::network::decode::<ColourPayload>(&ravel_sdk::network::encode(&sent))
+            .expect("the colour payload decodes");
         assert_eq!(read, sent);
 
-        let unit = round_trip(
+        let unit = ravel_sdk::network::decode::<ExperienceSound>(&ravel_sdk::network::encode(
             &ExperienceSound,
-            ExperienceSound::write,
-            ExperienceSound::read,
-        );
+        ))
+        .expect("the unit payload decodes");
         assert_eq!(unit, ExperienceSound);
     }
 
@@ -584,7 +533,9 @@ mod tests {
                 vertical: 7,
             },
         ] {
-            let read = round_trip(&sent, OffsetNudge::write, OffsetNudge::read);
+            let read =
+                ravel_sdk::network::decode::<OffsetNudge>(&ravel_sdk::network::encode(&sent))
+                    .expect("the nudge payload decodes");
             assert_eq!(read, sent);
         }
     }

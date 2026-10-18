@@ -79,7 +79,7 @@
       },
       {
         "path": "src/neighbourhood.rs",
-        "sha256": "1831613c6c19235bd29e25adf18d82a77a18f9622a6ebce9a7214fc0ecf91acc"
+        "sha256": "d8c8966f66173380a035acfb088126678f76975d82b97f3f72ab93f273ceac5f"
       },
       {
         "path": "src/quadrant.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/slots.rs",
-        "sha256": "a476ff8db031f3c5fd1c161efa7ad38fed947de05e49935e771e1d89531b6e1e"
+        "sha256": "0fa2cd0e0be1a5d38ecda31f7664410e8701d880d2c7341000c92c68ab55fab7"
       }
     ]
   },

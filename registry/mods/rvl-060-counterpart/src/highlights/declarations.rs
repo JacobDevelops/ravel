@@ -123,7 +123,7 @@ impl Spellings {
 #[non_exhaustive]
 pub struct Declaration {
     /// The declared name.
-    pub name: String,
+    name: String,
     /// The declared description, when the record carries one.
     pub description: Option<String>,
     /// Whether the pack is always on and hidden.
@@ -191,6 +191,12 @@ impl Declaration {
             description: None,
             required: false,
         })
+    }
+
+    /// Returns the checked pack name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Returns the path the pack is looked for at inside the declaring file.
@@ -261,8 +267,8 @@ pub struct Contributed {
 pub struct Failure {
     /// Whose declaration failed.
     pub namespace: String,
-    /// What went wrong, in the words of the failure itself.
-    pub cause: String,
+    /// The typed reason the contribution failed.
+    pub cause: PackError,
 }
 
 /// What one scan produced.
@@ -331,7 +337,7 @@ pub fn contribute(declaring: &[Declaring], kind: PackKind, side: Side) -> Contri
         if dependent.declarations.len() > MAX_DECLARED_PACKS {
             contribution.failures.push(Failure {
                 namespace: dependent.namespace.clone(),
-                cause: PackError::TooMany(MAX_DECLARED_PACKS).to_string(),
+                cause: PackError::TooMany(MAX_DECLARED_PACKS),
             });
             continue;
         }
@@ -339,7 +345,7 @@ pub fn contribute(declaring: &[Declaring], kind: PackKind, side: Side) -> Contri
             match Declaration::decode(document) {
                 Err(error) => contribution.failures.push(Failure {
                     namespace: dependent.namespace.clone(),
-                    cause: error.to_string(),
+                    cause: error,
                 }),
                 Ok(declaration) => {
                     let holds = dependent
@@ -418,7 +424,10 @@ mod tests {
         let result = contribute(&[dependent], PackKind::ServerFacing, Side::DedicatedServer);
         assert_eq!(result.failures.len(), 1);
         assert_eq!(result.failures[0].namespace, "example");
-        assert_eq!(result.failures[0].cause, "a required flag is not a boolean");
+        assert_eq!(
+            result.failures[0].cause,
+            PackError::Malformed("a required flag is not a boolean".to_owned())
+        );
         assert_eq!(result.packs.len(), 2);
         assert_eq!(result.packs[0].name, "second");
         assert_eq!(
@@ -446,7 +455,7 @@ mod tests {
         assert_eq!(
             Declaration::named(&longest)
                 .expect("the maximum name length")
-                .name,
+                .name(),
             longest
         );
         for name in [

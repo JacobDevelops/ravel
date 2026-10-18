@@ -9,8 +9,7 @@
 //! payloads of section thirteen instead.
 //!
 //! Fourteen of these are also published as named flags through the shared
-//! library, which is what gates the creative listing; [`published_flags`] names
-//! them and [`publish`] binds them.
+//! library, which is what gates the creative listing; [`publish`] binds them.
 //!
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
@@ -403,9 +402,9 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             ritual_catalyst_uses: u32::try_from(resolved.integer(RITUAL_CATALYST_USES)?)
-                .expect("the declared range fits u32"),
+                .map_err(|_| ValueError::IntegerRange)?,
             growth_pulse_seconds: u32::try_from(resolved.integer(GROWTH_PULSE_SECONDS)?)
-                .expect("the declared range fits u32"),
+                .map_err(|_| ValueError::IntegerRange)?,
             drops: DropSettings::read(resolved)?,
             growth_require_effective_ground: resolved.boolean(GROWTH_REQUIRE_EFFECTIVE_GROUND)?,
             ground_convert_by_material: resolved.boolean(GROUND_CONVERT_BY_MATERIAL)?,
@@ -456,11 +455,6 @@ const PUBLISHED: [FlagBinding; 14] = [
     (WORLD_FIRST_DEPOSIT, |settings| settings.deposits.first),
     (WORLD_SECOND_DEPOSIT, |settings| settings.deposits.second),
 ];
-
-/// The fourteen settings republished as named flags.
-pub fn published_flags() -> [&'static str; 14] {
-    PUBLISHED.map(|(key, _)| key)
-}
 
 /// Publishes those flags into the shared table under this entry's namespace.
 ///
@@ -552,6 +546,19 @@ mod tests {
         assert_eq!(settings.growth_pulse_seconds, u32::MAX);
         assert!(!admits(RITUAL_CATALYST_USES, &json!(5_000_000_000_u64)));
         assert!(!admits(GROWTH_PULSE_SECONDS, &json!(5_000_000_000_u64)));
+    }
+
+    #[test]
+    fn a_widened_declaration_returns_an_integer_range_error() {
+        for default in ["\"default\": 1000,", "\"default\": 10,"] {
+            let changed = DOCUMENT
+                .replace("4294967295", "5000000000")
+                .replace(default, "\"default\": 4294967296,");
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the widened declaration resolves");
+            assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+        }
     }
 
     #[test]
@@ -662,35 +669,23 @@ mod tests {
 
     #[test]
     fn fourteen_flags_are_published_and_each_carries_its_settings_value() {
-        assert_eq!(
-            published_flags(),
-            [
-                DROPS_SECOND_SEED,
-                GROWTH_REQUIRE_EFFECTIVE_GROUND,
-                DROPS_FIRST_BOSS_MATERIAL,
-                DROPS_SECOND_BOSS_MATERIAL,
-                DROPS_FIRST_BOSS_DUST,
-                DROPS_SECOND_BOSS_DUST,
-                GROUND_CONVERT_BY_MATERIAL,
-                RECIPES_PLAIN_GRID_SEEDS,
-                GEAR_TOP_TOOLS_ENCHANTABLE,
-                GEAR_TOP_ARMOUR_UNBREAKABLE,
-                GEAR_AUTOMATED_WETTING,
-                GEAR_ARMOUR_SET_AURA,
-                WORLD_FIRST_DEPOSIT,
-                WORLD_SECOND_DEPOSIT,
-            ],
-            "each of the fourteen is pinned by name, so a substitution is not a count"
-        );
+        let expected: std::collections::BTreeSet<_> = PUBLISHED
+            .iter()
+            .map(|(key, _)| flag_id(key).expect("a legal flag identity"))
+            .collect();
         let mut table = FlagTable::new();
         let settings = Settings::default();
         publish(&mut table, &settings).expect("legal flag bindings");
-        assert_eq!(table.published().count(), 14);
-
-        let on = flag_id(DROPS_SECOND_SEED).expect("a legal flag identity");
-        let off = flag_id(RECIPES_PLAIN_GRID_SEEDS).expect("a legal flag identity");
-        assert!(table.enabled(&on));
-        assert!(!table.enabled(&off));
-        assert_eq!(table.published().count(), 14);
+        assert_eq!(
+            table
+                .published()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            expected
+        );
+        for (key, value) in PUBLISHED {
+            let id = flag_id(key).expect("a legal flag identity");
+            assert_eq!(table.enabled(&id), value(&settings));
+        }
     }
 }

@@ -22,6 +22,7 @@ use rvl_042_counterpart::arithmetic::Colour;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::repair::Shape;
+use crate::settings::Flag;
 
 /// The tinted variants of the common stone drop.
 pub const TINTED_VARIANTS: usize = 16;
@@ -110,7 +111,7 @@ pub struct Group {
     /// How many entries the group registers.
     pub count: usize,
     /// The flags that must all hold for its entries to be listed.
-    pub gates: &'static [&'static str],
+    pub gates: &'static [Flag],
     /// The tool shape its entries are, where they are a tool at all.
     pub shape: Option<Shape>,
 }
@@ -119,12 +120,12 @@ pub struct Group {
 pub const BLOCK_GROUPS: [Group; 2] = [
     Group {
         count: TINTED_VARIANTS,
-        gates: &["tinted_stone"],
+        gates: &[Flag::TintedStone],
         shape: None,
     },
     Group {
         count: 1,
-        gates: &["light_block"],
+        gates: &[Flag::LightBlock],
         shape: None,
     },
 ];
@@ -143,7 +144,7 @@ pub const BLOCK_GROUPS: [Group; 2] = [
 pub const ITEM_GROUPS: [Group; 20] = [
     Group {
         count: 2,
-        gates: &["fuel_fragments"],
+        gates: &[Flag::FuelFragments],
         shape: None,
     },
     Group {
@@ -153,7 +154,7 @@ pub const ITEM_GROUPS: [Group; 20] = [
     },
     Group {
         count: 2,
-        gates: &["watering_tools"],
+        gates: &[Flag::WateringTools],
         shape: None,
     },
     Group {
@@ -163,7 +164,7 @@ pub const ITEM_GROUPS: [Group; 20] = [
     },
     Group {
         count: 3,
-        gates: &["sieve_meshes"],
+        gates: &[Flag::SieveMeshes],
         shape: None,
     },
     Group {
@@ -173,72 +174,72 @@ pub const ITEM_GROUPS: [Group; 20] = [
     },
     Group {
         count: 2,
-        gates: &["headpieces"],
+        gates: &[Flag::Headpieces],
         shape: None,
     },
     Group {
         count: 1,
-        gates: &["first_tier"],
+        gates: &[Flag::FirstTier],
         shape: Some(Shape::Sword),
     },
     Group {
         count: 4,
-        gates: &["first_tier"],
+        gates: &[Flag::FirstTier],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 1,
-        gates: &["second_tier"],
+        gates: &[Flag::SecondTier],
         shape: Some(Shape::Sword),
     },
     Group {
         count: 4,
-        gates: &["second_tier"],
+        gates: &[Flag::SecondTier],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 1,
-        gates: &["first_tier_shearing"],
+        gates: &[Flag::FirstTierShearing],
         shape: Some(Shape::Shearing),
     },
     Group {
         count: 1,
-        gates: &["second_tier_shearing"],
+        gates: &[Flag::SecondTierShearing],
         shape: Some(Shape::Shearing),
     },
     Group {
         count: 4,
-        gates: &["first_tier_armour"],
+        gates: &[Flag::FirstTierArmour],
         shape: Some(Shape::Armour),
     },
     Group {
         count: 4,
-        gates: &["second_tier_armour"],
+        gates: &[Flag::SecondTierArmour],
         shape: Some(Shape::Armour),
     },
     Group {
         count: 8,
-        gates: &["combined_tools"],
+        gates: &[Flag::CombinedTools],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 8,
-        gates: &["sweeping_wide"],
+        gates: &[Flag::SweepingWide],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 1,
-        gates: &["sweeping_wide", "sweeping_wide_upper"],
+        gates: &[Flag::SweepingWide, Flag::SweepingWideUpper],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 8,
-        gates: &["sweeping_tall"],
+        gates: &[Flag::SweepingTall],
         shape: Some(Shape::Digging),
     },
     Group {
         count: 1,
-        gates: &["sweeping_tall", "sweeping_tall_upper"],
+        gates: &[Flag::SweepingTall, Flag::SweepingTallUpper],
         shape: Some(Shape::Digging),
     },
 ];
@@ -368,7 +369,7 @@ pub fn grouping(namespace: &str) -> Result<Grouping, ContentIdError> {
     for (name, gates) in listed {
         let mut identified = Vec::with_capacity(gates.len());
         for gate in gates {
-            identified.push(FlagId::new(namespace, gate)?);
+            identified.push(FlagId::new(namespace, gate.name())?);
         }
         grouping.list(&name, identified);
     }
@@ -376,7 +377,7 @@ pub fn grouping(namespace: &str) -> Result<Grouping, ContentIdError> {
 }
 
 /// Pairs each name with the gates of the group its position falls in.
-fn gated(groups: &'static [Group], names: Vec<String>) -> Vec<(String, &'static [&'static str])> {
+fn gated(groups: &'static [Group], names: Vec<String>) -> Vec<(String, &'static [Flag])> {
     let mut paired = Vec::with_capacity(names.len());
     let mut names = names.into_iter();
     for group in groups {
@@ -456,8 +457,8 @@ pub fn declare_tags(
         }
     }
     for (gate, path) in [
-        ("sweeping_wide_upper", SWEEPING_WIDE_TAG),
-        ("sweeping_tall_upper", SWEEPING_TALL_TAG),
+        (Flag::SweepingWideUpper, SWEEPING_WIDE_TAG),
+        (Flag::SweepingTallUpper, SWEEPING_TALL_TAG),
     ] {
         let Some(name) = first_gated_on(gate) else {
             continue;
@@ -487,7 +488,7 @@ pub fn item_shapes() -> Vec<Option<Shape>> {
 /// cannot drift apart without the membership disappearing rather than landing on
 /// the wrong item.
 #[must_use]
-pub fn first_gated_on(gate: &str) -> Option<String> {
+pub fn first_gated_on(gate: Flag) -> Option<String> {
     let mut before = 0;
     for group in &ITEM_GROUPS {
         if group.gates.contains(&gate) {
@@ -648,20 +649,6 @@ mod tests {
         assert_eq!(counted, ITEMS);
         assert_eq!(item_names().len(), ITEMS);
 
-        let mut gated: Vec<&str> = BLOCK_GROUPS
-            .iter()
-            .chain(ITEM_GROUPS.iter())
-            .flat_map(|group| group.gates.iter().copied())
-            .collect();
-        gated.sort_unstable();
-        gated.dedup();
-        let mut bound: Vec<&str> = crate::settings::FLAG_BINDINGS
-            .iter()
-            .map(|(flag, _)| *flag)
-            .collect();
-        bound.sort_unstable();
-        assert_eq!(gated, bound, "every flag gates something and nothing else");
-
         assert_eq!(
             ITEM_GROUPS
                 .iter()
@@ -689,7 +676,7 @@ mod tests {
 
         let mut table = FlagTable::default();
         for (name, _) in crate::settings::FLAG_BINDINGS {
-            table.publish_constant(flag(name), true);
+            table.publish_constant(flag(name.name()), true);
         }
         let whole = grouping.shown(&table).len();
         assert_eq!(whole, BLOCKS + ITEMS);
@@ -697,11 +684,11 @@ mod tests {
         for (name, _) in crate::settings::FLAG_BINDINGS {
             let mut one_off = FlagTable::default();
             for (other, _) in crate::settings::FLAG_BINDINGS {
-                one_off.publish_constant(flag(other), other != name);
+                one_off.publish_constant(flag(other.name()), other != name);
             }
             assert!(
                 grouping.shown(&one_off).len() < whole,
-                "{name} gates at least one listed entry"
+                "{name:?} gates at least one listed entry"
             );
         }
     }

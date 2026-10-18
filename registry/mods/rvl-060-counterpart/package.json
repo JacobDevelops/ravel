@@ -59,7 +59,7 @@
       },
       {
         "path": "src/colour.rs",
-        "sha256": "81c3556f5ab8b739696181e997d7aa61852980864ee97aacef23b3aeebb17337"
+        "sha256": "b602f684b9c909bc2cb13d1fa87ed9a4aac99e7d0ef04cd1abf59335051ea39d"
       },
       {
         "path": "src/data.rs",
@@ -79,11 +79,11 @@
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "330875b4025ef90738422acdf8b0f42a2c1f23ad9339fc05582eb1dfcd728e78"
+        "sha256": "f3aade9a3bcd326fe270a9d13df7a650e4f3975de199086aff0753dd98d3a81a"
       },
       {
         "path": "src/highlights/declarations.rs",
-        "sha256": "83776989d6d74ff193230aee77b0701ea7e940f31cc0e707d5910298ce271dc2"
+        "sha256": "ea605bc5928f91f196bbefbe8287a8a450e05d32f33d2dee0e894caeb7438ef6"
       },
       {
         "path": "src/lib.rs",

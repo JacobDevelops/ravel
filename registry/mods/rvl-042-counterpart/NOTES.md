@@ -54,7 +54,7 @@ Structurally invalid and zero-count rows retain the explicitly reported skip pol
   selecting, so every tag-resulted recipe silently has no result until the file is fixed.
   `Selection::read_or_select` selects instead.
 - **A reference that bound to nothing is diagnosable (§4).** The bind-once rule is reproduced
-  exactly; `FlagReference::permanently_disabled` reports the case the original neither logs nor
+  exactly; `FlagReference::is_permanently_disabled` reports the case the original neither logs nor
   refuses.
 - **A direction view defaults to permitting (§7).** The original's wrapped view answers "may this go
   here" as false with no insert predicate set, where the unwrapped store answers true. Both permit

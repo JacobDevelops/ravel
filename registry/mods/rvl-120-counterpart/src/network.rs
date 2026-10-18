@@ -524,28 +524,24 @@ impl WireArgument {
 /// network is checked before a handler acts on the calling player's behalf.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedCommand {
-    /// The namespace of the package that owns the command.
-    pub namespace: String,
-    /// The command's own name.
-    pub name: String,
+    key: CommandKey,
     arguments: Vec<WireArgument>,
 }
 
 impl TypedCommand {
     /// Builds a call carrying a typed bag.
     #[must_use]
-    pub fn new(namespace: &str, name: &str, arguments: &[Argument]) -> Self {
+    pub fn new(key: CommandKey, arguments: &[Argument]) -> Self {
         Self {
-            namespace: namespace.to_owned(),
-            name: name.to_owned(),
+            key,
             arguments: arguments.iter().map(WireArgument::of).collect(),
         }
     }
 
-    /// Returns the key this call names, or nothing when it is not a legal one.
+    /// Returns the validated key this call names.
     #[must_use]
-    pub fn key(&self) -> Option<CommandKey> {
-        CommandKey::new(&self.namespace, &self.name)
+    pub const fn key(&self) -> &CommandKey {
+        &self.key
     }
 
     /// Returns how many arguments the call carries.
@@ -572,15 +568,18 @@ impl TypedCommand {
     }
 
     fn write_body(&self, writer: &mut PacketWriter) {
-        writer.u32(u32::try_from(self.arguments.len()).unwrap_or(u32::MAX));
+        writer.u32(u32::try_from(self.arguments.len()).expect("a packet list shorter than 2^32"));
         for argument in &self.arguments {
             argument.write(writer);
         }
     }
 
     fn read_body(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
-        let namespace = reader.text()?.to_owned();
-        let name = reader.text()?.to_owned();
+        let namespace = reader.text()?;
+        let name = reader.text()?;
+        let key = CommandKey::new(namespace, name).ok_or_else(|| WireError::InvalidValue {
+            message: format!("`{namespace}:{name}` is not a command key"),
+        })?;
         let announced = reader.u32()?;
         // Nothing is reserved for the announced count: a client that announces
         // four thousand million arguments must not make this end allocate for
@@ -589,11 +588,7 @@ impl TypedCommand {
         for _ in 0..announced {
             arguments.push(WireArgument::read(reader)?);
         }
-        Ok(Self {
-            namespace,
-            name,
-            arguments,
-        })
+        Ok(Self { key, arguments })
     }
 }
 
@@ -603,8 +598,8 @@ impl Packet for TypedCommand {
     }
 
     fn write(&self, writer: &mut PacketWriter) {
-        writer.text(&self.namespace);
-        writer.text(&self.name);
+        writer.text(self.key.namespace());
+        writer.text(self.key.name());
         self.write_body(writer);
     }
 
@@ -1022,7 +1017,8 @@ mod tests {
             Argument::Text("first".to_owned()),
             Argument::Boolean(true),
         ];
-        let call = TypedCommand::new("dependent", "act", &bag);
+        let key = CommandKey::new("dependent", "act").expect("a legal command key");
+        let call = TypedCommand::new(key.clone(), &bag);
         let arrived = admit::<TypedCommand>(&sent(&call)).expect("the payload round-trips");
 
         assert_eq!(arrived, call);
@@ -1031,14 +1027,22 @@ mod tests {
             bag,
             "an integer and a boolean arrive as themselves rather than as text"
         );
-        assert!(arrived.key().is_some());
+        assert_eq!(arrived.key(), &key);
         assert_eq!(arrived.count(), 3);
     }
 
     #[test]
     fn a_key_a_client_invented_is_refused_before_anything_is_looked_up() {
-        let invented = TypedCommand::new("dependent/../elsewhere", "act", &[]);
-        assert_eq!(invented.key(), None);
+        let mut writer = PacketWriter::default();
+        writer.text(&TypedCommand::contract().id().to_string());
+        writer.u32(PAYLOAD_VERSION);
+        writer.text("dependent/../elsewhere");
+        writer.text("act");
+        writer.u32(0);
+        assert!(matches!(
+            admit::<TypedCommand>(&writer.finish()),
+            Err(PayloadRefused::Wire(WireError::InvalidValue { .. }))
+        ));
     }
 
     #[test]
@@ -1065,7 +1069,8 @@ mod tests {
     #[test]
     fn an_argument_count_larger_than_a_call_may_carry_is_refused_as_a_ceiling() {
         let bag = vec![Argument::Boolean(true); MAX_ARGUMENTS + 1];
-        let call = TypedCommand::new("dependent", "act", &bag);
+        let key = CommandKey::new("dependent", "act").expect("a legal command key");
+        let call = TypedCommand::new(key, &bag);
         assert_eq!(
             admit::<TypedCommand>(&sent(&call)),
             Err(PayloadRefused::TooLarge {
@@ -1122,7 +1127,8 @@ mod tests {
 
     #[test]
     fn the_list_request_and_the_typed_command_are_two_contracts_of_the_same_transport() {
-        let call = TypedCommand::new("dependent", "listing", &[Argument::Integer(1)]);
+        let key = CommandKey::new("dependent", "listing").expect("a legal command key");
+        let call = TypedCommand::new(key, &[Argument::Integer(1)]);
         let listing = ListRequest(call.clone());
 
         assert_eq!(

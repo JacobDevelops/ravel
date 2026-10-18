@@ -13,11 +13,13 @@
 //! against the container's own slot count and refuses a slot the sender does not
 //! own, before anything is read out of it.
 
-use ravel_sdk::content::ContentIdError;
-use ravel_sdk::network::{Direction, PacketContract, PacketReader, PacketWriter, WireError};
+use ravel_sdk::Declared;
+use ravel_sdk::network::{
+    Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
+};
 use rvl_042_counterpart::arithmetic::Position;
 
-use crate::settings::{contract, to_bytes};
+use crate::settings::PACKET_VERSION;
 
 /// The name the item-level boolean is stored and synchronised under.
 pub const SWITCHED_ON: &str = "switched_on";
@@ -125,39 +127,33 @@ pub struct Switched {
     pub now: bool,
 }
 
-impl Toggle {
-    /// The contract this payload travels under.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ContentIdError`] when the declared name is not a legal path,
-    /// which for a constant is a packaging failure.
-    pub fn contract() -> Result<PacketContract, ContentIdError> {
-        contract(TOGGLE_PACKET, Direction::ToServer)
+impl Packet for Toggle {
+    fn contract() -> PacketContract {
+        PacketContract::new(
+            PacketId::new(
+                ravel_sdk::content::ContentId::new(
+                    crate::Entry::declared_id().clone(),
+                    TOGGLE_PACKET,
+                )
+                .expect("the packaged packet path is legal"),
+            ),
+            Direction::ToServer,
+            PACKET_VERSION,
+        )
     }
 
-    /// Writes the body: the one slot index.
-    pub fn write(&self, writer: &mut PacketWriter) {
+    fn write(&self, writer: &mut PacketWriter) {
         writer.u32(self.slot);
     }
 
-    /// Reads the body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WireError`] when the bytes do not spell this payload.
-    pub fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
+    fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         Ok(Self {
             slot: reader.u32()?,
         })
     }
+}
 
-    /// Writes this payload to bytes.
-    #[must_use]
-    pub fn to_bytes(&self) -> Vec<u8> {
-        to_bytes(&|writer| self.write(writer))
-    }
-
+impl Toggle {
     /// Applies an accepted toggle to the sender's own container.
     ///
     /// The three checks happen in this order and all three happen before the
@@ -170,15 +166,13 @@ impl Toggle {
     /// Returns the first [`Rejected`] the request earns. Nothing is changed on
     /// any refusal.
     pub fn apply(self, container: &mut Container) -> Result<Switched, Rejected> {
-        let count = u32::try_from(container.slots.len()).unwrap_or(u32::MAX);
-        if count > MAXIMUM_SLOTS {
+        if !u32::try_from(container.slots.len()).is_ok_and(|count| count <= MAXIMUM_SLOTS) {
             return Err(Rejected::ContainerTooLarge);
         }
-        if self.slot >= count {
-            return Err(Rejected::OutOfRange);
-        }
-        let index = usize::try_from(self.slot).map_err(|_| Rejected::OutOfRange)?;
-        let slot = container.slots.get_mut(index).ok_or(Rejected::OutOfRange)?;
+        let slot = usize::try_from(self.slot)
+            .ok()
+            .and_then(|index| container.slots.get_mut(index))
+            .ok_or(Rejected::OutOfRange)?;
         if !slot.owned_by_sender {
             return Err(Rejected::NotTheSenders);
         }
@@ -426,23 +420,33 @@ mod tests {
     #[test]
     fn the_payload_carries_one_slot_index_and_round_trips() {
         let sent = Toggle { slot: 37 };
-        let bytes = sent.to_bytes();
-        let mut reader = PacketReader::new(&bytes);
-        let read = Toggle::read(&mut reader).expect("the payload round-trips");
-        reader.finish().expect("the payload is read whole");
+        let bytes = ravel_sdk::network::encode(&sent);
+        let read = ravel_sdk::network::decode::<Toggle>(&bytes).expect("the payload round-trips");
         assert_eq!(read, sent);
     }
 
     #[test]
     fn a_buffer_that_ends_inside_the_index_is_refused() {
-        let bytes = Toggle { slot: 1 }.to_bytes();
-        let mut short = PacketReader::new(&bytes[..bytes.len() - 1]);
-        assert!(Toggle::read(&mut short).is_err());
+        let bytes = ravel_sdk::network::encode(&Toggle { slot: 1 });
+        assert!(ravel_sdk::network::decode::<Toggle>(&bytes[..bytes.len() - 1]).is_err());
+    }
+
+    #[test]
+    fn the_toggle_refuses_another_wire_version() {
+        let contract = Toggle::contract();
+        let mut writer = PacketWriter::default();
+        writer.text(&contract.id().to_string());
+        writer.u32(PACKET_VERSION + 1);
+        Toggle { slot: 1 }.write(&mut writer);
+        assert!(matches!(
+            ravel_sdk::network::decode::<Toggle>(&writer.finish()),
+            Err(WireError::Version { .. })
+        ));
     }
 
     #[test]
     fn the_payload_travels_from_a_client_to_a_server() {
-        let contract = Toggle::contract().expect("the declared name is legal");
+        let contract = Toggle::contract();
         assert_eq!(contract.direction(), Direction::ToServer);
         assert_eq!(contract.id().id().path(), TOGGLE_PACKET);
     }

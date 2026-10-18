@@ -74,11 +74,11 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "5b1a8fbce49c30e56a8d937aa41932dad86f7bf890ae3064e431a0dff1d8f3e0"
+        "sha256": "1a96f10c7e5d000a49c0001781dc98cebef7fd88c3ef53b4fe1e8ff1ea52769d"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "0dff166316a13c136d4ac56bb334fee80bf3ee12f8fd043be738012db2c219f5"
+        "sha256": "13309cf75ce66bf2663d0783e61b2da83d8c5b8698fb6b099b5d4f7ad6cbb4f7"
       },
       {
         "path": "src/menus.rs",
@@ -102,7 +102,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "b397ba86cdaad25b46d8cda4600d24cee6cceccb9c2cd6ac5188e7d4e4f53c49"
+        "sha256": "913378826fea0244a261ac9c7ceee3febdb9cf4fb5faf387b4c1623418749e19"
       },
       {
         "path": "src/shapes.rs",

@@ -85,7 +85,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "7e6a32685f411e9e884333b3a2c66b5d71de4ddc552f8c80fde7ef3cc141767d"
+        "sha256": "6cc2732d253f4597e5771a71d89d5f34fba6fc27ccc3196a00eb10fafa014a7a"
       },
       {
         "path": "src/foods.rs",
@@ -109,7 +109,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "88ffa5027fe2723c6fea5d3b01b73c1ef318c5ef6022a1f32c92f46ae073a408"
+        "sha256": "0abf6483c86a7e94af33f77f0b75b597570aca585b1446be61497f417b55bb32"
       },
       {
         "path": "src/tier.rs",
@@ -121,7 +121,7 @@
       },
       {
         "path": "src/world.rs",
-        "sha256": "dc737331fd2c1aeeda7cbdd05e0cf0af12670467271470466e523975941bfa29"
+        "sha256": "c5fa56100a4b0a8f21d05330324a34160ba40f203437545f872b0d6423388f54"
       }
     ]
   },

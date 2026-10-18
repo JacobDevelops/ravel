@@ -381,25 +381,20 @@ mod tests {
 
     #[test]
     fn a_declaration_is_either_a_bare_name_or_a_record() {
+        let mut declaration = Declaration::named("alternative").expect("a checked pack name");
         assert_eq!(
             Declaration::decode(&json!("alternative")),
-            Ok(Declaration {
-                name: "alternative".to_owned(),
-                description: None,
-                required: false,
-            })
+            Ok(declaration.clone())
         );
+        declaration.description = Some("a second look".to_owned());
+        declaration.required = true;
         assert_eq!(
             Declaration::decode(&json!({
                 "name": "alternative",
                 "description": "a second look",
                 "required": true
             })),
-            Ok(Declaration {
-                name: "alternative".to_owned(),
-                description: Some("a second look".to_owned()),
-                required: true,
-            })
+            Ok(declaration)
         );
     }
 
@@ -515,10 +510,9 @@ mod tests {
         assert_eq!(contribution.failures.len(), 1);
         let Failure { namespace, cause } = &contribution.failures[0];
         assert_eq!(namespace, "broken");
-        assert_ne!(
-            cause.len(),
-            0,
-            "the inner failure names what went wrong, which the original discards"
+        assert_eq!(
+            cause,
+            &PackError::Malformed("a declaration is neither a name nor a record".to_owned())
         );
     }
 

@@ -96,7 +96,7 @@ impl FlagTable {
 
     /// Returns whether an identity has been published.
     #[must_use]
-    pub fn holds(&self, id: &FlagId) -> bool {
+    pub fn is_published(&self, id: &FlagId) -> bool {
         self.published.contains_key(id)
     }
 
@@ -159,8 +159,8 @@ impl FlagReference {
     /// A later publication under the same identity is not seen: the reference
     /// adopts one predicate and never looks again. An identity absent at the
     /// first ask binds a constant-false predicate, which is the case
-    /// [`Self::permanently_disabled`] reports.
-    pub fn enabled(&mut self, table: &FlagTable) -> bool {
+    /// [`Self::is_permanently_disabled`] reports.
+    pub fn ask(&mut self, table: &FlagTable) -> bool {
         let predicate = self.bound.get_or_insert_with(|| {
             table.published.get(&self.id).cloned().unwrap_or_else(|| {
                 self.missing_at_bind = true;
@@ -175,7 +175,7 @@ impl FlagReference {
     /// The original neither logs nor refuses this case; reporting it is a
     /// deliberate divergence so a dependent can diagnose a flag stuck off.
     #[must_use]
-    pub const fn permanently_disabled(&self) -> bool {
+    pub const fn is_permanently_disabled(&self) -> bool {
         self.missing_at_bind
     }
 }
@@ -229,15 +229,15 @@ mod tests {
         let mut table = FlagTable::new();
         let mut reference = FlagReference::new(id("owner:late"));
 
-        assert!(!reference.enabled(&table));
-        assert!(reference.permanently_disabled());
+        assert!(!reference.ask(&table));
+        assert!(reference.is_permanently_disabled());
 
         table.publish_constant(id("owner:late"), true);
         assert!(
-            !reference.enabled(&table),
+            !reference.ask(&table),
             "the first ask bound the reference and it never looks again"
         );
-        assert!(reference.permanently_disabled());
+        assert!(reference.is_permanently_disabled());
     }
 
     #[test]
@@ -246,10 +246,10 @@ mod tests {
         table.publish_constant(id("owner:early"), true);
         let mut reference = FlagReference::new(id("owner:early"));
 
-        assert!(reference.enabled(&table));
+        assert!(reference.ask(&table));
         table.publish_constant(id("owner:early"), false);
-        assert!(reference.enabled(&table));
-        assert!(!reference.permanently_disabled());
+        assert!(reference.ask(&table));
+        assert!(!reference.is_permanently_disabled());
     }
 
     #[test]
@@ -263,16 +263,16 @@ mod tests {
         );
 
         let mut reference = FlagReference::new(id("owner:live"));
-        assert!(!reference.enabled(&table));
+        assert!(!reference.ask(&table));
         live.store(true, Ordering::SeqCst);
-        assert!(reference.enabled(&table));
+        assert!(reference.ask(&table));
     }
 
     #[test]
     fn a_reference_carries_no_value_until_it_is_asked() {
         let reference = FlagReference::new(id("owner:unasked"));
         assert!(!reference.is_bound());
-        assert!(!reference.permanently_disabled());
+        assert!(!reference.is_permanently_disabled());
     }
 
     #[test]

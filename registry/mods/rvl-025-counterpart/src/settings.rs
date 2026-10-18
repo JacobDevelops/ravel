@@ -25,15 +25,6 @@ pub const ENERGY_CAPACITY: &str = "infusing.energy_capacity";
 /// The key the machine's accept rate is written under.
 pub const ENERGY_ACCEPTED: &str = "infusing.energy_accepted_per_tick";
 
-/// The shipped default ceiling on completed upgrade steps.
-pub const DEFAULT_UPGRADE_CEILING: i32 = 256;
-/// The shipped default price of one tick of infusing.
-pub const DEFAULT_ENERGY_PER_TICK: i32 = 600;
-/// The shipped default buffer capacity.
-pub const DEFAULT_ENERGY_CAPACITY: i32 = 60_000;
-/// The shipped default accept rate.
-pub const DEFAULT_ENERGY_ACCEPTED: i32 = 600;
-
 /// The declaration this counterpart packages.
 ///
 /// Every setting is read on a server and none is synchronised to a joining
@@ -116,12 +107,13 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            upgrade_ceiling: DEFAULT_UPGRADE_CEILING,
-            energy_per_tick: DEFAULT_ENERGY_PER_TICK,
-            energy_capacity: DEFAULT_ENERGY_CAPACITY,
-            energy_accepted: DEFAULT_ENERGY_ACCEPTED,
-        }
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the shipped defaults resolve");
+        Self::read(&resolved).expect("declared settings have matching types")
     }
 }
 
@@ -134,10 +126,10 @@ impl Settings {
             i32::try_from(resolved.integer(name)?).map_err(|_| ValueError::IntegerRange)
         };
         Ok(Self {
-            upgrade_ceiling: integer(UPGRADE_CEILING)?.max(1),
-            energy_per_tick: integer(ENERGY_PER_TICK)?.max(0),
-            energy_capacity: integer(ENERGY_CAPACITY)?.max(0),
-            energy_accepted: integer(ENERGY_ACCEPTED)?.max(0),
+            upgrade_ceiling: integer(UPGRADE_CEILING)?,
+            energy_per_tick: integer(ENERGY_PER_TICK)?,
+            energy_capacity: integer(ENERGY_CAPACITY)?,
+            energy_accepted: integer(ENERGY_ACCEPTED)?,
         })
     }
 }

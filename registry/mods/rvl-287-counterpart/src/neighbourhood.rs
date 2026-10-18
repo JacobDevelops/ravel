@@ -157,6 +157,19 @@ impl Face {
         Self::East,
     ];
 
+    /// Returns the position in [`Self::ALL`] used by per-face slot assignment.
+    #[must_use]
+    pub const fn position(self) -> usize {
+        match self {
+            Self::Down => 0,
+            Self::Up => 1,
+            Self::North => 2,
+            Self::South => 3,
+            Self::West => 4,
+            Self::East => 5,
+        }
+    }
+
     /// Returns the name a declaration spells this face by.
     #[must_use]
     pub const fn declared_name(self) -> &'static str {
@@ -654,7 +667,8 @@ pub(crate) mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), 6);
-        for face in Face::ALL {
+        for (position, face) in Face::ALL.into_iter().enumerate() {
+            assert_eq!(face.position(), position);
             assert_eq!(Face::by_name(face.declared_name()), Some(face));
             assert_eq!(face.opposite().opposite(), face);
             assert_eq!(face.opposite().axis(), face.axis());

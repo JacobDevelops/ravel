@@ -119,7 +119,7 @@ pub fn settings() -> Result<String, ModError> {
         let bound: Vec<&str> = settings::FLAG_BINDINGS
             .iter()
             .filter(|(_, feature)| feature.key() == key)
-            .map(|(flag, _)| *flag)
+            .map(|(flag, _)| flag.name())
             .collect();
         let bound = if bound.is_empty() {
             "-".to_owned()
@@ -179,6 +179,10 @@ mod tests {
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
 
         for (relative, content) in rebuilt {
+            assert!(
+                content.ends_with('\n'),
+                "{relative} does not end with a newline"
+            );
             let path = root.join(relative);
             if regenerating {
                 let parent = path.parent().expect("a generated path has a directory");

@@ -280,7 +280,7 @@ mod tests {
                 continue;
             }
             let on_disk = std::fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("{relative} is missing from the package"));
+                .unwrap_or_else(|error| panic!("{relative} is missing from the package: {error}"));
             assert_eq!(
                 on_disk, rendered,
                 "{relative} on disk is not what the crate derives"

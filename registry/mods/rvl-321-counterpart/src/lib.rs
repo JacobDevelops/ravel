@@ -280,40 +280,30 @@ impl Entry {
         let Ok(id) = id.parse::<ContentId>() else {
             return json!({"registered": false, "refused": "a contribution names an invalid identifier"});
         };
-        let value = arguments
-            .get("value")
-            .and_then(JsonValue::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(0);
-        let strings = |key: &str| -> Vec<&str> {
-            arguments
-                .get(key)
-                .and_then(JsonValue::as_array)
-                .map_or_else(Vec::new, |held| {
-                    held.iter().filter_map(JsonValue::as_str).collect()
-                })
+        let (Some(value), Some(requirement), Some(stem), Some(kinds), Some(creatures)) = (
+            optional_field(arguments, "value", 0, |value| {
+                u32::try_from(value.as_u64()?).ok()
+            }),
+            optional_field(arguments, "requirement", 0.0, JsonValue::as_f64),
+            optional_field(arguments, "stem", id.to_string(), |value| {
+                value.as_str().map(str::to_owned)
+            }),
+            optional_field(arguments, "kinds", Vec::new(), string_array),
+            optional_field(arguments, "creatures", Vec::new(), string_array),
+        ) else {
+            return json!({"registered": false, "refused": "a contribution field has no legal value"});
         };
         let registered = match arguments.get("kind").and_then(JsonValue::as_str) {
             Some("tier") => self.registries.register_tier(Tier::new(id, value)),
-            Some("crop_kind") => {
-                let stem = arguments
-                    .get("stem")
-                    .and_then(JsonValue::as_str)
-                    .map_or_else(|| id.to_string(), str::to_owned);
-                self.registries.register_kind(CropKind::new(id, stem))
-            }
+            Some("crop_kind") => self.registries.register_kind(CropKind::new(id, stem)),
             Some("modifier") => {
-                let kinds = strings("kinds");
+                let kinds: Vec<_> = kinds.iter().map(String::as_str).collect();
                 self.registries
                     .register_modifier(registries::Modifier::new(id, value, &kinds))
             }
             Some("charge_type") => {
-                let requirement = arguments
-                    .get("requirement")
-                    .and_then(JsonValue::as_f64)
-                    .unwrap_or(0.0);
                 let mut charge = ChargeType::new(id, requirement, 255, 255, 255);
-                for creature in strings("creatures") {
+                for creature in creatures {
                     let Ok(creature) = creature.parse::<ContentId>() else {
                         return json!({"registered": false, "refused": "a charge type names an invalid creature identifier"});
                     };
@@ -351,6 +341,23 @@ impl Entry {
         }
         Ok(declaration)
     }
+}
+
+fn optional_field<T>(
+    arguments: &JsonValue,
+    name: &str,
+    default: T,
+    read: impl FnOnce(&JsonValue) -> Option<T>,
+) -> Option<T> {
+    arguments.get(name).map_or(Some(default), read)
+}
+
+fn string_array(value: &JsonValue) -> Option<Vec<String>> {
+    value
+        .as_array()?
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect()
 }
 
 #[declare_mod(id = "rvl_321_counterpart")]
@@ -703,6 +710,34 @@ mod tests {
             answer.value(),
             &json!({"registered": false, "refused": "a charge type names an invalid creature identifier"})
         );
+    }
+
+    #[test]
+    fn unreadable_contribution_fields_are_refused_instead_of_defaulted() {
+        let mut entry = Entry::new();
+        let before = Entry::new();
+        for (kind, field, value) in [
+            ("tier", "value", json!("wrong")),
+            ("tier", "value", json!(u64::MAX)),
+            ("charge_type", "requirement", json!(null)),
+            ("crop_kind", "stem", json!(false)),
+            ("modifier", "kinds", json!(["tool", 1])),
+            ("charge_type", "creatures", json!(["test:creature", false])),
+            ("modifier", "kinds", json!("tool")),
+        ] {
+            let mut arguments = json!({"kind": kind, "id": "test:invalid"});
+            arguments[field] = value;
+            let answer = entry.contribute(&arguments);
+            assert_eq!(answer["registered"], false);
+            assert!(answer["refused"].as_str().is_some());
+        }
+        assert_eq!(entry.registries().tiers(), before.registries().tiers());
+        assert_eq!(entry.registries().kinds(), before.registries().kinds());
+        assert_eq!(
+            entry.registries().modifiers(),
+            before.registries().modifiers()
+        );
+        assert_eq!(entry.registries().charges(), before.registries().charges());
     }
 
     #[test]

@@ -403,7 +403,7 @@ impl Value {
                     return Err(ColourError::NameTooLong(text.len()));
                 }
                 bytes.push(discriminator::NAMED);
-                let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
+                let len = u32::try_from(text.len()).expect("a packet list shorter than 2^32");
                 bytes.extend_from_slice(&len.to_be_bytes());
                 bytes.extend_from_slice(text);
             }

@@ -7,6 +7,7 @@
 //! and the draws are supplied by the caller rather than taken from a global
 //! source so that every rule with a number can be held to an assertion.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::Stack;
 use rvl_042_counterpart::arithmetic::{Mature, sweep_harvest};
 
@@ -30,11 +31,7 @@ pub struct Below {
 impl Below {
     /// Reads the block below against the tier table.
     #[must_use]
-    pub fn read(
-        block: Option<&ravel_sdk::content::ContentId>,
-        tier: &Tier,
-        tiers: &[Tier],
-    ) -> Self {
+    pub fn read(block: Option<&ContentId>, tier: &Tier, tiers: &[Tier]) -> Self {
         let tiered = tiers
             .iter()
             .find(|held| held.is_effective_ground(block))
@@ -198,7 +195,7 @@ pub fn produce_from_value(value: u32, even_bump: f64) -> u32 {
 /// seed is the replant, and it is the same rule the shared library's sweeping
 /// harvest applies, so the one implementation there decides both.
 #[must_use]
-pub fn machine_harvest(drops: Vec<Stack>, seed: Option<String>) -> Vec<Stack> {
+pub fn machine_harvest(drops: Vec<Stack>, seed: Option<ContentId>) -> Vec<Stack> {
     let mature = Mature { drops, seed };
     let mut allow = |_| true;
     sweep_harvest((0, 0, 0), 0, &|_| Some(mature.clone()), &mut allow).drops
@@ -468,20 +465,16 @@ mod tests {
 
     #[test]
     fn the_machine_withholds_exactly_one_seed_and_keeps_the_rest() {
-        let drops = vec![Stack::new("test:material", 3), Stack::new("test:seeds", 2)];
-        let kept = machine_harvest(drops, Some("test:seeds".to_owned()));
-        assert_eq!(
-            kept,
-            [Stack::new("test:material", 3), Stack::new("test:seeds", 1)]
-        );
+        let material: ContentId = "test:material".parse().expect("a legal material identity");
+        let seed: ContentId = "test:seeds".parse().expect("a legal seed identity");
+        let drops = vec![Stack::new(material.clone(), 3), Stack::new(seed.clone(), 2)];
+        let kept = machine_harvest(drops, Some(seed.clone()));
+        assert_eq!(kept, [Stack::new(material, 3), Stack::new(seed.clone(), 1)]);
 
-        let single = machine_harvest(
-            vec![Stack::new("test:seeds", 1)],
-            Some("test:seeds".to_owned()),
-        );
+        let single = machine_harvest(vec![Stack::new(seed.clone(), 1)], Some(seed.clone()));
         assert_eq!(single.len(), 0, "the last seed is the replant");
 
-        let unresolved = machine_harvest(vec![Stack::new("test:seeds", 2)], None);
-        assert_eq!(unresolved, [Stack::new("test:seeds", 2)]);
+        let unresolved = machine_harvest(vec![Stack::new(seed.clone(), 2)], None);
+        assert_eq!(unresolved, [Stack::new(seed, 2)]);
     }
 }

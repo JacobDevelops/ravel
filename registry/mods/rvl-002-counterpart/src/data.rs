@@ -46,12 +46,6 @@ pub const fn covered(shape: LootShape) -> usize {
     }
 }
 
-/// Entity loot tables, chest loot tables and loot modifiers this entry ships.
-///
-/// None. The boss drops go through an event rather than through loot, so the
-/// event handler is not loot-table data at all.
-pub const OTHER_LOOT_DOCUMENTS: usize = 0;
-
 /// Tag documents this entry ships.
 pub const TAG_DOCUMENTS: usize = 48;
 
@@ -61,9 +55,6 @@ pub const STORAGE_TAG_FACTS: usize = 10;
 
 /// The documents those ten facts take, which is twice ten.
 pub const STORAGE_TAG_DOCUMENTS: usize = STORAGE_TAG_FACTS * 2;
-
-/// Whether any tag document this entry ships replaces rather than appends.
-pub const ANY_TAG_REPLACES: bool = false;
 
 /// A tag document's registry and whether it has a counterpart in the other one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -122,9 +113,6 @@ pub const IRON_TIER: usize = 3;
 /// Blocks placed at the stone mining tier.
 pub const STONE_TIER: usize = 9;
 
-/// Language documents this entry ships, the reference one included.
-pub const LANGUAGES: usize = 12;
-
 /// Keys the reference language carries.
 pub const REFERENCE_KEYS: usize = 104;
 
@@ -133,31 +121,6 @@ pub const LANGUAGE_KEYS: [usize; 11] = [104, 104, 104, 104, 104, 98, 98, 105, 10
 
 /// Whether this entry owns any world-persisted state of its own.
 pub const OWNS_PERSISTED_STATE: bool = false;
-
-/// What carries across a save and a reload.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Survives {
-    /// A host block-state value, in the dependency's moisture range.
-    GroundMoisture,
-    /// The dependency's slotted modifier list, plus damage and unbreakable
-    /// markers, on a tool.
-    ToolItemData,
-    /// A player's running effects, with their accumulated durations intact.
-    RunningEffects,
-    /// Every registered identifier, whether or not its companion mod returned.
-    Identifiers,
-}
-
-/// Everything that survives, and nothing else does.
-pub const SURVIVING: [Survives; 4] = [
-    Survives::GroundMoisture,
-    Survives::ToolItemData,
-    Survives::RunningEffects,
-    Survives::Identifiers,
-];
-
-/// What a bucket carries across a reload, which is nothing.
-pub const BUCKET_ITEM_DATA: usize = 0;
 
 /// One tag document, and the members this entry puts in it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -554,7 +517,6 @@ mod tests {
             format!("{}:multi_tools", rvl_042_counterpart::MOD_ID),
             format!("{HOST_NAMESPACE}:cluster_harvest"),
         ];
-        assert_eq!(listings.len(), TOOL_TAG_LISTINGS);
         for id in &listings {
             assert_eq!(
                 members(&declaration, ContentKind::Item, id),
@@ -607,8 +569,6 @@ mod tests {
             documents + covered(LootShape::CodePath),
             census::BLOCK_ITEMS
         );
-        assert_eq!(covered(LootShape::CodePath), 1);
-        const { assert!(!crate::ground::SHIPS_LOOT_DOCUMENT) };
     }
 
     #[test]
@@ -665,8 +625,6 @@ mod tests {
 
     #[test]
     fn the_language_counts_are_the_measured_ones_and_not_an_assumption_of_parity() {
-        assert_eq!(LANGUAGE_KEYS.len() + 1, LANGUAGES);
-
         let matching = LANGUAGE_KEYS
             .iter()
             .filter(|keys| **keys == REFERENCE_KEYS)
@@ -682,12 +640,6 @@ mod tests {
             .filter(|keys| **keys > REFERENCE_KEYS)
             .count();
         assert_eq!(over, 2, "the comparison is not a subset test either way");
-    }
-
-    #[test]
-    fn this_entry_owns_no_world_persisted_state_of_its_own() {
-        assert_eq!(SURVIVING.len(), 4);
-        assert!(SURVIVING.contains(&Survives::Identifiers));
     }
 
     #[test]

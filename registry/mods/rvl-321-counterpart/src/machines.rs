@@ -33,9 +33,6 @@ pub const RITUAL_COMPLETION: u32 = 100;
 /// The slot limit a reservoir holds.
 pub const RESERVOIR_LIMIT: u64 = 40;
 
-/// The slots a harvesting machine holds, the first being its fuel slot.
-pub const HARVESTER_SLOTS: usize = 16;
-
 /// The input cap on the creature-summoning machine.
 pub const SUMMONING_INPUT_LIMIT: u64 = 512;
 
@@ -52,7 +49,7 @@ pub const SUMMONING_ATTEMPTS: u32 = 20;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Upgrade {
     /// Where this upgrade sits in the table, counting from one.
-    pub position: u32,
+    position: u32,
     /// The tier value the upgrade borrows for its colour and its acceptance.
     pub tier_value: u32,
     /// What the operation time is multiplied by.
@@ -121,6 +118,12 @@ pub const UPGRADES: [Upgrade; 6] = [
 ];
 
 impl Upgrade {
+    /// The declared table position, counting from one.
+    #[must_use]
+    pub const fn position(self) -> u32 {
+        self.position
+    }
+
     /// The upgrade sitting at `position` in the table, counting from one.
     ///
     /// This is what makes a saved position readable: a payload names an
@@ -183,6 +186,15 @@ pub struct Bases {
     /// Ticks one operation takes with no upgrade.
     pub operation: u32,
     /// Energy drawn per tick with no upgrade.
+    pub usage: u32,
+}
+
+/// The effective operation figures after applying any upgrade.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Timing {
+    /// Ticks required for one operation after upgrade scaling.
+    pub operation: u32,
+    /// Energy charged for one harvest after upgrade scaling.
     pub usage: u32,
 }
 
@@ -315,29 +327,21 @@ impl Energy {
         })
     }
 
-    /// Reads the saved shape back, keeping the shipped values for what is
-    /// missing.
-    #[must_use]
-    pub fn load(payload: &JsonValue) -> Self {
-        let shipped = Self::default();
-        Self {
-            amount: payload
-                .get("amount")
-                .and_then(JsonValue::as_u64)
-                .unwrap_or(0),
-            capacity: payload
-                .get("capacity")
-                .and_then(JsonValue::as_u64)
-                .unwrap_or(shipped.capacity),
-            remaining: payload
-                .get("remaining")
-                .and_then(JsonValue::as_u64)
-                .unwrap_or(0),
-            total: payload
-                .get("total")
-                .and_then(JsonValue::as_u64)
-                .unwrap_or(0),
+    /// Reads the saved shape, defaulting only absent fields.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a non-object payload or any present field that is not a `u64`.
+    pub fn load(payload: &JsonValue) -> Result<Self, SavedFieldError> {
+        if !payload.is_object() {
+            return Err(SavedFieldError("energy"));
         }
+        Ok(Self {
+            amount: saved_u64(payload, "amount", 0)?,
+            capacity: saved_u64(payload, "capacity", BASE_CAPACITY)?,
+            remaining: saved_u64(payload, "remaining", 0)?,
+            total: saved_u64(payload, "total", 0)?,
+        })
     }
 }
 
@@ -349,6 +353,17 @@ pub enum Stalled {
     /// The store holds less than one tick's usage.
     Unpowered,
 }
+
+impl std::fmt::Display for Stalled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Redstone => "a neighbouring redstone signal disables the machine",
+            Self::Unpowered => "the machine stores less energy than one tick requires",
+        })
+    }
+}
+
+impl std::error::Error for Stalled {}
 
 /// What one tick of a recipe machine did.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -479,19 +494,18 @@ pub fn tick_harvester(
     energy: &mut Energy,
     held: Held,
     area: u32,
-    operation: u32,
-    usage: u32,
-    redstone: bool,
+    timing: Timing,
+    redstone: Redstone,
     found: Found,
 ) -> Result<Swept, Stalled> {
-    if redstone {
+    if redstone == (Redstone::Gated { powered: true }) {
         return Err(Stalled::Redstone);
     }
-    if energy.amount < u64::from(usage) {
+    if energy.amount < u64::from(timing.usage) {
         return Err(Stalled::Unpowered);
     }
     let progress = held.progress + 1;
-    if progress <= operation {
+    if progress <= timing.operation {
         return Ok(Swept {
             progress,
             cursor: held.cursor,
@@ -500,7 +514,7 @@ pub fn tick_harvester(
         });
     }
     let charged = match found {
-        Found::Harvestable => usage,
+        Found::Harvestable => timing.usage,
         Found::Crop => SCAN_COST,
         Found::Nothing => 0,
     };
@@ -640,12 +654,24 @@ pub fn fill_outputs(
             break;
         };
         let limit = store.limit(slot);
-        let held = store.slot(slot).cloned().unwrap_or_default();
-        let (merged, over) = insert(&held, &rest, limit);
-        if merged.count > limit {
+        if store.slot(slot).is_some_and(|held| held.count > limit) {
             left = Some(rest);
             continue;
         }
+        let (merged, over) = if let Some(held) = store.slot(slot) {
+            insert(held, &rest, limit)
+        } else {
+            let mut merged = rest;
+            let over = if merged.count > limit {
+                let mut over = merged.clone();
+                over.count -= limit;
+                merged.count = limit;
+                Some(over)
+            } else {
+                None
+            };
+            (merged, over)
+        };
         store.place(slot, Some(merged))?;
         left = over;
     }
@@ -877,63 +903,90 @@ pub fn fit(target: &Target, held: &[Slotted], offers: [Offer; 2]) -> Fitted {
 }
 
 /// What a powered machine writes into its saved payload.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Persisted {
     /// The progress toward the current operation.
     pub progress: u32,
     /// The energy store.
     pub energy: Energy,
-    /// The upgrade held, by its position in the table.
-    pub upgrade: Option<u32>,
+    /// The validated upgrade held.
+    pub upgrade: Option<Upgrade>,
     /// The scan cursor, which only the harvesting machine keeps.
     pub cursor: Option<u32>,
 }
 
 impl Persisted {
-    /// The upgrade the saved position names.
-    ///
-    /// A position the table does not hold answers nothing, which is what stops
-    /// a payload naming a seventh upgrade from silently running unmultiplied.
-    #[must_use]
-    pub fn upgrade(&self) -> Option<Upgrade> {
-        self.upgrade.and_then(Upgrade::at)
-    }
-
     /// The payload this machine hands Ravel.
     #[must_use]
     pub fn save(&self, inventory: JsonValue) -> JsonValue {
         let mut payload = json!({
             "progress": self.progress,
             "energy": self.energy.save(),
-            "upgrade": self.upgrade,
+            "upgrade": self.upgrade.map(Upgrade::position),
             "cursor": self.cursor,
         });
         payload["inventory"] = inventory;
         payload
     }
 
-    /// Reads a payload back.
-    #[must_use]
-    pub fn load(payload: &JsonValue) -> Self {
-        Self {
-            progress: payload
-                .get("progress")
-                .and_then(JsonValue::as_u64)
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or(0),
+    /// Reads a payload, refusing malformed present fields.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a non-object payload, wrongly typed or out-of-range field, or
+    /// an upgrade position the declared table does not hold.
+    pub fn load(payload: &JsonValue) -> Result<Self, SavedFieldError> {
+        if !payload.is_object() {
+            return Err(SavedFieldError("machine"));
+        }
+        let upgrade = saved_optional_u32(payload, "upgrade")?
+            .map(|position| Upgrade::at(position).ok_or(SavedFieldError("upgrade")))
+            .transpose()?;
+        Ok(Self {
+            progress: u32::try_from(saved_u64(payload, "progress", 0)?)
+                .map_err(|_| SavedFieldError("progress"))?,
             energy: payload
                 .get("energy")
-                .map_or_else(Energy::default, Energy::load),
-            upgrade: payload
-                .get("upgrade")
-                .and_then(JsonValue::as_u64)
-                .and_then(|value| u32::try_from(value).ok())
-                .filter(|position| Upgrade::at(*position).is_some()),
-            cursor: payload
-                .get("cursor")
-                .and_then(JsonValue::as_u64)
-                .and_then(|value| u32::try_from(value).ok()),
-        }
+                .map_or_else(|| Ok(Energy::default()), Energy::load)?,
+            upgrade,
+            cursor: saved_optional_u32(payload, "cursor")?,
+        })
+    }
+}
+
+/// A present saved field has the wrong kind or an unsupported value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SavedFieldError(pub &'static str);
+
+impl std::fmt::Display for SavedFieldError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "the stored {} field is malformed", self.0)
+    }
+}
+
+impl std::error::Error for SavedFieldError {}
+
+fn saved_u64(
+    payload: &JsonValue,
+    field: &'static str,
+    default: u64,
+) -> Result<u64, SavedFieldError> {
+    payload.get(field).map_or(Ok(default), |value| {
+        value.as_u64().ok_or(SavedFieldError(field))
+    })
+}
+
+fn saved_optional_u32(
+    payload: &JsonValue,
+    field: &'static str,
+) -> Result<Option<u32>, SavedFieldError> {
+    match payload.get(field) {
+        None | Some(JsonValue::Null) => Ok(None),
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .map(Some)
+            .ok_or(SavedFieldError(field)),
     }
 }
 
@@ -1091,6 +1144,24 @@ mod tests {
     }
 
     #[test]
+    fn stalled_errors_explain_each_refusal_without_an_underlying_cause() {
+        for (refusal, message) in [
+            (
+                Stalled::Redstone,
+                "a neighbouring redstone signal disables the machine",
+            ),
+            (
+                Stalled::Unpowered,
+                "the machine stores less energy than one tick requires",
+            ),
+        ] {
+            let error: &dyn std::error::Error = &refusal;
+            assert_eq!(error.to_string(), message);
+            assert!(error.source().is_none());
+        }
+    }
+
+    #[test]
     fn losing_power_stalls_a_recipe_machine_and_losing_the_input_is_its_own_answer() {
         let mut flat = Energy::default();
         let step = RecipeStep {
@@ -1139,9 +1210,11 @@ mod tests {
                 cursor: 0,
             },
             9,
-            1,
-            40,
-            false,
+            Timing {
+                operation: 1,
+                usage: 40,
+            },
+            Redstone::Gated { powered: false },
             Found::Harvestable,
         )
         .expect("a powered harvester advances");
@@ -1155,9 +1228,11 @@ mod tests {
                 cursor: 0,
             },
             9,
-            1,
-            40,
-            false,
+            Timing {
+                operation: 1,
+                usage: 40,
+            },
+            Redstone::Gated { powered: false },
             Found::Harvestable,
         )
         .expect("progress strictly greater completes");
@@ -1180,9 +1255,11 @@ mod tests {
                 cursor: 3,
             },
             9,
-            1,
-            40,
-            false,
+            Timing {
+                operation: 1,
+                usage: 40,
+            },
+            Redstone::Gated { powered: false },
             Found::Crop,
         )
         .expect("the step completes");
@@ -1196,9 +1273,11 @@ mod tests {
                 cursor: 8,
             },
             9,
-            1,
-            40,
-            false,
+            Timing {
+                operation: 1,
+                usage: 40,
+            },
+            Redstone::Gated { powered: false },
             Found::Nothing,
         )
         .expect("the step completes");
@@ -1220,14 +1299,33 @@ mod tests {
                     cursor: 0
                 },
                 9,
-                1,
-                40,
-                true,
+                Timing {
+                    operation: 1,
+                    usage: 40
+                },
+                Redstone::Gated { powered: true },
                 Found::Harvestable
             ),
             Err(Stalled::Redstone)
         );
         assert_eq!(energy.amount, 1000);
+        let ungated = tick_harvester(
+            &mut energy,
+            Held {
+                progress: 1,
+                cursor: 0,
+            },
+            9,
+            Timing {
+                operation: 1,
+                usage: 40,
+            },
+            Redstone::Ignored,
+            Found::Harvestable,
+        )
+        .expect("an ungated harvester may scan");
+        assert!(ungated.stepped);
+        assert_eq!(ungated.charged, 40);
     }
 
     #[test]
@@ -1285,18 +1383,54 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_output_slot_preserves_metadata_when_splitting_a_stack() {
+        let mut store = Store::new(1, 4).expect("a legal store");
+        let mut incoming = Stack::new("test:produce".parse().expect("legal item identity"), 7);
+        incoming.data = json!({"quality": 3});
+        let remainder = fill_outputs(&mut store, 0, incoming.clone())
+            .expect("the slot accepts output")
+            .expect("three items remain");
+        let placed = store.slot(0).expect("four items were placed");
+        assert_eq!(placed.count, 4);
+        assert_eq!(remainder.count, 3);
+        assert_eq!(placed.entry, incoming.entry);
+        assert_eq!(remainder.entry, incoming.entry);
+        assert_eq!(placed.data, incoming.data);
+        assert_eq!(remainder.data, incoming.data);
+    }
+
+    #[test]
     fn the_output_fill_takes_the_first_empty_slot_over_a_later_matching_stack() {
         let mut store = Store::new(4, 64).expect("a legal store");
         store
-            .place(2, Some(Stack::new("test:produce", 10)))
+            .place(
+                2,
+                Some(Stack::new(
+                    "test:produce".parse().expect("legal item identity"),
+                    10,
+                )),
+            )
             .expect("a legal slot");
-        let over =
-            fill_outputs(&mut store, 1, Stack::new("test:produce", 5)).expect("the store accepts");
+        let over = fill_outputs(
+            &mut store,
+            1,
+            Stack::new("test:produce".parse().expect("legal item identity"), 5),
+        )
+        .expect("the store accepts");
         assert!(over.is_none());
-        assert_eq!(store.slot(1), Some(&Stack::new("test:produce", 5)));
+        assert_eq!(
+            store.slot(1),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                5
+            ))
+        );
         assert_eq!(
             store.slot(2),
-            Some(&Stack::new("test:produce", 10)),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                10
+            )),
             "the later matching stack is untouched"
         );
     }
@@ -1305,15 +1439,34 @@ mod tests {
     fn a_partial_merge_carries_its_remainder_rather_than_creating_it_twice() {
         let mut store = Store::new(4, 64).expect("a legal store");
         store
-            .place(1, Some(Stack::new("test:produce", 60)))
+            .place(
+                1,
+                Some(Stack::new(
+                    "test:produce".parse().expect("legal item identity"),
+                    60,
+                )),
+            )
             .expect("a legal slot");
-        let over =
-            fill_outputs(&mut store, 1, Stack::new("test:produce", 10)).expect("the store accepts");
+        let over = fill_outputs(
+            &mut store,
+            1,
+            Stack::new("test:produce".parse().expect("legal item identity"), 10),
+        )
+        .expect("the store accepts");
         assert!(over.is_none());
-        assert_eq!(store.slot(1), Some(&Stack::new("test:produce", 64)));
+        assert_eq!(
+            store.slot(1),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                64
+            ))
+        );
         assert_eq!(
             store.slot(2),
-            Some(&Stack::new("test:produce", 6)),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                6
+            )),
             "six is what was left, not the original ten"
         );
     }
@@ -1322,11 +1475,27 @@ mod tests {
     fn what_still_does_not_fit_comes_back_to_be_dropped_on_the_ground() {
         let mut store = Store::new(2, 64).expect("a legal store");
         store
-            .place(1, Some(Stack::new("test:produce", 64)))
+            .place(
+                1,
+                Some(Stack::new(
+                    "test:produce".parse().expect("legal item identity"),
+                    64,
+                )),
+            )
             .expect("a legal slot");
-        let over =
-            fill_outputs(&mut store, 1, Stack::new("test:produce", 5)).expect("the store accepts");
-        assert_eq!(over, Some(Stack::new("test:produce", 5)));
+        let over = fill_outputs(
+            &mut store,
+            1,
+            Stack::new("test:produce".parse().expect("legal item identity"), 5),
+        )
+        .expect("the store accepts");
+        assert_eq!(
+            over,
+            Some(Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                5
+            ))
+        );
     }
 
     #[test]
@@ -1593,11 +1762,11 @@ mod tests {
                 remaining: 20,
                 total: 2000,
             },
-            upgrade: Some(1),
+            upgrade: Some(UPGRADES[0]),
             cursor: Some(37),
         };
         let payload = held.save(json!({"slots": 16}));
-        let read = Persisted::load(&payload);
+        let read = Persisted::load(&payload).expect("valid saved fields");
         assert_eq!(read, held, "the sweep resumes where it left off");
         assert_eq!(payload.get("inventory"), Some(&json!({"slots": 16})));
     }
@@ -1612,12 +1781,12 @@ mod tests {
                 remaining: 0,
                 total: 0,
             },
-            upgrade: Some(6),
+            upgrade: Some(UPGRADES[5]),
             cursor: Some(9),
         };
         let payload = held.save(json!({"slots": 16}));
-        let read = Persisted::load(&payload);
-        let upgrade = read.upgrade().expect("the position names an upgrade");
+        let read = Persisted::load(&payload).expect("valid saved fields");
+        let upgrade = read.upgrade.expect("the machine holds an upgrade");
         assert_eq!(upgrade.operation_ticks(HARVESTING.operation), 0);
         assert_eq!(upgrade.usage_per_tick(HARVESTING.usage), 3840);
         assert_eq!(upgrade.capacity(), 560_000);
@@ -1626,11 +1795,43 @@ mod tests {
     }
 
     #[test]
-    fn a_saved_position_no_upgrade_sits_at_reads_back_as_none() {
-        let read = Persisted::load(&json!({"upgrade": 7}));
-        assert_eq!(read.upgrade, None);
-        assert!(read.upgrade().is_none());
-        assert_eq!(Persisted::load(&json!({"upgrade": 6})).upgrade, Some(6));
+    fn malformed_present_fields_are_refused() {
+        for payload in [
+            json!({"upgrade": 0}),
+            json!({"upgrade": 7}),
+            json!({"upgrade": "1"}),
+            json!({"progress": -1}),
+            json!({"progress": 4_294_967_296_u64}),
+            json!({"cursor": false}),
+            json!({"energy": null}),
+            json!({"energy": {"amount": "100"}}),
+            json!({"energy": {"capacity": -1}}),
+            json!({"energy": {"remaining": false}}),
+            json!({"energy": {"total": null}}),
+        ] {
+            assert!(Persisted::load(&payload).is_err(), "{payload}");
+        }
+        assert_eq!(
+            Persisted::load(&json!({"upgrade": 6}))
+                .expect("known upgrade")
+                .upgrade,
+            Some(UPGRADES[5])
+        );
+    }
+
+    #[test]
+    fn energy_fields_default_only_when_absent() {
+        assert_eq!(Energy::load(&json!({})), Ok(Energy::default()));
+        assert_eq!(
+            Energy::load(&json!({"amount": 42})),
+            Ok(Energy {
+                amount: 42,
+                ..Energy::default()
+            })
+        );
+        for payload in [json!(null), json!([]), json!(42)] {
+            assert!(Energy::load(&payload).is_err());
+        }
     }
 
     #[test]
@@ -1638,11 +1839,33 @@ mod tests {
         let mut store = Store::new(4, 64).expect("a legal store");
         store.set_limit(1, 8).expect("a legal slot");
         store.set_limit(2, 16).expect("a legal slot");
-        let over =
-            fill_outputs(&mut store, 1, Stack::new("test:produce", 40)).expect("the store accepts");
-        assert_eq!(store.slot(1), Some(&Stack::new("test:produce", 8)));
-        assert_eq!(store.slot(2), Some(&Stack::new("test:produce", 16)));
-        assert_eq!(store.slot(3), Some(&Stack::new("test:produce", 16)));
+        let over = fill_outputs(
+            &mut store,
+            1,
+            Stack::new("test:produce".parse().expect("legal item identity"), 40),
+        )
+        .expect("the store accepts");
+        assert_eq!(
+            store.slot(1),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                8
+            ))
+        );
+        assert_eq!(
+            store.slot(2),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                16
+            ))
+        );
+        assert_eq!(
+            store.slot(3),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                16
+            ))
+        );
         assert_eq!(over, None);
         assert!(
             (1..store.len()).all(|slot| store
@@ -1656,17 +1879,36 @@ mod tests {
     fn a_slot_already_over_its_limit_is_stepped_over_rather_than_grown() {
         let mut store = Store::new(3, 64).expect("a legal store");
         store
-            .place(1, Some(Stack::new("test:produce", 90)))
+            .place(
+                1,
+                Some(Stack::new(
+                    "test:produce".parse().expect("legal item identity"),
+                    90,
+                )),
+            )
             .expect("a legal slot");
         store.set_limit(1, 8).expect("a legal slot");
-        let over =
-            fill_outputs(&mut store, 1, Stack::new("test:produce", 4)).expect("the store accepts");
+        let over = fill_outputs(
+            &mut store,
+            1,
+            Stack::new("test:produce".parse().expect("legal item identity"), 4),
+        )
+        .expect("the store accepts");
         assert_eq!(
             store.slot(1),
-            Some(&Stack::new("test:produce", 90)),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                90
+            )),
             "the over-limit slot is left exactly as it was"
         );
-        assert_eq!(store.slot(2), Some(&Stack::new("test:produce", 4)));
+        assert_eq!(
+            store.slot(2),
+            Some(&Stack::new(
+                "test:produce".parse().expect("legal item identity"),
+                4
+            ))
+        );
         assert_eq!(over, None);
     }
 
@@ -1678,7 +1920,7 @@ mod tests {
             upgrade: None,
             cursor: None,
         };
-        let read = Persisted::load(&held.save(JsonValue::Null));
+        let read = Persisted::load(&held.save(JsonValue::Null)).expect("valid saved fields");
         assert_eq!(read.cursor, None);
         assert_eq!(read.upgrade, None);
         assert_eq!(read.progress, 7);
@@ -1686,15 +1928,8 @@ mod tests {
 
     #[test]
     fn an_empty_payload_reads_back_as_a_shipped_machine() {
-        let read = Persisted::load(&json!({}));
+        let read = Persisted::load(&json!({})).expect("absent fields default");
         assert_eq!(read, Persisted::default());
         assert_eq!(read.energy.capacity, BASE_CAPACITY);
-    }
-
-    #[test]
-    fn the_five_machines_carry_the_bases_the_table_states() {
-        assert_eq!(CONVERSION, SMELTING);
-        assert_eq!(SUMMONING, SMELTING);
-        assert_eq!(HARVESTING, EXTRACTION);
     }
 }

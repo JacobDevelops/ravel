@@ -394,7 +394,9 @@ fn gated(groups: &'static [Group], names: Vec<String>) -> Vec<(String, &'static 
 #[derive(Debug)]
 pub enum TagRefused {
     /// The tag's own name is not a legal identity.
-    Name(String),
+    Name(ContentIdError),
+    /// The tag namespace is not legal.
+    Namespace(ravel_sdk::ModIdError),
     /// The declaration refused the membership itself.
     Declaration(ContentDeclarationError),
 }
@@ -403,7 +405,20 @@ impl fmt::Display for TagRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Name(detail) => write!(formatter, "the tag name is not legal: {detail}"),
+            Self::Namespace(source) => {
+                write!(formatter, "the tag namespace is not legal: {source}")
+            }
             Self::Declaration(source) => write!(formatter, "{source}"),
+        }
+    }
+}
+
+impl std::error::Error for TagRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Name(source) => Some(source),
+            Self::Namespace(source) => Some(source),
+            Self::Declaration(source) => Some(source),
         }
     }
 }
@@ -496,12 +511,9 @@ const fn shape_tag(shape: Shape) -> &'static str {
 }
 
 fn tag(namespace: &str, path: &str) -> Result<TagId, TagRefused> {
-    let namespace = namespace
-        .parse()
-        .map_err(|_| TagRefused::Name(namespace.to_owned()))?;
-    let id =
-        ContentId::new(namespace, path).map_err(|source| TagRefused::Name(source.to_string()))?;
-    TagId::new(ContentKind::Item, id).map_err(|source| TagRefused::Name(source.to_string()))
+    let namespace = namespace.parse().map_err(TagRefused::Namespace)?;
+    let id = ContentId::new(namespace, path).map_err(TagRefused::Name)?;
+    Ok(TagId::new(ContentKind::Item, id).expect("item identities support tags"))
 }
 
 /// The names of the seventeen blocks, generated rather than transcribed.
@@ -537,6 +549,23 @@ pub fn tint(variant: usize) -> Option<Colour> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_tag_names_retain_the_underlying_error() {
+        for (namespace, path, context) in [
+            ("Bad Namespace", "item", "the tag namespace is not legal"),
+            ("example", "Bad Path", "the tag name is not legal"),
+        ] {
+            let refused = tag(namespace, path).expect_err("an invalid tag identity");
+            let source =
+                std::error::Error::source(&refused).expect("the underlying identity error");
+            assert_eq!(refused.to_string(), format!("{context}: {source}"));
+            match namespace {
+                "Bad Namespace" => assert!(matches!(refused, TagRefused::Namespace(_))),
+                _ => assert!(matches!(refused, TagRefused::Name(_))),
+            }
+        }
+    }
 
     fn flag(name: &str) -> FlagId {
         FlagId::new("rvl_086_counterpart", name).unwrap_or_else(|_| {

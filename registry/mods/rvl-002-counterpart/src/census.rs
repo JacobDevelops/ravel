@@ -29,10 +29,6 @@ pub const PER_FLUID_FAMILY: usize = 5;
 /// Registrations the six fluid families make in total.
 pub const FLUID_REGISTRATIONS: usize = FLUID_FAMILIES * PER_FLUID_FAMILY;
 
-/// The experience an ore block yields on break, which the host applies only when
-/// the drop is not the block itself.
-pub const ORE_EXPERIENCE: (u32, u32) = (2, 5);
-
 /// One group of blocks, with the hardness and blast resistance it declares.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockGroup {
@@ -137,27 +133,6 @@ pub const LISTING: [Listed; 5] = [
 pub const fn guarded(section: Listed) -> bool {
     matches!(section, Listed::Anchors)
 }
-
-/// The properties every fluid family shares.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FluidProperties {
-    /// Density.
-    pub density: u32,
-    /// Viscosity.
-    pub viscosity: u32,
-    /// Temperature.
-    pub temperature: u32,
-}
-
-/// The one property set all six families share.
-pub const FLUID_PROPERTIES: FluidProperties = FluidProperties {
-    density: 2000,
-    viscosity: 10_000,
-    temperature: 1000,
-};
-
-/// The stack limit a bucket declares.
-pub const BUCKET_STACK_LIMIT: u64 = 1;
 
 /// The tint index a bucket's fluid colour is applied at.
 pub const BUCKET_TINT_INDEX: u32 = 1;
@@ -408,11 +383,6 @@ mod tests {
         let per_family = 1 + 2 + 1 + 1;
         assert_eq!(per_family, PER_FLUID_FAMILY);
         assert_eq!(FLUID_FAMILIES * 2, 12, "still and flowing, twelve fluids");
-    }
-
-    #[test]
-    fn the_ore_blocks_declare_an_experience_range_of_two_to_five() {
-        assert!(ORE_EXPERIENCE.0 <= ORE_EXPERIENCE.1);
     }
 
     #[test]

@@ -16,6 +16,7 @@
 //! supplies. The kind decides nothing once the seed is in hand, so it is not
 //! carried.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::arithmetic::{Mature, sweep_harvest};
 use rvl_042_counterpart::inventory::Stack;
 
@@ -54,7 +55,7 @@ pub struct Clicked {
     /// What breaking it outright would produce.
     pub drops: Vec<Stack>,
     /// The entry one withheld seed is taken from.
-    pub seed: Option<String>,
+    pub seed: Option<ContentId>,
 }
 
 /// Harvests a clicked crop, or answers nothing when the click does not apply.
@@ -93,11 +94,15 @@ pub fn harvest(
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     fn crop(drops: Vec<Stack>, seed: Option<&str>) -> Clicked {
         Clicked {
             mature: true,
             drops,
-            seed: seed.map(ToOwned::to_owned),
+            seed: seed.map(|entry| entry.parse().expect("a valid seed identity")),
         }
     }
 
@@ -106,8 +111,8 @@ mod tests {
         let settings = Settings::default();
         let clicked = crop(
             vec![
-                Stack::new("example:produce", 2),
-                Stack::new("example:seed", 3),
+                Stack::new(id("example:produce"), 2),
+                Stack::new(id("example:seed"), 3),
             ],
             Some("example:seed"),
         );
@@ -116,8 +121,8 @@ mod tests {
         assert_eq!(
             harvested.drops,
             vec![
-                Stack::new("example:produce", 2),
-                Stack::new("example:seed", 2)
+                Stack::new(id("example:produce"), 2),
+                Stack::new(id("example:seed"), 2)
             ]
         );
         assert_eq!(harvested.stage, FIRST_STAGE);
@@ -130,35 +135,41 @@ mod tests {
         let settings = Settings::default();
         let clicked = crop(
             vec![
-                Stack::new("example:produce", 1),
-                Stack::new("example:seed", 1),
+                Stack::new(id("example:produce"), 1),
+                Stack::new(id("example:seed"), 1),
             ],
             Some("example:seed"),
         );
         let harvested = harvest(&settings, Hand::Main, &clicked, true).expect("a harvest");
-        assert_eq!(harvested.drops, vec![Stack::new("example:produce", 1)]);
+        assert_eq!(harvested.drops, vec![Stack::new(id("example:produce"), 1)]);
     }
 
     #[test]
     fn only_the_first_matching_stack_is_reduced() {
         let settings = Settings::default();
         let clicked = crop(
-            vec![Stack::new("example:seed", 2), Stack::new("example:seed", 2)],
+            vec![
+                Stack::new(id("example:seed"), 2),
+                Stack::new(id("example:seed"), 2),
+            ],
             Some("example:seed"),
         );
         let harvested = harvest(&settings, Hand::Main, &clicked, true).expect("a harvest");
         assert_eq!(
             harvested.drops,
-            vec![Stack::new("example:seed", 1), Stack::new("example:seed", 2)]
+            vec![
+                Stack::new(id("example:seed"), 1),
+                Stack::new(id("example:seed"), 2)
+            ]
         );
     }
 
     #[test]
     fn a_crop_whose_seed_is_not_identified_drops_everything() {
         let settings = Settings::default();
-        let clicked = crop(vec![Stack::new("example:produce", 4)], None);
+        let clicked = crop(vec![Stack::new(id("example:produce"), 4)], None);
         let harvested = harvest(&settings, Hand::Main, &clicked, true).expect("a harvest");
-        assert_eq!(harvested.drops, vec![Stack::new("example:produce", 4)]);
+        assert_eq!(harvested.drops, vec![Stack::new(id("example:produce"), 4)]);
     }
 
     #[test]
@@ -166,18 +177,24 @@ mod tests {
         let settings = Settings::default();
         let clicked = Clicked {
             mature: true,
-            drops: vec![Stack::new("example:nether_seed", 2)],
-            seed: Some("example:nether_seed".to_owned()),
+            drops: vec![Stack::new(id("example:nether_seed"), 2)],
+            seed: Some(id("example:nether_seed")),
         };
         let harvested = harvest(&settings, Hand::Main, &clicked, true).expect("a harvest");
-        assert_eq!(harvested.drops, vec![Stack::new("example:nether_seed", 1)]);
+        assert_eq!(
+            harvested.drops,
+            vec![Stack::new(id("example:nether_seed"), 1)]
+        );
         assert_eq!(harvested.stage, FIRST_STAGE);
     }
 
     #[test]
     fn an_off_hand_click_a_client_and_an_immature_crop_all_do_nothing() {
         let settings = Settings::default();
-        let clicked = crop(vec![Stack::new("example:seed", 2)], Some("example:seed"));
+        let clicked = crop(
+            vec![Stack::new(id("example:seed"), 2)],
+            Some("example:seed"),
+        );
         assert!(harvest(&settings, Hand::Off, &clicked, true).is_none());
         assert!(harvest(&settings, Hand::Main, &clicked, false).is_none());
 
@@ -192,7 +209,10 @@ mod tests {
     fn switching_the_feature_off_stops_the_harvest() {
         let mut settings = Settings::default();
         settings.switches[Feature::CropHarvest.index()] = false;
-        let clicked = crop(vec![Stack::new("example:seed", 2)], Some("example:seed"));
+        let clicked = crop(
+            vec![Stack::new(id("example:seed"), 2)],
+            Some("example:seed"),
+        );
         assert!(harvest(&settings, Hand::Main, &clicked, true).is_none());
     }
 }

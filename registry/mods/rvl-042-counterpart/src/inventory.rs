@@ -2,10 +2,11 @@
 //!
 //! A store is a fixed number of slots holding stacks. Its saved form is a list
 //! of entries, one per occupied slot and each carrying its slot index, plus the
-//! slot count. On load the count grows the store and never reduces it, and an
-//! entry that fails to decode is skipped while the rest still loads. That
+//! slot count. On load the count grows the store and never reduces it, and a
+//! structurally invalid entry is skipped while the rest still loads. That
 //! partial tolerance is the difference between a removed dependent costing one
-//! slot and costing the whole machine.
+//! slot and costing the whole machine. An invalid identity instead refuses the
+//! whole load atomically, preserving its stored spelling and typed error.
 //!
 //! The one deliberate departure from the host's own encoding is the count: it is
 //! written whole so a slot may hold far more than a normal maximum, which is
@@ -14,6 +15,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::{JsonValue, json};
 
 /// The largest a normal stack is, and the unit a raised per-slot limit is a
@@ -32,22 +34,22 @@ pub const NORMAL_MAXIMUM: u64 = 64;
 pub const MAXIMUM_SLOTS: usize = 65_536;
 
 /// One stack: what it is, how many, and the entry-level data it carries.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stack {
     /// The entry identifier this stack holds.
-    pub entry: String,
-    /// How many, which is not held to the normal maximum.
+    pub entry: ContentId,
+    /// How many, which is not held to the normal maximum. Zero alone denotes absence.
     pub count: u64,
     /// The entry-level data that travels with the stack.
     pub data: JsonValue,
 }
 
 impl Stack {
-    /// Builds a stack of one entry, taking ownership of an owned identifier.
+    /// Builds a stack with a validated entry identity.
     #[must_use]
-    pub fn new(entry: impl Into<String>, count: u64) -> Self {
+    pub fn new(entry: ContentId, count: u64) -> Self {
         Self {
-            entry: entry.into(),
+            entry,
             count,
             data: JsonValue::Null,
         }
@@ -56,7 +58,7 @@ impl Stack {
     /// Returns whether this stack holds nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.count == 0 || self.entry.is_empty()
+        self.count == 0
     }
 
     /// Returns whether two stacks may merge: same entry and same data.
@@ -66,22 +68,56 @@ impl Stack {
     }
 
     /// Reads a stack from its saved form.
-    fn read(value: &JsonValue) -> Option<Self> {
-        let entry = value.get("entry")?.as_str()?;
-        let count = value.get("count")?.as_u64()?;
-        if entry.is_empty() || count == 0 {
-            return None;
-        }
-        Some(Self {
-            entry: entry.to_owned(),
+    fn read(value: &JsonValue) -> Result<Option<Self>, LoadRefused> {
+        let Some(spelling) = value.get("entry").and_then(JsonValue::as_str) else {
+            return Ok(None);
+        };
+        let entry = spelling.parse().map_err(|source| LoadRefused {
+            spelling: spelling.to_owned(),
+            source,
+        })?;
+        let Some(count) = value
+            .get("count")
+            .and_then(JsonValue::as_u64)
+            .filter(|count| *count > 0)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(Self {
+            entry,
             count,
             data: value.get("data").cloned().unwrap_or(JsonValue::Null),
-        })
+        }))
     }
 
     /// Writes a stack to its saved form.
     fn write(&self) -> JsonValue {
         json!({ "entry": self.entry, "count": self.count, "data": self.data })
+    }
+}
+
+/// A saved identity cannot be represented without losing its original spelling.
+#[derive(Debug)]
+pub struct LoadRefused {
+    /// The identifier exactly as it appeared in the saved row.
+    pub spelling: String,
+    /// The typed reason the identity cannot be loaded.
+    pub source: ContentIdError,
+}
+
+impl fmt::Display for LoadRefused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "saved entry {:?} is not a legal identity: {}",
+            self.spelling, self.source
+        )
+    }
+}
+
+impl std::error::Error for LoadRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
     }
 }
 
@@ -339,8 +375,21 @@ impl Store {
     /// skipped and counted rather than failing the load. A count above
     /// [`MAXIMUM_SLOTS`] is refused the same way: the store keeps the size it
     /// has and the refusal is counted as a skip rather than allocated.
-    pub fn load(&mut self, payload: &JsonValue) -> LoadReport {
+    ///
+    /// # Errors
+    ///
+    /// Returns the original saved spelling and typed error for an invalid identity.
+    /// Identity validation completes before any size or slot changes are applied.
+    pub fn load(&mut self, payload: &JsonValue) -> Result<LoadReport, LoadRefused> {
         let mut report = LoadReport::default();
+        let Some(entries) = payload.get("entries").and_then(JsonValue::as_array) else {
+            report.skipped += 1;
+            return Ok(report);
+        };
+        let mut decoded = Vec::with_capacity(entries.len());
+        for row in entries {
+            decoded.push(row.get("stack").map_or(Ok(None), Stack::read)?);
+        }
         if let Some(count) = payload.get("count").and_then(JsonValue::as_u64) {
             match usize::try_from(count) {
                 Ok(wanted) if wanted <= MAXIMUM_SLOTS => {
@@ -354,17 +403,13 @@ impl Store {
                 _ => report.skipped += 1,
             }
         }
-        let Some(entries) = payload.get("entries").and_then(JsonValue::as_array) else {
-            report.skipped += 1;
-            return report;
-        };
-        for entry in entries {
+        for (entry, stack) in entries.iter().zip(decoded) {
             let placed = entry
                 .get("slot")
                 .and_then(JsonValue::as_u64)
                 .and_then(|slot| usize::try_from(slot).ok())
                 .filter(|slot| *slot < self.slots.len())
-                .zip(entry.get("stack").and_then(Stack::read));
+                .zip(stack);
             match placed {
                 Some((slot, stack)) => {
                     self.slots[slot] = Some(stack);
@@ -373,7 +418,7 @@ impl Store {
                 None => report.skipped += 1,
             }
         }
-        report
+        Ok(report)
     }
 }
 
@@ -440,8 +485,44 @@ fn check_limit(slot: Option<usize>, limit: u64) -> Result<(), StoreRefused> {
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     fn store(slots: usize) -> Store {
         Store::new(slots, NORMAL_MAXIMUM).expect("the normal maximum is a legal default")
+    }
+
+    #[test]
+    fn only_zero_count_denotes_an_empty_valid_stack() {
+        let entry = id("test:item");
+        let mut stack = Stack::new(entry, 0);
+        assert!(stack.is_empty());
+        stack.count = 1;
+        assert!(!stack.is_empty());
+    }
+
+    #[test]
+    fn loading_refuses_invalid_identities_and_zero_count_rows() {
+        for entry in ["", "item", "test:Bad Path", "test:"] {
+            let refusal =
+                Stack::read(&json!({"entry": entry, "count": 1})).expect_err("an invalid identity");
+            assert_eq!(refusal.spelling, entry);
+            assert!(std::error::Error::source(&refusal).is_some());
+        }
+        assert!(
+            Stack::read(&json!({"entry": "test:item", "count": 0}))
+                .expect("a valid empty row")
+                .is_none()
+        );
+        let saved = json!({"entry": "test:item", "count": 1});
+        let loaded = Stack::read(&saved)
+            .expect("a valid identity")
+            .expect("an occupied stack");
+        assert_eq!(
+            loaded.write(),
+            json!({"entry": "test:item", "count": 1, "data": null})
+        );
     }
 
     #[test]
@@ -476,12 +557,12 @@ mod tests {
     #[test]
     fn a_count_above_the_normal_maximum_round_trips() {
         let mut held = store(1);
-        held.place(0, Some(Stack::new("bulk", 4096)))
+        held.place(0, Some(Stack::new(id("test:bulk"), 4096)))
             .expect("slot zero is in the store");
         let saved = held.save();
 
         let mut read = store(1);
-        let report = read.load(&saved);
+        let report = read.load(&saved).expect("valid saved identities");
         assert_eq!(report.placed, 1);
         assert_eq!(read.slot(0).map(|stack| stack.count), Some(4096));
     }
@@ -489,7 +570,8 @@ mod tests {
     #[test]
     fn the_saved_form_carries_one_entry_per_occupied_slot_with_its_index() {
         let mut held = store(4);
-        held.place(2, Some(Stack::new("one", 3))).expect("in range");
+        held.place(2, Some(Stack::new(id("test:one"), 3)))
+            .expect("in range");
         let saved = held.save();
         assert_eq!(saved["count"], 4);
         assert_eq!(saved["entries"].as_array().map(Vec::len), Some(1));
@@ -500,45 +582,61 @@ mod tests {
     fn a_load_grows_to_the_recorded_count_and_never_below_the_current_size() {
         let mut small = store(2);
         small
-            .place(0, Some(Stack::new("one", 1)))
+            .place(0, Some(Stack::new(id("test:one"), 1)))
             .expect("in range");
         let saved = small.save();
 
         let mut large = store(9);
-        let report = large.load(&saved);
+        let report = large.load(&saved).expect("valid saved identities");
         assert_eq!(large.len(), 9, "a smaller recorded count does not reduce");
         assert_eq!(report.grown, 0);
 
         let mut grown = store(1);
-        let report = grown.load(&json!({ "entries": [], "count": 6 }));
+        let report = grown
+            .load(&json!({ "entries": [], "count": 6 }))
+            .expect("valid saved identities");
         assert_eq!(grown.len(), 6);
         assert_eq!(report.grown, 5);
     }
 
     #[test]
-    fn an_entry_that_does_not_decode_is_skipped_and_the_rest_still_loads() {
-        let mut held = store(3);
-        let report = held.load(&json!({
-            "count": 3,
-            "entries": [
-                { "slot": 0, "stack": { "entry": "one", "count": 2 } },
-                { "slot": 1, "stack": { "entry": "", "count": 2 } },
-                { "slot": 9, "stack": { "entry": "far", "count": 1 } },
-                { "slot": 2, "stack": { "entry": "two", "count": 5 } }
-            ]
-        }));
-        assert_eq!(report.placed, 2);
+    fn structural_rows_are_reported_without_discarding_valid_rows() {
+        let mut held = store(2);
+        let report = held
+            .load(&json!({"count": 2, "entries": [
+                {"slot": 0, "stack": {"entry": "test:one", "count": 2}},
+                {"slot": 1, "stack": {"entry": 42, "count": 2}},
+                {"slot": 9, "stack": {"entry": "test:far", "count": 1}}
+            ]}))
+            .expect("all written identity strings are legal");
+        assert_eq!(report.placed, 1);
         assert_eq!(report.skipped, 2);
         assert_eq!(held.slot(0).map(|stack| stack.count), Some(2));
-        assert_eq!(held.slot(2).map(|stack| stack.count), Some(5));
-        assert!(held.slot(1).is_none());
+    }
+
+    #[test]
+    fn invalid_saved_identity_refuses_without_growing_or_changing_slots() {
+        let mut held = store(3);
+        held.place(0, Some(Stack::new(id("test:old"), 2)))
+            .expect("slot exists");
+        let before = held.save();
+        let refused = held
+            .load(&json!({"count": 6, "entries": [
+                {"slot": 0, "stack": {"entry": "test:new", "count": 1}},
+                {"slot": 1, "stack": {"entry": "1mod:x", "count": 2}}
+            ]}))
+            .expect_err("an unrepresentable saved identity");
+        assert_eq!(refused.spelling, "1mod:x");
+        assert!(std::error::Error::source(&refused).is_some());
+        assert_eq!(held.save(), before);
     }
 
     #[test]
     fn with_no_slot_marked_as_output_neither_restriction_applies() {
         let mut held = store(2);
-        held.place(0, Some(Stack::new("one", 1))).expect("in range");
-        assert!(held.may_insert(0, &Stack::new("one", 1), Access::Outside));
+        held.place(0, Some(Stack::new(id("test:one"), 1)))
+            .expect("in range");
+        assert!(held.may_insert(0, &Stack::new(id("test:one"), 1), Access::Outside));
         assert!(held.may_extract(0, Access::Outside));
     }
 
@@ -546,11 +644,13 @@ mod tests {
     fn an_output_slot_refuses_outside_insertion_and_a_plain_slot_refuses_outside_extraction() {
         let mut held = store(2);
         held.mark_output(1).expect("in range");
-        held.place(0, Some(Stack::new("one", 1))).expect("in range");
-        held.place(1, Some(Stack::new("two", 1))).expect("in range");
+        held.place(0, Some(Stack::new(id("test:one"), 1)))
+            .expect("in range");
+        held.place(1, Some(Stack::new(id("test:two"), 1)))
+            .expect("in range");
 
-        assert!(!held.may_insert(1, &Stack::new("two", 1), Access::Outside));
-        assert!(held.may_insert(0, &Stack::new("one", 1), Access::Outside));
+        assert!(!held.may_insert(1, &Stack::new(id("test:two"), 1), Access::Outside));
+        assert!(held.may_insert(0, &Stack::new(id("test:one"), 1), Access::Outside));
         assert!(!held.may_extract(0, Access::Outside));
         assert!(held.may_extract(1, Access::Outside));
     }
@@ -559,13 +659,14 @@ mod tests {
     fn the_owner_bypasses_the_output_rule_and_both_predicates() {
         let mut held = store(1);
         held.mark_output(0).expect("in range");
-        held.place(0, Some(Stack::new("one", 1))).expect("in range");
+        held.place(0, Some(Stack::new(id("test:one"), 1)))
+            .expect("in range");
         held.on_insert(Arc::new(|_, _| false));
         held.on_extract(Arc::new(|_, _| false));
 
-        assert!(held.may_insert(0, &Stack::new("one", 1), Access::Owner));
+        assert!(held.may_insert(0, &Stack::new(id("test:one"), 1), Access::Owner));
         assert!(held.may_extract(0, Access::Owner));
-        assert!(!held.may_insert(0, &Stack::new("one", 1), Access::Outside));
+        assert!(!held.may_insert(0, &Stack::new(id("test:one"), 1), Access::Outside));
         assert!(!held.may_extract(0, Access::Outside));
     }
 
@@ -573,17 +674,19 @@ mod tests {
     fn a_direction_view_with_no_predicate_permits_where_the_original_refused() {
         let held = store(1);
         let facing = Facing::new(&held, None);
-        assert!(facing.may_insert(0, &Stack::new("one", 1)));
+        assert!(facing.may_insert(0, &Stack::new(id("test:one"), 1)));
 
         let refusing = Facing::new(&held, Some(Arc::new(|_, _| false)));
-        assert!(!refusing.may_insert(0, &Stack::new("one", 1)));
+        assert!(!refusing.may_insert(0, &Stack::new(id("test:one"), 1)));
     }
 
     #[test]
     fn a_direction_consults_its_own_predicate_before_taking_from_a_slot() {
         let mut held = store(2);
-        held.place(0, Some(Stack::new("one", 1))).expect("in range");
-        held.place(1, Some(Stack::new("two", 1))).expect("in range");
+        held.place(0, Some(Stack::new(id("test:one"), 1)))
+            .expect("in range");
+        held.place(1, Some(Stack::new(id("test:two"), 1)))
+            .expect("in range");
 
         let permitting = Facing::new(&held, Some(Arc::new(|slot, _| slot == 0)));
         assert!(permitting.may_extract(0));
@@ -601,17 +704,23 @@ mod tests {
     #[test]
     fn a_saved_count_above_the_declared_maximum_is_skipped_rather_than_allocated() {
         let mut held = store(2);
-        let report = held.load(&json!({ "entries": [], "count": 1_099_511_627_776_u64 }));
+        let report = held
+            .load(&json!({ "entries": [], "count": 1_099_511_627_776_u64 }))
+            .expect("valid saved identities");
         assert_eq!(held.len(), 2, "a hostile count grows the store by nothing");
         assert_eq!(report.grown, 0);
         assert_eq!(report.skipped, 1);
 
-        let report = held.load(&json!({ "entries": [], "count": u64::MAX }));
+        let report = held
+            .load(&json!({ "entries": [], "count": u64::MAX }))
+            .expect("valid saved identities");
         assert_eq!(held.len(), 2);
         assert_eq!(report.skipped, 1);
 
         let mut room = store(0);
-        let report = room.load(&json!({ "entries": [], "count": MAXIMUM_SLOTS }));
+        let report = room
+            .load(&json!({ "entries": [], "count": MAXIMUM_SLOTS }))
+            .expect("valid saved identities");
         assert_eq!(
             room.len(),
             MAXIMUM_SLOTS,
@@ -623,14 +732,20 @@ mod tests {
     #[test]
     fn a_payload_carrying_no_entry_list_is_counted_as_a_skip() {
         let mut held = store(1);
-        let report = held.load(&json!({ "count": 1 }));
+        let report = held
+            .load(&json!({ "count": 1 }))
+            .expect("valid saved identities");
         assert_eq!(report.skipped, 1);
 
-        let report = held.load(&json!({ "count": 1, "entries": "not a list" }));
+        let report = held
+            .load(&json!({ "count": 1, "entries": "not a list" }))
+            .expect("valid saved identities");
         assert_eq!(report.skipped, 1);
 
         let mut empty = store(1);
-        let report = empty.load(&json!({ "count": 1, "entries": [] }));
+        let report = empty
+            .load(&json!({ "count": 1, "entries": [] }))
+            .expect("valid saved identities");
         assert_eq!(
             report.skipped, 0,
             "an inventory that is legitimately empty is not a skipped entry"
@@ -643,22 +758,23 @@ mod tests {
         held.set_limit(0, NORMAL_MAXIMUM * 2).expect("a multiple");
         held.mark_output(1).expect("in range");
         held.on_insert(Arc::new(|slot, _| slot == 0));
-        held.place(0, Some(Stack::new("one", 3))).expect("in range");
+        held.place(0, Some(Stack::new(id("test:one"), 3)))
+            .expect("in range");
 
         let copy = held.clone();
         assert_eq!(copy.limit(0), 128);
         assert!(copy.has_outputs());
-        assert_eq!(copy.slot(0), Some(&Stack::new("one", 3)));
-        assert!(!copy.may_insert(1, &Stack::new("one", 1), Access::Outside));
+        assert_eq!(copy.slot(0), Some(&Stack::new(id("test:one"), 3)));
+        assert!(!copy.may_insert(1, &Stack::new(id("test:one"), 1), Access::Outside));
     }
 
     #[test]
     fn two_stacks_merge_only_on_the_same_entry_and_the_same_data() {
-        let mut one = Stack::new("one", 1);
-        let two = Stack::new("one", 1);
+        let mut one = Stack::new(id("test:one"), 1);
+        let two = Stack::new(id("test:one"), 1);
         assert!(one.merges_with(&two));
         one.data = json!({ "charge": 1 });
         assert!(!one.merges_with(&two));
-        assert!(!Stack::new("one", 1).merges_with(&Stack::new("two", 1)));
+        assert!(!Stack::new(id("test:one"), 1).merges_with(&Stack::new(id("test:two"), 1)));
     }
 }

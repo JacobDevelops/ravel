@@ -34,6 +34,12 @@ Ravel rather than rebuilt.
 | §12 client presentation | gating only | `src/settings.rs` |
 | §13 the command | declared as a name only | `src/lib.rs` |
 
+Shared stacks and optional harvest seeds carry validated `ContentId` identities. A stack with
+count zero is empty regardless of its valid identity; stores continue to model vacant slots as
+`None`. Saved identities remain strings. An unrepresentable identity refuses the entire load
+before any slot or capacity changes and retains its original spelling and typed parse error.
+Structurally invalid and zero-count rows retain the explicitly reported skip policy.
+
 ## Behaviour changes, each declared rather than incidental
 
 - **Selection honours the preference order (§5.3).** The original folds its comparator over a

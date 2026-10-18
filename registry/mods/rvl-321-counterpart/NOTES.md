@@ -100,10 +100,11 @@ reparses the package constant or reports an impossible identity failure.
   operand it is handed, which is not a consistent ordering. Nothing here sorts containers with an
   inconsistent comparator: `cache::Cache` is a sorted map and every ordering in this package is
   total.
-- **A saved upgrade position outside the table reads back as no upgrade (§12.3).** The original
-  stores the upgrade as a table position and reads it back unchecked. `machines::Upgrade::at` is the
-  checked lookup and `Persisted::load` filters through it, so a payload naming a seventh upgrade
-  loses the upgrade rather than running a machine on multipliers nothing declares.
+- **Malformed present machine fields refuse world opening (§12.3).** Progress and cursor must fit
+  `u32`, every energy field must be a `u64`, and an upgrade position must name a declared upgrade.
+  Null is accepted only for the optional upgrade and cursor, as written by `save`. Live persisted
+  state holds a validated `Upgrade` rather than an unchecked position, so saves remain readable.
+  Failed reads preserve the entire previous in-memory machine table rather than partially replacing it.
 - **A saved payload that is missing a field reads back as the shipped value (§12.3).**
   `machines::Persisted::load` and `machines::Energy::load` keep the shipped capacity rather than
   refusing, which matches the partial-load tolerance the shared library's envelope already applies to
@@ -114,8 +115,8 @@ reparses the package constant or reports an impossible identity failure.
   names its machine, so malformed input cannot silently become defaults and overwrite the prior envelope.
 - **Content references are validated identities.** Crafted entries and tags, charge creatures and
   modifier identities carry `ContentId`; contributions refuse malformed identifiers before registration.
-  Machine recipe ticks use named `RecipeStep` inputs and a `Redstone` mode rather than positional
-  timing and gating flags.
+  Machine recipe ticks use named `RecipeStep` inputs; harvester ticks use `Timing` for effective,
+  upgraded operation figures rather than unupgraded `Bases`. Both use the same `Redstone` mode.
 
 ## Declarable only, and why
 
@@ -199,9 +200,13 @@ it.
 ## Two smaller shapes worth stating
 
 - **The two configuration groupings are one declaration.** Ravel resolves one document per mod, so
-  the general and world groupings are carried by the key prefix. Every setting is declared common and
-  `settings::travels_to_clients` is held to answering false, which is what preserves the
-  specification's requirement that nothing is synchronised to a joining client.
+  the general and world groupings are carried by the key prefix. Every setting is declared common;
+  tests inspect that declaration directly to establish that nothing requires client synchronisation.
+  Grouped settings derive their diagnostics. Drop chances share `DropSettings` with drop switches,
+  rare substitution belongs to `DepositSettings`, and equipment's `top_*` keys form `TopGearSettings`.
+- **Specification-only counts are prose, not production API.** Six pulse ranges are 9, 18, 27,
+  36, 45 and 54; an armour aura sweeps every twenty ticks; a harvester holds sixteen slots.
+  Unconsumed constants and assertions that only repeat fixed array lengths are omitted.
 - **No name in this package is a catalogue name.** §17 excludes the catalogue and says every one of
   its names is an upstream identifier. The six tiers and two crop kinds `model::shipped_tiers` and
   `model::shipped_kinds` produce are numbered and generic, and the crop catalogue is empty: a
@@ -211,9 +216,8 @@ it.
   identifier mapping is specified by the document.
 - **Workspace lint integration preserves the portable rules.** Crop component registration
   switches live in `Crop::registration`; optional drops, equipment properties and deposit switches
-  are grouped in `Settings::drops`, `Settings::gear` and `Settings::deposits`. Their diagnostic
-  `Debug` output retains the original flat field names and order. Each independent boolean
-  retains its original default and configuration key. Float-to-integer conversions explicitly
+  are grouped in `Settings::drops`, `Settings::gear` and `Settings::deposits`. Each independent
+  boolean retains its original default and configuration key. Float-to-integer conversions explicitly
   truncate before checked `num-traits::ToPrimitive` conversion and handle out-of-range and NaN
   results to preserve saturation; the first-tier produce count uses equivalent integer ceiling
   division. Machine payload saving moves the
@@ -242,7 +246,7 @@ experience cap, the offset clamp, all four payload contracts and their round tri
 deposit parameter. Added with the review's findings: a thousand ticks leaving the entry exactly as
 they found it, a reload rebuilding the colour map from the last declared set rather than
 accumulating, a machine's upgrade and all four of its multipliers surviving a save and a reopen
-through the envelope, a saved position no upgrade sits at reading back as none, an output slot
+through the envelope, a saved position no upgrade sits at refusing the payload, an output slot
 filled to its own limit and an over-limit slot stepped over, a world refused once the entry that
 deposited into it is gone, a contribution refused through the service coming back named, the
 fourteen flags pinned by name rather than by count, and two tiers sharing one ground block refusing

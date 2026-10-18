@@ -1,5 +1,6 @@
 //! Crop-derived seed and conversion recipes, independent of recipe matching.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::Stack;
 
 use crate::model::{Crafted, Crop, CropKind, Tier};
@@ -60,14 +61,19 @@ pub fn derive(
     tier: &Tier,
     kind: &CropKind,
     grid_seeds_enabled: bool,
-    resolves: &dyn Fn(&str) -> usize,
+    resolves: &dyn Fn(&ContentId) -> usize,
 ) -> Vec<DerivedRecipe> {
     if !crop.enabled {
         return Vec::new();
     }
     let path = crop.path();
-    let seed = crate::registries::registered_id(crop, crate::registries::Role::Seed);
-    let produce = crate::registries::registered_id(crop, crate::registries::Role::Material);
+    let seed: ContentId = crate::registries::registered_id(crop, crate::registries::Role::Seed)
+        .parse()
+        .expect("a generated seed identity");
+    let produce: ContentId =
+        crate::registries::registered_id(crop, crate::registries::Role::Material)
+            .parse()
+            .expect("a generated material identity");
     let mut derived = Vec::new();
 
     let crafted = crafted_ingredient(&crop.crafted, resolves);
@@ -94,42 +100,42 @@ pub fn derive(
 
 fn ritual_seed(
     path: &str,
-    seed: &str,
+    seed: &ContentId,
     crafted: &Ingredient,
-    material: &ravel_sdk::content::ContentId,
-    base: &ravel_sdk::content::ContentId,
+    material: &ContentId,
+    base: &ContentId,
 ) -> DerivedRecipe {
     let mut ring = Vec::with_capacity(8);
     for index in 0..8 {
         ring.push(if index % 2 == 0 {
             crafted.clone()
         } else {
-            Ingredient::Entry(material.to_string())
+            Ingredient::Entry(material.clone())
         });
     }
     DerivedRecipe::RitualSeed(FourStation {
         id: format!("{}:{path}{RITUAL_SUFFIX}", crate::MOD_ID),
-        altar: Ingredient::Entry(base.to_string()),
+        altar: Ingredient::Entry(base.clone()),
         ring,
-        result: Stack::new(seed, 1),
+        result: Stack::new(seed.clone(), 1),
         copies_data: false,
     })
 }
 
 fn grid_seed(
     path: &str,
-    seed: &str,
+    seed: &ContentId,
     crafted: Ingredient,
-    material: &ravel_sdk::content::ContentId,
-    base: &ravel_sdk::content::ContentId,
+    material: &ContentId,
+    base: &ContentId,
 ) -> DerivedRecipe {
-    let edge = Ingredient::Entry(material.to_string());
+    let edge = Ingredient::Entry(material.clone());
     let grid = vec![
         Some(crafted.clone()),
         Some(edge.clone()),
         Some(crafted.clone()),
         Some(edge.clone()),
-        Some(Ingredient::Entry(base.to_string())),
+        Some(Ingredient::Entry(base.clone())),
         Some(edge.clone()),
         Some(crafted.clone()),
         Some(edge),
@@ -138,17 +144,17 @@ fn grid_seed(
     DerivedRecipe::GridSeed {
         id: format!("{}:{path}{GRID_SUFFIX}", crate::MOD_ID),
         grid,
-        result: Stack::new(seed, 1),
+        result: Stack::new(seed.clone(), 1),
     }
 }
 
-fn crafted_ingredient(crafted: &Crafted, resolves: &dyn Fn(&str) -> usize) -> Option<Ingredient> {
+fn crafted_ingredient(
+    crafted: &Crafted,
+    resolves: &dyn Fn(&ContentId) -> usize,
+) -> Option<Ingredient> {
     match crafted {
-        Crafted::Entry { id, .. } => Some(Ingredient::Entry(id.to_string())),
-        Crafted::Tag(tag) => {
-            let tag = tag.to_string();
-            (resolves(&tag) > 0).then_some(Ingredient::Tag(tag))
-        }
+        Crafted::Entry { id, .. } => Some(Ingredient::Entry(id.clone())),
+        Crafted::Tag(tag) => (resolves(tag) > 0).then(|| Ingredient::Tag(tag.clone())),
         Crafted::Nothing => None,
     }
 }
@@ -203,7 +209,7 @@ mod tests {
         ] {
             crop.derived = switches;
             let recipes = derive(&crop, &tier, &kind, true, &|tag| {
-                assert_eq!(tag, "test:crafted");
+                assert_eq!(tag, &"test:crafted".parse().expect("tag id"));
                 1
             });
             assert_eq!(recipes.len(), 1);

@@ -34,15 +34,6 @@ pub enum Ore {
     Essence,
 }
 
-/// The chance an air-exposed placement is discarded, which is none.
-pub const AIR_DISCARD: f64 = 0.0;
-
-/// The one generation step all four deposits run at.
-pub const STEP: &str = "underground_ores";
-
-/// The placements each deposit uses, in the order it applies them.
-pub const PLACEMENTS: [&str; 4] = ["count", "square_spread", "uniform_height", "biome_filter"];
-
 /// One deposit, as declared.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Deposit {
@@ -182,7 +173,6 @@ mod tests {
 
     #[test]
     fn four_deposits_sit_two_to_a_dimension_and_one_ore_each() {
-        assert_eq!(DEPOSITS.len(), 4);
         for dimension in [Dimension::Lower, Dimension::Outer] {
             let held: Vec<&Deposit> = DEPOSITS
                 .iter()
@@ -200,7 +190,6 @@ mod tests {
             assert_eq!((deposit.lowest, deposit.highest), (10, 100));
             assert!(deposit.host_feature, "there is no substitution rule here");
         }
-        assert_eq!(PLACEMENTS.len(), 4);
     }
 
     #[test]

@@ -17,14 +17,17 @@ cluster. Those dependency facts live here rather than as callable functions retu
 Companion absence disables recipes without unregistering the crop's block and item identities.
 Crop construction and tier adjustment accept validated `ContentId` values for materials, ground
 and foundation blocks, matching the dependency's typed model rather than passing unchecked strings.
+Boss drops and ground drops likewise receive validated `ContentId` values and use the shared
+stack's zero-count emptiness contract. Unconsumed spec-count exports and alias functions are
+omitted; catalogue counts are derived by the generated census rather than exposed as duplicate API.
 
 ## Root workspace lint migration
 
 The crate inherits the root workspace's strict Clippy rules. Public `Settings` groups each
 dimension's deposit switches into `world_lower` and `world_outer` values of type `Deposits`,
 whose `shard` and `essence` fields replace the four flat world-generation fields. Configuration
-keys, defaults, flag publication and generation rules remain unchanged. Debug output retains
-the original eight flat field names and their order.
+keys, defaults, flag publication and generation rules remain unchanged. Derived Debug output
+reflects the grouped fields; it is diagnostic rather than a compatibility contract.
 
 Flag publication and `settings::flag_id` return the shared library's typed identity error instead
 of silently omitting an invalid binding; configuration propagates publication failures. World
@@ -160,7 +163,7 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
   block items at the front of the item registry ahead of the thirty-three plain ones. A parity run that
   compares order and not just membership sees it.
 - **Nothing this entry declares travels to a joining client.** Every setting is declared common and
-  `settings::travels_to_clients` is held to answering false, which preserves §2's arrangement: a client
+  tests check directly that the declaration carries no client-bound settings, which preserves §2's arrangement: a client
   and a server that disagree about §3 disagree silently, and this entry ships no payload that would fix
   that.
 

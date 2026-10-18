@@ -8,7 +8,7 @@
 //! is gated on the *dependency's* flag rather than on any setting of this
 //! entry's.
 
-use ravel_sdk::JsonValue;
+use ravel_sdk::{JsonValue, content::ContentId};
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_042_counterpart::inventory::Stack;
 use rvl_321_counterpart::ground::{self, Converted};
@@ -18,19 +18,13 @@ use rvl_321_counterpart::settings as depended;
 /// The multiplier fall damage is taken at when an entity lands on this ground.
 pub const FALL_MULTIPLIER: f64 = ground::FALL_MULTIPLIER;
 
-/// Whether this block ships a loot document.
-///
-/// It does not, and that is the fact `loot-parity` needs: nineteen of the twenty
-/// block items have a document and this one has a code path instead.
-pub const SHIPS_LOOT_DOCUMENT: bool = false;
-
 /// What breaking this ground drops.
 ///
 /// Silk touch yields the block itself; anything else yields one dirt plus, on a
 /// draw under the tier material percentage, one of the tier's material. The draw
 /// is the level's own, handed in rather than taken here.
 #[must_use]
-pub fn drops(tier: &Tier, silk_touch: bool, dirt: &str, draw: u32) -> Vec<Stack> {
+pub fn drops(tier: &Tier, silk_touch: bool, dirt: &ContentId, draw: u32) -> Vec<Stack> {
     ground::drops(tier, silk_touch, dirt, draw)
 }
 
@@ -95,6 +89,10 @@ pub fn tilling_document(namespace: &str, material: &str, ground_block: &str) -> 
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     fn sixth() -> Tier {
         crate::tier::declared(
             "test:6".parse().expect("a legal tier identity"),
@@ -105,29 +103,20 @@ mod tests {
     }
 
     #[test]
-    fn this_block_carries_a_code_path_where_the_other_nineteen_carry_a_document() {
-        assert_eq!(
-            usize::from(SHIPS_LOOT_DOCUMENT) + crate::data::LOOT_DOCUMENTS,
-            crate::census::BLOCK_ITEMS - 1,
-            "the twentieth block item has a code path where the others have a document"
-        );
-    }
-
-    #[test]
     fn a_silk_touch_break_yields_the_block_and_nothing_else() {
-        let dropped = drops(&sixth(), true, "minecraft:dirt", 0);
-        assert_eq!(dropped, vec![Stack::new("test:ground", 1)]);
+        let dropped = drops(&sixth(), true, &id("minecraft:dirt"), 0);
+        assert_eq!(dropped, vec![Stack::new(id("test:ground"), 1)]);
     }
 
     #[test]
     fn an_ordinary_break_yields_dirt_and_the_material_a_quarter_of_the_time() {
         let tier = sixth();
         for draw in 0..100u32 {
-            let dropped = drops(&tier, false, "minecraft:dirt", draw);
-            assert_eq!(dropped[0], Stack::new("minecraft:dirt", 1));
+            let dropped = drops(&tier, false, &id("minecraft:dirt"), draw);
+            assert_eq!(dropped[0], Stack::new(id("minecraft:dirt"), 1));
             if draw < 25 {
                 assert_eq!(dropped.len(), 2);
-                assert_eq!(dropped[1], Stack::new("test:material", 1));
+                assert_eq!(dropped[1], Stack::new(id("test:material"), 1));
             } else {
                 assert_eq!(dropped.len(), 1);
             }
@@ -137,10 +126,10 @@ mod tests {
     #[test]
     fn a_draw_far_above_a_hundred_still_lands_in_the_quarter_it_should() {
         let tier = sixth();
-        assert_eq!(drops(&tier, false, "minecraft:dirt", 1024).len(), 2);
-        assert_eq!(drops(&tier, false, "minecraft:dirt", 1099).len(), 1);
+        assert_eq!(drops(&tier, false, &id("minecraft:dirt"), 1024).len(), 2);
+        assert_eq!(drops(&tier, false, &id("minecraft:dirt"), 1099).len(), 1);
         assert_eq!(
-            drops(&tier, false, "minecraft:dirt", u32::MAX).len(),
+            drops(&tier, false, &id("minecraft:dirt"), u32::MAX).len(),
             usize::from(u32::MAX % 100 < 25) + 1
         );
     }

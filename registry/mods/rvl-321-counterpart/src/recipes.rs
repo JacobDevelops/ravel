@@ -8,7 +8,9 @@
 //! which a dependent observes as arithmetic rather than as registration.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::Stack;
 
 mod selection;
@@ -29,13 +31,13 @@ pub enum Role {
 /// What an ingredient kind needs to resolve itself.
 pub trait Catalogue {
     /// Whether an entry belongs to a tag.
-    fn tag_holds(&self, tag: &str, entry: &str) -> bool;
+    fn tag_holds(&self, tag: &ContentId, entry: &ContentId) -> bool;
 
     /// The entry a crop's named component resolves to.
-    fn component(&self, crop: &str, role: Role) -> Option<String>;
+    fn component(&self, crop: &str, role: Role) -> Option<ContentId>;
 
     /// Whether an entry is one of the tilling family of tools.
-    fn tilling_tool(&self, entry: &str) -> bool;
+    fn tilling_tool(&self, entry: &ContentId) -> bool;
 
     /// The charge a stack holds, as a type identifier and an amount.
     fn charge(&self, stack: &Stack) -> Option<(String, f64)>;
@@ -45,9 +47,9 @@ pub trait Catalogue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Ingredient {
     /// One named entry.
-    Entry(String),
+    Entry(ContentId),
     /// Any member of a tag.
-    Tag(String),
+    Tag(ContentId),
     /// Every tool of the tilling family.
     TillingTool,
     /// A container holding more than nothing.
@@ -185,15 +187,15 @@ impl EightStation {
     /// What the reservoirs are short of, by entry and by count.
     #[must_use]
     pub fn shortfall(&self, reservoirs: &[Stack]) -> Shortfall {
-        let mut held: BTreeMap<&str, u64> = BTreeMap::new();
+        let mut held: BTreeMap<&ContentId, u64> = BTreeMap::new();
         for stack in reservoirs.iter().filter(|stack| !stack.is_empty()) {
-            *held.entry(stack.entry.as_str()).or_default() += stack.count;
+            *held.entry(&stack.entry).or_default() += stack.count;
         }
         let mut missing = Vec::new();
         for declared in &self.materials {
-            let have = held.get(declared.entry.as_str()).copied().unwrap_or(0);
+            let have = held.get(&declared.entry).copied().unwrap_or(0);
             if have < declared.count {
-                missing.push(Stack::new(&declared.entry, declared.count - have));
+                missing.push(Stack::new(declared.entry.clone(), declared.count - have));
             }
         }
         Shortfall { missing }
@@ -245,7 +247,7 @@ impl EightStation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Ringed {
     /// A declared material, named by the entry it consumes.
-    Material(String),
+    Material(ContentId),
     /// A ring station's ingredient.
     Ingredient(Ingredient),
 }
@@ -277,6 +279,24 @@ pub enum Refused {
     /// The target carries an enchantment this one cannot coexist with.
     Incompatible(String),
 }
+
+impl fmt::Display for Refused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input => formatter.write_str("an input does not satisfy its ingredient"),
+            Self::NoLevel => formatter.write_str("the inputs do not cover one enchantment level"),
+            Self::NotAnUpgrade => formatter.write_str("the enchantment is not an upgrade"),
+            Self::Incompatible(enchantment) => {
+                write!(
+                    formatter,
+                    "the target carries incompatible enchantment {enchantment}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// What an enchanting craft consumes and produces.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -338,10 +358,12 @@ impl Enchanting {
                 return Err(Refused::Incompatible(present.clone()));
             }
         }
-        let entry = if target.entry == PLAIN_BOOK {
+        let entry = if PLAIN_BOOK.split_once(':')
+            == Some((target.entry.namespace().as_str(), target.entry.path()))
+        {
             ENCHANTED_BOOK.to_owned()
         } else {
-            target.entry.clone()
+            target.entry.to_string()
         };
         Ok(Enchanted {
             level,
@@ -489,26 +511,30 @@ mod tests {
     use super::*;
     use crate::model::{Crafted, Crop, CropKind, Tier};
 
+    fn stack(entry: &str, count: u64) -> Stack {
+        Stack::new(entry.parse().expect("a legal item identity"), count)
+    }
+
     #[derive(Default)]
     struct Table {
-        tags: BTreeMap<String, Vec<String>>,
-        components: BTreeMap<String, String>,
-        tools: Vec<String>,
-        charges: BTreeMap<String, (String, f64)>,
+        tags: BTreeMap<ContentId, Vec<ContentId>>,
+        components: BTreeMap<String, ContentId>,
+        tools: Vec<ContentId>,
+        charges: BTreeMap<ContentId, (String, f64)>,
     }
 
     impl Catalogue for Table {
-        fn tag_holds(&self, tag: &str, entry: &str) -> bool {
+        fn tag_holds(&self, tag: &ContentId, entry: &ContentId) -> bool {
             self.tags
                 .get(tag)
                 .is_some_and(|members| members.iter().any(|held| held == entry))
         }
 
-        fn component(&self, crop: &str, role: Role) -> Option<String> {
+        fn component(&self, crop: &str, role: Role) -> Option<ContentId> {
             self.components.get(&format!("{crop}/{role:?}")).cloned()
         }
 
-        fn tilling_tool(&self, entry: &str) -> bool {
+        fn tilling_tool(&self, entry: &ContentId) -> bool {
             self.tools.iter().any(|tool| tool == entry)
         }
 
@@ -549,8 +575,8 @@ mod tests {
 
     #[test]
     fn only_the_three_set_kinds_declare_themselves_simple() {
-        assert!(Ingredient::Entry("a:b".to_owned()).simple());
-        assert!(Ingredient::Tag("a:b".to_owned()).simple());
+        assert!(Ingredient::Entry("a:b".parse().expect("item id")).simple());
+        assert!(Ingredient::Tag("a:b".parse().expect("tag id")).simple());
         assert!(Ingredient::TillingTool.simple());
         assert!(!Ingredient::ChargedContainer.simple());
         assert!(
@@ -566,35 +592,32 @@ mod tests {
     fn a_ring_matches_in_any_order_and_the_count_has_to_be_exact() {
         let table = Table::default();
         let declared = vec![
-            Ingredient::Entry("a:one".to_owned()),
-            Ingredient::Entry("a:two".to_owned()),
+            Ingredient::Entry("a:one".parse().expect("item id")),
+            Ingredient::Entry("a:two".parse().expect("item id")),
         ];
-        let reversed = vec![Stack::new("a:two", 1), Stack::new("a:one", 1)];
+        let reversed = vec![stack("a:two", 1), stack("a:one", 1)];
         assert!(assigns(&declared, &reversed, &table));
 
-        let padded = vec![
-            Stack::new("a:two", 1),
-            Stack::new("a:one", 1),
-            Stack::new("a:three", 1),
-        ];
+        let padded = vec![stack("a:two", 1), stack("a:one", 1), stack("a:three", 1)];
         assert!(!assigns(&declared, &padded, &table), "too many refuses");
-        assert!(!assigns(&declared, &[Stack::new("a:one", 1)], &table));
+        assert!(!assigns(&declared, &[stack("a:one", 1)], &table));
     }
 
     #[test]
     fn one_offered_stack_cannot_satisfy_two_declared_ingredients() {
         let mut table = Table::default();
-        table
-            .tags
-            .insert("a:tag".to_owned(), vec!["a:one".to_owned()]);
+        table.tags.insert(
+            "a:tag".parse().expect("tag id"),
+            vec!["a:one".parse().expect("item id")],
+        );
         let declared = vec![
-            Ingredient::Tag("a:tag".to_owned()),
-            Ingredient::Entry("a:one".to_owned()),
+            Ingredient::Tag("a:tag".parse().expect("tag id")),
+            Ingredient::Entry("a:one".parse().expect("item id")),
         ];
-        assert!(!assigns(&declared, &[Stack::new("a:one", 1)], &table));
+        assert!(!assigns(&declared, &[stack("a:one", 1)], &table));
         assert!(assigns(
             &declared,
-            &[Stack::new("a:one", 1), Stack::new("a:one", 1)],
+            &[stack("a:one", 1), stack("a:one", 1)],
             &table
         ));
     }
@@ -603,24 +626,20 @@ mod tests {
     fn the_reservoirs_report_what_they_are_short_of_and_by_how_much() {
         let recipe = EightStation {
             id: "test:ritual".to_owned(),
-            altar: Ingredient::Entry("a:altar".to_owned()),
-            ring: vec![Ingredient::Entry("a:one".to_owned())],
-            materials: vec![Stack::new("a:fuel", 10), Stack::new("a:dust", 4)],
-            result: Stack::new("a:result", 1),
+            altar: Ingredient::Entry("a:altar".parse().expect("item id")),
+            ring: vec![Ingredient::Entry("a:one".parse().expect("item id"))],
+            materials: vec![stack("a:fuel", 10), stack("a:dust", 4)],
+            result: stack("a:result", 1),
         };
-        let short = recipe.shortfall(&[Stack::new("a:fuel", 6)]);
+        let short = recipe.shortfall(&[stack("a:fuel", 6)]);
         assert!(!short.covered());
         assert_eq!(
             short.missing,
-            [Stack::new("a:fuel", 4), Stack::new("a:dust", 4)],
+            [stack("a:fuel", 4), stack("a:dust", 4)],
             "the shortfall is reported in the order the recipe declares"
         );
 
-        let full = recipe.shortfall(&[
-            Stack::new("a:fuel", 6),
-            Stack::new("a:fuel", 6),
-            Stack::new("a:dust", 4),
-        ]);
+        let full = recipe.shortfall(&[stack("a:fuel", 6), stack("a:fuel", 6), stack("a:dust", 4)]);
         assert!(full.covered(), "two partial reservoirs add up");
     }
 
@@ -628,21 +647,21 @@ mod tests {
     fn the_eight_station_ring_reads_a_material_first_and_alternates() {
         let recipe = EightStation {
             id: "test:ritual".to_owned(),
-            altar: Ingredient::Entry("a:altar".to_owned()),
+            altar: Ingredient::Entry("a:altar".parse().expect("item id")),
             ring: vec![
-                Ingredient::Entry("a:one".to_owned()),
-                Ingredient::Entry("a:two".to_owned()),
+                Ingredient::Entry("a:one".parse().expect("item id")),
+                Ingredient::Entry("a:two".parse().expect("item id")),
             ],
-            materials: vec![Stack::new("a:fuel", 1), Stack::new("a:dust", 1)],
-            result: Stack::new("a:result", 1),
+            materials: vec![stack("a:fuel", 1), stack("a:dust", 1)],
+            result: stack("a:result", 1),
         };
         assert_eq!(
             recipe.interleaved(),
             [
-                Ringed::Material("a:fuel".to_owned()),
-                Ringed::Ingredient(Ingredient::Entry("a:one".to_owned())),
-                Ringed::Material("a:dust".to_owned()),
-                Ringed::Ingredient(Ingredient::Entry("a:two".to_owned())),
+                Ringed::Material("a:fuel".parse().expect("item id")),
+                Ringed::Ingredient(Ingredient::Entry("a:one".parse().expect("item id"))),
+                Ringed::Material("a:dust".parse().expect("item id")),
+                Ringed::Ingredient(Ingredient::Entry("a:two".parse().expect("item id"))),
             ],
             "the alternation is the ring's own materials and ingredients"
         );
@@ -657,8 +676,8 @@ mod tests {
     fn the_enchanting_level_is_the_smaller_of_the_two_inputs_and_is_capped() {
         let recipe = Enchanting {
             id: "test:enchanting".to_owned(),
-            first: (Ingredient::Entry("a:one".to_owned()), 4),
-            second: (Ingredient::Entry("a:two".to_owned()), 2),
+            first: (Ingredient::Entry("a:one".parse().expect("item id")), 4),
+            second: (Ingredient::Entry("a:two".parse().expect("item id")), 2),
             enchantment: "test:sharpness".to_owned(),
             maximum: 5,
         };
@@ -668,9 +687,9 @@ mod tests {
 
         let answer = recipe
             .apply(
-                &Stack::new("a:one", 12),
-                &Stack::new("a:two", 20),
-                &Stack::new("a:sword", 1),
+                &stack("a:one", 12),
+                &stack("a:two", 20),
+                &stack("a:sword", 1),
                 &held,
                 &always,
                 &table,
@@ -683,9 +702,9 @@ mod tests {
 
         let capped = recipe
             .apply(
-                &Stack::new("a:one", 40_000_000_000),
-                &Stack::new("a:two", 40_000_000_000),
-                &Stack::new("a:sword", 1),
+                &stack("a:one", 40_000_000_000),
+                &stack("a:two", 40_000_000_000),
+                &stack("a:sword", 1),
                 &held,
                 &always,
                 &table,
@@ -698,8 +717,8 @@ mod tests {
     fn a_plain_book_becomes_an_enchanted_one_and_too_little_input_is_refused() {
         let recipe = Enchanting {
             id: "test:enchanting".to_owned(),
-            first: (Ingredient::Entry("a:one".to_owned()), 4),
-            second: (Ingredient::Entry("a:two".to_owned()), 2),
+            first: (Ingredient::Entry("a:one".parse().expect("item id")), 4),
+            second: (Ingredient::Entry("a:two".parse().expect("item id")), 2),
             enchantment: "test:sharpness".to_owned(),
             maximum: 5,
         };
@@ -709,9 +728,9 @@ mod tests {
 
         let book = recipe
             .apply(
-                &Stack::new("a:one", 4),
-                &Stack::new("a:two", 2),
-                &Stack::new(PLAIN_BOOK, 1),
+                &stack("a:one", 4),
+                &stack("a:two", 2),
+                &stack(PLAIN_BOOK, 1),
                 &held,
                 &always,
                 &table,
@@ -721,9 +740,9 @@ mod tests {
 
         assert_eq!(
             recipe.apply(
-                &Stack::new("a:one", 3),
-                &Stack::new("a:two", 2),
-                &Stack::new(PLAIN_BOOK, 1),
+                &stack("a:one", 3),
+                &stack("a:two", 2),
+                &stack(PLAIN_BOOK, 1),
                 &held,
                 &always,
                 &table
@@ -736,8 +755,8 @@ mod tests {
     fn the_compatibility_test_refuses_on_incompatibility_rather_than_on_compatibility() {
         let recipe = Enchanting {
             id: "test:enchanting".to_owned(),
-            first: (Ingredient::Entry("a:one".to_owned()), 1),
-            second: (Ingredient::Entry("a:two".to_owned()), 1),
+            first: (Ingredient::Entry("a:one".parse().expect("item id")), 1),
+            second: (Ingredient::Entry("a:two".parse().expect("item id")), 1),
             enchantment: "test:sharpness".to_owned(),
             maximum: 5,
         };
@@ -749,9 +768,9 @@ mod tests {
         assert!(
             recipe
                 .apply(
-                    &Stack::new("a:one", 3),
-                    &Stack::new("a:two", 3),
-                    &Stack::new("a:sword", 1),
+                    &stack("a:one", 3),
+                    &stack("a:two", 3),
+                    &stack("a:sword", 1),
                     &held,
                     &compatible,
                     &table
@@ -763,9 +782,9 @@ mod tests {
         let incompatible = |_: &str, _: &str| false;
         assert_eq!(
             recipe.apply(
-                &Stack::new("a:one", 3),
-                &Stack::new("a:two", 3),
-                &Stack::new("a:sword", 1),
+                &stack("a:one", 3),
+                &stack("a:two", 3),
+                &stack("a:sword", 1),
                 &held,
                 &incompatible,
                 &table
@@ -778,8 +797,8 @@ mod tests {
     fn the_same_enchantment_at_the_level_or_above_is_refused_as_no_upgrade() {
         let recipe = Enchanting {
             id: "test:enchanting".to_owned(),
-            first: (Ingredient::Entry("a:one".to_owned()), 1),
-            second: (Ingredient::Entry("a:two".to_owned()), 1),
+            first: (Ingredient::Entry("a:one".parse().expect("item id")), 1),
+            second: (Ingredient::Entry("a:two".parse().expect("item id")), 1),
             enchantment: "test:sharpness".to_owned(),
             maximum: 5,
         };
@@ -790,9 +809,9 @@ mod tests {
 
         assert_eq!(
             recipe.apply(
-                &Stack::new("a:one", 3),
-                &Stack::new("a:two", 3),
-                &Stack::new("a:sword", 1),
+                &stack("a:one", 3),
+                &stack("a:two", 3),
+                &stack("a:sword", 1),
                 &held,
                 &always,
                 &table
@@ -802,9 +821,9 @@ mod tests {
         assert!(
             recipe
                 .apply(
-                    &Stack::new("a:one", 4),
-                    &Stack::new("a:two", 4),
-                    &Stack::new("a:sword", 1),
+                    &stack("a:one", 4),
+                    &stack("a:two", 4),
+                    &stack("a:sword", 1),
                     &held,
                     &always,
                     &table
@@ -817,7 +836,7 @@ mod tests {
     fn a_charge_extraction_refuses_another_type_and_a_full_container_and_caps() {
         let recipe = ChargeExtraction {
             id: "test:extraction".to_owned(),
-            input: Ingredient::Entry("a:one".to_owned()),
+            input: Ingredient::Entry("a:one".parse().expect("item id")),
             charge_type: "test:charge".to_owned(),
             amount: 30,
             requirement: 100,
@@ -838,56 +857,59 @@ mod tests {
     #[test]
     fn an_emptying_recipe_matches_a_container_last_and_refuses_one_with_anything_after() {
         let mut table = Table::default();
-        table
-            .charges
-            .insert("a:container".to_owned(), ("test:charge".to_owned(), 5.0));
+        table.charges.insert(
+            "a:container".parse().expect("item id"),
+            ("test:charge".to_owned(), 5.0),
+        );
         let recipe = Emptying {
             id: "test:emptying".to_owned(),
             result: "a:empty".to_owned(),
         };
 
         let last = vec![
-            Stack::default(),
-            Stack::default(),
-            Stack::new("a:container", 1),
+            stack("a:container", 0),
+            stack("a:container", 0),
+            stack("a:container", 1),
         ];
         assert!(recipe.matches(&last, &table));
 
-        let first = vec![Stack::new("a:container", 1), Stack::new("a:other", 1)];
+        let first = vec![stack("a:container", 1), stack("a:other", 1)];
         assert!(!recipe.matches(&first, &table));
-        assert!(!recipe.matches(&[Stack::default()], &table));
+        assert!(!recipe.matches(&[stack("a:container", 0)], &table));
 
-        let reversed = vec![Stack::new("a:other", 1), Stack::new("a:container", 1)];
+        let reversed = vec![stack("a:other", 1), stack("a:container", 1)];
         assert!(
             recipe.matches(&reversed, &table),
             "the walk only refuses what follows a container, which is the rule as specified"
         );
 
-        let two = vec![Stack::new("a:container", 1), Stack::new("a:container", 1)];
+        let two = vec![stack("a:container", 1), stack("a:container", 1)];
         assert!(!recipe.matches(&two, &table), "one container, not two");
     }
 
     #[test]
     fn an_uncharged_container_is_not_a_charged_one() {
         let mut table = Table::default();
-        table
-            .charges
-            .insert("a:container".to_owned(), ("test:charge".to_owned(), 0.0));
-        assert!(!Ingredient::ChargedContainer.matches(&Stack::new("a:container", 1), &table));
+        table.charges.insert(
+            "a:container".parse().expect("item id"),
+            ("test:charge".to_owned(), 0.0),
+        );
+        assert!(!Ingredient::ChargedContainer.matches(&stack("a:container", 1), &table));
     }
 
     #[test]
     fn a_crop_component_resolves_through_the_catalogue_rather_than_by_name() {
         let mut table = Table::default();
-        table
-            .components
-            .insert("a:crop/TierMaterial".to_owned(), "test:material".to_owned());
+        table.components.insert(
+            "a:crop/TierMaterial".to_owned(),
+            "test:material".parse().expect("item id"),
+        );
         let ingredient = Ingredient::CropComponent {
             crop: "a:crop".to_owned(),
             role: Role::TierMaterial,
         };
-        assert!(ingredient.matches(&Stack::new("test:material", 1), &table));
-        assert!(!ingredient.matches(&Stack::new("test:other", 1), &table));
+        assert!(ingredient.matches(&stack("test:material", 1), &table));
+        assert!(!ingredient.matches(&stack("test:other", 1), &table));
     }
 
     #[test]
@@ -925,16 +947,19 @@ mod tests {
             panic!("the first derived recipe is the ritual");
         };
         assert_eq!(ritual.ring.len(), 8);
-        assert_eq!(ritual.ring[0], Ingredient::Entry("test:crafted".to_owned()));
+        assert_eq!(
+            ritual.ring[0],
+            Ingredient::Entry("test:crafted".parse().expect("item id"))
+        );
         assert_eq!(
             ritual.ring[1],
-            Ingredient::Entry("test:material".to_owned())
+            Ingredient::Entry("test:material".parse().expect("item id"))
         );
-        assert_eq!(ritual.altar, Ingredient::Entry("test:base_seed".to_owned()));
         assert_eq!(
-            ritual.result,
-            Stack::new("rvl_321_counterpart:alpha_seeds", 1)
+            ritual.altar,
+            Ingredient::Entry("test:base_seed".parse().expect("item id"))
         );
+        assert_eq!(ritual.result, stack("rvl_321_counterpart:alpha_seeds", 1));
         assert!(!ritual.copies_data);
     }
 
@@ -947,15 +972,19 @@ mod tests {
         assert_eq!(grid.len(), 9);
         assert_eq!(
             grid[4].as_ref(),
-            Some(&Ingredient::Entry("test:base_seed".to_owned()))
+            Some(&Ingredient::Entry(
+                "test:base_seed".parse().expect("item id")
+            ))
         );
         assert_eq!(
             grid[1].as_ref(),
-            Some(&Ingredient::Entry("test:material".to_owned()))
+            Some(&Ingredient::Entry(
+                "test:material".parse().expect("item id")
+            ))
         );
         assert_eq!(
             grid[0].as_ref(),
-            Some(&Ingredient::Entry("test:crafted".to_owned()))
+            Some(&Ingredient::Entry("test:crafted".parse().expect("item id")))
         );
     }
 
@@ -994,9 +1023,9 @@ mod tests {
         };
         assert_eq!(
             input,
-            &Ingredient::Entry("rvl_321_counterpart:alpha_seeds".to_owned())
+            &Ingredient::Entry("rvl_321_counterpart:alpha_seeds".parse().expect("item id"))
         );
-        assert_eq!(result, &Stack::new("rvl_321_counterpart:alpha_material", 2));
+        assert_eq!(result, &stack("rvl_321_counterpart:alpha_material", 2));
     }
 
     struct Answers {

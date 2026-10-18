@@ -23,14 +23,8 @@ use crate::model::{Crop, Tier};
 /// crops are written against.
 pub const EXEMPT_CROP: &str = "rvl_321_counterpart:tier_one_crop";
 
-/// The ranges the six pulse blocks ship with.
-pub const PULSE_RANGES: [u32; 6] = [9, 18, 27, 36, 45, 54];
-
 /// The radius of the cube the armour set's aura reaches.
 pub const AURA_RADIUS: i32 = 5;
-
-/// The interval, in ticks, between two aura sweeps.
-pub const AURA_INTERVAL: u32 = 20;
 
 /// The probability a block inside the aura's cube is ticked.
 pub const AURA_PROBABILITY: f64 = 0.5;
@@ -186,7 +180,7 @@ pub fn pulse_delay(seconds: u32, draw: f64) -> u32 {
 ///
 /// Every block in the cube that carries the host's crop tag is drawn for
 /// separately, so the probability is per block rather than per sweep. A sweep
-/// happens once every [`AURA_INTERVAL`] ticks and only while the setting is on
+/// happens once every twenty ticks and only while the setting is on
 /// and the full set is worn.
 pub fn aura_positions(
     standing: Position,
@@ -352,14 +346,6 @@ mod tests {
         let far = |position: Position| position.1 == 75;
         assert_eq!(pulse_target(origin, 9, &far), Some((0, 75, 0)));
         assert_eq!(pulse_target(origin, 9, &|p: Position| p.1 == 76), None);
-    }
-
-    #[test]
-    fn six_pulse_ranges_ship_and_each_is_nine_more_than_the_last() {
-        assert_eq!(PULSE_RANGES.len(), 6);
-        for pair in PULSE_RANGES.windows(2) {
-            assert_eq!(pair[1] - pair[0], 9);
-        }
     }
 
     #[test]

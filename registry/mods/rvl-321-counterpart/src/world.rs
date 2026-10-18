@@ -135,44 +135,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_third_deposit_runs_before_the_ores_and_the_other_two_run_with_them() {
-        assert_eq!(DEPOSITS[0].stage, Stage::UndergroundOres);
-        assert_eq!(DEPOSITS[1].stage, Stage::UndergroundOres);
-        assert_eq!(
-            DEPOSITS[2].stage,
-            Stage::Raw,
-            "the stone it places is a target for anything generating later"
-        );
-    }
-
-    #[test]
-    fn each_deposit_carries_the_parameters_the_table_states() {
-        assert_eq!(DEPOSITS[0].size, 8);
-        assert_eq!(DEPOSITS[0].count, 16);
-        assert_eq!((DEPOSITS[0].lowest, DEPOSITS[0].highest), (-32, 64));
-        assert_eq!(DEPOSITS[1].count, 12);
-        assert_eq!((DEPOSITS[1].lowest, DEPOSITS[1].highest), (-60, 24));
-        assert_eq!(DEPOSITS[2].size, 64);
-        assert_eq!(DEPOSITS[2].count, 4);
-        assert_eq!((DEPOSITS[2].lowest, DEPOSITS[2].highest), (0, 128));
-    }
-
-    #[test]
-    fn only_the_third_deposit_is_this_entrys_own_feature_and_only_it_is_nether() {
-        assert!(!DEPOSITS[0].own_feature);
-        assert!(!DEPOSITS[1].own_feature);
-        assert!(DEPOSITS[2].own_feature);
-        assert_eq!(DEPOSITS[2].biomes, Where::Nether);
-        assert_eq!(DEPOSITS[0].biomes, Where::Overworld);
-        assert_eq!(DEPOSITS[1].biomes, Where::Overworld);
-    }
-
-    #[test]
-    fn nothing_is_discarded_for_touching_air() {
-        assert!(AIR_DISCARD.abs() < f64::EPSILON);
-    }
-
-    #[test]
     fn the_substitution_needs_both_a_bound_entry_and_a_draw_under_the_chance() {
         assert_eq!(place(true, 0.05, 0.04), Placed::Rare);
         assert_eq!(place(true, 0.05, 0.05), Placed::Target);

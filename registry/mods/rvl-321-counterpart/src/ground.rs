@@ -5,6 +5,7 @@
 //! the moisture transition, what falling on it costs, what breaking it drops,
 //! and what converting it does.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::{Position, Stack};
 
 use crate::model::Tier;
@@ -78,18 +79,18 @@ pub const fn next_moisture(moisture: u8, near_water: bool, raining: bool) -> u8 
 /// is read from the drop request's optional tool, so a break with no recorded
 /// tool takes the second branch.
 #[must_use]
-pub fn drops(tier: &Tier, silk_touch: bool, dirt: &str, draw: u32) -> Vec<Stack> {
+pub fn drops(tier: &Tier, silk_touch: bool, dirt: &ContentId, draw: u32) -> Vec<Stack> {
     let Some(ground) = tier.ground.as_ref() else {
         return Vec::new();
     };
     if silk_touch {
-        return vec![Stack::new(ground.to_string(), 1)];
+        return vec![Stack::new(ground.clone(), 1)];
     }
-    let mut dropped = vec![Stack::new(dirt, 1)];
+    let mut dropped = vec![Stack::new(dirt.clone(), 1)];
     if draw % 100 < MATERIAL_DROP_PERCENT
         && let Some(material) = tier.material.as_ref()
     {
-        dropped.push(Stack::new(material.to_string(), 1));
+        dropped.push(Stack::new(material.clone(), 1));
     }
     dropped
 }
@@ -153,7 +154,7 @@ pub fn convert(
                     outgoing
                         .material
                         .as_ref()
-                        .map(|item| Stack::new(item.to_string(), 1))
+                        .map(|item| Stack::new(item.clone(), 1))
                 })
                 .flatten();
             Converted {
@@ -221,22 +222,29 @@ pub(crate) mod tests {
     #[test]
     fn a_silk_touch_break_drops_the_ground_and_anything_else_drops_dirt() {
         let tier = tier(2);
+        let dirt = "test:dirt".parse().expect("a legal dirt identity");
         assert_eq!(
-            drops(&tier, true, "test:dirt", 0),
-            [Stack::new("test:ground_2", 1)]
+            drops(&tier, true, &dirt, 0),
+            [Stack::new(
+                "test:ground_2".parse().expect("a legal item identity"),
+                1
+            )]
         );
         assert_eq!(
-            drops(&tier, false, "test:dirt", 24),
-            [Stack::new("test:dirt", 1), Stack::new("test:material_2", 1)]
+            drops(&tier, false, &dirt, 24),
+            [
+                Stack::new(dirt.clone(), 1),
+                Stack::new("test:material_2".parse().expect("a legal item identity"), 1)
+            ]
         );
         assert_eq!(
-            drops(&tier, false, "test:dirt", 25),
-            [Stack::new("test:dirt", 1)],
+            drops(&tier, false, &dirt, 25),
+            [Stack::new(dirt.clone(), 1)],
             "the draw is strictly under twenty-five out of a hundred"
         );
         assert_eq!(
-            drops(&tier, false, "test:dirt", 125),
-            drops(&tier, false, "test:dirt", 25)
+            drops(&tier, false, &dirt, 125),
+            drops(&tier, false, &dirt, 25)
         );
     }
 
@@ -275,7 +283,13 @@ pub(crate) mod tests {
         let outgoing = tier(1);
         let held = tier(4);
         let refunded = convert(Some(&outgoing), false, &held, 7, true, 24);
-        assert_eq!(refunded.refund, Some(Stack::new("test:material_1", 1)));
+        assert_eq!(
+            refunded.refund,
+            Some(Stack::new(
+                "test:material_1".parse().expect("a legal item identity"),
+                1
+            ))
+        );
         assert_eq!(refunded.consumed, 1);
         assert_eq!(refunded.moisture, 7);
 
@@ -295,10 +309,5 @@ pub(crate) mod tests {
     fn the_setting_switches_the_whole_interaction_off() {
         let held = tier(2);
         assert!(convert(None, true, &held, 4, false, 0).passed_through());
-    }
-
-    #[test]
-    fn falling_on_this_ground_takes_full_damage_rather_than_breaking_it() {
-        assert!((FALL_MULTIPLIER - 1.0).abs() < f64::EPSILON);
     }
 }

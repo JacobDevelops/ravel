@@ -55,6 +55,8 @@ impl fmt::Display for Refusal {
     }
 }
 
+impl std::error::Error for Refusal {}
+
 /// The suffix each per-crop registration is named with.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Role {

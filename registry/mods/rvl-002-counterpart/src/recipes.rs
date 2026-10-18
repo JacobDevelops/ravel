@@ -101,20 +101,11 @@ pub fn loaded() -> usize {
         .sum()
 }
 
-/// What this counterpart ships, which is the loaded set and not the shipped one.
-#[must_use]
-pub fn carried() -> usize {
-    loaded()
-}
-
 /// Documents shipped alongside the absent kinds that are not recipes at all.
 ///
 /// Material definitions, statistics and traits sit beside the seventy-seven, and
 /// six further asset documents describe material appearance. All are inert.
 pub const INERT_ALONGSIDE: usize = 18;
-
-/// The inert asset documents under the same integration's asset tree.
-pub const INERT_ASSETS: usize = 6;
 
 /// A condition a shipped document carries.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -193,13 +184,6 @@ pub fn grid_seed_setting_default() -> bool {
     depended::Settings::default().recipes_plain_grid_seeds
 }
 
-/// Documents in the compression family, which agree with the fuel arithmetic.
-///
-/// Six fuel items, one material, one ingot, one nugget and one gemstone each get
-/// a nine-to-one compression and a one-to-nine decompression, plus a
-/// nugget-to-ingot pair and a second, alternative compression for the material.
-pub const COMPRESSED_ENTRIES: usize = 10;
-
 /// The count a decompression yields, which is nine for every member but one.
 ///
 /// The tier material yields four of a *lower* tier's material instead: the one
@@ -256,8 +240,8 @@ mod tests {
 
     #[test]
     fn this_counterpart_carries_the_loaded_set_and_none_of_the_absent_one() {
-        assert_eq!(carried(), 80);
-        assert_ne!(carried(), shipped());
+        assert_eq!(loaded(), 80);
+        assert_ne!(loaded(), shipped());
         assert!(
             GROUPS
                 .iter()
@@ -293,9 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn eighteen_crop_documents_replace_the_derivation_the_extension_switched_off() {
-        let derived_kinds = CROP_RECIPES.len();
-        assert_eq!(derived_kinds * crops::COUNT, 18);
+    fn crop_documents_replace_the_derivation_the_extension_switched_off() {
         for declared in crops::DECLARED {
             let derived = declared
                 .crop(
@@ -386,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn the_inert_documents_beside_the_absent_kinds_are_counted_and_not_carried() {
+    fn the_inert_documents_beside_the_absent_kinds_are_counted_and_not_loaded() {
         assert_eq!(
             shipped() - loaded() + INERT_ALONGSIDE,
             95,

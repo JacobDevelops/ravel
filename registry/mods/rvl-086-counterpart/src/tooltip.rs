@@ -6,6 +6,7 @@
 //! digging tool is drawn as mining at, and the count of ammunition a ranged
 //! weapon can reach — and that is what is here.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::inventory::Stack;
 
 use crate::repair::Shape;
@@ -62,7 +63,11 @@ pub const MAXIMUM_STACKS: usize = 4096;
 /// saturate rather than wrapping, so a store holding more than the count can
 /// hold reports the ceiling instead of a small number.
 #[must_use]
-pub fn usable(offhand: Option<&Stack>, inventory: &[Stack], accepts: &dyn Fn(&str) -> bool) -> u64 {
+pub fn usable(
+    offhand: Option<&Stack>,
+    inventory: &[Stack],
+    accepts: &dyn Fn(&ContentId) -> bool,
+) -> u64 {
     offhand
         .into_iter()
         .chain(inventory.iter().take(MAXIMUM_STACKS))
@@ -76,7 +81,7 @@ pub fn ammunition(
     endless: bool,
     offhand: Option<&Stack>,
     inventory: &[Stack],
-    accepts: &dyn Fn(&str) -> bool,
+    accepts: &dyn Fn(&ContentId) -> bool,
 ) -> Ammunition {
     let counted = usable(offhand, inventory, accepts);
     if endless {
@@ -97,10 +102,14 @@ pub fn shows_ammunition(settings: &Settings, shape: Shape) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
     use crate::matching::Matcher;
 
-    fn accepts_arrows(entry: &str) -> bool {
-        entry == "example:arrow"
+    fn accepts_arrows(entry: &ContentId) -> bool {
+        entry.namespace().as_str() == "example" && entry.path() == "arrow"
     }
 
     fn untagged(_tag: &str) -> bool {
@@ -158,11 +167,11 @@ mod tests {
 
     #[test]
     fn the_count_takes_the_off_hand_slot_first_and_then_the_inventory() {
-        let offhand = Stack::new("example:arrow", 5);
+        let offhand = Stack::new(id("example:arrow"), 5);
         let inventory = vec![
-            Stack::new("example:arrow", 64),
-            Stack::new("example:stone", 64),
-            Stack::new("example:arrow", 1),
+            Stack::new(id("example:arrow"), 64),
+            Stack::new(id("example:stone"), 64),
+            Stack::new(id("example:arrow"), 1),
         ];
         assert_eq!(usable(Some(&offhand), &inventory, &accepts_arrows), 70);
         assert_eq!(usable(None, &inventory, &accepts_arrows), 65);
@@ -171,8 +180,8 @@ mod tests {
     #[test]
     fn a_stack_holding_nothing_and_a_stack_the_weapon_refuses_are_both_skipped() {
         let inventory = vec![
-            Stack::new("example:arrow", 0),
-            Stack::new("example:stone", 64),
+            Stack::new(id("example:arrow"), 0),
+            Stack::new(id("example:stone"), 64),
         ];
         assert_eq!(usable(None, &inventory, &accepts_arrows), 0);
     }
@@ -180,15 +189,15 @@ mod tests {
     #[test]
     fn a_count_at_the_top_of_its_range_saturates_rather_than_wrapping() {
         let inventory = vec![
-            Stack::new("example:arrow", u64::MAX),
-            Stack::new("example:arrow", 10),
+            Stack::new(id("example:arrow"), u64::MAX),
+            Stack::new(id("example:arrow"), 10),
         ];
         assert_eq!(usable(None, &inventory, &accepts_arrows), u64::MAX);
     }
 
     #[test]
     fn a_weapon_that_draws_from_nothing_reports_presence_rather_than_a_count() {
-        let inventory = vec![Stack::new("example:arrow", 3)];
+        let inventory = vec![Stack::new(id("example:arrow"), 3)];
         assert_eq!(
             ammunition(true, None, &inventory, &accepts_arrows),
             Ammunition::Endless { present: true }
@@ -205,7 +214,7 @@ mod tests {
 
     #[test]
     fn an_inventory_longer_than_the_ceiling_is_counted_only_as_far_as_the_ceiling() {
-        let inventory = vec![Stack::new("example:arrow", 1); MAXIMUM_STACKS + 10];
+        let inventory = vec![Stack::new(id("example:arrow"), 1); MAXIMUM_STACKS + 10];
         assert_eq!(
             usable(None, &inventory, &accepts_arrows),
             u64::try_from(MAXIMUM_STACKS).expect("the stack ceiling fits in u64")

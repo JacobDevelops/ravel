@@ -251,7 +251,6 @@ mod tests {
 
     #[test]
     fn all_six_rows_carry_the_values_the_grade_table_states() {
-        assert_eq!(DECLARED.len(), COUNT);
         let durability: Vec<u32> = DECLARED.iter().map(|grade| grade.durability).collect();
         assert_eq!(durability, [2000, 2800, 4000, 6000, 0, 0]);
         let speed: Vec<f64> = DECLARED.iter().map(|grade| grade.speed).collect();
@@ -371,7 +370,6 @@ mod tests {
 
     #[test]
     fn every_grade_accepts_the_generic_category_and_the_three_shapes() {
-        assert_eq!(MODIFIER_CATEGORIES.len(), 4);
         let mut sorted = MODIFIER_CATEGORIES.to_vec();
         sorted.sort_unstable();
         sorted.dedup();

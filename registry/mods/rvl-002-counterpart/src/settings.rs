@@ -17,10 +17,9 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
 };
 use ravel_sdk::content::ContentIdError;
-use ravel_sdk::{JsonValue, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 use rvl_321_counterpart::settings as depended;
 
@@ -152,7 +151,7 @@ pub struct Deposits {
 }
 
 /// The values in force for one launch.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// Chance a defeated wither-class boss drops the soul item.
     pub drops_soul_chance: f64,
@@ -168,22 +167,6 @@ pub struct Settings {
     pub world_outer: Deposits,
 }
 
-impl std::fmt::Debug for Settings {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Settings")
-            .field("drops_soul_chance", &self.drops_soul_chance)
-            .field("drops_scale_count", &self.drops_scale_count)
-            .field("crops_fertilisable", &self.crops_fertilisable)
-            .field("foods_effect_seconds", &self.foods_effect_seconds)
-            .field("world_lower_shard_deposit", &self.world_lower.shard)
-            .field("world_lower_essence_deposit", &self.world_lower.essence)
-            .field("world_outer_shard_deposit", &self.world_outer.shard)
-            .field("world_outer_essence_deposit", &self.world_outer.essence)
-            .finish()
-    }
-}
-
 impl Default for Settings {
     fn default() -> Self {
         let resolved = LayeredConfiguration::resolve(
@@ -196,49 +179,30 @@ impl Default for Settings {
     }
 }
 
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
+}
+
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            drops_soul_chance: resolved
-                .number(&DROPS_SOUL_CHANCE.parse().expect("a declared key"))?,
-            drops_scale_count: u32::try_from(
-                resolved.integer(&DROPS_SCALE_COUNT.parse().expect("a declared key"))?,
-            )
-            .expect("the declared range fits u32"),
-            crops_fertilisable: resolved
-                .boolean(&CROPS_FERTILISABLE.parse().expect("a declared key"))?,
-            foods_effect_seconds: u32::try_from(
-                resolved.integer(&FOODS_EFFECT_SECONDS.parse().expect("a declared key"))?,
-            )
-            .expect("the declared range fits u32"),
+            drops_soul_chance: resolved.number(&key(DROPS_SOUL_CHANCE))?,
+            drops_scale_count: u32::try_from(resolved.integer(&key(DROPS_SCALE_COUNT))?)
+                .expect("the declared range fits u32"),
+            crops_fertilisable: resolved.boolean(&key(CROPS_FERTILISABLE))?,
+            foods_effect_seconds: u32::try_from(resolved.integer(&key(FOODS_EFFECT_SECONDS))?)
+                .expect("the declared range fits u32"),
             world_lower: Deposits {
-                shard: resolved
-                    .boolean(&WORLD_LOWER_SHARD_DEPOSIT.parse().expect("a declared key"))?,
-                essence: resolved
-                    .boolean(&WORLD_LOWER_ESSENCE_DEPOSIT.parse().expect("a declared key"))?,
+                shard: resolved.boolean(&key(WORLD_LOWER_SHARD_DEPOSIT))?,
+                essence: resolved.boolean(&key(WORLD_LOWER_ESSENCE_DEPOSIT))?,
             },
             world_outer: Deposits {
-                shard: resolved
-                    .boolean(&WORLD_OUTER_SHARD_DEPOSIT.parse().expect("a declared key"))?,
-                essence: resolved
-                    .boolean(&WORLD_OUTER_ESSENCE_DEPOSIT.parse().expect("a declared key"))?,
+                shard: resolved.boolean(&key(WORLD_OUTER_SHARD_DEPOSIT))?,
+                essence: resolved.boolean(&key(WORLD_OUTER_ESSENCE_DEPOSIT))?,
             },
-        })
-    }
-
-    /// Whether a value is a legal reading of the named key.
-    #[must_use]
-    pub fn admits(key: &str, value: &JsonValue) -> bool {
-        let Ok(parsed) = key.parse() else {
-            return false;
-        };
-        declaration().is_ok_and(|declared| {
-            declared
-                .setting(&parsed)
-                .is_some_and(|setting| setting.value_schema.check(value).is_ok())
         })
     }
 }
@@ -305,35 +269,50 @@ pub fn consumed_flags() -> Result<Vec<FlagId>, ContentIdError> {
     .collect()
 }
 
-/// Whether any shipped setting would have to travel to a joining client.
-#[must_use]
-pub fn travels_to_clients() -> bool {
-    declaration().is_ok_and(|declared| {
-        declared.settings().iter().any(|setting| {
-            matches!(
-                setting.side,
-                SettingSide::DedicatedServer | SettingSide::IntegratedServer
-            )
-        })
-    })
-}
-
-/// Whether a setting is one a given side resolves at all.
-#[must_use]
-pub fn resolved_on(key: &str, side: Side) -> bool {
-    let Ok(key) = key.parse() else {
-        return false;
-    };
-    declaration().is_ok_and(|declared| {
-        declared
-            .setting(&key)
-            .is_some_and(|setting| setting.side.applies_to(side))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ravel_sdk::config::SettingSide;
+    use ravel_sdk::{JsonValue, Side};
+    /// Whether any shipped setting would have to travel to a joining client.
+    #[must_use]
+    fn travels_to_clients() -> bool {
+        declaration().is_ok_and(|declared| {
+            declared.settings().iter().any(|setting| {
+                matches!(
+                    setting.side,
+                    SettingSide::DedicatedServer | SettingSide::IntegratedServer
+                )
+            })
+        })
+    }
+
+    /// Whether a setting is one a given side resolves at all.
+    #[must_use]
+    fn resolved_on(key: &str, side: Side) -> bool {
+        let Ok(key) = key.parse() else {
+            return false;
+        };
+        declaration().is_ok_and(|declared| {
+            declared
+                .setting(&key)
+                .is_some_and(|setting| setting.side.applies_to(side))
+        })
+    }
+    impl Settings {
+        /// Whether a value is a legal reading of the named key.
+        #[must_use]
+        fn admits(key: &str, value: &JsonValue) -> bool {
+            let Ok(parsed) = key.parse() else {
+                return false;
+            };
+            declaration().is_ok_and(|declared| {
+                declared
+                    .setting(&parsed)
+                    .is_some_and(|setting| setting.value_schema.check(value).is_ok())
+            })
+        }
+    }
 
     #[test]
     fn a_missing_declared_key_is_returned_instead_of_defaulted() {
@@ -426,7 +405,6 @@ mod tests {
         let settings = Settings::default();
         publish(&mut table, &settings).expect("legal flag bindings");
         assert_eq!(table.published().count(), 5);
-        assert_eq!(published_flags().len(), 5);
 
         let published: Vec<String> = table.published().map(ToString::to_string).collect();
         assert_eq!(published.len(), 5);

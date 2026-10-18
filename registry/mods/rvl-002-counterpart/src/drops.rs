@@ -10,6 +10,7 @@
 //! which makes the drop seed-reproducible and will disagree with the original on
 //! any replay comparison.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::inventory::Stack;
 
 use crate::settings::Settings;
@@ -45,8 +46,8 @@ pub fn on_death(
     boss: Boss,
     mob_loot: bool,
     settings: &Settings,
-    soul: &str,
-    scale: &str,
+    soul: &ContentId,
+    scale: &ContentId,
     draw: f64,
 ) -> Added {
     if !mob_loot {
@@ -57,7 +58,7 @@ pub fn on_death(
             let dropped = draw < settings.drops_soul_chance;
             Added {
                 stacks: if dropped {
-                    vec![Stack::new(soul, 1)]
+                    vec![Stack::new(soul.clone(), 1)]
                 } else {
                     Vec::new()
                 },
@@ -66,7 +67,10 @@ pub fn on_death(
         }
         Boss::DragonClass => Added {
             stacks: if settings.drops_scale_count > 0 {
-                vec![Stack::new(scale, u64::from(settings.drops_scale_count))]
+                vec![Stack::new(
+                    scale.clone(),
+                    u64::from(settings.drops_scale_count),
+                )]
             } else {
                 Vec::new()
             },
@@ -79,6 +83,10 @@ pub fn on_death(
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     const SOUL: &str = "test:soul";
     const SCALE: &str = "test:scale";
 
@@ -86,7 +94,7 @@ mod tests {
     fn the_game_rule_is_tested_before_any_draw_is_taken() {
         let settings = Settings::default();
         for boss in [Boss::WitherClass, Boss::DragonClass] {
-            let added = on_death(boss, false, &settings, SOUL, SCALE, 0.0);
+            let added = on_death(boss, false, &settings, &id(SOUL), &id(SCALE), 0.0);
             assert_eq!(added.stacks.len(), 0);
             assert!(!added.drew, "the rule gates the drop and consumes nothing");
         }
@@ -95,11 +103,25 @@ mod tests {
     #[test]
     fn the_wither_class_drop_is_a_draw_against_the_configured_chance() {
         let settings = Settings::default();
-        let below = on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, 0.34);
-        assert_eq!(below.stacks, vec![Stack::new(SOUL, 1)]);
+        let below = on_death(
+            Boss::WitherClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.34,
+        );
+        assert_eq!(below.stacks, vec![Stack::new(id(SOUL), 1)]);
         assert!(below.drew);
 
-        let above = on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, 0.35);
+        let above = on_death(
+            Boss::WitherClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.35,
+        );
         assert_eq!(above.stacks.len(), 0);
         assert!(above.drew, "a draw was still taken");
     }
@@ -112,18 +134,32 @@ mod tests {
         };
         for draw in [0.0, 0.5, 0.999] {
             assert_eq!(
-                on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, draw)
-                    .stacks
-                    .len(),
+                on_death(
+                    Boss::WitherClass,
+                    true,
+                    &settings,
+                    &id(SOUL),
+                    &id(SCALE),
+                    draw
+                )
+                .stacks
+                .len(),
                 0
             );
         }
         settings.drops_soul_chance = 1.0;
         for draw in [0.0, 0.5, 0.999] {
             assert_eq!(
-                on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, draw)
-                    .stacks
-                    .len(),
+                on_death(
+                    Boss::WitherClass,
+                    true,
+                    &settings,
+                    &id(SOUL),
+                    &id(SCALE),
+                    draw
+                )
+                .stacks
+                .len(),
                 1
             );
         }
@@ -132,8 +168,15 @@ mod tests {
     #[test]
     fn the_dragon_class_drop_is_a_certainty_and_takes_no_draw() {
         let settings = Settings::default();
-        let added = on_death(Boss::DragonClass, true, &settings, SOUL, SCALE, 0.999);
-        assert_eq!(added.stacks, vec![Stack::new(SCALE, 8)]);
+        let added = on_death(
+            Boss::DragonClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.999,
+        );
+        assert_eq!(added.stacks, vec![Stack::new(id(SCALE), 8)]);
         assert!(!added.drew, "the count is a certainty");
     }
 
@@ -143,7 +186,14 @@ mod tests {
             drops_scale_count: 0,
             ..Settings::default()
         };
-        let added = on_death(Boss::DragonClass, true, &settings, SOUL, SCALE, 0.0);
+        let added = on_death(
+            Boss::DragonClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.0,
+        );
         assert_eq!(added.stacks.len(), 0);
         assert!(!added.drew);
     }
@@ -152,7 +202,14 @@ mod tests {
     fn the_dragon_class_branch_fires_on_every_death_including_a_later_one() {
         let settings = Settings::default();
         for _ in 0..3 {
-            let added = on_death(Boss::DragonClass, true, &settings, SOUL, SCALE, 0.0);
+            let added = on_death(
+                Boss::DragonClass,
+                true,
+                &settings,
+                &id(SOUL),
+                &id(SCALE),
+                0.0,
+            );
             assert_eq!(added.stacks.len(), 1, "nothing tracks first-kill state");
         }
     }
@@ -160,15 +217,36 @@ mod tests {
     #[test]
     fn the_handed_in_draw_is_the_only_thing_the_drop_depends_on() {
         let settings = Settings::default();
-        let below = on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, 0.2);
-        let above = on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, 0.9);
+        let below = on_death(
+            Boss::WitherClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.2,
+        );
+        let above = on_death(
+            Boss::WitherClass,
+            true,
+            &settings,
+            &id(SOUL),
+            &id(SCALE),
+            0.9,
+        );
         assert_ne!(
             below, above,
             "either side of the configured chance answers differently"
         );
         for _ in 0..16 {
             assert_eq!(
-                on_death(Boss::WitherClass, true, &settings, SOUL, SCALE, 0.2),
+                on_death(
+                    Boss::WitherClass,
+                    true,
+                    &settings,
+                    &id(SOUL),
+                    &id(SCALE),
+                    0.2
+                ),
                 below,
                 "no source of the drop's own is consulted"
             );

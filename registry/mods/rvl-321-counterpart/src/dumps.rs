@@ -92,7 +92,7 @@ fn subjects() -> Vec<(Crop, Tier, CropKind)> {
 /// entry contributes stays [`crate::recipes::derive`]'s answer.
 #[must_use]
 pub fn recipe_document() -> String {
-    let resolves = |_: &str| 1usize;
+    let resolves = |_: &ravel_sdk::content::ContentId| 1usize;
     let mut rendered: Vec<(String, JsonValue)> = Vec::new();
     for (crop, tier, kind) in subjects() {
         for recipe in crate::recipes::derive(&crop, &tier, &kind, true, &resolves) {
@@ -186,7 +186,8 @@ pub fn machine_document() -> String {
                 facing: Facing::North,
                 range: Sweep::range(upgrade),
             };
-            let position = upgrade.map_or_else(|| "none".to_owned(), |it| it.position.to_string());
+            let position =
+                upgrade.map_or_else(|| "none".to_owned(), |it| it.position().to_string());
             let operation =
                 upgrade.map_or(bases.operation, |it| it.operation_ticks(bases.operation));
             let usage = upgrade.map_or(bases.usage, |it| it.usage_per_tick(bases.usage));

@@ -119,7 +119,7 @@ impl Cache {
     /// Records the declared materials of an eight-station ritual.
     pub fn index_materials(&mut self, recipe: &EightStation) {
         for material in &recipe.materials {
-            self.materials.insert(material.entry.clone());
+            self.materials.insert(material.entry.to_string());
         }
     }
 
@@ -396,16 +396,19 @@ mod tests {
     fn ritual() -> EightStation {
         EightStation {
             id: "test:ritual".to_owned(),
-            altar: Ingredient::Entry("a:altar".to_owned()),
-            ring: vec![Ingredient::Entry("a:one".to_owned())],
-            materials: vec![Stack::new("a:fuel", 4)],
-            result: Stack::new("a:result", 1),
+            altar: Ingredient::Entry("a:altar".parse().expect("item id")),
+            ring: vec![Ingredient::Entry("a:one".parse().expect("item id"))],
+            materials: vec![Stack::new(
+                "a:fuel".parse().expect("a legal item identity"),
+                4,
+            )],
+            result: Stack::new("a:result".parse().expect("a legal item identity"), 1),
         }
     }
 
     fn enumerates(ingredient: &Ingredient) -> Vec<String> {
         match ingredient {
-            Ingredient::Entry(entry) => vec![entry.clone()],
+            Ingredient::Entry(entry) => vec![entry.to_string()],
             Ingredient::Tag(_) => vec!["a:tagged".to_owned()],
             Ingredient::TillingTool
             | Ingredient::ChargedContainer
@@ -427,7 +430,7 @@ mod tests {
         cache.index(
             "test:recipe",
             &[
-                Ingredient::Entry("a:one".to_owned()),
+                Ingredient::Entry("a:one".parse().expect("item id")),
                 Ingredient::ChargedContainer,
             ],
             &enumerates,
@@ -444,8 +447,8 @@ mod tests {
     fn one_recipe_is_recorded_once_under_an_item_it_names_twice() {
         let mut cache = Cache::new();
         let twice = [
-            Ingredient::Entry("a:one".to_owned()),
-            Ingredient::Entry("a:one".to_owned()),
+            Ingredient::Entry("a:one".parse().expect("item id")),
+            Ingredient::Entry("a:one".parse().expect("item id")),
         ];
         cache.index("test:recipe", &twice, &enumerates);
         assert_eq!(cache.accepts("a:one"), ["test:recipe"]);

@@ -12,6 +12,11 @@ code and most of the tests are.
 
 Flag publication returns the shared library's typed identity error instead of silently omitting
 an invalid binding. Rebuilding the configured entry propagates that failure.
+Shared stacks, repair constructors, projectile acceptance callbacks and optional crop seeds use
+validated `ContentId` identities. Zero count alone denotes an empty stack. Settings and deciding
+payloads derive grouped Debug diagnostics without changing configuration keys or wire layout.
+Repair refusals implement `Error`; tag declaration failures retain their typed sources through
+`Error::source` instead of flattening them into text.
 
 ## What each section became
 
@@ -75,7 +80,7 @@ an invalid binding. Rebuilding the configured entry propagates that failure.
   settings stay the player's own. The specification says in as many words that this is the one place
   where matching the original would be the wrong call.
   Repair material policies and tool-shape discounts are grouped in the Rust settings API;
-  the deciding payload's field order and the flat diagnostic Debug representation are unchanged.
+  the deciding payload's field order is unchanged.
 - **The one payload bounds its index and checks ownership (§10.1).** The original indexes the
   sender's open container with an integer the sender chose, unchecked, and asks only whether what it
   found is an attractor. `Toggle::apply` refuses a container larger than a declared ceiling, refuses

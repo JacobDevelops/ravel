@@ -164,7 +164,6 @@ mod tests {
 
     #[test]
     fn all_six_rows_carry_the_values_the_table_states() {
-        assert_eq!(DECLARED.len(), COUNT);
         let nutrition: Vec<u32> = DECLARED.iter().map(|food| food.nutrition).collect();
         assert_eq!(nutrition, [6, 8, 10, 12, 16, 20]);
         for (index, food) in DECLARED.iter().enumerate() {

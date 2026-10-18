@@ -71,26 +71,6 @@ pub const HOST_NAMESPACE: &str = "host";
 /// every mod that makes an ingot puts one in `c:ingots`.
 pub const CONVENTION_NAMESPACE: &str = "c";
 
-/// The entry runs on both sides and is mandatory on both.
-pub const SIDES: [Side; 3] = [Side::Client, Side::IntegratedServer, Side::DedicatedServer];
-
-/// The companion mods section six's four crops name, discovered at runtime.
-///
-/// No soft dependency is declared on any of them. A counterpart that declared
-/// one would change the resolved load order, which is the one thing the original
-/// does not do here.
-pub const DECLARED_SOFT_DEPENDENCIES: usize = 0;
-
-/// Registry kinds Ravel publishes that this entry's census fits into.
-///
-/// Two of the six registries of section seven have a key to claim: blocks and
-/// items. The fluid, fluid-type and creative-listing registries do not, so the
-/// thirty fluid registrations and the listing are carried as data in [`census`]
-/// and `NOTES.md` records them as host-blocked. This entry owns no recipe kind
-/// at all: every recipe it ships is data against a kind one of its two
-/// dependencies claims.
-pub const CLAIMED_KINDS: [ContentKind; 2] = [ContentKind::Block, ContentKind::Item];
-
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
@@ -333,15 +313,6 @@ mod tests {
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
         assert_eq!(Entry::new().id().as_str(), MOD_ID);
         assert_eq!(__ravel_entry(Side::DedicatedServer).id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn the_entry_runs_on_both_sides_and_discovers_companions_at_runtime() {
-        assert_eq!(SIDES.len(), 3);
-        assert_eq!(
-            DECLARED_SOFT_DEPENDENCIES, 0,
-            "companion mods are discovered at runtime, never declared"
-        );
     }
 
     #[test]

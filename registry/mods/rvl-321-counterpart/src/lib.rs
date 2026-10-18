@@ -98,7 +98,7 @@ pub fn availability(
     companions_loaded: usize,
     declares_companions: bool,
     development: bool,
-    resolves: &dyn Fn(&str) -> usize,
+    resolves: &dyn Fn(&ContentId) -> usize,
 ) -> Availability {
     let enabled = crop.enabled && (development || !declares_companions || companions_loaded > 0);
     if !enabled {
@@ -453,16 +453,15 @@ impl Mod for Entry {
                 "the stored payload holds no machine table",
             ));
         };
-        if let Some((name, _)) = held.iter().find(|(_, payload)| !payload.is_object()) {
-            return Err(ModError::refused(format!(
-                "the stored machine `{name}` holds no machine object"
-            )));
-        }
-        self.machines.clear();
-        for (name, payload) in held {
-            self.machines
-                .insert(name.clone(), machines::Persisted::load(payload));
-        }
+        let machines = held
+            .iter()
+            .map(|(name, payload)| {
+                machines::Persisted::load(payload)
+                    .map(|machine| (name.clone(), machine))
+                    .map_err(|error| ModError::refused(format!("stored machine `{name}`: {error}")))
+            })
+            .collect::<Result<_, _>>()?;
+        self.machines = machines;
         Ok(())
     }
 }
@@ -546,7 +545,14 @@ mod tests {
             .expect("valid saved data")
             .expect("declared");
         let plan = SavedDataPlan::open(&declaration, Some(machines::DATA_VERSION)).expect("a plan");
-        for invalid in [json!(null), json!(42), json!([])] {
+        for invalid in [
+            json!(null),
+            json!(42),
+            json!([]),
+            json!({"progress": "fast"}),
+            json!({"energy": {"capacity": -1}}),
+            json!({"upgrade": 99}),
+        ] {
             let envelope = SavedDataEnvelope::current(
                 Entry::declared_id().clone(),
                 machines::DATA_VERSION,
@@ -554,7 +560,7 @@ mod tests {
             );
             let error = entry
                 .open_saved_data(Some(&envelope), &plan)
-                .expect_err("a machine must be an object");
+                .expect_err("a malformed machine must refuse the table");
             assert!(error.to_string().contains("z_broken"));
             assert!(entry.machine("retained").is_some());
             assert!(entry.machine("a_valid").is_none());
@@ -622,7 +628,7 @@ mod tests {
                     remaining: 40,
                     total: 2000,
                 },
-                upgrade: Some(4),
+                upgrade: Some(machines::UPGRADES[3]),
                 cursor: Some(23),
             },
         );
@@ -647,7 +653,7 @@ mod tests {
         let held = reopened
             .machine("harvester")
             .expect("the machine came back");
-        let upgrade = held.upgrade().expect("the position names an upgrade");
+        let upgrade = held.upgrade.expect("the machine holds an upgrade");
         assert_eq!(held.cursor, Some(23), "the sweep resumes where it left off");
         assert_eq!(upgrade.capacity(), 400_000);
         assert_eq!(upgrade.usage_per_tick(machines::HARVESTING.usage), 640);

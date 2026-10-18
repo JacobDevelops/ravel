@@ -6,6 +6,7 @@
 //! harvesting anything.
 
 use num_traits::ToPrimitive;
+use ravel_sdk::content::ContentId;
 
 use crate::inventory::Stack;
 
@@ -85,7 +86,7 @@ pub struct Mature {
     /// The stacks the crop would produce if it were broken outright.
     pub drops: Vec<Stack>,
     /// The entry a single withheld seed is taken from, for a replanting crop.
-    pub seed: Option<String>,
+    pub seed: Option<ContentId>,
 }
 
 /// Sweeps a square, asking a cancellable listener at each position first.
@@ -286,7 +287,11 @@ pub fn reduce(stack: &Stack, by: u64, remainder: Option<Stack>) -> Option<Stack>
 #[must_use]
 pub fn insert(into: &Stack, incoming: &Stack, limit: u64) -> (Stack, Option<Stack>) {
     if into.is_empty() {
-        let (merged, over) = grow(&Stack::new(&incoming.entry, 0), incoming.count, limit);
+        let (merged, over) = grow(
+            &Stack::new(incoming.entry.clone(), 0),
+            incoming.count,
+            limit,
+        );
         let mut merged = merged;
         merged.data = incoming.data.clone();
         return (merged, rest(incoming, over));
@@ -479,10 +484,18 @@ pub fn resolve_offsets(origin: Position, offsets: &[Position]) -> Vec<Position> 
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     fn mature(drops: Vec<Stack>, seed: &str) -> Mature {
         Mature {
             drops,
-            seed: Some(seed.to_owned()),
+            seed: Some(
+                format!("test:{seed}")
+                    .parse()
+                    .expect("a valid seed identity"),
+            ),
         }
     }
 
@@ -511,8 +524,15 @@ mod tests {
     #[test]
     fn a_sweep_withholds_exactly_one_seed_and_damages_the_tool_once() {
         let offer = |position: Position| {
-            (position.0 == 0)
-                .then(|| mature(vec![Stack::new("seed", 3), Stack::new("crop", 2)], "seed"))
+            (position.0 == 0).then(|| {
+                mature(
+                    vec![
+                        Stack::new(id("test:seed"), 3),
+                        Stack::new(id("test:crop"), 2),
+                    ],
+                    "seed",
+                )
+            })
         };
         let mut allow = |_: Position| true;
         let report = sweep_harvest((0, 0, 0), 1, &offer, &mut allow);
@@ -523,7 +543,7 @@ mod tests {
         let seeds: u64 = report
             .drops
             .iter()
-            .filter(|stack| stack.entry == "seed")
+            .filter(|stack| stack.entry == id("test:seed"))
             .map(|stack| stack.count)
             .sum();
         assert_eq!(
@@ -534,13 +554,13 @@ mod tests {
 
     #[test]
     fn withholding_the_last_seed_drops_the_stack_rather_than_leaving_an_empty_one() {
-        let drops = withhold_one_seed(mature(vec![Stack::new("seed", 1)], "seed"));
+        let drops = withhold_one_seed(mature(vec![Stack::new(id("test:seed"), 1)], "seed"));
         assert_eq!(drops, Vec::<Stack>::new());
     }
 
     #[test]
     fn a_cancel_stops_one_position_without_stopping_the_sweep() {
-        let offer = |_: Position| Some(mature(vec![Stack::new("crop", 1)], "seed"));
+        let offer = |_: Position| Some(mature(vec![Stack::new(id("test:crop"), 1)], "seed"));
         let mut allow = |position: Position| position != (0, 0, 0);
         let report = sweep_harvest((0, 0, 0), 1, &offer, &mut allow);
 
@@ -590,7 +610,6 @@ mod tests {
         );
         assert_eq!(combination_family(&|_| false), None);
         assert_eq!(combination_family(&|_| true), Some(Family::Stripping));
-        assert_eq!(Family::ORDER.len(), 3);
     }
 
     #[test]
@@ -649,41 +668,49 @@ mod tests {
 
     #[test]
     fn growing_a_stack_answers_with_what_did_not_fit() {
-        let (grown, over) = grow(&Stack::new("one", 60), 10, 64);
+        let (grown, over) = grow(&Stack::new(id("test:one"), 60), 10, 64);
         assert_eq!(grown.count, 64);
         assert_eq!(over, 6);
     }
 
     #[test]
     fn reducing_to_nothing_yields_the_remainder_when_one_was_supplied() {
-        let stack = Stack::new("one", 1);
+        let stack = Stack::new(id("test:one"), 1);
         assert_eq!(reduce(&stack, 1, None), None);
         assert_eq!(
-            reduce(&stack, 1, Some(Stack::new("empty", 1))),
-            Some(Stack::new("empty", 1))
+            reduce(&stack, 1, Some(Stack::new(id("test:empty"), 1))),
+            Some(Stack::new(id("test:empty"), 1))
         );
         assert_eq!(
-            reduce(&Stack::new("one", 5), 2, None),
-            Some(Stack::new("one", 3))
+            reduce(&Stack::new(id("test:one"), 5), 2, None),
+            Some(Stack::new(id("test:one"), 3))
         );
     }
 
     #[test]
     fn two_stacks_on_the_same_entry_and_data_merge_up_to_the_limit() {
-        let (merged, rest) = insert(&Stack::new("one", 30), &Stack::new("one", 40), 64);
+        let (merged, rest) = insert(
+            &Stack::new(id("test:one"), 30),
+            &Stack::new(id("test:one"), 40),
+            64,
+        );
         assert_eq!(merged.count, 64);
-        assert_eq!(rest, Some(Stack::new("one", 6)));
+        assert_eq!(rest, Some(Stack::new(id("test:one"), 6)));
 
-        let (kept, refused) = insert(&Stack::new("one", 1), &Stack::new("two", 1), 64);
-        assert_eq!(kept, Stack::new("one", 1));
-        assert_eq!(refused, Some(Stack::new("two", 1)));
+        let (kept, refused) = insert(
+            &Stack::new(id("test:one"), 1),
+            &Stack::new(id("test:two"), 1),
+            64,
+        );
+        assert_eq!(kept, Stack::new(id("test:one"), 1));
+        assert_eq!(refused, Some(Stack::new(id("test:two"), 1)));
     }
 
     #[test]
     fn an_insert_into_an_empty_slot_takes_the_incoming_data() {
-        let mut incoming = Stack::new("one", 3);
+        let mut incoming = Stack::new(id("test:one"), 3);
         incoming.data = ravel_sdk::json!({ "charge": 2 });
-        let (merged, rest) = insert(&Stack::default(), &incoming, 64);
+        let (merged, rest) = insert(&Stack::new(id("test:empty"), 0), &incoming, 64);
         assert_eq!(merged.count, 3);
         assert_eq!(merged.data, incoming.data);
         assert_eq!(rest, None);

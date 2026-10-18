@@ -121,6 +121,11 @@ impl Reusable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ravel_sdk::content::ContentId;
+
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
 
     fn draws(values: Vec<f64>) -> impl FnMut() -> f64 {
         let mut values = values.into_iter();
@@ -152,11 +157,11 @@ mod tests {
     #[test]
     fn an_unlimited_entry_comes_back_unchanged_whatever_the_draw() {
         let entry = Reusable::new(0);
-        let stack = Stack::new("tool", 1);
+        let stack = Stack::new(id("test:tool"), 1);
         let mut draw = draws(vec![0.0]);
         assert_eq!(
             entry.remainder(&stack, 7, 0, &mut draw),
-            Some((Stack::new("tool", 1), 7))
+            Some((Stack::new(id("test:tool"), 1), 7))
         );
     }
 
@@ -171,24 +176,24 @@ mod tests {
     #[test]
     fn a_draw_at_or_above_the_probability_skips_the_charge() {
         let entry = Reusable::new(4);
-        let stack = Stack::new("tool", 1);
+        let stack = Stack::new(id("test:tool"), 1);
         let mut skipped = draws(vec![0.5]);
         assert_eq!(
             entry.remainder(&stack, 0, 1, &mut skipped),
-            Some((Stack::new("tool", 1), 0)),
+            Some((Stack::new(id("test:tool"), 1), 0)),
             "a draw equal to the probability is not below it"
         );
         let mut charged = draws(vec![0.49]);
         assert_eq!(
             entry.remainder(&stack, 0, 1, &mut charged),
-            Some((Stack::new("tool", 1), 1))
+            Some((Stack::new(id("test:tool"), 1), 1))
         );
     }
 
     #[test]
     fn the_remainder_is_a_single_copy_however_many_were_held() {
         let entry = Reusable::new(4);
-        let mut stack = Stack::new("tool", 9);
+        let mut stack = Stack::new(id("test:tool"), 9);
         stack.data = ravel_sdk::json!({ "charge": 2 });
         let mut draw = draws(vec![1.0]);
         let (copy, _) = entry
@@ -201,7 +206,7 @@ mod tests {
     #[test]
     fn exceeding_the_maximum_consumes_the_entry() {
         let entry = Reusable::new(2);
-        let stack = Stack::new("tool", 1);
+        let stack = Stack::new(id("test:tool"), 1);
         let mut draw = draws(vec![0.0]);
         assert_eq!(
             entry.remainder(&stack, 0, 0, &mut draw),

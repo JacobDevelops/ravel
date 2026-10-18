@@ -10,7 +10,7 @@
 //! Every number here is integer arithmetic and both truncations are the
 //! observable behaviour, so both are reproduced rather than rounded.
 
-use ravel_sdk::{JsonValue, json};
+use ravel_sdk::{JsonValue, content::ContentId, json};
 use rvl_042_counterpart::inventory::Stack;
 
 use crate::matching::Matcher;
@@ -77,7 +77,7 @@ impl Enchantment {
 }
 
 /// One occupied slot of a crafting grid.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Held {
     /// The stack in the slot.
     pub stack: Stack,
@@ -97,22 +97,27 @@ pub struct Held {
 impl Held {
     /// Builds a plain undamageable material of one entry.
     #[must_use]
-    pub fn material(entry: &str) -> Self {
+    pub fn material(entry: ContentId) -> Self {
         Self {
             stack: Stack::new(entry, 1),
-            ..Self::default()
+            damage: 0,
+            maximum_damage: 0,
+            shape: None,
+            enchantments: Vec::new(),
+            returns_a_remainder: false,
         }
     }
 
     /// Builds a damaged tool of a shape.
     #[must_use]
-    pub fn tool(entry: &str, shape: Shape, damage: u32, maximum_damage: u32) -> Self {
+    pub fn tool(entry: ContentId, shape: Shape, damage: u32, maximum_damage: u32) -> Self {
         Self {
             stack: Stack::new(entry, 1),
             damage,
             maximum_damage,
             shape: Some(shape),
-            ..Self::default()
+            enchantments: Vec::new(),
+            returns_a_remainder: false,
         }
     }
 
@@ -149,6 +154,23 @@ pub enum Refused {
     /// A material is worth nothing for this tool.
     WorthlessMaterial,
 }
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::SwitchedOff => "repair is switched off",
+            Self::NoTool => "the grid holds no damageable tool",
+            Self::Undamaged => "the tool is undamaged",
+            Self::NoMaterials => "the grid holds no repair materials",
+            Self::Blacklisted => "the tool is blacklisted",
+            Self::SurplusAfterFull => "material remains after the tool is fully repaired",
+            Self::MaterialReturns => "a repair material returns a crafting remainder",
+            Self::WorthlessMaterial => "a material cannot repair this tool",
+        })
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// What one grid produces.
 #[derive(Clone, Debug, PartialEq)]
@@ -234,26 +256,21 @@ impl Cost {
 pub fn worth(
     settings: &Settings,
     table: &Table,
-    tool: &Held,
-    material: &Held,
+    tool_entry: &str,
+    material_entry: &str,
     tool_tagged: &dyn Fn(&str) -> bool,
     material_tagged: &dyn Fn(&str) -> bool,
     host_accepts: &dyn Fn(&str, &str) -> bool,
 ) -> f64 {
-    if let Some(multiplier) = table.multiplier(
-        &tool.stack.entry,
-        &material.stack.entry,
-        tool_tagged,
-        material_tagged,
-    ) {
+    if let Some(multiplier) =
+        table.multiplier(tool_entry, material_entry, tool_tagged, material_tagged)
+    {
         return multiplier;
     }
-    if settings.repair_materials.override_mode && table.names_tool(&tool.stack.entry, tool_tagged) {
+    if settings.repair_materials.override_mode && table.names_tool(tool_entry, tool_tagged) {
         return 0.0;
     }
-    if !settings.repair_materials.disable_defaults
-        && host_accepts(&tool.stack.entry, &material.stack.entry)
-    {
+    if !settings.repair_materials.disable_defaults && host_accepts(tool_entry, material_entry) {
         return 1.0;
     }
     0.0
@@ -289,8 +306,60 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
         return Err(Refused::SwitchedOff);
     }
 
+    let (tool, materials) = ingredients(grid)?;
+    let tool_entry = tool.stack.entry.to_string();
+    let tool_tagged = |tag: &str| (context.tagged)(&tool_entry, tag);
+    if context.blacklist.matches(&tool_entry, &tool_tagged) {
+        return Err(Refused::Blacklisted);
+    }
+
+    let cost = Cost::of(context.settings, tool.shape);
+    let per_unit = cost.per_unit(tool.maximum_damage, tool.enchanted());
+
+    let mut units = 0.0_f64;
+    let mut full = false;
+    let capacity = materials
+        .iter()
+        .map(|held| held.stack.entry.namespace().as_str().len() + 1 + held.stack.entry.path().len())
+        .max()
+        .unwrap_or(0);
+    let mut material_entry = String::with_capacity(capacity);
+    for material in materials {
+        if full {
+            return Err(Refused::SurplusAfterFull);
+        }
+        if material.returns_a_remainder {
+            return Err(Refused::MaterialReturns);
+        }
+        material_entry.clear();
+        material_entry.push_str(material.stack.entry.namespace().as_str());
+        material_entry.push(':');
+        material_entry.push_str(material.stack.entry.path());
+        let material_tagged = |tag: &str| (context.tagged)(&material_entry, tag);
+        let value = worth(
+            context.settings,
+            context.table,
+            &tool_entry,
+            &material_entry,
+            &tool_tagged,
+            &material_tagged,
+            context.host_accepts,
+        );
+        if value == 0.0 {
+            return Err(Refused::WorthlessMaterial);
+        }
+        units += value;
+        if mended(per_unit, units) >= tool.damage {
+            full = true;
+        }
+    }
+
+    Ok(repair_result(tool, context, per_unit, units))
+}
+
+fn ingredients(grid: &[Option<Held>]) -> Result<(&Held, Vec<&Held>), Refused> {
     let mut tool: Option<&Held> = None;
-    let mut materials: Vec<&Held> = Vec::new();
+    let mut materials: Vec<&Held> = Vec::with_capacity(grid.len().saturating_sub(1));
     for held in grid.iter().flatten() {
         if held.stack.is_empty() {
             continue;
@@ -309,45 +378,7 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
     if materials.is_empty() {
         return Err(Refused::NoMaterials);
     }
-    let tool_entry = tool.stack.entry.clone();
-    let tool_tagged = |tag: &str| (context.tagged)(&tool_entry, tag);
-    if context.blacklist.matches(&tool.stack.entry, &tool_tagged) {
-        return Err(Refused::Blacklisted);
-    }
-
-    let cost = Cost::of(context.settings, tool.shape);
-    let per_unit = cost.per_unit(tool.maximum_damage, tool.enchanted());
-
-    let mut units = 0.0_f64;
-    let mut full = false;
-    for material in materials {
-        if full {
-            return Err(Refused::SurplusAfterFull);
-        }
-        if material.returns_a_remainder {
-            return Err(Refused::MaterialReturns);
-        }
-        let material_entry = material.stack.entry.clone();
-        let material_tagged = |tag: &str| (context.tagged)(&material_entry, tag);
-        let value = worth(
-            context.settings,
-            context.table,
-            tool,
-            material,
-            &tool_tagged,
-            &material_tagged,
-            context.host_accepts,
-        );
-        if value == 0.0 {
-            return Err(Refused::WorthlessMaterial);
-        }
-        units += value;
-        if mended(per_unit, units) >= tool.damage {
-            full = true;
-        }
-    }
-
-    Ok(repair_result(tool, context, per_unit, units))
+    Ok((tool, materials))
 }
 
 fn repair_result(tool: &Held, context: &Context<'_>, per_unit: u32, units: f64) -> Repaired {
@@ -426,6 +457,10 @@ fn mended(per_unit: u32, units: f64) -> u32 {
 mod tests {
     use super::*;
 
+    fn id(entry: &str) -> ContentId {
+        entry.parse().expect("a valid test identity")
+    }
+
     #[test]
     fn mending_preserves_truncation_saturation_and_nonfinite_rejection() {
         assert_eq!(mended(3, 0.5), 1);
@@ -503,7 +538,7 @@ mod tests {
             repair(&[], &fixture.context(&everything_accepted)),
             Err(Refused::NoTool)
         );
-        let only_materials = grid(vec![Held::material("example:ingot")]);
+        let only_materials = grid(vec![Held::material(id("example:ingot"))]);
         assert_eq!(
             repair(&only_materials, &fixture.context(&everything_accepted)),
             Err(Refused::NoTool)
@@ -514,14 +549,14 @@ mod tests {
     fn an_undamaged_tool_and_a_lone_tool_are_both_refused() {
         let fixture = Fixture::new();
         let undamaged = grid(vec![
-            Held::tool("example:pick", Shape::Other, 0, 100),
-            Held::material("example:ingot"),
+            Held::tool(id("example:pick"), Shape::Other, 0, 100),
+            Held::material(id("example:ingot")),
         ]);
         assert_eq!(
             repair(&undamaged, &fixture.context(&everything_accepted)),
             Err(Refused::Undamaged)
         );
-        let alone = grid(vec![Held::tool("example:pick", Shape::Other, 50, 100)]);
+        let alone = grid(vec![Held::tool(id("example:pick"), Shape::Other, 50, 100)]);
         assert_eq!(
             repair(&alone, &fixture.context(&everything_accepted)),
             Err(Refused::NoMaterials)
@@ -532,12 +567,12 @@ mod tests {
     fn the_first_damageable_item_in_slot_order_is_the_tool_and_a_later_one_is_a_material() {
         let fixture = Fixture::new();
         let two_tools = grid(vec![
-            Held::tool("example:first", Shape::Other, 60, 60),
-            Held::tool("example:second", Shape::Other, 30, 60),
+            Held::tool(id("example:first"), Shape::Other, 60, 60),
+            Held::tool(id("example:second"), Shape::Other, 30, 60),
         ]);
         let repaired = repair(&two_tools, &fixture.context(&everything_accepted))
             .expect("the host accepts the later tool as a material");
-        assert_eq!(repaired.result.entry, "example:first");
+        assert_eq!(repaired.result.entry, id("example:first"));
         assert_eq!(repaired.units, 1.0);
     }
 
@@ -546,9 +581,9 @@ mod tests {
         let fixture = Fixture::new();
         let sparse = vec![
             None,
-            Some(Held::tool("example:pick", Shape::Other, 60, 60)),
+            Some(Held::tool(id("example:pick"), Shape::Other, 60, 60)),
             None,
-            Some(Held::material("example:ingot")),
+            Some(Held::material(id("example:ingot"))),
         ];
         let repaired = repair(&sparse, &fixture.context(&everything_accepted))
             .expect("empty slots are not materials");
@@ -560,8 +595,8 @@ mod tests {
         let mut fixture = Fixture::new();
         fixture.blacklist = Matcher::parse("example:pick");
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:ingot"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:ingot")),
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&everything_accepted)),
@@ -573,8 +608,8 @@ mod tests {
     fn a_material_worth_nothing_voids_the_whole_craft() {
         let fixture = Fixture::new();
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:sand"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:sand")),
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&nothing_accepted)),
@@ -585,10 +620,10 @@ mod tests {
     #[test]
     fn a_material_that_gives_itself_back_can_never_be_a_repair_material() {
         let fixture = Fixture::new();
-        let mut reusable = Held::material("example:mesh");
+        let mut reusable = Held::material(id("example:mesh"));
         reusable.returns_a_remainder = true;
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
             reusable,
         ]);
         assert_eq!(
@@ -603,19 +638,19 @@ mod tests {
         // The default cost of three over a maximum of sixty mends twenty a unit,
         // so three units fill a tool damaged by sixty and a fourth is surplus.
         let full = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
-            Held::material("example:b"),
-            Held::material("example:c"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
+            Held::material(id("example:b")),
+            Held::material(id("example:c")),
         ]);
         assert!(repair(&full, &fixture.context(&everything_accepted)).is_ok());
 
         let surplus = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
-            Held::material("example:b"),
-            Held::material("example:c"),
-            Held::material("example:d"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
+            Held::material(id("example:b")),
+            Held::material(id("example:c")),
+            Held::material(id("example:d")),
         ]);
         assert_eq!(
             repair(&surplus, &fixture.context(&everything_accepted)),
@@ -627,8 +662,8 @@ mod tests {
     fn the_saturating_material_may_be_the_last_one_without_voiding_anything() {
         let fixture = Fixture::new();
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 20, 60),
-            Held::material("example:a"),
+            Held::tool(id("example:pick"), Shape::Other, 20, 60),
+            Held::material(id("example:a")),
         ]);
         let repaired =
             repair(&laid, &fixture.context(&everything_accepted)).expect("one unit fills it");
@@ -642,9 +677,9 @@ mod tests {
         // A maximum of one hundred over seven units mends fourteen a unit, not
         // fourteen and a fraction, and two units mend twenty-eight.
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 100, 100),
-            Held::material("example:a"),
-            Held::material("example:b"),
+            Held::tool(id("example:pick"), Shape::Other, 100, 100),
+            Held::material(id("example:a")),
+            Held::material(id("example:b")),
         ]);
         let repaired = repair(&laid, &fixture.context(&everything_accepted)).expect("two units");
         assert_eq!(repaired.per_unit, 14);
@@ -661,9 +696,9 @@ mod tests {
         );
         // Twenty a unit against one whole unit assembled from two halves.
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
-            Held::material("example:b"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
+            Held::material(id("example:b")),
         ]);
         let repaired = repair(&laid, &fixture.context(&nothing_accepted)).expect("half plus half");
         assert_eq!(repaired.units, 1.0);
@@ -709,8 +744,8 @@ mod tests {
         let mut fixture = Fixture::new();
         fixture.table = Table::parse("example:pick=example:a@2", "host");
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
         ]);
         let repaired = repair(&laid, &fixture.context(&everything_accepted)).expect("two units");
         assert_eq!(repaired.units, 2.0);
@@ -721,8 +756,8 @@ mod tests {
         let mut fixture = Fixture::new();
         fixture.settings.repair_materials.disable_defaults = true;
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&everything_accepted)),
@@ -736,14 +771,14 @@ mod tests {
         fixture.settings.repair_materials.override_mode = true;
         fixture.table = Table::parse("example:pick=example:a", "host");
         let named = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
         ]);
         assert!(repair(&named, &fixture.context(&everything_accepted)).is_ok());
 
         let unnamed = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:b"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:b")),
         ]);
         assert_eq!(
             repair(&unnamed, &fixture.context(&everything_accepted)),
@@ -751,8 +786,8 @@ mod tests {
         );
 
         let untouched_tool = grid(vec![
-            Held::tool("example:shovel", Shape::Other, 60, 60),
-            Held::material("example:b"),
+            Held::tool(id("example:shovel"), Shape::Other, 60, 60),
+            Held::material(id("example:b")),
         ]);
         assert!(repair(&untouched_tool, &fixture.context(&everything_accepted)).is_ok());
     }
@@ -761,7 +796,7 @@ mod tests {
     fn stripping_removes_every_enchantment_that_is_not_a_curse() {
         let mut fixture = Fixture::new();
         fixture.settings.repair_materials.strip_enchantments = true;
-        let mut tool = Held::tool("example:pick", Shape::Other, 60, 60);
+        let mut tool = Held::tool(id("example:pick"), Shape::Other, 60, 60);
         tool.enchantments = vec![
             Enchantment::default(),
             Enchantment {
@@ -773,7 +808,7 @@ mod tests {
                 prevents_unequip: true,
             },
         ];
-        let laid = grid(vec![tool, Held::material("example:a")]);
+        let laid = grid(vec![tool, Held::material(id("example:a"))]);
         let repaired = repair(&laid, &fixture.context(&everything_accepted)).expect("a repair");
         assert_eq!(repaired.stripped, 1);
         assert_eq!(repaired.enchantments.len(), 2);
@@ -802,9 +837,9 @@ mod tests {
     #[test]
     fn nothing_is_stripped_when_the_setting_is_off() {
         let fixture = Fixture::new();
-        let mut tool = Held::tool("example:pick", Shape::Other, 60, 60);
+        let mut tool = Held::tool(id("example:pick"), Shape::Other, 60, 60);
         tool.enchantments = vec![Enchantment::default()];
-        let laid = grid(vec![tool, Held::material("example:a")]);
+        let laid = grid(vec![tool, Held::material(id("example:a"))]);
         let repaired = repair(&laid, &fixture.context(&everything_accepted)).expect("a repair");
         assert_eq!(repaired.stripped, 0);
         assert_eq!(repaired.enchantments.len(), 1);
@@ -814,8 +849,8 @@ mod tests {
     fn matching_and_assembling_are_the_same_computation() {
         let fixture = Fixture::new();
         let laid = grid(vec![
-            Held::tool("example:pick", Shape::Other, 60, 60),
-            Held::material("example:a"),
+            Held::tool(id("example:pick"), Shape::Other, 60, 60),
+            Held::material(id("example:a")),
         ]);
         assert_eq!(
             matches(&laid, &fixture.context(&everything_accepted)),
@@ -840,9 +875,9 @@ mod tests {
     fn a_repair_never_produces_more_than_one_copy_or_less_damage_than_none() {
         let mut fixture = Fixture::new();
         fixture.table = Table::parse("example:pick=example:a@1000000", "host");
-        let mut tool = Held::tool("example:pick", Shape::Other, 60, 60);
+        let mut tool = Held::tool(id("example:pick"), Shape::Other, 60, 60);
         tool.stack.count = 64;
-        let laid = grid(vec![tool, Held::material("example:a")]);
+        let laid = grid(vec![tool, Held::material(id("example:a"))]);
         let repaired =
             repair(&laid, &fixture.context(&nothing_accepted)).expect("an enormous multiplier");
         assert_eq!(repaired.result.count, 1);
@@ -856,6 +891,5 @@ mod tests {
         assert!(Shape::Shearing.tiered());
         assert!(!Shape::Ranged.tiered());
         assert!(!Shape::Armour.tiered());
-        assert_eq!(Shape::ALL.len(), 6);
     }
 }

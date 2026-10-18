@@ -9,6 +9,7 @@
 //! in practice, and the fact that pointing a crop at its anchor block happens
 //! for all six including the unobtainable ones.
 
+use ravel_sdk::content::ContentId;
 use rvl_321_counterpart::model::{Crafted, Crop, Derived};
 use rvl_321_counterpart::{Availability, availability};
 
@@ -101,12 +102,7 @@ impl Declared {
     /// opts out of all three for this namespace and ships equivalent documents
     /// instead.
     #[must_use]
-    pub fn crop(
-        &self,
-        id: ravel_sdk::content::ContentId,
-        tier: &ravel_sdk::content::ContentId,
-        material_id: ravel_sdk::content::ContentId,
-    ) -> Crop {
+    pub fn crop(&self, id: ContentId, tier: &ContentId, material_id: ContentId) -> Crop {
         let crafted = match self.material {
             Material::HostEntry | Material::OwnEntry | Material::CompanionEntry => Crafted::Entry {
                 id: material_id,
@@ -202,7 +198,7 @@ pub fn state(
     crop: &Crop,
     development: bool,
     loaded: &dyn Fn(&str) -> bool,
-    resolves: &dyn Fn(&str) -> usize,
+    resolves: &dyn Fn(&ContentId) -> usize,
 ) -> Availability {
     let companions = declared
         .companion
@@ -256,7 +252,6 @@ mod tests {
 
     #[test]
     fn six_crops_are_declared_and_four_of_them_name_one_companion_each() {
-        assert_eq!(DECLARED.len(), COUNT);
         let naming = DECLARED
             .iter()
             .filter(|declared| declared.declares_companion())

@@ -15,10 +15,9 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
 };
 use ravel_sdk::content::ContentIdError;
-use ravel_sdk::{JsonValue, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 pub const DROPS_CREATURE_MATERIAL_CHANCE: &str = "drops.creature_material_chance";
@@ -275,8 +274,12 @@ pub struct BossDrops {
 }
 
 /// Optional seed and boss drops.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DropSettings {
+    /// Chance a defeated pathfinding creature drops the first tier material.
+    pub creature_material_chance: f64,
+    /// Chance a harvested crop yields the weak fertiliser.
+    pub fertiliser_chance: f64,
     /// A second seed may drop.
     pub second_seed: bool,
     /// Drops from the first boss.
@@ -285,19 +288,10 @@ pub struct DropSettings {
     pub second_boss: BossDrops,
 }
 
-/// Properties of the two top equipment tiers.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TopGearSettings {
-    /// Tools are enchantable at a table.
-    pub tools_enchantable: bool,
-    /// Armour is unbreakable.
-    pub armour_unbreakable: bool,
-}
-
 /// Equipment properties and behaviours.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GearSettings {
-    /// Properties of the two top equipment tiers.
+    /// Properties of top-tier equipment.
     pub top: TopGearSettings,
     /// Automated stand-in players may use the wetting tool.
     pub automated_wetting: bool,
@@ -305,9 +299,20 @@ pub struct GearSettings {
     pub armour_set_aura: bool,
 }
 
-/// Which ore deposits generate.
+/// Properties shared by the two top equipment tiers.
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TopGearSettings {
+    /// Top-tier tools are enchantable at a table.
+    pub tools_enchantable: bool,
+    /// Top-tier armour is unbreakable.
+    pub armour_unbreakable: bool,
+}
+
+/// Which ore deposits generate.
+#[derive(Clone, Debug, PartialEq)]
 pub struct DepositSettings {
+    /// Chance the third deposit substitutes the rarer ore.
+    pub rare_substitution_chance: f64,
     /// The first ore deposit generates.
     pub first: bool,
     /// The second ore deposit generates.
@@ -317,16 +322,12 @@ pub struct DepositSettings {
 }
 
 /// The values in force for one launch.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
-    /// Chance a defeated pathfinding creature drops the first tier material.
-    pub drops_creature_material_chance: f64,
     /// Uses on the basic ritual catalyst.
     pub ritual_catalyst_uses: u32,
     /// Seconds between growth pulses.
     pub growth_pulse_seconds: u32,
-    /// Chance a harvested crop yields the weak fertiliser.
-    pub drops_fertiliser_chance: f64,
     /// Optional seed and boss drops.
     pub drops: DropSettings,
     /// Crops require their own tier's ground to grow.
@@ -339,58 +340,6 @@ pub struct Settings {
     pub gear: GearSettings,
     /// Which ore deposits generate.
     pub deposits: DepositSettings,
-    /// Chance the third deposit substitutes the rarer ore.
-    pub world_rare_substitution_chance: f64,
-}
-
-// Keep diagnostic fields flat and in their established order.
-impl std::fmt::Debug for Settings {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Settings")
-            .field(
-                "drops_creature_material_chance",
-                &self.drops_creature_material_chance,
-            )
-            .field("ritual_catalyst_uses", &self.ritual_catalyst_uses)
-            .field("growth_pulse_seconds", &self.growth_pulse_seconds)
-            .field("drops_fertiliser_chance", &self.drops_fertiliser_chance)
-            .field("drops_second_seed", &self.drops.second_seed)
-            .field(
-                "growth_require_effective_ground",
-                &self.growth_require_effective_ground,
-            )
-            .field("drops_first_boss_material", &self.drops.first_boss.material)
-            .field(
-                "drops_second_boss_material",
-                &self.drops.second_boss.material,
-            )
-            .field("drops_first_boss_dust", &self.drops.first_boss.dust)
-            .field("drops_second_boss_dust", &self.drops.second_boss.dust)
-            .field(
-                "ground_convert_by_material",
-                &self.ground_convert_by_material,
-            )
-            .field("recipes_plain_grid_seeds", &self.recipes_plain_grid_seeds)
-            .field(
-                "gear_top_tools_enchantable",
-                &self.gear.top.tools_enchantable,
-            )
-            .field(
-                "gear_top_armour_unbreakable",
-                &self.gear.top.armour_unbreakable,
-            )
-            .field("gear_automated_wetting", &self.gear.automated_wetting)
-            .field("gear_armour_set_aura", &self.gear.armour_set_aura)
-            .field("world_first_deposit", &self.deposits.first)
-            .field("world_second_deposit", &self.deposits.second)
-            .field("world_third_deposit", &self.deposits.third)
-            .field(
-                "world_rare_substitution_chance",
-                &self.world_rare_substitution_chance,
-            )
-            .finish()
-    }
 }
 
 impl Default for Settings {
@@ -407,16 +356,16 @@ impl Default for Settings {
 impl DropSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            second_seed: resolved.boolean(&DROPS_SECOND_SEED.parse().expect("a declared key"))?,
+            creature_material_chance: resolved.number(&key(DROPS_CREATURE_MATERIAL_CHANCE))?,
+            fertiliser_chance: resolved.number(&key(DROPS_FERTILISER_CHANCE))?,
+            second_seed: resolved.boolean(&key(DROPS_SECOND_SEED))?,
             first_boss: BossDrops {
-                material: resolved
-                    .boolean(&DROPS_FIRST_BOSS_MATERIAL.parse().expect("a declared key"))?,
-                dust: resolved.boolean(&DROPS_FIRST_BOSS_DUST.parse().expect("a declared key"))?,
+                material: resolved.boolean(&key(DROPS_FIRST_BOSS_MATERIAL))?,
+                dust: resolved.boolean(&key(DROPS_FIRST_BOSS_DUST))?,
             },
             second_boss: BossDrops {
-                material: resolved
-                    .boolean(&DROPS_SECOND_BOSS_MATERIAL.parse().expect("a declared key"))?,
-                dust: resolved.boolean(&DROPS_SECOND_BOSS_DUST.parse().expect("a declared key"))?,
+                material: resolved.boolean(&key(DROPS_SECOND_BOSS_MATERIAL))?,
+                dust: resolved.boolean(&key(DROPS_SECOND_BOSS_DUST))?,
             },
         })
     }
@@ -426,15 +375,11 @@ impl GearSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             top: TopGearSettings {
-                tools_enchantable: resolved
-                    .boolean(&GEAR_TOP_TOOLS_ENCHANTABLE.parse().expect("a declared key"))?,
-                armour_unbreakable: resolved
-                    .boolean(&GEAR_TOP_ARMOUR_UNBREAKABLE.parse().expect("a declared key"))?,
+                tools_enchantable: resolved.boolean(&key(GEAR_TOP_TOOLS_ENCHANTABLE))?,
+                armour_unbreakable: resolved.boolean(&key(GEAR_TOP_ARMOUR_UNBREAKABLE))?,
             },
-            automated_wetting: resolved
-                .boolean(&GEAR_AUTOMATED_WETTING.parse().expect("a declared key"))?,
-            armour_set_aura: resolved
-                .boolean(&GEAR_ARMOUR_SET_AURA.parse().expect("a declared key"))?,
+            automated_wetting: resolved.boolean(&key(GEAR_AUTOMATED_WETTING))?,
+            armour_set_aura: resolved.boolean(&key(GEAR_ARMOUR_SET_AURA))?,
         })
     }
 }
@@ -442,9 +387,10 @@ impl GearSettings {
 impl DepositSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            first: resolved.boolean(&WORLD_FIRST_DEPOSIT.parse().expect("a declared key"))?,
-            second: resolved.boolean(&WORLD_SECOND_DEPOSIT.parse().expect("a declared key"))?,
-            third: resolved.boolean(&WORLD_THIRD_DEPOSIT.parse().expect("a declared key"))?,
+            rare_substitution_chance: resolved.number(&key(WORLD_RARE_SUBSTITUTION_CHANCE))?,
+            first: resolved.boolean(&key(WORLD_FIRST_DEPOSIT))?,
+            second: resolved.boolean(&key(WORLD_SECOND_DEPOSIT))?,
+            third: resolved.boolean(&key(WORLD_THIRD_DEPOSIT))?,
         })
     }
 }
@@ -455,55 +401,17 @@ impl Settings {
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            drops_creature_material_chance: resolved.number(
-                &DROPS_CREATURE_MATERIAL_CHANCE
-                    .parse()
-                    .expect("a declared key"),
-            )?,
-            ritual_catalyst_uses: u32::try_from(
-                resolved.integer(&RITUAL_CATALYST_USES.parse().expect("a declared key"))?,
-            )
-            .expect("the declared range fits u32"),
-            growth_pulse_seconds: u32::try_from(
-                resolved.integer(&GROWTH_PULSE_SECONDS.parse().expect("a declared key"))?,
-            )
-            .expect("the declared range fits u32"),
-            drops_fertiliser_chance: resolved
-                .number(&DROPS_FERTILISER_CHANCE.parse().expect("a declared key"))?,
+            ritual_catalyst_uses: u32::try_from(resolved.integer(&key(RITUAL_CATALYST_USES))?)
+                .expect("the declared range fits u32"),
+            growth_pulse_seconds: u32::try_from(resolved.integer(&key(GROWTH_PULSE_SECONDS))?)
+                .expect("the declared range fits u32"),
             drops: DropSettings::read(resolved)?,
-            growth_require_effective_ground: resolved.boolean(
-                &GROWTH_REQUIRE_EFFECTIVE_GROUND
-                    .parse()
-                    .expect("a declared key"),
-            )?,
-            ground_convert_by_material: resolved
-                .boolean(&GROUND_CONVERT_BY_MATERIAL.parse().expect("a declared key"))?,
-            recipes_plain_grid_seeds: resolved
-                .boolean(&RECIPES_PLAIN_GRID_SEEDS.parse().expect("a declared key"))?,
+            growth_require_effective_ground: resolved
+                .boolean(&key(GROWTH_REQUIRE_EFFECTIVE_GROUND))?,
+            ground_convert_by_material: resolved.boolean(&key(GROUND_CONVERT_BY_MATERIAL))?,
+            recipes_plain_grid_seeds: resolved.boolean(&key(RECIPES_PLAIN_GRID_SEEDS))?,
             gear: GearSettings::read(resolved)?,
             deposits: DepositSettings::read(resolved)?,
-            world_rare_substitution_chance: resolved.number(
-                &WORLD_RARE_SUBSTITUTION_CHANCE
-                    .parse()
-                    .expect("a declared key"),
-            )?,
-        })
-    }
-
-    /// Whether a value is a legal reading of the named key.
-    ///
-    /// The pulse interval and the catalyst use count are read live on every use
-    /// rather than at resolution, so a value that arrives after startup is held
-    /// to the same bounds the document declares.
-    #[must_use]
-    pub fn admits(key: &str, value: &JsonValue) -> bool {
-        let Ok(parsed) = key.parse() else {
-            return false;
-        };
-        declaration().is_ok_and(|declared| {
-            declared
-                .setting(&parsed)
-                .is_some_and(|setting| setting.value_schema.check(value).is_ok())
         })
     }
 }
@@ -580,36 +488,48 @@ pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
     FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
-/// Whether any shipped setting would have to travel to a joining client.
-#[must_use]
-pub fn travels_to_clients() -> bool {
-    declaration().is_ok_and(|declared| {
-        declared.settings().iter().any(|setting| {
-            matches!(
-                setting.side,
-                SettingSide::DedicatedServer | SettingSide::IntegratedServer
-            )
-        })
-    })
-}
-
-/// Whether a setting is one a given side resolves at all.
-#[must_use]
-pub fn resolved_on(key: &str, side: Side) -> bool {
-    let Ok(key) = key.parse() else {
-        return false;
-    };
-    declaration().is_ok_and(|declared| {
-        declared
-            .setting(&key)
-            .is_some_and(|setting| setting.side.applies_to(side))
-    })
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ravel_sdk::config::SettingSide;
     use ravel_sdk::json;
+    use ravel_sdk::{JsonValue, Side};
+
+    fn admits(key: &str, value: &JsonValue) -> bool {
+        let Ok(parsed) = key.parse() else {
+            return false;
+        };
+        declaration().is_ok_and(|declared| {
+            declared
+                .setting(&parsed)
+                .is_some_and(|setting| setting.value_schema.check(value).is_ok())
+        })
+    }
+    fn travels_to_clients() -> bool {
+        declaration().is_ok_and(|declared| {
+            declared.settings().iter().any(|setting| {
+                matches!(
+                    setting.side,
+                    SettingSide::DedicatedServer | SettingSide::IntegratedServer
+                )
+            })
+        })
+    }
+
+    fn resolved_on(key: &str, side: Side) -> bool {
+        let Ok(key) = key.parse() else {
+            return false;
+        };
+        declaration().is_ok_and(|declared| {
+            declared
+                .setting(&key)
+                .is_some_and(|setting| setting.side.applies_to(side))
+        })
+    }
 
     #[test]
     fn integer_settings_accept_u32_max_and_refuse_larger_values_before_reading() {
@@ -634,14 +554,8 @@ mod tests {
         let settings = Settings::read(&resolved).expect("the upper bounds fit u32");
         assert_eq!(settings.ritual_catalyst_uses, u32::MAX);
         assert_eq!(settings.growth_pulse_seconds, u32::MAX);
-        assert!(!Settings::admits(
-            RITUAL_CATALYST_USES,
-            &json!(5_000_000_000_u64)
-        ));
-        assert!(!Settings::admits(
-            GROWTH_PULSE_SECONDS,
-            &json!(5_000_000_000_u64)
-        ));
+        assert!(!admits(RITUAL_CATALYST_USES, &json!(5_000_000_000_u64)));
+        assert!(!admits(GROWTH_PULSE_SECONDS, &json!(5_000_000_000_u64)));
     }
 
     #[test]
@@ -681,7 +595,7 @@ mod tests {
         )
         .expect("the override values resolve");
         let settings = Settings::read(&resolved).expect("declared settings have matching types");
-        assert_eq!(settings.drops_creature_material_chance, 0.75);
+        assert_eq!(settings.drops.creature_material_chance, 0.75);
         assert_eq!(settings.ritual_catalyst_uses, 10);
         assert_eq!(settings.growth_pulse_seconds, 1);
         assert!(!settings.drops.second_seed);
@@ -723,23 +637,23 @@ mod tests {
     #[test]
     fn the_shipped_numbers_are_the_ones_the_document_states() {
         let shipped = Settings::default();
-        assert!((shipped.drops_creature_material_chance - 0.2).abs() < f64::EPSILON);
-        assert!((shipped.drops_fertiliser_chance - 0.1).abs() < f64::EPSILON);
-        assert!((shipped.world_rare_substitution_chance - 0.05).abs() < f64::EPSILON);
+        assert!((shipped.drops.creature_material_chance - 0.2).abs() < f64::EPSILON);
+        assert!((shipped.drops.fertiliser_chance - 0.1).abs() < f64::EPSILON);
+        assert!((shipped.deposits.rare_substitution_chance - 0.05).abs() < f64::EPSILON);
         assert_eq!(shipped.ritual_catalyst_uses, 1000);
         assert_eq!(shipped.growth_pulse_seconds, 10);
     }
 
     #[test]
     fn the_declared_bounds_refuse_a_value_outside_them() {
-        assert!(Settings::admits(DROPS_FERTILISER_CHANCE, &json!(0.5)));
-        assert!(!Settings::admits(DROPS_FERTILISER_CHANCE, &json!(1.5)));
-        assert!(!Settings::admits(DROPS_FERTILISER_CHANCE, &json!(-0.1)));
-        assert!(Settings::admits(RITUAL_CATALYST_USES, &json!(10)));
-        assert!(!Settings::admits(RITUAL_CATALYST_USES, &json!(9)));
-        assert!(Settings::admits(GROWTH_PULSE_SECONDS, &json!(1)));
-        assert!(!Settings::admits(GROWTH_PULSE_SECONDS, &json!(0)));
-        assert!(!Settings::admits("nothing.declares.this", &json!(true)));
+        assert!(admits(DROPS_FERTILISER_CHANCE, &json!(0.5)));
+        assert!(!admits(DROPS_FERTILISER_CHANCE, &json!(1.5)));
+        assert!(!admits(DROPS_FERTILISER_CHANCE, &json!(-0.1)));
+        assert!(admits(RITUAL_CATALYST_USES, &json!(10)));
+        assert!(!admits(RITUAL_CATALYST_USES, &json!(9)));
+        assert!(admits(GROWTH_PULSE_SECONDS, &json!(1)));
+        assert!(!admits(GROWTH_PULSE_SECONDS, &json!(0)));
+        assert!(!admits("nothing.declares.this", &json!(true)));
     }
 
     #[test]

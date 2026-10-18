@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "417b56d0b29340b643a5f8ce33c24f67aa1023f88701945c87ab356cc1eb06a7"
+        "sha256": "956bd492d92aaa1f04c0693ed2d64c80246cc357faf00971645852b8db8b589e"
       },
       {
         "path": "aliases.json",
@@ -66,55 +66,55 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "3e4c43481aedf56ff659eb9d7e56fb9150d8e5bdcf8c2e110c887a655a446bcc"
+        "sha256": "f6141c5042898b4a9020243bc201d269c0a1aba3b5ab4ddd2fcf49280a137540"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "9ab6ea94315fc7240d65d3e84fc6f2fa82aba6663dcd747249c6717b1952f740"
+        "sha256": "a095e9f69e1ca5a557f3525897fc41aca4393804891b3a988b1c61a8d03c904c"
       },
       {
         "path": "src/ground.rs",
-        "sha256": "21c24d81d7342537e92142318ef517a147f12a6f288b3858a12049dbd491f3fc"
+        "sha256": "b670d39a5525c62abc93c39cff1e0a3a5d90eb11a92a915bf5ccc3813ef48379"
       },
       {
         "path": "src/growth.rs",
-        "sha256": "ce105f818007aa2d5013e991bbba4a73e7e11e4a4a4a13ac65fcf52fe343dbf3"
+        "sha256": "14899de7758f8fc651f18dfa1b0c61b25fb3e65fa0abacff8ea0cf049f61666e"
       },
       {
         "path": "src/harvest.rs",
-        "sha256": "e5f282704e1b2d63eeb1ced102b7f65a78c6add14b70ecfab0f105137d8a62fa"
+        "sha256": "69f8a470f546e57b85e853ba833b18c5a9024d00b9b43a401bd42141a244cadf"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "db1b0cea4a866f77d10724327f7744b4dd9690df4d2cf6660451256f47562515"
+        "sha256": "39e61db09c62429b060f46c2b09223c8611f81c3e10abc4434031b8cd6dcce23"
       },
       {
         "path": "src/machines.rs",
-        "sha256": "8692931fdb1b9c5abc3e5cee7103fd647ab2df3d8a437bc3ed1652ccc4fcac89"
+        "sha256": "18218c3a14ec4c0f759b13389a18edb6c8ecc4dd6c95891e277d09673a42f1af"
       },
       {
         "path": "src/model.rs",
-        "sha256": "989a83344f0068f4a664ce2c7f6dbc0992d95ad2ca0cc13a1fbc13a1e55c7b82"
+        "sha256": "c7a956b95d2fa9b9b004760fef081d84afac07dffe9365efee92474c8f22ad20"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "440e00826466bf0447e5a917efea30178c01036c7a6e4d9e4e16bca84e4138b6"
+        "sha256": "04e158d2d8559ea18c0795c0908cd8b0530931296bcd06585aa7703a5368246f"
       },
       {
         "path": "src/recipes/selection.rs",
-        "sha256": "796e0d07369fc9350be032ae4a404d4f228f081b6df893de7c1a61f6cb8a5376"
+        "sha256": "432c8ac5131d9d6d92ac7efb8b8a90bd6fe1bd877b17550692439d2e28d78d7c"
       },
       {
         "path": "src/registries.rs",
-        "sha256": "166465b4e4c3dd0d00f5f3a03752b6bd192c4e17a6776f9408fc30b79820f7c5"
+        "sha256": "98971f6fa2bc260112ef79cffe2979c504ff8723fb3ffa9a4995249b9e65c9c6"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "fa5c52f42ceb5e40872c52ae07b9f7cae6e08a17f84d9ef8a2edd7750d20944f"
+        "sha256": "123bc2cdebe5b1aab2bca9b233d7bcba020af2264fa7a468b71ef69208a58d57"
       },
       {
         "path": "src/world.rs",
-        "sha256": "1cea559b23a8b636bf467749e8fa0f7aea4ac8260475ea61582038cc5e362362"
+        "sha256": "abee3eebf656e34a6897e7540dc6912fd87e50dfb9601f003fc5b1a42b5c47b8"
       }
     ]
   },

@@ -131,10 +131,10 @@ impl Crafted {
     /// A tag with no members resolves empty, which leaves the crop enabled and
     /// registered and only removes its two seed recipes.
     #[must_use]
-    pub fn resolves(&self, members: &dyn Fn(&str) -> usize) -> bool {
+    pub fn resolves(&self, members: &dyn Fn(&ContentId) -> usize) -> bool {
         match self {
             Self::Entry { .. } => true,
-            Self::Tag(tag) => members(&tag.to_string()) > 0,
+            Self::Tag(tag) => members(tag) > 0,
             Self::Nothing => false,
         }
     }
@@ -535,8 +535,8 @@ mod tests {
 
     #[test]
     fn a_tag_with_no_members_resolves_empty_and_an_entry_always_resolves() {
-        let none = |_: &str| 0;
-        let some = |_: &str| 3;
+        let none = |_: &ContentId| 0;
+        let some = |_: &ContentId| 3;
         assert!(!Crafted::Tag("test:tag".parse().expect("a legal tag identity")).resolves(&none));
         assert!(Crafted::Tag("test:tag".parse().expect("a legal tag identity")).resolves(&some));
         assert!(

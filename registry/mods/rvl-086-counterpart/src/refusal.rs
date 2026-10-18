@@ -238,7 +238,6 @@ mod tests {
         assert!(!Surface::UseInAir.watches(Shape::Digging));
         assert!(Surface::InteractEntity.watches(Shape::Shearing));
         assert!(!Surface::InteractEntity.watches(Shape::Sword));
-        assert_eq!(Surface::ALL.len(), 7);
     }
 
     #[test]

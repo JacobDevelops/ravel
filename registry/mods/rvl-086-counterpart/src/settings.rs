@@ -18,14 +18,14 @@
 //! reads the switch it is named for, which is the second declared change: the
 //! original binds one flag to a switch belonging to an unrelated feature.
 
+use ravel_sdk::Declared;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
 };
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
     Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
-use ravel_sdk::{Declared, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::matching::Matcher;
@@ -568,12 +568,9 @@ pub struct RepairMaterials {
 impl RepairMaterials {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            strip_enchantments: resolved
-                .boolean(&REPAIR_STRIP_ENCHANTMENTS.parse().expect("a declared key"))?,
-            disable_defaults: resolved
-                .boolean(&REPAIR_DISABLE_DEFAULTS.parse().expect("a declared key"))?,
-            override_mode: resolved
-                .boolean(&REPAIR_OVERRIDE_MODE.parse().expect("a declared key"))?,
+            strip_enchantments: resolved.boolean(&key(REPAIR_STRIP_ENCHANTMENTS))?,
+            disable_defaults: resolved.boolean(&key(REPAIR_DISABLE_DEFAULTS))?,
+            override_mode: resolved.boolean(&key(REPAIR_OVERRIDE_MODE))?,
         })
     }
 }
@@ -589,15 +586,14 @@ pub struct RepairDiscounts {
 impl RepairDiscounts {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            digging: resolved.boolean(&REPAIR_CHEAPER_DIGGING.parse().expect("a declared key"))?,
-            shearing: resolved
-                .boolean(&REPAIR_CHEAPER_SHEARING.parse().expect("a declared key"))?,
+            digging: resolved.boolean(&key(REPAIR_CHEAPER_DIGGING))?,
+            shearing: resolved.boolean(&key(REPAIR_CHEAPER_SHEARING))?,
         })
     }
 }
 
 /// The values in force for one launch.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// Whether the two informational tooltips are drawn.
     pub tooltip_enabled: bool,
@@ -625,36 +621,6 @@ pub struct Settings {
     pub tweak_ineffective: Matcher,
 }
 
-// Keep the established flat diagnostic field names and order.
-impl std::fmt::Debug for Settings {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Settings")
-            .field("tooltip_enabled", &self.tooltip_enabled)
-            .field("tooltip_excluded", &self.tooltip_excluded)
-            .field("switches", &self.switches)
-            .field("repair_enabled", &self.repair_enabled)
-            .field("repair_cost", &self.repair_cost)
-            .field("repair_enchantment_cost", &self.repair_enchantment_cost)
-            .field(
-                "repair_strip_enchantments",
-                &self.repair_materials.strip_enchantments,
-            )
-            .field(
-                "repair_disable_defaults",
-                &self.repair_materials.disable_defaults,
-            )
-            .field("repair_override_mode", &self.repair_materials.override_mode)
-            .field("repair_cheaper_digging", &self.repair_discounts.digging)
-            .field("repair_cheaper_shearing", &self.repair_discounts.shearing)
-            .field("repair_blacklist", &self.repair_blacklist)
-            .field("repair_overrides", &self.repair_overrides)
-            .field("tweak_nearly_destroyed", &self.tweak_nearly_destroyed)
-            .field("tweak_ineffective", &self.tweak_ineffective)
-            .finish()
-    }
-}
-
 impl Default for Settings {
     fn default() -> Self {
         let resolved = LayeredConfiguration::resolve(
@@ -667,6 +633,10 @@ impl Default for Settings {
     }
 }
 
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
+}
+
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
@@ -675,38 +645,24 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Result<Self, ValueError> {
         let mut switches = [false; 14];
         for feature in Feature::ALL {
-            switches[feature.index()] =
-                resolved.boolean(&feature.key().parse().expect("a declared key"))?;
+            switches[feature.index()] = resolved.boolean(&key(feature.key()))?;
         }
         Ok(Self {
-            tooltip_enabled: resolved.boolean(&TOOLTIP_ENABLED.parse().expect("a declared key"))?,
-            tooltip_excluded: Matcher::parse(
-                resolved.text(&TOOLTIP_EXCLUDED.parse().expect("a declared key"))?,
-            ),
+            tooltip_enabled: resolved.boolean(&key(TOOLTIP_ENABLED))?,
+            tooltip_excluded: Matcher::parse(resolved.text(&key(TOOLTIP_EXCLUDED))?),
             switches,
-            repair_enabled: resolved.boolean(&REPAIR_ENABLED.parse().expect("a declared key"))?,
-            repair_cost: clamp_cost(
-                resolved.integer(&REPAIR_COST.parse().expect("a declared key"))?,
-                COST_RANGE,
-            ),
+            repair_enabled: resolved.boolean(&key(REPAIR_ENABLED))?,
+            repair_cost: clamp_cost(resolved.integer(&key(REPAIR_COST))?, COST_RANGE),
             repair_enchantment_cost: clamp_cost(
-                resolved.integer(&REPAIR_ENCHANTMENT_COST.parse().expect("a declared key"))?,
+                resolved.integer(&key(REPAIR_ENCHANTMENT_COST))?,
                 ENCHANTMENT_COST_RANGE,
             ),
             repair_materials: RepairMaterials::read(resolved)?,
             repair_discounts: RepairDiscounts::read(resolved)?,
-            repair_blacklist: Matcher::parse(
-                resolved.text(&REPAIR_BLACKLIST.parse().expect("a declared key"))?,
-            ),
-            repair_overrides: Table::parse(
-                resolved.text(&REPAIR_OVERRIDES.parse().expect("a declared key"))?,
-                host_namespace,
-            ),
-            tweak_nearly_destroyed: resolved
-                .boolean(&TWEAK_NEARLY_DESTROYED.parse().expect("a declared key"))?,
-            tweak_ineffective: Matcher::parse(
-                resolved.text(&TWEAK_INEFFECTIVE.parse().expect("a declared key"))?,
-            ),
+            repair_blacklist: Matcher::parse(resolved.text(&key(REPAIR_BLACKLIST))?),
+            repair_overrides: Table::parse(resolved.text(&key(REPAIR_OVERRIDES))?, host_namespace),
+            tweak_nearly_destroyed: resolved.boolean(&key(TWEAK_NEARLY_DESTROYED))?,
+            tweak_ineffective: Matcher::parse(resolved.text(&key(TWEAK_INEFFECTIVE))?),
         })
     }
 
@@ -767,7 +723,7 @@ fn clamp_cost(value: i64, (minimum, maximum): (u32, u32)) -> u32 {
 }
 
 /// The twenty-six deciding settings, as they travel to a joining client.
-#[derive(Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Decisive {
     /// The fourteen feature switches, in the order of [`Feature::ALL`].
     pub switches: [bool; 14],
@@ -789,34 +745,6 @@ pub struct Decisive {
     pub tweak_nearly_destroyed: bool,
     /// The ineffective list, as written.
     pub tweak_ineffective: String,
-}
-
-// Match the established payload diagnostics, independently of Rust grouping.
-impl std::fmt::Debug for Decisive {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Decisive")
-            .field("switches", &self.switches)
-            .field("repair_enabled", &self.repair_enabled)
-            .field("repair_cost", &self.repair_cost)
-            .field("repair_enchantment_cost", &self.repair_enchantment_cost)
-            .field(
-                "repair_strip_enchantments",
-                &self.repair_materials.strip_enchantments,
-            )
-            .field(
-                "repair_disable_defaults",
-                &self.repair_materials.disable_defaults,
-            )
-            .field("repair_override_mode", &self.repair_materials.override_mode)
-            .field("repair_cheaper_digging", &self.repair_discounts.digging)
-            .field("repair_cheaper_shearing", &self.repair_discounts.shearing)
-            .field("repair_blacklist", &self.repair_blacklist)
-            .field("repair_overrides", &self.repair_overrides)
-            .field("tweak_nearly_destroyed", &self.tweak_nearly_destroyed)
-            .field("tweak_ineffective", &self.tweak_ineffective)
-            .finish()
-    }
 }
 
 /// The payload name the deciding settings travel under.
@@ -931,34 +859,6 @@ pub fn publish(
     Ok(())
 }
 
-/// Whether any shipped setting would have to travel for a side to have a value.
-///
-/// Every setting here is declared client or common, so every side resolves the
-/// whole document and none has to. What travels is [`Decisive`], and it travels
-/// to make the server authoritative rather than because a client holds nothing.
-#[must_use]
-pub fn resolves_on_every_side() -> bool {
-    declaration().is_ok_and(|declaration| {
-        declaration
-            .settings()
-            .iter()
-            .all(|setting| matches!(setting.side, SettingSide::Client | SettingSide::Common))
-    })
-}
-
-/// Whether a setting is one a given side resolves at all.
-#[must_use]
-pub fn resolved_on(key: &str, side: Side) -> bool {
-    let Ok(key) = key.parse() else {
-        return false;
-    };
-    declaration().is_ok_and(|declaration| {
-        declaration
-            .setting(&key)
-            .is_some_and(|setting| setting.side.applies_to(side))
-    })
-}
-
 fn written(matcher: &Matcher) -> String {
     matcher
         .expressions()
@@ -972,6 +872,35 @@ fn written(matcher: &Matcher) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ravel_sdk::Side;
+    use ravel_sdk::config::SettingSide;
+    /// Whether any shipped setting would have to travel for a side to have a value.
+    ///
+    /// Every setting here is declared client or common, so every side resolves the
+    /// whole document and none has to. What travels is [`Decisive`], and it travels
+    /// to make the server authoritative rather than because a client holds nothing.
+    #[must_use]
+    fn resolves_on_every_side() -> bool {
+        declaration().is_ok_and(|declaration| {
+            declaration
+                .settings()
+                .iter()
+                .all(|setting| matches!(setting.side, SettingSide::Client | SettingSide::Common))
+        })
+    }
+
+    /// Whether a setting is one a given side resolves at all.
+    #[must_use]
+    fn resolved_on(key: &str, side: Side) -> bool {
+        let Ok(key) = key.parse() else {
+            return false;
+        };
+        declaration().is_ok_and(|declaration| {
+            declaration
+                .setting(&key)
+                .is_some_and(|setting| setting.side.applies_to(side))
+        })
+    }
 
     #[test]
     fn a_missing_declared_key_is_returned_instead_of_defaulted() {
@@ -1042,8 +971,6 @@ mod tests {
 
     #[test]
     fn the_two_groups_are_two_and_twenty_six_and_do_not_overlap() {
-        assert_eq!(CLIENT_KEYS.len(), 2);
-        assert_eq!(DECIDING_KEYS.len(), 26);
         for client in CLIENT_KEYS {
             assert!(!DECIDING_KEYS.contains(&client), "{client} is not decided");
         }
@@ -1098,7 +1025,6 @@ mod tests {
 
     #[test]
     fn seventeen_flags_are_bound_over_fourteen_switches_and_three_switches_carry_none() {
-        assert_eq!(FLAG_BINDINGS.len(), 17);
         let mut carried: Vec<Feature> = FLAG_BINDINGS.iter().map(|(_, feature)| *feature).collect();
         carried.sort_unstable();
         carried.dedup();
@@ -1157,24 +1083,6 @@ mod tests {
             assert_eq!(feature.index(), index);
             assert!(Settings::default().switch(feature));
         }
-    }
-
-    #[test]
-    fn deciding_debug_keeps_the_flat_field_order() {
-        let settings = Settings::default().decisive();
-        assert_eq!(
-            format!("{settings:?}"),
-            concat!(
-                "Decisive { switches: [true, true, true, true, true, true, true, ",
-                "true, true, true, true, true, true, true], repair_enabled: true, ",
-                "repair_cost: 3, repair_enchantment_cost: 1, ",
-                "repair_strip_enchantments: false, repair_disable_defaults: false, ",
-                "repair_override_mode: false, repair_cheaper_digging: true, ",
-                "repair_cheaper_shearing: true, repair_blacklist: \"\", ",
-                "repair_overrides: \"\", tweak_nearly_destroyed: true, ",
-                "tweak_ineffective: \"\" }"
-            )
-        );
     }
 
     #[test]

@@ -85,6 +85,19 @@ pub enum Rejected {
     NotAnAttractor,
 }
 
+impl std::fmt::Display for Rejected {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::OutOfRange => "the slot index is outside the container",
+            Self::ContainerTooLarge => "the container exceeds the slot limit",
+            Self::NotTheSenders => "the sender does not own the slot",
+            Self::NotAnAttractor => "the slot does not hold an attractor",
+        })
+    }
+}
+
+impl std::error::Error for Rejected {}
+
 /// One slot of the container a toggle names.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Slot {

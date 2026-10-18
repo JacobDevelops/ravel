@@ -56,7 +56,7 @@ impl RenderStagesMod {
     /// Declares this mod's contributions into `stages`.
     pub fn contribute(stages: &mut StageDeclaration) {
         for stage in STAGES {
-            stages.contribute(Self::declared_id(), stage.as_str());
+            stages.contribute(Self::declared_id(), stage);
         }
     }
 
@@ -70,7 +70,7 @@ impl RenderStagesMod {
         let mut stages = StageDeclaration::default();
         Self::contribute(&mut stages);
         for stage in STAGES {
-            stages.contribute(partner, stage.as_str());
+            stages.contribute(partner, stage);
         }
         stages.after(Self::declared_id(), partner);
         stages.resolve()

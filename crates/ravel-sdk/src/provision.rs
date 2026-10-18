@@ -1,35 +1,16 @@
-//! Shared-library provider declarations and version resolution.
+//! Per-mod shared-library provider declarations.
 //!
-//! [`Provision::resolve`] selects one supplier per library or refuses the set.
 //! Libraries remain ordinary Cargo dependencies: this module loads nothing,
-//! and production launches do not yet consume these declarations.
-//!
-//! # Examples
+//! and production launches do not yet consume these declarations. Set-wide
+//! provider selection belongs to the host's `ravel-resolve` layer, not the SDK.
 //!
 //! ```
-//! use ravel_sdk::provision::{Provided, Provision};
-//! use ravel_sdk::{ModId, Version, VersionRange};
+//! use ravel_sdk::provision::Provided;
+//! use ravel_sdk::Version;
 //!
-//! let provider: ModId = "maths_mod".parse()?;
-//! let consumer: ModId = "shop_mod".parse()?;
-//! let older: ModId = "legacy_mod".parse()?;
-//!
-//! let mut provision = Provision::default();
-//! provision.provides(&provider, Provided::new("shared_maths", Version::parse("2.1.0")?));
-//! provision.requires(&consumer, "shared_maths", VersionRange::parse("^2")?);
-//!
-//! // The resolution names the provider rather than only succeeding.
-//! let resolved = provision.resolve().expect("one provider answers one requirement");
-//! assert_eq!(resolved.provider_of("shared_maths"), Some(&provider));
-//! assert_eq!(resolved.version_of("shared_maths"), Some("2.1.0"));
-//!
-//! // A mod that needs a version this provider does not supply is named, and the
-//! // whole set is refused rather than started on a library half of it cannot use.
-//! provision.requires(&older, "shared_maths", VersionRange::parse("^1")?);
-//! let refusal = provision.resolve().expect_err("no one version answers both");
-//! assert_eq!(refusal.library(), "shared_maths");
-//! assert_eq!(refusal.unsatisfied(), [older]);
+//! let provided = Provided::new("shared_maths", Version::parse("2.1.0")?);
+//! assert_eq!(provided.library(), "shared_maths");
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-pub use ravel_host_api::{Provided, Provision, ProvisionRefused, Resolved};
+pub use ravel_host_api::Provided;

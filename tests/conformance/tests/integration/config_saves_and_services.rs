@@ -26,7 +26,7 @@ fn id(text: &str) -> ModId {
 }
 
 fn environment() -> ravel_core::FailureEnvironment {
-    let running = ravel_host_runtime::environment();
+    let running = ravel_bootstrap_runtime::environment();
     ravel_core::FailureEnvironment {
         ravel: running.ravel,
         minecraft: running.minecraft,
@@ -72,11 +72,8 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let aggregate = open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&bytes),
         &BTreeMap::new(),
@@ -131,11 +128,8 @@ fn a_world_already_at_the_current_version_is_read_without_a_step() {
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&bytes),
         &BTreeMap::new(),
@@ -154,11 +148,8 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let refusal = open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&bytes),
         &BTreeMap::new(),
@@ -183,7 +174,7 @@ fn a_provider_is_started_before_the_mod_that_requires_it() {
 
     // Supply the consumer first so slice order cannot satisfy the dependency.
     let opened = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut shop, &mut stock],
         )
@@ -213,11 +204,8 @@ fn a_service_nothing_answers_names_the_mod_that_wanted_it_and_starts_nothing() {
     let mut machine = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
 
     let refusal = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut shop],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut shop])
+            .expect("all active mods have hosts"),
         &environment(),
     )
     .expect_err("nothing answers the service");
@@ -252,7 +240,7 @@ fn a_provider_this_side_parks_is_a_service_nothing_answers() {
 
     assert_eq!(
         open_services(
-            &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
                 &mut machine,
                 &mut [&mut shop, &mut stock],
             )
@@ -328,7 +316,7 @@ fn two_mods_that_require_each_other_are_refused_and_both_are_named() {
     ]);
 
     let refusal = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut latch, &mut bolt],
         )
@@ -369,18 +357,15 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let refusal = open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&bytes),
         &BTreeMap::new(),
     )
     .expect_err("the first step cannot read this shape");
 
-    assert_eq!(refusal.owner(), Some(owner));
+    assert_eq!(refusal.mod_id(), Some(owner));
     assert!(refusal.to_string().contains("no `stock`"), "{refusal}");
     assert_eq!(
         stock.stock(),
@@ -400,11 +385,8 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&world(owner, 1, json!({ "count": 12 }))),
         &BTreeMap::new(),
@@ -418,7 +400,7 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
     let mut next_stock = StockMod::new();
 
     open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut next_machine,
             &mut [&mut next_stock],
         )
@@ -473,17 +455,15 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     ]);
 
     let refused = open_configuration(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut pair,
-            &mut [&mut deaf, &mut shop],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut pair, &mut [&mut deaf, &mut shop])
+            .expect("all active mods have hosts"),
         &BTreeMap::new(),
         |_| Ok(None),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect_err("settings nothing reads are settings a player changes with no effect");
 
-    assert_eq!(refused.owner(), Deaf::declared_id());
+    assert_eq!(refused.mod_id(), Some(Deaf::declared_id()));
     assert!(
         refused.to_string().contains("deaf"),
         "the refusal names the mod: {refused}"
@@ -492,13 +472,11 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     let mut shop = ShopMod::new();
     let mut alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
     let configured = open_configuration(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut alone,
-            &mut [&mut shop],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut alone, &mut [&mut shop])
+            .expect("all active mods have hosts"),
         &BTreeMap::new(),
         |_| Ok(None),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("a mod with no settings has nothing to read");
     assert_eq!(configured.order(), []);
@@ -527,13 +505,11 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
     .expect("a legal player document");
 
     let configured = open_configuration(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &BTreeMap::from([(owner.clone(), pack)]),
         |_| Ok(Some(player.clone())),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("a dropped value is not a refusal");
 
@@ -650,7 +626,7 @@ fn a_consumer_that_refuses_its_answer_refuses_the_whole_set_rather_than_starting
     ]);
 
     let refusal = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut shop, &mut fussy, &mut stock],
         )
@@ -661,7 +637,7 @@ fn a_consumer_that_refuses_its_answer_refuses_the_whole_set_rather_than_starting
 
     assert!(matches!(
         refusal,
-        ServiceRefused::Consumer { ref mod_id, .. } if mod_id == Fussy::declared_id()
+        ServiceRefused::Mod { ref mod_id, .. } if mod_id == Fussy::declared_id()
     ));
     assert!(fussy.called, "the refusing mod was never asked");
     assert!(
@@ -677,11 +653,8 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&world(owner, 1, json!({ "stock": 9 }))),
         &BTreeMap::new(),
@@ -698,11 +671,8 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
 
     let mut reopened = StockMod::new();
     open_saved_data(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut reopened],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut reopened])
+            .expect("all active mods have hosts"),
         &environment(),
         Some(&bytes),
         &BTreeMap::new(),

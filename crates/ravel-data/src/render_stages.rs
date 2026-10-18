@@ -68,8 +68,8 @@ impl fmt::Display for RenderStage {
 /// let outline: ModId = "outline_mod".parse()?;
 ///
 /// let mut stages = StageDeclaration::default();
-/// stages.contribute(&glow, "after_terrain");
-/// stages.contribute(&outline, "after_terrain");
+/// stages.contribute(&glow, RenderStage::AfterTerrain);
+/// stages.contribute(&outline, RenderStage::AfterTerrain);
 /// // The outline is drawn over the glow, so it goes after it.
 /// stages.after(&outline, &glow);
 ///
@@ -80,41 +80,23 @@ impl fmt::Display for RenderStage {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct StageDeclaration {
     contributions: BTreeMap<RenderStage, Vec<ModId>>,
-    unpublished: BTreeMap<String, Vec<ModId>>,
     after: BTreeMap<ModId, BTreeSet<ModId>>,
 }
 
 impl StageDeclaration {
-    /// Declares that `owner` contributes to the stage named `stage`.
+    /// Declares that `owner` contributes to the published `stage`.
     ///
-    /// Unknown names are retained and refused by [`Self::resolve`].
-    pub fn contribute(&mut self, owner: &ModId, stage: &str) {
-        let contributors = match RenderStage::published(stage) {
-            Some(published) => self.contributions.entry(published).or_default(),
-            None => self.unpublished.entry(stage.to_owned()).or_default(),
-        };
+    /// ```compile_fail
+    /// use ravel_core::ModId;
+    /// use ravel_data::StageDeclaration;
+    /// let owner: ModId = "sample".parse().expect("a valid owner");
+    /// StageDeclaration::default().contribute(&owner, "after_terrain");
+    /// ```
+    pub fn contribute(&mut self, owner: &ModId, stage: RenderStage) {
+        let contributors = self.contributions.entry(stage).or_default();
         if !contributors.contains(owner) {
             contributors.push(owner.clone());
         }
-    }
-
-    /// Declares a contribution, refusing an unpublished stage immediately.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`StageRefused::UnknownStage`] without recording an unpublished stage.
-    pub fn contribute_checked(
-        &mut self,
-        owner: &ModId,
-        stage: &str,
-    ) -> Result<RenderStage, StageRefused> {
-        let published =
-            RenderStage::published(stage).ok_or_else(|| StageRefused::UnknownStage {
-                name: stage.to_owned(),
-                claimants: vec![owner.clone()],
-            })?;
-        self.contribute(owner, published.as_str());
-        Ok(published)
     }
 
     /// Declares that `later` is entered after `earlier`, at every stage they
@@ -136,15 +118,8 @@ impl StageDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns unknown-stage, unknown-contributor, or circular-ordering errors.
+    /// Returns unknown-contributor or circular-ordering errors.
     pub fn resolve(&self) -> Result<StageOrder, StageRefused> {
-        if let Some((name, claimants)) = self.unpublished.first_key_value() {
-            return Err(StageRefused::UnknownStage {
-                name: name.clone(),
-                claimants: claimants.clone(),
-            });
-        }
-
         let contributing: BTreeSet<&ModId> = self.contributions.values().flatten().collect();
         let strangers: Vec<ModId> = self
             .after
@@ -204,13 +179,6 @@ impl StageOrder {
 /// Why a set of stage contributions has no order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StageRefused {
-    /// A mod contributes to a name no stage publishes.
-    UnknownStage {
-        /// The name that was written.
-        name: String,
-        /// The mods that wrote it, in declaration order.
-        claimants: Vec<ModId>,
-    },
     /// An ordering names a mod that contributes to no stage.
     UnknownContributors {
         /// The mods named by an edge and contributing nothing, in name order.
@@ -226,21 +194,12 @@ pub enum StageRefused {
 }
 
 impl StageRefused {
-    /// Returns the unpublished name, if the refusal is about one.
-    #[must_use]
-    pub fn unknown_stage(&self) -> Option<&str> {
-        match self {
-            Self::UnknownStage { name, .. } => Some(name),
-            Self::UnknownContributors { .. } | Self::Circular { .. } => None,
-        }
-    }
-
     /// Returns the mods named by an ordering that contribute to no stage.
     #[must_use]
     pub fn unknown_contributors(&self) -> &[ModId] {
         match self {
             Self::UnknownContributors { participants } => participants,
-            Self::UnknownStage { .. } | Self::Circular { .. } => &[],
+            Self::Circular { .. } => &[],
         }
     }
 
@@ -249,7 +208,7 @@ impl StageRefused {
     pub fn cycle(&self) -> &[ModId] {
         match self {
             Self::Circular { participants, .. } => participants,
-            Self::UnknownStage { .. } | Self::UnknownContributors { .. } => &[],
+            Self::UnknownContributors { .. } => &[],
         }
     }
 }
@@ -263,12 +222,6 @@ impl fmt::Display for StageRefused {
                 .join("`, `")
         };
         match self {
-            Self::UnknownStage { name, claimants } => write!(
-                formatter,
-                "`{}` contributes to `{name}`, which is not a stage Ravel publishes, so nothing \
-                 would ever draw there",
-                names(claimants)
-            ),
             Self::UnknownContributors { participants } => write!(
                 formatter,
                 "`{}` is ordered against and contributes to no stage, so the order is against \
@@ -333,8 +286,8 @@ mod tests {
         let late = id("probe");
 
         let mut stages = StageDeclaration::default();
-        stages.contribute(&early, "after_terrain");
-        stages.contribute(&late, "after_terrain");
+        stages.contribute(&early, RenderStage::AfterTerrain);
+        stages.contribute(&late, RenderStage::AfterTerrain);
         stages.after(&late, &early);
 
         let order = stages.resolve().expect("a stage without a cycle resolves");
@@ -361,8 +314,8 @@ mod tests {
         let second = id("probe");
 
         let mut stages = StageDeclaration::default();
-        stages.contribute(&first, "after_terrain");
-        stages.contribute(&second, "after_terrain");
+        stages.contribute(&first, RenderStage::AfterTerrain);
+        stages.contribute(&second, RenderStage::AfterTerrain);
         // The mod declared first is the one asked to follow.
         stages.after(&first, &second);
 
@@ -383,7 +336,7 @@ mod tests {
     fn an_order_at_one_stage_says_nothing_about_another() {
         let owner = id("sample");
         let mut stages = StageDeclaration::default();
-        stages.contribute(&owner, "after_terrain");
+        stages.contribute(&owner, RenderStage::AfterTerrain);
 
         let order = stages.resolve().expect("one contributor resolves");
         assert_eq!(order.at(RenderStage::AfterTerrain), [owner]);
@@ -396,8 +349,8 @@ mod tests {
         let second = id("probe");
 
         let mut stages = StageDeclaration::default();
-        stages.contribute(&first, "after_terrain");
-        stages.contribute(&second, "after_terrain");
+        stages.contribute(&first, RenderStage::AfterTerrain);
+        stages.contribute(&second, RenderStage::AfterTerrain);
         stages.after(&first, &second);
         stages.after(&second, &first);
 
@@ -411,47 +364,12 @@ mod tests {
     }
 
     #[test]
-    fn a_contribution_to_an_unpublished_stage_is_refused() {
+    fn text_is_admitted_before_a_typed_contribution() {
+        assert_eq!(RenderStage::published("a_stage_nobody_publishes"), None);
         let owner = id("sample");
         let mut stages = StageDeclaration::default();
-
-        let refusal = stages
-            .contribute_checked(&owner, "a_stage_nobody_publishes")
-            .expect_err("a stage nothing publishes cannot be contributed to");
-
-        assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
-        assert_eq!(
-            stages
-                .resolve()
-                .expect("nothing was declared")
-                .at(RenderStage::AfterTerrain),
-            []
-        );
-    }
-
-    #[test]
-    fn a_contribution_to_an_unpublished_stage_is_refused_at_the_barrier_too() {
-        let owner = id("sample");
-        let mut stages = StageDeclaration::default();
-        stages.contribute(&owner, "a_stage_nobody_publishes");
-
-        let refusal = stages
-            .resolve()
-            .expect_err("an unpublished name is not quietly dropped");
-
-        assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
-        assert!(refusal.to_string().contains("sample"));
-    }
-
-    #[test]
-    fn a_published_stage_is_taken_by_the_checked_route_as_well() {
-        let owner = id("sample");
-        let mut stages = StageDeclaration::default();
-
-        let stage = stages
-            .contribute_checked(&owner, "after_entities")
-            .expect("a published stage is contributed to");
-
+        let stage = RenderStage::published("after_entities").expect("a published stage");
+        stages.contribute(&owner, stage);
         assert_eq!(stage, RenderStage::AfterEntities);
         assert_eq!(stages.contributors(RenderStage::AfterEntities), [owner]);
     }
@@ -462,7 +380,7 @@ mod tests {
         let absent = id("probe");
 
         let mut stages = StageDeclaration::default();
-        stages.contribute(&owner, "after_terrain");
+        stages.contribute(&owner, RenderStage::AfterTerrain);
         stages.after(&owner, &absent);
 
         let refusal = stages
@@ -471,15 +389,14 @@ mod tests {
 
         assert_eq!(refusal.unknown_contributors(), [absent]);
         assert_eq!(refusal.cycle(), []);
-        assert_eq!(refusal.unknown_stage(), None);
     }
 
     #[test]
     fn contributing_twice_to_one_stage_contributes_once() {
         let owner = id("sample");
         let mut stages = StageDeclaration::default();
-        stages.contribute(&owner, "after_terrain");
-        stages.contribute(&owner, "after_terrain");
+        stages.contribute(&owner, RenderStage::AfterTerrain);
+        stages.contribute(&owner, RenderStage::AfterTerrain);
 
         assert_eq!(stages.contributors(RenderStage::AfterTerrain), [owner]);
     }

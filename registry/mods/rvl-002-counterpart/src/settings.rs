@@ -17,7 +17,7 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 use ravel_sdk::content::ContentIdError;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
@@ -179,29 +179,25 @@ impl Default for Settings {
     }
 }
 
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
-}
-
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            drops_soul_chance: resolved.number(&key(DROPS_SOUL_CHANCE))?,
-            drops_scale_count: u32::try_from(resolved.integer(&key(DROPS_SCALE_COUNT))?)
+            drops_soul_chance: resolved.number(DROPS_SOUL_CHANCE)?,
+            drops_scale_count: u32::try_from(resolved.integer(DROPS_SCALE_COUNT)?)
                 .expect("the declared range fits u32"),
-            crops_fertilisable: resolved.boolean(&key(CROPS_FERTILISABLE))?,
-            foods_effect_seconds: u32::try_from(resolved.integer(&key(FOODS_EFFECT_SECONDS))?)
+            crops_fertilisable: resolved.boolean(CROPS_FERTILISABLE)?,
+            foods_effect_seconds: u32::try_from(resolved.integer(FOODS_EFFECT_SECONDS)?)
                 .expect("the declared range fits u32"),
             world_lower: Deposits {
-                shard: resolved.boolean(&key(WORLD_LOWER_SHARD_DEPOSIT))?,
-                essence: resolved.boolean(&key(WORLD_LOWER_ESSENCE_DEPOSIT))?,
+                shard: resolved.boolean(WORLD_LOWER_SHARD_DEPOSIT)?,
+                essence: resolved.boolean(WORLD_LOWER_ESSENCE_DEPOSIT)?,
             },
             world_outer: Deposits {
-                shard: resolved.boolean(&key(WORLD_OUTER_SHARD_DEPOSIT))?,
-                essence: resolved.boolean(&key(WORLD_OUTER_ESSENCE_DEPOSIT))?,
+                shard: resolved.boolean(WORLD_OUTER_SHARD_DEPOSIT)?,
+                essence: resolved.boolean(WORLD_OUTER_ESSENCE_DEPOSIT)?,
             },
         })
     }

@@ -79,7 +79,7 @@ pub fn ravel_legacy_command<'local>(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
             let typed = text(env, &typed)?;
             let answer = runtime()?.legacy_command(&typed).err().unwrap_or_default();
-            Ok(env.new_string(ravel_observability::redact(&answer).text())?)
+            Ok(env.new_string(ravel_core::DiagnosticMessage::redacted(&answer).text())?)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -104,7 +104,7 @@ pub fn ravel_legacy_event<'local>(
         if let Err(error) = delivery {
             eprintln!(
                 "[ravel] legacy event refused: {}",
-                ravel_observability::redact(&error.to_string()).text()
+                ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
             );
         }
         Ok(())
@@ -146,7 +146,7 @@ pub fn ravel_legacy_packet<'local>(
         {
             eprintln!(
                 "[ravel] legacy packet dropped: {}",
-                ravel_observability::redact(&reason).text()
+                ravel_core::DiagnosticMessage::redacted(&reason).text()
             );
         }
         Ok(())

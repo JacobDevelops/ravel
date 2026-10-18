@@ -86,10 +86,10 @@ pub fn ravel_admitted_content<'local>(
 mod tests {
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::{BlockBehaviour, ContentBehaviour};
-    use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+    use ravel_loader::{LifecycleEntry, Requirement};
 
     use super::document_of;
-    use crate::runtime::{LoaderRuntime, advance_through};
+    use crate::runtime::{DocumentFixture, LoaderRuntime, advance_through};
     use crate::wire::fields;
 
     fn id(name: &str) -> ModId {
@@ -106,10 +106,9 @@ mod tests {
                 saved_data_versions: std::collections::BTreeSet::new(),
             })
             .collect();
-        let mut machine =
-            LifecycleMachine::new(Side::Client, entries).expect("a valid plan for one side");
-        advance_through(&mut machine, LifecycleState::Constructed);
-        LoaderRuntime::new(machine, Vec::new(), crate::runtime::test_launch())
+        let mut fixture = DocumentFixture::new(Side::Client, entries);
+        advance_through(&mut fixture.machine, LifecycleState::Constructed);
+        LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch())
     }
 
     #[test]

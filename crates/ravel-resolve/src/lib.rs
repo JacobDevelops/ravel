@@ -5,7 +5,9 @@
 mod error;
 mod graph;
 mod plan;
+mod provision;
 
 pub use error::ResolutionError;
 pub use graph::resolve;
 pub use plan::{Discouraged, LoadPlan};
+pub use provision::{Provision, ProvisionRefused, Resolved};

@@ -8,13 +8,10 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 use ravel_config::LayeredConfiguration;
 
-use ravel_core::{
-    ContentId, ContentKind, DiagnosticMessage, FailureEnvironment, FailureSurface, RegistryKey,
-};
-use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
+use ravel_core::{ContentId, ContentKind, DiagnosticMessage, FailureEnvironment, RegistryKey};
+use ravel_host_api::{CommandInvocation, GameEvent, Mod};
 use ravel_loader::{
-    Delivery, LifecycleMachine, LoadedMods, ModSurface, Supplied, broadcast_profiled,
-    route_profiled,
+    LifecycleMachine, LoadedMods, ModSurface, Supplied, broadcast_profiled, route_profiled,
 };
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
@@ -38,7 +35,7 @@ const EVENTS: [(&str, GameEvent); 5] = [
 const COMMAND: &str = "command.perform-prefixed";
 
 /// The loader, and the mods it drives, for as long as the process runs.
-pub struct LoaderRuntime {
+pub(crate) struct LoaderRuntime {
     pub(crate) inner: Mutex<Inner>,
     pub(crate) launch: LaunchContext,
 }
@@ -46,36 +43,34 @@ pub struct LoaderRuntime {
 /// Admitted and driven inputs owned by one launch.
 pub struct Composition {
     pub machine: LifecycleMachine,
-    pub mods: Vec<Box<dyn HostMod>>,
+    pub mods: Vec<Box<dyn Mod>>,
     pub configurations: Vec<LayeredConfiguration>,
     pub resources: Supplied,
+    pub interceptions: ravel_host_api::AdmittedPoints,
     pub installed_packages: BTreeMap<ravel_core::ModId, Version>,
 }
 
 /// Launch-owned settings and resource context required by every runtime.
-pub struct LaunchContext {
+pub(crate) struct LaunchContext {
     pub(crate) game_directory: PathBuf,
     pub(crate) supplied: Supplied,
     pub(crate) settings: Mutex<crate::settings::Store>,
-    pub(crate) installed_packages: BTreeMap<ravel_core::ModId, Version>,
 }
 
 impl LaunchContext {
     /// Creates the launch context before the runtime can receive callbacks.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         side: ravel_core::Side,
         game_directory: PathBuf,
         supplied: Supplied,
         configurations: Vec<LayeredConfiguration>,
-        installed_packages: BTreeMap<ravel_core::ModId, Version>,
     ) -> Self {
-        let settings = crate::settings::Store::new(side, configurations, game_directory.clone());
+        let settings = crate::settings::Store::new(side, configurations);
         Self {
             game_directory,
             supplied,
             settings: Mutex::new(settings),
-            installed_packages,
         }
     }
 }
@@ -87,8 +82,43 @@ pub(crate) fn test_launch() -> LaunchContext {
         std::env::temp_dir(),
         Supplied::default(),
         Vec::new(),
-        BTreeMap::new(),
     )
+}
+
+/// Owns a document-only fixture's explicit plan and its callback-free hosts.
+#[cfg(test)]
+pub(crate) struct DocumentFixture {
+    pub(crate) machine: LifecycleMachine,
+    pub(crate) mods: Vec<Box<dyn Mod>>,
+}
+
+#[cfg(test)]
+impl DocumentFixture {
+    pub(crate) fn new(side: ravel_core::Side, entries: Vec<ravel_loader::LifecycleEntry>) -> Self {
+        struct Quiet(ravel_core::ModId);
+
+        impl Mod for Quiet {
+            fn id(&self) -> &ravel_core::ModId {
+                &self.0
+            }
+
+            fn enter(
+                &mut self,
+                _state: ravel_core::LifecycleState,
+            ) -> Result<(), ravel_host_api::ModError> {
+                Ok(())
+            }
+        }
+
+        let mods = entries
+            .iter()
+            .map(|entry| -> Box<dyn Mod> { Box::new(Quiet(entry.mod_id.clone())) })
+            .collect();
+        Self {
+            machine: LifecycleMachine::new(side, entries).expect("a legal document fixture plan"),
+            mods,
+        }
+    }
 }
 
 /// Advances every mod in `machine` along the success path, from `Validated` through `last`.
@@ -189,20 +219,6 @@ pub fn install_integrated(
         if slot.is_some() {
             return Err(InstallError::AlreadyInstalled);
         }
-        let Composition {
-            machine,
-            mods,
-            configurations,
-            resources,
-            installed_packages,
-        } = composition;
-        let launch = LaunchContext::new(
-            machine.side(),
-            game_directory,
-            resources,
-            configurations,
-            installed_packages,
-        );
         let profiling = installed().is_some_and(|runtime| {
             runtime
                 .inner
@@ -211,12 +227,11 @@ pub fn install_integrated(
                 .profiler
                 .is_on()
         });
-        let runtime = Arc::new(LoaderRuntime::with_observers(
-            machine,
-            mods,
+        let runtime = Arc::new(LoaderRuntime::from_composition(
+            composition,
+            game_directory,
             Profiler::from_switch(profiling),
             pre_world_report(),
-            launch,
         ));
         *INTEGRATED_VIEW
             .lock()
@@ -239,7 +254,7 @@ pub fn install_panic_hook() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
-            let message = ravel_observability::redact(&panic.to_string());
+            let message = DiagnosticMessage::redacted(&panic.to_string());
             eprintln!("Ravel host panic: {}", message.text());
         }));
     });
@@ -247,7 +262,8 @@ pub fn install_panic_hook() {
 
 pub(crate) struct Inner {
     pub(crate) machine: LifecycleMachine,
-    pub(crate) mods: Vec<Box<dyn HostMod>>,
+    pub(crate) mods: Vec<Box<dyn Mod>>,
+    pub(crate) interceptions: ravel_host_api::AdmittedPoints,
     profiler: Profiler,
     pairing_refused: bool,
     command_thread: Option<std::thread::ThreadId>,
@@ -355,24 +371,21 @@ impl LoaderRuntime {
                 return Err(error.to_string());
             }
         };
-        let delivery = ravel_loader::deliver_packet_profiled(&mut loaded, &packet, profiler)
-            .map_err(|error| error.to_string())?;
-        if let Some((owner, failure)) = delivery.failed_by().zip(delivery.failure())
-            && !matches!(
-                failure,
-                ravel_host_api::HostError::InvalidPacket { .. }
-                    | ravel_host_api::HostError::Unsupported { .. }
-            )
-            && let Err(error) = inner.record_failure(
-                owner,
-                failure,
-                Some(FailureSurface::Packet(packet.id.to_string())),
-            )
-        {
-            inner
-                .report
-                .refuse(&ravel_observability::Subject::of(owner.clone()), &error);
-        }
+        let delivery = ravel_loader::deliver_packet_profiled(
+            &mut loaded,
+            &packet,
+            profiler,
+            report.environment(),
+        )
+        .map_err(|error| {
+            let subject = error
+                .mod_id()
+                .map_or_else(ravel_observability::Subject::unidentified, |owner| {
+                    ravel_observability::Subject::of(owner.clone())
+                });
+            report.refuse(&subject, &error);
+            error.to_string()
+        })?;
         inner.carry_outward();
         let result = delivery
             .failure()
@@ -383,11 +396,38 @@ impl LoaderRuntime {
 }
 
 impl LoaderRuntime {
-    /// Owns a driven mod set with profiling disabled and an empty pre-world report.
+    /// Consumes admitted launch inputs into their sole private runtime owners.
     #[must_use]
-    pub fn new(
+    fn from_composition(
+        composition: Composition,
+        game_directory: PathBuf,
+        profiler: Profiler,
+        report: PreWorldReport,
+    ) -> Self {
+        let Composition {
+            machine,
+            mods,
+            configurations,
+            resources,
+            installed_packages,
+            interceptions,
+        } = composition;
+        let launch = LaunchContext::new(machine.side(), game_directory, resources, configurations);
+        Self::from_parts(
+            machine,
+            mods,
+            profiler,
+            report,
+            launch,
+            installed_packages,
+            interceptions,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new(
         machine: LifecycleMachine,
-        mods: Vec<Box<dyn HostMod>>,
+        mods: Vec<Box<dyn Mod>>,
         launch: LaunchContext,
     ) -> Self {
         Self::with_observers(
@@ -396,21 +436,57 @@ impl LoaderRuntime {
             Profiler::off(),
             PreWorldReport::new(environment()),
             launch,
+            BTreeMap::new(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_observers(
+        mut machine: LifecycleMachine,
+        mut mods: Vec<Box<dyn Mod>>,
+        profiler: Profiler,
+        report: PreWorldReport,
+        launch: LaunchContext,
+        installed_packages: BTreeMap<ravel_core::ModId, Version>,
+    ) -> Self {
+        let interceptions = if machine.save_access().is_err() {
+            // Halted fixtures cannot execute a declaration or a later interception.
+            ravel_host_api::Points::default()
+                .admit()
+                .expect("empty interceptions")
+        } else {
+            ravel_loader::open_interceptions(
+                &mut LoadedMods::new(&mut machine, &mut mods).expect("complete test composition"),
+                report.environment(),
+            )
+            .expect("test interception declarations admit")
+        };
+        Self::from_parts(
+            machine,
+            mods,
+            profiler,
+            report,
+            launch,
+            installed_packages,
+            interceptions,
         )
     }
 
     /// Owns a driven mod set with the supplied profiler and pre-world report.
     #[must_use]
-    pub fn with_observers(
+    fn from_parts(
         machine: LifecycleMachine,
-        mods: Vec<Box<dyn HostMod>>,
+        mods: Vec<Box<dyn Mod>>,
         profiler: Profiler,
         report: PreWorldReport,
-        mut launch: LaunchContext,
+        launch: LaunchContext,
+        installed_packages: BTreeMap<ravel_core::ModId, Version>,
+        interceptions: ravel_host_api::AdmittedPoints,
     ) -> Self {
         Self {
             inner: Mutex::new(Inner {
-                installed_packages: std::mem::take(&mut launch.installed_packages),
+                installed_packages,
+                interceptions,
                 machine,
                 mods,
                 profiler,
@@ -482,7 +558,7 @@ impl LoaderRuntime {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .machine
-            .claim_registry_identifier_describing(mod_id, identifier, None)
+            .claim_registry_identifier(mod_id, identifier, None)
     }
 
     pub(crate) fn claim_describing(
@@ -495,16 +571,7 @@ impl LoaderRuntime {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .machine
-            .claim_registry_identifier_describing(mod_id, identifier, Some(behaviour))
-    }
-}
-
-// Local wrapper permits implementing HookObserver for a shared runtime handle.
-struct Shared(Arc<LoaderRuntime>);
-
-impl HookObserver for Shared {
-    fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
-        self.0.observe(target, values)
+            .claim_registry_identifier(mod_id, identifier, Some(behaviour))
     }
 }
 
@@ -514,13 +581,11 @@ pub fn pre_world_report() -> PreWorldReport {
     PreWorldReport::new(environment())
 }
 
-/// A launch could not publish its runtime and observer atomically.
+/// A launch could not publish its runtime.
 #[derive(Debug, Eq, PartialEq)]
 pub enum InstallError {
     /// Another runtime already owns this process.
     AlreadyInstalled,
-    /// The observer registry's write lock is poisoned.
-    RegistryUnavailable,
     /// A non-server composition was supplied for integrated installation.
     WrongSide,
 }
@@ -529,7 +594,6 @@ impl std::fmt::Display for InstallError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::AlreadyInstalled => "the loader runtime is already installed",
-            Self::RegistryUnavailable => "the hook registry is unavailable",
             Self::WrongSide => "integrated installation requires the integrated-server side",
         })
     }
@@ -540,7 +604,7 @@ impl std::error::Error for InstallError {}
 /// Installs a driven composition for hooks and diagnostic screens.
 ///
 /// # Errors
-/// Returns an error when the runtime is already installed or its registry is unavailable.
+/// Returns an error when the runtime is already installed.
 pub fn install(
     composition: Composition,
     report: PreWorldReport,
@@ -550,29 +614,16 @@ pub fn install(
     if installed().is_some() {
         return Err(InstallError::AlreadyInstalled);
     }
-    let Composition {
-        machine,
-        mods,
-        configurations,
-        resources,
-        installed_packages,
-    } = composition;
-    let side = machine.side();
-    let launch = LaunchContext::new(
-        machine.side(),
+    let side = composition.machine.side();
+    let runtime = Arc::new(LoaderRuntime::from_composition(
+        composition,
         game_directory,
-        resources,
-        configurations,
-        installed_packages,
-    );
-    let runtime = Arc::new(LoaderRuntime::with_observers(
-        machine, mods, profiler, report, launch,
+        profiler,
+        report,
     ));
-    crate::dispatch::register_with(Box::new(Shared(Arc::clone(&runtime))), || {
-        RUNTIME
-            .set((std::thread::current().id(), side, runtime))
-            .map_err(|_| InstallError::AlreadyInstalled)
-    })
+    RUNTIME
+        .set((std::thread::current().id(), side, runtime))
+        .map_err(|_| InstallError::AlreadyInstalled)
 }
 
 impl HookObserver for LoaderRuntime {
@@ -617,9 +668,18 @@ impl Inner {
         let id = literal.parse::<ContentId>().ok()?;
         Some(Work::Command(CommandInvocation::new(
             RegistryKey::new(ContentKind::Command, id),
-            self.machine.side(),
+            self.server_side(),
             rest.split_whitespace().map(str::to_owned).collect(),
         )))
+    }
+
+    fn server_side(&self) -> ravel_core::Side {
+        match self.machine.side() {
+            ravel_core::Side::Client | ravel_core::Side::IntegratedServer => {
+                ravel_core::Side::IntegratedServer
+            }
+            ravel_core::Side::DedicatedServer => ravel_core::Side::DedicatedServer,
+        }
     }
 
     fn deliver_checked(&mut self, work: &Work) -> Result<(), String> {
@@ -635,10 +695,18 @@ impl Inner {
             error.to_string()
         })?;
         let delivered = match work {
-            Work::Event(event) => broadcast_profiled(&mut loaded, *event, &mut self.profiler),
-            Work::Command(invocation) => {
-                route_profiled(&mut loaded, invocation, &mut self.profiler)
-            }
+            Work::Event(event) => broadcast_profiled(
+                &mut loaded,
+                *event,
+                &mut self.profiler,
+                self.report.environment(),
+            ),
+            Work::Command(invocation) => route_profiled(
+                &mut loaded,
+                invocation,
+                &mut self.profiler,
+                self.report.environment(),
+            ),
         };
         let delivery = match delivered {
             Ok(delivery) => delivery,
@@ -647,9 +715,19 @@ impl Inner {
             {
                 return Ok(());
             }
-            Err(error) => return Err(error.to_string()),
+            Err(error @ ravel_loader::DispatchRefused::NotReacting { .. }) => {
+                return Err(error.to_string());
+            }
+            Err(error) => {
+                let subject = error
+                    .mod_id()
+                    .map_or_else(ravel_observability::Subject::unidentified, |owner| {
+                        ravel_observability::Subject::of(owner.clone())
+                    });
+                self.report.refuse(&subject, &error);
+                return Err(error.to_string());
+            }
         };
-        self.record(&delivery, work);
         self.carry_outward();
         delivery
             .failure()
@@ -657,96 +735,44 @@ impl Inner {
     }
 
     fn deliver(&mut self, work: &Work) {
-        if self.pairing_refused {
-            return;
+        // The checked path publishes structural refusals before returning its error.
+        if let Err(error) = self.deliver_checked(work) {
+            eprintln!(
+                "[ravel] hook delivery refused: {}",
+                DiagnosticMessage::redacted(&error).text()
+            );
         }
-        let delivered = {
-            let mut loaded = match LoadedMods::new(&mut self.machine, &mut self.mods) {
-                Ok(loaded) => loaded,
-                Err(error) => {
-                    // Installed hosts cannot be replaced, so an incomplete set cannot recover.
-                    self.pairing_refused = true;
-                    self.report.refuse(
-                        &ravel_observability::Subject::of(error.mod_id().clone()),
-                        &error,
-                    );
-                    return;
-                }
-            };
-            match work {
-                Work::Event(event) => broadcast_profiled(&mut loaded, *event, &mut self.profiler),
-                Work::Command(invocation) => {
-                    route_profiled(&mut loaded, invocation, &mut self.profiler)
-                }
-            }
-        };
-
-        // Inactive sets, unknown commands, and side mismatches are not mod failures.
-        if let Ok(delivery) = delivered {
-            self.record(&delivery, work);
-        }
-        self.carry_outward();
     }
 
     fn carry_outward(&mut self) {
-        let result = LoadedMods::new(&mut self.machine, &mut self.mods)
-            .map_err(|error| error.to_string())
-            .and_then(|mut loaded| {
-                match ravel_loader::take_play_requests(&mut loaded) {
-                    // The halt already has its owning failure attribution.
-                    Err(ravel_loader::DispatchRefused::NotReacting { .. }) => {
-                        Ok((Vec::new(), None))
-                    }
-                    result => result.map_err(|error| error.to_string()),
-                }
-            });
-        match result {
-            Ok((requests, failure)) => {
-                if !self.machine.side().is_server() {
-                    self.outward.extend(
-                        requests.into_iter().map(|request| {
-                            outward::play(request.owner().as_str(), request.entry())
-                        }),
-                    );
-                }
-                if let Some((owner, failure)) = failure
-                    && let Err(error) = self.record_failure(&owner, &failure, None)
-                {
-                    self.report
-                        .refuse(&ravel_observability::Subject::of(owner), &error);
-                }
+        let mut loaded = match LoadedMods::new(&mut self.machine, &mut self.mods) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                self.report.refuse(
+                    &ravel_observability::Subject::of(error.mod_id().clone()),
+                    &error,
+                );
+                return;
             }
-            Err(error) => self.report.note(&error),
-        }
-    }
-
-    fn record(&mut self, delivery: &Delivery, work: &Work) {
-        let Some((owner, failure)) = delivery.failed_by().zip(delivery.failure()) else {
-            return;
         };
-        let surface = match work {
-            Work::Event(event) => FailureSurface::Event(event.as_str().to_owned()),
-            Work::Command(invocation) => FailureSurface::Registry(invocation.key.clone()),
-        };
-        if let Err(error) = self.record_failure(owner, failure, Some(surface)) {
-            self.report
-                .refuse(&ravel_observability::Subject::of(owner.clone()), &error);
+        match ravel_loader::take_play_requests(&mut loaded, self.report.environment()) {
+            Ok(drained) => self.outward.extend(
+                drained
+                    .into_requests()
+                    .into_iter()
+                    .map(|request| outward::play(request.owner().as_str(), request.entry())),
+            ),
+            // The halt already has its owning failure attribution.
+            Err(ravel_loader::DispatchRefused::NotReacting { .. }) => {}
+            Err(error) => {
+                let subject = error
+                    .mod_id()
+                    .map_or_else(ravel_observability::Subject::unidentified, |owner| {
+                        ravel_observability::Subject::of(owner.clone())
+                    });
+                self.report.refuse(&subject, &error);
+            }
         }
-    }
-
-    pub(crate) fn record_failure(
-        &mut self,
-        owner: &ravel_core::ModId,
-        failure: &ravel_host_api::HostError,
-        surface: Option<FailureSurface>,
-    ) -> Result<(), ravel_loader::LifecycleError> {
-        let state = self.machine.state(owner)?;
-        if state == ravel_core::LifecycleState::Failed {
-            return Ok(());
-        }
-        self.machine
-            .fail_callback(failure, &environment(), surface)
-            .map(|_| ())
     }
 }
 
@@ -764,26 +790,6 @@ pub fn environment() -> FailureEnvironment {
         platform: std::env::consts::OS.to_owned(),
         architecture: std::env::consts::ARCH.to_owned(),
     }
-}
-
-/// Renders resource-pack metadata using the pinned version's format.
-#[must_use]
-pub fn resource_pack_metadata(description: &str) -> String {
-    ravel_minecraft::pack_metadata(
-        ravel_minecraft_adapter::pinned::RESOURCE_PACK_FORMAT,
-        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
-        description,
-    )
-}
-
-/// Renders data-pack metadata using the pinned version's format.
-#[must_use]
-pub fn data_pack_metadata(description: &str) -> String {
-    ravel_minecraft::pack_metadata(
-        ravel_minecraft_adapter::pinned::DATA_PACK_FORMAT,
-        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
-        description,
-    )
 }
 
 #[cfg(test)]

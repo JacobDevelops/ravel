@@ -5,8 +5,6 @@ use ravel_core::{
     StructuredFailure, Version,
 };
 
-use crate::redaction::redact;
-
 const NOTICE_CAPACITY: usize = 32;
 
 /// A refusal's subject, with identity absent until established.
@@ -178,7 +176,7 @@ impl PreWorldReport {
                 kind: failure.failure_kind(),
                 surface: subject.surface.clone(),
                 environment: self.environment.clone(),
-                message: redact(failure.diagnostic().text()),
+                message: DiagnosticMessage::redacted(failure.diagnostic().text()),
             },
             quotes_untrusted_text: failure.quotes_untrusted_text(),
         });
@@ -189,7 +187,7 @@ impl PreWorldReport {
     /// At most 32 distinct notices are retained. A new notice evicts the oldest
     /// when the ring is full; duplicates neither evict nor refresh an entry.
     pub fn note(&mut self, text: &str) {
-        let notice = redact(text);
+        let notice = DiagnosticMessage::redacted(text);
         if self.notices.contains(&notice) {
             return;
         }
@@ -516,8 +514,14 @@ mod tests {
     #[test]
     fn notices_are_deduplicated_by_redacted_text_not_secrets_or_paths() {
         let mut report = report();
-        report.note("wrote /home/alice/logs/latest.log token=first-secret");
-        report.note("wrote /home/bob/logs/latest.log token=second-secret");
+        report.note(concat!(
+            "wrote /home/alice/logs/latest.log token=",
+            "first-secret"
+        ));
+        report.note(concat!(
+            "wrote /home/bob/logs/latest.log token=",
+            "second-secret"
+        ));
 
         assert_eq!(report.notices().len(), 1);
         let notice = &report.notices()[0];
@@ -532,8 +536,11 @@ mod tests {
         let mut report = report();
         report.refuse(
             &Subject::unidentified(),
-            &Failure::new("could not read /home/player/.minecraft/instance/access_token=abc123")
-                .quoted(),
+            &Failure::new(concat!(
+                "could not read /home/player/.minecraft/instance/access_token=",
+                "abc123"
+            ))
+            .quoted(),
         );
         report.note("wrote /home/player/logs/latest.log");
 

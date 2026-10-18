@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use ravel_config::file;
 use ravel_core::{ModId, RelativePath};
 use ravel_data::{ContentDeclaration, Override, TagSet};
 use ravel_package::PackageManifest;
@@ -105,11 +104,6 @@ fn pack_files(
     for supplied in pack.supplied() {
         reserved(&supplied.path)?;
         match writer.get(&supplied.path) {
-            Some(Writer::Pack) => {
-                return Err(ClosureError::SuppliedTwice {
-                    path: supplied.path.clone(),
-                });
-            }
             Some(Writer::Member(first)) => overrides.push(Override {
                 path: supplied.path.clone(),
                 winner: pack.id().clone(),
@@ -127,7 +121,7 @@ fn pack_files(
                     shadowed: contributors,
                 });
             }
-            None => {}
+            None | Some(Writer::Pack) => {}
         }
         writer.insert(supplied.path.clone(), Writer::Pack);
         files.insert(supplied.path.clone(), supplied.bytes.clone());
@@ -162,8 +156,11 @@ fn ravel_path(rest: &str) -> RelativePath {
 
 /// Uses the same pack-settings directory as the configuration reader.
 fn pack_settings_path(owner: &ModId) -> RelativePath {
-    RelativePath::try_from(format!("{}/{owner}.json", file::PACK_CONFIG_DIRECTORY))
-        .expect("a mod id cannot spell an illegal path")
+    RelativePath::try_from(format!(
+        "{}/{owner}.json",
+        ravel_core::paths::PACK_CONFIG_DIRECTORY
+    ))
+    .expect("a mod id cannot spell an illegal path")
 }
 
 /// Appends a trailing newline if needed.

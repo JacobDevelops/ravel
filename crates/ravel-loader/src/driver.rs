@@ -1,14 +1,11 @@
 use std::fmt;
 
 use ravel_core::{
-    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Side,
-    StructuredFailure,
+    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure,
 };
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::{HostError, Mod};
 
-use crate::lifecycle::{
-    LifecycleEntry, LifecycleError, LifecycleMachine, Requirement, executes_mod_code,
-};
+use crate::lifecycle::{LifecycleError, LifecycleMachine, Requirement, executes_mod_code};
 use crate::services::{ServiceRefused, open_services};
 
 const START_ORDER: [LifecycleState; 6] = [
@@ -20,46 +17,17 @@ const START_ORDER: [LifecycleState; 6] = [
     LifecycleState::Running,
 ];
 
-/// Drives statically composed mods to `running` in their stated order.
-///
-/// Optional callback failures are recorded and removed from later dispatch;
-/// required failures stop startup before the world can open.
-/// Returned host slots retain resolved entry order after service wiring.
-///
-/// # Errors
-///
-/// Returns [`DriveError`] for mismatched identities, refused admission, or required host failures.
-pub fn drive(
-    side: Side,
-    environment: &FailureEnvironment,
-    composed: Vec<(LifecycleEntry, Box<dyn HostMod>)>,
-) -> Result<(LifecycleMachine, Vec<Box<dyn HostMod>>), DriveError> {
-    for (entry, host) in &composed {
-        if &entry.mod_id != host.id() {
-            return Err(DriveError::Identity {
-                declared: entry.mod_id.clone(),
-                constructed: host.id().clone(),
-            });
-        }
-    }
-
-    let (entries, mut hosts): (Vec<_>, Vec<_>) = composed.into_iter().unzip();
-    let mut machine = LifecycleMachine::new(side, entries).map_err(DriveError::Lifecycle)?;
-    let mut loaded = crate::loaded::LoadedMods::admitted(&mut machine, &mut hosts);
-    drive_loaded(&mut loaded, environment)?;
-    crate::loaded::arrange(&mut hosts, machine.order());
-    Ok((machine, hosts))
-}
-
 /// Drives a complete paired view through startup in resolved entry order.
 ///
 /// Callback failures retain the supplied runtime environment in their attribution.
+/// Optional callback failures remove their owner from later dispatch; required
+/// failures refuse startup before the world can open.
 ///
 /// # Errors
 ///
 /// Returns [`DriveError`] when startup is refused. Completeness is checked before
 /// this operation by [`crate::LoadedMods::new`], without advancing any lifecycle state.
-pub fn drive_loaded<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn drive_loaded<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<(), DriveError> {
@@ -82,7 +50,7 @@ pub fn drive_loaded<H: std::ops::DerefMut<Target: HostMod>>(
 ///
 /// Every stopping callback runs before the first required failure is returned.
 /// Returns [`DriveError`] for lifecycle refusal or required callback failure.
-pub fn stop_all<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn stop_all<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<(), DriveError> {
@@ -96,7 +64,7 @@ pub fn stop_all<H: std::ops::DerefMut<Target: HostMod>>(
     failure.map_or(Ok(()), Err)
 }
 
-fn enter_all<H: std::ops::DerefMut<Target: HostMod>>(
+fn enter_all<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     order: &[ModId],
@@ -109,14 +77,12 @@ fn enter_all<H: std::ops::DerefMut<Target: HostMod>>(
     }
     let mut failure = None;
     for mod_id in order {
-        if machine.state(mod_id).map_err(DriveError::Lifecycle)? != state {
+        if !machine.loads(mod_id) || machine.state(mod_id).map_err(DriveError::Lifecycle)? != state
+        {
             continue;
         }
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == mod_id)
-            .expect("the paired view checked every loading owner");
-        let entered = crate::callback(mod_id, state, || host.enter(state));
+        let host = crate::loaded::instance_mut(mods, mod_id);
+        let entered = crate::transition_callback(mod_id, state, || host.enter(state));
         if let Err(error) = entered
             && let Err(error) = fail(machine, environment, error)
         {
@@ -134,37 +100,31 @@ fn fail(
     environment: &FailureEnvironment,
     error: HostError,
 ) -> Result<(), DriveError> {
-    let requirement = machine
-        .fail_callback(&error, environment, None)
+    let (requirement, attribution) = machine
+        .fail_callback_attributed(&error, environment, None)
         .map_err(DriveError::Lifecycle)?;
     if requirement == Requirement::Required {
-        let attribution = machine
-            .failure(error.mod_id())
-            .map_err(DriveError::Lifecycle)?
-            .expect("the callback failure was recorded")
-            .clone();
         return Err(DriveError::Host {
             source: error,
-            attribution: Box::new(attribution),
+            attribution: Box::new(attribution.clone()),
         });
     }
     Ok(())
 }
 
-fn register<H: std::ops::DerefMut<Target: HostMod>>(
+fn register<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     order: &[ModId],
 ) -> Result<(), DriveError> {
     let (machine, mods) = loaded.parts();
     for mod_id in order {
-        if machine.state(mod_id).map_err(DriveError::Lifecycle)? != LifecycleState::Constructed {
+        if !machine.loads(mod_id)
+            || machine.state(mod_id).map_err(DriveError::Lifecycle)? != LifecycleState::Constructed
+        {
             continue;
         }
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == mod_id)
-            .expect("the paired view checked every loading owner");
+        let host = crate::loaded::instance_mut(mods, mod_id);
         let mut window = machine
             .registration_window(mod_id)
             .map_err(DriveError::Lifecycle)?;
@@ -182,16 +142,9 @@ fn register<H: std::ops::DerefMut<Target: HostMod>>(
     Ok(())
 }
 
-/// Why a statically composed set could not start.
+/// Why a loaded set could not start or stop.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DriveError {
-    /// The declaration and its constructed Rust value claim different owners.
-    Identity {
-        /// The identity in the resolved entry.
-        declared: ModId,
-        /// The identity returned by the constructed value.
-        constructed: ModId,
-    },
     /// The lifecycle machine refused a transition or registration.
     Lifecycle(LifecycleError),
     /// The set's services could not be admitted before startup.
@@ -214,13 +167,6 @@ impl From<ServiceRefused> for DriveError {
 impl fmt::Display for DriveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Identity {
-                declared,
-                constructed,
-            } => write!(
-                formatter,
-                "the entry declares `{declared}`, but its constructed mod is `{constructed}`"
-            ),
             Self::Lifecycle(error) => write!(formatter, "the lifecycle refused the set: {error}"),
             Self::Services(error) => write!(formatter, "the services refused the set: {error}"),
             Self::Host { source, .. } => write!(formatter, "a mod refused the set: {source}"),
@@ -231,7 +177,6 @@ impl fmt::Display for DriveError {
 impl std::error::Error for DriveError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Identity { .. } => None,
             Self::Lifecycle(error) => Some(error),
             Self::Services(error) => Some(error),
             Self::Host { source, .. } => Some(source),
@@ -242,7 +187,6 @@ impl std::error::Error for DriveError {
 impl StructuredFailure for DriveError {
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
-            Self::Identity { .. } => Some(FailureKind::DuplicateIdentity),
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Services(error) => error.failure_kind(),
             Self::Host { source, .. } => source.failure_kind(),
@@ -251,16 +195,14 @@ impl StructuredFailure for DriveError {
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
-            Self::Identity { .. } => LifecycleState::Discovered,
             Self::Lifecycle(error) => error.lifecycle_state(),
             Self::Services(error) => error.lifecycle_state(),
-            Self::Host { source, .. } => source.state(),
+            Self::Host { source, .. } => source.lifecycle_state(),
         }
     }
 
     fn quotes_untrusted_text(&self) -> bool {
         match self {
-            Self::Identity { .. } => false,
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Services(error) => error.quotes_untrusted_text(),
             Self::Host { source, .. } => source.quotes_untrusted_text(),
@@ -273,10 +215,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::{HostError, HostMod, ModError, Registrar, ServiceDeclaration, ServiceId};
+    use ravel_host_api::{HostError, Mod, ModError, Registrar, ServiceDeclaration, ServiceId};
 
-    use super::{DriveError, drive, drive_loaded, stop_all};
-    use crate::lifecycle::Requirement;
+    use super::{DriveError, drive_loaded, stop_all};
+    use crate::lifecycle::{LifecycleMachine, Requirement};
     use crate::services::ServiceRefused;
     use crate::tests::entry;
 
@@ -285,7 +227,7 @@ mod tests {
         states: Arc<Mutex<Vec<LifecycleState>>>,
     }
 
-    impl HostMod for Recording {
+    impl Mod for Recording {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -301,25 +243,24 @@ mod tests {
     }
 
     #[test]
-    fn a_composed_value_is_driven_and_returned_with_its_running_machine() {
+    fn a_loaded_value_is_driven_with_its_running_machine() {
         let states = Arc::new(Mutex::new(Vec::new()));
-        let host = Recording {
+        let mut host = Recording {
             id: id("example_mod"),
             states: Arc::clone(&states),
         };
 
-        let (machine, mods) = drive(
-            Side::Client,
-            &environment(),
-            vec![(entry("example_mod", &[Side::Client]), Box::new(host))],
-        )
-        .expect("the set should start");
+        let mut machine =
+            LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
+                .expect("valid lifecycle");
+        let mut mods: [&mut dyn Mod; 1] = [&mut host];
+        let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
+        drive_loaded(&mut loaded, &environment()).expect("the set should start");
 
         assert_eq!(
             machine.state(&id("example_mod")),
             Ok(LifecycleState::Running)
         );
-        assert_eq!(mods.len(), 1);
         assert_eq!(
             *states.lock().expect("nothing panicked"),
             [
@@ -332,48 +273,22 @@ mod tests {
     }
 
     #[test]
-    fn a_value_for_another_identity_is_refused_before_mod_code_runs() {
-        let states = Arc::new(Mutex::new(Vec::new()));
-        let host = Recording {
-            id: id("other_mod"),
-            states: Arc::clone(&states),
-        };
-
-        let Err(error) = drive(
-            Side::Client,
-            &environment(),
-            vec![(entry("example_mod", &[Side::Client]), Box::new(host))],
-        ) else {
-            panic!("the identities disagree");
-        };
-
-        assert_eq!(
-            error,
-            DriveError::Identity {
-                declared: id("example_mod"),
-                constructed: id("other_mod"),
-            }
-        );
-        assert!(states.lock().expect("nothing panicked").is_empty());
-    }
-
-    #[test]
     fn a_value_not_loading_on_this_side_is_not_entered() {
         let states = Arc::new(Mutex::new(Vec::new()));
-        let host = Recording {
+        let mut host = Recording {
             id: id("server_mod"),
             states: Arc::clone(&states),
         };
 
-        let (machine, _) = drive(
+        let mut machine = LifecycleMachine::new(
             Side::Client,
-            &environment(),
-            vec![(
-                entry("server_mod", &[Side::DedicatedServer]),
-                Box::new(host),
-            )],
+            vec![entry("server_mod", &[Side::DedicatedServer])],
         )
-        .expect("a side-mismatched optional execution is parked");
+        .expect("valid lifecycle");
+        let mut mods: [&mut dyn Mod; 1] = [&mut host];
+        let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("parked set");
+        drive_loaded(&mut loaded, &environment())
+            .expect("a side-mismatched optional execution is parked");
 
         assert_eq!(
             machine.state(&id("server_mod")),
@@ -384,7 +299,7 @@ mod tests {
 
     struct RequiringService(Recording);
 
-    impl HostMod for RequiringService {
+    impl Mod for RequiringService {
         fn id(&self) -> &ModId {
             self.0.id()
         }
@@ -416,22 +331,25 @@ mod tests {
     #[test]
     fn service_refusal_prevents_every_running_callback() {
         let states = Arc::new(Mutex::new(Vec::new()));
-        let healthy = Recording {
+        let mut healthy = Recording {
             id: id("healthy_mod"),
             states: Arc::clone(&states),
         };
-        let consumer = RequiringService(Recording {
+        let mut consumer = RequiringService(Recording {
             id: id("consumer_mod"),
             states: Arc::clone(&states),
         });
-        let outcome = drive(
+        let mut machine = LifecycleMachine::new(
             Side::Client,
-            &environment(),
             vec![
-                (entry("healthy_mod", &[Side::Client]), Box::new(healthy)),
-                (entry("consumer_mod", &[Side::Client]), Box::new(consumer)),
+                entry("healthy_mod", &[Side::Client]),
+                entry("consumer_mod", &[Side::Client]),
             ],
-        );
+        )
+        .expect("valid lifecycle");
+        let mut mods: [&mut dyn Mod; 2] = [&mut healthy, &mut consumer];
+        let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
+        let outcome = drive_loaded(&mut loaded, &environment());
         assert!(
             !states
                 .lock()
@@ -458,7 +376,7 @@ mod tests {
         }
     }
 
-    impl HostMod for Failing {
+    impl Mod for Failing {
         fn id(&self) -> &ModId {
             self.recording.id()
         }
@@ -488,7 +406,7 @@ mod tests {
         let healthy_states = Arc::new(Mutex::new(Vec::new()));
         let mut failed_entry = entry("failing_mod", &[Side::Client]);
         failed_entry.requirement = requirement;
-        let failure = Failing {
+        let mut failure = Failing {
             recording: Recording {
                 id: id("failing_mod"),
                 states: Arc::clone(&failed_states),
@@ -496,18 +414,18 @@ mod tests {
             register,
             panics,
         };
-        let healthy = Recording {
+        let mut healthy = Recording {
             id: id("healthy_mod"),
             states: Arc::clone(&healthy_states),
         };
-        let outcome = drive(
+        let mut machine = LifecycleMachine::new(
             Side::Client,
-            &environment(),
-            vec![
-                (failed_entry, Box::new(failure)),
-                (entry("healthy_mod", &[Side::Client]), Box::new(healthy)),
-            ],
-        );
+            vec![failed_entry, entry("healthy_mod", &[Side::Client])],
+        )
+        .expect("valid lifecycle");
+        let mut mods: [&mut dyn Mod; 2] = [&mut failure, &mut healthy];
+        let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
+        let outcome = drive_loaded(&mut loaded, &environment());
         if requirement == Requirement::Required {
             assert!(matches!(
                 &outcome,
@@ -522,7 +440,7 @@ mod tests {
                     .contains(&LifecycleState::Running)
             );
         } else {
-            let (machine, _) = outcome.expect("optional callback failure drops only its owner");
+            outcome.expect("optional callback failure drops only its owner");
             assert_eq!(
                 machine.state(&id("failing_mod")),
                 Ok(LifecycleState::Failed)
@@ -538,7 +456,7 @@ mod tests {
             assert_eq!(failure.mod_id, Some(id("failing_mod")));
             assert_eq!(failure.state, LifecycleState::Constructed);
             machine
-                .world_access()
+                .lifecycle_world_access()
                 .expect("optional failure allows the world");
         }
         assert!(
@@ -588,13 +506,11 @@ mod tests {
             register: false,
             panics: false,
         };
-        let mut machine = crate::LifecycleMachine::new(
-            Side::Client,
-            vec![entry("required_mod", &[Side::Client])],
-        )
-        .expect("valid lifecycle");
+        let mut machine =
+            LifecycleMachine::new(Side::Client, vec![entry("required_mod", &[Side::Client])])
+                .expect("valid lifecycle");
         let error = drive_loaded(
-            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
         )
@@ -613,11 +529,49 @@ mod tests {
     }
 
     #[test]
+    fn transition_and_registration_refusals_keep_distinct_classification() {
+        for register in [false, true] {
+            let mut host = Failing {
+                recording: Recording {
+                    id: id("required_mod"),
+                    states: Arc::new(Mutex::new(Vec::new())),
+                },
+                register,
+                panics: false,
+            };
+            let mut machine =
+                LifecycleMachine::new(Side::Client, vec![entry("required_mod", &[Side::Client])])
+                    .expect("valid lifecycle");
+            let mut mods: [&mut dyn Mod; 1] = [&mut host];
+            let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
+            let error = drive_loaded(&mut loaded, &environment())
+                .expect_err("the required callback refuses startup");
+            let DriveError::Host { source, .. } = error else {
+                panic!("expected the authored callback refusal");
+            };
+            let expected = if register {
+                HostError::OperationRefused {
+                    mod_id: id("required_mod"),
+                    state: LifecycleState::Constructed,
+                    detail: "startup refused".to_owned(),
+                }
+            } else {
+                HostError::Refused {
+                    mod_id: id("required_mod"),
+                    state: LifecycleState::Constructed,
+                    detail: "startup refused".to_owned(),
+                }
+            };
+            assert_eq!(source, expected);
+        }
+    }
+
+    #[test]
     fn missing_borrowed_host_is_refused_before_its_first_transition() {
         let mut machine =
-            crate::LifecycleMachine::new(Side::Client, vec![entry("missing_mod", &[Side::Client])])
+            LifecycleMachine::new(Side::Client, vec![entry("missing_mod", &[Side::Client])])
                 .expect("valid lifecycle");
-        let error = crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [])
+        let error = crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [])
             .expect_err("a missing host refuses the common view");
         assert_eq!(error.mod_id(), &id("missing_mod"));
         assert_eq!(
@@ -634,9 +588,9 @@ mod tests {
             states: Arc::clone(&states),
         };
         let mut machine =
-            crate::LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
+            LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
                 .expect("valid lifecycle");
-        let mut slots: [&mut dyn HostMod; 1] = [&mut host];
+        let mut slots: [&mut dyn Mod; 1] = [&mut host];
         let mut loaded =
             crate::LoadedMods::new(&mut machine, &mut slots).expect("complete host set");
         drive_loaded(&mut loaded, &environment()).expect("startup succeeds");
@@ -656,7 +610,7 @@ mod tests {
         declaration_panics: bool,
     }
 
-    impl HostMod for PanickingService {
+    impl Mod for PanickingService {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -688,25 +642,26 @@ mod tests {
             for declaration_panics in [false, true] {
                 let mut owner = entry("service_mod", &[Side::Client]);
                 owner.requirement = requirement;
-                let host = PanickingService {
+                let mut host = PanickingService {
                     id: owner.mod_id.clone(),
                     declaration_panics,
                 };
                 let states = Arc::new(Mutex::new(Vec::new()));
-                let healthy = Recording {
+                let mut healthy = Recording {
                     id: id("healthy_mod"),
                     states: Arc::clone(&states),
                 };
-                let outcome = drive(
+                let mut machine = LifecycleMachine::new(
                     Side::Client,
-                    &environment(),
-                    vec![
-                        (owner, Box::new(host)),
-                        (entry("healthy_mod", &[Side::Client]), Box::new(healthy)),
-                    ],
-                );
+                    vec![owner, entry("healthy_mod", &[Side::Client])],
+                )
+                .expect("valid lifecycle");
+                let mut mods: [&mut dyn Mod; 2] = [&mut host, &mut healthy];
+                let mut loaded =
+                    crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
+                let outcome = drive_loaded(&mut loaded, &environment());
                 if requirement == Requirement::Optional {
-                    let (machine, _) = outcome.expect("optional service failure drops its owner");
+                    outcome.expect("optional service failure drops its owner");
                     assert_eq!(
                         machine.state(&id("service_mod")),
                         Ok(LifecycleState::Failed)
@@ -721,8 +676,7 @@ mod tests {
                         Ok(LifecycleState::Running)
                     );
                 } else {
-                    let Err(DriveError::Services(ServiceRefused::Consumer { mod_id, source })) =
-                        outcome
+                    let Err(DriveError::Services(ServiceRefused::Mod { mod_id, source })) = outcome
                     else {
                         panic!("required service callback failure refuses startup");
                     };
@@ -750,7 +704,7 @@ mod tests {
         panics: bool,
     }
 
-    impl HostMod for StoppingFailure {
+    impl Mod for StoppingFailure {
         fn id(&self) -> &ModId {
             self.recording.id()
         }
@@ -798,8 +752,8 @@ mod tests {
         first_entry.requirement = requirement;
         let mut second_entry = entry("second", &[Side::Client]);
         second_entry.requirement = requirement;
-        let mut hosts: [&mut dyn HostMod; 3] = [&mut first, &mut second, &mut healthy];
-        let mut machine = crate::LifecycleMachine::new(
+        let mut hosts: [&mut dyn Mod; 3] = [&mut first, &mut second, &mut healthy];
+        let mut machine = LifecycleMachine::new(
             Side::Client,
             vec![first_entry, second_entry, entry("healthy", &[Side::Client])],
         )

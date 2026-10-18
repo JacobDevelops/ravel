@@ -111,6 +111,32 @@ pub enum LifecycleError {
     },
 }
 
+impl LifecycleError {
+    /// Returns the mod whose operation was refused, when an identity is known.
+    #[must_use]
+    pub fn mod_id(&self) -> Option<&ModId> {
+        match self {
+            Self::DuplicateIdentity { mod_id }
+            | Self::UnknownMod { mod_id }
+            | Self::IllegalTransition { mod_id, .. }
+            | Self::Halted { mod_id, .. }
+            | Self::SideMismatch { mod_id, .. }
+            | Self::RegistrationBarrierOpen { mod_id, .. }
+            | Self::RegistrationBarrierClosed { mod_id, .. }
+            | Self::RegistrationWindow { mod_id, .. }
+            | Self::ForeignRegistryClaim { mod_id, .. }
+            | Self::WorldAccessBlocked { mod_id, .. }
+            | Self::WorldAccessHalted { mod_id }
+            | Self::PartialStateRefused { mod_id } => Some(mod_id),
+            Self::ConflictingRegistryClaim { claimant, .. } => Some(claimant),
+            Self::MismatchedContentBehaviour { identifier, .. } => {
+                Some(identifier.id().namespace())
+            }
+            Self::AttributionRequired => None,
+        }
+    }
+}
+
 impl fmt::Display for LifecycleError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

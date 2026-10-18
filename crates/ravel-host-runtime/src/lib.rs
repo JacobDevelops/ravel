@@ -6,26 +6,22 @@
 mod options;
 
 pub use options::{OptionsError, Seeded, seed_pack};
-/// Writes the explicitly supplied world pack at the world-open boundary.
-pub use ravel_bootstrap_runtime::write_world_pack;
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    InstallError, SideError, install, pre_world_report, resource_pack_metadata,
-    side as running_side,
+    Composition, InstallError, SideError, environment, install, pre_world_report,
+    side as running_side, write_resource_pack,
 };
 use ravel_config::file;
 use ravel_core::{ModId, Side};
-use ravel_host_api::HostMod;
-pub use ravel_loader::Written;
+use ravel_host_api::Mod;
 use ravel_loader::{
-    ConfigRefused, DiscoveryRefused, DriveError, GAME_PACK_DIRECTORY, GamePackError, Half,
-    LifecycleEntry, LifecycleError, LifecycleMachine, LoadedMods, RESOURCE_PACKS, ResourceRefused,
-    Supplied, admitted, discover, drive_loaded, open_configuration, open_resources,
-    write_game_pack,
+    ConfigRefused, DiscoveryRefused, DriveError, GamePackError, LifecycleEntry, LifecycleError,
+    LifecycleMachine, LoadedMods, ResourceRefused, admitted, discover, drive_loaded,
+    open_configuration, open_resources,
 };
 use ravel_observability::Profiler;
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
@@ -34,8 +30,6 @@ use semver::Version;
 
 /// Whether declared adapter capabilities select the legacy game surface.
 pub use ravel_bootstrap_runtime::LEGACY_ADAPTER;
-/// Running versions and launch-report environment.
-pub use ravel_bootstrap_runtime::environment;
 
 /// Decodes the running side before side-dependent members are constructed.
 ///
@@ -51,13 +45,10 @@ pub struct Member {
     /// The `package.json` this member ships, as written.
     pub package: String,
     /// The compiled Rust value for this package.
-    pub host: Box<dyn HostMod>,
+    pub host: Box<dyn Mod>,
 }
 
-type Admitted = Vec<(LifecycleEntry, Box<dyn HostMod>)>;
-
-/// Lifecycle, mods, resolved settings, supplied files, and package versions for one launch.
-pub use ravel_bootstrap_runtime::Composition;
+type Admitted = Vec<(LifecycleEntry, Box<dyn Mod>)>;
 
 /// Admits and configures a composed set, opening services before any mod starts.
 ///
@@ -78,27 +69,38 @@ pub fn compose(
     let mut machine = LifecycleMachine::new(side, entries).map_err(LaunchError::Lifecycle)?;
     let mut loaded = LoadedMods::new(&mut machine, &mut mods)
         .map_err(|error| LaunchError::Composition(error.mod_id().clone()))?;
-    let configurations = open_configuration(&mut loaded, &packs, |owner| {
-        file::read(game_directory, owner)
-    })
+    let configurations = open_configuration(
+        &mut loaded,
+        &packs,
+        |owner| file::read(game_directory, owner),
+        &environment(),
+    )
     .map_err(LaunchError::Config)?
     .into_resolved();
     drive_loaded(&mut loaded, &environment()).map_err(|error| match error {
         DriveError::Services(error) => LaunchError::Services(error),
-        error @ (DriveError::Identity { .. }
-        | DriveError::Lifecycle(_)
-        | DriveError::Host { .. }) => LaunchError::Drive(error),
+        error @ (DriveError::Lifecycle(_) | DriveError::Host { .. }) => LaunchError::Drive(error),
     })?;
-    // Resource declarations are available only after registration in `drive_loaded`.
-    let resources = open_resources(&mut loaded).map_err(LaunchError::Resources)?;
+    let (interceptions, resources) = open_declarations(&mut loaded)?;
 
     Ok(Composition {
         machine,
         mods,
         configurations,
         resources,
+        interceptions,
         installed_packages,
     })
+}
+
+fn open_declarations(
+    loaded: &mut LoadedMods<'_, Box<dyn Mod>>,
+) -> Result<(ravel_host_api::AdmittedPoints, ravel_loader::Supplied), LaunchError> {
+    // Refused optional interceptors must fail before any of their files are layered.
+    let interceptions = ravel_loader::open_interceptions(loaded, &environment())
+        .map_err(LaunchError::Interceptions)?;
+    let resources = open_resources(loaded, &environment()).map_err(LaunchError::Resources)?;
+    Ok((interceptions, resources))
 }
 
 /// Refuses installed packages that have no compiled member.
@@ -157,13 +159,17 @@ pub fn enter(
     members: impl FnOnce(Side) -> Vec<Member>,
 ) {
     env.with_env(|env| -> Result<(), LaunchError> {
-        let result = side(side_code).and_then(|side| {
-            initialize(
-                side,
-                || members(side),
-                profiling_requested != jni::sys::JNI_FALSE,
-            )
-        });
+        let result = std::env::current_dir()
+            .map_err(LaunchError::CurrentDirectory)
+            .and_then(|directory| {
+                let side = side(side_code)?;
+                initialize(
+                    &directory,
+                    side,
+                    || members(side),
+                    profiling_requested != jni::sys::JNI_FALSE,
+                )
+            });
         if let Err(error) = result {
             env.throw(error.redacted())?;
         }
@@ -202,6 +208,7 @@ pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side)
 ///
 /// Returns an error if the directory, side, composition, pack setup, or installation fails.
 pub fn initialize(
+    game_directory: &Path,
     side: Side,
     members: impl FnOnce() -> Vec<Member>,
     profiling_requested: bool,
@@ -210,11 +217,10 @@ pub fn initialize(
     if ravel_bootstrap_runtime::is_installed() {
         return Err(LaunchError::Install(InstallError::AlreadyInstalled));
     }
-    let game_directory = std::env::current_dir().map_err(LaunchError::CurrentDirectory)?;
-    let composition = compose(&game_directory, side, members())?;
+    let composition = compose(game_directory, side, members())?;
     // The client scans resource packs during startup, before runtime installation.
-    write_resource_pack(&game_directory, &composition.resources)?;
-    let seeded = seed_pack(&game_directory).map_err(LaunchError::Options)?;
+    write_resource_pack(game_directory, &composition.resources).map_err(LaunchError::Pack)?;
+    let seeded = seed_pack(game_directory).map_err(LaunchError::Options)?;
     // World data is written later, when the world-open crossing supplies its path.
     let mut report = pre_world_report();
     if let Some(notice) = pack_notice(&seeded, side) {
@@ -223,7 +229,7 @@ pub fn initialize(
     install(
         composition,
         report,
-        game_directory,
+        game_directory.to_path_buf(),
         Profiler::from_switch(profiling_requested),
     )
     .map_err(LaunchError::Install)
@@ -269,28 +275,6 @@ fn pack_notice(seeded: &Seeded, side: Side) -> Option<String> {
     }
 }
 
-/// Writes the composed assets to the instance's resource-pack directory.
-///
-/// World data is written separately at world open.
-///
-/// # Errors
-///
-/// Returns [`LaunchError::Pack`] if writing the pack fails.
-pub fn write_resource_pack(
-    game_directory: &Path,
-    resources: &Supplied,
-) -> Result<Written, LaunchError> {
-    write_game_pack(
-        &game_directory
-            .join(RESOURCE_PACKS)
-            .join(GAME_PACK_DIRECTORY),
-        resources,
-        Half::Assets,
-        &resource_pack_metadata(Half::Assets.description()),
-    )
-    .map_err(LaunchError::Pack)
-}
-
 /// Why a composed set could not start.
 #[derive(Debug)]
 pub enum LaunchError {
@@ -322,6 +306,8 @@ pub enum LaunchError {
     Resources(ResourceRefused),
     /// The set's services could not be resolved or consumed.
     Services(ravel_loader::ServiceRefused),
+    /// The set's interception declarations could not be admitted.
+    Interceptions(ravel_loader::InterceptRefused),
     /// The set's files could not be written as a pack the game reads.
     Pack(GamePackError),
     /// The player's settings could not be read or replaced.
@@ -335,7 +321,7 @@ pub enum LaunchError {
 impl LaunchError {
     /// Redacts launch diagnostics before they cross into a thrown JVM exception.
     pub fn redacted(&self) -> String {
-        ravel_observability::redact(&self.to_string())
+        ravel_core::DiagnosticMessage::redacted(&self.to_string())
             .text()
             .to_owned()
     }
@@ -387,6 +373,12 @@ impl fmt::Display for LaunchError {
             Self::Services(error) => {
                 write!(formatter, "the set's services were not opened: {error}")
             }
+            Self::Interceptions(error) => {
+                write!(
+                    formatter,
+                    "the set's interceptions were not admitted: {error}"
+                )
+            }
             Self::Pack(error) => {
                 write!(formatter, "the set's pack was not written: {error}")
             }
@@ -426,6 +418,7 @@ impl std::error::Error for LaunchError {
             Self::Config(error) => Some(error),
             Self::Resources(error) => Some(error),
             Self::Services(error) => Some(error),
+            Self::Interceptions(error) => Some(error),
             Self::Pack(error) => Some(error),
             Self::Options(error) => Some(error),
             Self::Composition(_) | Self::NotComposed(_) => None,
@@ -440,7 +433,7 @@ mod tests {
     use std::sync::{Arc, Mutex, PoisonError};
 
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::HostMod;
+    use ravel_host_api::Mod;
 
     use super::{Member, admit, environment};
 
@@ -459,6 +452,9 @@ mod tests {
                 mods: vec![],
                 configurations: vec![],
                 resources: ravel_loader::Supplied::default(),
+                interceptions: ravel_host_api::Points::default()
+                    .admit()
+                    .expect("empty interceptions"),
                 installed_packages: std::collections::BTreeMap::new(),
             },
             ravel_bootstrap_runtime::pre_world_report(),
@@ -468,6 +464,7 @@ mod tests {
         .expect("install the first runtime");
         let mut constructed = false;
         let error = super::initialize(
+            &game,
             Side::Client,
             || {
                 constructed = true;
@@ -490,13 +487,107 @@ mod tests {
 
     #[test]
     fn launch_exception_diagnostics_redact_secret_tokens() {
-        let error = super::LaunchError::CurrentDirectory(std::io::Error::other(
-            "cannot open /home/player/.minecraft: token=ghp_secretvalue",
-        ));
+        let error = super::LaunchError::CurrentDirectory(std::io::Error::other(concat!(
+            "cannot open /home/player/.minecraft: token=",
+            "ghp_",
+            "secretvalue"
+        )));
         let diagnostic = error.redacted();
         assert!(diagnostic.contains("[redacted]"), "{diagnostic}");
-        assert!(!diagnostic.contains("ghp_secretvalue"), "{diagnostic}");
+        assert!(
+            !diagnostic.contains(concat!("ghp_", "secretvalue")),
+            "{diagnostic}"
+        );
         assert!(!diagnostic.contains("/home/player"), "{diagnostic}");
+    }
+
+    struct RefusingInterceptor {
+        id: ModId,
+    }
+
+    impl Mod for RefusingInterceptor {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _: LifecycleState) -> Result<(), ravel_host_api::ModError> {
+            Ok(())
+        }
+
+        fn content_declaration(
+            &self,
+        ) -> Result<
+            Option<std::borrow::Cow<'_, ravel_data::ContentDeclaration>>,
+            ravel_host_api::ModError,
+        > {
+            let mut declaration = ravel_data::ContentDeclaration::new(self.id.clone());
+            for path in [
+                "assets/optional_interceptor/textures/failed.png",
+                "data/optional_interceptor/recipes/failed.json",
+            ] {
+                declaration
+                    .resource(
+                        ravel_core::RelativePath::try_from(path.to_owned()).expect("resource path"),
+                        b"failed-owner bytes".to_vec(),
+                    )
+                    .expect("unique resource");
+            }
+            Ok(Some(std::borrow::Cow::Owned(declaration)))
+        }
+
+        fn interception_declaration(
+            &self,
+        ) -> Result<Option<ravel_host_api::InterceptionDeclaration>, ravel_host_api::ModError>
+        {
+            Err(ravel_host_api::ModError::Unsupported)
+        }
+    }
+
+    #[test]
+    fn an_optional_refused_interceptor_contributes_no_resource_or_world_pack_bytes() {
+        let game =
+            std::env::temp_dir().join(format!("ravel-refused-interceptor-{}", std::process::id()));
+        let world = game.join("world");
+        std::fs::create_dir_all(&world).expect("world directory");
+        let (package, id, _) = member("optional_interceptor", &["client"]);
+        let (admitted, _) = admit(
+            Side::Client,
+            vec![Member {
+                package,
+                host: Box::new(RefusingInterceptor { id: id.clone() }),
+            }],
+        )
+        .expect("package admission");
+        let (mut entries, mut mods): (Vec<_>, Vec<_>) = admitted.into_iter().unzip();
+        entries[0].requirement = ravel_loader::Requirement::Optional;
+        let mut machine = ravel_loader::LifecycleMachine::new(Side::Client, entries).expect("plan");
+        let mut loaded =
+            ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired mods");
+        ravel_loader::drive_loaded(&mut loaded, &environment()).expect("registration");
+        let (_, resources) =
+            super::open_declarations(&mut loaded).expect("optional failure is isolated");
+        assert!(
+            resources.generated().is_empty(),
+            "failed owner files must not be layered"
+        );
+        assert_eq!(machine.state(&id), Ok(LifecycleState::Failed));
+        ravel_bootstrap_runtime::write_resource_pack(&game, &resources).expect("resource pack");
+        ravel_bootstrap_runtime::write_world_pack(&resources, &world).expect("world pack");
+        assert!(
+            !game
+                .join(ravel_loader::RESOURCE_PACKS)
+                .join(ravel_loader::GAME_PACK_DIRECTORY)
+                .join("assets/optional_interceptor/textures/failed.png")
+                .exists()
+        );
+        assert!(
+            !world
+                .join(ravel_loader::WORLD_DATA_PACKS)
+                .join(ravel_loader::GAME_PACK_DIRECTORY)
+                .join("data/optional_interceptor/recipes/failed.json")
+                .exists()
+        );
+        std::fs::remove_dir_all(game).expect("remove scratch game");
     }
 
     struct Recording {
@@ -504,7 +595,7 @@ mod tests {
         states: Arc<Mutex<Vec<LifecycleState>>>,
     }
 
-    impl HostMod for Recording {
+    impl Mod for Recording {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -523,7 +614,7 @@ mod tests {
         states: Arc<Mutex<Vec<LifecycleState>>>,
     }
 
-    impl HostMod for ServiceConsumer {
+    impl Mod for ServiceConsumer {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -557,7 +648,7 @@ mod tests {
         calls: Arc<std::sync::atomic::AtomicUsize>,
     }
 
-    impl HostMod for CountingConfiguration {
+    impl Mod for CountingConfiguration {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -647,7 +738,7 @@ mod tests {
         id: ModId,
     }
 
-    impl HostMod for RejectingConfiguration {
+    impl Mod for RejectingConfiguration {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -849,10 +940,16 @@ mod tests {
                 })
                 .collect();
 
-            let (machine, _) = ravel_loader::drive(
-                side,
+            let (entries, mut mods): (Vec<_>, Vec<_>) = admit(side, members)
+                .expect("a compatible set")
+                .0
+                .into_iter()
+                .unzip();
+            let mut machine =
+                ravel_loader::LifecycleMachine::new(side, entries).expect("compatible lifecycle");
+            ravel_loader::drive_loaded(
+                &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
                 &environment(),
-                admit(side, members).expect("a compatible set").0,
             )
             .expect("the composed set should start");
 

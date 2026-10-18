@@ -6,7 +6,7 @@
 mod content;
 mod diagnostics;
 mod identity;
-mod paths;
+pub mod paths;
 mod precedence;
 mod redaction;
 mod sides;
@@ -24,7 +24,7 @@ pub use diagnostics::{
 pub use identity::{ModId, ModIdError, check_identifier};
 pub use paths::{RelativePath, RelativePathError};
 pub use precedence::{Cycle, precedence};
-pub use redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS, contains_credential, redact};
+pub use redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS, contains_credential};
 /// An exact semantic version of a mod or Ravel, not a Minecraft release.
 pub use semver::Version;
 /// A Cargo-style compatibility range over [`Version`]; bare versions mean `^`.

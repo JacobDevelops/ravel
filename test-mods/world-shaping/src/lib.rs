@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn what_this_mod_writes_into_a_world_reads_back_naming_this_mod() {
         let written = WorldShapingMod::record();
-        let read = ShapingRecord::read(&written.bytes()).expect("what was written reads back");
+        let read = ShapingRecord::read(&written.to_bytes()).expect("what was written reads back");
 
         assert_eq!(read.mods(), [WorldShapingMod::declared_id().clone()]);
     }

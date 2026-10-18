@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use ravel_core::paths::{INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 use ravel_core::{LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
-use ravel_loader::{MANIFEST_FILE, PACKAGES_DIRECTORY, discover};
+use ravel_loader::{MANIFEST_FILE, discover};
 use ravel_package::{NonEmptyText, PackageManifest, Sha256Digest};
 use sha2::{Digest as _, Sha256};
 
 use super::generate::crate_ident;
-use super::{BuildRefused, HOST_LIBRARY, WORKSPACE_DIRECTORY, build, plan};
+use super::{BuildRefused, HOST_LIBRARY, build, plan};
 
 const ENTRY_SYMBOL: &str = "Java_dev_ravel_jvm_Hook_ravelInitialize";
 
@@ -78,7 +79,7 @@ impl Mod for Silent {
 const RECORD: &[u8] = br#"{"origin":"example"}"#;
 
 fn game() -> String {
-    ravel_host_runtime::environment().minecraft
+    ravel_bootstrap_runtime::environment().minecraft
 }
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
@@ -293,11 +294,9 @@ fn a_package_carrying_no_cargo_manifest_refuses_the_build() {
 
     let discovered = discover(&instance).expect("an intact package");
     let refused = plan(&discovered, &ravel_root()).expect_err("nothing says what to build");
-    assert_eq!(
-        refused,
-        BuildRefused::MissingCargoManifest {
-            directory: "installed-1.0.0".to_owned()
-        }
+    assert!(
+        matches!(&refused, BuildRefused::MissingCargoManifest { directory } if directory == "installed-1.0.0"),
+        "{refused:?}"
     );
     assert!(refused.to_string().contains("Cargo.toml"));
     assert_eq!(refused.lifecycle_state(), LifecycleState::Validated);
@@ -330,6 +329,7 @@ fn a_cargo_manifest_that_names_no_crate_refuses_the_build() {
         "{refused:?}"
     );
     assert!(refused.to_string().contains("package.name"), "{refused}");
+    assert!(std::error::Error::source(&refused).is_none());
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 
@@ -467,8 +467,8 @@ fn the_examples_this_repository_ships_install_and_compile(cache: &Path) {
 
 const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
-         \x20   std::env::set_current_dir(&game).expect(\"the game directory exists\");\n\
          \x20   ravel_host_runtime::initialize(\n\
+         \x20       std::path::Path::new(&game),\n\
          \x20       ravel_core::Side::Client,\n\
          \x20       || ravel_bootstrap::members(ravel_core::Side::Client),\n\
          \x20       false,\n\
@@ -476,7 +476,7 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let world = std::path::Path::new(&game).join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
          \x20   assert_eq!(\n\
-         \x20       ravel_bootstrap_runtime::stage(world.to_str().expect(\"world path\"), None, true),\n\
+         \x20       ravel_bootstrap_runtime::open_world_data(world.to_str().expect(\"world path\"), None, true),\n\
          \x20       ravel_bootstrap_runtime::OpenOutcome::Staged,\n\
          \x20   );\n\
          }\n";
@@ -717,7 +717,7 @@ fn generated_times(plan: &super::HostPlan, instance: &Path) -> Vec<std::time::Sy
     plan.files()
         .keys()
         .map(|path| {
-            fs::metadata(instance.join(WORKSPACE_DIRECTORY).join(path))
+            fs::metadata(instance.join(INSTANCE_DIRECTORY).join(path))
                 .and_then(|meta| meta.modified())
                 .expect("a generated file was written")
         })
@@ -788,6 +788,54 @@ fn changing_the_installation_lock_changes_the_plan_fingerprint() {
 }
 
 #[test]
+fn malformed_cargo_toml_is_a_parser_refusal_without_an_io_source() {
+    let instance = instance("cargo-manifest-parser");
+    install(
+        &instance,
+        "installed",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    fs::write(
+        instance
+            .join(PACKAGES_DIRECTORY)
+            .join("installed/Cargo.toml"),
+        "[package",
+    )
+    .expect("the malformed manifest is writable");
+    let discovered = discover(&instance).expect("package integrity is intact");
+    let refused = plan(&discovered, &ravel_root()).expect_err("the manifest cannot be parsed");
+    assert!(
+        matches!(&refused, BuildRefused::CargoManifest { directory, detail }
+            if directory == "installed" && !detail.is_empty()),
+        "{refused:?}"
+    );
+    assert!(std::error::Error::source(&refused).is_none());
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn invalid_installation_manifests_are_not_io_refusals() {
+    let instance = instance("installation-manifest-parser");
+    let root = instance.join("installation");
+    fs::create_dir(&root).expect("installation directory");
+    let discovered = discover(&instance).expect("empty instance");
+    for manifest in ["[workspace", ""] {
+        fs::write(root.join("Cargo.toml"), manifest).expect("invalid installation manifest");
+        let refused = plan(&discovered, &root).expect_err("the installation manifest is invalid");
+        assert!(
+            matches!(&refused, BuildRefused::Installation { file, detail }
+                if file == "Cargo.toml" && !detail.is_empty()),
+            "{refused:?}"
+        );
+        assert!(std::error::Error::source(&refused).is_none());
+        assert!(refused.to_string().contains("`Cargo.toml` is invalid"));
+    }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
 fn a_malformed_installation_lock_is_refused_as_an_installation_input() {
     let instance = instance("malformed-lock");
     let root = instance.join("installation");
@@ -801,7 +849,57 @@ fn a_malformed_installation_lock_is_refused_as_an_installation_input() {
             matches!(&refused, BuildRefused::Installation { file, .. } if file == "Cargo.lock"),
             "{refused:?}"
         );
+        assert!(
+            std::error::Error::source(&refused).is_none(),
+            "parser and schema errors must not masquerade as IO failures"
+        );
     }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn an_unreadable_installation_input_retains_its_file_and_io_kind() {
+    let instance = instance("installation-io");
+    let refused = plan(&discover(&instance).expect("empty instance"), &instance)
+        .expect_err("the installation has no Cargo.toml");
+    assert!(
+        matches!(&refused, BuildRefused::InstallationIo { file, .. } if file == "Cargo.toml"),
+        "{refused:?}"
+    );
+    let source = std::error::Error::source(&refused)
+        .expect("the IO error is retained")
+        .downcast_ref::<std::io::Error>()
+        .expect("the source is an IO error");
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn an_unreadable_cargo_manifest_retains_the_directory_and_io_kind() {
+    let instance = instance("cargo-manifest-io");
+    install(
+        &instance,
+        "installed",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    let manifest = instance
+        .join(PACKAGES_DIRECTORY)
+        .join("installed/Cargo.toml");
+    fs::remove_file(&manifest).expect("manifest removed");
+    fs::create_dir(&manifest).expect("a directory replaces the manifest");
+    let discovered = discover(&instance).expect("package integrity is intact");
+    let refused = plan(&discovered, &ravel_root()).expect_err("a directory is not a manifest");
+    assert!(
+        matches!(&refused, BuildRefused::CargoManifestIo { directory, .. } if directory == "installed"),
+        "{refused:?}"
+    );
+    let source = std::error::Error::source(&refused)
+        .expect("the IO error is retained")
+        .downcast_ref::<std::io::Error>()
+        .expect("the source is an IO error");
+    assert_eq!(source.kind(), std::io::ErrorKind::IsADirectory);
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 
@@ -884,6 +982,10 @@ fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() 
     assert!(
         matches!(refused, BuildRefused::ResolvedLock { .. }),
         "{refused:?}"
+    );
+    assert!(
+        std::error::Error::source(&refused).is_none(),
+        "a malformed resolved lock is not an IO failure"
     );
 }
 
@@ -984,7 +1086,7 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
     let library = build(&plan, &instance, cache, &game())
         .expect("the standalone numeric dependency survives installation");
     assert!(library.is_file());
-    let lock = fs::read_to_string(instance.join(WORKSPACE_DIRECTORY).join("Cargo.lock"))
+    let lock = fs::read_to_string(instance.join(INSTANCE_DIRECTORY).join("Cargo.lock"))
         .expect("resolved lock");
     assert!(lock.contains("name = \"ravel-generated-host\""));
     assert!(lock.contains("name = \"rvl-120-counterpart\""));

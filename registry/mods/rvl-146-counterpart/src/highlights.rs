@@ -297,7 +297,7 @@ impl Highlights {
 #[must_use]
 pub fn declare_stage(owner: &ModId) -> StageDeclaration {
     let mut stages = StageDeclaration::default();
-    stages.contribute(owner, RenderStage::AfterTerrain.as_str());
+    stages.contribute(owner, RenderStage::AfterTerrain);
     stages
 }
 

@@ -111,7 +111,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "13e47b23a3b8fb9c764eb2b65f8157300ead8450c2e56531f3a50eb48565d8a1"
+        "sha256": "333a2355a70792ad126812533bfc017053cd68ab0f23f8e1625dbabcfaaaabb7"
       },
       {
         "path": "src/storage.rs",

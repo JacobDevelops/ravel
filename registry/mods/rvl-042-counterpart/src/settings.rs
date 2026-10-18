@@ -12,8 +12,7 @@
 
 use ravel_sdk::Side;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, SettingSide,
-    ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
 
 use crate::selection::Preference;
@@ -117,20 +116,16 @@ impl Default for Settings {
     }
 }
 
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
-}
-
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            tag_tooltip: resolved.boolean(&key(TAG_TOOLTIP))?,
-            data_tooltip: resolved.boolean(&key(DATA_TOOLTIP))?,
-            preference: Preference::parse(resolved.text(&key(PREFERENCE))?),
-            self_heal: resolved.boolean(&key(SELF_HEAL))?,
+            tag_tooltip: resolved.boolean(TAG_TOOLTIP)?,
+            data_tooltip: resolved.boolean(DATA_TOOLTIP)?,
+            preference: Preference::parse(resolved.text(PREFERENCE)?),
+            self_heal: resolved.boolean(SELF_HEAL)?,
         })
     }
 }

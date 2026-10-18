@@ -4,11 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side};
-use ravel_host_api::{HostMod, ModError};
+use ravel_host_api::{Mod, ModError};
 use ravel_loader::LifecycleError;
 use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
 use ravel_resolve::ResolutionError;
-use ravel_testkit::{Host, PipelineError, TestPackage, executed_states, run, run_order};
+use ravel_testkit::{Host, PipelineError, TestPackage, executed_states, run_order, run_pipeline};
 use serde_json::{Value, json};
 
 const RUNNING_RAVEL: &str = "0.1.0";
@@ -40,7 +40,7 @@ impl Recording {
     }
 }
 
-impl HostMod for Recording {
+impl Mod for Recording {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -147,7 +147,7 @@ fn a_valid_package_reaches_every_spec_state_in_order() {
     let (parent, packages) = single("ordered");
     let mut noop = Recording::new("example_mod");
 
-    let completed = run(&packages, &host(), Side::Client, &mut [&mut noop])
+    let completed = run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect("a valid package completes the pipeline");
 
     assert_eq!(completed.plan().side(), Side::Client);
@@ -177,7 +177,7 @@ fn mod_code_runs_only_in_the_states_the_loader_admits_it() {
     let (parent, packages) = single("executed");
     let mut noop = Recording::new("example_mod");
 
-    run(&packages, &host(), Side::Client, &mut [&mut noop])
+    run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect("a valid package completes the pipeline");
 
     assert_eq!(noop.entered, executed_states());
@@ -227,7 +227,7 @@ fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered()
 
     let mut first_a = Recording::new("example_mod");
     let mut first_b = Recording::new("example_library");
-    let first = run(
+    let first = run_pipeline(
         &packages,
         &host(),
         Side::Client,
@@ -237,7 +237,7 @@ fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered()
 
     let mut second_a = Recording::new("example_library");
     let mut second_b = Recording::new("example_mod");
-    let second = run(
+    let second = run_pipeline(
         &reversed,
         &host(),
         Side::Client,
@@ -262,7 +262,7 @@ fn a_set_advances_together_so_no_mod_reaches_a_state_alone() {
     let mut library = Recording::new("example_library");
     let mut consumer = Recording::new("example_mod");
 
-    let completed = run(
+    let completed = run_pipeline(
         &packages,
         &host(),
         Side::Client,
@@ -297,7 +297,7 @@ fn a_document_that_is_not_a_manifest_stops_the_run_before_anything_else() {
     let packages = vec![TestPackage::new(&parent, "not json at all")];
     let mut noop = Recording::new("example_mod");
 
-    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+    let error = run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect_err("the document is not a manifest");
 
     assert!(
@@ -320,7 +320,7 @@ fn an_altered_source_file_stops_the_run_before_any_mod_code() {
     .expect("source rewritten");
     let mut noop = Recording::new("example_mod");
 
-    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+    let error = run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect_err("the source file was altered");
 
     assert!(
@@ -349,7 +349,7 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
             minecraft: minecraft.to_owned(),
         };
         let mut noop = Recording::new("example_mod");
-        let error = run(&packages, &elsewhere, Side::Client, &mut [&mut noop])
+        let error = run_pipeline(&packages, &elsewhere, Side::Client, &mut [&mut noop])
             .expect_err("the package does not support this host");
 
         assert!(
@@ -370,7 +370,8 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
 
     // Control: the unchanged package succeeds on its declared host.
     let mut noop = Recording::new("example_mod");
-    run(&packages, &host(), Side::Client, &mut [&mut noop]).expect("the running host is supported");
+    run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect("the running host is supported");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
@@ -385,7 +386,7 @@ fn an_unresolvable_graph_stops_the_run_before_any_mod_code() {
     )];
     let mut noop = Recording::new("example_mod");
 
-    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+    let error = run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect_err("the required dependency is not installed");
 
     assert!(
@@ -406,7 +407,7 @@ fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
     let (parent, packages) = single("refusing");
     let mut noop = Recording::refusing("example_mod", LifecycleState::Registered);
 
-    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+    let error = run_pipeline(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect_err("the mod declines to register");
 
     assert!(
@@ -428,7 +429,7 @@ fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
     assert_eq!(attribution.state, source.state());
     assert_eq!(
         error
-            .stage()
+            .failure()
             .expect("structured driver failure")
             .lifecycle_state(),
         source.state()
@@ -446,14 +447,15 @@ fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
 fn the_plan_cannot_reach_a_mod_the_caller_did_not_supply() {
     let (parent, packages) = single("missing");
 
-    let error = run(&packages, &host(), Side::Client, &mut []).expect_err("no mod was supplied");
+    let error =
+        run_pipeline(&packages, &host(), Side::Client, &mut []).expect_err("no mod was supplied");
 
     assert!(
-        matches!(&error, PipelineError::MissingHost(missing) if missing.mod_id() == &id("example_mod")),
+        matches!(&error, PipelineError::MissingMod(missing) if missing.mod_id() == &id("example_mod")),
         "the paired set refuses the missing host before any lifecycle callbacks"
     );
     assert!(error.to_string().contains("example_mod"));
-    assert!(error.stage().is_some(), "the loader owns this refusal");
+    assert!(error.failure().is_some(), "the loader owns this refusal");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
@@ -464,7 +466,7 @@ fn a_mod_the_plan_never_ordered_is_refused_before_the_run_starts() {
     let mut planned = Recording::new("example_mod");
     let mut stranger = Recording::new("other_mod");
 
-    let error = run(
+    let error = run_pipeline(
         &packages,
         &host(),
         Side::Client,
@@ -472,11 +474,9 @@ fn a_mod_the_plan_never_ordered_is_refused_before_the_run_starts() {
     )
     .expect_err("the plan does not order `other_mod`");
 
-    assert_eq!(
-        error,
-        PipelineError::UnexpectedMod {
-            mod_id: id("other_mod")
-        }
+    assert!(
+        matches!(&error, PipelineError::UnexpectedMod { mod_id } if mod_id == &id("other_mod")),
+        "{error:?}",
     );
     assert!(planned.entered.is_empty(), "nothing ran");
 
@@ -501,12 +501,12 @@ fn a_package_is_read_from_its_manifest_file_or_reported_by_name() {
             .starts_with("`package.json` could not be read")
     );
     assert!(!error.to_string().contains("absent"), "{error}");
-    assert!(error.stage().is_none(), "no crate raised it but this one");
+    assert!(error.failure().is_none(), "no crate raised it but this one");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
 
-fn missing_host() -> PipelineError {
+fn missing_mod() -> PipelineError {
     let entry = ravel_loader::LifecycleEntry {
         mod_id: id("example_mod"),
         sides: ravel_core::SideSet::new([Side::Client]).expect("one side"),
@@ -515,11 +515,11 @@ fn missing_host() -> PipelineError {
     };
     let mut machine =
         ravel_loader::LifecycleMachine::new(Side::Client, vec![entry]).expect("a legal plan");
-    let mut hosts: [&mut dyn HostMod; 0] = [];
-    let Err(refused) = ravel_loader::LoadedMods::new(&mut machine, &mut hosts) else {
+    let mut mods: [&mut dyn Mod; 0] = [];
+    let Err(refused) = ravel_loader::LoadedMods::new(&mut machine, &mut mods) else {
         panic!("the active member has no host");
     };
-    PipelineError::MissingHost(refused)
+    PipelineError::MissingMod(refused)
 }
 
 #[test]
@@ -564,7 +564,7 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
             )),
             "the run failed: ",
         ),
-        (missing_host(), "the run failed: "),
+        (missing_mod(), "the run failed: "),
     ] {
         let source = error
             .source()
@@ -572,20 +572,27 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
         assert_eq!(error.to_string(), format!("{stage}{source}"));
     }
 
-    for own in [
-        PipelineError::Unreadable {
-            file: "package.json".to_owned(),
-            detail: "No such file or directory (os error 2)".to_owned(),
-        },
-        PipelineError::UnexpectedMod {
-            mod_id: id("other_mod"),
-        },
-    ] {
-        assert!(
-            own.source().is_none(),
-            "this harness wrote that message: {own:?}"
-        );
-    }
+    let unreadable = PipelineError::Unreadable {
+        file: "package.json".to_owned(),
+        source: std::io::Error::from(std::io::ErrorKind::NotFound),
+    };
+    let source = unreadable
+        .source()
+        .expect("manifest IO preserves its source");
+    assert_eq!(
+        source
+            .downcast_ref::<std::io::Error>()
+            .expect("typed IO source")
+            .kind(),
+        std::io::ErrorKind::NotFound
+    );
+    let own = PipelineError::UnexpectedMod {
+        mod_id: id("other_mod"),
+    };
+    assert!(
+        own.source().is_none(),
+        "this harness wrote that message: {own:?}"
+    );
 }
 
 #[test]
@@ -593,9 +600,9 @@ fn no_refusal_this_harness_writes_names_a_path_or_a_directory() {
     for error in [
         PipelineError::Unreadable {
             file: "package.json".to_owned(),
-            detail: "No such file or directory (os error 2)".to_owned(),
+            source: std::io::Error::from(std::io::ErrorKind::NotFound),
         },
-        missing_host(),
+        missing_mod(),
         PipelineError::UnexpectedMod {
             mod_id: id("example_mod"),
         },
@@ -612,7 +619,7 @@ fn the_harness_uses_the_production_service_barrier_before_running() {
     let mut consumer = Recording::new("example_mod");
     consumer.requires_service = true;
 
-    let error = run(&packages, &host(), Side::Client, &mut [&mut consumer])
+    let error = run_pipeline(&packages, &host(), Side::Client, &mut [&mut consumer])
         .expect_err("the required service provider is absent");
 
     assert!(

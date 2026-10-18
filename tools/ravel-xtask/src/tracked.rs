@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use ravel_observability::redaction::CREDENTIAL_WORDS;
+use ravel_core::CREDENTIAL_WORDS;
 
 /// Rejects secret and runtime paths from a tracked tree.
 #[must_use]
@@ -47,11 +47,7 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
         .iter()
         .any(|suffix| source.contains(&format!("{}{}", "-----BEGIN ", suffix)));
         let credential = source.lines().any(has_credential_assignment);
-        // Rust sources contain deliberate redaction test vectors; assignment and key checks still apply.
-        let rust_source = Path::new(relative)
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"));
-        let credential_value = !rust_source && ravel_observability::contains_credential(&source);
+        let credential_value = ravel_core::contains_credential(&source);
         if private_key || credential || credential_value {
             violations.push(format!(
                 "tracked file contains credential material: {relative}"

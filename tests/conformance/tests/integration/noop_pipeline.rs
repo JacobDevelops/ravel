@@ -7,7 +7,7 @@ use std::process::Command;
 use ravel_core::{LifecycleState, Side};
 use ravel_package::{NonEmptyText, PackageManifest};
 use ravel_test_mod_noop::NoopMod;
-use ravel_testkit::{Host, PipelineRun, TestPackage, executed_states, run, run_order};
+use ravel_testkit::{Host, PipelineRun, TestPackage, executed_states, run_order, run_pipeline};
 use serde_json::{Value, json};
 
 // Workspace crates share the loader's running version.
@@ -62,7 +62,7 @@ fn host() -> Host {
 
 fn run_on(side: Side) -> (PipelineRun, NoopMod) {
     let mut noop = NoopMod::new();
-    let completed = run(&[package()], &host(), side, &mut [&mut noop])
+    let completed = run_pipeline(&[package()], &host(), side, &mut [&mut noop])
         .expect("the no-op package should complete the pipeline");
     (completed, noop)
 }

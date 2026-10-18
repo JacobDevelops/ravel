@@ -10,7 +10,7 @@ use crate::identity::ModId;
 ///
 /// # Errors
 ///
-/// Returns [`Cycle`] naming all participants left waiting when ordering stalls.
+/// Returns [`Cycle`] naming actual cycle members, not participants merely blocked by them.
 ///
 /// # Examples
 ///
@@ -78,20 +78,45 @@ pub fn precedence(
     }
     Err(Cycle {
         participants: participants
-            .into_iter()
-            .filter(|id| !order.contains(id))
+            .iter()
+            .filter(|id| waiting.get(id).is_some_and(|count| *count > 0))
+            .filter(|id| participates_in_cycle(id, after, &waiting))
+            .cloned()
             .collect(),
     })
 }
 
-/// Participants left waiting when a cycle prevents a complete order.
+fn participates_in_cycle(
+    start: &ModId,
+    after: &BTreeMap<ModId, BTreeSet<ModId>>,
+    waiting: &BTreeMap<&ModId, usize>,
+) -> bool {
+    let mut pending = vec![start];
+    let mut visited = BTreeSet::from([start]);
+    while let Some(next) = pending.pop() {
+        for follower in after.get(next).into_iter().flatten() {
+            if waiting.get(follower).is_none_or(|count| *count == 0) {
+                continue;
+            }
+            if follower == start {
+                return true;
+            }
+            if visited.insert(follower) {
+                pending.push(follower);
+            }
+        }
+    }
+    false
+}
+
+/// Participants belonging to cycles that prevent a complete order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Cycle {
     participants: Vec<ModId>,
 }
 
 impl Cycle {
-    /// Returns all waiting participants in name order.
+    /// Returns actual cycle members in name order, excluding blocked downstream mods.
     #[must_use]
     pub fn participants(&self) -> &[ModId] {
         &self.participants
@@ -123,7 +148,7 @@ mod tests {
         name.parse().expect("a legal mod id")
     }
 
-    fn edges(pairs: [(&str, &str); 2]) -> BTreeMap<ModId, BTreeSet<ModId>> {
+    fn edges<const N: usize>(pairs: [(&str, &str); N]) -> BTreeMap<ModId, BTreeSet<ModId>> {
         let mut after: BTreeMap<ModId, BTreeSet<ModId>> = BTreeMap::new();
         for (earlier, later) in pairs {
             after.entry(id(earlier)).or_default().insert(id(later));
@@ -166,13 +191,49 @@ mod tests {
     }
 
     #[test]
-    fn a_cycle_names_every_mod_still_waiting_and_nobody_else() {
+    fn a_cycle_names_its_members_and_nobody_else() {
         let after = edges([("a_mod", "b_mod"), ("b_mod", "a_mod")]);
         let refusal = precedence([id("a_mod"), id("b_mod"), id("free_mod")], &after)
             .expect_err("a cycle has no order");
 
         assert_eq!(refusal.participants(), [id("a_mod"), id("b_mod")]);
         assert!(refusal.to_string().contains("a_mod"));
+    }
+
+    #[test]
+    fn a_mod_blocked_downstream_of_a_cycle_is_not_a_cycle_member() {
+        let after = edges([("a_mod", "b_mod"), ("b_mod", "a_mod"), ("a_mod", "c_mod")]);
+        let refusal = precedence([id("a_mod"), id("b_mod"), id("c_mod")], &after)
+            .expect_err("a cycle blocks the downstream mod");
+        assert_eq!(refusal.participants(), [id("a_mod"), id("b_mod")]);
+    }
+
+    #[test]
+    fn an_innocent_bridge_between_two_cycles_is_not_a_cycle_member() {
+        let after = edges([
+            ("a_mod", "b_mod"),
+            ("b_mod", "a_mod"),
+            ("a_mod", "c_mod"),
+            ("c_mod", "d_mod"),
+            ("d_mod", "e_mod"),
+            ("e_mod", "d_mod"),
+        ]);
+        let refusal = precedence(
+            ["a_mod", "b_mod", "c_mod", "d_mod", "e_mod"].map(id),
+            &after,
+        )
+        .expect_err("both cycles prevent ordering");
+        assert_eq!(
+            refusal.participants(),
+            [id("a_mod"), id("b_mod"), id("d_mod"), id("e_mod")]
+        );
+    }
+
+    #[test]
+    fn a_self_edge_is_a_cycle() {
+        let refusal = precedence([id("a_mod")], &edges([("a_mod", "a_mod")]))
+            .expect_err("a mod cannot follow itself");
+        assert_eq!(refusal.participants(), [id("a_mod")]);
     }
 
     #[test]

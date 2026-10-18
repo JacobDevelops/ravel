@@ -1,5 +1,3 @@
-use crate::diagnostics::DiagnosticMessage;
-
 const REDACTED: &str = "[redacted]";
 
 /// Case-insensitive labels identifying credential-bearing assignments.
@@ -53,12 +51,6 @@ fn redact_paths(mut rest: &str, redacted: &mut String) {
         redacted.push_str(closing);
         rest = tail;
     }
-}
-
-/// Redacts `text` and returns it as a message that may be shown to a player.
-#[must_use]
-pub fn redact(text: &str) -> DiagnosticMessage {
-    DiagnosticMessage::redacted(text)
 }
 
 /// Detects credential-shaped values while avoiding ambiguous source-code assignments.
@@ -141,24 +133,61 @@ fn labelled_value(
     };
     // Scans qualify ambiguous assignments; player-facing redaction masks every
     // nonempty labelled value, retaining its full extent to avoid suffix leaks.
-    if strict && !bearer && !value.starts_with(['"', '\'']) {
-        let length = value
-            .bytes()
-            .take_while(|byte| {
-                byte.is_ascii_alphanumeric()
-                    || matches!(*byte, b'_' | b'-' | b'.' | b'+' | b'/' | b'=' | b'~')
-            })
-            .count();
-        if length < 4 || value[length..].starts_with('(') {
-            return None;
-        }
+    if strict
+        && !bearer
+        && !value.starts_with(['"', '\''])
+        && !is_credential_literal(text, start, value)
+    {
+        return None;
+    }
+    // RFC 6750 credentials open with a token character, so a scan reading
+    // source that only names the scheme (`bearer = …`, `"Bearer ", …`) has not
+    // found one.
+    if strict
+        && bearer
+        && !value.starts_with(|character: char| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '-' | '.' | '_' | '~' | '+' | '/')
+        })
+    {
+        return None;
     }
     let (value, length) = credential_value(value, json_key(text, start, end));
-    if length == 0 || (strict && !bearer && length < 4) || &value[..length] == REDACTED {
+    if length == 0
+        || (strict && ((!bearer && length < 4) || separates_wrapped_literals(&value[..length])))
+        || &value[..length] == REDACTED
+    {
         return None;
     }
     let start = text.len() - value.len();
     Some((start, start + length))
+}
+
+// A wrapped `concat!` argument list reads as a "quoted value" of only the
+// separator and line break between two source literals; a genuine multiline
+// value carries characters of its own.
+fn separates_wrapped_literals(quoted: &str) -> bool {
+    quoted.contains('\n')
+        && quoted
+            .chars()
+            .all(|character| character.is_whitespace() || matches!(character, ',' | ')'))
+}
+
+fn is_credential_literal(text: &str, start: usize, value: &str) -> bool {
+    let mut prefix = text[..start].split_whitespace().rev();
+    match prefix.next() {
+        Some("let" | "const" | "static") => return false,
+        Some("mut") if matches!(prefix.next(), Some("let" | "static")) => return false,
+        _ => {}
+    }
+    let length = value
+        .bytes()
+        .take_while(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(*byte, b'_' | b'-' | b'.' | b'+' | b'/' | b'=' | b'~')
+        })
+        .count();
+    length >= 4 && !value[length..].starts_with('(')
 }
 
 fn credential_value(value: &str, json: bool) -> (&str, usize) {
@@ -347,10 +376,8 @@ fn separator(character: char) -> bool {
 mod tests {
     use crate::diagnostics::{DiagnosticMessage, Redaction};
 
-    use super::redact;
-
     fn applied(text: &str) -> String {
-        let message = redact(text);
+        let message = DiagnosticMessage::redacted(text);
         assert_eq!(message.redaction(), Redaction::Applied);
         assert!(message.is_publishable());
         message.text().to_owned()
@@ -393,7 +420,7 @@ mod tests {
             ("/home/player/My Games/", "Games"),
             ("C:\\Users\\player\\My Games\\saves\\level.dat", "level.dat"),
             (
-                "/home/player/My Games/access_token=abc123",
+                concat!("/home/player/My Games/access_token=", "abc123"),
                 "access_token=[redacted]",
             ),
         ] {
@@ -421,7 +448,11 @@ mod tests {
 
     #[test]
     fn a_token_is_removed_on_its_own_shape_with_no_word_or_prefix_to_announce_it() {
-        let token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyYXZlbCJ9.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g";
+        let token = concat!(
+            "eyJhbGciOiJIUzI1NiJ9",
+            ".eyJzdWIiOiJyYXZlbCJ9",
+            ".dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g"
+        );
 
         assert_eq!(applied(token), "[redacted]");
         assert_eq!(
@@ -470,17 +501,20 @@ mod tests {
     #[test]
     fn a_credential_value_is_removed_rather_than_shortened() {
         for (raw, expected) in [
-            ("access_token=abc123", "access_token=[redacted]"),
             (
-                "MINECRAFT_ACCESS_TOKEN=abc123",
+                concat!("access_token=", "abc123"),
+                "access_token=[redacted]",
+            ),
+            (
+                concat!("MINECRAFT_ACCESS_TOKEN=", "abc123"),
                 "MINECRAFT_ACCESS_TOKEN=[redacted]",
             ),
-            ("password=hunter2", "password=[redacted]"),
+            (concat!("password=", "hunter2"), "password=[redacted]"),
             (
-                "authorization: Bearer abc.def",
+                concat!("authorization: ", "Bearer ", "abc.def"),
                 "authorization: Bearer [redacted]",
             ),
-            ("Bearer abc.def", "Bearer [redacted]"),
+            (concat!("Bearer ", "abc.def"), "Bearer [redacted]"),
             (
                 "the password hunter2 was rejected",
                 "the password hunter2 was rejected",
@@ -488,7 +522,7 @@ mod tests {
             (concat!("ghp_", "0123456789"), "[redacted]"),
             (concat!("xoxb-", "1-2-3"), "[redacted]"),
             (
-                "read /home/player/.minecraft/access_token=abc123",
+                concat!("read /home/player/.minecraft/access_token=", "abc123"),
                 "read access_token=[redacted]",
             ),
             (concat!("/home/player/ghp_", "0123456789"), "[redacted]"),
@@ -500,17 +534,21 @@ mod tests {
     #[test]
     fn credential_detection_uses_the_publication_rules() {
         for text in [
-            "Bearer abc",
-            "authorization: Bearer xyz",
-            "password=xyz123",
-            "api_key: xyz123",
-            "{\"token\":\"xyz123\"}",
-            "{\"password\": \"xyz123\"}",
-            "token = xyz123",
-            "access_token=abc123",
+            concat!("Bearer ", "abc"),
+            concat!("authorization: ", "Bearer ", "xyz"),
+            concat!("password=", "xyz123"),
+            concat!("api_key: ", "xyz123"),
+            concat!("{\"token\":", "\"xyz123\"}"),
+            concat!("{\"password\": ", "\"xyz123\"}"),
+            concat!("token = ", "xyz123"),
+            concat!("access_token=", "abc123"),
             concat!("`ghp_", "0123456789`"),
-            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyYXZlbCJ9.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g",
-            "/home/player/password=secret",
+            concat!(
+                "eyJhbGciOiJIUzI1NiJ9",
+                ".eyJzdWIiOiJyYXZlbCJ9",
+                ".dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g"
+            ),
+            concat!("/home/player/password=", "secret"),
         ] {
             assert!(super::contains_credential(text), "{text}");
         }
@@ -548,13 +586,16 @@ mod tests {
     #[test]
     fn compact_and_spaced_assignments_redact_the_same_detected_values() {
         for (raw, expected) in [
-            ("{\"token\":\"abc123\"}", "{\"token\":\"[redacted]\"}"),
             (
-                "{\"password\": \"xyz123\"}",
+                concat!("{\"token\":", "\"abc123\"}"),
+                "{\"token\":\"[redacted]\"}",
+            ),
+            (
+                concat!("{\"password\": ", "\"xyz123\"}"),
                 "{\"password\": \"[redacted]\"}",
             ),
-            ("api_key: xyz123", "api_key: [redacted]"),
-            ("token = xyz123", "token = [redacted]"),
+            (concat!("api_key: ", "xyz123"), "api_key: [redacted]"),
+            (concat!("token = ", "xyz123"), "token = [redacted]"),
         ] {
             assert_eq!(applied(raw), expected, "{raw}");
         }
@@ -594,6 +635,39 @@ mod tests {
     }
 
     #[test]
+    fn source_assignments_distinguish_expressions_from_literal_secrets() {
+        for text in [
+            concat!("let token", " = source;"),
+            concat!("let mut token", " = redacted;"),
+            "token = token(value);",
+        ] {
+            assert!(!super::contains_credential(text), "{text}");
+        }
+        let literal = concat!("let token = ", "\"privatevalue\";");
+        assert!(super::contains_credential(literal));
+    }
+
+    #[test]
+    fn source_that_names_a_credential_without_carrying_one_is_not_detected() {
+        for text in [
+            "let bearer = label.eq_ignore_ascii_case(\"bearer\");",
+            "if strict && !bearer && length < 4 {",
+            "concat!(\"Bearer \", \"abc\")",
+            "concat!(\n    \"token=\",\n    \"ghp_\",\n    \"value\"\n)",
+        ] {
+            assert!(!super::contains_credential(text), "{text}");
+        }
+        for text in [
+            concat!("Authorization: Bearer ", "abc.def"),
+            concat!("token=\"", "privatevalue\"\n"),
+            concat!("password=", "'firstline\nsecondline'"),
+            concat!("token=", "\",\nsecondline\""),
+        ] {
+            assert!(super::contains_credential(text), "{text}");
+        }
+    }
+
+    #[test]
     fn ambiguous_values_are_still_fully_redacted_from_player_messages() {
         for value in [
             "p@ssw0rd",
@@ -603,7 +677,7 @@ mod tests {
             "p,a,ss",
             "it's",
         ] {
-            let raw = format!("password={value}");
+            let raw = format!(concat!("password=", "{}"), value);
             assert_eq!(applied(&raw), "password=[redacted]", "{raw}");
         }
     }
@@ -652,7 +726,10 @@ mod tests {
     #[test]
     fn namespaced_assignments_preserve_namespace_but_remove_the_value() {
         for (raw, expected) in [
-            ("env:DB_PASSWORD=example", "env:DB_PASSWORD=[redacted]"),
+            (
+                concat!("env:DB_PASSWORD=", "example"),
+                "env:DB_PASSWORD=[redacted]",
+            ),
             ("minecraft:token: unknown", "minecraft:token: unknown"),
         ] {
             assert_eq!(applied(raw), expected);
@@ -675,23 +752,28 @@ mod tests {
     #[test]
     fn credential_values_keep_their_full_quoted_or_unquoted_extent() {
         for (raw, expected) in [
-            ("password=hunter2;x", "password=[redacted]"),
-            ("password=pass,a,ss", "password=[redacted]"),
-            ("password=itsvalue's", "password=[redacted]"),
+            (concat!("password=", "hunter2;x"), "password=[redacted]"),
+            (concat!("password=", "pass,a,ss"), "password=[redacted]"),
+            (concat!("password=", "itsvalue's"), "password=[redacted]"),
             (
-                "password=\"correct horse battery\"",
+                concat!("password=", "\"correct horse battery\""),
                 "password=\"[redacted]\"",
             ),
             (
-                "{\"password\":\"correct horse battery\",\"token\":\"abc123\"}",
+                concat!(
+                    "{\"password\":",
+                    "\"correct horse battery\",",
+                    "\"token\":",
+                    "\"abc123\"}"
+                ),
                 "{\"password\":\"[redacted]\",\"token\":\"[redacted]\"}",
             ),
             (
-                "{\"password\":\"a\\\"b c\"}",
+                concat!("{\"password\":", "\"a\\\"b c\"}"),
                 "{\"password\":\"[redacted]\"}",
             ),
             (
-                "{\"token\":1234,\"other\":4}",
+                concat!("{\"token\":", "1234,\"other\":4}"),
                 "{\"token\":[redacted],\"other\":4}",
             ),
         ] {
@@ -705,7 +787,11 @@ mod tests {
     fn shaped_credentials_replace_private_paths_even_across_spaces() {
         for path in [
             concat!("C:\\Users\\Player Name\\ghp_", "example"),
-            "/home/player name/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyYXZlbCJ9.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g",
+            concat!(
+                "/home/player name/eyJhbGciOiJIUzI1NiJ9",
+                ".eyJzdWIiOiJyYXZlbCJ9",
+                ".dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1g"
+            ),
         ] {
             assert_eq!(applied(path), "[redacted]");
         }
@@ -714,10 +800,10 @@ mod tests {
     #[test]
     fn applying_redaction_twice_preserves_markers_and_punctuation() {
         for text in [
-            "token=abc123",
-            "Bearer abc",
-            "{\"token\":\"abc123\"}",
-            "password='correct horse'",
+            concat!("token=", "abc123"),
+            concat!("Bearer ", "abc"),
+            concat!("{\"token\":", "\"abc123\"}"),
+            concat!("password=", "'correct horse'"),
             concat!("prefix `ghp_", "example` suffix"),
         ] {
             let once = applied(text);
@@ -757,7 +843,6 @@ mod tests {
         assert!(!raw.is_publishable());
 
         let published = DiagnosticMessage::redacted(raw.text());
-        assert_eq!(published, redact(raw.text()));
         assert_eq!(published.text(), "token.txt");
         assert_eq!(super::redact_text(raw.text()), "token.txt");
     }

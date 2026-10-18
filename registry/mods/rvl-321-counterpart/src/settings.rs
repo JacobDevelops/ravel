@@ -15,7 +15,7 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 use ravel_sdk::content::ContentIdError;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
@@ -356,16 +356,16 @@ impl Default for Settings {
 impl DropSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            creature_material_chance: resolved.number(&key(DROPS_CREATURE_MATERIAL_CHANCE))?,
-            fertiliser_chance: resolved.number(&key(DROPS_FERTILISER_CHANCE))?,
-            second_seed: resolved.boolean(&key(DROPS_SECOND_SEED))?,
+            creature_material_chance: resolved.number(DROPS_CREATURE_MATERIAL_CHANCE)?,
+            fertiliser_chance: resolved.number(DROPS_FERTILISER_CHANCE)?,
+            second_seed: resolved.boolean(DROPS_SECOND_SEED)?,
             first_boss: BossDrops {
-                material: resolved.boolean(&key(DROPS_FIRST_BOSS_MATERIAL))?,
-                dust: resolved.boolean(&key(DROPS_FIRST_BOSS_DUST))?,
+                material: resolved.boolean(DROPS_FIRST_BOSS_MATERIAL)?,
+                dust: resolved.boolean(DROPS_FIRST_BOSS_DUST)?,
             },
             second_boss: BossDrops {
-                material: resolved.boolean(&key(DROPS_SECOND_BOSS_MATERIAL))?,
-                dust: resolved.boolean(&key(DROPS_SECOND_BOSS_DUST))?,
+                material: resolved.boolean(DROPS_SECOND_BOSS_MATERIAL)?,
+                dust: resolved.boolean(DROPS_SECOND_BOSS_DUST)?,
             },
         })
     }
@@ -375,11 +375,11 @@ impl GearSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             top: TopGearSettings {
-                tools_enchantable: resolved.boolean(&key(GEAR_TOP_TOOLS_ENCHANTABLE))?,
-                armour_unbreakable: resolved.boolean(&key(GEAR_TOP_ARMOUR_UNBREAKABLE))?,
+                tools_enchantable: resolved.boolean(GEAR_TOP_TOOLS_ENCHANTABLE)?,
+                armour_unbreakable: resolved.boolean(GEAR_TOP_ARMOUR_UNBREAKABLE)?,
             },
-            automated_wetting: resolved.boolean(&key(GEAR_AUTOMATED_WETTING))?,
-            armour_set_aura: resolved.boolean(&key(GEAR_ARMOUR_SET_AURA))?,
+            automated_wetting: resolved.boolean(GEAR_AUTOMATED_WETTING)?,
+            armour_set_aura: resolved.boolean(GEAR_ARMOUR_SET_AURA)?,
         })
     }
 }
@@ -387,10 +387,10 @@ impl GearSettings {
 impl DepositSettings {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            rare_substitution_chance: resolved.number(&key(WORLD_RARE_SUBSTITUTION_CHANCE))?,
-            first: resolved.boolean(&key(WORLD_FIRST_DEPOSIT))?,
-            second: resolved.boolean(&key(WORLD_SECOND_DEPOSIT))?,
-            third: resolved.boolean(&key(WORLD_THIRD_DEPOSIT))?,
+            rare_substitution_chance: resolved.number(WORLD_RARE_SUBSTITUTION_CHANCE)?,
+            first: resolved.boolean(WORLD_FIRST_DEPOSIT)?,
+            second: resolved.boolean(WORLD_SECOND_DEPOSIT)?,
+            third: resolved.boolean(WORLD_THIRD_DEPOSIT)?,
         })
     }
 }
@@ -401,15 +401,14 @@ impl Settings {
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            ritual_catalyst_uses: u32::try_from(resolved.integer(&key(RITUAL_CATALYST_USES))?)
+            ritual_catalyst_uses: u32::try_from(resolved.integer(RITUAL_CATALYST_USES)?)
                 .expect("the declared range fits u32"),
-            growth_pulse_seconds: u32::try_from(resolved.integer(&key(GROWTH_PULSE_SECONDS))?)
+            growth_pulse_seconds: u32::try_from(resolved.integer(GROWTH_PULSE_SECONDS)?)
                 .expect("the declared range fits u32"),
             drops: DropSettings::read(resolved)?,
-            growth_require_effective_ground: resolved
-                .boolean(&key(GROWTH_REQUIRE_EFFECTIVE_GROUND))?,
-            ground_convert_by_material: resolved.boolean(&key(GROUND_CONVERT_BY_MATERIAL))?,
-            recipes_plain_grid_seeds: resolved.boolean(&key(RECIPES_PLAIN_GRID_SEEDS))?,
+            growth_require_effective_ground: resolved.boolean(GROWTH_REQUIRE_EFFECTIVE_GROUND)?,
+            ground_convert_by_material: resolved.boolean(GROUND_CONVERT_BY_MATERIAL)?,
+            recipes_plain_grid_seeds: resolved.boolean(RECIPES_PLAIN_GRID_SEEDS)?,
             gear: GearSettings::read(resolved)?,
             deposits: DepositSettings::read(resolved)?,
         })
@@ -486,10 +485,6 @@ pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), Content
 /// Returns [`ContentIdError`] when the setting key cannot form a legal flag identity.
 pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
     FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
-}
-
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
 }
 
 #[cfg(test)]

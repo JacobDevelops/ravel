@@ -55,7 +55,7 @@ use ravel_sdk::content::{ContentDeclaration, ContentId};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::network::{Packet, PacketDelivery};
 use ravel_sdk::prelude::*;
-use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion};
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::sides::ClientOnly;
 
@@ -639,25 +639,11 @@ impl Mod for Entry {
     /// §4 scopes the records to what carries them and every one of them lives in
     /// a world, so a world that stored nothing opens on an empty store rather
     /// than on the last world's records.
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         self.store = Store::new();
         let Some(envelope) = envelope else {
             return Ok(());
         };
-        if !plan.steps().is_empty() {
-            return Err(ModError::refused(
-                "this build declares one saved-data version and so crosses no step",
-            ));
-        }
-        if envelope.data_version() != DATA_VERSION {
-            return Err(ModError::refused(
-                "the world stored a version this build does not read",
-            ));
-        }
         self.store = Store::from_saved(envelope.payload()).map_err(ModError::from_display)?;
         Ok(())
     }
@@ -1310,16 +1296,8 @@ mod tests {
             .expect("saving does not fail")
             .expect("this entry owns world data");
         let mut reopened = Entry::new(Side::DedicatedServer);
-        let plan = SavedDataPlan::open(
-            &reopened
-                .saved_data_declaration()
-                .expect("valid saved data declaration")
-                .expect("the entry declares its saved data"),
-            Some(envelope.data_version()),
-        )
-        .expect("the world stored the version this build writes");
         reopened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("the world reads back");
         assert_eq!(
             reopened.store().read(Record::InfusionProgress, "0,64,0"),
@@ -1336,17 +1314,9 @@ mod tests {
             .store_mut()
             .write(Record::InfusionProgress, "0,64,0", json!(12))
             .expect("a legal key");
-        let plan = SavedDataPlan::open(
-            &entry
-                .saved_data_declaration()
-                .expect("valid saved data declaration")
-                .expect("the entry declares its saved data"),
-            None,
-        )
-        .expect("a world that stored nothing is admitted");
 
         entry
-            .open_saved_data(None, &plan)
+            .open_saved_data(None)
             .expect("a world that stored nothing opens");
         assert_eq!(entry.store().stored(Record::InfusionProgress), 0);
     }

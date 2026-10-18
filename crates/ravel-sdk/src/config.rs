@@ -41,9 +41,8 @@
 //!     }
 //!
 //!     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-//!         let key = "lanterns".parse().expect("the key this mod declared");
 //!         self.lanterns = u64::try_from(
-//!             resolved.integer(&key).map_err(ModError::from_display)?,
+//!             resolved.integer("lanterns").map_err(ModError::from_display)?,
 //!         )
 //!         .map_err(ModError::from_display)?;
 //!         Ok(())

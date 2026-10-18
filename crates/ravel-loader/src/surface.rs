@@ -34,31 +34,17 @@ pub struct ModSurface {
 
 impl ModSurface {
     /// Builds the surface from what the machine currently holds.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the machine's order contains an untracked identity.
     #[must_use]
     pub fn of(machine: &LifecycleMachine) -> Self {
         let side = machine.side();
         let entries = machine
-            .order()
-            .map(|mod_id| {
-                let entry = machine
-                    .entry(mod_id)
-                    .expect("the machine only orders mods it holds");
-                ModEntry {
-                    state: machine
-                        .state(mod_id)
-                        .expect("the machine only orders mods it holds"),
-                    failure: machine
-                        .failure(mod_id)
-                        .expect("the machine only orders mods it holds")
-                        .cloned(),
-                    requirement: entry.requirement,
-                    loads_here: entry.sides.loads_on(side),
-                    mod_id: mod_id.clone(),
-                }
+            .tracked_entries_with_failures()
+            .map(|(entry, state, failure)| ModEntry {
+                state,
+                failure: failure.cloned(),
+                requirement: entry.requirement,
+                loads_here: entry.sides.loads_on(side),
+                mod_id: entry.mod_id.clone(),
             })
             .collect();
         Self { side, entries }

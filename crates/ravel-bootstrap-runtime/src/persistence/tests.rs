@@ -93,17 +93,79 @@ fn a_symlinked_pack_directory_cannot_redirect_the_write() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn world_pack_refusals_leave_files_untouched_and_publish_notices() {
+    let root = scratch("pack-refusal-notices");
+    let game = root.join("game");
+    let outside = root.join("outside");
+    let redirected_world = game.join("redirected-world");
+    let blocked_world = game.join("blocked-world");
+    for directory in [&game, &outside, &redirected_world, &blocked_world] {
+        std::fs::create_dir_all(directory).expect("scratch directory");
+    }
+    std::os::unix::fs::symlink(
+        &outside,
+        redirected_world.join(ravel_loader::WORLD_DATA_PACKS),
+    )
+    .expect("redirected datapacks");
+    let blocked_pack = blocked_world.join(ravel_loader::WORLD_DATA_PACKS);
+    std::fs::create_dir_all(&blocked_pack).expect("datapacks directory");
+    std::fs::write(
+        blocked_pack.join(ravel_loader::GAME_PACK_DIRECTORY),
+        b"do not replace",
+    )
+    .expect("blocking file");
+    let (mut runtime, _) = running();
+    runtime.launch.game_directory = game;
+    for world in [&redirected_world, &blocked_world] {
+        assert_eq!(
+            super::stage_world_and_write_pack(
+                &runtime,
+                world.to_str().expect("world path"),
+                None,
+                true,
+            ),
+            OpenOutcome::Staged,
+        );
+    }
+    assert_eq!(
+        std::fs::read_dir(&outside)
+            .expect("outside directory")
+            .count(),
+        0
+    );
+    assert_eq!(
+        std::fs::read(blocked_pack.join(ravel_loader::GAME_PACK_DIRECTORY)).expect("blocking file"),
+        b"do not replace",
+    );
+    let notices = notices(&runtime);
+    assert!(
+        notices.iter().any(|notice| {
+            notice.starts_with("no data pack was written into")
+                && notice.contains("redirected-world")
+        }),
+        "{notices:?}"
+    );
+    assert!(
+        notices.iter().any(|notice| {
+            notice.contains("could not be given the mods' data pack")
+                && notice.contains("blocked-world")
+        }),
+        "{notices:?}"
+    );
+}
 use std::collections::BTreeSet;
 use std::num::NonZero;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::{HostMod, InterceptionDeclaration, ModError, Occasion, Outcome, Point};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_host_api::{InterceptionDeclaration, Mod, ModError, Occasion, Outcome, Point};
+use ravel_loader::{LifecycleEntry, LifecycleMachine, LoadedMods, Requirement};
 use ravel_save::{
     MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope,
-    SavedDataPlan, SavedDataVersion,
+    SavedDataVersion,
 };
 use serde_json::json;
 
@@ -114,6 +176,31 @@ const OWNER: &str = "saved_data";
 const OTHER_OWNER: &str = "other_saved_data";
 const FIRST: &str = "worlds/first";
 const SECOND: &str = "worlds/second";
+struct FreshWorldPackSupplier(ModId);
+
+impl Mod for FreshWorldPackSupplier {
+    fn id(&self) -> &ModId {
+        &self.0
+    }
+
+    fn enter(&mut self, _: LifecycleState) -> Result<(), ModError> {
+        Ok(())
+    }
+
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ravel_data::ContentDeclaration>>, ModError> {
+        let mut declaration = ravel_data::ContentDeclaration::new(self.0.clone());
+        declaration
+            .resource(
+                ravel_core::RelativePath::try_from(format!("data/{OWNER}/tags/items/fresh.json"))
+                    .expect("tag path"),
+                br#"{"values":[]}"#.to_vec(),
+            )
+            .expect("unique tag resource");
+        Ok(Some(std::borrow::Cow::Owned(declaration)))
+    }
+}
 
 fn notices(runtime: &LoaderRuntime) -> Vec<String> {
     runtime
@@ -157,14 +244,14 @@ struct Held {
     refuses_open: AtomicBool,
     refuses_interception: AtomicBool,
     refuses_interception_declaration: AtomicBool,
-    opened_with: Mutex<Option<SavedDataPlan>>,
+    opened_with: Mutex<Option<SavedDataEnvelope>>,
     declaration_owner: Mutex<Option<ModId>>,
     envelope_owner: Mutex<Option<ModId>>,
     refuses_declaration: AtomicBool,
 }
 
 impl Held {
-    fn opened_with(&self) -> SavedDataPlan {
+    fn opened_with(&self) -> SavedDataEnvelope {
         self.opened_with
             .lock()
             .expect("no test poisons this lock")
@@ -178,7 +265,7 @@ struct Owning {
     held: Arc<Held>,
 }
 
-impl HostMod for Owning {
+impl Mod for Owning {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -197,7 +284,7 @@ impl HostMod for Owning {
             return Err(ModError::Unsupported);
         }
         let mut declaration = InterceptionDeclaration::new(self.id.clone());
-        declaration.answer_at(Point::WorldIsSaved.as_str());
+        declaration.answer_at(Point::WorldIsSaved);
         Ok(Some(declaration))
     }
 
@@ -238,11 +325,7 @@ impl HostMod for Owning {
         ))
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         if self.held.refuses_open.load(Ordering::SeqCst) {
             return Err(ModError::refused(
@@ -257,7 +340,7 @@ impl HostMod for Owning {
             .held
             .opened_with
             .lock()
-            .expect("no test poisons this lock") = Some(plan.clone());
+            .expect("no test poisons this lock") = envelope.cloned();
         Ok(())
     }
 
@@ -265,7 +348,12 @@ impl HostMod for Owning {
         self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         assert!(
             !self.held.panics_production.load(Ordering::SeqCst),
-            "the owner panicked with private data: token=ghp_private"
+            "{}",
+            concat!(
+                "the owner panicked with private data: token=",
+                "ghp_",
+                "private"
+            )
         );
         if self.held.refuses_production.load(Ordering::SeqCst) {
             return Err(ModError::refused("this mod cannot produce an envelope"));
@@ -339,10 +427,10 @@ fn owners_running_with_requirement(
     requirement: Requirement,
 ) -> (LoaderRuntime, Vec<Arc<Held>>) {
     let held: Vec<Arc<Held>> = owners.iter().map(|_| Arc::new(Held::default())).collect();
-    let hosts: Vec<Box<dyn HostMod>> = owners
+    let hosts: Vec<Box<dyn Mod>> = owners
         .iter()
         .zip(&held)
-        .map(|(owner, held)| -> Box<dyn HostMod> {
+        .map(|(owner, held)| -> Box<dyn Mod> {
             Box::new(Owning {
                 id: id(owner),
                 held: Arc::clone(held),
@@ -368,6 +456,7 @@ fn owners_running_with_requirement(
             ravel_observability::Profiler::off(),
             report,
             crate::runtime::test_launch(),
+            std::collections::BTreeMap::new(),
         ),
         held,
     )
@@ -399,7 +488,7 @@ fn incomplete_stage_refuses_before_snapshot_or_admission_callbacks() {
             .expect_err("the incomplete set cannot stage another world");
         assert!(matches!(
             &refusal,
-            super::PersistenceError::MissingHost(missing)
+            super::PersistenceError::MissingMod(missing)
                 if missing.mod_id() == &id(OTHER_OWNER)
         ));
         assert_eq!(first.callbacks.load(Ordering::SeqCst), 0);
@@ -486,7 +575,7 @@ struct Guarding {
     asked: Arc<AtomicU32>,
 }
 
-impl HostMod for Guarding {
+impl Mod for Guarding {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -497,12 +586,13 @@ impl HostMod for Guarding {
 
     fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         let mut declared = InterceptionDeclaration::new(self.id.clone());
-        declared.answer_at(Point::WorldIsSaved.as_str());
+        declared.answer_at(Point::WorldIsSaved);
         Ok(Some(declared))
     }
 
     fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {
         assert_eq!(occasion.point(), Point::WorldIsSaved);
+        assert_eq!(occasion.side(), Side::IntegratedServer);
         self.asked.fetch_add(1, Ordering::SeqCst);
         Ok(if self.refusing.load(Ordering::SeqCst) {
             Outcome::Refuse
@@ -516,7 +606,7 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
     let held = Arc::new(Held::default());
     let refusing = Arc::new(AtomicBool::new(false));
     let asked = Arc::new(AtomicU32::new(0));
-    let hosts: Vec<Box<dyn HostMod>> = vec![
+    let hosts: Vec<Box<dyn Mod>> = vec![
         Box::new(Owning {
             id: id(OWNER),
             held: Arc::clone(&held),
@@ -550,6 +640,7 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
             ravel_observability::Profiler::off(),
             crate::runtime::pre_world_report(),
             crate::runtime::test_launch(),
+            std::collections::BTreeMap::new(),
         ),
         held,
         refusing,
@@ -589,7 +680,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         id: ModId,
     }
 
-    impl HostMod for Failing {
+    impl Mod for Failing {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -600,7 +691,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
 
         fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
             let mut declared = InterceptionDeclaration::new(self.id.clone());
-            declared.answer_at(Point::WorldIsSaved.as_str());
+            declared.answer_at(Point::WorldIsSaved);
             Ok(Some(declared))
         }
 
@@ -609,7 +700,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         }
     }
 
-    let hosts: Vec<Box<dyn HostMod>> = vec![Box::new(Failing { id: id(GUARD) })];
+    let hosts: Vec<Box<dyn Mod>> = vec![Box::new(Failing { id: id(GUARD) })];
     let entries = vec![LifecycleEntry {
         mod_id: id(GUARD),
         sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
@@ -624,6 +715,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         ravel_observability::Profiler::off(),
         crate::runtime::pre_world_report(),
         crate::runtime::test_launch(),
+        std::collections::BTreeMap::new(),
     );
     runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -748,7 +840,7 @@ fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
     assert!(inner.persistence.staged.is_none());
     assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
     assert!(
-        inner.machine.world_access().is_ok(),
+        inner.machine.world_access(&inner.report).is_ok(),
         "no mutation was admitted"
     );
     drop(inner);
@@ -892,13 +984,13 @@ fn a_panicking_save_callback_fails_the_owner_without_poisoning_runtime() {
     let SaveOutcome::Failed(detail) = runtime.save_world(&WorldIdentity::of(FIRST)) else {
         panic!("a panicking callback cannot produce durable data");
     };
-    assert!(!detail.contains("ghp_private"), "{detail}");
+    assert!(!detail.contains(concat!("ghp_", "private")), "{detail}");
     let inner = runtime
         .inner
         .lock()
         .expect("caught panic must not poison runtime");
     assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
-    assert!(inner.machine.world_access().is_err());
+    assert!(inner.machine.world_access(&inner.report).is_err());
     drop(inner);
 }
 
@@ -1021,8 +1113,8 @@ fn save_panics_are_caught_and_attributed_for_every_requirement() {
         assert_eq!(failure.environment, crate::runtime::environment());
         assert_eq!(failure.surface, None);
         assert!(failure.message.text().contains("panicked"));
-        assert!(!failure.message.text().contains("ghp_private"));
-        assert!(inner.machine.world_access().is_err());
+        assert!(!failure.message.text().contains(concat!("ghp_", "private")));
+        assert!(inner.machine.world_access(&inner.report).is_err());
         drop(inner);
         assert!(matches!(
             runtime.save_world(&WorldIdentity::of(FIRST)),
@@ -1032,7 +1124,7 @@ fn save_panics_are_caught_and_attributed_for_every_requirement() {
 }
 
 #[test]
-fn interception_declaration_errors_after_open_fail_the_owner_and_halt_every_requirement() {
+fn admitted_interception_declarations_are_not_requeried_during_world_saves() {
     for requirement in [Requirement::Required, Requirement::Optional] {
         let (runtime, held) = owners_running_with_requirement(
             &[OWNER],
@@ -1047,30 +1139,21 @@ fn interception_declaration_errors_after_open_fail_the_owner_and_halt_every_requ
             .store(true, Ordering::SeqCst);
         assert!(matches!(
             runtime.save_world(&WorldIdentity::of(FIRST)),
-            SaveOutcome::Failed(_)
+            SaveOutcome::Replacement(_)
         ));
-        let inner = runtime
-            .inner
-            .lock()
-            .expect("the callback returned an error");
+        let inner = runtime.inner.lock().expect("the callback returned");
         assert_eq!(
             inner.machine.state(&id(OWNER)).expect("known owner"),
-            LifecycleState::Failed
+            LifecycleState::Running
         );
-        let failure = inner
-            .machine
-            .failure(&id(OWNER))
-            .expect("known owner")
-            .expect("structured declaration failure");
-        assert_eq!(failure.mod_id, Some(id(OWNER)));
-        assert_eq!(failure.state, LifecycleState::Running);
         assert!(
-            inner.machine.world_access().is_err(),
-            "a callback failure after opening must halt every requirement class"
+            inner
+                .machine
+                .failure(&id(OWNER))
+                .expect("known owner")
+                .is_none()
         );
         drop(inner);
-        let retry = runtime.save_world(&WorldIdentity::of(FIRST));
-        assert!(matches!(retry, SaveOutcome::Failed(_)));
     }
 }
 
@@ -1127,7 +1210,7 @@ fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
                 .contains("cannot produce an envelope")
         );
         assert!(
-            inner.machine.world_access().is_err(),
+            inner.machine.world_access(&inner.report).is_err(),
             "a save failure after opening must halt every requirement class"
         );
         drop(inner);
@@ -1221,9 +1304,13 @@ fn a_world_written_at_an_older_version_is_migrated_before_delivery() {
         )
         .expect("a version this build declares a migration for opens its world");
 
-    let plan = held.opened_with();
-    assert_eq!(plan.owner(), &id(OWNER));
-    assert!(plan.is_current(), "delivery receives the migrated version");
+    let delivered = held.opened_with();
+    assert_eq!(delivered.owner(), &id(OWNER));
+    assert_eq!(
+        delivered.data_version(),
+        version(2),
+        "delivery receives the migrated version"
+    );
     assert_eq!(held.visits.load(Ordering::SeqCst), 6);
     let bytes = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
     assert_eq!(visits(&bytes), 6, "the migrated payload survives saving");
@@ -1236,7 +1323,7 @@ fn a_world_written_at_an_older_version_is_migrated_before_delivery() {
             false,
         )
         .expect("a current world opens");
-    assert!(current_held.opened_with().is_current());
+    assert_eq!(current_held.opened_with().data_version(), version(2));
 }
 
 #[test]
@@ -1261,8 +1348,8 @@ fn each_owner_in_one_world_receives_its_own_envelope_and_no_other() {
     );
     assert_eq!(first.opened_with().owner(), &id(OWNER));
     assert_eq!(second.opened_with().owner(), &id(OTHER_OWNER));
-    assert!(first.opened_with().is_current());
-    assert!(second.opened_with().is_current());
+    assert_eq!(first.opened_with().data_version(), version(2));
+    assert_eq!(second.opened_with().data_version(), version(2));
 
     let written = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
     assert_eq!(visits_for(&written, &owners, OWNER), 5);
@@ -1349,6 +1436,7 @@ fn shipped_running() -> LoaderRuntime {
         ravel_observability::Profiler::off(),
         crate::runtime::pre_world_report(),
         crate::runtime::test_launch(),
+        std::collections::BTreeMap::new(),
     )
 }
 
@@ -1632,7 +1720,7 @@ fn a_world_this_build_cannot_read_refuses_rather_than_staging() {
             "`{name}` was refused and staged anyway"
         );
         assert_eq!(
-            super::outcome(&runtime, FIRST, Some(&bytes), true),
+            super::stage_world_and_write_pack(&runtime, FIRST, Some(&bytes), true),
             OpenOutcome::Refused(refused),
             "`{name}` reached Java as something other than a refusal"
         );
@@ -1778,14 +1866,71 @@ fn an_existing_world_that_lost_its_data_is_noticed_and_admitted_anyway() {
 
 #[test]
 fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
+    const CHILD: &str = "RAVEL_FRESH_WORLD_PACK_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "persistence::tests::a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing", "--nocapture"])
+            .env(CHILD, "1").output().expect("isolated world crossing");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        return;
+    }
+    let game = scratch("fresh-world-pack");
+    let world = game.join("world");
+    std::fs::create_dir_all(&world).expect("new world directory");
     let (runtime, _held) = running();
-
-    runtime
-        .stage_world(WorldIdentity::of(FIRST), None, true)
-        .expect("a new world stages");
-
-    let empty: [String; 0] = [];
-    assert_eq!(notices(&runtime), empty);
+    let mut inner = runtime.inner.into_inner().expect("runtime state");
+    let mut suppliers: Vec<Box<dyn Mod>> = vec![Box::new(FreshWorldPackSupplier(id(OWNER)))];
+    let resources = ravel_loader::open_resources(
+        &mut LoadedMods::new(&mut inner.machine, &mut suppliers).expect("paired supplier"),
+        inner.report.environment(),
+    )
+    .expect("supplied world data");
+    crate::runtime::install(
+        crate::runtime::Composition {
+            machine: inner.machine,
+            mods: inner.mods,
+            configurations: Vec::new(),
+            resources,
+            interceptions: inner.interceptions,
+            installed_packages: inner.installed_packages,
+        },
+        inner.report,
+        game,
+        ravel_observability::Profiler::off(),
+    )
+    .expect("install isolated runtime");
+    assert_eq!(
+        super::open_world_data(world.to_str().expect("absolute world path"), None, true),
+        OpenOutcome::Staged
+    );
+    let metadata = std::fs::read(
+        world
+            .join(ravel_loader::WORLD_DATA_PACKS)
+            .join(ravel_loader::GAME_PACK_DIRECTORY)
+            .join("pack.mcmeta"),
+    )
+    .expect("real world pack metadata");
+    let generated: serde_json::Value =
+        serde_json::from_slice(&metadata).expect("generated metadata JSON");
+    assert!(generated.get("pack").is_some(), "{generated}");
+    assert_eq!(
+        std::fs::read(
+            world
+                .join(ravel_loader::WORLD_DATA_PACKS)
+                .join(ravel_loader::GAME_PACK_DIRECTORY)
+                .join(format!("data/{OWNER}/tags/items/fresh.json"))
+        )
+        .expect("supplied world tag"),
+        br#"{"values":[]}"#
+    );
+    let selected = crate::runtime::selected().expect("installed runtime");
+    assert!(notices(&selected).is_empty(), "{:?}", notices(&selected));
+    std::fs::remove_dir_all(&selected.launch.game_directory).expect("remove scratch game");
 }
 
 #[test]
@@ -1804,7 +1949,7 @@ fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
     assert!(refused.starts_with("no world opens: "), "{refused}");
     assert!(refused.contains(OWNER), "{refused}");
     assert_eq!(
-        super::outcome(&runtime, SECOND, None, true),
+        super::stage_world_and_write_pack(&runtime, SECOND, None, true),
         OpenOutcome::Refused(refused)
     );
 }

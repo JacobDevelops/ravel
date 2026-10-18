@@ -85,8 +85,8 @@ Ravel into a Java mod host.
   calls and vanilla file handling, and a failed replacement preserves the prior
   aggregate without aborting vanilla saving.
   The loader applies each owner's migration chain before calling
-  `Mod::open_saved_data`, which receives a current-version envelope and its
-  current-version plan. The installed composition supplies package versions for
+  `Mod::open_saved_data`, which receives only the current-version envelope.
+  The installed composition supplies package versions for
   required-package admission on real game opens, not only in fixture tests.
   The 1.12.2 port must use legacy WorldSavedData/MapStorage semantics rather than
   claim modern SavedData factories/codecs exist; numeric IDs, metadata and
@@ -104,7 +104,7 @@ Ravel into a Java mod host.
   optional provider. `PipelineError::Drive` preserves the attributed drive error.
 - **Diagnostic publication.** `DiagnosticMessage::redacted` applies the shared
   core redactor rather than trusting a caller-supplied policy to assert safety.
-  Observability exposes the same credential detector used by that redactor.
+  Tracked-text checks import the credential detector directly from core.
   Profiling reports count host calls through `hook_calls`, without a second
   name for the same measurement.
 - **Claims and checks.** Measured claims have an independent reading proved by

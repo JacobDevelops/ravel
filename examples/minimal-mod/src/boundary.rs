@@ -147,11 +147,11 @@
 //! ```
 //!
 //! ```compile_fail,E0432
-//! use ravel_observability::redact;
+//! use ravel_observability::PreWorldReport;
 //! ```
 //!
 //! ```compile_fail,E0432
-//! use ravel_testkit::run;
+//! use ravel_testkit::run_pipeline;
 //! ```
 //!
 //! # Failing: even the host contract crate is not an author dependency
@@ -161,7 +161,7 @@
 //! the crate underneath it is not importable either.
 //!
 //! ```compile_fail,E0432
-//! use ravel_host_api::HostMod;
+//! use ravel_host_api::Mod;
 //! ```
 //!
 //! # Failing: the facade has no module that leads anywhere else

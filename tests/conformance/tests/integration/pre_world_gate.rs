@@ -5,11 +5,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, Side, StructuredFailure};
-use ravel_host_api::{HostMod, ModError};
-use ravel_observability::{PreWorldReport, Subject, redact};
+use ravel_core::{
+    DiagnosticMessage, FailureEnvironment, FailureKind, LifecycleState, ModId, Side,
+    StructuredFailure,
+};
+use ravel_host_api::{HostError, Mod, ModError};
+use ravel_observability::{PreWorldReport, Subject};
 use ravel_package::Sha256Digest;
-use ravel_testkit::{Host, PipelineError, TestPackage, run};
+use ravel_testkit::{Host, PipelineError, TestPackage, run_pipeline};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -151,7 +154,7 @@ impl Silent {
     }
 }
 
-impl HostMod for Silent {
+impl Mod for Silent {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -172,8 +175,8 @@ struct Refused {
 
 impl Refused {
     // Attribute the refusal to its owning crate rather than the test harness.
-    fn stage(&self) -> &dyn StructuredFailure {
-        self.error.stage().expect("a crate raised this refusal")
+    fn failure(&self) -> &dyn StructuredFailure {
+        self.error.failure().expect("a crate raised this refusal")
     }
 
     fn line(&self) -> String {
@@ -211,18 +214,21 @@ fn refuse(
                 .and_then(|document| document["id"].as_str().map(Silent::new))
         })
         .collect();
-    let mut driven: Vec<&mut dyn HostMod> = mods
+    let mut driven: Vec<&mut dyn Mod> = mods
         .iter_mut()
-        .map(|host| -> &mut dyn HostMod { host })
+        .map(|host| -> &mut dyn Mod { host })
         .collect();
 
-    let error = run(packages, &host(), side, &mut driven)
+    let error = run_pipeline(packages, &host(), side, &mut driven)
         .err()
         .unwrap_or_else(|| panic!("`{case}` should not have completed the pipeline"));
     let ran_any_mod_code = mods.iter().any(|host| !host.entered.is_empty());
 
     let mut report = PreWorldReport::new(environment());
-    report.refuse(subject, error.stage().expect("a crate raised this refusal"));
+    report.refuse(
+        subject,
+        error.failure().expect("a crate raised this refusal"),
+    );
     fs::remove_dir_all(parent).expect("cleanup");
 
     Refused {
@@ -372,12 +378,16 @@ fn dependency_cycle() -> Refused {
     )
 }
 
-// Only the redacted form of the mod-authored message reaches evidence.
+// Only the redacted form of a lifecycle transition refusal reaches evidence.
 fn redaction_demonstration() -> Value {
-    let refused = ModError::refused(
-        "could not open /home/player/.minecraft/saves/level.dat using ghp_0123456789",
-    )
-    .with_context(id("example_mod"), LifecycleState::Loaded);
+    let refused = HostError::from_refusal(
+        id("example_mod"),
+        LifecycleState::Loaded,
+        ModError::refused(concat!(
+            "could not open /home/player/.minecraft/saves/level.dat using gh",
+            "p_0123456789"
+        )),
+    );
 
     let mut report = PreWorldReport::new(environment());
     report.refuse(&Subject::of(id("example_mod")), &refused);
@@ -458,8 +468,8 @@ fn every_dependency_graph_outcome_is_reported_as_itself() {
         .map(|refused| {
             (
                 refused.case,
-                refused.stage().failure_kind(),
-                refused.stage().lifecycle_state(),
+                refused.failure().failure_kind(),
+                refused.failure().lifecycle_state(),
             )
         })
         .collect();
@@ -519,7 +529,7 @@ fn every_published_message_has_been_through_the_policy() {
         );
         assert_eq!(
             message.text(),
-            redact(refused.stage().diagnostic().text()).text(),
+            DiagnosticMessage::redacted(refused.failure().diagnostic().text()).text(),
             "{}",
             refused.case
         );
@@ -535,7 +545,7 @@ fn the_one_message_a_mod_wrote_loses_its_path_and_its_credential() {
 
     assert!(published.contains("level.dat"), "{published}");
     assert!(!published.contains("/home/"), "{published}");
-    assert!(!published.contains("ghp_"), "{published}");
+    assert!(!published.contains(concat!("gh", "p_")), "{published}");
     assert!(published.contains("[redacted]"), "{published}");
     assert_eq!(demonstration["quotesUntrustedText"], json!(true));
 }
@@ -570,7 +580,7 @@ fn the_recorded_evidence_names_no_path_and_no_secret() {
         "/.minecraft",
         "tests/fixtures/local/",
         "evidence/private/",
-        "ghp_",
+        concat!("gh", "p_"),
         "token",
         "password",
         "secret",

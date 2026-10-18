@@ -52,8 +52,8 @@ put a path in a refusal detail expecting a player to see it.
 
 - **Claiming outside `register`.** Refused as late. Hold no registrar.
 - **Declaring settings without implementing `configure`.** Refused.
-- **Reading a saved payload as though it were current.** Silently wrong in a
-  running game. Apply the chain across `SavedDataPlan::steps`.
+- **Declaring several saved-data versions without a `MigrationChain`.** Refused
+  before any payload is read; the loader applies the chain before your callback.
 - **Declaring a saved-data version with no step into it.** The whole build is
   refused, before any payload is read, rather than surprising a player later.
 - **Disagreeing with yourself about versions.** `savedDataVersions` in the
@@ -65,8 +65,9 @@ put a path in a refusal detail expecting a player to see it.
 - **Assuming everything in the package is integrity-checked.** Only
   `source.files` and the provenance record are. List your schemas and resources
   there too.
-- **Reaching for `serde_json`.** It is not a dependency of your crate and cannot
-  be named from it. Call the method on the value, or name `ravel_sdk::JsonValue`.
+- **Naming `serde_json` without inheriting it.** Use `ravel_sdk::JsonValue` and
+  `json!`, or inherit `serde_json.workspace = true` from the generated workspace.
+  Any other version is not vetted.
 - **Naming a tag member the owning mod never declared.** Refused even when that
   mod is present, at pack validation.
 - **A crate that never writes `export_mod!`.** Your own tests construct your mod

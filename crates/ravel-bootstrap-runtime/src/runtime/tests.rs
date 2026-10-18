@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use ravel_core::{
     ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet, StructuredFailure,
 };
-use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
+use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod, ModError, Registrar};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, Supplied};
 use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
@@ -59,7 +59,7 @@ struct Recording {
     claims: Vec<RegistryKey>,
 }
 
-impl HostMod for Recording {
+impl Mod for Recording {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -139,7 +139,7 @@ fn parts(
     side: Side,
     claims: Vec<RegistryKey>,
     behaviour: Behaviour,
-) -> (LifecycleMachine, Vec<Box<dyn HostMod>>, Arc<Mutex<Log>>) {
+) -> (LifecycleMachine, Vec<Box<dyn Mod>>, Arc<Mutex<Log>>) {
     let log = Arc::new(Mutex::new(Log::default()));
     let mut host = Recording {
         id: id(MOD),
@@ -173,7 +173,7 @@ fn playing(side: Side) -> LoaderRuntime {
     held(side, Box::new(ravel_test_mod_audio::AudioMod::new()))
 }
 
-fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
+fn held(side: Side, host: Box<dyn Mod>) -> LoaderRuntime {
     let entry = LifecycleEntry {
         mod_id: host.id().clone(),
         sides: SideSet::new([side]).expect("a non-empty side set"),
@@ -223,7 +223,7 @@ struct AsksOnEveryEvent {
     asked: Vec<PlayRequest>,
 }
 
-impl HostMod for AsksOnEveryEvent {
+impl Mod for AsksOnEveryEvent {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -309,7 +309,7 @@ fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
 fn driven_pair(
     behaviour: Behaviour,
     log: &Arc<Mutex<Log>>,
-) -> (LifecycleMachine, Vec<Box<dyn HostMod>>) {
+) -> (LifecycleMachine, Vec<Box<dyn Mod>>) {
     let mut machine = LifecycleMachine::new(
         Side::Client,
         [MOD, "innocent"]
@@ -323,9 +323,9 @@ fn driven_pair(
             .collect(),
     )
     .expect("pair");
-    let mut mods: Vec<Box<dyn HostMod>> = [MOD, "innocent"]
+    let mut mods: Vec<Box<dyn Mod>> = [MOD, "innocent"]
         .into_iter()
-        .map(|name| -> Box<dyn HostMod> {
+        .map(|name| -> Box<dyn Mod> {
             Box::new(Recording {
                 id: id(name),
                 log: Arc::clone(log),
@@ -480,7 +480,7 @@ struct PanickingDrain {
     drains: Arc<std::sync::atomic::AtomicUsize>,
 }
 
-impl HostMod for PanickingDrain {
+impl Mod for PanickingDrain {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -552,12 +552,13 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
     {
         let mut inner = runtime.inner.lock().expect("healthy lock");
         inner
-            .record_failure(
-                &id(MOD),
+            .machine
+            .fail_callback(
                 &HostError::Panicked {
                     mod_id: id(MOD),
                     state: LifecycleState::Running,
                 },
+                &environment(),
                 None,
             )
             .expect("known owner can fail");
@@ -567,7 +568,7 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
 }
 
 #[test]
-fn an_installed_set_receives_what_the_observer_registry_delivers() {
+fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
     let (machine, mods, log) = parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
 
     super::install(
@@ -576,19 +577,22 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
             mods,
             configurations: Vec::new(),
             resources: Supplied::default(),
+            interceptions: ravel_host_api::Points::default()
+                .admit()
+                .expect("empty interceptions"),
             installed_packages: BTreeMap::new(),
         },
         super::pre_world_report(),
         std::env::temp_dir(),
         ravel_observability::Profiler::off(),
     )
-    .expect("the registry accepts an observer");
+    .expect("the runtime installs");
     crate::dispatch::deliver(&target("server.tick"), &[]).expect("nothing here vetoes");
 
     assert_eq!(
         log.lock().expect("nothing panicked").seen,
         [GameEvent::ServerTick],
-        "the join is the registry the guard already delivers through, not a second path"
+        "the guard dispatches through the installed runtime"
     );
     let (machine, mods, replacement_log) =
         parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
@@ -599,6 +603,9 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
                 mods,
                 configurations: Vec::new(),
                 resources: Supplied::default(),
+                interceptions: ravel_host_api::Points::default()
+                    .admit()
+                    .expect("empty interceptions"),
                 installed_packages: BTreeMap::new(),
             },
             super::pre_world_report(),
@@ -673,12 +680,45 @@ fn a_typed_command_reaches_the_mod_that_claimed_its_key_with_its_arguments() {
     let ran = &log.lock().expect("nothing panicked").ran;
     assert_eq!(ran.len(), 1);
     assert_eq!(ran[0].key, key("home"));
-    assert_eq!(ran[0].side, Side::Client);
+    assert_eq!(ran[0].side, Side::IntegratedServer);
     assert_eq!(
         ran[0].arguments,
         ["set", "spawn"],
         "arguments are split on whitespace and not otherwise interpreted"
     );
+}
+
+#[test]
+fn integrated_commands_run_the_real_server_gated_tally_on_a_client_distribution() {
+    let host = rvl_180_counterpart::__ravel_entry(Side::Client);
+    let owner = host.id().clone();
+    let entry = LifecycleEntry {
+        mod_id: owner.clone(),
+        sides: SideSet::new([Side::Client]).expect("client distribution"),
+        requirement: Requirement::Required,
+        saved_data_versions: BTreeSet::new(),
+    };
+    let mut machine = LifecycleMachine::new(Side::Client, vec![entry]).expect("one mod");
+    let mut mods = vec![host];
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
+        &environment(),
+    )
+    .expect("counterpart registers its real commands");
+    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    runtime.observe(
+        &target(COMMAND),
+        &[HookValue::Text(format!("{owner}:entity_tally"))],
+    );
+    let mut inner = runtime.inner.lock().expect("callback did not panic");
+    let work = inner
+        .command(&format!("{owner}:entity_tally"))
+        .expect("a typed command");
+    inner
+        .deliver_checked(&work)
+        .expect("the real server-gated tally executes");
+    assert_eq!(inner.machine.state(&owner), Ok(LifecycleState::Running));
+    assert_eq!(inner.machine.failure(&owner), Ok(None));
 }
 
 #[test]
@@ -1010,6 +1050,9 @@ fn integrated_composition() -> (super::Composition, Arc<Mutex<Log>>) {
             mods,
             configurations: Vec::new(),
             resources: Supplied::default(),
+            interceptions: ravel_host_api::Points::default()
+                .admit()
+                .expect("empty interceptions"),
             installed_packages: BTreeMap::default(),
         },
         log,

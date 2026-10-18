@@ -11,9 +11,9 @@ use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean};
 use jni::{Env, EnvUnowned};
 use ravel_minecraft::{HookTarget, HookValue};
 
-use crate::{dispatch, report};
+use crate::{dispatch, invocations};
 
-/// A hook veto, registry failure, or JNI argument error.
+/// A hook veto, unavailable runtime, or JNI argument error.
 #[derive(Debug)]
 pub enum HookError {
     /// An observer veto, thrown into the JVM unless the hook is refusable.
@@ -23,7 +23,7 @@ pub enum HookError {
         /// The observer's reason.
         reason: String,
     },
-    /// The observer registry's read lock is poisoned.
+    /// No runtime is installed for the calling thread.
     Unavailable,
     /// Reading a hook argument failed.
     Jvm(jni::errors::Error),
@@ -33,7 +33,7 @@ impl fmt::Display for HookError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Vetoed { hook, reason } => write!(formatter, "{hook} was refused: {reason}"),
-            Self::Unavailable => formatter.write_str("the hook registry is unavailable"),
+            Self::Unavailable => formatter.write_str("no runtime is installed for this thread"),
             Self::Jvm(error) => write!(formatter, "the JVM refused a hook argument: {error}"),
         }
     }
@@ -67,7 +67,7 @@ pub(crate) fn enter<'local, 'handle, Collect>(
     'local: 'handle,
     Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue<'handle>>, HookError>,
 {
-    report::record_invocation();
+    invocations::record_invocation();
     if !dispatch::is_observed() {
         return;
     }
@@ -92,7 +92,7 @@ where
     'local: 'handle,
     Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue<'handle>>, HookError>,
 {
-    report::record_invocation();
+    invocations::record_invocation();
     if !dispatch::is_observed() {
         return JNI_FALSE;
     }
@@ -192,7 +192,7 @@ pub(crate) mod tests {
         );
         assert_eq!(
             HookError::Unavailable.to_string(),
-            "the hook registry is unavailable"
+            "no runtime is installed for this thread"
         );
     }
 

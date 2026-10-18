@@ -99,7 +99,7 @@ impl Mod for InterceptionMod {
 
     fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
-        declared.answer_at(POINT.as_str());
+        declared.answer_at(POINT);
         Ok(Some(declared))
     }
 
@@ -130,7 +130,7 @@ mod tests {
             .expect("this mod answers somewhere");
 
         assert_eq!(declared.owner(), InterceptionMod::declared_id());
-        assert_eq!(declared.points(), [POINT.as_str()]);
+        assert_eq!(declared.points(), [POINT]);
         assert!(declared.answers_at(POINT));
         assert!(
             !declared.answers_at(Point::WorldIsSaved),

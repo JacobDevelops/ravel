@@ -99,6 +99,12 @@ struct TransitionContext {
 /// };
 /// let mut machine = LifecycleMachine::new(Side::Client, vec![entry])?;
 /// let id: ModId = "example_mod".parse()?;
+/// let environment = ravel_core::FailureEnvironment {
+///     ravel: "0.1.0".parse()?,
+///     minecraft: "example-version".to_owned(),
+///     platform: "linux".to_owned(),
+///     architecture: "x86_64".to_owned(),
+/// };
 ///
 /// assert!(machine.advance(&id, LifecycleState::Running).is_err());
 /// for state in [
@@ -111,7 +117,7 @@ struct TransitionContext {
 /// ] {
 ///     machine.advance_all(state)?;
 /// }
-/// machine.world_access()?;
+/// machine.world_access(&ravel_observability::PreWorldReport::new(environment))?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug)]
@@ -184,6 +190,20 @@ impl LifecycleMachine {
         self.entries
             .iter()
             .map(|tracked| (&tracked.entry, tracked.state))
+    }
+
+    /// Iterates eligible members without re-querying tracked state.
+    pub(crate) fn eligible(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
+        self.tracked_entries()
+            .filter(|(entry, _)| self.loads(&entry.mod_id))
+    }
+
+    pub(crate) fn tracked_entries_with_failures(
+        &self,
+    ) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState, Option<&FailureAttribution>)> {
+        self.entries
+            .iter()
+            .map(|tracked| (&tracked.entry, tracked.state, tracked.failure.as_ref()))
     }
 
     /// Returns every state change so far, in the order it happened.
@@ -414,6 +434,21 @@ impl LifecycleMachine {
         Ok(requirement)
     }
 
+    pub(crate) fn fail_callback_attributed(
+        &mut self,
+        error: &ravel_host_api::HostError,
+        environment: &FailureEnvironment,
+        surface: Option<FailureSurface>,
+    ) -> Result<(Requirement, &FailureAttribution), LifecycleError> {
+        let requirement = self.fail_callback(error, environment, surface)?;
+        let attribution = self
+            .tracked(error.mod_id())?
+            .failure
+            .as_ref()
+            .expect("fail_callback records attribution before returning");
+        Ok((requirement, attribution))
+    }
+
     /// Claims a registry identifier for a mod before the registration barrier.
     ///
     /// # Errors
@@ -426,7 +461,7 @@ impl LifecycleMachine {
     /// [`LifecycleError::ConflictingRegistryClaim`] when already owned, or
     /// [`LifecycleError::MismatchedContentBehaviour`] when the description does
     /// not describe the kind the identifier names.
-    pub fn claim_registry_identifier_describing(
+    pub fn claim_registry_identifier(
         &mut self,
         mod_id: &ModId,
         identifier: &RegistryKey,
@@ -488,7 +523,7 @@ impl LifecycleMachine {
     /// Returns [`LifecycleError::WorldAccessHalted`] when a failure followed
     /// world mutation, and [`LifecycleError::WorldAccessBlocked`] naming the
     /// first mod in resolved order that is not running.
-    pub fn world_access(&self) -> Result<(), LifecycleError> {
+    pub(crate) fn lifecycle_world_access(&self) -> Result<(), LifecycleError> {
         if let Some(mod_id) = &self.halted {
             return Err(LifecycleError::WorldAccessHalted {
                 mod_id: mod_id.clone(),
@@ -518,7 +553,7 @@ impl LifecycleMachine {
     /// Returns whatever [`LifecycleMachine::world_access`] refuses: a set that
     /// cannot open a world cannot have mutated one.
     pub fn record_world_mutation(&mut self) -> Result<(), LifecycleError> {
-        self.world_access()?;
+        self.lifecycle_world_access()?;
         self.world_mutated = true;
         Ok(())
     }
@@ -627,12 +662,11 @@ mod tests {
     use std::borrow::Cow;
 
     use ravel_core::{
-        ContentKind, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
-        LifecycleState, ModId, Redaction, Side, StructuredFailure,
+        ContentKind, DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind,
+        FailureSurface, LifecycleState, ModId, Redaction, Side, StructuredFailure,
     };
     use ravel_data::{ContentBehaviour, ContentDeclaration};
-    use ravel_host_api::{HostError, HostMod, ModError};
-    use ravel_observability::redact;
+    use ravel_host_api::{HostError, Mod, ModError};
 
     use super::{LifecycleError, LifecycleMachine, Requirement, executes_mod_code, has_registered};
     use crate::tests::entry;
@@ -666,7 +700,7 @@ mod tests {
                 platform: "linux".to_owned(),
                 architecture: "x86_64".to_owned(),
             },
-            message: redact("the dependency is absent"),
+            message: DiagnosticMessage::redacted("the dependency is absent"),
         }
     }
 
@@ -913,7 +947,7 @@ mod tests {
         let mut machine = machine_at(LifecycleState::Loaded);
         let mod_id = id("example_mod");
         assert_eq!(
-            machine.claim_registry_identifier_describing(
+            machine.claim_registry_identifier(
                 &mod_id,
                 &"block:example_mod:block".parse().expect("valid key"),
                 None,
@@ -929,7 +963,7 @@ mod tests {
             .advance(&mod_id, LifecycleState::Constructed)
             .expect("legal");
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &mod_id,
                 &"block:example_mod:block".parse().expect("valid key"),
                 None,
@@ -966,14 +1000,14 @@ mod tests {
 
         // Claim order differs from identifier order.
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &id("second_mod"),
                 &"item:second_mod:ingot".parse().expect("valid key"),
                 None,
             )
             .expect("accepted");
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &id("first_mod"),
                 &"block:first_mod:copper".parse().expect("valid key"),
                 None,
@@ -1017,7 +1051,7 @@ mod tests {
         .map(|key| key.parse().expect("valid key"));
         for key in expected.iter().rev() {
             machine
-                .claim_registry_identifier_describing(&id("example_mod"), key, None)
+                .claim_registry_identifier(&id("example_mod"), key, None)
                 .expect("accepted claim");
         }
         assert_eq!(
@@ -1032,7 +1066,7 @@ mod tests {
         let mut machine = machine_at(LifecycleState::Constructed);
         let mod_id = id("example_mod");
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &mod_id,
                 &"block:example_mod:obsidian".parse().expect("valid key"),
                 Some(ContentBehaviour::Block(ravel_data::BlockBehaviour {
@@ -1044,7 +1078,7 @@ mod tests {
             )
             .expect("accepted");
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &mod_id,
                 &"item:example_mod:ingot".parse().expect("valid key"),
                 None,
@@ -1078,7 +1112,7 @@ mod tests {
         let mod_id = id("example_mod");
 
         let error = machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &mod_id,
                 &"item:example_mod:copper".parse().expect("valid key"),
                 Some(ContentBehaviour::Block(
@@ -1105,7 +1139,7 @@ mod tests {
         let foreign = "block:other_mod:copper".parse().expect("valid key");
         let mod_id = id("example_mod");
         assert_eq!(
-            machine.claim_registry_identifier_describing(&mod_id, &foreign, None),
+            machine.claim_registry_identifier(&mod_id, &foreign, None),
             Err(LifecycleError::ForeignRegistryClaim {
                 key: foreign.clone(),
                 mod_id: mod_id.clone(),
@@ -1133,7 +1167,7 @@ mod tests {
             declaration: ContentDeclaration,
         }
 
-        impl HostMod for ForeignDeclaration {
+        impl Mod for ForeignDeclaration {
             fn id(&self) -> &ModId {
                 &self.id
             }
@@ -1163,7 +1197,7 @@ mod tests {
             LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
                 .expect("valid plan");
         let error = crate::drive_loaded(
-            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &attribution("example_mod", LifecycleState::Constructed).environment,
         )
@@ -1177,7 +1211,7 @@ mod tests {
         };
         assert_eq!(
             source,
-            HostError::Refused {
+            HostError::OperationRefused {
                 mod_id: id("example_mod"),
                 state: LifecycleState::Constructed,
                 detail: "`example_mod` cannot register `block:other_mod:copper` in another mod's namespace"
@@ -1198,7 +1232,7 @@ mod tests {
         struct Mismatched {
             owner: ModId,
         }
-        impl HostMod for Mismatched {
+        impl Mod for Mismatched {
             fn id(&self) -> &ModId {
                 &self.owner
             }
@@ -1227,7 +1261,7 @@ mod tests {
             owner: id("example_mod"),
         };
         crate::drive_loaded(
-            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &attribution("example_mod", LifecycleState::Constructed).environment,
         )
@@ -1243,7 +1277,7 @@ mod tests {
         assert_eq!(failure.state, LifecycleState::Constructed);
         assert_eq!(machine.claimed_content().count(), 0);
         machine
-            .world_access()
+            .lifecycle_world_access()
             .expect("optional failure permits world access");
     }
 
@@ -1267,14 +1301,14 @@ mod tests {
         }
 
         machine
-            .claim_registry_identifier_describing(
+            .claim_registry_identifier(
                 &id("first_mod"),
                 &"block:first_mod:block".parse().expect("valid key"),
                 None,
             )
             .expect("the first claim is accepted");
         assert_eq!(
-            machine.claim_registry_identifier_describing(
+            machine.claim_registry_identifier(
                 &id("first_mod"),
                 &"block:first_mod:block".parse().expect("valid key"),
                 None,
@@ -1370,7 +1404,7 @@ mod tests {
             Err(refusal())
         );
         assert_eq!(
-            machine.claim_registry_identifier_describing(
+            machine.claim_registry_identifier(
                 &unknown,
                 &"block:other_mod:block".parse().expect("valid key"),
                 None,
@@ -1391,7 +1425,9 @@ mod tests {
             .advance_all(LifecycleState::Validated)
             .expect("legal");
         assert_eq!(machine.transcript(), []);
-        machine.world_access().expect("nothing blocks an empty set");
+        machine
+            .lifecycle_world_access()
+            .expect("nothing blocks an empty set");
         machine.save_access().expect("nothing halted an empty set");
     }
 
@@ -1583,7 +1619,7 @@ mod tests {
                 "every lifecycle message is written here: {error:?}"
             );
             assert_eq!(
-                redact(diagnostic.text()).text(),
+                DiagnosticMessage::redacted(diagnostic.text()).text(),
                 expected,
                 "a lifecycle message names mods, so the policy has nothing to take"
             );

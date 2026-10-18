@@ -12,7 +12,7 @@ use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath, Side,
 use ravel_data::{ContentDeclaration, TagId};
 use ravel_example_content_mod::ContentMod;
 use ravel_pack::{
-    ClosureError, PackDeclaration, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE,
+    ClosureError, PackDeclaration, PackError, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE,
     ValidatedPack, validate,
 };
 use ravel_package::PackageManifest;
@@ -207,23 +207,24 @@ fn a_pack_referring_to_a_resource_nothing_supplies_is_refused_naming_the_referre
     );
 
     let mut supplied = pack.clone();
-    supplied.supply(
-        path("assets/example_pack/textures/gui/progress.png"),
-        b"\x89PNG".to_vec(),
-    );
+    supplied
+        .supply(
+            path("assets/example_pack/textures/gui/progress.png"),
+            b"\x89PNG".to_vec(),
+        )
+        .expect("the path is supplied once");
     validate(&supplied, &manifests, &content, &[]).expect("the pack supplies what it refers to");
 }
 
 #[test]
 fn a_pack_supplying_one_path_twice_is_refused() {
-    let (mut pack, manifests, content) = one_member();
+    let (mut pack, _, _) = one_member();
     let recipe = path("data/example_pack/recipe/copper_lantern.json");
-    pack.supply(recipe.clone(), b"{}\n".to_vec());
-    pack.supply(recipe.clone(), b"{\"changed\": true}\n".to_vec());
-
+    pack.supply(recipe.clone(), b"{}\n".to_vec())
+        .expect("the first supply succeeds");
     assert_eq!(
-        validate(&pack, &manifests, &content, &[]),
-        Err(ClosureError::SuppliedTwice { path: recipe })
+        pack.supply(recipe.clone(), b"{\"changed\": true}\n".to_vec()),
+        Err(PackError::SuppliedTwice { path: recipe })
     );
 }
 
@@ -492,7 +493,8 @@ fn every_kind_of_file() -> (
     pack.supply(
         path("data/example_pack/recipe/copper_lantern.json"),
         b"{\n  \"result\": \"content:copper_lantern\"\n}\n".to_vec(),
-    );
+    )
+    .expect("the recipe is supplied once");
     (pack, manifests, content)
 }
 

@@ -52,7 +52,7 @@ pub fn check_identifier(candidate: &str) -> Result<(), ModIdError> {
         } else if character.is_ascii_lowercase() || character.is_ascii_digit() {
             pending_separator = None;
         } else if SEPARATORS.contains(&character) {
-            if pending_separator.is_some() {
+            if let Some((character, index)) = pending_separator {
                 return Err(ModIdError::Separator { character, index });
             }
             pending_separator = Some((character, index));
@@ -113,7 +113,7 @@ pub enum ModIdError {
         /// Zero-based character index of the rejection.
         index: usize,
     },
-    /// A separator ends the id or immediately follows another separator.
+    /// A separator is not followed by a letter or digit.
     Separator {
         /// The misplaced separator.
         character: char,
@@ -217,14 +217,14 @@ mod tests {
                 "example__mod",
                 ModIdError::Separator {
                     character: '_',
-                    index: 8,
+                    index: 7,
                 },
             ),
             (
                 "example-.mod",
                 ModIdError::Separator {
-                    character: '.',
-                    index: 8,
+                    character: '-',
+                    index: 7,
                 },
             ),
             (
@@ -237,6 +237,21 @@ mod tests {
         ] {
             assert_eq!(candidate.parse::<ModId>(), Err(expected), "{candidate}");
         }
+    }
+
+    #[test]
+    fn doubled_separator_diagnostic_names_the_separator_without_a_letter_after_it() {
+        let refusal = "example-.mod"
+            .parse::<ModId>()
+            .expect_err("adjacent separators");
+        assert!(
+            refusal.to_string().contains("`-` at character 7"),
+            "{refusal}"
+        );
+        assert!(
+            !refusal.to_string().contains("`.` at character 8"),
+            "{refusal}"
+        );
     }
 
     #[test]

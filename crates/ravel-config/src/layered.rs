@@ -237,7 +237,7 @@ impl LayeredConfiguration {
     }
 
     /// Returns a boolean from a setting declared as boolean.
-    pub fn boolean(&self, key: &SettingKey) -> Result<bool, ValueError> {
+    pub fn boolean(&self, key: &str) -> Result<bool, ValueError> {
         self.typed_value(key, ValueKind::Boolean)?
             .as_bool()
             .ok_or(ValueError::Kind {
@@ -247,14 +247,14 @@ impl LayeredConfiguration {
     }
 
     /// Returns a signed integer from a setting declared as integer.
-    pub fn integer(&self, key: &SettingKey) -> Result<i64, ValueError> {
+    pub fn integer(&self, key: &str) -> Result<i64, ValueError> {
         self.typed_value(key, ValueKind::Integer)?
             .as_i64()
             .ok_or(ValueError::IntegerRange)
     }
 
     /// Returns a number from a setting declared as number.
-    pub fn number(&self, key: &SettingKey) -> Result<f64, ValueError> {
+    pub fn number(&self, key: &str) -> Result<f64, ValueError> {
         self.typed_value(key, ValueKind::Number)?
             .as_f64()
             .ok_or(ValueError::Kind {
@@ -267,7 +267,7 @@ impl LayeredConfiguration {
     ///
     /// Closed choices also require `"type": "string"`; an enum alone does not
     /// establish a scalar kind.
-    pub fn text(&self, key: &SettingKey) -> Result<&str, ValueError> {
+    pub fn text(&self, key: &str) -> Result<&str, ValueError> {
         self.typed_value(key, ValueKind::String)?
             .as_str()
             .ok_or(ValueError::Kind {
@@ -276,11 +276,15 @@ impl LayeredConfiguration {
             })
     }
 
-    fn typed_value(&self, key: &SettingKey, expected: ValueKind) -> Result<&Value, ValueError> {
+    fn typed_value(&self, key: &str, expected: ValueKind) -> Result<&Value, ValueError> {
         let setting = self
             .declaration
-            .setting(key)
-            .ok_or_else(|| ValueError::Unknown { key: key.clone() })?;
+            .settings()
+            .iter()
+            .find(|setting| setting.key.as_str() == key)
+            .ok_or_else(|| ValueError::Unknown {
+                key: key.to_owned(),
+            })?;
         let declared = setting.value_schema.kind;
         if declared != Some(expected) {
             return Err(ValueError::AccessKind { expected, declared });
@@ -631,29 +635,37 @@ mod tests {
     #[test]
     fn typed_accessors_follow_layers_and_enforce_declared_kinds() {
         let mut config = resolved(None, Some(&document(&[("render.distance", json!(20))])));
-        assert_eq!(config.integer(&key("render.distance")), Ok(20));
-        assert_eq!(config.text(&key("world.difficulty")), Ok("calm"));
+        assert_eq!(config.integer("render.distance"), Ok(20));
+        assert_eq!(config.text("world.difficulty"), Ok("calm"));
         assert_eq!(
-            config.boolean(&key("render.distance")),
+            config.boolean("render.distance"),
             Err(ValueError::AccessKind {
                 expected: ValueKind::Boolean,
                 declared: Some(ValueKind::Integer),
             })
         );
         assert_eq!(
-            config.text(&key("absent")),
-            Err(ValueError::Unknown { key: key("absent") })
+            config.text("absent"),
+            Err(ValueError::Unknown {
+                key: "absent".to_owned()
+            })
+        );
+        assert_eq!(
+            config.integer("Not a setting"),
+            Err(ValueError::Unknown {
+                key: "Not a setting".to_owned()
+            })
         );
         config
             .set(&key("engine.threads"), json!(8), Side::Client)
             .expect("a valid edit");
-        assert_eq!(config.integer(&key("engine.threads")), Ok(4));
+        assert_eq!(config.integer("engine.threads"), Ok(4));
         let pack = document(&[
             ("world.difficulty", json!("harsh")),
             ("server.motd", json!("pack")),
         ]);
         assert_eq!(
-            resolved(Some(&pack), None).text(&key("world.difficulty")),
+            resolved(Some(&pack), None).text("world.difficulty"),
             Ok("harsh")
         );
     }
@@ -668,11 +680,11 @@ mod tests {
             {"key":"untyped","valueSchema":{},"default":true,"side":"common","restartRequired":false}
           ]}"#).expect("valid defaults");
         let config = LayeredConfiguration::resolve(declaration, None, None).expect("valid layers");
-        assert_eq!(config.boolean(&key("enabled")), Ok(true));
-        assert_eq!(config.number(&key("ratio")), Ok(1.5));
-        assert_eq!(config.integer(&key("large")), Err(ValueError::IntegerRange));
+        assert_eq!(config.boolean("enabled"), Ok(true));
+        assert_eq!(config.number("ratio"), Ok(1.5));
+        assert_eq!(config.integer("large"), Err(ValueError::IntegerRange));
         assert_eq!(
-            config.boolean(&key("untyped")),
+            config.boolean("untyped"),
             Err(ValueError::AccessKind {
                 expected: ValueKind::Boolean,
                 declared: None,

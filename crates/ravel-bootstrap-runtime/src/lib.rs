@@ -6,27 +6,26 @@ mod content;
 mod dispatch;
 mod game_directory;
 mod guard;
+mod invocations;
 mod legacy;
 mod mods;
 pub mod outward;
 mod packs;
 mod persistence;
 mod profiling;
-mod report;
 mod runtime;
 mod settings;
 mod side;
 mod wire;
 
 pub use guard::HookError;
-pub use packs::write_world_pack;
-pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
+pub use packs::{write_resource_pack, write_world_pack};
+pub use persistence::{OpenOutcome, SaveOutcome, open_world_data, save_world_data};
 /// Whether declared adapter capabilities select the legacy game surface.
 pub use ravel_minecraft_adapter::pinned::LEGACY_ADAPTER;
 pub use runtime::{
-    Composition, InstallError, LaunchContext, LoaderRuntime, data_pack_metadata, environment,
-    install, install_integrated, install_panic_hook, integrated_installed, is_installed,
-    pre_world_report, resource_pack_metadata,
+    Composition, InstallError, environment, install, install_integrated, install_panic_hook,
+    integrated_installed, is_installed, pre_world_report,
 };
 pub use side::{SideError, side};
 
@@ -35,6 +34,7 @@ pub mod exports {
     pub use crate::content::ravel_admitted_content;
     #[cfg(test)]
     pub use crate::guard::tests::generated_export;
+    pub use crate::invocations::native_invocations;
     pub use crate::legacy::{
         ravel_legacy_command, ravel_legacy_commands, ravel_legacy_event, ravel_legacy_packet,
         ravel_legacy_packet_owner, ravel_legacy_resource, ravel_legacy_resource_paths,
@@ -45,7 +45,6 @@ pub mod exports {
         ravel_write_staged_datapack, ravel_write_world_datapack,
     };
     pub use crate::profiling::ravel_profiling_report;
-    pub use crate::report::native_invocations;
     pub use crate::settings::{
         ravel_save_settings, ravel_settings_crossings, ravel_settings_document,
     };

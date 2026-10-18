@@ -2,7 +2,7 @@
 
 //! Configuration schema and generated-UI test mod.
 
-use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
+use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -69,10 +69,10 @@ impl ConfigurationMod {
             )));
         }
         self.enabled = configuration
-            .boolean(&key(ENABLED))
+            .boolean(ENABLED)
             .map_err(ModError::from_display)?;
         configuration
-            .text(&key(PROFILE))
+            .text(PROFILE)
             .map_err(ModError::from_display)?
             .clone_into(&mut self.profile);
         Ok(())
@@ -130,10 +130,6 @@ impl Mod for ConfigurationMod {
     }
 }
 
-fn key(value: &str) -> SettingKey {
-    value.parse().expect("a declared setting key")
-}
-
 #[cfg(test)]
 mod tests {
     use ravel_sdk::config::{
@@ -141,7 +137,7 @@ mod tests {
     };
     use ravel_sdk::{JsonValue, LifecycleState, Mod, ModId, Side, json};
 
-    use super::{ConfigurationMod, MOD_ID, key};
+    use super::{ConfigurationMod, MOD_ID};
 
     fn document(values: &JsonValue) -> ValueDocument {
         ValueDocument::parse(
@@ -237,7 +233,7 @@ mod tests {
         assert_eq!(configuration.rejected().len(), 1);
         assert!(
             configuration
-                .boolean(&key("client.enabled"))
+                .boolean("client.enabled")
                 .expect("the setting is a boolean")
         );
     }

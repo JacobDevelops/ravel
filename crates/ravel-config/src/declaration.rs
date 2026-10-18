@@ -638,7 +638,7 @@ mod tests {
                 "render..distance",
                 SettingKeyError::Separator {
                     character: '.',
-                    index: 7,
+                    index: 6,
                 },
             ),
         ] {

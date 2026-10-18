@@ -174,7 +174,7 @@ pub mod state {
     use ravel_sdk::JsonValue;
     use ravel_sdk::json;
     use ravel_sdk::prelude::*;
-    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
+    use ravel_sdk::save::SavedDataEnvelope;
 
     /// A mod that owns one list of entries in every world.
     #[derive(Default)]
@@ -230,7 +230,6 @@ pub mod state {
         fn open_saved_data(
             &mut self,
             envelope: Option<&SavedDataEnvelope>,
-            _plan: &SavedDataPlan,
         ) -> Result<(), ModError> {
             let Some(envelope) = envelope else {
                 self.entries.clear();
@@ -286,9 +285,9 @@ pub mod settings {
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-            let key: SettingKey = CAPACITY.parse().expect("the key this mod declared");
-            self.capacity = u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
-                .map_err(ModError::from_display)?;
+            self.capacity =
+                u64::try_from(resolved.integer(CAPACITY).map_err(ModError::from_display)?)
+                    .map_err(ModError::from_display)?;
             Ok(())
         }
     }
@@ -532,10 +531,8 @@ mod tests {
             current,
             payload,
         );
-        let plan = SavedDataPlan::open(&declaration, Some(current))
-            .expect("the current version is admissible");
         state
-            .open_saved_data(Some(&stored), &plan)
+            .open_saved_data(Some(&stored))
             .expect("the callback reads the loader's current payload");
 
         let saved = state
@@ -548,13 +545,8 @@ mod tests {
     #[test]
     fn a_world_holding_nothing_this_mod_owns_initializes_fresh() {
         let mut state = crate::state::CopperLanterns::default();
-        let declaration = state
-            .saved_data_declaration()
-            .expect("valid saved-data declaration")
-            .expect("this mod owns world data");
-        let plan = SavedDataPlan::open(&declaration, None).expect("absence initializes");
         state
-            .open_saved_data(None, &plan)
+            .open_saved_data(None)
             .expect("absence is not a refusal");
         let saved = state
             .save_saved_data()
@@ -650,7 +642,7 @@ mod tests {
         assert!(
             refused
                 .use_services(&mut Fixed(Err(ServiceCallFailed::Refused(
-                    ravel_sdk::HostError::Refused {
+                    ravel_sdk::HostError::OperationRefused {
                         mod_id: crate::optional_service::Compass::declared_id().clone(),
                         state: LifecycleState::Running,
                         detail: "no survey loaded".to_owned(),

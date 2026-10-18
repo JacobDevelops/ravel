@@ -45,7 +45,7 @@ fn an_installed_optional_provider_is_composed_before_the_mod_that_may_use_it() {
 
     // Supply the consumer first so slice order cannot satisfy the dependency.
     let opened = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut compass, &mut survey],
         )
@@ -76,11 +76,8 @@ fn the_same_compass_alone_loads_and_records_doing_without() {
     let mut machine = machine(vec![entry(CompassMod::declared_id(), &[SIDE])]);
 
     let opened = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut compass],
-        )
-        .expect("all active mods have hosts"),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut compass])
+            .expect("all active mods have hosts"),
         &environment(),
     )
     .expect("an absent provider refuses nothing");
@@ -103,7 +100,7 @@ fn an_optional_provider_this_side_parks_is_absence_rather_than_a_refusal() {
     ]);
 
     let opened = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut compass, &mut survey],
         )
@@ -127,7 +124,7 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
     ]);
 
     let refusal = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut compass, &mut survey],
         )
@@ -138,7 +135,7 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
 
     assert!(matches!(
         refusal,
-        ServiceRefused::Consumer { ref mod_id, .. } if mod_id == SurveyMod::declared_id()
+        ServiceRefused::Mod { ref mod_id, .. } if mod_id == SurveyMod::declared_id()
     ));
     let rendered = refusal.to_string();
     assert!(rendered.contains("no chart loaded"), "{rendered}");
@@ -162,11 +159,8 @@ fn a_required_service_nothing_answers_still_refuses_the_whole_set() {
 
     assert_eq!(
         open_services(
-            &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-                &mut machine,
-                &mut [&mut shop],
-            )
-            .expect("all active mods have hosts"),
+            &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut shop],)
+                .expect("all active mods have hosts"),
             &environment(),
         ),
         Err(ServiceRefused::NoProvider {
@@ -187,7 +181,7 @@ fn a_required_and_an_optional_consumer_of_the_same_absent_provider_disagree() {
     ]);
 
     let refusal = open_services(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut compass, &mut shop],
         )

@@ -9,8 +9,7 @@ use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
 use ravel_sdk::save::{
-    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion,
+    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion,
 };
 use ravel_sdk::services::{
     ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
@@ -209,11 +208,12 @@ impl Mod for StockMod {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key = RESTOCK_SIZE
-            .parse()
-            .map_err(|_| ModError::refused("this mod's own setting key is not a legal key"))?;
-        self.restock_size = u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
-            .map_err(ModError::from_display)?;
+        self.restock_size = u64::try_from(
+            resolved
+                .integer(RESTOCK_SIZE)
+                .map_err(ModError::from_display)?,
+        )
+        .map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -230,11 +230,7 @@ impl Mod for StockMod {
     /// # Errors
     ///
     /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        _plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             return Ok(());
         };
@@ -367,9 +363,7 @@ mod tests {
             .apply(&plan, payload)
             .map_err(ModError::from_display)?;
         let current = stock.declaration()?.current();
-        let plan =
-            SavedDataPlan::open(&stock.declaration()?, Some(current)).expect("the current version");
-        stock.open_saved_data(Some(&envelope(current.get(), payload)), &plan)?;
+        stock.open_saved_data(Some(&envelope(current.get(), payload)))?;
         Ok(stock)
     }
 
@@ -428,14 +422,9 @@ mod tests {
         // And nothing was read: a refused world leaves this mod holding nothing,
         // which is what stops a refusal reading as a world that opened empty.
         let mut stock = StockMod::new();
-        let plan = SavedDataPlan::open(
-            &stock.declaration().expect("valid declaration"),
-            Some(version(1)),
-        )
-        .expect("a declared version");
         assert!(
             stock
-                .open_saved_data(Some(&envelope(1, json!({ "count": 12 }))), &plan)
+                .open_saved_data(Some(&envelope(1, json!({ "count": 12 }))))
                 .is_err()
         );
         assert_eq!(stock.stock(), &Stock::default());
@@ -444,11 +433,7 @@ mod tests {
     #[test]
     fn absence_leaves_fresh_state_rather_than_refusing() {
         let mut stock = StockMod::new();
-        let plan = SavedDataPlan::open(&stock.declaration().expect("valid declaration"), None)
-            .expect("absence is fresh");
-        stock
-            .open_saved_data(None, &plan)
-            .expect("absence initializes");
+        stock.open_saved_data(None).expect("absence initializes");
         assert_eq!(stock.stock(), &Stock::default());
     }
 
@@ -465,13 +450,8 @@ mod tests {
         );
 
         let mut reopened = StockMod::new();
-        let plan = SavedDataPlan::open(
-            &reopened.declaration().expect("valid declaration"),
-            Some(envelope.data_version()),
-        )
-        .expect("the current version");
         reopened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("its own shape");
         assert_eq!(reopened.stock(), opened.stock());
     }

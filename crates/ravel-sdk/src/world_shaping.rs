@@ -17,7 +17,7 @@
 //! at_creation.declare(caves.clone());
 //!
 //! let written = ShapingRecord::at_creation(&at_creation);
-//! let read = ShapingRecord::read(&written.bytes()).expect("what was written reads back");
+//! let read = ShapingRecord::read(&written.to_bytes()).expect("what was written reads back");
 //! assert_eq!(read.mods(), [terrain.clone(), caves.clone()]);
 //!
 //! // The same set opens the world; one of them gone does not.

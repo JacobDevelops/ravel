@@ -1,13 +1,14 @@
 //! Saved-data fixture admission, migration, byte round trips, and refusal boundaries.
 //!
-//! These tests model the host's open/save sequence; bootstrap tests own JNI delivery.
+//! These tests exercise the public loader open pipeline; bootstrap tests own JNI delivery.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure, Version};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_host_api::HostError;
+use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, SaveRefused};
 use ravel_save::{
     MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope,
     SavedDataError, SavedDataPlan, SavedDataVersion,
@@ -95,12 +96,9 @@ fn running(saved: &mut SavedDataMod) -> LifecycleMachine {
     let mut machine =
         LifecycleMachine::new(Side::Client, vec![entry(saved)]).expect("a legal lifecycle plan");
     ravel_loader::drive_loaded(
-        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [saved],
-        )
-        .expect("all active mods have hosts"),
-        &ravel_host_runtime::environment(),
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [saved])
+            .expect("all active mods have hosts"),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the production driver starts the saved-data mod");
     machine
@@ -201,6 +199,19 @@ fn admit(bytes: Option<&[u8]>) -> Result<SavedDataAggregate, SavedDataError> {
     )
 }
 
+// One envelope this mod owns, at `version`, outside any fixture world.
+fn world_holding(version: SavedDataVersion, payload: Value) -> Vec<u8> {
+    let mut aggregate = SavedDataAggregate::fresh();
+    aggregate.replace(SavedDataEnvelope::new(
+        MOD_ID.parse().expect("a legal mod id"),
+        version,
+        Vec::new(),
+        Some("urn:ravel:test:saved-state:1".to_owned()),
+        payload,
+    ));
+    aggregate.to_bytes().expect("one small envelope is bounded")
+}
+
 fn emitted(saved: &SavedDataMod) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
     if let Some(envelope) = saved
@@ -214,16 +225,21 @@ fn emitted(saved: &SavedDataMod) -> Vec<u8> {
         .expect("one small envelope is under the ceiling")
 }
 
-fn reload(saved: &mut SavedDataMod, bytes: Option<&[u8]>) -> Result<SavedDataPlan, String> {
-    let declaration = saved.declaration().map_err(|error| error.to_string())?;
-    let aggregate = admit(bytes).map_err(|error| error.to_string())?;
+// The loader opens the world and delivers it; the plan names the steps it had to take.
+fn reload(saved: &mut SavedDataMod, bytes: Option<&[u8]>) -> Result<SavedDataPlan, SaveRefused> {
+    let mut machine = running(saved);
+    ravel_loader::open_saved_data(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut *saved])
+            .expect("the saved-data mod is loaded"),
+        &ravel_bootstrap_runtime::environment(),
+        bytes,
+        &installation(),
+    )?;
+    let declaration = saved.declaration().map_err(SaveRefused::Data)?;
+    let aggregate = admit(bytes).map_err(SaveRefused::Data)?;
     let envelope = aggregate.envelope(declaration.owner());
-    let plan = SavedDataPlan::open(&declaration, envelope.map(SavedDataEnvelope::data_version))
-        .map_err(|error| error.to_string())?;
-    saved
-        .open_saved_data(envelope, &plan)
-        .map_err(|error| error.to_string())?;
-    Ok(plan)
+    SavedDataPlan::open(&declaration, envelope.map(SavedDataEnvelope::data_version))
+        .map_err(SaveRefused::Data)
 }
 
 #[test]
@@ -369,6 +385,7 @@ fn an_older_world_opens_and_names_every_version_it_steps_through() {
         "a plan that skipped a version would be migrating across a gap"
     );
     assert_eq!(saved.state().visits, held.visits + 1);
+    // Version 1 kept the spawn point implicit, so only the step into 2 names it.
     assert_eq!(saved.state().waypoints, ["spawn"]);
 
     let migrated = admit(Some(&emitted(&saved))).expect("what a migration produced is admissible");
@@ -377,10 +394,33 @@ fn an_older_world_opens_and_names_every_version_it_steps_through() {
         .expect("the owner that migrated is in what it saved");
     assert_eq!(envelope.data_version(), saved.current());
     assert_eq!(envelope.payload()["waypoints"], json!(["spawn"]));
+
+    // Version 2 stored waypoints in insertion order, duplicates included. Only the
+    // step into 3 sorts and deduplicates them, and a second step into 2 would add
+    // a spawn point this world never held.
+    let mut ordered = SavedDataMod::new();
+    let insertion_order = world_holding(
+        SavedDataVersion::new(2).expect("non-zero"),
+        json!({ "visits": 4, "waypoints": ["summit", "mine", "summit"] }),
+    );
+    let plan = reload(&mut ordered, Some(&insertion_order)).expect("this build reads version 2");
+
+    assert_eq!(
+        plan.steps(),
+        [SavedDataVersion::new(3).expect("non-zero")],
+        "a version-2 world steps only into the current version"
+    );
+    assert_eq!(
+        ordered.state(),
+        &SavedState {
+            visits: 5,
+            waypoints: vec!["mine".to_owned(), "summit".to_owned()],
+        }
+    );
 }
 
 #[test]
-fn a_world_from_a_newer_build_cannot_open() {
+fn aggregate_admission_rejects_data_from_a_newer_build() {
     let (version, _) = stored("future", MOD_ID).expect("`future` holds data");
     assert_eq!(version.get(), 9);
 
@@ -438,7 +478,10 @@ fn a_refused_world_never_reaches_the_mod_that_owns_its_data() {
 
         let refused = reload(&mut saved, Some(&bytes)).expect_err("this world does not open");
 
-        assert!(!refused.is_empty(), "`{name}` refused without saying why");
+        assert!(
+            !refused.to_string().is_empty(),
+            "`{name}` refused without saying why"
+        );
         assert_eq!(
             saved.state(),
             &before,
@@ -449,15 +492,7 @@ fn a_refused_world_never_reaches_the_mod_that_owns_its_data() {
 
 #[test]
 fn a_payload_its_owner_cannot_read_refuses_the_world_rather_than_opening_it_fresh() {
-    let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
-        MOD_ID.parse().expect("a legal mod id"),
-        SavedDataMod::new().current(),
-        Vec::new(),
-        Some("urn:ravel:test:saved-state:1".to_owned()),
-        json!({ "visits": "many" }),
-    ));
-    let bytes = aggregate.to_bytes().expect("one small envelope is bounded");
+    let bytes = world_holding(SavedDataMod::new().current(), json!({ "visits": "many" }));
 
     admit(Some(&bytes)).expect("nothing `ravel-save` decides refuses this world");
 
@@ -468,7 +503,19 @@ fn a_payload_its_owner_cannot_read_refuses_the_world_rather_than_opening_it_fres
     let refused = reload(&mut saved, Some(&bytes))
         .expect_err("a payload its owner cannot read opens no world");
 
-    assert_eq!(refused, r#"invalid type: string "many", expected u32"#);
+    let owner: ModId = MOD_ID.parse().expect("a legal mod id");
+    assert_eq!(refused.mod_id(), Some(&owner));
+    let source = std::error::Error::source(&refused)
+        .and_then(|source| source.downcast_ref::<HostError>())
+        .unwrap_or_else(|| panic!("the owner's own refusal is the source of {refused:?}"));
+    assert_eq!(
+        source,
+        &HostError::OperationRefused {
+            mod_id: owner,
+            state: LifecycleState::Running,
+            detail: r#"invalid type: string "many", expected u32"#.to_owned(),
+        }
+    );
     assert_eq!(
         saved.state(),
         &before,
@@ -529,11 +576,25 @@ fn an_envelope_schema_this_build_cannot_read_blames_its_owner() {
     assert_eq!(*schema, 2);
     assert_eq!(*current, 1);
 
-    let (version, _) = stored("unsupported-schema", MOD_ID).expect("the world holds this mod");
+    let (version, state) = stored("unsupported-schema", MOD_ID).expect("the world holds this mod");
     let mut opened = SavedDataMod::new();
+    let envelope = SavedDataEnvelope::new(
+        opened.id().clone(),
+        version,
+        Vec::new(),
+        Some("urn:ravel:test:saved-state:1".to_owned()),
+        serde_json::to_value(&state).expect("the fixture state serializes"),
+    );
     opened
-        .open(Some((version, SavedState::default())))
+        .open_saved_data(Some(&envelope))
         .expect("the data version this envelope carries opens on its own");
+    assert_eq!(
+        opened.state(),
+        &SavedState {
+            visits: state.visits + 1,
+            waypoints: state.waypoints,
+        }
+    );
 }
 
 #[test]

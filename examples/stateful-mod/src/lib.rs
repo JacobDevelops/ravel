@@ -9,8 +9,7 @@ use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
 use ravel_sdk::save::{
-    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion,
+    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion,
 };
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod, json};
@@ -164,10 +163,7 @@ impl Mod for Journal {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key = CAPACITY
-            .parse()
-            .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
-        let capacity = resolved.integer(&key).map_err(ModError::from_display)?;
+        let capacity = resolved.integer(CAPACITY).map_err(ModError::from_display)?;
         self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
         Ok(())
     }
@@ -185,11 +181,7 @@ impl Mod for Journal {
     /// # Errors
     ///
     /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        _plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             return Ok(());
         };
@@ -265,8 +257,6 @@ mod tests {
             .apply(&plan, payload)
             .map_err(ModError::from_display)?;
         let current = journal.declaration()?.current();
-        let plan = SavedDataPlan::open(&journal.declaration()?, Some(current))
-            .expect("the current version");
         let envelope = SavedDataEnvelope::new(
             Journal::declared_id().clone(),
             current,
@@ -274,7 +264,7 @@ mod tests {
             None,
             payload,
         );
-        journal.open_saved_data(Some(&envelope), &plan)?;
+        journal.open_saved_data(Some(&envelope))?;
         Ok(journal)
     }
 
@@ -321,13 +311,8 @@ mod tests {
             .expect("and produces an envelope");
 
         let mut reopened = configured();
-        let plan = SavedDataPlan::open(
-            &reopened.declaration().expect("valid declaration"),
-            Some(envelope.data_version()),
-        )
-        .expect("the current version");
         reopened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("its own shape");
         assert_eq!(reopened.entries(), journal.entries());
     }

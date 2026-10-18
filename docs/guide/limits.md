@@ -184,13 +184,14 @@ different from the three above in one way worth knowing: the thing a library
 declaration is usually *for* — getting one copy of a library loaded instead of
 several — is not waiting on anything, because it never applies. A mod is source
 your player's machine compiles, so a library two mods build on is an ordinary
-Cargo dependency and Cargo resolves it once. What `provision` decides is the part
-Cargo cannot see: that of the mods installed together, exactly one claims to
-supply `shared_maths`, and that the version it supplies is inside every range the
-others declared. `Provision::resolve` names the provider or refuses the set,
-naming the library and the mods on both sides. What no launch does yet is build
-one from the packages it composed — nothing today turns your `provides` into a
-fact about a running game, for the same reason nothing carries your packet.
+Cargo dependency and Cargo resolves it once. The SDK's `Provided` declaration
+records which library a mod claims to supply and at which version; it does not
+resolve the installed set. Host-owned `ravel_resolve::Provision::resolve` decides
+the part Cargo cannot see: that exactly one installed mod claims to supply
+`shared_maths`, and that its version satisfies every declared requirement. It
+names the provider or refuses the set, naming the library and the mods on both
+sides. No launch builds that resolver input from its composed packages yet:
+the SDK declaration alone is not a fact about a running game.
 
 **Configuration composition is fixed too.** The same launch path hardcodes which
 mods' settings are resolved. The pack layer itself is no longer fixed — a launch

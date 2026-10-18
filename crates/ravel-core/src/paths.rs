@@ -2,6 +2,17 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+/// Instance-private root, relative to the game directory.
+pub const INSTANCE_DIRECTORY: &str = "ravel";
+/// Installed package sources, relative to the game directory.
+pub const PACKAGES_DIRECTORY: &str = "ravel/mods";
+/// Pack configuration, relative to the game directory.
+pub const PACK_CONFIG_DIRECTORY: &str = "ravel/config";
+/// Generated host crate, relative to the instance-private root.
+pub const HOST_DIRECTORY: &str = "host";
+/// Seeded-pack record, relative to the instance-private root.
+pub const SEEDED_PACKS_FILE: &str = "seeded-packs";
+
 // ECMA `.` excludes these characters in the schema's `relativePath` pattern.
 const LINE_TERMINATORS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 

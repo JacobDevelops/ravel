@@ -16,7 +16,8 @@ use ravel_test_mod_registries::RegistriesMod;
 use ravel_test_mod_saved_data::SavedDataMod;
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
-pub use ravel_host_runtime::{Composition, LaunchError};
+pub use ravel_bootstrap_runtime::Composition;
+pub use ravel_host_runtime::LaunchError;
 
 // Admit the same manifests the members ship.
 const CONFIGURATION_PACKAGE: &str = include_str!("../../../test-mods/configuration/package.json");
@@ -373,7 +374,7 @@ mod tests {
             (CLIENT_ONLY_PACKAGE, client_owner()),
             (SERVER_ONLY_PACKAGE, server_owner()),
         ];
-        let running = ravel_host_runtime::environment();
+        let running = ravel_bootstrap_runtime::environment();
         for (document, expected) in manifests {
             let manifest =
                 ravel_package::PackageManifest::parse(document).expect("a shipped manifest parses");
@@ -415,9 +416,9 @@ mod tests {
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
-        let running = ravel_host_runtime::environment();
+        let running = ravel_bootstrap_runtime::environment();
         let root = game
-            .join(ravel_loader::PACKAGES_DIRECTORY)
+            .join(ravel_core::paths::PACKAGES_DIRECTORY)
             .join(format!("{id}-1.0.0"));
         std::fs::create_dir_all(root.join("src")).expect("a package directory is creatable");
         std::fs::write(

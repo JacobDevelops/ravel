@@ -6,18 +6,19 @@
 use std::collections::BTreeSet;
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::HostMod;
+use ravel_host_api::Mod;
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_resolve::Provision;
 use ravel_sdk::audio::AudioError;
-use ravel_sdk::interception::{Outcome, Points};
-use ravel_sdk::provision::{Provided, Provision};
+use ravel_sdk::interception::{Outcome, Point, Points};
+use ravel_sdk::provision::Provided;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration};
 use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
 use ravel_sdk::world_shaping::{ShapingRecord, WorldShaping};
 use ravel_sdk::{Declared, Version, VersionRange};
 use ravel_test_mod_audio::AudioMod;
 use ravel_test_mod_interception::{InterceptionMod, POINT};
-use ravel_test_mod_provision::{LIBRARY, ProvisionMod, VERSION};
+use ravel_test_mod_provision::{LIBRARY, ProvisionMod};
 use ravel_test_mod_render_stages::RenderStagesMod;
 use ravel_test_mod_server_data::ServerDataMod;
 use ravel_test_mod_world_shaping::WorldShapingMod;
@@ -40,13 +41,13 @@ fn entry(mod_id: &ModId) -> LifecycleEntry {
 }
 
 // Exercise the real registration barrier even though these mods declare no content.
-fn drive(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
+fn drive(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
     let entries: Vec<LifecycleEntry> = mods.iter().map(|host| entry(host.id())).collect();
     let mut machine =
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal lifecycle plan");
     ravel_loader::drive_loaded(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the production driver starts the set");
     machine
@@ -61,7 +62,7 @@ fn every_mod_written_against_a_new_module_is_an_ordinary_mod_to_the_loader() {
     let mut interception = InterceptionMod::new();
     let mut provision = ProvisionMod::new();
 
-    let mut mods: [&mut dyn HostMod; 6] = [
+    let mut mods: [&mut dyn Mod; 6] = [
         &mut server_data,
         &mut world_shaping,
         &mut audio,
@@ -143,7 +144,7 @@ fn a_second_claim_on_one_server_entry_is_refused_by_the_declaration() {
 fn what_a_world_stores_is_readable_without_the_reader_that_wrote_it() {
     let written = WorldShapingMod::record();
     let document: serde_json::Value =
-        serde_json::from_slice(&written.bytes()).expect("the record is a JSON document");
+        serde_json::from_slice(&written.to_bytes()).expect("the record is a JSON document");
 
     assert_eq!(document["format"], 1);
     assert_eq!(document["shaping"][0], "world_shaping");
@@ -173,7 +174,7 @@ fn bytes_that_are_not_a_shaping_record_are_refused_rather_than_guessed_at() {
 
     let mut shaping = WorldShaping::default();
     shaping.declare(id("terrain_probe"));
-    ShapingRecord::read(&ShapingRecord::at_creation(&shaping).bytes())
+    ShapingRecord::read(&ShapingRecord::at_creation(&shaping).to_bytes())
         .expect("what this capability wrote reads back");
 }
 
@@ -228,8 +229,8 @@ fn contributors_that_each_follow_the_other_are_refused_rather_than_ordered() {
     let second = id("second_probe");
 
     let mut stages = StageDeclaration::default();
-    stages.contribute(&first, RenderStage::AfterTerrain.as_str());
-    stages.contribute(&second, RenderStage::AfterTerrain.as_str());
+    stages.contribute(&first, RenderStage::AfterTerrain);
+    stages.contribute(&second, RenderStage::AfterTerrain);
     stages.after(&first, &second);
     stages.after(&second, &first);
 
@@ -241,11 +242,7 @@ fn contributors_that_each_follow_the_other_are_refused_rather_than_ordered() {
 
 #[test]
 fn a_contribution_to_a_stage_nothing_publishes_is_refused_at_declaration() {
-    let mut stages = StageDeclaration::default();
-    let refusal = stages
-        .contribute_checked(&id("probe"), "a_stage_nobody_publishes")
-        .expect_err("a stage nothing publishes cannot be contributed to");
-    assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
+    assert!(RenderStage::published("a_stage_nobody_publishes").is_none());
 }
 
 #[test]
@@ -269,7 +266,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         asked: bool,
     }
 
-    impl HostMod for Follower {
+    impl Mod for Follower {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -284,7 +281,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         {
             let mut declared =
                 ravel_sdk::interception::InterceptionDeclaration::new(self.id.clone());
-            declared.answer_at(POINT.as_str());
+            declared.answer_at(POINT);
             declared.after(&self.after);
             Ok(Some(declared))
         }
@@ -308,15 +305,16 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         after: InterceptionMod::declared_id().clone(),
         asked: false,
     };
-    let mut mods: Vec<&mut dyn HostMod> = vec![&mut follower, &mut guard];
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut follower, &mut guard];
     let mut machine = interception_machine(&mut mods);
 
-    let round = ravel_loader::intercept(
-        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
-            .expect("all active mods have hosts"),
-        POINT,
-    )
-    .expect("a legal set");
+    let environment = ravel_bootstrap_runtime::environment();
+    let mut loaded = ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
+        .expect("all active mods have hosts");
+    let admitted = ravel_loader::open_interceptions(&mut loaded, &environment)
+        .expect("declarations are admitted before dispatch");
+    let round =
+        ravel_loader::intercept(&mut loaded, &admitted, POINT, &environment).expect("a legal set");
     assert_eq!(
         follower.asked,
         round.asked().contains(&id("alpha_follower")),
@@ -325,7 +323,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
     round
 }
 
-fn interception_machine(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
+fn interception_machine(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
     let entries = [InterceptionMod::declared_id().clone(), id("alpha_follower")]
         .into_iter()
         .map(|mod_id| LifecycleEntry {
@@ -339,7 +337,7 @@ fn interception_machine(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
         LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal lifecycle plan");
     ravel_loader::drive_loaded(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the production driver starts the interception mods");
     machine
@@ -351,25 +349,14 @@ fn two_mods_replacing_one_outcome_are_refused_at_the_barrier_naming_both() {
     let second = id("second_probe");
 
     let mut points = Points::default();
-    points.replace_at(&first, "block_is_broken");
-    points.replace_at(&second, "block_is_broken");
+    points.replace_at(&first, Point::BlockIsBroken);
+    points.replace_at(&second, Point::BlockIsBroken);
 
     let refusal = points
         .admit()
         .expect_err("two replacements at one point are a conflict");
-    assert_eq!(refusal.point(), "block_is_broken");
+    assert_eq!(refusal.point(), Point::BlockIsBroken);
     assert_eq!(refusal.claimants(), [first, second]);
-}
-
-#[test]
-fn a_point_no_adapter_publishes_is_refused_rather_than_answered_empty() {
-    let mut points = Points::default();
-    points.answer_at(&id("probe"), "a_point_nobody_publishes");
-
-    let refusal = points
-        .admit()
-        .expect_err("a name nothing publishes names nothing");
-    assert_eq!(refusal.point(), "a_point_nobody_publishes");
 }
 
 #[test]
@@ -377,19 +364,22 @@ fn a_consumer_binds_to_the_one_provider_at_a_version_inside_the_range_it_asked_f
     let consumer = id("consumer_probe");
     let wanted = range(">=2, <3");
 
-    let resolved = ProvisionMod::supplying(&consumer, wanted.clone())
+    let mut provision = Provision::default();
+    let (library, version) = ProvisionMod::provided().into_parts();
+    provision.provides(ProvisionMod::declared_id(), library, version);
+    provision.requires(&consumer, LIBRARY, wanted.clone());
+    let resolved = provision
+        .resolve()
         .expect("one provider answers one requirement");
 
     assert_eq!(
         resolved.provider_of(LIBRARY),
         Some(ProvisionMod::declared_id())
     );
-    let bound: Version = resolved
+    let bound = resolved
         .version_of(LIBRARY)
-        .expect("the provider resolved at a version")
-        .parse()
-        .expect("the resolved version is a version");
-    assert!(wanted.matches(&bound), "{bound}");
+        .expect("the provider resolved at a version");
+    assert!(wanted.matches(bound), "{bound}");
     assert_eq!(resolved.libraries().collect::<Vec<&str>>(), [LIBRARY]);
 }
 
@@ -397,11 +387,14 @@ fn a_consumer_binds_to_the_one_provider_at_a_version_inside_the_range_it_asked_f
 fn two_mods_providing_one_library_are_refused_at_resolution_naming_both() {
     let rival = id("rival_probe");
 
-    let refusal = ProvisionMod::beside(
-        &rival,
-        Version::parse(VERSION).expect("the packaged version is valid"),
-    )
-    .expect_err("one launch takes one provider");
+    let mut provision = Provision::default();
+    let (library, version) = ProvisionMod::provided().into_parts();
+    provision.provides(ProvisionMod::declared_id(), library, version);
+    let (library, version) = Provided::new(LIBRARY, Version::new(2, 1, 0)).into_parts();
+    provision.provides(&rival, library, version);
+    let refusal = provision
+        .resolve()
+        .expect_err("one launch takes one provider");
 
     assert_eq!(refusal.library(), LIBRARY);
     assert_eq!(
@@ -417,7 +410,8 @@ fn no_version_that_answers_every_requirement_is_refused_naming_the_mod_left_out(
     let newer = id("newer_probe");
 
     let mut provision = Provision::default();
-    ProvisionMod::provide(&mut provision);
+    let (library, version) = ProvisionMod::provided().into_parts();
+    provision.provides(ProvisionMod::declared_id(), library, version);
     provision.requires(&older, LIBRARY, range("^1"));
     provision.requires(&newer, LIBRARY, range("^2"));
 
@@ -434,10 +428,7 @@ fn a_required_library_nothing_provides_is_refused_before_anything_runs() {
     let consumer = id("consumer_probe");
 
     let mut provision = Provision::default();
-    provision.provides(
-        &consumer,
-        Provided::new("shared_words", "1.0.0".parse().expect("a valid version")),
-    );
+    provision.provides(&consumer, "shared_words".to_owned(), Version::new(1, 0, 0));
     provision.requires(&consumer, "shared_numbers", range("^2"));
 
     let refusal = provision

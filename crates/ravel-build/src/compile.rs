@@ -8,28 +8,31 @@ use std::process::{Command, Stdio};
 use ravel_core::MINECRAFT_VERSION_SELECTION;
 
 use crate::error::BuildRefused;
-use crate::{HOST_LIBRARY, HostPlan, WORKSPACE_DIRECTORY};
+use crate::{HOST_LIBRARY, HostPlan};
+use ravel_core::paths::{HOST_DIRECTORY, INSTANCE_DIRECTORY};
 
 /// Writes changed generated files, compiles the selected version, and copies the host into the instance.
 ///
 /// # Errors
 /// Returns a refusal if writing, running Cargo, compiling, or finding the built library fails.
+///
+/// # Panics
+/// Panics if an internally generated file path violates the workspace-parent invariant.
 pub fn build(
     plan: &HostPlan,
     game_directory: &Path,
     cache: &Path,
     minecraft: &str,
 ) -> Result<PathBuf, BuildRefused> {
-    let workspace = game_directory.join(WORKSPACE_DIRECTORY);
+    let workspace = game_directory.join(INSTANCE_DIRECTORY);
     for (path, contents) in &plan.files {
         let target = workspace.join(path);
-        let parent = target.parent().ok_or_else(|| BuildRefused::Write {
-            file: path.clone(),
-            detail: "the generated path has no parent".to_owned(),
-        })?;
+        let parent = target
+            .parent()
+            .expect("generated relative files joined to the instance workspace have a parent");
         fs::create_dir_all(parent).map_err(|error| BuildRefused::Write {
             file: path.clone(),
-            detail: error.to_string(),
+            source: error,
         })?;
         // Preserve timestamps so an unchanged workspace stays warm.
         if fs::read_to_string(&target).is_ok_and(|existing| existing == *contents) {
@@ -37,7 +40,7 @@ pub fn build(
         }
         fs::write(&target, contents).map_err(|error| BuildRefused::Write {
             file: path.clone(),
-            detail: error.to_string(),
+            source: error,
         })?;
     }
     resolve_locked_graph(plan, &workspace, game_directory)?;
@@ -47,14 +50,12 @@ pub fn build(
         .arg("--release")
         .arg("--locked")
         .arg("--manifest-path")
-        .arg(workspace.join("host/Cargo.toml"))
+        .arg(workspace.join(HOST_DIRECTORY).join("Cargo.toml"))
         .arg("--target-dir")
         .arg(cache)
         .env(MINECRAFT_VERSION_SELECTION, minecraft)
         .output()
-        .map_err(|error| BuildRefused::Toolchain {
-            detail: error.to_string(),
-        })?;
+        .map_err(|error| BuildRefused::Toolchain { source: error })?;
     if !output.status.success() {
         return Err(BuildRefused::Compile {
             detail: redact(&String::from_utf8_lossy(&output.stderr), game_directory),
@@ -67,10 +68,10 @@ pub fn build(
         return Err(BuildRefused::MissingArtifact { library: name });
     }
     // The shared cache holds whichever instance built last; deliver an instance-owned copy.
-    let delivered = workspace.join("host").join(&name);
+    let delivered = workspace.join(HOST_DIRECTORY).join(&name);
     fs::copy(&built, &delivered).map_err(|error| BuildRefused::Write {
-        file: format!("host/{name}"),
-        detail: error.to_string(),
+        file: format!("{HOST_DIRECTORY}/{name}"),
+        source: error,
     })?;
     Ok(delivered)
 }
@@ -97,26 +98,23 @@ fn resolve_locked_graph(
     if fs::read_to_string(&lock).ok().as_deref() != Some(plan.installation_lock()) {
         fs::write(&lock, plan.installation_lock()).map_err(|error| BuildRefused::Write {
             file: "Cargo.lock".to_owned(),
-            detail: error.to_string(),
+            source: error,
         })?;
     }
     let output = Command::new("cargo")
         .args(["metadata", "--offline", "--format-version", "1"])
         .arg("--manifest-path")
-        .arg(workspace.join("host/Cargo.toml"))
+        .arg(workspace.join(HOST_DIRECTORY).join("Cargo.toml"))
         .stdout(Stdio::null())
         .output()
-        .map_err(|error| BuildRefused::Toolchain {
-            detail: error.to_string(),
-        })?;
+        .map_err(|error| BuildRefused::Toolchain { source: error })?;
     if !output.status.success() {
         return Err(BuildRefused::Compile {
             detail: redact(&String::from_utf8_lossy(&output.stderr), game_directory),
         });
     }
-    let resolved = fs::read_to_string(&lock).map_err(|error| BuildRefused::ResolvedLock {
-        detail: error.to_string(),
-    })?;
+    let resolved =
+        fs::read_to_string(&lock).map_err(|source| BuildRefused::ResolvedLockIo { source })?;
     let mods = plan
         .members()
         .iter()

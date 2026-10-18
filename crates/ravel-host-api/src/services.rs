@@ -514,7 +514,7 @@ mod tests {
         assert!(absent.is_absent());
 
         for other in [
-            ServiceCallFailed::Refused(HostError::Refused {
+            ServiceCallFailed::Refused(HostError::OperationRefused {
                 mod_id: id("base"),
                 state: LifecycleState::Constructed,
                 detail: "not today".to_owned(),

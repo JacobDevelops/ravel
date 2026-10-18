@@ -45,7 +45,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
-use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
+use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope};
 
 pub use crate::arithmetic::{Check32, Check64, Table64, clamp_energy, reported_energy};
 pub use crate::commands::{Argument, CommandKey, Commands, Declaration, ElementType, Shape};
@@ -324,13 +324,7 @@ impl Mod for Entry {
             .map_err(ModError::from_display)
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
-        // The declaration names one version, so no plan over it can name a step.
-        let _ = plan;
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.global = GlobalData::new();
             return Ok(());
@@ -513,12 +507,9 @@ mod tests {
             .expect("the envelope is well formed")
             .expect("a store holding something produces one");
 
-        let declaration = GlobalData::declaration().expect("the declared version is legal");
-        let plan = SavedDataPlan::open(&declaration, Some(declaration.current()))
-            .expect("the stored version is the declared one");
         let mut second = Entry::new(Side::Client);
         second
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("what was written reads back");
         assert_eq!(
             second
@@ -532,16 +523,12 @@ mod tests {
 
     #[test]
     fn a_world_holding_nothing_opens_the_store_empty_rather_than_refusing() {
-        let declaration = GlobalData::declaration().expect("the declared version is legal");
-        let plan = SavedDataPlan::open(&declaration, None).expect("absence initializes");
         let mut shared = Entry::new(Side::Client);
         shared
             .global_mut()
             .write(Side::DedicatedServer, "left_over", ravel_sdk::json!({}))
             .expect("a server reaches it");
-        shared
-            .open_saved_data(None, &plan)
-            .expect("absence initializes");
+        shared.open_saved_data(None).expect("absence initializes");
         assert!(
             shared.global().is_empty(),
             "a fresh world leaves nothing of the last one behind"
@@ -551,8 +538,6 @@ mod tests {
     #[test]
     fn a_payload_pinned_to_another_scope_withholds_the_world() {
         let declaration = GlobalData::declaration().expect("the declared version is legal");
-        let plan = SavedDataPlan::open(&declaration, Some(declaration.current()))
-            .expect("the stored version is the declared one");
         let envelope = SavedDataEnvelope::current(
             Entry::declared_id().clone(),
             declaration.current(),
@@ -560,7 +545,7 @@ mod tests {
         );
         let mut shared = Entry::new(Side::Client);
         assert!(
-            shared.open_saved_data(Some(&envelope), &plan).is_err(),
+            shared.open_saved_data(Some(&envelope)).is_err(),
             "a record stored against another scope is refused rather than adopted"
         );
     }

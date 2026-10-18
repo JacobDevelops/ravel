@@ -7,7 +7,7 @@ use std::num::NonZero;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
-    SavedDataPlan, SavedDataVersion,
+    SavedDataVersion,
 };
 use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, declare_mod};
 use serde::{Deserialize, Serialize};
@@ -52,35 +52,9 @@ pub struct SavedState {
     pub waypoints: Vec<String>,
 }
 
-/// A mod that owns versioned saved data and steps an older world forward.
+/// A mod that declares migrations for the loader and reads current saved data.
 ///
-/// `ROADMAP.md`'s M3-W4 row asks for a save test mod and a world fixture over
-/// the deciding half `ravel-save` already models. This mod is the owning side of
-/// that decision: it declares which versions it reads, hands them to
-/// [`SavedDataPlan`], and applies whatever steps the plan returns. It never
-/// decides admissibility itself, because a mod that could would be able to open
-/// a world `ravel-save` refused.
-///
-/// # Examples
-///
-/// ```
-/// use std::num::NonZero;
-///
-/// use ravel_test_mod_saved_data::{SavedDataMod, SavedState};
-///
-/// let mut saved = SavedDataMod::new();
-/// let version_one = NonZero::new(1).expect("a non-zero version");
-///
-/// // A version-1 world is stepped through every version above it.
-/// let plan = saved
-///     .open(Some((version_one, SavedState { visits: 4, waypoints: Vec::new() })))
-///     .expect("this build reads version 1");
-/// assert_eq!(plan.steps().len(), 2);
-///
-/// // Version 2 is what introduced the waypoint list, so the migration fills it.
-/// assert_eq!(saved.state().visits, 4);
-/// assert_eq!(saved.state().waypoints, ["spawn"]);
-/// ```
+/// The loader checks admission and applies the migration chain before delivery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SavedDataMod {
     entered: Vec<LifecycleState>,
@@ -125,42 +99,11 @@ impl SavedDataMod {
         Self::version(3)
     }
 
-    /// Opens what a world holds for this mod, stepping it to [`Self::current`].
-    ///
-    /// `stored` is `None` when the world holds nothing this mod owns. The plan
-    /// decides whether that opens, rather than this mod deciding it.
-    ///
-    /// # Errors
-    ///
-    /// Returns whatever [`SavedDataPlan::open`] refuses: a world written by a
-    /// newer build or one with no path across a gap in the declared versions.
-    /// Absence initializes fresh state. Nothing is applied to
-    /// [`Self::state`] unless the whole plan resolved, so a refused world leaves
-    /// the mod holding what it held before.
-    pub fn open(
-        &mut self,
-        stored: Option<(SavedDataVersion, SavedState)>,
-    ) -> Result<SavedDataPlan, SavedDataError> {
-        let declaration = self.declaration()?;
-        let Some((version, mut state)) = stored else {
-            let plan = SavedDataPlan::open(&declaration, None)?;
-            self.state = SavedState::default();
-            return Ok(plan);
-        };
-
-        let plan = SavedDataPlan::resolve(&declaration, version)?;
-        for step in plan.steps() {
-            Self::step(&mut state, *step);
-        }
-        self.state = state;
-        Ok(plan)
-    }
-
     /// Steps one version of the state forward into `to`.
     ///
     /// # Panics
     ///
-    /// Panics on a version this mod does not declare. [`SavedDataPlan`] only
+    /// Panics on a version this mod does not declare. `SavedDataPlan` only
     /// ever names declared versions, so reaching that arm would mean the plan
     /// and [`VERSIONS`] had stopped agreeing.
     fn step(state: &mut SavedState, to: SavedDataVersion) {
@@ -259,9 +202,7 @@ impl Default for SavedDataMod {
 impl Mod for SavedDataMod {
     /// Records the step and does nothing else.
     ///
-    /// Opening saved data is not driven from here. `SPEC.md` §14 decides it
-    /// before a world opens, which is earlier than any state a mod runs in, so
-    /// [`SavedDataMod::open`] is called by whatever is opening the world.
+    /// The loader migrates world data before invoking [`Mod::open_saved_data`].
     ///
     /// # Errors
     ///
@@ -288,10 +229,9 @@ impl Mod for SavedDataMod {
     /// Returns a [`ModError`] for an invalid key, a non-integer setting, or
     /// a limit this platform cannot represent.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key = WAYPOINT_LIMIT.parse().map_err(|_| {
-            ModError::refused(format!("`{WAYPOINT_LIMIT}` is not a legal setting key"))
-        })?;
-        let limit = resolved.integer(&key).map_err(ModError::from_display)?;
+        let limit = resolved
+            .integer(WAYPOINT_LIMIT)
+            .map_err(ModError::from_display)?;
         self.waypoint_limit = Some(usize::try_from(limit).map_err(ModError::from_display)?);
         Ok(())
     }
@@ -300,9 +240,8 @@ impl Mod for SavedDataMod {
     ///
     /// Each step is `SavedDataMod::step` over the stored payload, so there is one
     /// implementation of the transformation and not a second one that could
-    /// disagree with it. The chain exists because a host opening a world checks
-    /// that every declared version has a way into it before it reads a payload,
-    /// which is a check a typed `match` with a panicking arm cannot answer.
+    /// disagree with it. The loader checks completeness and applies this chain
+    /// before handing the current payload to [`Mod::open_saved_data`].
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
         Ok(Some(
             MigrationChain::new(Self::declared_id().clone())
@@ -311,26 +250,18 @@ impl Mod for SavedDataMod {
         ))
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
-        let state = envelope
-            .map(|stored| {
-                serde_json::from_value::<SavedState>(stored.payload().clone())
-                    .map(|state| (stored.data_version(), state))
-            })
-            .transpose()
-            .map_err(ModError::from_display)?;
-        let opened = self.open(state).map_err(ModError::from_display)?;
-        if opened != *plan {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
+        if envelope.is_some_and(|stored| stored.data_version() != self.current()) {
             return Err(ModError::refused(
-                "the admitted saved-data plan changed during delivery",
+                "saved data was not migrated to the current version",
             ));
         }
-        // Last, so a delivery this mod refused above counts no visit and leaves
-        // the state it was holding alone.
+        let state = envelope
+            .map(|stored| serde_json::from_value::<SavedState>(stored.payload().clone()))
+            .transpose()
+            .map_err(ModError::from_display)?
+            .unwrap_or_default();
+        self.state = state;
         self.open_counted();
         Ok(())
     }
@@ -382,11 +313,6 @@ mod tests {
         .expect("this build reads every version these tests name")
     }
 
-    /// What a world at `raw` holds, as [`SavedDataMod::open`] takes it.
-    fn at(raw: u32, state: SavedState) -> (SavedDataVersion, SavedState) {
-        (version(raw), state)
-    }
-
     #[test]
     fn the_mod_is_packaged_under_the_identity_it_reports() {
         let saved = SavedDataMod::new();
@@ -413,136 +339,90 @@ mod tests {
         assert_eq!(saved.current(), version(3));
     }
 
-    #[test]
-    fn a_world_already_at_the_written_version_opens_with_no_step_and_keeps_its_state() {
-        let mut saved = SavedDataMod::new();
-        let held = SavedState {
-            visits: 4,
-            waypoints: vec!["mine".to_owned(), "spawn".to_owned()],
-        };
-
-        let plan = saved
-            .open(Some(at(3, held.clone())))
-            .expect("the current version always opens");
-
-        assert!(plan.is_current());
-        assert_eq!(saved.state(), &held);
+    fn migrated(saved: &SavedDataMod, at: u32, payload: &JsonValue) -> JsonValue {
+        let plan = plan_from(saved, Some(at));
+        saved
+            .saved_data_migrations()
+            .expect("chain")
+            .expect("declared chain")
+            .apply(&plan, payload)
+            .expect("migration succeeds")
     }
 
     #[test]
-    fn an_older_world_is_stepped_through_every_version_between() {
+    fn current_payload_is_read_and_one_open_is_counted() {
         let mut saved = SavedDataMod::new();
+        saved
+            .open_saved_data(Some(&envelope(3, json!({"visits":4,"waypoints":["mine"]}))))
+            .expect("current payload");
+        assert_eq!(saved.state().visits, 5);
+        assert_eq!(saved.state().waypoints, ["mine"]);
+    }
 
-        let plan = saved
-            .open(Some(at(
-                1,
-                SavedState {
-                    visits: 4,
-                    waypoints: Vec::new(),
-                },
-            )))
-            .expect("this build reads version 1");
-
+    #[test]
+    fn loader_chain_crosses_every_version_from_one() {
+        let saved = SavedDataMod::new();
+        let plan = plan_from(&saved, Some(1));
         assert_eq!(plan.steps(), [version(2), version(3)]);
+        assert_eq!(
+            migrated(&saved, 1, &json!({"visits":4})),
+            json!({"visits":4,"waypoints":["spawn"]})
+        );
+    }
+
+    #[test]
+    fn loader_chain_canonicalizes_version_two_waypoints() {
+        let saved = SavedDataMod::new();
+        assert_eq!(
+            migrated(
+                &saved,
+                2,
+                &json!({"visits":1,"waypoints":["spawn","mine","mine"]})
+            ),
+            json!({"visits":1,"waypoints":["mine","spawn"]})
+        );
+    }
+
+    #[test]
+    fn absence_initializes_fresh_state_and_counts_opening() {
+        let mut saved = SavedDataMod::new();
+        saved.visit("stale");
+        saved.open_saved_data(None).expect("fresh world");
         assert_eq!(
             saved.state(),
             &SavedState {
-                visits: 4,
-                waypoints: vec!["spawn".to_owned()],
+                visits: 1,
+                waypoints: Vec::new()
             }
         );
     }
 
     #[test]
-    fn the_step_to_version_three_puts_waypoints_in_a_canonical_order() {
-        // Reached through `open` rather than by calling `step` directly, so what
-        // is tested is a migration the plan asked for.
+    fn a_noncurrent_payload_is_rejected_without_mutation() {
         let mut saved = SavedDataMod::new();
-        saved
-            .open(Some(at(
-                2,
-                SavedState {
-                    visits: 1,
-                    waypoints: vec!["mine".to_owned(), "spawn".to_owned(), "mine".to_owned()],
-                },
-            )))
-            .expect("this build reads version 2");
-
-        assert_eq!(saved.state().waypoints, ["mine", "spawn"]);
-    }
-
-    #[test]
-    fn a_world_holding_none_of_this_mods_data_initializes_fresh_state() {
-        let mut saved = SavedDataMod::new();
-        saved.visit("spawn");
-
-        let plan = saved.open(None).expect("absence is a fresh world");
-
-        assert!(plan.is_current());
-        assert_eq!(saved.state(), &SavedState::default());
-    }
-
-    #[test]
-    fn a_refused_world_leaves_the_mod_holding_what_it_held_before() {
-        let mut saved = SavedDataMod::new();
-        saved
-            .open(Some(at(
-                3,
-                SavedState {
-                    visits: 7,
-                    waypoints: vec!["spawn".to_owned()],
-                },
-            )))
-            .expect("the current version opens");
+        saved.visit("retained");
         let before = saved.state().clone();
-
-        // A world from a build that writes a version this one has never seen.
-        saved
-            .open(Some(at(9, SavedState::default())))
-            .expect_err("newer");
-        assert_eq!(saved.state(), &before);
+        for at in [1, 9] {
+            assert!(
+                saved
+                    .open_saved_data(Some(&envelope(at, json!({"visits":4}))))
+                    .is_err()
+            );
+            assert_eq!(saved.state(), &before);
+        }
     }
 
-    /// The delivery refusal this mod's own open step decides.
-    ///
-    /// Unreachable from the production crossing and asserted here anyway: the
-    /// host admits the whole stored value before delivering any envelope, so a
-    /// version this build cannot read is refused by `ravel-save` before this
-    /// method is called. That makes this the defensive half — if the two ever
-    /// stop agreeing, the mod is what refuses, and the refusal has to leave as an
-    /// `Err` rather than as a mod holding whatever it held.
     #[test]
-    fn a_stored_version_this_build_cannot_read_refuses_delivery() {
-        let mut saved = SavedDataMod::new();
-        let current = plan_from(&saved, None);
-
-        let refused = saved
-            .open_saved_data(Some(&envelope(9, json!({ "visits": 1 }))), &current)
-            .expect_err("a world from a newer build is not delivered");
-
-        assert!(refused.to_string().contains('9'), "{refused}");
-        assert_eq!(saved.state(), &SavedState::default());
-    }
-
-    /// A plan that stopped describing the envelope beside it refuses delivery.
-    ///
-    /// The loader migrates the envelope before delivery and passes the plan for
-    /// that current envelope. Recomputing it here defensively rejects a host
-    /// that accidentally delivers the pre-migration plan.
-    #[test]
-    fn a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery() {
-        let mut saved = SavedDataMod::new();
-        // A world already at the current version, handed the plan a version-1
-        // world would have resolved to.
-        let stale = plan_from(&saved, Some(1));
-
-        let refused = saved
-            .open_saved_data(Some(&envelope(3, json!({ "visits": 1 }))), &stale)
-            .expect_err("a plan that does not describe this envelope is not delivered");
-
+    fn malformed_payload_refuses_the_loader_migration_chain() {
+        let saved = SavedDataMod::new();
+        let plan = plan_from(&saved, Some(1));
         assert!(
-            refused.to_string().contains("changed during delivery"),
-            "{refused}"
+            saved
+                .saved_data_migrations()
+                .expect("chain")
+                .expect("declared chain")
+                .apply(&plan, &json!({"visits":"many"}))
+                .is_err()
         );
     }
 
@@ -556,10 +436,9 @@ mod tests {
         let mut saved = SavedDataMod::new();
         saved.visit("spawn");
         let before = saved.state().clone();
-        let current = plan_from(&saved, None);
 
         saved
-            .open_saved_data(Some(&envelope(3, json!({ "visits": "many" }))), &current)
+            .open_saved_data(Some(&envelope(3, json!({ "visits": "many" }))))
             .expect_err("a payload this mod cannot read is not delivered");
 
         assert_eq!(

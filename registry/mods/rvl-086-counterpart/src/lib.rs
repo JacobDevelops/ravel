@@ -304,8 +304,8 @@ impl Mod for Entry {
     fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
         declared
-            .answer_at(Point::BlockIsBroken.as_str())
-            .answer_at(Point::ItemIsUsed.as_str());
+            .answer_at(Point::BlockIsBroken)
+            .answer_at(Point::ItemIsUsed);
         Ok(Some(declared))
     }
 

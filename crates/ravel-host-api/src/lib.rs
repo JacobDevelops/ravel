@@ -7,9 +7,10 @@ mod provision;
 mod services;
 
 pub use interception::{
-    InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points, Round,
+    AdmittedPoints, InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points,
+    Round,
 };
-pub use provision::{Provided, Provision, ProvisionRefused, Resolved};
+pub use provision::Provided;
 pub use services::{
     ServiceCallFailed, ServiceDeclaration, ServiceDeclarationError, ServiceDirectory, ServiceId,
     ServiceRequest, ServiceResponse, ServiceUnavailable,
@@ -24,7 +25,7 @@ use ravel_core::{
 };
 use ravel_data::{ContentBehaviour, ContentDeclaration, PlayRequest};
 use ravel_network::PacketDelivery;
-use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
+use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope};
 
 /// A payload-free game occurrence a mod may observe.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -73,7 +74,7 @@ impl fmt::Display for GameEvent {
 pub struct CommandInvocation {
     /// The claimed key whose root literal was typed.
     pub key: RegistryKey,
-    /// The side the command ran on.
+    /// The executing side; singleplayer commands run on [`Side::IntegratedServer`].
     pub side: Side,
     /// Untrusted arguments split on whitespace; the mod defines their grammar.
     pub arguments: Vec<String>,
@@ -125,10 +126,10 @@ impl ModError {
         Self::refused(error.to_string())
     }
 
-    /// Adds the identity and lifecycle phase known by the host.
+    /// Attributes a non-transition operation using the host-known identity and phase.
     #[must_use]
     pub fn with_context(self, mod_id: ModId, state: LifecycleState) -> HostError {
-        HostError::from_refusal(mod_id, state, self)
+        HostError::from_operation_refusal(mod_id, state, self)
     }
 }
 
@@ -171,13 +172,29 @@ impl std::error::Error for ModError {}
 /// A host-hook failure, attributed to its owning mod and current lifecycle phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HostError {
-    /// The mod ran and declined, naming why.
+    /// A provider failed before this operation; retain its original diagnostic context.
+    PreviouslyFailed {
+        /// The provider whose prior failure prevents the operation.
+        mod_id: ModId,
+        /// The recorded failure, including its original phase and redaction provenance.
+        attribution: Box<ravel_core::FailureAttribution>,
+    },
+    /// The mod declined a lifecycle transition.
     Refused {
         /// The mod that declined.
         mod_id: ModId,
         /// The lifecycle phase the refused operation belongs to.
         state: LifecycleState,
         /// What the mod said, in the mod's own words and so not yet redacted.
+        detail: String,
+    },
+    /// A non-transition operation was refused.
+    OperationRefused {
+        /// The mod responsible for the operation.
+        mod_id: ModId,
+        /// The phase during the refused operation.
+        state: LifecycleState,
+        /// The refusal detail, not yet redacted.
         detail: String,
     },
     /// The receiving mod rejected malformed untrusted packet bytes.
@@ -206,7 +223,7 @@ pub enum HostError {
 }
 
 impl HostError {
-    /// Attributes a mod's refusal using the identity and phase of the invoked hook.
+    /// Attributes a lifecycle transition refusal to the mod and requested phase.
     #[must_use]
     pub fn from_refusal(mod_id: ModId, state: LifecycleState, refusal: ModError) -> Self {
         match refusal {
@@ -224,22 +241,60 @@ impl HostError {
         }
     }
 
+    /// Attributes a refusal outside a lifecycle transition.
+    #[must_use]
+    pub fn from_operation_refusal(mod_id: ModId, state: LifecycleState, refusal: ModError) -> Self {
+        match refusal {
+            ModError::Refused { detail } => Self::OperationRefused {
+                mod_id,
+                state,
+                detail,
+            },
+            refusal @ (ModError::InvalidPacket { .. } | ModError::Unsupported) => {
+                Self::from_refusal(mod_id, state, refusal)
+            }
+        }
+    }
+
     /// The mod this failure is attributed to.
     #[must_use]
     pub const fn mod_id(&self) -> &ModId {
         match self {
-            Self::Refused { mod_id, .. }
+            Self::PreviouslyFailed { mod_id, .. }
+            | Self::Refused { mod_id, .. }
+            | Self::OperationRefused { mod_id, .. }
             | Self::InvalidPacket { mod_id, .. }
             | Self::Unsupported { mod_id, .. }
             | Self::Panicked { mod_id, .. } => mod_id,
         }
     }
 
+    /// Reattributes a forwarded callback failure without changing its kind or phase.
+    pub(crate) fn with_owner(mut self, owner: ModId) -> Self {
+        match &mut self {
+            Self::PreviouslyFailed {
+                mod_id,
+                attribution,
+            } => {
+                attribution.mod_id = Some(owner.clone());
+                *mod_id = owner;
+            }
+            Self::Refused { mod_id, .. }
+            | Self::OperationRefused { mod_id, .. }
+            | Self::InvalidPacket { mod_id, .. }
+            | Self::Unsupported { mod_id, .. }
+            | Self::Panicked { mod_id, .. } => *mod_id = owner,
+        }
+        self
+    }
+
     /// The lifecycle phase the failed operation belongs to.
     #[must_use]
     pub const fn state(&self) -> LifecycleState {
         match self {
+            Self::PreviouslyFailed { attribution, .. } => attribution.state,
             Self::Refused { state, .. }
+            | Self::OperationRefused { state, .. }
             | Self::InvalidPacket { state, .. }
             | Self::Unsupported { state, .. }
             | Self::Panicked { state, .. } => *state,
@@ -250,6 +305,9 @@ impl HostError {
 impl fmt::Display for HostError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PreviouslyFailed { attribution, .. } => {
+                formatter.write_str(attribution.message.text())
+            }
             Self::Refused {
                 mod_id,
                 state,
@@ -257,6 +315,15 @@ impl fmt::Display for HostError {
             } => write!(
                 formatter,
                 "`{mod_id}` refused to enter `{}`: {detail}",
+                state.as_str()
+            ),
+            Self::OperationRefused {
+                mod_id,
+                state,
+                detail,
+            } => write!(
+                formatter,
+                "`{mod_id}` refused while `{}`: {detail}",
                 state.as_str()
             ),
             Self::InvalidPacket {
@@ -283,23 +350,46 @@ impl fmt::Display for HostError {
 impl std::error::Error for HostError {}
 
 impl StructuredFailure for HostError {
-    /// Lifecycle failures have no dependency-graph classification.
     fn failure_kind(&self) -> Option<FailureKind> {
-        None
+        match self {
+            Self::PreviouslyFailed { attribution, .. } => attribution.kind,
+            Self::Refused { .. }
+            | Self::OperationRefused { .. }
+            | Self::InvalidPacket { .. }
+            | Self::Unsupported { .. }
+            | Self::Panicked { .. } => None,
+        }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         self.state()
     }
 
+    fn diagnostic(&self) -> ravel_core::DiagnosticMessage {
+        match self {
+            Self::PreviouslyFailed { attribution, .. } => attribution.message.clone(),
+            Self::Refused { .. }
+            | Self::OperationRefused { .. }
+            | Self::InvalidPacket { .. }
+            | Self::Unsupported { .. }
+            | Self::Panicked { .. } => ravel_core::DiagnosticMessage::raw(self.to_string()),
+        }
+    }
+
     /// Mod refusal details and decoded packet fields may contain untrusted text.
     fn quotes_untrusted_text(&self) -> bool {
-        matches!(self, Self::Refused { .. } | Self::InvalidPacket { .. })
+        match self {
+            Self::PreviouslyFailed { attribution, .. } => !attribution.message.is_publishable(),
+            Self::Refused { .. } | Self::OperationRefused { .. } | Self::InvalidPacket { .. } => {
+                true
+            }
+            Self::Unsupported { .. } | Self::Panicked { .. } => false,
+        }
     }
 }
 
 /// The safe Rust contract the loader drives for a statically composed mod.
-pub trait HostMod: Send {
+pub trait Mod: Send {
     /// The canonical identity this mod was validated under.
     ///
     /// This identity must remain unchanged for the lifetime of the mod.
@@ -392,19 +482,17 @@ pub trait HostMod: Send {
 
     /// Applies saved data already migrated by the loader to the current declared version.
     ///
-    /// The plan describes the admitted current envelope; mods do not replay migrations.
+    /// Mods deserialize the current payload; the loader has already applied migrations.
     /// The default accepts only absence for a mod with no saved-data declaration.
     ///
     /// # Errors
     ///
     /// Returns [`ModError::Unsupported`] by default for other inputs, or a mod's refusal.
     /// A required mod's failure withholds the world; an optional mod's failure fails
-    /// that mod and keeps its stored envelope unread.
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        _plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    /// that mod and keeps its stored envelope unread. After world mutation, any mod
+    /// failure halts further mod execution and withholds further worlds; it cannot
+    /// retroactively withhold the world already opened.
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         if envelope.is_none() && self.saved_data_declaration()?.is_none() {
             return Ok(());
         }
@@ -425,7 +513,7 @@ pub trait HostMod: Send {
         Vec::new()
     }
 
-    /// Declares settings layered by the host and returned through [`HostMod::configure`].
+    /// Declares settings layered by the host and returned through [`Mod::configure`].
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
@@ -501,7 +589,7 @@ pub trait HostMod: Send {
 /// Stops at the first refusal; use [`Registrar::claim`] directly to handle
 /// individual conflicts.
 ///
-/// An override replaces the default [`HostMod::register`]. Use this helper to
+/// An override replaces the default [`Mod::register`]. Use this helper to
 /// claim the mod's own declaration before additional registration work, or to
 /// claim other declarations.
 ///
@@ -655,7 +743,7 @@ mod tests {
         StructuredFailure,
     };
 
-    use super::{HostError, HostMod, ModError, Registrar, RegistrationRefused};
+    use super::{HostError, Mod, ModError, Registrar, RegistrationRefused};
     use ravel_data::ContentDeclaration;
 
     /// An in-memory registrar for exercising the mod-facing refusal contract.
@@ -701,7 +789,7 @@ mod tests {
         declaration: Result<Option<ContentDeclaration>, ModError>,
     }
 
-    impl HostMod for Registering {
+    impl Mod for Registering {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -855,8 +943,74 @@ mod tests {
         assert_eq!(error.state(), LifecycleState::Running);
         assert_eq!(
             error.to_string(),
-            "`actual` refused to enter `running`: not today"
+            "`actual` refused while `running`: not today"
         );
+    }
+
+    #[test]
+    fn previously_failed_preserves_diagnostic_context_and_reattributes_only_owner() {
+        let owner: ModId = "provider".parse().expect("valid id");
+        let mut attribution = ravel_core::FailureAttribution {
+            mod_id: Some(owner.clone()),
+            version: Some("1.0.0".parse().expect("valid version")),
+            dependency_chain: vec![owner.clone()],
+            state: LifecycleState::Constructed,
+            kind: Some(FailureKind::MissingRequiredDependency),
+            surface: None,
+            environment: ravel_core::FailureEnvironment {
+                ravel: "0.1.0".parse().expect("valid version"),
+                minecraft: "test".to_owned(),
+                platform: "linux".to_owned(),
+                architecture: "x64".to_owned(),
+            },
+            message: ravel_core::DiagnosticMessage::redacted("original failure"),
+        };
+        for raw in [false, true] {
+            if raw {
+                attribution.message = ravel_core::DiagnosticMessage::raw("original failure");
+            }
+            let failure = HostError::PreviouslyFailed {
+                mod_id: owner.clone(),
+                attribution: Box::new(attribution.clone()),
+            };
+            assert_eq!(failure.mod_id(), &owner);
+            assert_eq!(failure.state(), attribution.state);
+            assert_eq!(failure.failure_kind(), attribution.kind);
+            assert_eq!(failure.to_string(), attribution.message.text());
+            assert_eq!(failure.diagnostic(), attribution.message);
+            assert_eq!(failure.quotes_untrusted_text(), raw);
+            let actual: ModId = "actual".parse().expect("valid id");
+            let normalized = failure.with_owner(actual.clone());
+            let HostError::PreviouslyFailed {
+                mod_id,
+                attribution: prior,
+            } = normalized
+            else {
+                panic!("reattribution preserves failure variant");
+            };
+            let mut expected = attribution.clone();
+            expected.mod_id = Some(actual.clone());
+            assert_eq!(mod_id, actual);
+            assert_eq!(*prior, expected);
+        }
+    }
+
+    #[test]
+    fn operation_refusals_do_not_describe_a_state_transition() {
+        let owner: ModId = "actual".parse().expect("valid id");
+        let error = HostError::from_operation_refusal(
+            owner.clone(),
+            LifecycleState::Running,
+            ModError::refused("command declined"),
+        );
+        assert_eq!(error.mod_id(), &owner);
+        assert_eq!(error.state(), LifecycleState::Running);
+        assert!(error.quotes_untrusted_text());
+        assert_eq!(
+            error.to_string(),
+            "`actual` refused while `running`: command declined"
+        );
+        assert!(matches!(error, HostError::OperationRefused { .. }));
     }
 
     #[test]
@@ -1004,7 +1158,7 @@ mod tests {
         entered: Vec<LifecycleState>,
     }
 
-    impl HostMod for Counting {
+    impl Mod for Counting {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -1027,7 +1181,7 @@ mod tests {
 
     #[test]
     fn the_loader_drives_a_mod_through_states_and_stops_at_the_first_refusal() {
-        let mut host: Box<dyn HostMod> = Box::new(counting());
+        let mut host: Box<dyn Mod> = Box::new(counting());
 
         assert_eq!(host.id().as_str(), "example_mod");
         assert_eq!(host.enter(LifecycleState::Loaded), Ok(()));

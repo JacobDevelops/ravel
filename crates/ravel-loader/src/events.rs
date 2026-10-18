@@ -1,14 +1,14 @@
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
-use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod};
+use ravel_core::{
+    FailureEnvironment, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
+};
+use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod};
 use ravel_network::{Direction, PacketDelivery, PacketId};
 use ravel_observability::{CallKind, Profiler};
 
 use crate::lifecycle::LifecycleMachine;
 use crate::loaded::LoadedMods;
-
-type DrainedPlayRequests = (Vec<ravel_data::PlayRequest>, Option<(ModId, HostError)>);
 
 /// Only running and stopping mods may react.
 const fn reacts(state: LifecycleState) -> bool {
@@ -18,6 +18,8 @@ const fn reacts(state: LifecycleState) -> bool {
 /// Why an event or a command reached no mod.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DispatchRefused {
+    /// The lifecycle refused callback failure attribution.
+    Lifecycle(crate::LifecycleError),
     /// The set is not in a state that reacts.
     NotReacting {
         /// The halting mod, or the first non-reacting audience member in resolved order.
@@ -72,9 +74,28 @@ pub enum DispatchRefused {
     },
 }
 
+impl DispatchRefused {
+    /// Returns the identified owner of the refused operation.
+    #[must_use]
+    pub fn mod_id(&self) -> Option<&ModId> {
+        match self {
+            Self::Lifecycle(error) => error.mod_id(),
+            Self::NotReacting { mod_id, .. }
+            | Self::OwnerNotReacting { mod_id, .. }
+            | Self::OwnerWrongSide { mod_id }
+            | Self::Absent { mod_id } => Some(mod_id),
+            Self::Unclaimed { key } | Self::NotACommand { key } => Some(key.id().namespace()),
+            Self::PacketForeignSide { id, .. } | Self::PacketWrongSide { id, .. } => {
+                Some(id.owner())
+            }
+        }
+    }
+}
+
 impl fmt::Display for DispatchRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Lifecycle(error) => error.fmt(formatter),
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",
@@ -122,11 +143,22 @@ impl std::error::Error for DispatchRefused {}
 impl StructuredFailure for DispatchRefused {
     /// Dispatch refusals are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
-        None
+        match self {
+            Self::Lifecycle(error) => error.failure_kind(),
+            Self::NotReacting { .. }
+            | Self::Unclaimed { .. }
+            | Self::NotACommand { .. }
+            | Self::OwnerNotReacting { .. }
+            | Self::OwnerWrongSide { .. }
+            | Self::PacketForeignSide { .. }
+            | Self::PacketWrongSide { .. }
+            | Self::Absent { .. } => None,
+        }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
+            Self::Lifecycle(error) => error.lifecycle_state(),
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
             | Self::NotACommand { .. }
@@ -139,7 +171,7 @@ impl StructuredFailure for DispatchRefused {
 
     /// Messages contain only validated identifiers and loader-owned text.
     fn quotes_untrusted_text(&self) -> bool {
-        false
+        matches!(self, Self::Lifecycle(error) if error.quotes_untrusted_text())
     }
 }
 
@@ -147,7 +179,7 @@ impl StructuredFailure for DispatchRefused {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Delivery {
     received: Vec<ModId>,
-    failure: Option<(ModId, HostError)>,
+    failure: Option<HostError>,
 }
 
 impl Delivery {
@@ -160,19 +192,52 @@ impl Delivery {
     /// Returns the failure that ended the delivery, when one did.
     #[must_use]
     pub fn failure(&self) -> Option<&HostError> {
-        self.failure.as_ref().map(|(_, error)| error)
+        self.failure.as_ref()
     }
 
     /// Returns the actual owner whose callback failed.
     #[must_use]
     pub fn failed_by(&self) -> Option<&ModId> {
-        self.failure.as_ref().map(|(owner, _)| owner)
+        self.failure.as_ref().map(HostError::mod_id)
     }
 
     /// Returns whether every mod that should have reacted did so.
     #[must_use]
     pub const fn is_complete(&self) -> bool {
         self.failure.is_none()
+    }
+}
+
+/// Requests collected before an outward callback failed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlayRequests {
+    requests: Vec<ravel_data::PlayRequest>,
+    failure: Option<HostError>,
+}
+
+impl PlayRequests {
+    /// Returns requests from callbacks that completed successfully.
+    #[must_use]
+    pub fn requests(&self) -> &[ravel_data::PlayRequest] {
+        &self.requests
+    }
+
+    /// Consumes the delivery and returns its successful requests.
+    #[must_use]
+    pub fn into_requests(self) -> Vec<ravel_data::PlayRequest> {
+        self.requests
+    }
+
+    /// Returns the attributed callback failure, if any.
+    #[must_use]
+    pub fn failure(&self) -> Option<&HostError> {
+        self.failure.as_ref()
+    }
+
+    /// Returns the callback owner without storing a second identity.
+    #[must_use]
+    pub fn failed_by(&self) -> Option<&ModId> {
+        self.failure.as_ref().map(HostError::mod_id)
     }
 }
 
@@ -196,12 +261,6 @@ impl LifecycleMachine {
                     || *state != LifecycleState::Failed)
         })
     }
-
-    /// Returns whether `mod_id` loads on the side this set is running on.
-    fn loads_here(&self, mod_id: &ModId) -> bool {
-        self.entry(mod_id)
-            .is_ok_and(|entry| entry.sides.loads_on(self.side()))
-    }
 }
 
 /// Broadcasts `event` in resolved order after validating the entire audience.
@@ -215,11 +274,12 @@ impl LifecycleMachine {
 /// # Panics
 ///
 /// Never; all audience members are checked before delivery.
-pub fn broadcast<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
-    broadcast_profiled(loaded, event, &mut Profiler::off())
+    broadcast_profiled(loaded, event, &mut Profiler::off(), environment)
 }
 
 /// Broadcasts `event`, attributing each mod's cost to `profiler`.
@@ -231,10 +291,11 @@ pub fn broadcast<H: std::ops::DerefMut<Target: HostMod>>(
 /// # Panics
 ///
 /// Never; all audience members are checked before delivery.
-pub fn broadcast_profiled<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn broadcast_profiled<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
     profiler: &mut Profiler,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
@@ -253,17 +314,21 @@ pub fn broadcast_profiled<H: std::ops::DerefMut<Target: HostMod>>(
 
     let mut received = Vec::with_capacity(audience.len());
     for (mod_id, state) in audience {
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == &mod_id)
-            .expect("LoadedMods checked every loading owner");
+        let instance = crate::loaded::instance_mut(mods, &mod_id);
         let observed = profiler.measure(&mod_id, CallKind::Event, || {
-            crate::callback(&mod_id, state, || host.observe(event))
+            crate::callback(&mod_id, state, || instance.observe(event))
         });
         if let Err(failure) = observed {
+            machine
+                .fail_callback(
+                    &failure,
+                    environment,
+                    Some(ravel_core::FailureSurface::Event(event.as_str().to_owned())),
+                )
+                .map_err(DispatchRefused::Lifecycle)?;
             return Ok(Delivery {
                 received,
-                failure: Some((mod_id, failure)),
+                failure: Some(failure),
             });
         }
         received.push(mod_id);
@@ -278,56 +343,82 @@ pub fn broadcast_profiled<H: std::ops::DerefMut<Target: HostMod>>(
 ///
 /// Failed, parked and nonexecuting owners are not called. Requests naming another
 /// owner are refused before any request from that callback is exposed.
+/// Server distributions still drain and validate callbacks, but expose no client
+/// play requests; their recipients are accepted only on the client distribution.
 ///
 /// # Errors
 ///
 /// Returns [`DispatchRefused`] if the set is halted.
-pub fn take_play_requests<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn take_play_requests<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
-) -> Result<DrainedPlayRequests, DispatchRefused> {
+    environment: &FailureEnvironment,
+) -> Result<PlayRequests, DispatchRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
     let mut requests = Vec::new();
-    for (entry, state) in machine.tracked_entries() {
-        if !entry.sides.loads_on(machine.side()) || !reacts(state) {
-            continue;
-        }
-        let mod_id = &entry.mod_id;
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == mod_id)
-            .expect("LoadedMods checked every loading owner");
-        let drained = crate::callback(mod_id, state, || Ok(host.take_play_requests()));
+    let eligible: Vec<_> = machine
+        .eligible()
+        .filter(|(_, state)| reacts(*state))
+        .map(|(entry, state)| (entry.mod_id.clone(), state))
+        .collect();
+    for (mod_id, state) in eligible {
+        let instance = crate::loaded::instance_mut(mods, &mod_id);
+        let drained = crate::callback(&mod_id, state, || Ok(instance.take_play_requests()));
         let drained = match drained {
             Ok(drained) => drained,
-            Err(error) => return Ok((requests, Some((mod_id.clone(), error)))),
+            Err(error) => return request_failure(machine, environment, requests, error),
         };
-        if let Some(foreign) = drained.iter().find(|request| request.owner() != mod_id) {
-            let error = HostError::Refused {
-                mod_id: mod_id.clone(),
-                state,
-                detail: format!(
+        if let Some(foreign) = drained.iter().find(|request| request.owner() != &mod_id) {
+            let error = crate::owner_refusal(
+                machine,
+                &mod_id,
+                format!(
                     "outward play request belongs to `{}`, not `{mod_id}`",
                     foreign.owner()
                 ),
-            };
-            return Ok((requests, Some((mod_id.clone(), error))));
+            )
+            .map_err(DispatchRefused::Lifecycle)?;
+            return request_failure(machine, environment, requests, error);
         }
-        requests.extend(drained);
+        if !machine.side().is_server() {
+            requests.extend(drained);
+        }
     }
-    Ok((requests, None))
+    Ok(PlayRequests {
+        requests,
+        failure: None,
+    })
+}
+
+fn request_failure(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    requests: Vec<ravel_data::PlayRequest>,
+    error: HostError,
+) -> Result<PlayRequests, DispatchRefused> {
+    machine
+        .fail_callback(&error, environment, None)
+        .map_err(DispatchRefused::Lifecycle)?;
+    Ok(PlayRequests {
+        requests,
+        failure: Some(error),
+    })
 }
 
 /// Routes `delivery` to its owner after checking the claimed side and direction.
 ///
+/// Malformed bytes and unsupported packet contracts remain typed delivery refusals,
+/// without failing the receiving mod. Actual callback failures are attributed normally.
+///
 /// # Errors
 ///
 /// Returns [`DispatchRefused`] for a halted set, incompatible sides, or an absent or inactive owner.
-pub fn deliver_packet<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     delivery: &PacketDelivery,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
-    deliver_packet_profiled(loaded, delivery, &mut Profiler::off())
+    deliver_packet_profiled(loaded, delivery, &mut Profiler::off(), environment)
 }
 
 /// Routes a packet, attributing its receive callback as event cost to `profiler`.
@@ -335,10 +426,11 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: HostMod>>(
 /// # Errors
 ///
 /// The same as [`deliver_packet`].
-pub fn deliver_packet_profiled<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn deliver_packet_profiled<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     delivery: &PacketDelivery,
     profiler: &mut Profiler,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let machine = loaded.machine();
     ensure_active(machine)?;
@@ -357,11 +449,17 @@ pub fn deliver_packet_profiled<H: std::ops::DerefMut<Target: HostMod>>(
         });
     }
 
-    to_owner(loaded, delivery.id.owner().clone(), |owner, state, host| {
-        profiler.measure(owner, CallKind::Event, || {
-            crate::callback(owner, state, || host.receive_packet(delivery))
-        })
-    })
+    to_owner(
+        loaded,
+        delivery.id.owner().clone(),
+        |owner, state, instance| {
+            profiler.measure(owner, CallKind::Event, || {
+                crate::callback(owner, state, || instance.receive_packet(delivery))
+            })
+        },
+        Some(ravel_core::FailureSurface::Packet(delivery.id.to_string())),
+        environment,
+    )
 }
 
 pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
@@ -373,16 +471,21 @@ pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRe
     })
 }
 
-fn to_owner<H: std::ops::DerefMut<Target: HostMod>>(
+fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     owner: ModId,
     call: impl FnOnce(&ModId, LifecycleState, &mut H::Target) -> Result<(), HostError>,
+    surface: Option<ravel_core::FailureSurface>,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
-    let state = machine.state(&owner).map_err(|_| DispatchRefused::Absent {
-        mod_id: owner.clone(),
-    })?;
-    if !machine.loads_here(&owner) {
+    let (entry, state) = machine
+        .tracked_entries()
+        .find(|(entry, _)| entry.mod_id == owner)
+        .ok_or_else(|| DispatchRefused::Absent {
+            mod_id: owner.clone(),
+        })?;
+    if !entry.sides.loads_on(machine.side()) {
         return Err(DispatchRefused::OwnerWrongSide { mod_id: owner });
     }
     if !reacts(state) {
@@ -391,32 +494,52 @@ fn to_owner<H: std::ops::DerefMut<Target: HostMod>>(
             state,
         });
     }
-    let host = mods
-        .iter_mut()
-        .find(|host| host.id() == &owner)
-        .expect("LoadedMods checked every loading owner");
-    match call(&owner, state, &mut **host) {
+    let instance = crate::loaded::instance_mut(mods, &owner);
+    match call(&owner, state, instance) {
         Ok(()) => Ok(Delivery {
             received: vec![owner],
             failure: None,
         }),
-        Err(error) => Ok(Delivery {
-            received: Vec::new(),
-            failure: Some((owner, error)),
-        }),
+        Err(error) => {
+            // Declining one delivery is the owner answering it: malformed or unsupported
+            // packet contracts and refused command invocations leave the owner running.
+            let declined = matches!(
+                (&surface, &error),
+                (
+                    Some(ravel_core::FailureSurface::Packet(_)),
+                    HostError::InvalidPacket { .. } | HostError::Unsupported { .. }
+                ) | (
+                    Some(ravel_core::FailureSurface::Registry(_)),
+                    HostError::OperationRefused { .. }
+                )
+            );
+            if !declined {
+                machine
+                    .fail_callback(&error, environment, surface)
+                    .map_err(DispatchRefused::Lifecycle)?;
+            }
+            Ok(Delivery {
+                received: Vec::new(),
+                failure: Some(error),
+            })
+        }
     }
 }
 
 /// Routes `invocation` to the one mod that claimed its root literal.
 ///
+/// An owner refusing the invocation is reported in the delivery and keeps running;
+/// unsupported commands and panics fail the owner.
+///
 /// # Errors
 ///
 /// Returns [`DispatchRefused`] for a halted set, an invalid command key, or an absent or inactive owner.
-pub fn route<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn route<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
-    route_profiled(loaded, invocation, &mut Profiler::off())
+    route_profiled(loaded, invocation, &mut Profiler::off(), environment)
 }
 
 /// Routes `invocation`, attributing its owner's cost to `profiler`.
@@ -424,10 +547,11 @@ pub fn route<H: std::ops::DerefMut<Target: HostMod>>(
 /// # Errors
 ///
 /// The same as [`route`].
-pub fn route_profiled<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn route_profiled<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
     profiler: &mut Profiler,
+    environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let machine = loaded.machine();
     ensure_active(machine)?;
@@ -443,11 +567,17 @@ pub fn route_profiled<H: std::ops::DerefMut<Target: HostMod>>(
         })?
         .clone();
 
-    to_owner(loaded, owner, |owner, state, host| {
-        profiler.measure(owner, CallKind::Command, || {
-            crate::callback(owner, state, || host.run_command(invocation))
-        })
-    })
+    to_owner(
+        loaded,
+        owner,
+        |owner, state, instance| {
+            profiler.measure(owner, CallKind::Command, || {
+                crate::callback(owner, state, || instance.run_command(invocation))
+            })
+        },
+        Some(ravel_core::FailureSurface::Registry(invocation.key.clone())),
+        environment,
+    )
 }
 
 #[cfg(test)]
@@ -455,10 +585,31 @@ mod tests {
     use ravel_core::{
         ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
     };
-    use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
+    use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod, ModError, Registrar};
     use ravel_network::{Direction, PacketDelivery, PacketId};
 
-    use super::{Delivery, DispatchRefused, broadcast, deliver_packet, route};
+    use super::{Delivery, DispatchRefused};
+
+    fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
+        loaded: &mut LoadedMods<'_, H>,
+        event: GameEvent,
+    ) -> Result<Delivery, DispatchRefused> {
+        super::broadcast(loaded, event, &crate::tests::environment())
+    }
+
+    fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
+        loaded: &mut LoadedMods<'_, H>,
+        packet: &PacketDelivery,
+    ) -> Result<Delivery, DispatchRefused> {
+        super::deliver_packet(loaded, packet, &crate::tests::environment())
+    }
+
+    fn route<H: std::ops::DerefMut<Target: Mod>>(
+        loaded: &mut LoadedMods<'_, H>,
+        invocation: &CommandInvocation,
+    ) -> Result<Delivery, DispatchRefused> {
+        super::route(loaded, invocation, &crate::tests::environment())
+    }
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
     use crate::tests::{advance_through, entry};
@@ -514,15 +665,20 @@ mod tests {
     #[test]
     fn event_and_command_panics_name_the_called_owner() {
         let key = command("example_mod", "run");
+        // A panic fails its owner, so each surface gets its own running owner.
+        let panicking_running = |host: &mut Recording| {
+            host.panics = true;
+            running(
+                vec![entry("example_mod", &Side::ALL)],
+                Side::Client,
+                &mut [host],
+            )
+        };
+
         let mut host = Recording::claiming("example_mod", vec![key.clone()]);
-        host.panics = true;
-        let mut machine = running(
-            vec![entry("example_mod", &Side::ALL)],
-            Side::Client,
-            &mut [&mut host],
-        );
+        let mut machine = panicking_running(&mut host);
         let event = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -532,15 +688,48 @@ mod tests {
             event.failure().map(HostError::mod_id),
             Some(&id("example_mod"))
         );
-        let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+        assert_eq!(
+            machine.state(&id("example_mod")),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(
+            machine
+                .failure(&id("example_mod"))
+                .expect("tracked")
+                .expect("the panic is recorded")
+                .surface,
+            Some(ravel_core::FailureSurface::Event(
+                GameEvent::ClientTick.as_str().to_owned()
+            ))
+        );
+        assert_eq!(host.seen, []);
+
+        let mut host = Recording::claiming("example_mod", vec![key.clone()]);
+        let mut machine = panicking_running(&mut host);
+        let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
         let command = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &invocation,
         )
         .expect("dispatch itself is valid");
         assert_eq!(command.failed_by(), Some(&id("example_mod")));
-        assert_eq!(host.seen, []);
+        assert_eq!(
+            command.failure().map(HostError::mod_id),
+            Some(&id("example_mod"))
+        );
+        assert_eq!(
+            machine.state(&id("example_mod")),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(
+            machine
+                .failure(&id("example_mod"))
+                .expect("tracked")
+                .expect("the panic is recorded")
+                .surface,
+            Some(ravel_core::FailureSurface::Registry(key))
+        );
         assert_eq!(host.ran, []);
     }
 
@@ -555,7 +744,7 @@ mod tests {
         );
         let packet = delivery("example_mod:ping", Direction::ToClient, Side::Client);
         let delivered = deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &packet,
         )
@@ -578,7 +767,7 @@ mod tests {
         );
         let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
         let refused = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &invocation,
         )
@@ -603,10 +792,11 @@ mod tests {
         let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
         let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
         let delivered = super::route_profiled(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &invocation,
             &mut profiler,
+            &crate::tests::environment(),
         )
         .expect("the command is routable");
         assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
@@ -630,7 +820,7 @@ mod tests {
             &mut [&mut first, &mut second],
         );
         let delivered = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -656,7 +846,7 @@ mod tests {
             .advance_all(LifecycleState::Stopping)
             .expect("running mods may stop");
         let delivered = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -704,7 +894,7 @@ mod tests {
             let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
             assert_eq!(
                 route(
-                    &mut LoadedMods::<&mut dyn HostMod>::new(
+                    &mut LoadedMods::<&mut dyn Mod>::new(
                         &mut machine,
                         &mut [&mut healthy, &mut failed]
                     )
@@ -720,7 +910,7 @@ mod tests {
         assert_eq!(healthy.ran, []);
     }
 
-    impl HostMod for Recording {
+    impl Mod for Recording {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -760,7 +950,7 @@ mod tests {
     fn running(
         entries: Vec<LifecycleEntry>,
         side: Side,
-        mods: &mut [&mut dyn HostMod],
+        mods: &mut [&mut dyn Mod],
     ) -> LifecycleMachine {
         let mut machine = LifecycleMachine::new(side, entries).expect("a legal plan");
         advance_through(&mut machine, LifecycleState::Constructed);
@@ -793,7 +983,7 @@ mod tests {
                 platform: "test".to_owned(),
                 architecture: "test".to_owned(),
             },
-            message: ravel_observability::redact(message),
+            message: ravel_core::DiagnosticMessage::redacted(message),
         }
     }
 
@@ -801,7 +991,7 @@ mod tests {
     fn failed_required_mod_blocks_healthy_broadcasts() {
         let mut failed = Recording::new("required_mod");
         let mut healthy = Recording::new("healthy_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy, &mut failed];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut healthy, &mut failed];
         let mut machine = running(
             vec![
                 entry("required_mod", &[Side::Client]),
@@ -818,7 +1008,7 @@ mod tests {
             .expect("a running mod can fail");
         assert_eq!(
             broadcast(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                     .expect("all active hosts are supplied"),
                 GameEvent::ClientTick
             ),
@@ -836,7 +1026,7 @@ mod tests {
         let mut healthy = Recording::new("healthy_mod");
         let mut optional = entry("optional_mod", &[Side::Client]);
         optional.requirement = Requirement::Optional;
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy, &mut failed];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut healthy, &mut failed];
         let mut machine = running(
             vec![optional, entry("healthy_mod", &[Side::Client])],
             Side::Client,
@@ -849,7 +1039,7 @@ mod tests {
             )
             .expect("record optional failure");
         let delivery = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -864,7 +1054,7 @@ mod tests {
         let mut healthy = Recording::new("healthy_mod");
         let mut optional = entry("optional_mod", &[Side::Client]);
         optional.requirement = Requirement::Optional;
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy, &mut failed];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut healthy, &mut failed];
         let mut machine = running(
             vec![optional, entry("healthy_mod", &[Side::Client])],
             Side::Client,
@@ -885,7 +1075,7 @@ mod tests {
         });
         assert_eq!(
             broadcast(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                     .expect("all active hosts are supplied"),
                 GameEvent::ClientTick
             ),
@@ -893,7 +1083,7 @@ mod tests {
         );
         assert_eq!(
             route(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                     .expect("all active hosts are supplied"),
                 &CommandInvocation {
                     key: command("healthy_mod", "run"),
@@ -905,7 +1095,7 @@ mod tests {
         );
         assert_eq!(
             deliver_packet(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                     .expect("all active hosts are supplied"),
                 &delivery("healthy_mod:ping", Direction::ToClient, Side::Client,)
             ),
@@ -918,7 +1108,7 @@ mod tests {
     fn a_broadcast_reaches_every_mod_in_resolved_order() {
         let mut first = Recording::new("first_mod");
         let mut second = Recording::new("second_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut first, &mut second];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut first, &mut second];
         let mut machine = running(
             vec![
                 entry("first_mod", &[Side::Client]),
@@ -929,7 +1119,7 @@ mod tests {
         );
 
         let delivery = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -950,7 +1140,7 @@ mod tests {
     #[test]
     fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
         let mut only = Recording::new("server_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut only];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
         let mut machine = running(
             vec![entry("server_mod", &[Side::DedicatedServer])],
             Side::DedicatedServer,
@@ -959,7 +1149,7 @@ mod tests {
 
         assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
         let delivery = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -970,7 +1160,7 @@ mod tests {
         // A server tick on the same set is delivered, so the empty audience
         // above is the event's doing and not the set's.
         let ticked = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ServerTick,
         )
@@ -1003,7 +1193,7 @@ mod tests {
     #[test]
     fn a_broadcast_before_the_set_runs_is_refused_and_reaches_nobody() {
         let mut only = Recording::new("example_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut only];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
                 .expect("a legal plan");
@@ -1012,7 +1202,7 @@ mod tests {
             .expect("a legal step");
 
         let refused = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -1034,7 +1224,7 @@ mod tests {
         let mut first = Recording::new("first_mod");
         let mut second = Recording::failing("second_mod", GameEvent::ClientTick);
         let mut third = Recording::new("third_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut first, &mut second, &mut third];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut first, &mut second, &mut third];
         let mut machine = running(
             vec![
                 entry("first_mod", &[Side::Client]),
@@ -1046,7 +1236,7 @@ mod tests {
         );
 
         let delivery = broadcast(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick,
         )
@@ -1054,7 +1244,9 @@ mod tests {
         assert_eq!(delivery.received(), [id("first_mod")]);
         assert!(!delivery.is_complete());
         match delivery.failure() {
-            Some(HostError::Refused { mod_id, .. }) => assert_eq!(mod_id, &id("second_mod")),
+            Some(HostError::OperationRefused { mod_id, .. }) => {
+                assert_eq!(mod_id, &id("second_mod"));
+            }
             other => panic!("expected the second mod to refuse, got {other:?}"),
         }
 
@@ -1066,7 +1258,7 @@ mod tests {
     fn a_broadcast_missing_a_supplied_value_is_refused_before_anyone_reacts() {
         let mut first = Recording::new("first_mod");
         let mut second = Recording::new("second_mod");
-        let mut both: Vec<&mut dyn HostMod> = vec![&mut first, &mut second];
+        let mut both: Vec<&mut dyn Mod> = vec![&mut first, &mut second];
         let mut machine = running(
             vec![
                 entry("first_mod", &[Side::Client]),
@@ -1077,7 +1269,7 @@ mod tests {
         );
         drop(both);
 
-        let mut only: Vec<&mut dyn HostMod> = vec![&mut first];
+        let mut only: Vec<&mut dyn Mod> = vec![&mut first];
         let refused = LoadedMods::new(&mut machine, &mut only)
             .expect_err("the plan names a mod that was not supplied");
         assert_eq!(refused.mod_id(), &id("second_mod"));
@@ -1091,7 +1283,7 @@ mod tests {
         let owned = command("first_mod", "home");
         let mut first = Recording::claiming("first_mod", vec![owned.clone()]);
         let mut second = Recording::new("second_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut first, &mut second];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut first, &mut second];
         let mut machine = running(
             vec![
                 entry("first_mod", &[Side::Client]),
@@ -1107,7 +1299,7 @@ mod tests {
             vec!["set".to_owned(), "base".to_owned()],
         );
         let delivery = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             &invocation,
         )
@@ -1122,7 +1314,7 @@ mod tests {
     #[test]
     fn a_command_nobody_claimed_names_the_key_rather_than_a_mod() {
         let mut only = Recording::new("example_mod");
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut only];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
         let mut machine = running(
             vec![entry("example_mod", &[Side::Client])],
             Side::Client,
@@ -1131,7 +1323,7 @@ mod tests {
 
         let orphan = command("example_mod", "nowhere");
         let refused = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             &CommandInvocation::new(orphan.clone(), Side::Client, Vec::new()),
         )
@@ -1158,9 +1350,9 @@ mod tests {
         }
 
         // The command is claimed and the set never reached `Running`.
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut only];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
         let refused = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             &CommandInvocation::new(owned, Side::Client, Vec::new()),
         )
@@ -1183,7 +1375,7 @@ mod tests {
             key: RegistryKey,
         }
 
-        impl HostMod for Claiming {
+        impl Mod for Claiming {
             fn id(&self) -> &ModId {
                 &self.id
             }
@@ -1204,7 +1396,7 @@ mod tests {
             id: id("example_mod"),
             key: owned.clone(),
         };
-        let mut mods: Vec<&mut dyn HostMod> = vec![&mut only];
+        let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
         let mut machine = running(
             vec![entry("example_mod", &[Side::Client])],
             Side::Client,
@@ -1212,7 +1404,7 @@ mod tests {
         );
 
         let delivery = route(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             &CommandInvocation::new(owned, Side::Client, Vec::new()),
         )
@@ -1329,7 +1521,7 @@ mod tests {
         }
     }
 
-    impl HostMod for Networked {
+    impl Mod for Networked {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -1384,7 +1576,7 @@ mod tests {
             Side::DedicatedServer,
         );
         let delivered = deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("all active hosts are supplied"),
             &sent,
         )
@@ -1411,20 +1603,22 @@ mod tests {
             Side::DedicatedServer,
         );
         let delivered = super::deliver_packet_profiled(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("active host"),
             &packet,
             &mut profiler,
+            &crate::tests::environment(),
         )
         .expect("routable packet");
         assert!(delivered.is_complete());
         let wrong_side = delivery("example_mod:ping", Direction::ToServer, Side::Client);
         assert!(matches!(
             super::deliver_packet_profiled(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("active host"),
                 &wrong_side,
                 &mut profiler,
+                &crate::tests::environment(),
             ),
             Err(DispatchRefused::PacketForeignSide { .. })
         ));
@@ -1452,7 +1646,7 @@ mod tests {
 
         let sent = delivery("example_mod:ping", Direction::ToServer, Side::Client);
         let refusal = deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &sent,
         )
@@ -1483,7 +1677,7 @@ mod tests {
             Side::DedicatedServer,
         );
         deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &agreeing,
         )
@@ -1509,7 +1703,7 @@ mod tests {
             Side::DedicatedServer,
         );
         let refusal = deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &sent,
         )
@@ -1548,7 +1742,7 @@ mod tests {
 
         let sent = delivery("example_mod:screen", Direction::ToClient, Side::Client);
         deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &sent,
         )
@@ -1574,7 +1768,7 @@ mod tests {
         );
         assert_eq!(
             deliver_packet(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("all active hosts are supplied"),
                 &sent
             ),
@@ -1597,7 +1791,7 @@ mod tests {
         let sent = delivery("other_mod:ping", Direction::ToServer, Side::DedicatedServer);
         assert_eq!(
             deliver_packet(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("all active hosts are supplied"),
                 &sent
             ),
@@ -1626,7 +1820,7 @@ mod tests {
         );
         assert_eq!(
             deliver_packet(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("all active hosts are supplied"),
                 &sent
             ),
@@ -1650,7 +1844,7 @@ mod tests {
             &mut [&mut present],
         );
 
-        let refused = LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut present])
+        let refused = LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut present])
             .expect_err("an active owner has no supplied host");
         assert_eq!(refused.mod_id(), &id("absent_mod"));
         let empty: [PacketId; 0] = [];
@@ -1672,7 +1866,7 @@ mod tests {
             Side::DedicatedServer,
         );
         let delivered = deliver_packet(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active hosts are supplied"),
             &sent,
         )
@@ -1686,6 +1880,80 @@ mod tests {
             failure.to_string().contains("example_mod:ping"),
             "{failure}"
         );
+        assert_eq!(
+            machine.state(&id("example_mod")),
+            Ok(LifecycleState::Failed)
+        );
+        assert!(
+            machine
+                .failure(&id("example_mod"))
+                .expect("tracked")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn malformed_and_unsupported_packets_do_not_fail_the_receiving_mod() {
+        struct Rejecting {
+            id: ModId,
+            malformed: bool,
+        }
+        impl Mod for Rejecting {
+            fn id(&self) -> &ModId {
+                &self.id
+            }
+            fn enter(&mut self, _: LifecycleState) -> Result<(), ModError> {
+                Ok(())
+            }
+            fn receive_packet(&mut self, _: &PacketDelivery) -> Result<(), ModError> {
+                if self.malformed {
+                    Err(ModError::InvalidPacket {
+                        source: ravel_network::WireError::NotUtf8,
+                    })
+                } else {
+                    Err(ModError::Unsupported)
+                }
+            }
+        }
+        for malformed in [true, false] {
+            let mut instance = Rejecting {
+                id: id("example_mod"),
+                malformed,
+            };
+            let mut machine = running(
+                vec![entry("example_mod", &Side::ALL)],
+                Side::DedicatedServer,
+                &mut [&mut instance],
+            );
+            machine.record_world_mutation().expect("running world");
+            let sent = delivery(
+                "example_mod:ping",
+                Direction::ToServer,
+                Side::DedicatedServer,
+            );
+            let delivered = deliver_packet(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut instance])
+                    .expect("paired receiver"),
+                &sent,
+            )
+            .expect("typed packet refusal is delivered");
+            assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
+            assert!(matches!(
+                delivered.failure(),
+                Some(HostError::InvalidPacket { .. } | HostError::Unsupported { .. })
+            ));
+            assert_eq!(
+                machine.state(&id("example_mod")),
+                Ok(LifecycleState::Running)
+            );
+            assert!(
+                machine
+                    .failure(&id("example_mod"))
+                    .expect("tracked")
+                    .is_none()
+            );
+            assert!(machine.halted_by().is_none());
+        }
     }
 
     struct Outward {
@@ -1709,7 +1977,7 @@ mod tests {
         }
     }
 
-    impl HostMod for Outward {
+    impl Mod for Outward {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -1726,6 +1994,36 @@ mod tests {
     }
 
     #[test]
+    fn server_outward_drains_discard_playback_but_retain_callback_failures() {
+        for side in [Side::DedicatedServer, Side::IntegratedServer] {
+            let mut first = Outward::new("first_mod", "first_mod");
+            let mut failed = Outward::new("failed_mod", "failed_mod");
+            failed.panics = true;
+            let mut machine = running(
+                vec![
+                    entry("first_mod", &Side::ALL),
+                    entry("failed_mod", &Side::ALL),
+                ],
+                side,
+                &mut [&mut first, &mut failed],
+            );
+            let drained = super::take_play_requests(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut failed])
+                    .expect("paired owners"),
+                &crate::tests::environment(),
+            )
+            .expect("active set");
+            let empty: &[ravel_data::PlayRequest] = &[];
+            assert_eq!(drained.requests(), empty);
+            assert_eq!(drained.failed_by(), Some(&id("failed_mod")));
+            assert_eq!(first.drains, 1);
+            assert_eq!(failed.drains, 1);
+            assert_eq!(first.requests.as_slice(), empty);
+            assert_eq!(machine.state(&id("failed_mod")), Ok(LifecycleState::Failed));
+        }
+    }
+
+    #[test]
     fn outward_drain_preserves_order_and_rejects_a_foreign_batch() {
         let mut first = Outward::new("first_mod", "first_mod");
         let mut second = Outward::new("second_mod", "foreign_mod");
@@ -1737,23 +2035,31 @@ mod tests {
             Side::Client,
             &mut [&mut first, &mut second],
         );
-        let (requests, failure) = super::take_play_requests(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+        let drained = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("paired owners"),
+            &crate::tests::environment(),
         )
         .expect("active set");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].owner(), &id("first_mod"));
-        let (owner, error) = failure.expect("foreign request refused");
-        assert_eq!(owner, id("second_mod"));
-        assert_eq!(error.mod_id(), &owner);
+        assert_eq!(drained.requests().len(), 1);
+        assert_eq!(drained.requests()[0].owner(), &id("first_mod"));
+        let error = drained.failure().expect("foreign request refused");
+        assert_eq!(drained.failed_by(), Some(&id("second_mod")));
+        assert_eq!(error.mod_id(), &id("second_mod"));
         assert!(matches!(
             error,
-            HostError::Refused {
+            HostError::OperationRefused {
                 state: LifecycleState::Running,
                 ..
             }
         ));
+        assert_eq!(machine.state(&id("second_mod")), Ok(LifecycleState::Failed));
+        assert!(
+            machine
+                .failure(&id("second_mod"))
+                .expect("tracked")
+                .is_some()
+        );
     }
 
     #[test]
@@ -1769,21 +2075,20 @@ mod tests {
             Side::Client,
             &mut [&mut parked, &mut active],
         );
-        let (requests, failure) = super::take_play_requests(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut parked, &mut active])
+        let drained = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut parked, &mut active])
                 .expect("paired owners"),
+            &crate::tests::environment(),
         )
         .expect("active set");
-        assert_eq!(requests, Vec::new());
+        let empty: &[ravel_data::PlayRequest] = &[];
+        assert_eq!(drained.requests(), empty);
         assert_eq!(
-            failure,
-            Some((
-                id("active_mod"),
-                HostError::Panicked {
-                    mod_id: id("active_mod"),
-                    state: LifecycleState::Running,
-                }
-            ))
+            drained.failure(),
+            Some(&HostError::Panicked {
+                mod_id: id("active_mod"),
+                state: LifecycleState::Running,
+            })
         );
         assert_eq!(parked.drains, 0);
         assert_eq!(active.drains, 1);
@@ -1806,15 +2111,51 @@ mod tests {
                 failure_attribution("failed_mod", "failed"),
             )
             .expect("optional owner can fail");
-        let (requests, failure) = super::take_play_requests(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut failed, &mut active])
+        let drained = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut active])
                 .expect("paired owners"),
+            &crate::tests::environment(),
         )
         .expect("optional failure does not halt the set");
-        assert!(failure.is_none());
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].owner(), &id("active_mod"));
+        assert!(drained.failure().is_none());
+        assert_eq!(drained.requests().len(), 1);
+        assert_eq!(drained.requests()[0].owner(), &id("active_mod"));
         assert_eq!(failed.drains, 0);
         assert_eq!(active.drains, 1);
+    }
+
+    #[test]
+    fn optional_outward_failure_after_world_mutation_halts_without_exposing_requests() {
+        let mut failed = Outward::new("failed_mod", "failed_mod");
+        failed.panics = true;
+        let mut later = Outward::new("later_mod", "later_mod");
+        let mut optional = entry("failed_mod", &Side::ALL);
+        optional.requirement = Requirement::Optional;
+        let mut machine = running(
+            vec![optional, entry("later_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut failed, &mut later],
+        );
+        machine.record_world_mutation().expect("running set");
+        let drained = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut later])
+                .expect("paired owners"),
+            &crate::tests::environment(),
+        )
+        .expect("failure is delivered with the completed requests");
+        let empty: &[ravel_data::PlayRequest] = &[];
+        assert_eq!(drained.requests(), empty);
+        assert_eq!(drained.failed_by(), Some(&id("failed_mod")));
+        assert_eq!(machine.halted_by(), Some(&id("failed_mod")));
+        assert_eq!(machine.state(&id("failed_mod")), Ok(LifecycleState::Failed));
+        assert_eq!(later.drains, 0);
+        assert!(matches!(
+            super::take_play_requests(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut later])
+                    .expect("paired owners"),
+                &crate::tests::environment(),
+            ),
+            Err(DispatchRefused::NotReacting { .. })
+        ));
     }
 }

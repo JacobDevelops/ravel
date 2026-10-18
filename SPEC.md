@@ -123,7 +123,7 @@ the two are not the same thing.
   accept one: not a static library, not a dynamic library, not an executable.
 - **Ravel therefore owes no ABI.** Because Ravel compiles every mod it runs, the
   loader-to-mod contract is a source-level Rust API rather than a binary
-  interface, and `HostMod`, the registrar, and the handle types stay free to
+  interface, and `Mod`, the registrar, and the handle types stay free to
   change without breaking an installed mod. No model in which mods ship as
   binaries can say this: each one pins a version of `jni` into every mod's
   dependency graph permanently and unremovably.
@@ -663,8 +663,17 @@ Ravel must attribute failures to:
 - Minecraft and Ravel versions;
 - platform and target architecture.
 
-Mod callbacks unwind into the loader's owning-mod failure path: optional mods leave the set,
-and a required mod failure halts it. The JNI panic guard remains the last resort for host faults.
+Mod callbacks unwind into the loader's owning-mod failure path: before world mutation,
+optional mods leave the set, and a required mod failure halts it. After a world has
+been opened in the session, any mod failure halts the entire set, refuses later
+saves, and withholds further worlds to prevent saving partial state.
+The JNI panic guard remains the last resort for host faults.
+
+Interception declarations are admitted before world access and cached for dispatch;
+dispatch never recollects declarations. Conflicting declarations fail every mod
+claiming the conflict, not merely the first claimant. Before world mutation,
+optional failed claimants leave the set and admission retries with the remaining
+mods; any required claimant failure halts the set.
 
 Reports must redact authentication tokens, secrets, and unnecessarily identifying
 filesystem paths.

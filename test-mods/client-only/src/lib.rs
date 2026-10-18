@@ -264,10 +264,7 @@ impl Mod for ClientOnlyMod {
     /// Returns [`ModError::Refused`] when the setting this mod declared did not
     /// resolve to the boolean it declared.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key = ENABLED
-            .parse()
-            .map_err(|_| ModError::refused(format!("`{ENABLED}` is not a legal setting key")))?;
-        let enabled = resolved.boolean(&key).map_err(ModError::from_display)?;
+        let enabled = resolved.boolean(ENABLED).map_err(ModError::from_display)?;
         self.enabled = Some(enabled);
         Ok(())
     }

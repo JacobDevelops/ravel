@@ -13,8 +13,7 @@
 //! reproduced. [`Settings`] resolves all four together.
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, SettingSide,
-    ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
 
 /// The key the ceiling on completed upgrade steps is written under.
@@ -132,7 +131,7 @@ impl Settings {
     /// Returns a typed access error for a missing key, wrong kind or out-of-range integer.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         let integer = |name: &str| {
-            i32::try_from(resolved.integer(&key(name))?).map_err(|_| ValueError::IntegerRange)
+            i32::try_from(resolved.integer(name)?).map_err(|_| ValueError::IntegerRange)
         };
         Ok(Self {
             upgrade_ceiling: integer(UPGRADE_CEILING)?.max(1),
@@ -141,10 +140,6 @@ impl Settings {
             energy_accepted: integer(ENERGY_ACCEPTED)?.max(0),
         })
     }
-}
-
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
 }
 
 /// Returns the side every setting in this document is declared on.

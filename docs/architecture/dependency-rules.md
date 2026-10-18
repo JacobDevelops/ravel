@@ -14,6 +14,20 @@ stable contracts toward concrete host internals.
   so a manifest field is still declared where a manifest is.
 - Package and resolver layers may depend on core and serialization or graph
   libraries. They do not depend on bootstrap, SDK, or a concrete adapter.
+  Shared-library provider selection also belongs to `ravel-resolve`; the host
+  API and SDK expose only per-mod provider declarations, never launch resolution.
+  The launch caller consumes `Provided::into_parts` and passes owned names and
+  typed versions into the resolver, without a dependency on the host API.
+- `ravel-core::paths` owns the instance-private layout: the `ravel` root,
+  installed packages, pack configuration, generated host, and seeded-pack record.
+  Discovery, configuration, generation, and startup import those constants.
+- Typed configuration reads accept declared key names directly and report
+  unknown names through `ValueError`, without reparsing static names. Render
+  contributions take `RenderStage`; text is admitted with `RenderStage::published`.
+  Ordering refusals name only actual cycle members, never innocent declarations
+  blocked downstream of a cycle.
+  Pack file supply refuses duplicate paths immediately and preserves the first
+  bytes. Owned shaping-record serialization is named `to_bytes`.
 - The SDK is a safe author-facing facade. It must not expose bootstrap details,
   generated JVM types, or Minecraft-version internals. Which Ravel crates it
   depends on is not listed here: `tests/conformance/tests/integration/sdk_boundary.rs` pins
@@ -85,9 +99,9 @@ stable contracts toward concrete host internals.
 - `ravel-core` implements the redaction rules `SPEC.md` §9.1 requires.
   `DiagnosticMessage::redacted` earns `Redaction::Applied` only by running those
   rules itself, not by trusting a caller-supplied policy or safety assertion.
-  `ravel-observability` reexports the same redactor and credential detector for
-  reporting and tracked-text checks. Failures report their own text as
-  `Redaction::Raw`; the publication surface applies the shared redactor.
+  All publishers call that entry point directly; tracked-text checks use core's
+  credential detector. Failures report their own text as `Redaction::Raw`;
+  the publication surface applies the shared redactor.
 - `ravel-observability` also owns the opt-in profiling coordinator, and owns the
   statement of what it can attribute. `Metric::support` is one table naming, per
   metric, whether a collector measures it exactly, approximately, or not at all,
@@ -115,6 +129,22 @@ stable contracts toward concrete host internals.
   `ravel-host-runtime`; its initialization installs the panic reporter before
   constructing members. Bootstrap owns the installed composition, including the
   admitted package-version map used to check saved-data requirements.
+  Composition admission freezes the loader's admitted interception ordering after
+  registration but before layering supplied files, so failed optional interceptors
+  contribute no pack bytes. Runtime saves use that owned cache instead of
+  recollecting declarations or re-admitting conflicting claims.
+  Callback dispatch and world persistence borrow the environment owned by the
+  runtime's pre-world report; hooks do not reconstruct version or platform strings.
+  Bootstrap's pack module owns resource, staged-data, and world-data destinations
+  and pinned metadata; loader retains only the generic pack writer. Host initialization
+  takes the game directory explicitly, with cwd resolved only at the JNI entry.
+  A composition is consumed into private runtime state: package versions live only
+  in the lifecycle owner, and settings borrow the launch directory when saving.
+  Hooks dispatch through the installed runtime, not a second observer registry;
+  legacy integrated servers retain their thread-owned runtime selection. Server
+  commands and world-save interceptions carry the executing integrated-server side
+  even when the distribution is a client. World-open and save crossings are exposed
+  as `open_world_data` and `save_world_data`.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

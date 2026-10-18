@@ -7,11 +7,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ravel_bootstrap_runtime::environment;
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument, file};
 use ravel_core::{LifecycleState, ModId, Side};
 use ravel_data::ContentDeclaration;
-use ravel_host_api::HostMod;
-use ravel_host_runtime::{Member, compose, environment};
+use ravel_host_api::Mod;
+use ravel_host_runtime::{Member, compose};
 use ravel_pack::{ClosureError, PackDeclaration, ValidatedPack, validate};
 use ravel_package::PackageManifest;
 
@@ -94,7 +95,7 @@ struct Settled {
     applied: Applied,
 }
 
-impl HostMod for Settled {
+impl Mod for Settled {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -176,7 +177,7 @@ fn manifests() -> Vec<PackageManifest> {
 
 fn launch(game: &Path) -> Vec<Option<i64>> {
     let (composed, applied) = members();
-    let ravel_host_runtime::Composition {
+    let ravel_bootstrap_runtime::Composition {
         machine,
         configurations,
         ..
@@ -234,7 +235,7 @@ fn a_pack_that_states_nothing_writes_no_layer_and_every_member_keeps_its_default
         .expect("the pack should write");
 
     assert!(
-        !game.join(file::PACK_CONFIG_DIRECTORY).exists(),
+        !game.join(ravel_core::paths::PACK_CONFIG_DIRECTORY).exists(),
         "a pack with no overrides writes no settings directory"
     );
     assert_eq!(launch(&game), [Some(4), Some(4)]);

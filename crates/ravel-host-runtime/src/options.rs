@@ -8,9 +8,7 @@ const OPTIONS: &str = "options.txt";
 
 const KEY: &str = "resourcePacks:";
 
-const RAVEL: &str = "ravel";
-
-const RECORD: &str = "seeded-packs";
+use ravel_core::paths::{INSTANCE_DIRECTORY, SEEDED_PACKS_FILE};
 
 /// Outcome of offering the resource pack in the player's settings.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,7 +37,9 @@ pub enum Seeded {
 ///
 /// Returns an [`OptionsError`] if existing settings cannot be read as UTF-8 or replaced.
 pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
-    let record = game_directory.join(RAVEL).join(RECORD);
+    let record = game_directory
+        .join(INSTANCE_DIRECTORY)
+        .join(SEEDED_PACKS_FILE);
     match offered(&record) {
         Ok(true) => return Ok(Seeded::AlreadyOffered),
         Ok(false) => {}
@@ -218,7 +218,7 @@ impl std::error::Error for OptionsError {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{OPTIONS, RAVEL, RECORD, Seeded, pack_id, seed_pack};
+    use super::{INSTANCE_DIRECTORY, OPTIONS, SEEDED_PACKS_FILE, Seeded, pack_id, seed_pack};
 
     const SURROUNDING: &str = "version:3955\nfov:0.0\nincompatibleResourcePacks:[]\nlang:en_us\n";
 
@@ -293,7 +293,7 @@ mod tests {
         );
         assert_eq!(settings(&game), "resourcePacks:[]\n");
         assert!(
-            std::fs::read_to_string(game.join(RAVEL).join(RECORD))
+            std::fs::read_to_string(game.join(INSTANCE_DIRECTORY).join(SEEDED_PACKS_FILE))
                 .expect("the record should be readable")
                 .contains(pack_id())
         );
@@ -350,7 +350,10 @@ mod tests {
             assert!(matches!(outcome, Seeded::Unreadable(_)), "{outcome:?}");
             assert_eq!(settings(&game), written, "the file is untouched");
             assert!(
-                !game.join(RAVEL).join(RECORD).exists(),
+                !game
+                    .join(INSTANCE_DIRECTORY)
+                    .join(SEEDED_PACKS_FILE)
+                    .exists(),
                 "nothing is recorded, so a repaired file is still seeded"
             );
         }
@@ -373,7 +376,12 @@ mod tests {
         );
 
         assert!(!game.join(OPTIONS).exists(), "no settings file is invented");
-        assert!(!game.join(RAVEL).join(RECORD).exists());
+        assert!(
+            !game
+                .join(INSTANCE_DIRECTORY)
+                .join(SEEDED_PACKS_FILE)
+                .exists()
+        );
 
         write_settings(&game, "resourcePacks:[]\n");
         assert_eq!(
@@ -407,7 +415,7 @@ mod tests {
         let game = directory("unrecordable");
         write_settings(&game, "resourcePacks:[]\n");
         // A file blocks the directory regardless of permission handling.
-        std::fs::write(game.join(RAVEL), b"not a directory").expect("a writable file");
+        std::fs::write(game.join(INSTANCE_DIRECTORY), b"not a directory").expect("a writable file");
 
         for attempt in 1..=2 {
             let outcome = seed_pack(&game).expect("a record Ravel cannot keep is not a refusal");
@@ -433,7 +441,7 @@ mod tests {
 
         let game = directory("readonly-record");
         write_settings(&game, "resourcePacks:[]\n");
-        let ravel = game.join(RAVEL);
+        let ravel = game.join(INSTANCE_DIRECTORY);
         std::fs::create_dir_all(&ravel).expect("a writable directory");
         std::fs::set_permissions(&ravel, std::fs::Permissions::from_mode(0o555))
             .expect("permissions are settable");

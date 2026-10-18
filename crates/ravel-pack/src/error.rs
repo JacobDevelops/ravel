@@ -109,11 +109,6 @@ pub enum ClosureError {
         /// The member that writes it second.
         second: ModId,
     },
-    /// The pack supplies one path twice.
-    SuppliedTwice {
-        /// The path supplied twice.
-        path: RelativePath,
-    },
     /// Something other than Ravel would write into Ravel's own directory.
     ReservedPath {
         /// The path.
@@ -192,10 +187,6 @@ impl fmt::Display for ClosureError {
                 first,
                 second,
             } => fmt_path_contested(formatter, path, first, second),
-            Self::SuppliedTwice { path } => write!(
-                formatter,
-                "this pack supplies `{path}` twice, and one path holds one file"
-            ),
             Self::ReservedPath { path } => write!(
                 formatter,
                 "`{path}` is under `{RESERVED_PREFIX}`, which holds Ravel's own files only"
@@ -239,7 +230,6 @@ impl std::error::Error for ClosureError {
             | Self::TagMember { .. }
             | Self::Gate { .. }
             | Self::PathContested { .. }
-            | Self::SuppliedTwice { .. }
             | Self::ReservedPath { .. }
             | Self::ResourceMissing { .. }
             | Self::PrerequisiteMissing { .. }

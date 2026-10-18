@@ -304,7 +304,7 @@ mod tests {
     use crate::resources::{Supplied, open_resources};
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::ContentDeclaration;
-    use ravel_host_api::{HostMod, ModError};
+    use ravel_host_api::{Mod, ModError};
 
     use super::{GAME_PACK_DIRECTORY, Half, write_game_pack};
 
@@ -328,7 +328,7 @@ mod tests {
         supplies: Vec<(String, String)>,
     }
 
-    impl HostMod for Supplying {
+    impl Mod for Supplying {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -354,9 +354,9 @@ mod tests {
     }
 
     fn supplied(mods: &[(&str, &[(&str, &str)])]) -> Supplied {
-        let mut hosts: Vec<Box<dyn HostMod>> = mods
+        let mut hosts: Vec<Box<dyn Mod>> = mods
             .iter()
-            .map(|(name, paths)| -> Box<dyn HostMod> {
+            .map(|(name, paths)| -> Box<dyn Mod> {
                 Box::new(Supplying {
                     id: id(name),
                     supplies: paths
@@ -379,6 +379,7 @@ mod tests {
             LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
         open_resources(
             &mut crate::LoadedMods::new(&mut machine, &mut hosts).expect("complete host set"),
+            &crate::tests::environment(),
         )
         .expect("every declaration is its own")
     }

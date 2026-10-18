@@ -55,7 +55,7 @@ pub fn verify_package(root: &Path, manifest: &PackageManifest) -> Result<(), Int
 }
 
 fn canonical_root(root: &Path, file: &str) -> Result<std::path::PathBuf, IntegrityError> {
-    fs::canonicalize(root).map_err(|error| IntegrityError::from_io(file, &error))
+    fs::canonicalize(root).map_err(|error| IntegrityError::from_io(file, error))
 }
 
 fn verify_file(
@@ -65,7 +65,7 @@ fn verify_file(
 ) -> Result<(), IntegrityError> {
     let file = path.file_name();
     let resolved = fs::canonicalize(root.join(path.as_str()))
-        .map_err(|error| IntegrityError::from_io(file, &error))?;
+        .map_err(|error| IntegrityError::from_io(file, error))?;
     if resolved == root || !resolved.starts_with(root) {
         return Err(IntegrityError::OutsidePackage {
             file: file.to_owned(),
@@ -85,13 +85,13 @@ fn verify_file(
 }
 
 fn digest_file(path: &Path, file: &str) -> Result<Sha256Digest, IntegrityError> {
-    let mut reader = File::open(path).map_err(|error| IntegrityError::from_io(file, &error))?;
+    let mut reader = File::open(path).map_err(|error| IntegrityError::from_io(file, error))?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; READ_BUFFER_BYTES];
     loop {
         let read = reader
             .read(&mut buffer)
-            .map_err(|error| IntegrityError::from_io(file, &error))?;
+            .map_err(|error| IntegrityError::from_io(file, error))?;
         if read == 0 {
             break;
         }
@@ -104,7 +104,7 @@ fn digest_file(path: &Path, file: &str) -> Result<Sha256Digest, IntegrityError> 
 }
 
 /// A declared file is missing, unreadable, outside the package, or has the wrong digest.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum IntegrityError {
     /// The manifest declares a file the package does not contain.
     Missing {
@@ -116,7 +116,7 @@ pub enum IntegrityError {
         /// The declared file name.
         file: String,
         /// What the operating system reported.
-        detail: String,
+        source: std::io::Error,
     },
     /// The declared path resolves outside the package directory.
     OutsidePackage {
@@ -135,7 +135,7 @@ pub enum IntegrityError {
 }
 
 impl IntegrityError {
-    fn from_io(file: &str, error: &std::io::Error) -> Self {
+    fn from_io(file: &str, error: std::io::Error) -> Self {
         if error.kind() == ErrorKind::NotFound {
             return Self::Missing {
                 file: file.to_owned(),
@@ -143,7 +143,7 @@ impl IntegrityError {
         }
         Self::Unreadable {
             file: file.to_owned(),
-            detail: error.to_string(),
+            source: error,
         }
     }
 
@@ -166,8 +166,8 @@ impl fmt::Display for IntegrityError {
                 formatter,
                 "the package declares `{file}` but does not contain it"
             ),
-            Self::Unreadable { file, detail } => {
-                write!(formatter, "`{file}` could not be read: {detail}")
+            Self::Unreadable { file, source } => {
+                write!(formatter, "`{file}` could not be read: {source}")
             }
             Self::OutsidePackage { file } => {
                 write!(formatter, "`{file}` resolves outside the package")
@@ -184,7 +184,14 @@ impl fmt::Display for IntegrityError {
     }
 }
 
-impl std::error::Error for IntegrityError {}
+impl std::error::Error for IntegrityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unreadable { source, .. } => Some(source),
+            Self::Missing { .. } | Self::OutsidePackage { .. } | Self::Mismatch { .. } => None,
+        }
+    }
+}
 
 impl StructuredFailure for IntegrityError {
     fn failure_kind(&self) -> Option<FailureKind> {
@@ -261,9 +268,9 @@ mod tests {
     #[test]
     fn an_untouched_package_verifies() {
         let (root, manifest) = package("intact");
-        assert_eq!(verify_package(&root, &manifest), Ok(()));
-        assert_eq!(verify_source_file(&root, &manifest.source.files[0]), Ok(()));
-        assert_eq!(verify_provenance(&root, &manifest.provenance), Ok(()));
+        verify_package(&root, &manifest).expect("the package is intact");
+        verify_source_file(&root, &manifest.source.files[0]).expect("the source is intact");
+        verify_provenance(&root, &manifest.provenance).expect("the provenance is intact");
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
@@ -275,15 +282,19 @@ mod tests {
         fs::write(source_path(&root), &altered).expect("source rewritten");
 
         let error = verify_package(&root, &manifest).expect_err("the source was altered");
+        let IntegrityError::Mismatch {
+            file,
+            declared,
+            actual,
+        } = &error
+        else {
+            panic!("expected a digest mismatch: {error}");
+        };
+        assert_eq!(file, "lib.rs");
+        assert_eq!(*declared, manifest.source.files[0].sha256);
         assert_eq!(
-            error,
-            IntegrityError::Mismatch {
-                file: "lib.rs".to_owned(),
-                declared: manifest.source.files[0].sha256,
-                actual: digest_of(&altered)
-                    .try_into()
-                    .expect("a computed digest is well formed"),
-            }
+            *actual,
+            Sha256Digest::try_from(digest_of(&altered)).expect("a computed digest is well formed")
         );
         assert_eq!(error.file(), "lib.rs");
         assert!(error.to_string().starts_with("`lib.rs` hashes "));
@@ -318,7 +329,7 @@ mod tests {
         ))
         .expect("a valid manifest");
         assert!(bytes.len() > super::READ_BUFFER_BYTES);
-        assert_eq!(verify_package(&root, &manifest), Ok(()));
+        verify_package(&root, &manifest).expect("the entire large file matches its digest");
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
@@ -328,11 +339,9 @@ mod tests {
         fs::remove_file(source_path(&root)).expect("source removed");
 
         let error = verify_package(&root, &manifest).expect_err("the source is gone");
-        assert_eq!(
-            error,
-            IntegrityError::Missing {
-                file: "lib.rs".to_owned()
-            }
+        assert!(
+            matches!(&error, IntegrityError::Missing { file } if file == "lib.rs"),
+            "{error}"
         );
         assert_eq!(
             error.to_string(),
@@ -355,6 +364,11 @@ mod tests {
         assert_eq!(error.file(), "lib.rs");
         assert!(error.to_string().starts_with("`lib.rs` could not be read"));
         assert!(error.quotes_untrusted_text());
+        let source = std::error::Error::source(&error)
+            .expect("the filesystem error is retained")
+            .downcast_ref::<std::io::Error>()
+            .expect("the source is the original IO error");
+        assert_eq!(source.kind(), std::io::ErrorKind::IsADirectory);
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
@@ -377,11 +391,9 @@ mod tests {
         .expect("a valid manifest");
 
         let error = verify_package(&root, &manifest).expect_err("the source escapes the package");
-        assert_eq!(
-            error,
-            IntegrityError::OutsidePackage {
-                file: "lib.rs".to_owned()
-            }
+        assert!(
+            matches!(&error, IntegrityError::OutsidePackage { file } if file == "lib.rs"),
+            "{error}"
         );
         assert!(!error.to_string().contains(&digest_of(EXTERNAL_BYTES)));
         fs::remove_dir_all(&root).expect("package cleanup");
@@ -408,11 +420,9 @@ mod tests {
         .expect("a valid manifest");
 
         let error = verify_package(&root, &manifest).expect_err("the source escapes the package");
-        assert_eq!(
-            error,
-            IntegrityError::OutsidePackage {
-                file: "lib.rs".to_owned()
-            }
+        assert!(
+            matches!(&error, IntegrityError::OutsidePackage { file } if file == "lib.rs"),
+            "{error}"
         );
         assert!(!error.to_string().contains(&digest_of(EXTERNAL_BYTES)));
         fs::remove_dir_all(&root).expect("package cleanup");
@@ -424,15 +434,30 @@ mod tests {
         let (root, manifest) = package("provenance");
         fs::write(root.join("provenance.json"), b"{}").expect("record rewritten");
 
-        assert_eq!(verify_source_file(&root, &manifest.source.files[0]), Ok(()));
+        verify_source_file(&root, &manifest.source.files[0]).expect("the source is intact");
         let error =
             verify_provenance(&root, &manifest.provenance).expect_err("the record was altered");
         assert_eq!(error.file(), "provenance.json");
         assert!(matches!(error, IntegrityError::Mismatch { .. }), "{error}");
-        assert_eq!(
-            verify_package(&root, &manifest).expect_err("not intact"),
-            error
-        );
+        let combined = verify_package(&root, &manifest).expect_err("not intact");
+        let (
+            IntegrityError::Mismatch {
+                file,
+                declared,
+                actual,
+            },
+            IntegrityError::Mismatch {
+                file: combined_file,
+                declared: combined_declared,
+                actual: combined_actual,
+            },
+        ) = (&error, &combined)
+        else {
+            panic!("expected matching digest failures: {error:?}, {combined:?}");
+        };
+        assert_eq!(file, combined_file);
+        assert_eq!(declared, combined_declared);
+        assert_eq!(actual, combined_actual);
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
@@ -459,11 +484,10 @@ mod tests {
     fn a_package_whose_root_does_not_exist_reports_a_missing_file() {
         let (root, manifest) = package("absent-root");
         fs::remove_dir_all(&root).expect("the package is removed entirely");
-        assert_eq!(
-            verify_package(&root, &manifest),
-            Err(IntegrityError::Missing {
-                file: "lib.rs".to_owned()
-            })
+        let error = verify_package(&root, &manifest).expect_err("the package root is missing");
+        assert!(
+            matches!(&error, IntegrityError::Missing { file } if file == "lib.rs"),
+            "{error}"
         );
     }
 

@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
+ravel-bootstrap-runtime.workspace = true
 ravel-core.workspace = true
 ravel-host-runtime.workspace = true
 ravel-test-mod-audio.workspace = true

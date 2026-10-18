@@ -1,4 +1,4 @@
-use ravel_config::{ConfigurationDeclaration, LayerError, ValueDocument, file};
+use ravel_config::{ConfigurationDeclaration, LayerError, ValueDocument};
 use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath, Side, Version};
 use ravel_data::{ContentDeclaration, TagId};
 use ravel_package::PackageManifest;
@@ -217,7 +217,8 @@ fn a_reference_answered_by_the_pack_itself_or_by_a_members_manifest_holds() {
     pack.supply(
         path("assets/example_pack/textures/lantern.png"),
         b"\x89PNG".to_vec(),
-    );
+    )
+    .expect("one supplied path");
     pack.refer_to(
         path("assets/example_pack/textures/lantern.png"),
         content_referrer(),
@@ -257,27 +258,6 @@ fn manifest_document_with_resource(owner: &str, version: &str, resource: &str) -
           "provenance": {{ "record": "provenance.json", "sha256": "{DIGEST}" }}
         }}"#
     )
-}
-
-#[test]
-fn a_pack_that_supplies_one_path_twice_is_refused() {
-    let (mut pack, manifests, content) = one_member();
-    pack.supply(
-        path("data/example_pack/recipe/lantern.json"),
-        b"{}".to_vec(),
-    );
-    pack.supply(
-        path("data/example_pack/recipe/lantern.json"),
-        b"{\"changed\": true}".to_vec(),
-    );
-
-    let refused = validate(&pack, &manifests, &content, &[]).expect_err("one path holds one file");
-    assert_eq!(
-        refused,
-        ClosureError::SuppliedTwice {
-            path: path("data/example_pack/recipe/lantern.json"),
-        }
-    );
 }
 
 fn two_members() -> (PackDeclaration, Vec<PackageManifest>) {
@@ -368,7 +348,8 @@ fn a_pack_replacing_a_merged_tag_file_names_every_contributor_it_took_it_from() 
         .entry(ContentKind::Item, "tin_lantern")
         .expect("a legal entry");
     second.tag(&tag, &other).expect("an item joins an item tag");
-    pack.supply(tag.generated_path(), b"{}\n".to_vec());
+    pack.supply(tag.generated_path(), b"{}\n".to_vec())
+        .expect("one supplied path");
 
     let validated = validate(&pack, &manifests, &[first, second], &[])
         .expect("a pack may write the tag file itself");
@@ -398,7 +379,8 @@ fn the_pack_replacing_one_members_file_is_recorded_rather_than_refused() {
     declaration
         .tag(&tag, &held)
         .expect("an item joins an item tag");
-    pack.supply(tag.generated_path(), b"{}\n".to_vec());
+    pack.supply(tag.generated_path(), b"{}\n".to_vec())
+        .expect("one supplied path");
 
     let validated =
         validate(&pack, &manifests, &[declaration], &[]).expect("a pack may replace a file");
@@ -420,7 +402,7 @@ fn ordinary_member_resource_override_is_recorded() -> Result<(), Box<dyn std::er
     let (mut pack, manifests, _) = one_member();
     let mut declaration = ContentDeclaration::new(id("base_mod"));
     declaration.resource(shared.clone(), b"{}".to_vec())?;
-    pack.supply(shared.clone(), b"{\"changed\":true}\n".to_vec());
+    pack.supply(shared.clone(), b"{\"changed\":true}\n".to_vec())?;
 
     let validated = validate(&pack, &manifests, &[declaration], &[])?;
     assert_eq!(validated.overrides().len(), 1);
@@ -451,7 +433,8 @@ fn member_resources_cannot_use_ravels_directory() -> Result<(), Box<dyn std::err
 #[test]
 fn nothing_but_ravel_may_write_into_ravels_own_directory() {
     let (mut pack, manifests, content) = one_member();
-    pack.supply(path(&format!("{RESERVED_PREFIX}pack.json")), b"{}".to_vec());
+    pack.supply(path(&format!("{RESERVED_PREFIX}pack.json")), b"{}".to_vec())
+        .expect("one supplied path");
 
     assert_eq!(
         validate(&pack, &manifests, &content, &[]),
@@ -779,7 +762,7 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
     let written = validated
         .file(&path(&format!(
             "{}/base_mod.json",
-            file::PACK_CONFIG_DIRECTORY
+            ravel_core::paths::PACK_CONFIG_DIRECTORY
         )))
         .expect("the pack writes its own layer");
     let text = String::from_utf8(written.bytes().to_vec()).expect("the document is UTF-8");
@@ -789,7 +772,7 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
         "every written document ends in a newline"
     );
     assert!(
-        file::PACK_CONFIG_DIRECTORY.starts_with(RESERVED_PREFIX),
+        ravel_core::paths::PACK_CONFIG_DIRECTORY.starts_with(RESERVED_PREFIX),
         "the pack layer is under the prefix `reserved` keeps everything else out of"
     );
 }
@@ -811,7 +794,8 @@ fn validating_the_same_declaration_twice_produces_the_same_files() {
     pack.supply(
         path("data/example_pack/recipe/lantern.json"),
         b"{}\n".to_vec(),
-    );
+    )
+    .expect("one supplied path");
     pack.progression_mut()
         .declare(named("example_pack", "start"), [], Some(lantern))
         .expect("a legal step");

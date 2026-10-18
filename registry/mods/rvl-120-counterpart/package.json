@@ -82,7 +82,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "ed1312cfbb19fcd985a458673f106c074b86abfcf6c2ac64e8e08d51221399d2"
+        "sha256": "68b4512cac4544c21eaed5eba2effb00cb21b594a31520400f85198554bb1a28"
       },
       {
         "path": "src/network.rs",
@@ -106,7 +106,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "928ba563425e118cfeeea0959abd58de4ac06da53c48b6f02297719912fc7c7a"
+        "sha256": "f37f01226017ac1bccc16d94ff3055affce0639d190d5a577fe518a897936286"
       },
       {
         "path": "src/values.rs",

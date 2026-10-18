@@ -13,7 +13,7 @@
 
 use ravel_sdk::Side;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 
 use core::fmt;
@@ -85,14 +85,10 @@ impl Settings {
     /// Reads the values in force, refusing a missing key or a value of the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            scratch_world_shortcut: resolved.boolean(&key(DEVELOPMENT_SHORTCUT))?,
-            silence_music: resolved.boolean(&key(DEVELOPMENT_SILENCE_MUSIC))?,
+            scratch_world_shortcut: resolved.boolean(DEVELOPMENT_SHORTCUT)?,
+            silence_music: resolved.boolean(DEVELOPMENT_SILENCE_MUSIC)?,
         })
     }
-}
-
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
 }
 
 /// The scope vocabulary of section 5.2.
@@ -468,7 +464,9 @@ mod tests {
                 .expect("the changed declaration resolves");
             assert_eq!(
                 Settings::read(&resolved),
-                Err(ValueError::Unknown { key: key(name) })
+                Err(ValueError::Unknown {
+                    key: name.to_owned()
+                })
             );
         }
     }

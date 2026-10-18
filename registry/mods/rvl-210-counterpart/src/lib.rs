@@ -56,7 +56,7 @@ use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::network::PacketDelivery;
 use ravel_sdk::prelude::*;
-use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion};
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::{JsonValue, json};
 
@@ -459,25 +459,11 @@ impl Mod for Entry {
         )))
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         // Section thirteen scopes the counters to a world, so a world that
         // stored nothing opens on nothing rather than on the last one's counts.
         self.counters = Counters::new();
         if let Some(envelope) = envelope {
-            if !plan.steps().is_empty() {
-                return Err(ModError::refused(
-                    "this build declares one saved-data version and so crosses no step",
-                ));
-            }
-            if envelope.data_version() != DATA_VERSION {
-                return Err(ModError::refused(
-                    "the world stored a version this build does not read",
-                ));
-            }
             self.counters
                 .load(envelope.payload())
                 .map_err(ModError::from_display)?;
@@ -714,16 +700,8 @@ mod tests {
             .expect("the entry writes its counters")
             .expect("a declared owner writes an envelope");
         let mut reopened = Entry::new();
-        let plan = SavedDataPlan::open(
-            &reopened
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            Some(saved.data_version()),
-        )
-        .expect("the world stored the version this build writes");
         reopened
-            .open_saved_data(Some(&saved), &plan)
+            .open_saved_data(Some(&saved))
             .expect("the world opens");
         assert_eq!(reopened.counters().last("identifiers"), 3);
     }
@@ -731,17 +709,7 @@ mod tests {
     #[test]
     fn every_opening_of_a_world_allocates_the_next_value_of_the_entrys_own_counter() {
         let mut first = Entry::new();
-        let fresh = SavedDataPlan::open(
-            &first
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            None,
-        )
-        .expect("absence initializes");
-        first
-            .open_saved_data(None, &fresh)
-            .expect("a fresh world opens");
+        first.open_saved_data(None).expect("a fresh world opens");
         assert_eq!(first.counters().last(persistence::OPENINGS), 1);
         let stored = first
             .save_saved_data()
@@ -749,16 +717,8 @@ mod tests {
             .expect("a declared owner writes an envelope");
 
         let mut second = Entry::new();
-        let again = SavedDataPlan::open(
-            &second
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            Some(stored.data_version()),
-        )
-        .expect("the world stored the version this build writes");
         second
-            .open_saved_data(Some(&stored), &again)
+            .open_saved_data(Some(&stored))
             .expect("the world opens");
         assert_eq!(
             second.counters().last(persistence::OPENINGS),
@@ -897,15 +857,7 @@ mod tests {
                 .next("identifiers")
                 .expect("inside the limit");
         }
-        let plan = SavedDataPlan::open(
-            &entry
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            None,
-        )
-        .expect("a world that stored nothing");
-        entry.open_saved_data(None, &plan).expect("the world opens");
+        entry.open_saved_data(None).expect("the world opens");
         assert_eq!(
             entry.counters().last("identifiers"),
             0,
@@ -921,16 +873,8 @@ mod tests {
             DATA_VERSION,
             json!({ "counters": { "identifiers": "not a number" } }),
         );
-        let plan = SavedDataPlan::open(
-            &entry
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            Some(saved.data_version()),
-        )
-        .expect("the world stored the version this build writes");
         assert!(
-            entry.open_saved_data(Some(&saved), &plan).is_err(),
+            entry.open_saved_data(Some(&saved)).is_err(),
             "opening on zero re-issues identifiers the world already stored"
         );
         assert_eq!(entry.counters().last("identifiers"), 0);
@@ -942,13 +886,7 @@ mod tests {
             let mut entry = Entry::new();
             let saved =
                 SavedDataEnvelope::current(Entry::declared_id().clone(), DATA_VERSION, payload);
-            let declaration = entry
-                .saved_data_declaration()
-                .expect("a valid declaration")
-                .expect("the entry saves counters");
-            let plan = SavedDataPlan::open(&declaration, Some(saved.data_version()))
-                .expect("the stored version is current");
-            assert!(entry.open_saved_data(Some(&saved), &plan).is_err());
+            assert!(entry.open_saved_data(Some(&saved)).is_err());
         }
     }
 

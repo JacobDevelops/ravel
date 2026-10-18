@@ -4,10 +4,9 @@ use std::fmt;
 use ravel_core::{
     FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure, Version,
 };
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::{HostError, Mod};
 use ravel_save::{
-    MigrationChain, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
-    SavedDataPlan,
+    MigrationChain, SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan,
 };
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine, Requirement};
@@ -21,9 +20,9 @@ use crate::loaded::LoadedMods;
 /// # Errors
 ///
 /// Returns [`SaveRefused::Lifecycle`] for denied lifecycle access,
-/// [`SaveRefused::Owner`] for callback failure, or [`SaveRefused::ForeignEnvelope`]
-/// when a host attempts to write another owner's data.
-pub fn produce_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
+/// [`SaveRefused::Mod`] for callback failure, or [`SaveRefused::ForeignEnvelope`]
+/// when an instance attempts to write another owner's data.
+pub fn produce_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     prior: Option<&SavedDataAggregate>,
@@ -33,32 +32,31 @@ pub fn produce_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
     record_refusal(machine, environment, result)
 }
 
-fn snapshot<H: std::ops::DerefMut<Target: HostMod>>(
+fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     prior: Option<&SavedDataAggregate>,
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let (machine, mods) = loaded.parts();
     machine.save_access().map_err(SaveRefused::Lifecycle)?;
-    machine.world_access().map_err(SaveRefused::Lifecycle)?;
+    machine
+        .lifecycle_world_access()
+        .map_err(SaveRefused::Lifecycle)?;
     let mut aggregate = SavedDataAggregate::fresh();
-    for mod_id in machine.order() {
-        if !loads_here(machine, mod_id) {
+    for (entry, state) in machine.tracked_entries() {
+        let mod_id = &entry.mod_id;
+        if !entry.sides.loads_on(machine.side()) {
             continue;
         }
-        let state = machine.state(mod_id).map_err(SaveRefused::Lifecycle)?;
         if state == LifecycleState::Failed {
             if let Some(envelope) = prior.and_then(|aggregate| aggregate.envelope(mod_id)) {
                 aggregate.replace(envelope.clone());
             }
             continue;
         }
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == mod_id)
-            .expect("a lifecycle owner loading here has a supplied host");
+        let instance = crate::loaded::instance_mut(mods, mod_id);
         let saved =
-            crate::callback(mod_id, state, || host.save_saved_data()).map_err(|source| {
-                SaveRefused::Owner {
+            crate::callback(mod_id, state, || instance.save_saved_data()).map_err(|source| {
+                SaveRefused::Mod {
                     mod_id: mod_id.clone(),
                     source,
                 }
@@ -81,7 +79,7 @@ fn snapshot<H: std::ops::DerefMut<Target: HostMod>>(
 ///
 /// Parked mods are skipped. Failed owners' prior envelopes remain opaque without
 /// consulting metadata, invoking their code, or migrating their payloads. Active owners
-/// receive current payloads and a current plan. Optional callback failures preserve prior data;
+/// receive current payloads after loader-owned migration. Optional callback failures preserve prior data;
 /// required callback failures and invalid data prevent world opening.
 /// Callback failures are attributed using the supplied session `environment`, including
 /// its Minecraft and Ravel versions; persistence failures have no failure surface.
@@ -91,7 +89,7 @@ fn snapshot<H: std::ops::DerefMut<Target: HostMod>>(
 /// # Errors
 ///
 /// Returns [`SaveRefused`] for invalid data or migrations, foreign ownership, or owner refusal.
-pub fn open_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
+pub fn open_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     bytes: Option<&[u8]>,
@@ -102,7 +100,7 @@ pub fn open_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
     record_refusal(machine, environment, result)
 }
 
-fn open<H: std::ops::DerefMut<Target: HostMod>>(
+fn open<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     bytes: Option<&[u8]>,
@@ -116,23 +114,15 @@ fn open<H: std::ops::DerefMut<Target: HostMod>>(
         })
         .map_err(SaveRefused::Data)?;
     migrate(machine, environment, &mut aggregate, &declarations, &chains)?;
-    let order: Vec<ModId> = machine.order().cloned().collect();
-    for mod_id in order {
-        if machine.state(&mod_id) == Ok(LifecycleState::Failed) {
+    for declaration in &declarations {
+        let mod_id = declaration.owner();
+        if !machine.loads(mod_id) {
             continue;
         }
-        let Some(declaration) = declarations.iter().find(|value| value.owner() == &mod_id) else {
-            continue;
-        };
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == &mod_id)
-            .expect("a declaration belongs to a supplied host");
-        let envelope = aggregate.envelope(&mod_id);
-        let plan = SavedDataPlan::open(declaration, envelope.map(SavedDataEnvelope::data_version))
-            .map_err(SaveRefused::Data)?;
-        if owner_callback(machine, environment, &mod_id, || {
-            host.open_saved_data(envelope, &plan)
+        let instance = crate::loaded::instance_mut(mods, mod_id);
+        let envelope = aggregate.envelope(mod_id);
+        if owner_callback(machine, environment, mod_id, || {
+            instance.open_saved_data(envelope)
         })?
         .is_none()
         {
@@ -141,7 +131,7 @@ fn open<H: std::ops::DerefMut<Target: HostMod>>(
                     machine.state(owner) == Ok(LifecycleState::Failed)
                 })
                 .map_err(SaveRefused::Data)?;
-            if let Some(envelope) = prior.envelope(&mod_id) {
+            if let Some(envelope) = prior.envelope(mod_id) {
                 aggregate.replace(envelope.clone());
             }
         }
@@ -190,27 +180,21 @@ fn migrate(
     Ok(())
 }
 
-fn declarations<H: std::ops::DerefMut<Target: HostMod>>(
+fn declarations<H: std::ops::DerefMut<Target: Mod>>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     mods: &[H],
 ) -> Result<(Vec<SavedDataDeclaration>, Vec<MigrationChain>), SaveRefused> {
     let mut declarations = Vec::with_capacity(mods.len());
     let mut chains = Vec::with_capacity(mods.len());
-    let order: Vec<ModId> = machine.order().cloned().collect();
+    let order: Vec<_> = machine
+        .eligible()
+        .map(|(entry, _)| entry.mod_id.clone())
+        .collect();
     for mod_id in &order {
-        if !loads_here(machine, mod_id) {
-            continue;
-        }
-        if machine.state(mod_id) == Ok(LifecycleState::Failed) {
-            continue;
-        }
-        let host = mods
-            .iter()
-            .find(|host| host.id() == mod_id)
-            .expect("a lifecycle owner loading here has a supplied host");
+        let instance = crate::loaded::instance(mods, mod_id);
         let Some(declaration) = owner_callback(machine, environment, mod_id, || {
-            host.saved_data_declaration()
+            instance.saved_data_declaration()
         })?
         .flatten() else {
             continue;
@@ -222,7 +206,7 @@ fn declarations<H: std::ops::DerefMut<Target: HostMod>>(
             });
         }
         let Some(chain) = owner_callback(machine, environment, mod_id, || {
-            host.saved_data_migrations()
+            instance.saved_data_migrations()
         })?
         else {
             continue;
@@ -263,8 +247,8 @@ fn record_failure<T>(
     let requirement = machine
         .fail_callback(&source, environment, None)
         .map_err(SaveRefused::Lifecycle)?;
-    if requirement == Requirement::Required {
-        return Err(SaveRefused::Owner {
+    if requirement == Requirement::Required || machine.halted_by().is_some() {
+        return Err(SaveRefused::Mod {
             mod_id: mod_id.clone(),
             source,
         });
@@ -278,20 +262,18 @@ fn record_refusal<T>(
     result: Result<T, SaveRefused>,
 ) -> Result<T, SaveRefused> {
     if let Err(refused) = &result
-        && let Some(owner) = refused.owner()
-        && machine.entry(owner).is_ok()
+        && let Some(owner) = refused.mod_id()
+        && machine.state(owner) != Ok(LifecycleState::Failed)
         && breaks_owner_contract(refused)
     {
         let source = match refused {
-            SaveRefused::Owner { source, .. } => source.clone(),
+            SaveRefused::Mod { source, .. } => source.clone(),
             SaveRefused::Lifecycle(_)
             | SaveRefused::Data(_)
             | SaveRefused::ForeignDeclaration { .. }
-            | SaveRefused::ForeignEnvelope { .. } => HostError::Refused {
-                mod_id: owner.clone(),
-                state: machine.state(owner).map_err(SaveRefused::Lifecycle)?,
-                detail: refused.to_string(),
-            },
+            | SaveRefused::ForeignEnvelope { .. } => {
+                crate::owner_refusal(machine, owner, refused).map_err(SaveRefused::Lifecycle)?
+            }
         };
         machine
             .fail_callback(&source, environment, None)
@@ -303,7 +285,7 @@ fn record_refusal<T>(
 fn breaks_owner_contract(refused: &SaveRefused) -> bool {
     matches!(
         refused,
-        SaveRefused::Owner { .. }
+        SaveRefused::Mod { .. }
             | SaveRefused::ForeignDeclaration { .. }
             | SaveRefused::ForeignEnvelope { .. }
             | SaveRefused::Data(
@@ -312,12 +294,6 @@ fn breaks_owner_contract(refused: &SaveRefused) -> bool {
                     | SavedDataError::NoVersionsDeclared { .. }
             )
     )
-}
-
-fn loads_here(machine: &LifecycleMachine, mod_id: &ModId) -> bool {
-    machine
-        .entry(mod_id)
-        .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
 }
 
 /// Why world saved data could not be opened or snapshotted.
@@ -335,7 +311,7 @@ pub enum SaveRefused {
         owner: ModId,
     },
     /// A mod refused the entry it was handed.
-    Owner {
+    Mod {
         /// The mod that refused.
         mod_id: ModId,
         /// What it said.
@@ -353,13 +329,13 @@ pub enum SaveRefused {
 impl SaveRefused {
     /// Returns the mod this refusal is about, when it is about one.
     #[must_use]
-    pub const fn owner(&self) -> Option<&ModId> {
+    pub const fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::Lifecycle(_) => None,
             Self::Data(error) => error.owner(),
             Self::ForeignDeclaration { mod_id, .. }
             | Self::ForeignEnvelope { mod_id, .. }
-            | Self::Owner { mod_id, .. } => Some(mod_id),
+            | Self::Mod { mod_id, .. } => Some(mod_id),
         }
     }
 }
@@ -379,7 +355,7 @@ impl fmt::Display for SaveRefused {
                 "`{mod_id}` produced saved data owned by `{owner}`, and a mod writes only its own \
                  world data"
             ),
-            Self::Owner { mod_id, source } => {
+            Self::Mod { mod_id, source } => {
                 write!(formatter, "`{mod_id}` refused its saved data: {source}")
             }
         }
@@ -392,7 +368,7 @@ impl std::error::Error for SaveRefused {
             Self::Lifecycle(error) => Some(error),
             Self::Data(error) => Some(error),
             Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => None,
-            Self::Owner { source, .. } => Some(source),
+            Self::Mod { source, .. } => Some(source),
         }
     }
 }
@@ -401,17 +377,15 @@ impl StructuredFailure for SaveRefused {
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
-            Self::Data(_)
-            | Self::ForeignDeclaration { .. }
-            | Self::ForeignEnvelope { .. }
-            | Self::Owner { .. } => None,
+            Self::Mod { source, .. } => source.failure_kind(),
+            Self::Data(_) | Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => None,
         }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
-            Self::Owner { source, .. } => source.state(),
+            Self::Mod { source, .. } => source.lifecycle_state(),
             Self::Data(_) | Self::ForeignDeclaration { .. } => LifecycleState::Registered,
             Self::ForeignEnvelope { .. } => LifecycleState::Running,
         }
@@ -422,20 +396,24 @@ impl StructuredFailure for SaveRefused {
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Data(error) => error.quotes_untrusted_text(),
             Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => false,
-            Self::Owner { .. } => true,
+            Self::Mod { source, .. } => source.quotes_untrusted_text(),
         }
     }
 }
+
+#[cfg(test)]
+#[path = "save_data_tests.rs"]
+mod save_data_tests;
 
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure};
-    use ravel_host_api::{HostError, HostMod, ModError};
+    use ravel_host_api::{HostError, Mod, ModError};
     use ravel_save::{
         MigrationChain, MigrationFailed, SavedDataAggregate, SavedDataDeclaration,
-        SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
+        SavedDataEnvelope, SavedDataError, SavedDataVersion,
     };
     use serde_json::{Value, json};
 
@@ -449,7 +427,7 @@ mod tests {
         phase: &'static str,
     }
 
-    impl HostMod for Failing {
+    impl Mod for Failing {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -473,7 +451,6 @@ mod tests {
         fn open_saved_data(
             &mut self,
             _envelope: Option<&SavedDataEnvelope>,
-            _plan: &SavedDataPlan,
         ) -> Result<(), ModError> {
             assert_ne!(self.phase, "open", "opening panic");
             Err(ModError::Unsupported)
@@ -490,14 +467,14 @@ mod tests {
             let mut machine = machine(vec![entry("actual", &[Side::DedicatedServer])]);
             let environment = environment();
             let refusal = open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment,
                 None,
                 &BTreeMap::new(),
             )
             .expect_err("all failures stay within the callback boundary");
-            let SaveRefused::Owner { mod_id, source } = refusal else {
+            let SaveRefused::Mod { mod_id, source } = refusal else {
                 panic!("expected an owner refusal");
             };
             assert_eq!(mod_id, id("actual"));
@@ -533,14 +510,14 @@ mod tests {
         let bytes = aggregate.to_bytes().expect("valid aggregate");
         let mut machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
         let refusal = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
             &BTreeMap::new(),
         )
         .expect_err("migration panic is contained");
-        assert!(matches!(refusal, SaveRefused::Owner { mod_id, .. } if mod_id == id("stored")));
+        assert!(matches!(refusal, SaveRefused::Mod { mod_id, .. } if mod_id == id("stored")));
     }
 
     #[test]
@@ -581,7 +558,7 @@ mod tests {
         ));
         let bytes = prior.to_bytes().expect("valid aggregate");
         let admitted = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -604,7 +581,7 @@ mod tests {
             let bytes = world(&[("stored", 1, json!({"opaque": [null, "unchanged"]}))]);
             let environment = environment();
             let aggregate = open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment,
                 Some(&bytes),
@@ -624,6 +601,33 @@ mod tests {
     }
 
     #[test]
+    fn optional_saved_data_failure_after_world_mutation_refuses_the_world() {
+        for phase in ["declaration", "migrations", "open", "refusal"] {
+            let mut instance = Failing {
+                id: id("stored"),
+                phase,
+            };
+            let mut owner = entry("stored", &[Side::DedicatedServer]);
+            owner.requirement = Requirement::Optional;
+            let mut machine = machine(vec![owner]);
+            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            machine.record_world_mutation().expect("running world");
+            let bytes = world(&[("stored", 1, json!({"opaque": true}))]);
+            let refused = open_saved_data(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut instance])
+                    .expect("complete instance set"),
+                &environment(),
+                Some(&bytes),
+                &BTreeMap::new(),
+            )
+            .expect_err("optional failure cannot leave a mutated world running");
+            assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("stored")));
+            assert_eq!(machine.halted_by(), Some(&id("stored")));
+            assert!(machine.lifecycle_world_access().is_err());
+        }
+    }
+
+    #[test]
     fn optional_migration_panics_preserve_the_original_envelope() {
         fn panics(_payload: &Value) -> Result<Value, MigrationFailed> {
             panic!("migration panic")
@@ -639,7 +643,7 @@ mod tests {
         let mut machine = machine(vec![owner]);
         let bytes = world(&[("stored", 1, json!({"opaque": true}))]);
         let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -665,7 +669,7 @@ mod tests {
             ("failed", 1, json!({"count": 19})),
         ]);
         let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut active, &mut failed])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut active, &mut failed])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -702,14 +706,14 @@ mod tests {
             ("second", 1, json!({"count": 19})),
         ]);
         let refusal = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
             &BTreeMap::new(),
         )
         .expect_err("later migration refuses the world");
-        assert_eq!(refusal.owner(), Some(&id("second")));
+        assert_eq!(refusal.mod_id(), Some(&id("second")));
         assert!(first.read.is_none() && second.read.is_none());
         assert_eq!(
             bytes,
@@ -747,7 +751,7 @@ mod tests {
             ("failed", 99, json!({"opaque": [null, "future"]})),
         ]);
         let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut active, &mut failed])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut active, &mut failed])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -844,7 +848,7 @@ mod tests {
         }
     }
 
-    impl HostMod for Storing {
+    impl Mod for Storing {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -872,7 +876,6 @@ mod tests {
         fn open_saved_data(
             &mut self,
             envelope: Option<&SavedDataEnvelope>,
-            _plan: &SavedDataPlan,
         ) -> Result<(), ModError> {
             if self.refuses {
                 return Err(ModError::Refused {
@@ -890,7 +893,7 @@ mod tests {
         host.versions.clear();
         let mut machine = machine(vec![entry("invalid_mod", &[Side::DedicatedServer])]);
         let refusal = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             None,
@@ -899,7 +902,7 @@ mod tests {
         .expect_err("invalid declarations cannot opt out");
         assert!(matches!(
             refusal,
-            SaveRefused::Owner { mod_id, source: HostError::Refused { .. } }
+            SaveRefused::Mod { mod_id, source: HostError::OperationRefused { .. } }
                 if mod_id == id("invalid_mod")
         ));
         assert_eq!(host.read, None);
@@ -912,13 +915,13 @@ mod tests {
         let mut machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
         assert_eq!(
             open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment(),
                 None,
                 &BTreeMap::new(),
             ),
-            Err(SaveRefused::Owner {
+            Err(SaveRefused::Mod {
                 mod_id: id("refusing_mod"),
                 source: HostError::Unsupported {
                     mod_id: id("refusing_mod"),
@@ -958,7 +961,7 @@ mod tests {
                 let environment = environment();
                 let compatible = world(&[("stored", 3, json!({"compatible": true}))]);
                 let refused_bytes = incompatible_world(future);
-                let mut hosts: [&mut dyn HostMod; 1] = [&mut host];
+                let mut hosts: [&mut dyn Mod; 1] = [&mut host];
                 let mut loaded = LoadedMods::new(&mut machine, &mut hosts).expect("paired host");
                 crate::drive_loaded(&mut loaded, &environment).expect("owner starts");
                 open_saved_data(
@@ -1030,7 +1033,7 @@ mod tests {
         let mut machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
 
         let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -1057,7 +1060,7 @@ mod tests {
         let mut machine = machine(vec![entry("thief", &[Side::DedicatedServer])]);
 
         let refused = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -1086,7 +1089,7 @@ mod tests {
 
         assert_eq!(
             open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment(),
                 Some(&bytes),
@@ -1109,7 +1112,7 @@ mod tests {
 
         assert_eq!(
             open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment(),
                 Some(&bytes),
@@ -1131,7 +1134,7 @@ mod tests {
         )
         .expect("a legal plan");
         open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut repaired_session, &mut [&mut whole])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut repaired_session, &mut [&mut whole])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -1155,7 +1158,7 @@ mod tests {
         ]);
 
         let refusal = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut alpha, &mut zeta])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut alpha, &mut zeta])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
@@ -1163,7 +1166,7 @@ mod tests {
         )
         .expect_err("`zeta` refuses its own shape");
 
-        assert_eq!(refusal.owner(), Some(&id("zeta")));
+        assert_eq!(refusal.mod_id(), Some(&id("zeta")));
         assert!(refusal.to_string().contains("zeta"), "{refusal}");
         assert!(refusal.quotes_untrusted_text());
     }
@@ -1174,7 +1177,7 @@ mod tests {
         let mut machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
 
         let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
             None,
@@ -1193,7 +1196,7 @@ mod tests {
 
         assert_eq!(
             open_saved_data(
-                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
                 &environment(),
                 None,
@@ -1213,7 +1216,7 @@ mod tests {
             calls: std::sync::Arc<std::sync::Mutex<Vec<ModId>>>,
         }
 
-        impl HostMod for Refusing {
+        impl Mod for Refusing {
             fn id(&self) -> &ModId {
                 &self.id
             }
@@ -1242,14 +1245,14 @@ mod tests {
             entry("zeta", &[Side::DedicatedServer]),
         ]);
         let refused = open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
                 .expect("all lifecycle hosts are supplied"),
             &environment(),
             None,
             &BTreeMap::new(),
         )
         .expect_err("the first lifecycle owner refuses admission");
-        assert!(matches!(refused, SaveRefused::Owner { mod_id, .. } if mod_id == id("alpha")));
+        assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("alpha")));
         assert_eq!(*calls.lock().expect("test log"), vec![id("alpha")]);
         assert_eq!(machine.state(&id("alpha")), Ok(LifecycleState::Failed));
         assert_eq!(machine.state(&id("zeta")), Ok(LifecycleState::Discovered));
@@ -1266,7 +1269,7 @@ mod tests {
         ]);
 
         open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut parked, &mut host])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut parked, &mut host])
                 .expect("complete host set"),
             &environment(),
             None,

@@ -324,6 +324,7 @@ dependencies = [
  "ravel-test-mod-audio",
  "ravel-test-mod-networking",
  "ravel-test-mod-saved-data",
+ "rvl-180-counterpart",
  "semver",
  "serde_json",
 ]
@@ -332,6 +333,7 @@ dependencies = [
 name = "ravel-build"
 version = "0.0.0"
 dependencies = [
+ "ravel-bootstrap-runtime",
  "ravel-core",
  "ravel-host-runtime",
  "ravel-loader",
@@ -345,6 +347,7 @@ name = "ravel-composed-host"
 version = "0.0.0"
 dependencies = [
  "jni",
+ "ravel-bootstrap-runtime",
  "ravel-config",
  "ravel-core",
  "ravel-host-api",
@@ -492,6 +495,7 @@ dependencies = [
  "ravel-bootstrap-runtime",
  "ravel-config",
  "ravel-core",
+ "ravel-data",
  "ravel-host-api",
  "ravel-loader",
  "ravel-observability",
@@ -771,9 +775,9 @@ name = "ravel-xtask"
 version = "0.0.0"
 dependencies = [
  "ravel-build",
+ "ravel-core",
  "ravel-loader",
  "ravel-minecraft-generate",
- "ravel-observability",
  "ravel-package",
  "serde",
  "serde_json",

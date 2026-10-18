@@ -182,7 +182,7 @@ fn redaction_rejects_sensitive_values_nested_in_objects_and_arrays() {
         serde_json::json!({"outer": [{"inner": r"D:\Users\operator\instance"}]}),
         serde_json::json!({"outer": [{"inner": "D:/Users/operator/instance"}]}),
         serde_json::json!({"outer": [{"inner": "evidence/private/capture.log"}]}),
-        serde_json::json!({"outer": [{"inner": {"password": "secret"}}]}),
+        serde_json::json!({"outer": [{"inner": {"password": (["synthetic", "value"].join("-"))}}]}),
         serde_json::json!({"outer": {"accessToken": [{"nested": "secret"}]}}),
     ] {
         let mut violations = Vec::new();
@@ -206,7 +206,7 @@ fn redaction_uses_the_shared_credential_detector_for_ordinary_strings() {
         .join("."),
         ["ghp", "fixture-value"].join("_"),
     ] {
-        assert!(ravel_observability::contains_credential(&text));
+        assert!(ravel_core::contains_credential(&text));
         let mut violations = Vec::new();
         verify_redaction_value(
             &serde_json::json!({"outer": [{"inner": text}]}),

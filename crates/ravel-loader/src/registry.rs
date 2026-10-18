@@ -59,7 +59,7 @@ impl Registration<'_> {
     ) -> Result<(), RegistrationRefused> {
         match self
             .machine
-            .claim_registry_identifier_describing(&self.mod_id, &key, behaviour)
+            .claim_registry_identifier(&self.mod_id, &key, behaviour)
         {
             Ok(()) => {
                 self.claimed.push(key);

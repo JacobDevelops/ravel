@@ -4,13 +4,13 @@ use ravel_core::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, LifecycleState, ModId, Side,
     StructuredFailure,
 };
-use ravel_host_api::{HostMod, ModError};
+use ravel_host_api::{Mod, ModError};
 use ravel_save::{SavedDataAggregate, SavedDataEnvelope};
 use serde_json::json;
 
+use super::{SaveRefused, produce_saved_data};
 use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, Requirement};
 use crate::loaded::LoadedMods;
-use crate::saves::{SaveRefused, produce_saved_data};
 use crate::tests::{advance_through, entry};
 
 type Calls = Arc<Mutex<Vec<ModId>>>;
@@ -22,7 +22,7 @@ struct SnapshotHost {
     envelope: Option<SavedDataEnvelope>,
 }
 
-impl HostMod for SnapshotHost {
+impl Mod for SnapshotHost {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -110,7 +110,7 @@ fn snapshot_guards_refuse_before_callbacks_and_forward_lifecycle_errors() {
         };
         let transcript = machine.transcript().to_vec();
         let refused = produce_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut owner])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
                 .expect("complete hosts"),
             &environment(),
             None,
@@ -145,13 +145,13 @@ fn snapshot_refusal_follows_lifecycle_order_not_service_slot_order() {
         true,
     );
     let refused = produce_saved_data(
-        &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
+        &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
             .expect("complete hosts in service order"),
         &environment(),
         None,
     )
     .expect_err("alpha refuses first");
-    assert!(matches!(refused, SaveRefused::Owner { mod_id, .. } if mod_id == id("alpha")));
+    assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("alpha")));
     assert_eq!(*calls.lock().expect("test log"), vec![id("alpha")]);
     assert_eq!(machine.state(&id("alpha")), Ok(LifecycleState::Failed));
     let failure = machine
@@ -172,13 +172,13 @@ fn optional_snapshot_refusal_records_the_owner_failure() {
     optional.requirement = Requirement::Optional;
     let mut machine = machine(vec![optional], true);
     let refused = produce_saved_data(
-        &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut owner])
+        &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
             .expect("complete hosts"),
         &environment(),
         None,
     )
     .expect_err("optional snapshot failure still refuses the save");
-    assert!(matches!(refused, SaveRefused::Owner { mod_id, .. } if mod_id == id("owner")));
+    assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("owner")));
     assert_eq!(machine.state(&id("owner")), Ok(LifecycleState::Failed));
     let failure = machine
         .failure(&id("owner"))
@@ -220,7 +220,7 @@ fn failed_owners_keep_prior_envelopes_and_parked_and_extra_hosts_are_not_called(
         json!({"opaque": [1, 2, 3]}),
     ));
     let snapshot = produce_saved_data(
-        &mut LoadedMods::<&mut dyn HostMod>::new(
+        &mut LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut extra, &mut healthy, &mut parked, &mut failed],
         )
@@ -262,7 +262,7 @@ fn healthy_snapshots_replace_only_the_producers_own_envelope() {
         prior.replace(envelope("alpha", 1));
         let original = prior.to_bytes().expect("bounded fixture");
         let result = produce_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
                 .expect("complete reversed slots"),
             &environment(),
             Some(&prior),

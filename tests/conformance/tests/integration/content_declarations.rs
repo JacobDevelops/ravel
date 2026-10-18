@@ -4,11 +4,12 @@
 
 use std::collections::BTreeSet;
 
+use ravel_bootstrap_runtime::write_resource_pack;
 use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
 use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId, TagSet};
 use ravel_example_content_mod::{ContentMod, MODEL, RECIPE};
-use ravel_host_api::{HostError, HostMod, Registrar};
-use ravel_host_runtime::{Member, compose, write_resource_pack, write_world_pack};
+use ravel_host_api::{HostError, Mod, Registrar};
+use ravel_host_runtime::{Member, compose};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
@@ -32,7 +33,7 @@ struct Rival {
     claims: Vec<RegistryKey>,
 }
 
-impl HostMod for Rival {
+impl Mod for Rival {
     fn id(&self) -> &ModId {
         &self.id
     }
@@ -55,7 +56,7 @@ type Outcome = (ModId, Result<(), HostError>);
 
 fn register_all(
     entries: Vec<LifecycleEntry>,
-    mods: &mut [&mut dyn HostMod],
+    mods: &mut [&mut dyn Mod],
 ) -> (LifecycleMachine, Vec<Outcome>) {
     let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
     for state in [
@@ -687,7 +688,7 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let ravel_host_runtime::Composition {
+    let ravel_bootstrap_runtime::Composition {
         machine,
         resources: supplied,
         ..
@@ -749,7 +750,7 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let ravel_host_runtime::Composition { resources, .. } = compose(
+    let ravel_bootstrap_runtime::Composition { resources, .. } = compose(
         &game,
         Side::Client,
         vec![Member {
@@ -852,7 +853,6 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     let world = game.join("saves").join("New World");
     std::fs::create_dir_all(&world).expect("a writable world directory");
 
-    let written = write_world_pack(&composition.resources, &world).expect("the pack should write");
     ravel_bootstrap_runtime::install(
         composition,
         ravel_bootstrap_runtime::pre_world_report(),
@@ -861,42 +861,63 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     )
     .expect("the composed runtime should install");
 
-    assert_eq!(written.root(), world.join("datapacks").join("ravel"));
     assert_eq!(
-        written.paths(),
-        [
-            "data/c/tags/block/lanterns.json",
-            "data/c/tags/item/lanterns.json",
-            "data/content/loot_table/blocks/copper_lantern.json",
-            "data/content/recipe/crafting/copper_lantern.json",
-            "pack.mcmeta",
-        ]
+        ravel_bootstrap_runtime::open_world_data(
+            world.to_str().expect("the temporary world path is UTF-8"),
+            None,
+            true,
+        ),
+        ravel_bootstrap_runtime::OpenOutcome::Staged,
     );
+    let root = world.join("datapacks").join("ravel");
+    let paths = [
+        "data/c/tags/block/lanterns.json",
+        "data/c/tags/item/lanterns.json",
+        "data/content/loot_table/blocks/copper_lantern.json",
+        "data/content/recipe/crafting/copper_lantern.json",
+        "pack.mcmeta",
+    ];
+    assert_eq!(world_pack_paths(&root), paths);
     assert_eq!(
-        std::fs::read_to_string(
-            written
-                .root()
-                .join("data/content/loot_table/blocks/copper_lantern.json")
-        )
-        .expect("the loot table is readable"),
+        std::fs::read_to_string(root.join("data/content/loot_table/blocks/copper_lantern.json"))
+            .expect("the loot table is readable"),
         LOOT_TABLE
     );
     assert_eq!(
-        std::fs::read(
-            written
-                .root()
-                .join("data/content/recipe/crafting/copper_lantern.json")
-        )
-        .expect("the recipe is readable"),
+        std::fs::read(root.join("data/content/recipe/crafting/copper_lantern.json"))
+            .expect("the recipe is readable"),
         RECIPE
     );
     assert!(
-        !written.root().join("assets").exists(),
+        !root.join("assets").exists(),
         "a world reads data, and the assets are the instance's"
     );
-    for path in written.paths() {
-        assert!(written.root().join(path).is_file(), "{path}");
+    for path in paths {
+        assert!(root.join(path).is_file(), "{path}");
     }
 
     std::fs::remove_dir_all(&game).expect("the game directory is removable");
+}
+
+fn world_pack_paths(root: &std::path::Path) -> Vec<String> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut paths = Vec::with_capacity(5);
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(directory).expect("the generated directory is readable") {
+            let path = entry.expect("the generated entry is readable").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                paths.push(
+                    path.strip_prefix(root)
+                        .expect("the generated path is inside the pack")
+                        .to_str()
+                        .expect("generated paths are UTF-8")
+                        .to_owned(),
+                );
+            }
+        }
+    }
+    paths.sort();
+    paths
 }

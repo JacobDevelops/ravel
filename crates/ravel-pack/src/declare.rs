@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ravel_config::ValueDocument;
@@ -6,7 +6,7 @@ use ravel_core::{ContentId, ModId, RelativePath, Version};
 
 use crate::progression::Progression;
 
-/// One file supplied by the pack; duplicate paths are rejected during validation.
+/// One file supplied by the pack; duplicate paths are refused by [`PackDeclaration::supply`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SuppliedFile {
     /// Where the file belongs in the written pack.
@@ -57,6 +57,7 @@ pub struct PackDeclaration {
     members: BTreeMap<ModId, Version>,
     settings: BTreeMap<ModId, ValueDocument>,
     supplied: Vec<SuppliedFile>,
+    supplied_paths: BTreeSet<RelativePath>,
     references: Vec<ResourceReference>,
     progression: Progression,
 }
@@ -71,6 +72,7 @@ impl PackDeclaration {
             members: BTreeMap::new(),
             settings: BTreeMap::new(),
             supplied: Vec::new(),
+            supplied_paths: BTreeSet::new(),
             references: Vec::new(),
             progression: Progression::default(),
         }
@@ -142,9 +144,18 @@ impl PackDeclaration {
         self.settings.iter()
     }
 
-    /// Supplies `bytes` at `path`; validation rejects duplicate paths.
-    pub fn supply(&mut self, path: RelativePath, bytes: Vec<u8>) {
+    /// Supplies `bytes` at `path`, refusing a path already supplied by this pack.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PackError::SuppliedTwice`] without changing the original file.
+    pub fn supply(&mut self, path: RelativePath, bytes: Vec<u8>) -> Result<(), PackError> {
+        if self.supplied_paths.contains(&path) {
+            return Err(PackError::SuppliedTwice { path });
+        }
+        self.supplied_paths.insert(path.clone());
         self.supplied.push(SuppliedFile { path, bytes });
+        Ok(())
     }
 
     /// Returns every file the pack writes itself, in the order it was supplied.
@@ -176,7 +187,7 @@ impl PackDeclaration {
     }
 }
 
-/// An invalid pin or settings declaration.
+/// An invalid or duplicate pack member, settings, or supplied-file declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PackError {
     /// The pack pinned its own namespace as a member.
@@ -195,6 +206,11 @@ pub enum PackError {
     SettingsTwice {
         /// The member whose settings were stated twice.
         member: ModId,
+    },
+    /// The pack already supplied a file at this path.
+    SuppliedTwice {
+        /// The path whose original bytes were retained.
+        path: RelativePath,
     },
     /// The override document belongs to a different mod than it was filed under.
     SettingsOwner {
@@ -219,6 +235,10 @@ impl fmt::Display for PackError {
             Self::SettingsTwice { member } => write!(
                 formatter,
                 "this pack already states `{member}`'s settings, and one mod has one pack layer"
+            ),
+            Self::SuppliedTwice { path } => write!(
+                formatter,
+                "this pack already supplies `{path}`, and one path holds one file"
             ),
             Self::SettingsOwner { filed_under, owner } => write!(
                 formatter,
@@ -345,22 +365,28 @@ mod tests {
     }
 
     #[test]
-    fn a_repeated_supply_and_a_reference_are_both_recorded_rather_than_refused() {
+    fn a_repeated_supply_is_refused_without_replacing_the_original_bytes() {
         let mut pack = pack();
         pack.supply(
             path("data/example_pack/recipe/lantern.json"),
             b"{}".to_vec(),
-        );
-        pack.supply(
-            path("data/example_pack/recipe/lantern.json"),
-            b"{\"changed\": true}".to_vec(),
+        )
+        .expect("the first supply is accepted");
+        assert_eq!(
+            pack.supply(
+                path("data/example_pack/recipe/lantern.json"),
+                b"{\"changed\": true}".to_vec(),
+            ),
+            Err(PackError::SuppliedTwice {
+                path: path("data/example_pack/recipe/lantern.json"),
+            })
         );
         pack.refer_to(
             path("assets/example_pack/textures/lantern.png"),
             ContentId::new(id("example_pack"), "lantern").expect("a legal content path"),
         );
 
-        assert_eq!(pack.supplied().len(), 2);
+        assert_eq!(pack.supplied().len(), 1);
         assert_eq!(pack.supplied()[0].bytes, b"{}");
         assert_eq!(pack.references().len(), 1);
         assert_eq!(

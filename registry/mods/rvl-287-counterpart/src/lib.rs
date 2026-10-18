@@ -315,11 +315,10 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`StageRefused`] if the stage this package names were not a
-    /// published one, which for a constant would be a packaging fault.
+    /// Returns [`StageRefused`] if this declaration has a contributor-order conflict.
     pub fn stage_order(id: &ModId) -> Result<StageOrder, StageRefused> {
         let mut stages = StageDeclaration::default();
-        stages.contribute_checked(id, STAGE.as_str())?;
+        stages.contribute(id, STAGE);
         stages.resolve()
     }
 

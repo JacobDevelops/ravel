@@ -90,7 +90,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "3328008c6f362626363425b88ed2e261e223acf6ca213c2bf57582aaf56cc26f"
+        "sha256": "c7549cb9c54ef8a91b60a1358e1f168770160a2a8c98a105047f4fc05790bfab"
       },
       {
         "path": "src/machines.rs",
@@ -114,7 +114,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "49d8043679be4b77e5e5c02067d3fc4f87f5bbcbace2b043f8e6343a646907f5"
+        "sha256": "22cbefba81e23443c342ae73f02308a63e5efb6cd14716341d805251e9c0350b"
       },
       {
         "path": "src/shapes.rs",

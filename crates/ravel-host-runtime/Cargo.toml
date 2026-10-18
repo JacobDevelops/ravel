@@ -20,5 +20,8 @@ ravel-resolve.workspace = true
 serde_json.workspace = true
 semver.workspace = true
 
+[dev-dependencies]
+ravel-data.workspace = true
+
 [lints]
 workspace = true

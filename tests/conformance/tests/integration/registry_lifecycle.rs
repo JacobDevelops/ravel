@@ -4,7 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, admitted, drive};
+use ravel_loader::{
+    LifecycleEntry, LifecycleMachine, LoadedMods, Requirement, admitted, drive_loaded,
+};
 use ravel_package::{DependencyOrder, PackageManifest};
 use ravel_resolve::resolve;
 use ravel_sdk::content::{ContentKind, RegistryKey};
@@ -87,14 +89,16 @@ fn every_counterpart_registers_alone_on_each_side() {
     for side in SIDES {
         for (manifest, (_, constructor)) in manifests.iter().zip(PACKAGES) {
             // Isolate lifecycle admission from dependency resolution in this round.
-            let host = constructor(side);
-            let (machine, hosts) = drive(
-                side,
-                &ravel_host_runtime::environment(),
-                vec![(lifecycle_entry(manifest), host)],
+            let mut mods = vec![constructor(side)];
+            let mut machine = LifecycleMachine::new(side, vec![lifecycle_entry(manifest)])
+                .expect("the counterpart declares a legal lifecycle");
+            drive_loaded(
+                &mut LoadedMods::new(&mut machine, &mut mods)
+                    .expect("every active member has a mod value"),
+                &ravel_bootstrap_runtime::environment(),
             )
             .unwrap_or_else(|error| panic!("{} alone on {side:?}: {error}", manifest.id));
-            assert_started(&machine, &hosts, std::slice::from_ref(manifest), side);
+            assert_started(&machine, &mods, std::slice::from_ref(manifest), side);
         }
     }
 }
@@ -103,7 +107,7 @@ fn every_counterpart_registers_alone_on_each_side() {
 fn all_counterparts_register_together_in_manifest_dependency_order_on_each_side() {
     let manifests = manifests();
     // This round tests the shipped packages' declared target, not the selected adapter.
-    let mut environment = ravel_host_runtime::environment();
+    let mut environment = ravel_bootstrap_runtime::environment();
     environment.minecraft = "1.21.1".to_owned();
     for side in SIDES {
         let plan = resolve(&manifests, side).expect("the shipped dependency graph resolves");
@@ -114,21 +118,27 @@ fn all_counterparts_register_together_in_manifest_dependency_order_on_each_side(
             &environment.minecraft,
         )
         .expect("the shipped counterparts are compatible");
-        let composed = entries
-            .into_iter()
+        let mut mods: Vec<Box<dyn Mod>> = entries
+            .iter()
             .map(|entry| {
                 let index = manifests
                     .iter()
                     .position(|manifest| manifest.id == entry.mod_id)
                     .expect("admission preserves package identities");
-                let host = PACKAGES[index].1(side);
-                (entry, host)
+                PACKAGES[index].1(side)
             })
             .collect();
-        let (machine, hosts) = drive(side, &environment, composed)
-            .unwrap_or_else(|error| panic!("all counterparts on {side:?}: {error}"));
-        assert_started(&machine, &hosts, &manifests, side);
-        assert_dependency_order(&hosts, &manifests, side);
+        // Supplied storage order must not override the manifest's resolved dependency order.
+        mods.reverse();
+        let mut machine = LifecycleMachine::new(side, entries).expect("a legal admitted lifecycle");
+        drive_loaded(
+            &mut LoadedMods::new(&mut machine, &mut mods)
+                .expect("every active member has a mod value"),
+            &environment,
+        )
+        .unwrap_or_else(|error| panic!("all counterparts on {side:?}: {error}"));
+        assert_started(&machine, &mods, &manifests, side);
+        assert_dependency_order(&mods, &manifests, side);
     }
 }
 
@@ -141,7 +151,9 @@ fn assert_started(
     assert_eq!(hosts.len(), manifests.len());
     assert!(machine.registration_barrier_closed());
     machine
-        .world_access()
+        .world_access(&ravel_observability::PreWorldReport::new(
+            ravel_bootstrap_runtime::environment(),
+        ))
         .expect("every required active mod is running");
     for host in hosts {
         let manifest = manifests

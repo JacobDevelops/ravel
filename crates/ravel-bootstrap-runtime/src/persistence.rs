@@ -111,14 +111,14 @@ impl fmt::Display for WorldIdentity {
 
 /// Admits and delivers world data; `fresh_world` only controls missing-data notices.
 #[must_use]
-pub fn stage(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
+pub fn open_world_data(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
     match runtime() {
-        Ok(runtime) => outcome(&runtime, identity_raw, bytes, fresh_world),
+        Ok(runtime) => stage_world_and_write_pack(&runtime, identity_raw, bytes, fresh_world),
         Err(error) => OpenOutcome::Refused(error),
     }
 }
 
-fn outcome(
+fn stage_world_and_write_pack(
     runtime: &LoaderRuntime,
     identity_raw: &str,
     bytes: Option<&[u8]>,
@@ -135,7 +135,7 @@ fn outcome(
 
 /// Produces the aggregate selected by the save receiver's identity.
 #[must_use]
-pub fn save(identity_raw: &str) -> SaveOutcome {
+pub fn save_world_data(identity_raw: &str) -> SaveOutcome {
     let runtime = match runtime() {
         Ok(runtime) => runtime,
         Err(error) => return SaveOutcome::Failed(error),
@@ -146,7 +146,7 @@ pub fn save(identity_raw: &str) -> SaveOutcome {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum PersistenceError {
     Lifecycle(ravel_loader::LifecycleError),
-    MissingHost(ravel_loader::MissingHost),
+    MissingMod(ravel_loader::MissingMod),
     World(ravel_loader::WorldRefused),
     Admission(ravel_loader::SaveRefused),
     Host(ravel_host_api::HostError),
@@ -157,7 +157,7 @@ impl fmt::Display for PersistenceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
-            Self::MissingHost(error) => error.fmt(formatter),
+            Self::MissingMod(error) => error.fmt(formatter),
             Self::World(error) => error.fmt(formatter),
             Self::Admission(error) => error.fmt(formatter),
             Self::Host(error) => error.fmt(formatter),
@@ -170,7 +170,7 @@ impl std::error::Error for PersistenceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Lifecycle(error) => Some(error),
-            Self::MissingHost(error) => Some(error),
+            Self::MissingMod(error) => Some(error),
             Self::World(error) => Some(error),
             Self::Admission(error) => Some(error),
             Self::Host(error) => Some(error),
@@ -237,7 +237,7 @@ impl LoaderRuntime {
         // Refuse before reading or writing any world state.
         inner
             .machine
-            .open_world(&inner.report)
+            .world_access(&inner.report)
             .map_err(PersistenceError::World)?;
         if bytes.is_none() && !fresh_world {
             inner.report.note(&format!(
@@ -264,14 +264,14 @@ impl LoaderRuntime {
         bytes: Option<&[u8]>,
     ) -> Result<SavedDataAggregate, PersistenceError> {
         let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
-            .map_err(PersistenceError::MissingHost)?;
+            .map_err(PersistenceError::MissingMod)?;
         if inner.persistence.staged.is_none()
             && let Some(live) = &mut inner.persistence.live
         {
             live.refresh(
                 ravel_loader::produce_saved_data(
                     &mut loaded,
-                    &crate::runtime::environment(),
+                    inner.report.environment(),
                     Some(&live.aggregate),
                 )
                 .map_err(PersistenceError::Admission)?,
@@ -279,7 +279,7 @@ impl LoaderRuntime {
         }
         ravel_loader::open_saved_data(
             &mut loaded,
-            &crate::runtime::environment(),
+            inner.report.environment(),
             bytes,
             &inner.installed_packages,
         )
@@ -288,46 +288,25 @@ impl LoaderRuntime {
 
     // A veto withholds only Ravel data and preserves dirty state for the next save.
     fn save_veto(
-        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::HostMod>>,
+        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::Mod>>,
+        interceptions: &ravel_host_api::AdmittedPoints,
+        environment: &ravel_core::FailureEnvironment,
     ) -> Result<Option<ModId>, PersistenceError> {
-        let round = ravel_loader::intercept(loaded, Point::WorldIsSaved)
-            .map_err(PersistenceError::Interception)?;
+        let round =
+            ravel_loader::intercept(loaded, interceptions, Point::WorldIsSaved, environment)
+                .map_err(PersistenceError::Interception)?;
         if let Some(failure) = round.failure() {
             return Err(PersistenceError::Host(failure.clone()));
         }
         Ok(round.refused_by().cloned())
     }
 
-    fn record_interception_failure(
-        inner: &mut crate::runtime::Inner,
-        error: &PersistenceError,
-    ) -> Result<(), ravel_loader::LifecycleError> {
-        let failure = match error {
-            PersistenceError::Host(source)
-            | PersistenceError::Interception(ravel_loader::InterceptRefused::Mod {
-                source, ..
-            }) => source.clone(),
-            PersistenceError::Interception(
-                refused @ ravel_loader::InterceptRefused::ForeignDeclaration { mod_id, .. },
-            ) => ravel_host_api::HostError::Refused {
-                mod_id: mod_id.clone(),
-                state: inner.machine.state(mod_id)?,
-                detail: refused.to_string(),
-            },
-            PersistenceError::Lifecycle(_)
-            | PersistenceError::MissingHost(_)
-            | PersistenceError::World(_)
-            | PersistenceError::Admission(_)
-            | PersistenceError::Interception(_) => return Ok(()),
-        };
-        inner.record_failure(failure.mod_id(), &failure, None)
-    }
-
     fn snapshot(
-        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::HostMod>>,
+        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::Mod>>,
         prior: Option<&SavedDataAggregate>,
+        environment: &ravel_core::FailureEnvironment,
     ) -> Result<SavedDataAggregate, PersistenceError> {
-        ravel_loader::produce_saved_data(loaded, &crate::runtime::environment(), prior)
+        ravel_loader::produce_saved_data(loaded, environment, prior)
             .map_err(PersistenceError::Admission)
     }
 
@@ -349,35 +328,42 @@ impl LoaderRuntime {
         let inner = &mut *locked;
         let saved = (|| {
             let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
-                .map_err(PersistenceError::MissingHost)?;
-            if let Some(refused) = Self::save_veto(&mut loaded)? {
+                .map_err(PersistenceError::MissingMod)?;
+            if let Some(refused) = Self::save_veto(
+                &mut loaded,
+                &inner.interceptions,
+                inner.report.environment(),
+            )? {
                 inner.report.note(&format!(
                     "`{refused}` refused Ravel's world write at `{}`",
                     Point::WorldIsSaved
                 ));
                 return Ok(SaveOutcome::Withheld);
             }
-            Self::save_selected(&mut loaded, &mut inner.persistence, identity)
+            Self::save_selected(
+                &mut loaded,
+                &mut inner.persistence,
+                identity,
+                inner.report.environment(),
+            )
         })();
         let outcome = match saved {
             Ok(outcome) => outcome,
-            Err(error) => match Self::record_interception_failure(inner, &error) {
-                Ok(()) => SaveOutcome::Failed(error.to_string()),
-                Err(recording) => SaveOutcome::Failed(recording.to_string()),
-            },
+            Err(error) => SaveOutcome::Failed(error.to_string()),
         };
         drop(locked);
         outcome
     }
 
     fn save_selected(
-        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::HostMod>>,
+        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::Mod>>,
         persistence: &mut PersistenceState,
         identity: &WorldIdentity,
+        environment: &ravel_core::FailureEnvironment,
     ) -> Result<SaveOutcome, PersistenceError> {
         // Reopening promotes the new stage before considering its old live checkpoint.
         if let Some(mut promoted) = persistence.staged.take_if(|s| &s.identity == identity) {
-            match Self::snapshot(loaded, Some(&promoted.aggregate)) {
+            match Self::snapshot(loaded, Some(&promoted.aggregate), environment) {
                 Ok(produced) => promoted.aggregate = produced,
                 Err(error) => {
                     persistence.staged = Some(promoted);
@@ -398,7 +384,7 @@ impl LoaderRuntime {
             .filter(|live| &live.identity == identity)
         {
             if persistence.staged.is_none() {
-                live.refresh(Self::snapshot(loaded, Some(&live.aggregate))?);
+                live.refresh(Self::snapshot(loaded, Some(&live.aggregate), environment)?);
             }
             return Ok(Self::save_checkpoint(live));
         }

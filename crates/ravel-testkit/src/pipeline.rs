@@ -3,10 +3,10 @@ use std::fmt;
 use std::path::PathBuf;
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure, Version};
-use ravel_host_api::HostMod;
+use ravel_host_api::Mod;
 use ravel_loader::{
     DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
-    MissingHost, admitted, drive_loaded, executes_mod_code, stop_all,
+    MissingMod, admitted, drive_loaded, executes_mod_code, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -55,7 +55,7 @@ impl TestPackage {
             std::fs::read_to_string(root.join(Self::MANIFEST_FILE)).map_err(|error| {
                 PipelineError::Unreadable {
                     file: Self::MANIFEST_FILE.to_owned(),
-                    detail: error.to_string(),
+                    source: error,
                 }
             })?;
         Ok(Self { root, document })
@@ -118,11 +118,11 @@ impl PipelineRun {
 /// # Errors
 ///
 /// Returns the first validation, resolution, mod-set, lifecycle, or host failure.
-pub fn run(
+pub fn run_pipeline(
     packages: &[TestPackage],
     host: &Host,
     side: Side,
-    mods: &mut [&mut dyn HostMod],
+    mods: &mut [&mut dyn Mod],
 ) -> Result<PipelineRun, PipelineError> {
     let manifests = validate(packages, host)?;
     let plan = resolve(&manifests, side).map_err(PipelineError::Resolution)?;
@@ -138,7 +138,7 @@ pub fn run(
         architecture: std::env::consts::ARCH.to_owned(),
     };
     let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;
-    let mut loaded = LoadedMods::new(&mut machine, mods).map_err(PipelineError::MissingHost)?;
+    let mut loaded = LoadedMods::new(&mut machine, mods).map_err(PipelineError::MissingMod)?;
     drive_loaded(&mut loaded, &environment).map_err(PipelineError::from)?;
     stop_all(&mut loaded, &environment).map_err(PipelineError::from)?;
 
@@ -169,13 +169,13 @@ fn validate(packages: &[TestPackage], host: &Host) -> Result<Vec<PackageManifest
 
 fn refuse_mods_outside_the_set(
     entries: &[LifecycleEntry],
-    mods: &[&mut dyn HostMod],
+    mods: &[&mut dyn Mod],
 ) -> Result<(), PipelineError> {
     let admitted: BTreeSet<&ModId> = entries.iter().map(|entry| &entry.mod_id).collect();
-    for host in mods {
-        if !admitted.contains(host.id()) {
+    for member in mods {
+        if !admitted.contains(member.id()) {
             return Err(PipelineError::UnexpectedMod {
-                mod_id: host.id().clone(),
+                mod_id: member.id().clone(),
             });
         }
     }
@@ -183,14 +183,14 @@ fn refuse_mods_outside_the_set(
 }
 
 /// A pipeline failure, preserving errors from the responsible crate.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum PipelineError {
     /// A manifest file could not be read.
     Unreadable {
         /// The declared file name.
         file: String,
         /// What the operating system reported.
-        detail: String,
+        source: std::io::Error,
     },
     /// A manifest document is not a package manifest.
     Manifest(ManifestError),
@@ -204,8 +204,8 @@ pub enum PipelineError {
     Lifecycle(LifecycleError),
     /// The production driver refused the set, retaining its failure attribution.
     Drive(DriveError),
-    /// An active lifecycle member has no supplied host.
-    MissingHost(MissingHost),
+    /// An active lifecycle member has no supplied mod value.
+    MissingMod(MissingMod),
     /// The caller supplied a value for a mod the package set does not contain.
     UnexpectedMod {
         /// The mod that is not in the set.
@@ -216,8 +216,8 @@ pub enum PipelineError {
 impl fmt::Display for PipelineError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unreadable { file, detail } => {
-                write!(formatter, "`{file}` could not be read: {detail}")
+            Self::Unreadable { file, source } => {
+                write!(formatter, "`{file}` could not be read: {source}")
             }
             Self::Manifest(error) => write!(formatter, "validation failed: {error}"),
             Self::Integrity(error) => write!(formatter, "validation failed: {error}"),
@@ -225,7 +225,7 @@ impl fmt::Display for PipelineError {
             Self::Resolution(error) => write!(formatter, "resolution failed: {error}"),
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
             Self::Drive(error) => write!(formatter, "the run failed: {error}"),
-            Self::MissingHost(error) => write!(formatter, "the run failed: {error}"),
+            Self::MissingMod(error) => write!(formatter, "the run failed: {error}"),
             Self::UnexpectedMod { mod_id } => write!(
                 formatter,
                 "`{mod_id}` was supplied to the run, but the package set does not contain it"
@@ -236,15 +236,24 @@ impl fmt::Display for PipelineError {
 
 impl std::error::Error for PipelineError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.stage()
-            .map(|failure| -> &dyn std::error::Error { failure })
+        match self {
+            Self::Unreadable { source, .. } => Some(source),
+            Self::Manifest(error) => Some(error),
+            Self::Integrity(error) => Some(error),
+            Self::Compatibility(error) => Some(error),
+            Self::Resolution(error) => Some(error),
+            Self::Lifecycle(error) => Some(error),
+            Self::Drive(error) => Some(error),
+            Self::MissingMod(error) => Some(error),
+            Self::UnexpectedMod { .. } => None,
+        }
     }
 }
 
 impl PipelineError {
     /// Returns the underlying structured failure, or `None` for harness-owned errors.
     #[must_use]
-    pub fn stage(&self) -> Option<&(dyn StructuredFailure + 'static)> {
+    pub fn failure(&self) -> Option<&(dyn StructuredFailure + 'static)> {
         match self {
             Self::Manifest(error) => Some(error),
             Self::Integrity(error) => Some(error),
@@ -252,7 +261,7 @@ impl PipelineError {
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
             Self::Drive(error) => Some(error),
-            Self::MissingHost(error) => Some(error),
+            Self::MissingMod(error) => Some(error),
             Self::Unreadable { .. } | Self::UnexpectedMod { .. } => None,
         }
     }

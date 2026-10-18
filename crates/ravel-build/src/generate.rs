@@ -7,17 +7,21 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::{ENTRY_FUNCTION, HOST_LIBRARY, PlannedMember};
+use ravel_core::paths::{HOST_DIRECTORY, INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 
 pub(super) fn workspace_manifest(
     members: &[PlannedMember],
     ravel_root: &Path,
     author_dependencies: &toml::Table,
 ) -> String {
-    let mut listed = vec![toml::Value::String("host".to_owned())];
+    let packages = Path::new(PACKAGES_DIRECTORY)
+        .strip_prefix(INSTANCE_DIRECTORY)
+        .expect("package sources belong to the instance");
+    let mut listed = vec![toml::Value::String(HOST_DIRECTORY.to_owned())];
     listed.extend(
         members
             .iter()
-            .map(|member| format!("mods/{}", member.directory).into()),
+            .map(|member| format!("{}/{}", packages.display(), member.directory).into()),
     );
     let mut dependencies = author_dependencies.clone();
     dependencies.insert(
@@ -59,10 +63,13 @@ pub(super) fn host_manifest(
             path_dependency(&ravel_root.join("crates").join(name)),
         );
     }
+    let packages = Path::new(PACKAGES_DIRECTORY)
+        .strip_prefix(INSTANCE_DIRECTORY)
+        .expect("package sources belong to the instance");
     for member in members {
         dependencies.insert(
             member.crate_name.clone(),
-            path_dependency(&Path::new("../mods").join(&member.directory)),
+            path_dependency(&Path::new("..").join(packages).join(&member.directory)),
         );
     }
     serialize(&table([
@@ -115,6 +122,9 @@ fn serialize(manifest: &toml::Value) -> String {
 pub(super) fn host_source(members: &[PlannedMember]) -> String {
     let mut manifests = String::new();
     let mut pushes = String::new();
+    let packages = Path::new(PACKAGES_DIRECTORY)
+        .strip_prefix(INSTANCE_DIRECTORY)
+        .expect("package sources belong to the instance");
     for member in members {
         let constant = member.mod_id.as_str().to_uppercase();
         write!(
@@ -122,7 +132,11 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
             "/// The manifest `{mod_id}` ships, read from the package itself.\n\
              const {constant}: &str = include_str!({path:?});\n\n",
             mod_id = member.mod_id,
-            path = format!("../../mods/{}/package.json", member.directory),
+            path = format!(
+                "../../{}/{}/package.json",
+                packages.display(),
+                member.directory
+            ),
         )
         .expect("a string accepts writes");
         write!(

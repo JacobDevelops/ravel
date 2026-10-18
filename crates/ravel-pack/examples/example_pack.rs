@@ -80,11 +80,13 @@ fn declare() -> PackDeclaration {
     pack.supply(
         path("data/example_pack/recipe/copper_lantern.json"),
         b"{\n  \"result\": \"lantern_mod:copper_lantern\"\n}\n".to_vec(),
-    );
+    )
+    .expect("one supplied path");
     pack.supply(
         path("assets/example_pack/textures/gui/progress.png"),
         b"\x89PNG\r\n\x1a\n".to_vec(),
-    );
+    )
+    .expect("one supplied path");
     pack.refer_to(
         path("assets/example_pack/textures/gui/progress.png"),
         content(PACK, "smelting"),

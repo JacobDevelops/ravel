@@ -144,7 +144,7 @@ pub enum ValueError {
     /// The owner did not declare this setting.
     Unknown {
         /// The requested setting.
-        key: crate::SettingKey,
+        key: String,
     },
     /// A typed accessor does not match the setting's declared type.
     AccessKind {
@@ -239,7 +239,7 @@ mod tests {
         for (error, expected) in [
             (
                 ValueError::Unknown {
-                    key: "missing".parse().expect("a valid key"),
+                    key: "missing".to_owned(),
                 },
                 "`missing` is not a declared setting",
             ),

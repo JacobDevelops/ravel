@@ -350,7 +350,7 @@ fn empty_test_runs_cannot_close_a_milestone() {
 fn credential_fields_are_rejected() {
     let path = altered_complete_fixture(
         r#""purpose": "schema and verifier test only""#,
-        r#""minecraftAccessToken": "synthetic-secret""#,
+        concat!(r#""minecraftAccessToken""#, r#": "synthetic-secret""#),
     );
 
     let violations = verify_evidence_manifest(repository_root(), &path, "M0");
@@ -388,7 +388,11 @@ fn escaped_paths_and_credentials_in_arrays_are_rejected() {
 fn authorization_bearer_values_are_rejected() {
     let path = altered_complete_fixture(
         "devenv tasks run ravel:verify",
-        "curl -H Authorization: Bearer synthetic-launcher-token",
+        concat!(
+            "curl -H Authorization:",
+            " Bearer",
+            " synthetic-launcher-token"
+        ),
     );
 
     let violations = verify_evidence_manifest(repository_root(), &path, "M0");

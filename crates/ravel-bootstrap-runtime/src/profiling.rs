@@ -143,7 +143,7 @@ mod tests {
     use std::time::Duration;
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
-    use ravel_host_api::{GameEvent, HostMod, ModError};
+    use ravel_host_api::{GameEvent, Mod, ModError};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
     use ravel_minecraft::{HookId, HookKind, HookObserver, HookTarget};
     use ravel_observability::{Metric, Profiler};
@@ -158,7 +158,7 @@ mod tests {
 
     struct Quiet(ModId);
 
-    impl HostMod for Quiet {
+    impl Mod for Quiet {
         fn id(&self) -> &ModId {
             &self.0
         }
@@ -196,13 +196,14 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(side, vec![entry]).expect("a one-mod plan is valid");
         advance_through(&mut machine, LifecycleState::Running);
-        let mods: Vec<Box<dyn HostMod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
+        let mods: Vec<Box<dyn Mod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
         Arc::new(LoaderRuntime::with_observers(
             machine,
             mods,
             profiler,
             crate::runtime::pre_world_report(),
             crate::runtime::test_launch(),
+            std::collections::BTreeMap::new(),
         ))
     }
 

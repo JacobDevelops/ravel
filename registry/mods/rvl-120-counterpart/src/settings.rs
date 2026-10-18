@@ -23,7 +23,7 @@
 use std::fmt;
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 use ravel_sdk::{JsonValue, json};
 
@@ -305,10 +305,10 @@ impl Settings {
     ///
     /// Returns [`ValueError`] when a key is missing or its declared kind does not match.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
-        let infusion_ceiling = resolved.integer(&key(INFUSION_CEILING))?;
+        let infusion_ceiling = resolved.integer(INFUSION_CEILING)?;
         Ok(Self {
-            debug_logging: resolved.boolean(&key(DEBUG_LOGGING))?,
-            record_owner: resolved.boolean(&key(RECORD_OWNER))?,
+            debug_logging: resolved.boolean(DEBUG_LOGGING)?,
+            record_owner: resolved.boolean(RECORD_OWNER)?,
             infusion_ceiling: if (1..=i64::from(i32::MAX)).contains(&infusion_ceiling) {
                 infusion_ceiling
             } else {
@@ -363,9 +363,7 @@ impl Colours {
         }
         let mut read = Vec::with_capacity(COLOUR_COUNT);
         for role in &COLOURS {
-            let written = resolved
-                .text(&key(&role.key()))
-                .map_err(ColourRefused::Value)?;
+            let written = resolved.text(&role.key()).map_err(ColourRefused::Value)?;
             read.push(parse_colour(written)?);
         }
         self.values = read;
@@ -383,10 +381,6 @@ impl Colours {
     pub fn values(&self) -> &[u32] {
         &self.values
     }
-}
-
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
 }
 
 #[cfg(test)]
@@ -416,7 +410,7 @@ mod tests {
         assert_eq!(
             Settings::read(&resolved),
             Err(ValueError::Unknown {
-                key: key(DEBUG_LOGGING)
+                key: DEBUG_LOGGING.to_owned()
             })
         );
     }
@@ -436,7 +430,7 @@ mod tests {
         let player = ValueDocument::parse(&values.to_string()).expect("a legal colour override");
         let resolved = LayeredConfiguration::resolve(declared, None, Some(&player))
             .expect("the changed declaration resolves");
-        assert_eq!(resolved.text(&key(&COLOURS[0].key())), Ok(written.as_str()));
+        assert_eq!(resolved.text(&COLOURS[0].key()), Ok(written.as_str()));
         let mut colours = Colours::shipped();
         let before = colours.clone();
         assert!(matches!(
@@ -480,7 +474,7 @@ mod tests {
     #[test]
     fn colour_refusals_preserve_configuration_sources_only() {
         let missing = ColourRefused::Value(ValueError::Unknown {
-            key: key(&COLOURS[0].key()),
+            key: COLOURS[0].key(),
         });
         assert!(std::error::Error::source(&missing).is_some());
         let malformed = parse_colour("zzzzzz").expect_err("not hexadecimal");
@@ -601,7 +595,7 @@ mod tests {
             .expect("an unconstrained integer declaration");
         let resolved = LayeredConfiguration::resolve(declared, None, None)
             .expect("the out-of-range integer resolves");
-        assert_eq!(resolved.integer(&key(INFUSION_CEILING)), Ok(0));
+        assert_eq!(resolved.integer(INFUSION_CEILING), Ok(0));
         assert_eq!(
             Settings::read(&resolved)
                 .expect("declared settings have matching types")

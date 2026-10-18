@@ -7,8 +7,27 @@
 use std::path::Path;
 
 use ravel_loader::{
-    GAME_PACK_DIRECTORY, Half, Supplied, WORLD_DATA_PACKS, Written, write_game_pack,
+    GAME_PACK_DIRECTORY, Half, RESOURCE_PACKS, Supplied, WORLD_DATA_PACKS, Written, write_game_pack,
 };
+
+/// Writes the launch's supplied assets into the instance resource-pack directory.
+///
+/// # Errors
+///
+/// Returns an error if the pack cannot be written.
+pub fn write_resource_pack(
+    game_directory: &Path,
+    supplied: &Supplied,
+) -> Result<Written, ravel_loader::GamePackError> {
+    write_game_pack(
+        &game_directory
+            .join(RESOURCE_PACKS)
+            .join(GAME_PACK_DIRECTORY),
+        supplied,
+        Half::Assets,
+        &resource_pack_metadata(Half::Assets.description()),
+    )
+}
 
 /// Writes the launch's supplied data into `world`.
 ///
@@ -43,10 +62,29 @@ fn write_data_pack(
         &holder.join(GAME_PACK_DIRECTORY),
         supplied,
         Half::Data,
-        &crate::runtime::data_pack_metadata(Half::Data.description()),
+        &data_pack_metadata(Half::Data.description()),
     )
 }
 
+/// Renders resource-pack metadata using the pinned version's format.
+#[must_use]
+fn resource_pack_metadata(description: &str) -> String {
+    ravel_minecraft::pack_metadata(
+        ravel_minecraft_adapter::pinned::RESOURCE_PACK_FORMAT,
+        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
+        description,
+    )
+}
+
+/// Renders data-pack metadata using the pinned version's format.
+#[must_use]
+fn data_pack_metadata(description: &str) -> String {
+    ravel_minecraft::pack_metadata(
+        ravel_minecraft_adapter::pinned::DATA_PACK_FORMAT,
+        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
+        description,
+    )
+}
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

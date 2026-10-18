@@ -68,7 +68,7 @@ pub use ravel_core::{LifecycleState, ModId, ModIdError, Side, SideSet, Version, 
 /// An attributed host failure returned when calling another mod's service.
 pub use ravel_host_api::HostError;
 /// The lifecycle contract a mod implements; only `enter` is required.
-pub use ravel_host_api::HostMod as Mod;
+pub use ravel_host_api::Mod;
 /// A mod's refusal detail; the host supplies identity and lifecycle attribution.
 pub use ravel_host_api::ModError;
 pub use ravel_sdk_macros::declare_mod;
@@ -230,7 +230,7 @@ pub mod prelude {
         claim_all,
     };
     pub use crate::events::{CommandInvocation, GameEvent};
-    pub use crate::interception::{Outcome, Point, Points};
+    pub use crate::interception::{AdmittedPoints, Outcome, Point, Points};
     pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
     pub use crate::render_stages::{RenderStage, StageDeclaration};
     pub use crate::save::{

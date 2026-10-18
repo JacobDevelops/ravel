@@ -34,6 +34,7 @@ secrets.json
 /.minecraft/
 /prism-instances/
 **/saves/
+!/crates/ravel-loader/src/saves/
 **/logs/
 **/crash-reports/
 **/hs_err_pid*.log

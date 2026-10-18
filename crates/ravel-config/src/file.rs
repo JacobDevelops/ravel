@@ -12,8 +12,7 @@ use crate::document::{DocumentError, ValueDocument};
 /// The directory under a game directory that holds player configuration.
 const DIRECTORY: &str = "config";
 
-/// The modpack settings layer directory, relative to the game directory.
-pub const PACK_CONFIG_DIRECTORY: &str = "ravel/config";
+use ravel_core::paths::PACK_CONFIG_DIRECTORY;
 
 /// The suffix a file is written under before it is put in place.
 const STAGING_SUFFIX: &str = ".pending";

@@ -71,7 +71,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "b16d0a456c78e837d36b37393965b94966d015abd247bffa6693c72226e67ba1"
+        "sha256": "6651f25413c2770c4b2190493003353eb113447ce872a245d8892a144bd7289b"
       },
       {
         "path": "src/lookup.rs",

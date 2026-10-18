@@ -91,7 +91,7 @@ impl ShapingRecord {
     ///
     /// Panics if the format number and mod-id strings cannot be serialized.
     #[must_use]
-    pub fn bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(&StoredShaping {
             format: SHAPING_FORMAT_VERSION,
             shaping: self.mods.iter().map(|id| id.as_str().to_owned()).collect(),
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn the_shaping_set_written_at_creation_is_read_back_equal() {
         let written = ShapingRecord::at_creation(&shaping(&["sample", "probe"]));
-        let read = ShapingRecord::read(&written.bytes()).expect("what was written reads back");
+        let read = ShapingRecord::read(&written.to_bytes()).expect("what was written reads back");
 
         assert_eq!(read.mods(), [id("sample"), id("probe")]);
         assert_eq!(read, written);
@@ -287,12 +287,12 @@ mod tests {
         let written = ShapingRecord::at_creation(&shaping(&["sample", "probe"]));
 
         assert_eq!(
-            String::from_utf8(written.bytes()).expect("the record is UTF-8"),
+            String::from_utf8(written.to_bytes()).expect("the record is UTF-8"),
             r#"{"format":1,"shaping":["sample","probe"]}"#
         );
 
         let document: Value =
-            serde_json::from_slice(&written.bytes()).expect("the record is a JSON document");
+            serde_json::from_slice(&written.to_bytes()).expect("the record is a JSON document");
         assert_eq!(document["format"], 1);
         assert_eq!(document["shaping"][0], "sample");
         assert_eq!(document["shaping"][1], "probe");
@@ -336,11 +336,11 @@ mod tests {
     fn an_empty_shaping_set_round_trips_as_an_empty_set() {
         let written = ShapingRecord::at_creation(&WorldShaping::default());
         assert_eq!(
-            String::from_utf8(written.bytes()).expect("the record is UTF-8"),
+            String::from_utf8(written.to_bytes()).expect("the record is UTF-8"),
             r#"{"format":1,"shaping":[]}"#
         );
         assert_eq!(
-            ShapingRecord::read(&written.bytes())
+            ShapingRecord::read(&written.to_bytes())
                 .expect("an empty record reads back")
                 .mods(),
             []

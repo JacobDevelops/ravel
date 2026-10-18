@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use ravel_core::ModId;
+use ravel_core::paths::HOST_DIRECTORY;
 use ravel_loader::Discovered;
 use ravel_package::Sha256Digest;
 use sha2::{Digest, Sha256};
@@ -19,9 +20,6 @@ pub use compile::build;
 pub use error::BuildRefused;
 
 use generate::{host_manifest, host_source, workspace_manifest};
-
-/// The instance directory containing the workspace above its installed packages.
-pub const WORKSPACE_DIRECTORY: &str = "ravel";
 
 /// The library name the generated host produces, and the JVM loads.
 pub const HOST_LIBRARY: &str = "ravel_bootstrap";
@@ -115,10 +113,13 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
         workspace_manifest(&members, ravel_root, &author_dependencies),
     );
     files.insert(
-        "host/Cargo.toml".to_owned(),
+        format!("{HOST_DIRECTORY}/Cargo.toml"),
         host_manifest(&members, ravel_root, &jni_dependency),
     );
-    files.insert("host/src/lib.rs".to_owned(), host_source(&members));
+    files.insert(
+        format!("{HOST_DIRECTORY}/src/lib.rs"),
+        host_source(&members),
+    );
 
     let mut digest = Sha256::new();
     for (path, contents) in &files {
@@ -152,9 +153,9 @@ fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {
             });
         }
         Err(error) => {
-            return Err(BuildRefused::CargoManifest {
+            return Err(BuildRefused::CargoManifestIo {
                 directory: directory.to_owned(),
-                detail: error.to_string(),
+                source: error,
             });
         }
     };
@@ -177,9 +178,9 @@ fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {
 }
 
 fn installation_file(root: &Path, file: &str) -> Result<String, BuildRefused> {
-    fs::read_to_string(root.join(file)).map_err(|error| BuildRefused::Installation {
+    fs::read_to_string(root.join(file)).map_err(|source| BuildRefused::InstallationIo {
         file: file.to_owned(),
-        detail: error.to_string(),
+        source,
     })
 }
 

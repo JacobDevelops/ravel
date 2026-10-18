@@ -20,7 +20,7 @@
 
 use ravel_sdk::Declared;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
@@ -568,9 +568,9 @@ pub struct RepairMaterials {
 impl RepairMaterials {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            strip_enchantments: resolved.boolean(&key(REPAIR_STRIP_ENCHANTMENTS))?,
-            disable_defaults: resolved.boolean(&key(REPAIR_DISABLE_DEFAULTS))?,
-            override_mode: resolved.boolean(&key(REPAIR_OVERRIDE_MODE))?,
+            strip_enchantments: resolved.boolean(REPAIR_STRIP_ENCHANTMENTS)?,
+            disable_defaults: resolved.boolean(REPAIR_DISABLE_DEFAULTS)?,
+            override_mode: resolved.boolean(REPAIR_OVERRIDE_MODE)?,
         })
     }
 }
@@ -586,8 +586,8 @@ pub struct RepairDiscounts {
 impl RepairDiscounts {
     fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            digging: resolved.boolean(&key(REPAIR_CHEAPER_DIGGING))?,
-            shearing: resolved.boolean(&key(REPAIR_CHEAPER_SHEARING))?,
+            digging: resolved.boolean(REPAIR_CHEAPER_DIGGING)?,
+            shearing: resolved.boolean(REPAIR_CHEAPER_SHEARING)?,
         })
     }
 }
@@ -633,10 +633,6 @@ impl Default for Settings {
     }
 }
 
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
-}
-
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
@@ -645,24 +641,24 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Result<Self, ValueError> {
         let mut switches = [false; 14];
         for feature in Feature::ALL {
-            switches[feature.index()] = resolved.boolean(&key(feature.key()))?;
+            switches[feature.index()] = resolved.boolean(feature.key())?;
         }
         Ok(Self {
-            tooltip_enabled: resolved.boolean(&key(TOOLTIP_ENABLED))?,
-            tooltip_excluded: Matcher::parse(resolved.text(&key(TOOLTIP_EXCLUDED))?),
+            tooltip_enabled: resolved.boolean(TOOLTIP_ENABLED)?,
+            tooltip_excluded: Matcher::parse(resolved.text(TOOLTIP_EXCLUDED)?),
             switches,
-            repair_enabled: resolved.boolean(&key(REPAIR_ENABLED))?,
-            repair_cost: clamp_cost(resolved.integer(&key(REPAIR_COST))?, COST_RANGE),
+            repair_enabled: resolved.boolean(REPAIR_ENABLED)?,
+            repair_cost: clamp_cost(resolved.integer(REPAIR_COST)?, COST_RANGE),
             repair_enchantment_cost: clamp_cost(
-                resolved.integer(&key(REPAIR_ENCHANTMENT_COST))?,
+                resolved.integer(REPAIR_ENCHANTMENT_COST)?,
                 ENCHANTMENT_COST_RANGE,
             ),
             repair_materials: RepairMaterials::read(resolved)?,
             repair_discounts: RepairDiscounts::read(resolved)?,
-            repair_blacklist: Matcher::parse(resolved.text(&key(REPAIR_BLACKLIST))?),
-            repair_overrides: Table::parse(resolved.text(&key(REPAIR_OVERRIDES))?, host_namespace),
-            tweak_nearly_destroyed: resolved.boolean(&key(TWEAK_NEARLY_DESTROYED))?,
-            tweak_ineffective: Matcher::parse(resolved.text(&key(TWEAK_INEFFECTIVE))?),
+            repair_blacklist: Matcher::parse(resolved.text(REPAIR_BLACKLIST)?),
+            repair_overrides: Table::parse(resolved.text(REPAIR_OVERRIDES)?, host_namespace),
+            tweak_nearly_destroyed: resolved.boolean(TWEAK_NEARLY_DESTROYED)?,
+            tweak_ineffective: Matcher::parse(resolved.text(TWEAK_INEFFECTIVE)?),
         })
     }
 

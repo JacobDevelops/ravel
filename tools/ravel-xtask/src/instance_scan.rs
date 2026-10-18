@@ -93,7 +93,7 @@ impl InstanceScan {
 /// A marker that proves one loader is installed, and the reason it proves it.
 struct Marker {
     loader: &'static str,
-    token: &'static str,
+    identifier: &'static str,
     kind: &'static str,
 }
 
@@ -108,32 +108,32 @@ struct Marker {
 const COMPONENT_MARKERS: &[Marker] = &[
     Marker {
         loader: "fabric",
-        token: "net.fabricmc.fabric-loader",
+        identifier: "net.fabricmc.fabric-loader",
         kind: "launcher-component",
     },
     Marker {
         loader: "fabric",
-        token: "net.fabricmc.intermediary",
+        identifier: "net.fabricmc.intermediary",
         kind: "launcher-component",
     },
     Marker {
         loader: "quilt",
-        token: "org.quiltmc.quilt-loader",
+        identifier: "org.quiltmc.quilt-loader",
         kind: "launcher-component",
     },
     Marker {
         loader: "quilt",
-        token: "org.quiltmc.hashed",
+        identifier: "org.quiltmc.hashed",
         kind: "launcher-component",
     },
     Marker {
         loader: "forge",
-        token: "net.minecraftforge",
+        identifier: "net.minecraftforge",
         kind: "launcher-component",
     },
     Marker {
         loader: "neoforge",
-        token: "net.neoforged",
+        identifier: "net.neoforged",
         kind: "launcher-component",
     },
 ];
@@ -148,32 +148,32 @@ const COMPONENT_MARKERS: &[Marker] = &[
 const LAUNCH_MARKERS: &[Marker] = &[
     Marker {
         loader: "fabric",
-        token: "net.fabricmc.loader.impl.launch.knot.KnotClient",
+        identifier: "net.fabricmc.loader.impl.launch.knot.KnotClient",
         kind: "launch-main-class",
     },
     Marker {
         loader: "fabric",
-        token: "net.fabricmc.loader.impl.launch.knot.KnotServer",
+        identifier: "net.fabricmc.loader.impl.launch.knot.KnotServer",
         kind: "launch-main-class",
     },
     Marker {
         loader: "quilt",
-        token: "org.quiltmc.loader.impl.launch.knot.KnotClient",
+        identifier: "org.quiltmc.loader.impl.launch.knot.KnotClient",
         kind: "launch-main-class",
     },
     Marker {
         loader: "forge-family",
-        token: "cpw.mods.bootstraplauncher.BootstrapLauncher",
+        identifier: "cpw.mods.bootstraplauncher.BootstrapLauncher",
         kind: "launch-main-class",
     },
     Marker {
         loader: "forge",
-        token: "net.minecraftforge.bootstrap.ForgeBootstrap",
+        identifier: "net.minecraftforge.bootstrap.ForgeBootstrap",
         kind: "launch-main-class",
     },
     Marker {
         loader: "neoforge",
-        token: "net.neoforged.bootstrap.Bootstrap",
+        identifier: "net.neoforged.bootstrap.Bootstrap",
         kind: "launch-main-class",
     },
 ];
@@ -186,22 +186,22 @@ const LAUNCH_MARKERS: &[Marker] = &[
 const PATCH_MARKERS: &[Marker] = &[
     Marker {
         loader: "fabric",
-        token: "patches/net.fabricmc.fabric-loader.json",
+        identifier: "patches/net.fabricmc.fabric-loader.json",
         kind: "component-patch",
     },
     Marker {
         loader: "quilt",
-        token: "patches/org.quiltmc.quilt-loader.json",
+        identifier: "patches/org.quiltmc.quilt-loader.json",
         kind: "component-patch",
     },
     Marker {
         loader: "forge",
-        token: "patches/net.minecraftforge.json",
+        identifier: "patches/net.minecraftforge.json",
         kind: "component-patch",
     },
     Marker {
         loader: "neoforge",
-        token: "patches/net.neoforged.json",
+        identifier: "patches/net.neoforged.json",
         kind: "component-patch",
     },
 ];
@@ -217,49 +217,49 @@ const PATCH_MARKERS: &[Marker] = &[
 const GAME_DIRECTORY_MARKERS: &[Marker] = &[
     Marker {
         loader: "fabric",
-        token: ".fabric",
+        identifier: ".fabric",
         kind: "loader-runtime-directory",
     },
     Marker {
         loader: "fabric",
-        token: "config/fabric_loader_dependencies.json",
+        identifier: "config/fabric_loader_dependencies.json",
         kind: "loader-config",
     },
     Marker {
         loader: "quilt",
-        token: ".quilt",
+        identifier: ".quilt",
         kind: "loader-runtime-directory",
     },
     Marker {
         loader: "quilt",
-        token: "config/quilt_loader_dependencies.json",
+        identifier: "config/quilt_loader_dependencies.json",
         kind: "loader-config",
     },
     Marker {
         loader: "forge-family",
-        token: "config/fml.toml",
+        identifier: "config/fml.toml",
         kind: "loader-config",
     },
     Marker {
         loader: "forge-family",
-        token: "defaultconfigs",
+        identifier: "defaultconfigs",
         kind: "loader-config",
     },
     Marker {
         loader: "forge",
-        token: "config/forge-client.toml",
+        identifier: "config/forge-client.toml",
         kind: "loader-config",
     },
     Marker {
         loader: "neoforge",
-        token: "config/neoforge-client.toml",
+        identifier: "config/neoforge-client.toml",
         kind: "loader-config",
     },
     // Every one of the four is built on Mixin, and Mixin writes its transformed
     // classes here. Nothing else in a Minecraft install does.
     Marker {
         loader: "mixin-based-loader",
-        token: ".mixin.out",
+        identifier: ".mixin.out",
         kind: "loader-runtime-directory",
     },
 ];
@@ -271,22 +271,22 @@ const GAME_DIRECTORY_MARKERS: &[Marker] = &[
 const LIBRARY_MARKERS: &[Marker] = &[
     Marker {
         loader: "fabric",
-        token: "libraries/net/fabricmc",
+        identifier: "libraries/net/fabricmc",
         kind: "loader-library",
     },
     Marker {
         loader: "quilt",
-        token: "libraries/org/quiltmc",
+        identifier: "libraries/org/quiltmc",
         kind: "loader-library",
     },
     Marker {
         loader: "forge",
-        token: "libraries/net/minecraftforge",
+        identifier: "libraries/net/minecraftforge",
         kind: "loader-library",
     },
     Marker {
         loader: "neoforge",
-        token: "libraries/net/neoforged",
+        identifier: "libraries/net/neoforged",
         kind: "loader-library",
     },
 ];
@@ -315,7 +315,7 @@ pub fn scan_instance(root: &Path) -> InstanceScan {
     scan_launcher_declarations(root, &mut scan);
 
     for marker in PATCH_MARKERS {
-        if root.join(marker.token).exists() {
+        if root.join(marker.identifier).exists() {
             scan.findings.push(finding(marker));
         }
     }
@@ -328,12 +328,12 @@ pub fn scan_instance(root: &Path) -> InstanceScan {
     };
 
     for marker in GAME_DIRECTORY_MARKERS {
-        if game.join(marker.token).exists() {
+        if game.join(marker.identifier).exists() {
             scan.findings.push(finding(marker));
         }
     }
     for marker in LIBRARY_MARKERS {
-        if root.join(marker.token).exists() || game.join(marker.token).exists() {
+        if root.join(marker.identifier).exists() || game.join(marker.identifier).exists() {
             scan.findings.push(finding(marker));
         }
     }
@@ -376,7 +376,7 @@ fn scan_launcher_declarations(root: &Path, scan: &mut InstanceScan) {
     for marker in COMPONENT_MARKERS.iter().chain(LAUNCH_MARKERS) {
         if declarations
             .iter()
-            .any(|declaration| declaration.contains(marker.token))
+            .any(|declaration| declaration.contains(marker.identifier))
         {
             scan.findings.push(finding(marker));
         }
@@ -386,7 +386,7 @@ fn scan_launcher_declarations(root: &Path, scan: &mut InstanceScan) {
 fn finding(marker: &Marker) -> Finding {
     Finding {
         loader: marker.loader,
-        marker: marker.token,
+        marker: marker.identifier,
         kind: marker.kind,
     }
 }
@@ -508,27 +508,27 @@ mod tests {
     /// leak that only reached one of them is still a leak.
     #[test]
     fn a_username_shaped_path_segment_never_reaches_the_report() {
-        let secret = "jacob-sanderson";
+        let username = "jacob-sanderson";
         let root = temporary_root("redaction");
         let instance = root
-            .join(secret)
+            .join(username)
             .join("instances")
-            .join(format!("{secret}-atm11"));
+            .join(format!("{username}-atm11"));
         let game = instance.join(".minecraft");
-        write(&instance.join("mmc-pack.json"), &fabric_pack(secret));
+        write(&instance.join("mmc-pack.json"), &fabric_pack(username));
         write(
             &instance.join("instance.cfg"),
-            &format!("name={secret}\nJvmArgs=-Dravel.home=/home/{secret}/ravel\n"),
+            &format!("name={username}\nJvmArgs=-Dravel.home=/home/{username}/ravel\n"),
         );
         write(
             &instance.join("patches/net.fabricmc.fabric-loader.json"),
-            &format!("{{ \"name\": \"{secret}\" }}"),
+            &format!("{{ \"name\": \"{username}\" }}"),
         );
-        write(&game.join(format!("mods/{secret}-pack.jar")), "archive");
-        write(&game.join(format!("config/{secret}.toml")), "setting = 1");
+        write(&game.join(format!("mods/{username}-pack.jar")), "archive");
+        write(&game.join(format!("config/{username}.toml")), "setting = 1");
         write(&game.join("config/fabric_loader_dependencies.json"), "{}");
         write(
-            &game.join(format!("saves/{secret}-world/level.dat")),
+            &game.join(format!("saves/{username}-world/level.dat")),
             "world",
         );
 
@@ -539,16 +539,16 @@ mod tests {
         assert_eq!(scan.mod_archives, 1);
         let rendered = scan.to_json();
         assert!(
-            !rendered.contains(secret),
+            !rendered.contains(username),
             "the report must not carry a path segment from the instance"
         );
         for finding in &scan.findings {
-            assert!(!finding.loader.contains(secret));
-            assert!(!finding.marker.contains(secret));
-            assert!(!finding.kind.contains(secret));
+            assert!(!finding.loader.contains(username));
+            assert!(!finding.marker.contains(username));
+            assert!(!finding.kind.contains(username));
         }
         for obstacle in &scan.obstacles {
-            assert!(!obstacle.contains(secret));
+            assert!(!obstacle.contains(username));
         }
         // The absolute root is what a careless implementation would echo, and
         // its own segments are the ones a reader would recognize.
@@ -713,11 +713,11 @@ mod tests {
         remove(&root);
     }
 
-    fn fabric_pack(secret: &str) -> String {
+    fn fabric_pack(username: &str) -> String {
         format!(
             r#"{{"components":[{{"uid":"net.minecraft","version":"26.1.2"}},
                 {{"uid":"net.fabricmc.fabric-loader","version":"0.18.1"}}],
-                "name":"{secret}"}}"#
+                "name":"{username}"}}"#
         )
     }
 

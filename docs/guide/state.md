@@ -76,9 +76,8 @@ impl Mod for CopperLanterns {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key: SettingKey = CAPACITY.parse().expect("the key this mod declared");
         self.capacity =
-            u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
+            u64::try_from(resolved.integer(CAPACITY).map_err(ModError::from_display)?)
                 .map_err(ModError::from_display)?;
         Ok(())
     }
@@ -102,7 +101,7 @@ implements `FromStr`: `let value: JsonValue = text.parse()?;`. There is no
 `ravel_sdk::JsonError`, named in the facade so you can carry the failure in your
 own signatures as well as report it.
 
-## World data is versioned, and you cross the versions
+## World data is versioned, and the loader crosses the versions
 
 Declare every version this build can read. The oldest is what still opens; the
 highest is what you write.
@@ -156,7 +155,6 @@ impl Mod for CopperLanterns {
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        _plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.entries.clear();
@@ -207,14 +205,10 @@ the world is refused. A refusal withholds the world rather than opening it
 half-applied — a save that will not open is recoverable, and a save that opened
 empty is not.
 
-**The mod crosses the steps, not the host.** The envelope you are handed is at
-whatever version the world stored, which is any version your declaration admits.
-Read `SavedDataPlan::steps` and apply your chain to the payload. A host is free
-to hand over an already-current payload and one of them does, but that is a
-guarantee stronger than the contract, not the contract: the launch path hands
-over the stored envelope and the steps, and a mod written to the stronger reading
-is silently wrong in a running game, losing every field a later version added and
-writing the loss back stamped current.
+**The loader crosses the steps.** It applies your `MigrationChain` before
+`open_saved_data`, so the envelope you receive is always at your current declared
+version. The callback receives only that envelope, not a migration plan; read its
+current payload and never replay migration steps.
 
 Every step or none. A chain that refuses partway leaves the world holding exactly
 what it held.

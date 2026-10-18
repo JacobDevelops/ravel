@@ -88,7 +88,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
-use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
+use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope};
 use ravel_sdk::sides::ClientOnlyError;
 
 pub use crate::channel::{Channel, Sends, Target};
@@ -463,12 +463,7 @@ impl Mod for Entry {
         )))
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
-        let _ = plan;
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.memories.clear();
             self.recovered.clear();
@@ -510,7 +505,6 @@ mod tests {
     use ravel_sdk::content::{Registrar, RegistrationRefused, RegistryKey};
     use ravel_sdk::events::GameEvent;
     use ravel_sdk::prelude::*;
-    use ravel_sdk::save::SavedDataPlan;
 
     use super::{
         __ravel_entry, AlreadyConstructed, Entry, EventCounts, ItemForm, MAX_MEMORIES,
@@ -724,14 +718,8 @@ mod tests {
             .expect("this library owns world data");
 
         let mut opened = Entry::new(Side::IntegratedServer);
-        let declaration = opened
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("this library declares its data");
-        let plan = SavedDataPlan::open(&declaration, Some(Memory::version()))
-            .expect("a world at the current version");
         opened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("a world this package wrote");
         assert_eq!(
             opened.memory("the crusher at 0 64 0"),
@@ -760,13 +748,8 @@ mod tests {
         );
 
         let mut shared = Entry::new(Side::IntegratedServer);
-        let declaration = shared
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("declared");
-        let plan = SavedDataPlan::open(&declaration, Some(Memory::version())).expect("a plan");
         shared
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("a malformed entry does not cost a world");
         assert_eq!(shared.memories(), 0);
         assert_eq!(shared.recovered().len(), 1);
@@ -783,18 +766,13 @@ mod tests {
         shared
             .remember("retained", memory.clone())
             .expect("a valid memory owner");
-        let declaration = shared
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("declared");
-        let plan = SavedDataPlan::open(&declaration, Some(Memory::version())).expect("a plan");
         for payload in [ravel_sdk::json!(null), ravel_sdk::json!([])] {
             let envelope = ravel_sdk::save::SavedDataEnvelope::current(
                 Entry::declared_id().clone(),
                 Memory::version(),
                 payload,
             );
-            assert!(shared.open_saved_data(Some(&envelope), &plan).is_err());
+            assert!(shared.open_saved_data(Some(&envelope)).is_err());
             assert_eq!(shared.memory("retained"), Some(&memory));
         }
     }
@@ -802,14 +780,7 @@ mod tests {
     #[test]
     fn a_fresh_world_holds_no_memory_and_is_not_a_failure() {
         let mut shared = Entry::new(Side::IntegratedServer);
-        let declaration = shared
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("declared");
-        let plan = SavedDataPlan::open(&declaration, None).expect("a fresh world");
-        shared
-            .open_saved_data(None, &plan)
-            .expect("a fresh world opens");
+        shared.open_saved_data(None).expect("a fresh world opens");
         assert_eq!(shared.memories(), 0);
     }
 
@@ -899,14 +870,8 @@ mod tests {
         );
 
         let mut opened = Entry::new(Side::IntegratedServer);
-        let declaration = opened
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("this library declares its data");
-        let plan = SavedDataPlan::open(&declaration, Some(Memory::version()))
-            .expect("a world at the current version");
         opened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("a world too large for this build still opens");
 
         assert_eq!(opened.memories(), MAX_MEMORIES);
@@ -931,9 +896,7 @@ mod tests {
 
         // A world this build did hold every memory of saves as it always did.
         let mut ordinary = Entry::new(Side::IntegratedServer);
-        ordinary
-            .open_saved_data(None, &plan)
-            .expect("a fresh world");
+        ordinary.open_saved_data(None).expect("a fresh world");
         assert_eq!(ordinary.dropped(), None);
         assert!(ordinary.save_saved_data().is_ok());
     }

@@ -155,6 +155,92 @@ fn tracked_lowercase_and_json_credential_prefixes_are_rejected() {
 }
 
 #[test]
+fn tracked_rust_sources_cannot_embed_credential_values() {
+    let root = temporary_root("rust-credential-values");
+    for (name, token) in [
+        ("github.rs", concat!("gh", "p_privatevalue")),
+        ("api.rs", concat!("sk", "-privatevalue")),
+        (
+            "jwt.rs",
+            concat!(
+                "ey",
+                "JhbGciOiJIUzI1NiJ9.ey",
+                "JzdWIiOiIxMjM0NTY3ODkwIn0.signature"
+            ),
+        ),
+    ] {
+        let source = format!("const TOKEN: &str = {token:?};\n");
+        fs::write(root.join(name), source).expect("credential canary should be writable");
+        assert_eq!(
+            verify_tracked_contents(&root, &[name.to_owned()]),
+            [format!("tracked file contains credential material: {name}")]
+        );
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn tracked_rust_distinguishes_literal_secrets_from_variable_assignments() {
+    let root = temporary_root("rust-labelled-credentials");
+    fs::write(
+        root.join("literal.rs"),
+        format!("let token = {:?};\n", "privatevalue"),
+    )
+    .expect("literal credential canary should be writable");
+    fs::write(
+        root.join("variable.rs"),
+        concat!("let token", " = source;\n"),
+    )
+    .expect("ordinary source should be writable");
+    assert_eq!(
+        verify_tracked_contents(&root, &["literal.rs".to_owned(), "variable.rs".to_owned()]),
+        ["tracked file contains credential material: literal.rs"]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn wrapped_rust_fragments_are_distinguished_from_multiline_and_bearer_values() {
+    let root = temporary_root("rust-wrapped-fragments");
+    fs::write(
+        root.join("wrapped.rs"),
+        "let text = concat!(\n    \"token=\",\n    \"ghp_\",\n    \"value\"\n);\n",
+    )
+    .expect("wrapped fragment source should be writable");
+    fs::write(
+        root.join("scheme.rs"),
+        "let bearer = label.eq_ignore_ascii_case(\"bearer\");\nif bearer {}\n",
+    )
+    .expect("scheme source should be writable");
+    fs::write(
+        root.join("literal.rs"),
+        format!("let header = \"{}{}\";\n", "Bearer ", "privatevalue"),
+    )
+    .expect("literal credential canary should be writable");
+    fs::write(
+        root.join("multiline.sh"),
+        concat!("password=", "'firstline\nsecondline'\n"),
+    )
+    .expect("multiline credential canary should be writable");
+    assert_eq!(
+        verify_tracked_contents(
+            &root,
+            &[
+                "wrapped.rs".to_owned(),
+                "scheme.rs".to_owned(),
+                "literal.rs".to_owned(),
+                "multiline.sh".to_owned()
+            ]
+        ),
+        [
+            "tracked file contains credential material: literal.rs",
+            "tracked file contains credential material: multiline.sh"
+        ]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn contents_scan_discloses_what_it_does_not_refuse() {
     let root = temporary_root("disclosure");
     fs::write(
@@ -264,7 +350,10 @@ fn credential_assignments_use_shared_words_without_treating_source_as_environmen
     assert!(!super::has_credential_assignment(
         "const TOKEN_SEGMENT: usize = 8;"
     ));
-    assert!(!super::has_credential_assignment("let token = redacted;"));
+    assert!(!super::has_credential_assignment(concat!(
+        "let token",
+        " = redacted;"
+    )));
 }
 
 #[test]

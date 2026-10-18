@@ -5,5 +5,5 @@
 mod pipeline;
 
 pub use pipeline::{
-    Host, PipelineError, PipelineRun, TestPackage, executed_states, run, run_order,
+    Host, PipelineError, PipelineRun, TestPackage, executed_states, run_order, run_pipeline,
 };

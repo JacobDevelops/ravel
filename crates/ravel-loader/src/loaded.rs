@@ -2,95 +2,113 @@ use std::fmt;
 use std::ops::DerefMut;
 
 use ravel_core::ModId;
-use ravel_host_api::HostMod;
+use ravel_host_api::Mod;
 
 use crate::lifecycle::LifecycleMachine;
 
-/// A complete borrowed lifecycle and host set, without adapting or allocating host storage.
+/// A complete borrowed lifecycle and mod set, without adapting or allocating mod storage.
 ///
-/// Every entry loading on the machine's side must have a host, including failed entries.
-/// Side-incompatible (parked) entries need no host. Extra hosts are retained, but do not
+/// Every entry loading on the machine's side must have a mod, including failed entries.
+/// Side-incompatible (parked) entries need no mod. Extra mods are retained, but do not
 /// become lifecycle members. Construction checks completeness in lifecycle order before
 /// any loader operation can invoke callbacks or mutate lifecycle state.
 ///
-/// Slots may be owned boxes or mutable host references. Service ordering rearranges the
-/// actual supplied slots in either case, rather than a temporary collection of references.
-pub struct LoadedMods<'a, H: DerefMut<Target: HostMod>> {
+/// Slots may be owned boxes or mutable mod references. Construction orders the actual
+/// supplied slots by resolved lifecycle order, leaving extra mods afterward in prior order.
+/// Service callbacks may temporarily rearrange slots, then restore this lifecycle order.
+pub struct LoadedMods<'a, H: DerefMut<Target: Mod>> {
     machine: &'a mut LifecycleMachine,
-    hosts: &'a mut [H],
+    mods: &'a mut [H],
 }
 
-impl<H: DerefMut<Target: HostMod>> fmt::Debug for LoadedMods<'_, H> {
+impl<H: DerefMut<Target: Mod>> fmt::Debug for LoadedMods<'_, H> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("LoadedMods")
             .field("side", &self.machine.side())
-            .field("hosts", &self.hosts.len())
+            .field("mods", &self.mods.len())
             .finish_non_exhaustive()
     }
 }
 
-impl<'a, H: DerefMut<Target: HostMod>> LoadedMods<'a, H> {
-    /// Borrows a complete set, refusing the first missing side-compatible lifecycle owner.
+impl<'a, H: DerefMut<Target: Mod>> LoadedMods<'a, H> {
+    /// Borrows and orders a complete set, refusing the first missing loading lifecycle owner.
     ///
     /// # Errors
     ///
-    /// Returns [`MissingHost`] for the first loading lifecycle member without a host,
+    /// Returns [`MissingMod`] for the first loading lifecycle member without a mod,
     /// retaining that member's current lifecycle state for diagnostics.
-    pub fn new(machine: &'a mut LifecycleMachine, hosts: &'a mut [H]) -> Result<Self, MissingHost> {
-        for entry in machine.entries() {
+    pub fn new(machine: &'a mut LifecycleMachine, mods: &'a mut [H]) -> Result<Self, MissingMod> {
+        for (entry, state) in machine.tracked_entries() {
             if entry.sides.loads_on(machine.side())
-                && !hosts.iter().any(|host| host.id() == &entry.mod_id)
+                && !mods.iter().any(|instance| instance.id() == &entry.mod_id)
             {
-                return Err(MissingHost {
+                return Err(MissingMod {
                     mod_id: entry.mod_id.clone(),
-                    state: machine
-                        .state(&entry.mod_id)
-                        .expect("entry belongs to this machine"),
+                    state,
                 });
             }
         }
-        Ok(Self::admitted(machine, hosts))
+        arrange(mods, machine.order());
+        Ok(Self { machine, mods })
     }
 
-    /// Borrows storage whose completeness the admitting caller has already established.
-    pub(crate) const fn admitted(machine: &'a mut LifecycleMachine, hosts: &'a mut [H]) -> Self {
-        Self { machine, hosts }
-    }
-
-    /// Returns the lifecycle state paired with these hosts.
+    /// Returns the lifecycle state paired with these mods.
     #[must_use]
     pub const fn machine(&self) -> &LifecycleMachine {
         self.machine
     }
 
     pub(crate) fn parts(&mut self) -> (&mut LifecycleMachine, &mut [H]) {
-        (self.machine, self.hosts)
+        (self.machine, self.mods)
     }
 }
 
-/// Orders actual slots, leaving undeclared hosts afterward in their prior order.
-pub(crate) fn arrange<'a, H: DerefMut<Target: HostMod>>(
-    hosts: &mut [H],
+/// Orders actual slots, leaving undeclared mods afterward in their prior order.
+pub(crate) fn arrange<'a, H: DerefMut<Target: Mod>>(
+    mods: &mut [H],
     order: impl IntoIterator<Item = &'a ModId>,
 ) {
     let mut placed = 0;
     for owner in order {
-        if let Some(found) = hosts[placed..].iter().position(|host| host.id() == owner) {
-            hosts[placed..=placed + found].rotate_right(1);
+        if let Some(found) = mods[placed..]
+            .iter()
+            .position(|instance| instance.id() == owner)
+        {
+            mods[placed..=placed + found].rotate_right(1);
             placed += 1;
         }
     }
 }
 
-/// A lifecycle member loading on this side has no supplied host.
+/// Looks up a member of a complete paired set.
+pub(crate) fn instance<'a, H: DerefMut<Target: Mod>>(
+    mods: &'a [H],
+    owner: &ModId,
+) -> &'a H::Target {
+    mods.iter()
+        .find(|instance| instance.id() == owner)
+        .expect("LoadedMods checked every loading owner")
+}
+
+/// Looks up a mutable member of a complete paired set.
+pub(crate) fn instance_mut<'a, H: DerefMut<Target: Mod>>(
+    mods: &'a mut [H],
+    owner: &ModId,
+) -> &'a mut H::Target {
+    mods.iter_mut()
+        .find(|instance| instance.id() == owner)
+        .expect("LoadedMods checked every loading owner")
+}
+
+/// A lifecycle member loading on this side has no supplied mod.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MissingHost {
+pub struct MissingMod {
     mod_id: ModId,
     state: ravel_core::LifecycleState,
 }
 
-impl MissingHost {
+impl MissingMod {
     /// Returns the first missing owner in lifecycle order.
     #[must_use]
     pub const fn mod_id(&self) -> &ModId {
@@ -98,15 +116,15 @@ impl MissingHost {
     }
 }
 
-impl fmt::Display for MissingHost {
+impl fmt::Display for MissingMod {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "loading mod `{}` has no host", self.mod_id)
+        write!(formatter, "loading mod `{}` was not supplied", self.mod_id)
     }
 }
 
-impl std::error::Error for MissingHost {}
+impl std::error::Error for MissingMod {}
 
-impl ravel_core::StructuredFailure for MissingHost {
+impl ravel_core::StructuredFailure for MissingMod {
     fn failure_kind(&self) -> Option<ravel_core::FailureKind> {
         None
     }
@@ -123,7 +141,7 @@ impl ravel_core::StructuredFailure for MissingHost {
 #[cfg(test)]
 mod tests {
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::{HostMod, ModError};
+    use ravel_host_api::{Mod, ModError};
 
     use super::LoadedMods;
     use crate::lifecycle::LifecycleMachine;
@@ -143,7 +161,7 @@ mod tests {
         }
     }
 
-    impl HostMod for Recording {
+    impl Mod for Recording {
         fn id(&self) -> &ModId {
             &self.id
         }
@@ -155,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_host_refuses_the_whole_view_before_any_callback_or_transition() {
+    fn missing_mod_refuses_the_whole_view_before_any_callback_or_transition() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
             vec![
@@ -165,26 +183,43 @@ mod tests {
             ],
         )
         .expect("valid lifecycle");
-        let mut host = Recording::new("present");
-        let error = LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
-            .expect_err("a partial host set cannot be used by any operation");
+        let mut instance = Recording::new("present");
+        let error = LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut instance])
+            .expect_err("a partial mod set cannot be used by any operation");
         assert_eq!(error.mod_id().as_str(), "missing_first");
         assert_eq!(
             ravel_core::StructuredFailure::lifecycle_state(&error),
             LifecycleState::Discovered
         );
-        assert_eq!(host.calls, 0);
-        assert_eq!(machine.state(&host.id), Ok(LifecycleState::Discovered));
+        assert_eq!(instance.calls, 0);
+        assert_eq!(machine.state(&instance.id), Ok(LifecycleState::Discovered));
     }
 
     #[test]
-    fn missing_host_retains_the_running_members_diagnostic_state() {
+    fn a_different_identity_cannot_supply_the_declared_owner() {
+        let mut machine =
+            LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
+                .expect("valid lifecycle");
+        let mut other = Recording::new("other_mod");
+        let error = LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut other])
+            .expect_err("a different identity cannot supply the declared owner");
+        assert_eq!(error.mod_id().as_str(), "example_mod");
+        assert_ne!(error.mod_id(), &other.id);
+        assert_eq!(other.calls, 0);
+        assert_eq!(
+            machine.state(error.mod_id()),
+            Ok(LifecycleState::Discovered)
+        );
+    }
+
+    #[test]
+    fn missing_mod_retains_the_running_members_diagnostic_state() {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("missing", &[Side::Client])])
                 .expect("valid lifecycle");
         advance_through(&mut machine, LifecycleState::Running);
-        let error = LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [])
-            .expect_err("running owners still need hosts");
+        let error = LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [])
+            .expect_err("running owners still need mods");
         assert_eq!(
             ravel_core::StructuredFailure::lifecycle_state(&error),
             LifecycleState::Running
@@ -192,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn parked_members_need_no_host_and_extra_hosts_are_retained() {
+    fn parked_members_need_no_mod_and_extra_mods_are_retained() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
             vec![entry("server_only", &[Side::DedicatedServer])],
@@ -200,22 +235,50 @@ mod tests {
         .expect("valid lifecycle");
         let mut extra = Recording::new("extra");
         let extra_id = extra.id.clone();
-        let mut slots: [&mut dyn HostMod; 1] = [&mut extra];
+        let mut slots: [&mut dyn Mod; 1] = [&mut extra];
         let mut loaded =
-            LoadedMods::new(&mut machine, &mut slots).expect("parked member needs no host");
+            LoadedMods::new(&mut machine, &mut slots).expect("parked member needs no mod");
         assert_eq!(
             loaded
                 .parts()
                 .1
                 .iter()
-                .map(|host| host.id())
+                .map(|instance| instance.id())
                 .collect::<Vec<_>>(),
             [&extra_id]
         );
     }
 
     #[test]
-    fn arranging_mutates_box_slots_and_preserves_undeclared_hosts() {
+    fn construction_orders_slots_by_lifecycle_not_identity_or_insertion_order() {
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![
+                entry("provider", &[Side::Client]),
+                entry("consumer", &[Side::Client]),
+            ],
+        )
+        .expect("valid lifecycle");
+        let mut slots: Vec<Box<dyn Mod>> = vec![
+            Box::new(Recording::new("extra_first")),
+            Box::new(Recording::new("consumer")),
+            Box::new(Recording::new("extra_second")),
+            Box::new(Recording::new("provider")),
+        ];
+        let mut loaded = LoadedMods::new(&mut machine, &mut slots).expect("complete set");
+        assert_eq!(
+            loaded
+                .parts()
+                .1
+                .iter()
+                .map(|instance| instance.id().as_str())
+                .collect::<Vec<_>>(),
+            ["provider", "consumer", "extra_first", "extra_second"]
+        );
+    }
+
+    #[test]
+    fn arranging_mutates_box_slots_and_preserves_undeclared_mods() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
             vec![
@@ -224,7 +287,7 @@ mod tests {
             ],
         )
         .expect("valid lifecycle");
-        let mut slots: Vec<Box<dyn HostMod>> = vec![
+        let mut slots: Vec<Box<dyn Mod>> = vec![
             Box::new(Recording::new("extra_first")),
             Box::new(Recording::new("extra_second")),
             Box::new(Recording::new("consumer")),
@@ -241,7 +304,7 @@ mod tests {
         assert_eq!(
             slots
                 .iter()
-                .map(|host| host.id().as_str())
+                .map(|instance| instance.id().as_str())
                 .collect::<Vec<_>>(),
             ["provider", "consumer", "extra_first", "extra_second"]
         );
@@ -262,7 +325,7 @@ mod tests {
         let mut extra_first = Recording::new("extra_first");
         let mut extra_second = Recording::new("extra_second");
         let order = [provider.id.clone(), consumer.id.clone()];
-        let mut slots: [&mut dyn HostMod; 4] = [
+        let mut slots: [&mut dyn Mod; 4] = [
             &mut extra_first,
             &mut extra_second,
             &mut consumer,
@@ -273,7 +336,7 @@ mod tests {
         assert_eq!(
             slots
                 .iter()
-                .map(|host| host.id().as_str())
+                .map(|instance| instance.id().as_str())
                 .collect::<Vec<_>>(),
             ["provider", "consumer", "extra_first", "extra_second"]
         );

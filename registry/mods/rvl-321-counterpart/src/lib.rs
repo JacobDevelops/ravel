@@ -43,7 +43,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
-use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
+use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope};
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::flags::FlagTable;
@@ -426,24 +426,10 @@ impl Mod for Entry {
         )))
     }
 
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             return Ok(());
         };
-        if !plan.steps().is_empty() {
-            return Err(ModError::refused(
-                "this build declares one saved-data version and so crosses no step",
-            ));
-        }
-        if envelope.data_version() != machines::DATA_VERSION {
-            return Err(ModError::refused(
-                "the world stored a version this build does not read",
-            ));
-        }
         let Some(held) = envelope
             .payload()
             .get("machines")
@@ -520,18 +506,13 @@ mod tests {
     fn a_missing_or_malformed_machine_table_is_refused_without_erasing_state() {
         let mut entry = Entry::new();
         entry.hold_machine("retained", machines::Persisted::default());
-        let declaration = entry
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("declared");
-        let plan = SavedDataPlan::open(&declaration, Some(machines::DATA_VERSION)).expect("a plan");
         for payload in [json!({}), json!({"machines": []}), json!(null)] {
             let envelope = SavedDataEnvelope::current(
                 Entry::declared_id().clone(),
                 machines::DATA_VERSION,
                 payload,
             );
-            assert!(entry.open_saved_data(Some(&envelope), &plan).is_err());
+            assert!(entry.open_saved_data(Some(&envelope)).is_err());
             assert!(entry.machine("retained").is_some());
         }
     }
@@ -540,11 +521,6 @@ mod tests {
     fn a_malformed_machine_refuses_the_whole_table_without_replacing_state() {
         let mut entry = Entry::new();
         entry.hold_machine("retained", machines::Persisted::default());
-        let declaration = entry
-            .saved_data_declaration()
-            .expect("valid saved data")
-            .expect("declared");
-        let plan = SavedDataPlan::open(&declaration, Some(machines::DATA_VERSION)).expect("a plan");
         for invalid in [
             json!(null),
             json!(42),
@@ -559,7 +535,7 @@ mod tests {
                 json!({"machines": {"a_valid": {}, "z_broken": invalid}}),
             );
             let error = entry
-                .open_saved_data(Some(&envelope), &plan)
+                .open_saved_data(Some(&envelope))
                 .expect_err("a malformed machine must refuse the table");
             assert!(error.to_string().contains("z_broken"));
             assert!(entry.machine("retained").is_some());
@@ -638,16 +614,8 @@ mod tests {
             .expect("a declared owner writes an envelope");
 
         let mut reopened = Entry::new();
-        let plan = SavedDataPlan::open(
-            &reopened
-                .saved_data_declaration()
-                .expect("the saved data declaration is valid")
-                .expect("the entry declares its saved data"),
-            Some(saved.data_version()),
-        )
-        .expect("the world stored the version this build writes");
         reopened
-            .open_saved_data(Some(&saved), &plan)
+            .open_saved_data(Some(&saved))
             .expect("the world opens");
 
         let held = reopened

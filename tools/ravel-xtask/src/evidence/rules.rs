@@ -9,8 +9,7 @@ use serde_json::Value;
 
 use crate::json::{array, nonempty, schema_matches};
 
-use ravel_observability::contains_credential;
-use ravel_observability::redaction::CREDENTIAL_WORDS;
+use ravel_core::{CREDENTIAL_WORDS, contains_credential};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum Milestone {

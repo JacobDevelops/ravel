@@ -3,7 +3,7 @@ use std::fmt;
 
 use ravel_core::{ModId, Side, precedence};
 
-/// A published host decision point; live host dispatch is not yet wired.
+/// A published host decision point; world-save dispatch runs on the executing server side.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Point {
     /// A block is about to be broken.
@@ -26,12 +26,6 @@ impl Point {
             Self::ItemIsUsed => "item_is_used",
             Self::WorldIsSaved => "world_is_saved",
         }
-    }
-
-    /// Returns the point `name` publishes, if any point does.
-    #[must_use]
-    pub fn published(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|point| point.as_str() == name)
     }
 
     /// Returns whether `side` is a server side, where these decisions belong.
@@ -93,27 +87,34 @@ struct Answer {
 
 /// Declares interception points and ordering, with ownership checked by the host.
 ///
+/// Unpublished points cannot enter a typed declaration.
+/// ```compile_fail
+/// use ravel_host_api::InterceptionDeclaration;
+/// let mut declared = InterceptionDeclaration::new("sample".parse().unwrap());
+/// declared.answer_at("a_point_nobody_publishes");
+/// ```
+///
 /// # Examples
 ///
 /// ```
 /// use ravel_core::ModId;
-/// use ravel_host_api::InterceptionDeclaration;
+/// use ravel_host_api::{InterceptionDeclaration, Point};
 ///
 /// let guard: ModId = "guard_mod".parse()?;
 /// let ledger: ModId = "ledger_mod".parse()?;
 ///
 /// let mut declared = InterceptionDeclaration::new(guard.clone());
-/// declared.answer_at("block_is_broken");
+/// declared.answer_at(Point::BlockIsBroken);
 /// declared.after(&ledger);
 ///
 /// assert_eq!(declared.owner(), &guard);
-/// assert_eq!(declared.points(), ["block_is_broken"]);
+/// assert_eq!(declared.points(), [Point::BlockIsBroken]);
 /// # Ok::<(), ravel_core::ModIdError>(())
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterceptionDeclaration {
     owner: ModId,
-    answers: Vec<(String, bool)>,
+    answers: Vec<(Point, bool)>,
     after: Vec<ModId>,
 }
 
@@ -128,15 +129,15 @@ impl InterceptionDeclaration {
         }
     }
 
-    /// Declares an answer at `point`; unpublished names are refused by [`Points::admit`].
-    pub fn answer_at(&mut self, point: &str) -> &mut Self {
-        self.answers.push((point.to_owned(), false));
+    /// Declares an answer at a published `point`.
+    pub fn answer_at(&mut self, point: Point) -> &mut Self {
+        self.answers.push((point, false));
         self
     }
 
     /// Declares that this mod replaces the outcome at `point`.
-    pub fn replace_at(&mut self, point: &str) -> &mut Self {
-        self.answers.push((point.to_owned(), true));
+    pub fn replace_at(&mut self, point: Point) -> &mut Self {
+        self.answers.push((point, true));
         self
     }
 
@@ -152,19 +153,16 @@ impl InterceptionDeclaration {
         &self.owner
     }
 
-    /// Returns the point names declared, in declaration order.
+    /// Returns the points declared, in declaration order.
     #[must_use]
-    pub fn points(&self) -> Vec<&str> {
-        self.answers
-            .iter()
-            .map(|(point, _)| point.as_str())
-            .collect()
+    pub fn points(&self) -> Vec<Point> {
+        self.answers.iter().map(|(point, _)| *point).collect()
     }
 
     /// Returns whether this declaration answers at `point` at all.
     #[must_use]
     pub fn answers_at(&self, point: Point) -> bool {
-        self.answers.iter().any(|(name, _)| name == point.as_str())
+        self.answers.iter().any(|(declared, _)| *declared == point)
     }
 }
 
@@ -180,17 +178,18 @@ impl InterceptionDeclaration {
 /// let ledger: ModId = "ledger_mod".parse()?;
 ///
 /// let mut points = Points::default();
-/// points.answer_at(&ledger, "block_is_broken");
-/// points.answer_at(&guard, "block_is_broken");
+/// points.answer_at(&ledger, Point::BlockIsBroken);
+/// points.answer_at(&guard, Point::BlockIsBroken);
 /// points.after(&ledger, &guard);
 ///
-/// let round = points.ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |owner, _| {
+/// let points = points.admit()?;
+/// let round = points.ask(Point::BlockIsBroken, Side::IntegratedServer, |_| true, &mut |owner, _| {
 ///     Ok(if owner == &guard {
 ///         Outcome::Refuse
 ///     } else {
 ///         Outcome::Proceed
 ///     })
-/// })?;
+/// });
 /// assert_eq!(round.asked(), [guard]);
 /// assert_eq!(round.outcome(), Outcome::Refuse);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -199,8 +198,6 @@ impl InterceptionDeclaration {
 pub struct Points {
     answers: Vec<Answer>,
     after: BTreeMap<ModId, BTreeSet<ModId>>,
-    /// Retained so admission can report unpublished names and their claimants.
-    unpublished: BTreeMap<String, BTreeSet<ModId>>,
 }
 
 impl fmt::Debug for Points {
@@ -216,46 +213,45 @@ impl fmt::Debug for Points {
                     .collect::<Vec<_>>(),
             )
             .field("after", &self.after)
-            .field("unpublished", &self.unpublished)
             .finish()
     }
 }
 
 impl Points {
     /// Declares an answer, validated at admission; the first refusal ends a round.
-    pub fn answer_at(&mut self, owner: &ModId, point: &str) {
+    pub fn answer_at(&mut self, owner: &ModId, point: Point) {
         self.record(owner, point, false);
     }
 
     /// Declares exclusive replacement; admission refuses multiple replacements at a point.
-    pub fn replace_at(&mut self, owner: &ModId, point: &str) {
+    pub fn replace_at(&mut self, owner: &ModId, point: Point) {
         self.record(owner, point, true);
     }
 
     /// Incorporates a mod's interception points and ordering.
     pub fn declare(&mut self, declaration: &InterceptionDeclaration) {
         for (point, replaces) in &declaration.answers {
-            self.record(&declaration.owner, point, *replaces);
+            self.record(&declaration.owner, *point, *replaces);
         }
         for earlier in &declaration.after {
             self.after(&declaration.owner, earlier);
         }
     }
 
-    fn record(&mut self, owner: &ModId, point: &str, replaces: bool) {
-        match Point::published(point) {
-            Some(published) => self.answers.push(Answer {
-                owner: owner.clone(),
-                point: published,
-                replaces,
-            }),
-            None => {
-                self.unpublished
-                    .entry(point.to_owned())
-                    .or_default()
-                    .insert(owner.clone());
-            }
+    fn record(&mut self, owner: &ModId, point: Point, replaces: bool) {
+        if let Some(answer) = self
+            .answers
+            .iter_mut()
+            .find(|answer| answer.owner == *owner && answer.point == point)
+        {
+            answer.replaces |= replaces;
+            return;
         }
+        self.answers.push(Answer {
+            owner: owner.clone(),
+            point,
+            replaces,
+        });
     }
 
     /// Declares that `later` is asked after `earlier`, at every point they share.
@@ -266,71 +262,68 @@ impl Points {
             .insert(later.clone());
     }
 
-    /// Checks published point names and exclusive replacement claims.
+    /// Checks exclusive replacement claims and ordering at every point.
     ///
     /// # Errors
     ///
-    /// Returns [`InterceptionRefused::UnpublishedPoint`] or [`InterceptionRefused::ContestedPoint`].
-    pub fn admit(&self) -> Result<(), InterceptionRefused> {
-        if let Some((name, owners)) = self.unpublished.first_key_value() {
-            return Err(InterceptionRefused::UnpublishedPoint {
-                name: name.clone(),
-                claimants: owners.iter().cloned().collect(),
-            });
-        }
-
+    /// Returns contested replacements or circular ordering.
+    pub fn admit(self) -> Result<AdmittedPoints, InterceptionRefused> {
+        let mut ordered = BTreeMap::new();
         for point in Point::ALL {
-            let claimants: Vec<ModId> = self
-                .answers
-                .iter()
-                .filter(|answer| answer.point == point && answer.replaces)
-                .map(|answer| answer.owner.clone())
-                .collect();
-            if claimants.len() > 1 {
-                return Err(InterceptionRefused::ContestedPoint { point, claimants });
-            }
+            ordered.insert(point, self.order(point)?);
         }
-        Ok(())
+        Ok(AdmittedPoints { ordered })
     }
 
+    fn order(&self, point: Point) -> Result<Vec<ModId>, InterceptionRefused> {
+        let claimants: Vec<ModId> = self
+            .answers
+            .iter()
+            .filter(|answer| answer.point == point && answer.replaces)
+            .map(|answer| answer.owner.clone())
+            .collect();
+        if claimants.len() > 1 {
+            return Err(InterceptionRefused::ContestedPoint { point, claimants });
+        }
+        let owners = self.answers.iter().filter(|answer| answer.point == point);
+        precedence(owners.map(|answer| answer.owner.clone()), &self.after).map_err(|cycle| {
+            InterceptionRefused::Circular {
+                point,
+                claimants: self
+                    .answers
+                    .iter()
+                    .filter(|answer| {
+                        answer.point == point && cycle.participants().contains(&answer.owner)
+                    })
+                    .map(|answer| answer.owner.clone())
+                    .collect(),
+            }
+        })
+    }
+}
+
+/// Immutable interception order admitted once at the declaration barrier.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdmittedPoints {
+    ordered: BTreeMap<Point, Vec<ModId>>,
+}
+
+impl AdmittedPoints {
     /// Asks mods in declared order, stopping at the first refusal or failure.
     ///
-    /// A failure produces [`Outcome::Refuse`]; [`Round::failed_by`] identifies the actual
-    /// callback owner independently of the error retained by [`Round::failure`].
+    /// A failure produces [`Outcome::Refuse`]; [`Round::failed_by`] identifies the
+    /// last owner actually asked. Errors are normalized to that owner without changing
+    /// their kind or phase. The caller must attribute the error to the callback's
+    /// actual lifecycle phase before returning it.
     ///
-    /// # Errors
-    ///
-    /// Returns admission refusals or [`InterceptionRefused::Circular`] for an ordering cycle.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internally built order names a mod that does not answer here.
     pub fn ask(
         &self,
         point: Point,
         side: Side,
+        eligible: impl Fn(&ModId) -> bool,
         respond: &mut dyn FnMut(&ModId, Occasion) -> Result<Outcome, crate::HostError>,
-    ) -> Result<Round, InterceptionRefused> {
-        self.admit()?;
-
-        let at_point: Vec<&Answer> = self
-            .answers
-            .iter()
-            .filter(|answer| answer.point == point)
-            .collect();
-        let order = precedence(
-            at_point.iter().map(|answer| answer.owner.clone()),
-            &self.after,
-        )
-        .map_err(|cycle| InterceptionRefused::Circular {
-            point,
-            // Report cycle participants in declaration order.
-            claimants: at_point
-                .iter()
-                .filter(|answer| cycle.participants().contains(&answer.owner))
-                .map(|answer| answer.owner.clone())
-                .collect(),
-        })?;
+    ) -> Round {
+        let order = &self.ordered[&point];
 
         let occasion = Occasion { point, side };
         let mut asked = Vec::with_capacity(order.len());
@@ -338,33 +331,32 @@ impl Points {
         let mut failure = None;
         let mut refused_by = None;
         for owner in order {
-            assert!(
-                at_point.iter().any(|answer| answer.owner == owner),
-                "the order holds only mods that answer at this point"
-            );
+            if !eligible(owner) {
+                continue;
+            }
             asked.push(owner.clone());
-            match respond(&owner, occasion) {
+            match respond(owner, occasion) {
                 Ok(answered) => {
                     outcome = answered;
                     if outcome == Outcome::Refuse {
-                        refused_by = Some(owner);
+                        refused_by = Some(owner.clone());
                         break;
                     }
                 }
                 Err(refused) => {
                     outcome = Outcome::Refuse;
-                    failure = Some((owner, refused));
+                    failure = Some(refused.with_owner(owner.clone()));
                     break;
                 }
             }
         }
-        Ok(Round {
+        Round {
             point,
             asked,
             outcome,
             refused_by,
             failure,
-        })
+        }
     }
 }
 
@@ -375,7 +367,7 @@ pub struct Round {
     asked: Vec<ModId>,
     outcome: Outcome,
     refused_by: Option<ModId>,
-    failure: Option<(ModId, crate::HostError)>,
+    failure: Option<crate::HostError>,
 }
 
 impl Round {
@@ -406,26 +398,19 @@ impl Round {
     /// Returns the failure that ended the round with [`Outcome::Refuse`], if any.
     #[must_use]
     pub fn failure(&self) -> Option<&crate::HostError> {
-        self.failure.as_ref().map(|(_, failure)| failure)
+        self.failure.as_ref()
     }
 
     /// Returns the actual callback owner whose failure ended the round, if any.
     #[must_use]
     pub fn failed_by(&self) -> Option<&ModId> {
-        self.failure.as_ref().map(|(owner, _)| owner)
+        self.failure.as_ref().and_then(|_| self.asked.last())
     }
 }
 
 /// Why a declared set of interceptions cannot be asked.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InterceptionRefused {
-    /// A mod declared an answer at a name no point publishes.
-    UnpublishedPoint {
-        /// The name that was written.
-        name: String,
-        /// The mods that wrote it, in name order.
-        claimants: Vec<ModId>,
-    },
     /// Two mods each replace the outcome at one point.
     ContestedPoint {
         /// The contested point.
@@ -443,12 +428,11 @@ pub enum InterceptionRefused {
 }
 
 impl InterceptionRefused {
-    /// Returns the point the refusal is about, by the name a mod wrote.
+    /// Returns the published point the refusal is about.
     #[must_use]
-    pub fn point(&self) -> &str {
+    pub const fn point(&self) -> Point {
         match self {
-            Self::UnpublishedPoint { name, .. } => name,
-            Self::ContestedPoint { point, .. } | Self::Circular { point, .. } => point.as_str(),
+            Self::ContestedPoint { point, .. } | Self::Circular { point, .. } => *point,
         }
     }
 
@@ -456,9 +440,7 @@ impl InterceptionRefused {
     #[must_use]
     pub fn claimants(&self) -> &[ModId] {
         match self {
-            Self::UnpublishedPoint { claimants, .. }
-            | Self::ContestedPoint { claimants, .. }
-            | Self::Circular { claimants, .. } => claimants,
+            Self::ContestedPoint { claimants, .. } | Self::Circular { claimants, .. } => claimants,
         }
     }
 }
@@ -466,10 +448,6 @@ impl InterceptionRefused {
 impl fmt::Display for InterceptionRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnpublishedPoint { name, .. } => write!(
-                formatter,
-                "`{name}` is not a point Ravel publishes, so nothing would ever ask there"
-            ),
             Self::ContestedPoint { point, claimants } => {
                 let names: Vec<&str> = claimants.iter().map(ModId::as_str).collect();
                 write!(
@@ -516,12 +494,10 @@ mod tests {
     }
 
     #[test]
-    fn every_published_point_names_itself_once_and_is_found_by_that_name() {
+    fn every_published_point_displays_its_stable_name() {
         for point in Point::ALL {
-            assert_eq!(Point::published(point.as_str()), Some(point));
             assert_eq!(point.to_string(), point.as_str());
         }
-        assert_eq!(Point::published("a_point_nobody_publishes"), None);
     }
 
     #[test]
@@ -539,15 +515,16 @@ mod tests {
         let late = id("probe");
 
         let mut points = Points::default();
-        points.answer_at(&early, "block_is_broken");
-        points.answer_at(&late, "block_is_broken");
+        points.answer_at(&early, Point::BlockIsBroken);
+        points.answer_at(&late, Point::BlockIsBroken);
         points.after(&late, &early);
 
-        let round = points
-            .ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |_, _| {
-                Ok(Outcome::Proceed)
-            })
-            .expect("a published point is asked");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::BlockIsBroken,
+            Side::IntegratedServer,
+            |_| true,
+            &mut |_, _| Ok(Outcome::Proceed),
+        );
 
         assert_eq!(round.asked(), [early.clone(), late.clone()]);
         assert!(asked_before(&round, &early, &late));
@@ -562,24 +539,23 @@ mod tests {
         let late = id("probe");
 
         let mut points = Points::default();
-        points.answer_at(&early, "block_is_broken");
-        points.answer_at(&late, "block_is_broken");
+        points.answer_at(&early, Point::BlockIsBroken);
+        points.answer_at(&late, Point::BlockIsBroken);
         points.after(&late, &early);
 
         let refusing = early.clone();
-        let round = points
-            .ask(
-                Point::BlockIsBroken,
-                Side::IntegratedServer,
-                &mut |owner, _| {
-                    Ok(if owner == &refusing {
-                        Outcome::Refuse
-                    } else {
-                        Outcome::Proceed
-                    })
-                },
-            )
-            .expect("a published point is asked");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::BlockIsBroken,
+            Side::IntegratedServer,
+            |_| true,
+            &mut |owner, _| {
+                Ok(if owner == &refusing {
+                    Outcome::Refuse
+                } else {
+                    Outcome::Proceed
+                })
+            },
+        );
 
         assert_eq!(round.refused_by(), Some(&early));
         assert_eq!(round.asked(), [early]);
@@ -594,23 +570,22 @@ mod tests {
         let elsewhere = id("probe");
 
         let mut points = Points::default();
-        points.answer_at(&here, "block_is_broken");
-        points.answer_at(&elsewhere, "item_is_used");
+        points.answer_at(&here, Point::BlockIsBroken);
+        points.answer_at(&elsewhere, Point::ItemIsUsed);
 
         let refusing = elsewhere.clone();
-        let round = points
-            .ask(
-                Point::BlockIsBroken,
-                Side::IntegratedServer,
-                &mut |owner, _| {
-                    Ok(if owner == &refusing {
-                        Outcome::Refuse
-                    } else {
-                        Outcome::Proceed
-                    })
-                },
-            )
-            .expect("a published point is asked");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::BlockIsBroken,
+            Side::IntegratedServer,
+            |_| true,
+            &mut |owner, _| {
+                Ok(if owner == &refusing {
+                    Outcome::Refuse
+                } else {
+                    Outcome::Proceed
+                })
+            },
+        );
         assert_eq!(round.asked(), [here]);
         assert_eq!(round.outcome(), Outcome::Proceed);
     }
@@ -619,19 +594,18 @@ mod tests {
     fn the_occasion_a_mod_is_handed_names_the_point_it_is_answering_at() {
         let owner = id("sample");
         let mut points = Points::default();
-        points.answer_at(&owner, "world_is_saved");
+        points.answer_at(&owner, Point::WorldIsSaved);
 
-        let round = points
-            .ask(
-                Point::WorldIsSaved,
-                Side::DedicatedServer,
-                &mut |_, occasion: Occasion| {
-                    assert_eq!(occasion.point(), Point::WorldIsSaved);
-                    assert_eq!(occasion.side(), Side::DedicatedServer);
-                    Ok(Outcome::Proceed)
-                },
-            )
-            .expect("a published point is asked");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::WorldIsSaved,
+            Side::DedicatedServer,
+            |_| true,
+            &mut |_, occasion: Occasion| {
+                assert_eq!(occasion.point(), Point::WorldIsSaved);
+                assert_eq!(occasion.side(), Side::DedicatedServer);
+                Ok(Outcome::Proceed)
+            },
+        );
         assert_eq!(round.asked(), [owner]);
     }
 
@@ -641,27 +615,17 @@ mod tests {
         let second = id("probe");
 
         let mut points = Points::default();
-        points.replace_at(&first, "block_is_broken");
-        points.replace_at(&second, "block_is_broken");
+        points.replace_at(&first, Point::BlockIsBroken);
+        points.replace_at(&second, Point::BlockIsBroken);
 
         let refusal = points
             .admit()
             .expect_err("two replacements at one point are a conflict");
 
-        assert_eq!(refusal.point(), "block_is_broken");
+        assert_eq!(refusal.point(), Point::BlockIsBroken);
         assert_eq!(refusal.claimants(), [first.clone(), second.clone()]);
         assert!(refusal.to_string().contains(first.as_str()));
         assert!(refusal.to_string().contains(second.as_str()));
-
-        assert!(
-            points
-                .ask(
-                    Point::BlockIsBroken,
-                    Side::IntegratedServer,
-                    &mut |_, _| Ok(Outcome::Proceed)
-                )
-                .is_err()
-        );
     }
 
     #[test]
@@ -670,8 +634,8 @@ mod tests {
         let answering = id("probe");
 
         let mut points = Points::default();
-        points.replace_at(&replacing, "block_is_broken");
-        points.answer_at(&answering, "block_is_broken");
+        points.replace_at(&replacing, Point::BlockIsBroken);
+        points.answer_at(&answering, Point::BlockIsBroken);
 
         points
             .admit()
@@ -684,8 +648,8 @@ mod tests {
         let second = id("probe");
 
         let mut points = Points::default();
-        points.replace_at(&first, "block_is_broken");
-        points.replace_at(&second, "item_is_used");
+        points.replace_at(&first, Point::BlockIsBroken);
+        points.replace_at(&second, Point::ItemIsUsed);
 
         points
             .admit()
@@ -693,31 +657,14 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_at_a_name_no_point_publishes_is_refused_at_the_barrier() {
-        let owner = id("sample");
-        let mut points = Points::default();
-        points.answer_at(&owner, "a_point_nobody_publishes");
-
-        let refusal = points
-            .admit()
-            .expect_err("a name nothing publishes names nothing");
-
-        assert_eq!(refusal.point(), "a_point_nobody_publishes");
-        assert_eq!(refusal.claimants(), [owner]);
-        assert!(matches!(
-            refusal,
-            InterceptionRefused::UnpublishedPoint { .. }
-        ));
-    }
-
-    #[test]
     fn an_unanswered_published_point_proceeds_without_a_refusing_owner() {
         let points = Points::default();
-        let round = points
-            .ask(Point::WorldIsSaved, Side::IntegratedServer, &mut |_, _| {
-                panic!("no mod answers here")
-            })
-            .expect("a typed point is published");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::WorldIsSaved,
+            Side::IntegratedServer,
+            |_| true,
+            &mut |_, _| panic!("no mod answers here"),
+        );
         assert_eq!(round.point(), Point::WorldIsSaved);
         assert_eq!(round.asked(), []);
         assert_eq!(round.outcome(), Outcome::Proceed);
@@ -730,18 +677,16 @@ mod tests {
         let second = id("probe");
 
         let mut points = Points::default();
-        points.answer_at(&first, "block_is_broken");
-        points.answer_at(&second, "block_is_broken");
+        points.answer_at(&first, Point::BlockIsBroken);
+        points.answer_at(&second, Point::BlockIsBroken);
         points.after(&first, &second);
         points.after(&second, &first);
 
         let refusal = points
-            .ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |_, _| {
-                Ok(Outcome::Proceed)
-            })
-            .expect_err("a cycle has no order and is not given one");
+            .admit()
+            .expect_err("a cycle is rejected before any round");
 
-        assert_eq!(refusal.point(), "block_is_broken");
+        assert_eq!(refusal.point(), Point::BlockIsBroken);
         assert_eq!(refusal.claimants(), [first, second]);
     }
 
@@ -749,7 +694,7 @@ mod tests {
     fn the_debug_form_names_what_was_declared_without_naming_a_closure() {
         let owner = id("sample");
         let mut points = Points::default();
-        points.replace_at(&owner, "block_is_broken");
+        points.replace_at(&owner, Point::BlockIsBroken);
 
         let rendered = format!("{points:?}");
         assert!(rendered.contains("sample"));
@@ -757,23 +702,82 @@ mod tests {
     }
 
     #[test]
-    fn callback_failure_owner_is_independent_of_the_error_identity() {
+    fn admitted_orders_are_reused_and_ineligible_owners_are_not_asked() {
         let owner = id("sample");
-        let foreign = id("probe");
+        let mut declared = Points::default();
+        declared.answer_at(&owner, Point::WorldIsSaved);
+        let admitted = declared.admit().expect("valid declarations");
+        let skipped = admitted.ask(
+            Point::WorldIsSaved,
+            Side::IntegratedServer,
+            |_| false,
+            &mut |_, _| panic!("ineligible owner must not run"),
+        );
+        assert_eq!(skipped.asked(), []);
+        assert_eq!(skipped.outcome(), Outcome::Proceed);
+        for _ in 0..2 {
+            let round = admitted.ask(
+                Point::WorldIsSaved,
+                Side::IntegratedServer,
+                |_| true,
+                &mut |_, _| Ok(Outcome::Proceed),
+            );
+            assert_eq!(round.asked(), std::slice::from_ref(&owner));
+        }
+    }
+
+    #[test]
+    fn duplicate_claims_merge_without_self_contention_or_duplicate_callbacks() {
+        let owner = id("sample");
+        let mut declaration = super::InterceptionDeclaration::new(owner.clone());
+        declaration.answer_at(Point::WorldIsSaved);
+        declaration.replace_at(Point::WorldIsSaved);
+        declaration.replace_at(Point::WorldIsSaved);
         let mut points = Points::default();
-        points.answer_at(&owner, "world_is_saved");
-        let failure = crate::HostError::Refused {
-            mod_id: foreign,
+        points.declare(&declaration);
+        points.declare(&declaration);
+        points.answer_at(&owner, Point::WorldIsSaved);
+        let admitted = points.admit().expect("one distinct replacing owner");
+        let mut calls = 0;
+        let round = admitted.ask(
+            Point::WorldIsSaved,
+            Side::IntegratedServer,
+            |_| true,
+            &mut |_, _| {
+                calls += 1;
+                Ok(Outcome::Proceed)
+            },
+        );
+        assert_eq!(calls, 1);
+        assert_eq!(round.asked(), std::slice::from_ref(&owner));
+        let mut points = Points::default();
+        points.declare(&declaration);
+        points.answer_at(&owner, Point::WorldIsSaved);
+        points.replace_at(&id("probe"), Point::WorldIsSaved);
+        assert!(matches!(
+            points.admit(),
+            Err(InterceptionRefused::ContestedPoint { .. })
+        ));
+    }
+
+    #[test]
+    fn callback_failure_is_reattributed_to_the_actual_callback_owner() {
+        let owner = id("sample");
+        let mut points = Points::default();
+        points.answer_at(&owner, Point::WorldIsSaved);
+        let failure = crate::HostError::OperationRefused {
+            mod_id: id("unrelated"),
             state: ravel_core::LifecycleState::Running,
-            detail: "foreign error identity".to_owned(),
+            detail: "attributed callback failure".to_owned(),
         };
-        let round = points
-            .ask(Point::WorldIsSaved, Side::DedicatedServer, &mut |_, _| {
-                Err(failure.clone())
-            })
-            .expect("published point");
+        let round = points.admit().expect("declarations admitted").ask(
+            Point::WorldIsSaved,
+            Side::DedicatedServer,
+            |_| true,
+            &mut |_, _| Err(failure.clone()),
+        );
         assert_eq!(round.failed_by(), Some(&owner));
-        assert_eq!(round.failure(), Some(&failure));
+        assert_eq!(round.failure(), Some(&failure.with_owner(owner)));
         assert_eq!(round.outcome(), Outcome::Refuse);
         assert_eq!(round.refused_by(), None);
     }

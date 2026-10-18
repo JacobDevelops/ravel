@@ -27,7 +27,8 @@
 //! # Ok::<(), ravel_sdk::sides::ClientOnlyError>(())
 //! ```
 //!
-//! Convert [`ClientOnlyError`] with [`crate::ModError::refused`] when a missing
-//! value or wrong-side access must stop the mod. The host attributes the refusal to the hook it called.
+//! Convert [`ClientOnlyError`] with [`crate::ModError::from_display`]
+//! (for example, `.map_err(ModError::from_display)`) when missing state or wrong-side
+//! access must stop the mod. The host attributes the refusal to the hook it called.
 
 pub use ravel_core::{ClientOnly, ClientOnlyError, EmptySideSet, Side, SideSet};

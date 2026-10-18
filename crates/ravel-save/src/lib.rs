@@ -200,14 +200,17 @@ impl SavedDataEnvelope {
             payload,
         }
     }
+    /// Returns the mod that owns this envelope's payload.
     #[must_use]
     pub const fn owner(&self) -> &ModId {
         &self.owner
     }
+    /// Returns the saved-data version describing the payload.
     #[must_use]
     pub const fn data_version(&self) -> SavedDataVersion {
         self.data_version
     }
+    /// Returns the owner's opaque JSON payload.
     #[must_use]
     pub const fn payload(&self) -> &Value {
         &self.payload
@@ -236,6 +239,7 @@ pub struct SavedDataAggregate {
 }
 
 impl SavedDataAggregate {
+    /// Creates an empty aggregate in the current format for a new world.
     #[must_use]
     pub const fn fresh() -> Self {
         Self {
@@ -350,6 +354,7 @@ impl SavedDataAggregate {
         Ok(())
     }
 
+    /// Returns the envelope belonging to `owner`, if the aggregate contains one.
     #[must_use]
     pub fn envelope(&self, owner: &ModId) -> Option<&SavedDataEnvelope> {
         self.owners
@@ -358,6 +363,7 @@ impl SavedDataAggregate {
             .map(|index| &self.owners[index])
     }
 
+    /// Replaces an owner's envelope, or inserts it while preserving owner order.
     pub fn replace(&mut self, envelope: SavedDataEnvelope) {
         match self
             .owners

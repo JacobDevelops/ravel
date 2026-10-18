@@ -1,5 +1,6 @@
 use std::fmt;
 
+use ravel_core::{FailureKind, LifecycleState, StructuredFailure};
 use ravel_observability::{PreWorldReport, WorldAccessRefused};
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
@@ -10,9 +11,10 @@ impl LifecycleMachine {
     /// # Errors
     ///
     /// Returns the earliest pre-world refusal, or a lifecycle refusal if the report permits access.
-    pub fn open_world(&self, report: &PreWorldReport) -> Result<(), WorldRefused> {
+    pub fn world_access(&self, report: &PreWorldReport) -> Result<(), WorldRefused> {
         report.world_access().map_err(WorldRefused::PreWorld)?;
-        self.world_access().map_err(WorldRefused::Lifecycle)
+        self.lifecycle_world_access()
+            .map_err(WorldRefused::Lifecycle)
     }
 }
 
@@ -39,6 +41,29 @@ impl std::error::Error for WorldRefused {
         match self {
             Self::PreWorld(refused) => Some(refused),
             Self::Lifecycle(error) => Some(error),
+        }
+    }
+}
+
+impl StructuredFailure for WorldRefused {
+    fn failure_kind(&self) -> Option<FailureKind> {
+        match self {
+            Self::PreWorld(_) => None,
+            Self::Lifecycle(error) => error.failure_kind(),
+        }
+    }
+
+    fn lifecycle_state(&self) -> LifecycleState {
+        match self {
+            Self::PreWorld(_) => LifecycleState::Discovered,
+            Self::Lifecycle(error) => error.lifecycle_state(),
+        }
+    }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        match self {
+            Self::PreWorld(_) => false,
+            Self::Lifecycle(error) => error.quotes_untrusted_text(),
         }
     }
 }
@@ -111,7 +136,7 @@ mod tests {
 
     #[test]
     fn a_running_set_with_a_clean_report_opens_a_world() {
-        assert_eq!(running().open_world(&report()), Ok(()));
+        assert_eq!(running().world_access(&report()), Ok(()));
     }
 
     #[test]
@@ -121,7 +146,7 @@ mod tests {
         report.refuse(&Subject::of(id("example_mod")), &Unresolvable);
 
         let refused = machine
-            .open_world(&report)
+            .world_access(&report)
             .expect_err("the report withholds it");
         assert!(matches!(refused, WorldRefused::PreWorld(_)), "{refused}");
         assert!(
@@ -131,7 +156,7 @@ mod tests {
             "{refused}"
         );
         assert!(
-            machine.world_access().is_ok(),
+            machine.lifecycle_world_access().is_ok(),
             "the machine alone would have opened one, which is the point"
         );
     }
@@ -150,7 +175,7 @@ mod tests {
         .expect("one mod is a valid plan");
 
         let refused = machine
-            .open_world(&report())
+            .world_access(&report())
             .expect_err("nothing is running");
         assert_eq!(
             refused,
@@ -170,7 +195,7 @@ mod tests {
 
         assert!(matches!(
             machine
-                .open_world(&report)
+                .world_access(&report)
                 .expect_err("the report objects first"),
             WorldRefused::PreWorld(_)
         ));
@@ -194,10 +219,38 @@ mod tests {
         refused_report.refuse(&Subject::unidentified(), &Unresolvable);
 
         for refusal in [
-            machine.open_world(&refused_report).expect_err("refused"),
-            machine.open_world(&report()).expect_err("not running"),
+            machine.world_access(&refused_report).expect_err("refused"),
+            machine.world_access(&report()).expect_err("not running"),
         ] {
             assert!(refusal.source().is_some(), "{refusal}");
         }
+    }
+
+    #[test]
+    fn world_refusals_preserve_structured_failure_classification() {
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![LifecycleEntry {
+                mod_id: id("example_mod"),
+                sides: SideSet::new([Side::Client]).expect("one side"),
+                requirement: Requirement::Required,
+                saved_data_versions: BTreeSet::new(),
+            }],
+        )
+        .expect("valid plan");
+        machine
+            .advance_all(LifecycleState::Validated)
+            .expect("validation succeeds");
+        let lifecycle = machine.world_access(&report()).expect_err("not running");
+        assert_eq!(lifecycle.failure_kind(), None);
+        assert_eq!(lifecycle.lifecycle_state(), LifecycleState::Validated);
+        assert!(!lifecycle.quotes_untrusted_text());
+
+        let mut report = report();
+        report.refuse(&Subject::unidentified(), &Unresolvable);
+        let pre_world = running().world_access(&report).expect_err("report refused");
+        assert_eq!(pre_world.failure_kind(), None);
+        assert_eq!(pre_world.lifecycle_state(), LifecycleState::Discovered);
+        assert!(!pre_world.quotes_untrusted_text());
     }
 }

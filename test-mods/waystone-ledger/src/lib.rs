@@ -14,8 +14,7 @@ use ravel_sdk::network::{
 };
 use ravel_sdk::resources::RelativePath;
 use ravel_sdk::save::{
-    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion,
+    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion,
 };
 use ravel_sdk::sides::{ClientOnly, Side};
 use ravel_sdk::tags::TagId;
@@ -496,19 +495,11 @@ impl Mod for WaystoneLedger {
     /// Returns [`ModError::Refused`] when a declared key resolves to something
     /// that is not the shape this mod declared for it.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let capacity_key = CAPACITY
-            .parse()
-            .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
-        let capacity = resolved
-            .integer(&capacity_key)
-            .map_err(ModError::from_display)?;
+        let capacity = resolved.integer(CAPACITY).map_err(ModError::from_display)?;
         self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
 
-        let overwrite_key = OVERWRITE
-            .parse()
-            .map_err(|_| ModError::refused(format!("`{OVERWRITE}` is not a legal setting key")))?;
         self.overwrite = resolved
-            .boolean(&overwrite_key)
+            .boolean(OVERWRITE)
             .map_err(ModError::from_display)?;
         Ok(())
     }
@@ -521,16 +512,12 @@ impl Mod for WaystoneLedger {
         Ok(Some(Self::migrations()))
     }
 
-    /// Crosses the steps the plan names and then reads the ledger.
+    /// Reads the ledger the loader has already migrated.
     ///
     /// # Errors
     ///
     /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
-    fn open_saved_data(
-        &mut self,
-        envelope: Option<&SavedDataEnvelope>,
-        _plan: &SavedDataPlan,
-    ) -> Result<(), ModError> {
+    fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.waystones.clear();
             return Ok(());
@@ -714,11 +701,9 @@ mod tests {
             .apply(&plan, payload)
             .map_err(ModError::from_display)?;
         let current = WaystoneLedger::saved_versions()?.current();
-        let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions()?, Some(current))
-            .expect("the current version");
         let envelope =
             SavedDataEnvelope::current(WaystoneLedger::declared_id().clone(), current, payload);
-        ledger.open_saved_data(Some(&envelope), &plan)?;
+        ledger.open_saved_data(Some(&envelope))?;
         Ok(ledger)
     }
 
@@ -1027,13 +1012,8 @@ mod tests {
         assert_eq!(envelope.data_version(), version(2));
 
         let mut reopened = configured(Side::IntegratedServer);
-        let plan = SavedDataPlan::open(
-            &WaystoneLedger::saved_versions().expect("valid declaration"),
-            Some(envelope.data_version()),
-        )
-        .expect("the current version");
         reopened
-            .open_saved_data(Some(&envelope), &plan)
+            .open_saved_data(Some(&envelope))
             .expect("its own shape");
         assert_eq!(reopened.waystones(), ledger.waystones());
     }
@@ -1042,13 +1022,8 @@ mod tests {
     fn a_world_holding_nothing_this_mod_owns_initializes_fresh() {
         let mut ledger = configured(Side::IntegratedServer);
         ledger.record(waystone("stale"));
-        let plan = SavedDataPlan::open(
-            &WaystoneLedger::saved_versions().expect("valid declaration"),
-            None,
-        )
-        .expect("absence initializes");
         ledger
-            .open_saved_data(None, &plan)
+            .open_saved_data(None)
             .expect("absence is not a refusal");
         assert_eq!(ledger.waystones(), []);
     }

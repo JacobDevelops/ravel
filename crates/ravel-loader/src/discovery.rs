@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_package::{IntegrityError, ManifestError, PackageManifest, verify_package};
 
-/// The installed-package directory, relative to the game directory.
-pub const PACKAGES_DIRECTORY: &str = "ravel/mods";
+use ravel_core::paths::PACKAGES_DIRECTORY;
 
 /// The manifest filename within each installed package.
 pub const MANIFEST_FILE: &str = "package.json";
@@ -49,10 +48,10 @@ pub fn discover(game_directory: &Path) -> Result<Discovered, DiscoveryRefused> {
 
 // Sort names so the first refusal is independent of filesystem enumeration order.
 fn entries(root: &Path) -> Result<Vec<(OsString, PathBuf)>, DiscoveryRefused> {
-    let reader = fs::read_dir(root).map_err(|error| refuse_io(PACKAGES_DIRECTORY, &error))?;
+    let reader = fs::read_dir(root).map_err(|error| refuse_io(PACKAGES_DIRECTORY, error))?;
     let mut entries = Vec::new();
     for entry in reader {
-        let entry = entry.map_err(|error| refuse_io(PACKAGES_DIRECTORY, &error))?;
+        let entry = entry.map_err(|error| refuse_io(PACKAGES_DIRECTORY, error))?;
         entries.push((entry.file_name(), entry.path()));
     }
     entries.sort_by(|left, right| left.0.cmp(&right.0));
@@ -77,7 +76,7 @@ fn package(
         Err(error) if error.kind() == ErrorKind::NotFound => {
             return Err(DiscoveryRefused::MissingManifest { directory });
         }
-        Err(error) => return Err(refuse_io(&directory, &error)),
+        Err(error) => return Err(refuse_io(&directory, error)),
     };
     let manifest =
         PackageManifest::parse(&document).map_err(|source| DiscoveryRefused::Manifest {
@@ -97,13 +96,13 @@ fn package(
 }
 
 fn canonical(path: &Path, directory: &str) -> Result<PathBuf, DiscoveryRefused> {
-    fs::canonicalize(path).map_err(|error| refuse_io(directory, &error))
+    fs::canonicalize(path).map_err(|error| refuse_io(directory, error))
 }
 
-fn refuse_io(directory: &str, error: &std::io::Error) -> DiscoveryRefused {
+fn refuse_io(directory: &str, error: std::io::Error) -> DiscoveryRefused {
     DiscoveryRefused::Unreadable {
         directory: directory.to_owned(),
-        detail: error.to_string(),
+        source: error,
     }
 }
 
@@ -159,14 +158,14 @@ impl DiscoveredPackage {
 }
 
 /// An installed-package refusal, naming directories rather than identifying paths.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum DiscoveryRefused {
     /// A directory or a manifest exists and could not be read.
     Unreadable {
         /// The package directory's name, or the packages directory itself.
         directory: String,
         /// What the operating system reported.
-        detail: String,
+        source: std::io::Error,
     },
     /// An entry of the packages directory is not a directory.
     NotAPackage {
@@ -225,8 +224,8 @@ impl DiscoveryRefused {
 impl fmt::Display for DiscoveryRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unreadable { directory, detail } => {
-                write!(formatter, "`{directory}` could not be read: {detail}")
+            Self::Unreadable { directory, source } => {
+                write!(formatter, "`{directory}` could not be read: {source}")
             }
             Self::NotAPackage { directory } => write!(
                 formatter,
@@ -261,8 +260,8 @@ impl fmt::Display for DiscoveryRefused {
 impl std::error::Error for DiscoveryRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unreadable { .. }
-            | Self::NotAPackage { .. }
+            Self::Unreadable { source, .. } => Some(source),
+            Self::NotAPackage { .. }
             | Self::OutsideInstance { .. }
             | Self::MissingManifest { .. }
             | Self::Duplicate { .. } => None,
@@ -493,6 +492,28 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_source_retains_the_integrity_and_io_source_chain() {
+        let instance = instance("integrity-io-source");
+        let root = install(&instance, "example", "example_mod", &["client"]);
+        fs::remove_file(root.join("src/lib.rs")).expect("source removed");
+        fs::create_dir(root.join("src/lib.rs")).expect("a directory replaces the source");
+
+        let refused = discover(&instance).expect_err("a directory is not source");
+        assert_eq!(refused.directory(), "example");
+        let integrity = std::error::Error::source(&refused)
+            .expect("discovery retains the integrity refusal")
+            .downcast_ref::<IntegrityError>()
+            .expect("the first source is an integrity error");
+        assert_eq!(integrity.file(), "lib.rs");
+        let source = std::error::Error::source(integrity)
+            .expect("integrity retains the filesystem failure")
+            .downcast_ref::<std::io::Error>()
+            .expect("the second source is the original IO error");
+        assert_eq!(source.kind(), std::io::ErrorKind::IsADirectory);
+        fs::remove_dir_all(&instance).expect("cleanup");
+    }
+
+    #[test]
     fn a_package_missing_a_declared_source_file_refuses_the_instance() {
         let instance = instance("absent-source");
         let root = install(&instance, "example", "example_mod", &["client"]);
@@ -520,11 +541,9 @@ mod tests {
             .expect("a second directory is creatable");
 
         let refused = discover(&instance).expect_err("nothing says what that directory is");
-        assert_eq!(
-            refused,
-            DiscoveryRefused::MissingManifest {
-                directory: "half-copied".to_owned()
-            }
+        assert!(
+            matches!(&refused, DiscoveryRefused::MissingManifest { directory } if directory == "half-copied"),
+            "{refused:?}"
         );
         assert!(refused.to_string().contains(MANIFEST_FILE));
         fs::remove_dir_all(&instance).expect("cleanup");
@@ -538,11 +557,9 @@ mod tests {
             .expect("a stray file is writable");
 
         let refused = discover(&instance).expect_err("a file is not a package");
-        assert_eq!(
-            refused,
-            DiscoveryRefused::NotAPackage {
-                directory: "pack.jar".to_owned()
-            }
+        assert!(
+            matches!(&refused, DiscoveryRefused::NotAPackage { directory } if directory == "pack.jar"),
+            "{refused:?}"
         );
         fs::remove_dir_all(&instance).expect("cleanup");
     }
@@ -578,11 +595,9 @@ mod tests {
         .expect("a directory symlink is creatable");
 
         let refused = discover(&instance).expect_err("the package is not in this instance");
-        assert_eq!(
-            refused,
-            DiscoveryRefused::OutsideInstance {
-                directory: "borrowed".to_owned()
-            }
+        assert!(
+            matches!(&refused, DiscoveryRefused::OutsideInstance { directory } if directory == "borrowed"),
+            "{refused:?}"
         );
         fs::remove_dir_all(&instance).expect("cleanup");
         fs::remove_dir_all(&outside).expect("cleanup");
@@ -602,6 +617,11 @@ mod tests {
         );
         assert_eq!(refused.directory(), "example");
         assert!(refused.quotes_untrusted_text());
+        let source = std::error::Error::source(&refused)
+            .expect("the filesystem error is retained")
+            .downcast_ref::<std::io::Error>()
+            .expect("the source is the original IO error");
+        assert_eq!(source.kind(), std::io::ErrorKind::IsADirectory);
         fs::remove_dir_all(&instance).expect("cleanup");
     }
 

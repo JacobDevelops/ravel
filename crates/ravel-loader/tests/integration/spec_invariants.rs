@@ -5,13 +5,14 @@ use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Side, SideSet,
+    DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId,
+    Side, SideSet,
 };
 use ravel_loader::{
-    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
+    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement, WorldRefused,
     executes_mod_code,
 };
-use ravel_observability::redact;
+use ravel_observability::PreWorldReport;
 
 /// The states a set walks from `Discovered` to `Running`.
 const STARTUP: [LifecycleState; 6] = [
@@ -50,8 +51,17 @@ fn attribution(name: &str, state: LifecycleState, kind: FailureKind) -> FailureA
             platform: "linux".to_owned(),
             architecture: "x86_64".to_owned(),
         },
-        message: redact("the mod could not continue"),
+        message: DiagnosticMessage::redacted("the mod could not continue"),
     }
+}
+
+fn report() -> PreWorldReport {
+    PreWorldReport::new(FailureEnvironment {
+        ravel: "0.1.0".parse().expect("valid version"),
+        minecraft: "26.0.0".to_owned(),
+        platform: "linux".to_owned(),
+        architecture: "x86_64".to_owned(),
+    })
 }
 
 fn started(machine: &mut LifecycleMachine) {
@@ -212,7 +222,7 @@ fn constructed_registry_set() -> LifecycleMachine {
 fn assert_late_claims_refused(machine: &mut LifecycleMachine, names: [&str; 2], when: &str) {
     for name in names {
         assert_eq!(
-            machine.claim_registry_identifier_describing(
+            machine.claim_registry_identifier(
                 &id(name),
                 &"block:late:block".parse().expect("valid key"),
                 None,
@@ -239,7 +249,7 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
     let names = ["first_mod", "second_mod"];
     assert!(!machine.registration_barrier_closed());
     machine
-        .claim_registry_identifier_describing(
+        .claim_registry_identifier(
             &id("first_mod"),
             &"block:first_mod:block".parse().expect("valid key"),
             None,
@@ -261,7 +271,7 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
         "no mod starts while another is still registering"
     );
     machine
-        .claim_registry_identifier_describing(
+        .claim_registry_identifier(
             &id("second_mod"),
             &"block:second_mod:block".parse().expect("valid key"),
             None,
@@ -308,7 +318,9 @@ fn required_dependency_failure_prevents_world_access() {
     )
     .expect("two mods are a valid plan");
     started(&mut machine);
-    machine.world_access().expect("a running set opens a world");
+    machine
+        .world_access(&report())
+        .expect("a running set opens a world");
 
     // An optional mod that fails does not withhold the world.
     let mut optional = machine.clone();
@@ -323,7 +335,7 @@ fn required_dependency_failure_prevents_world_access() {
         )
         .expect("failure is legal from running");
     optional
-        .world_access()
+        .world_access(&report())
         .expect("an optional failure does not fail the set closed");
 
     // A required mod that fails does, naming itself.
@@ -338,11 +350,13 @@ fn required_dependency_failure_prevents_world_access() {
         )
         .expect("failure is legal from running");
     assert_eq!(
-        machine.world_access(),
-        Err(LifecycleError::WorldAccessBlocked {
-            mod_id: id("base_mod"),
-            state: LifecycleState::Failed,
-        })
+        machine.world_access(&report()),
+        Err(WorldRefused::Lifecycle(
+            LifecycleError::WorldAccessBlocked {
+                mod_id: id("base_mod"),
+                state: LifecycleState::Failed,
+            }
+        ))
     );
 
     // The same holds before the set ever finished starting.
@@ -355,11 +369,13 @@ fn required_dependency_failure_prevents_world_access() {
         .advance_all(LifecycleState::Validated)
         .expect("the set advances");
     assert_eq!(
-        early.world_access(),
-        Err(LifecycleError::WorldAccessBlocked {
-            mod_id: id("base_mod"),
-            state: LifecycleState::Validated,
-        })
+        early.world_access(&report()),
+        Err(WorldRefused::Lifecycle(
+            LifecycleError::WorldAccessBlocked {
+                mod_id: id("base_mod"),
+                state: LifecycleState::Validated,
+            }
+        ))
     );
 }
 
@@ -419,7 +435,7 @@ fn client_only_code_never_loads_on_server_sides() {
             "client-only code entered a code state on {side:?}"
         );
         machine
-            .world_access()
+            .world_access(&report())
             .expect("a mod that never loads here does not withhold the world");
     }
 }
@@ -546,10 +562,10 @@ fn failure_after_world_mutation_cannot_silently_continue_or_save_partial_state()
         })
     );
     assert_eq!(
-        machine.world_access(),
-        Err(LifecycleError::WorldAccessHalted {
+        machine.world_access(&report()),
+        Err(WorldRefused::Lifecycle(LifecycleError::WorldAccessHalted {
             mod_id: id("first_mod")
-        })
+        }))
     );
     assert_eq!(
         machine.record_world_mutation(),

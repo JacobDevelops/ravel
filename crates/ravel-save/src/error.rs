@@ -8,57 +8,95 @@ use crate::SavedDataVersion;
 /// Why saved data could not be admitted or emitted.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SavedDataError {
+    /// The owner declared saved data without any readable versions.
     NoVersionsDeclared {
+        /// The mod that owns the data.
         owner: ModId,
     },
+    /// Stored data is newer than the newest version this build can read.
     FutureVersion {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The version recorded in the world.
         stored: SavedDataVersion,
+        /// The newest version this build declares.
         current: SavedDataVersion,
     },
+    /// The stored version or an intermediate version is undeclared.
     NoMigrationPath {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The version recorded in the world.
         stored: SavedDataVersion,
+        /// The first undeclared version required by the plan.
         missing: SavedDataVersion,
     },
     /// A version the plan crosses has no declared migration step into it.
     MissingMigration {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The version requiring an incoming migration step.
         to: SavedDataVersion,
     },
     /// A declared step refused the payload it was handed.
     MigrationFailed {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The destination version of the failed step.
         to: SavedDataVersion,
         /// The mod's untrusted failure detail.
         detail: String,
     },
+    /// The serialized aggregate exceeds the admission or emission limit.
     AggregateTooLarge {
+        /// The maximum permitted size in bytes.
         limit: usize,
     },
-    InvalidAggregate(String),
+    /// The aggregate cannot be decoded or encoded as canonical saved data.
+    InvalidAggregate(
+        /// The untrusted serialization or structure failure detail.
+        String,
+    ),
+    /// The aggregate uses a format this build does not read.
     UnsupportedAggregateVersion {
+        /// The format version recorded in the world.
         stored: u8,
+        /// The format version supported by this build.
         current: u8,
     },
+    /// An owner's envelope uses a schema this build does not read.
     UnsupportedEnvelopeVersion {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The envelope schema recorded in the world.
         stored: u8,
+        /// The envelope schema supported by this build.
         current: u8,
     },
+    /// The aggregate contains more than one envelope for an owner.
     DuplicateOwner {
+        /// The owner declared more than once.
         owner: ModId,
     },
+    /// An envelope or migration chain names an owner without a matching declaration.
     UnknownOwner {
+        /// The owner whose saved-data declaration is unavailable or does not match.
         owner: ModId,
     },
+    /// An envelope requires a package that is not installed.
     MissingPackage {
+        /// The mod that owns the data.
         owner: ModId,
+        /// The absent package.
         package: ModId,
+        /// The exact package version required by the envelope.
         required: Version,
     },
-    /// Boxed to keep the other error variants compact.
-    IncompatiblePackage(Box<PackageConflict>),
+    /// An envelope requires a different package version from the installed one.
+    IncompatiblePackage(
+        /// The requirement and installed version, boxed to keep errors compact.
+        Box<PackageConflict>,
+    ),
 }
 
 /// What an envelope required of a package and what is installed instead.
@@ -75,6 +113,7 @@ pub struct PackageConflict {
 }
 
 impl SavedDataError {
+    /// Returns the affected owner, or `None` for aggregate-wide failures.
     #[must_use]
     pub const fn owner(&self) -> Option<&ModId> {
         match self {

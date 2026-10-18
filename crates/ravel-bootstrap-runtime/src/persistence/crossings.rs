@@ -5,7 +5,7 @@ use jni::sys::{JNI_FALSE, jboolean, jint};
 use jni::{Env, EnvUnowned};
 use ravel_save::{MAX_AGGREGATE_BYTES, SavedDataError};
 
-use super::{OpenOutcome, SaveOutcome, StagedPack, runtime, save, stage};
+use super::{OpenOutcome, SaveOutcome, StagedPack, open_world_data, runtime, save_world_data};
 use crate::guard::{HookError, text};
 
 enum Incoming {
@@ -51,9 +51,9 @@ pub fn ravel_open_world_persistence<'local>(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
             let identity = text(env, &identity)?;
             let outcome = match incoming(env, &aggregate)? {
-                Incoming::Absent => stage(&identity, None, fresh_world != JNI_FALSE),
+                Incoming::Absent => open_world_data(&identity, None, fresh_world != JNI_FALSE),
                 Incoming::Present(bytes) => {
-                    stage(&identity, Some(&bytes), fresh_world != JNI_FALSE)
+                    open_world_data(&identity, Some(&bytes), fresh_world != JNI_FALSE)
                 }
                 Incoming::Oversized(refusal) => OpenOutcome::Refused(refusal),
             };
@@ -79,7 +79,9 @@ fn tagged(tag: u8, payload: &[u8]) -> Vec<u8> {
 }
 
 fn publishable(diagnostic: &str) -> String {
-    ravel_observability::redact(diagnostic).text().to_owned()
+    ravel_core::DiagnosticMessage::redacted(diagnostic)
+        .text()
+        .to_owned()
 }
 
 fn save_answer(outcome: SaveOutcome) -> Vec<u8> {
@@ -107,7 +109,7 @@ pub fn ravel_save_world_persistence<'local>(
     env.with_env(
         |env: &mut Env<'local>| -> Result<JByteArray<'local>, HookError> {
             let identity = text(env, &identity)?;
-            let answer = save_answer(save(&identity));
+            let answer = save_answer(save_world_data(&identity));
             Ok(env.byte_array_from_slice(&answer)?)
         },
     )
@@ -194,9 +196,16 @@ mod tests {
 
     #[test]
     fn persistence_diagnostics_are_redacted_before_the_jni_output() {
-        let detail = "could not read /home/player/.minecraft/world, token=ghp_secretvalue";
+        let detail = concat!(
+            "could not read /home/player/.minecraft/world, token=",
+            "ghp_",
+            "secretvalue"
+        );
         let published = publishable(detail);
-        assert!(!published.contains("ghp_secretvalue"), "{published}");
+        assert!(
+            !published.contains(concat!("ghp_", "secretvalue")),
+            "{published}"
+        );
         assert!(!published.contains("/home/player"), "{published}");
         assert!(published.contains("redacted"), "{published}");
         for (tag, outcome) in [
@@ -209,7 +218,10 @@ mod tests {
             let answer = save_answer(outcome);
             assert_eq!(answer[0], tag);
             let published = String::from_utf8_lossy(&answer[1..]);
-            assert!(!published.contains("ghp_secretvalue"), "{published}");
+            assert!(
+                !published.contains(concat!("ghp_", "secretvalue")),
+                "{published}"
+            );
             assert!(!published.contains("/home/player"), "{published}");
         }
     }

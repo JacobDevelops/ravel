@@ -73,7 +73,7 @@ fn an_intact_package_passes_identity_integrity_and_compatibility_together() {
 
     assert_eq!(manifest.id.as_str(), "example_mod");
     assert_eq!(manifest.source.files[0].path.as_str(), "src/lib.rs");
-    assert_eq!(verify_package(&root, &manifest), Ok(()));
+    verify_package(&root, &manifest).expect("the installed package is intact");
     assert_eq!(
         manifest
             .compatibility

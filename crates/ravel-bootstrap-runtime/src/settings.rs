@@ -3,7 +3,7 @@
 //! The store lock is independent of the runtime lock and released before JNI or disk I/O.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::PoisonError;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -12,8 +12,7 @@ use jni::{Env, EnvUnowned};
 use ravel_config::{
     LayeredConfiguration, ResolvedSetting, SettingKey, ValueDocument, ValueKind, ValueSource, file,
 };
-use ravel_core::{ModId, Side};
-use ravel_observability::redact;
+use ravel_core::{DiagnosticMessage, ModId, Side};
 use serde_json::Value;
 
 use crate::guard::{HookError, hand_document, text};
@@ -25,22 +24,16 @@ static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 pub(crate) struct Store {
     side: Side,
     configurations: BTreeMap<ModId, LayeredConfiguration>,
-    game_directory: PathBuf,
 }
 
 impl Store {
-    pub(crate) fn new(
-        side: Side,
-        configurations: Vec<LayeredConfiguration>,
-        game_directory: PathBuf,
-    ) -> Self {
+    pub(crate) fn new(side: Side, configurations: Vec<LayeredConfiguration>) -> Self {
         Self {
             side,
             configurations: configurations
                 .into_iter()
                 .map(|configuration| (configuration.owner().clone(), configuration))
                 .collect(),
-            game_directory,
         }
     }
 }
@@ -205,14 +198,13 @@ fn save_with(launch: Option<&crate::runtime::LaunchContext>, payload: &str) -> S
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .apply(&mut Reader::new(payload));
-    persist_and_answer(applied)
+    persist_and_answer(applied, &launch.game_directory)
 }
 
 struct Applied {
     refusal_count: usize,
     encoded_refusals: String,
     document: ValueDocument,
-    directory: PathBuf,
 }
 
 impl Store {
@@ -245,7 +237,6 @@ impl Store {
         }
 
         let side = self.side;
-        let directory = self.game_directory.clone();
         let configuration = self
             .configurations
             .get_mut(&owner)
@@ -273,25 +264,27 @@ impl Store {
             refusal_count: refusals,
             encoded_refusals: refused,
             document: configuration.player_document(),
-            directory,
         })
     }
 }
 
-fn persist_and_answer(applied: Result<Applied, String>) -> String {
+fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> String {
     let Applied {
         mut refusal_count,
         mut encoded_refusals,
         document,
-        directory,
     } = match applied {
         Ok(applied) => applied,
         Err(reason) => return refusal("", &reason),
     };
 
-    if let Err(reason) = persist(&directory, &document) {
+    if let Err(reason) = persist(directory, &document) {
         refusal_count += 1;
-        write_refusal(&mut encoded_refusals, "", redact(&reason).text());
+        write_refusal(
+            &mut encoded_refusals,
+            "",
+            DiagnosticMessage::redacted(&reason).text(),
+        );
     }
 
     let mut out = String::with_capacity(encoded_refusals.len() + 8);

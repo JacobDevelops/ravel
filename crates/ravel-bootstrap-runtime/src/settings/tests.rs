@@ -129,15 +129,15 @@ impl Screen {
     fn new(configurations: Vec<LayeredConfiguration>) -> Self {
         let game = game();
         Self {
-            store: Store::new(Side::Client, configurations, game.clone()),
+            store: Store::new(Side::Client, configurations),
             game,
         }
     }
 
     fn saving_to(configurations: Vec<LayeredConfiguration>, directory: PathBuf) -> Self {
         Self {
-            store: Store::new(Side::Client, configurations, directory),
-            game: game(),
+            store: Store::new(Side::Client, configurations),
+            game: directory,
         }
     }
 
@@ -155,7 +155,7 @@ impl Screen {
     }
 
     fn save(&mut self, payload: &str) -> String {
-        persist_and_answer(self.store.apply(&mut Reader::new(payload)))
+        persist_and_answer(self.store.apply(&mut Reader::new(payload)), &self.game)
     }
 }
 
@@ -231,7 +231,7 @@ fn an_owner_with_nothing_to_show_on_this_side_is_not_offered_a_screen() {
         None,
     )
     .expect("the layers should resolve");
-    let store = Store::new(Side::Client, vec![here, elsewhere], game());
+    let store = Store::new(Side::Client, vec![here, elsewhere]);
 
     let offered: Vec<String> = store
         .configurable()

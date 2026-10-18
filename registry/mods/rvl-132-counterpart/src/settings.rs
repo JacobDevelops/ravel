@@ -19,7 +19,7 @@
 use core::fmt;
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 
 use crate::data::{Comparator, MAX_IGNORED};
@@ -186,10 +186,6 @@ impl From<ValueError> for Refused {
     }
 }
 
-fn key(name: &str) -> SettingKey {
-    name.parse().expect("a declared key")
-}
-
 /// The values in force for one launch.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Settings {
@@ -223,11 +219,11 @@ impl Settings {
     /// Missing or wrongly typed values and ignored lists past either ceiling
     /// are refused without partially applying the resolution.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
-        let abort_on_invalid_recipe = resolved.boolean(&key(ABORT_ON_INVALID_RECIPE))?;
-        let abort_on_bundle_failure = resolved.boolean(&key(ABORT_ON_BUNDLE_FAILURE))?;
-        let log_unequal_data = resolved.boolean(&key(LOG_UNEQUAL_DATA))?;
-        let ignored = ignored_from(resolved.text(&key(IGNORED_COMPONENTS))?)?;
-        let cap = usize::try_from(resolved.integer(&key(CLOSURE_CAP))?)
+        let abort_on_invalid_recipe = resolved.boolean(ABORT_ON_INVALID_RECIPE)?;
+        let abort_on_bundle_failure = resolved.boolean(ABORT_ON_BUNDLE_FAILURE)?;
+        let log_unequal_data = resolved.boolean(LOG_UNEQUAL_DATA)?;
+        let ignored = ignored_from(resolved.text(IGNORED_COMPONENTS)?)?;
+        let cap = usize::try_from(resolved.integer(CLOSURE_CAP)?)
             .ok()
             .filter(|cap| *cap >= 1 && *cap <= MAX_CLOSURE_CAP)
             .unwrap_or(DEFAULT_CLOSURE_CAP);

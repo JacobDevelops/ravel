@@ -6,10 +6,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::HostMod;
 use ravel_loader::{
     DispatchRefused, LifecycleEntry, LifecycleMachine, ModSurface, Requirement, admitted,
-    deliver_packet, drive,
+    deliver_packet,
 };
 use ravel_package::PackageManifest;
 use ravel_resolve::resolve;
@@ -23,7 +22,7 @@ use ravel_test_mod_client_only::{
 };
 use ravel_test_mod_networking::{NetworkingMod, PING_VERSION, Ping, ping_id};
 use ravel_test_mod_noop::NoopMod;
-use ravel_testkit::{Host, PipelineRun, TestPackage, run};
+use ravel_testkit::{Host, PipelineRun, TestPackage, run_pipeline};
 
 const EVERY_SIDE: [Side; 3] = Side::ALL;
 
@@ -60,19 +59,24 @@ fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
 
 fn started(side: Side, client_sides: &[Side]) -> (LifecycleMachine, WorkLog) {
     let log = work_log();
-    let composed: Vec<(LifecycleEntry, Box<dyn HostMod>)> = vec![
-        (
-            entry("client_only", client_sides),
-            Box::new(ClientOnlyMod::new(side, &log)),
-        ),
-        (
-            entry("networking", &server_sides()),
-            Box::new(NetworkingMod::new()),
-        ),
+    let mut mods: Vec<Box<dyn Mod>> = vec![
+        Box::new(ClientOnlyMod::new(side, &log)),
+        Box::new(NetworkingMod::new()),
     ];
-
-    let (machine, _) = drive(side, &environment(), composed)
-        .expect("a side-mismatched mod is parked, not refused");
+    let mut machine = LifecycleMachine::new(
+        side,
+        vec![
+            entry("client_only", client_sides),
+            entry("networking", &server_sides()),
+        ],
+    )
+    .expect("a legal side-specific lifecycle");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods)
+            .expect("every active member has a mod value"),
+        &environment(),
+    )
+    .expect("a side-mismatched mod is parked, not refused");
     (machine, log)
 }
 
@@ -221,7 +225,7 @@ fn pipeline_on(side: Side) -> (PipelineRun, WorkLog) {
     let log = work_log();
     let mut client = ClientOnlyMod::new(side, &log);
     let mut noop = NoopMod::new();
-    let completed = run(
+    let completed = run_pipeline(
         &[discovered(CLIENT_ONLY_PACKAGE), discovered(NOOP_PACKAGE)],
         &host(),
         side,
@@ -296,21 +300,25 @@ fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
         .collect();
     let plan = resolve(&manifests, side).expect("a legal package set");
     let running = host();
-    let composed: Vec<(LifecycleEntry, Box<dyn HostMod>)> =
-        admitted(&plan, &manifests, &running.ravel, &running.minecraft)
-            .expect("the fixture packages declare the version this repository pins")
-            .into_iter()
-            .map(|entry| {
-                let host: Box<dyn HostMod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
-                    Box::new(ClientOnlyMod::new(side, &log))
-                } else {
-                    Box::new(NoopMod::new())
-                };
-                (entry, host)
-            })
-            .collect();
-    let (machine, _) =
-        drive(side, &environment(), composed).expect("a parked package does not fail the set");
+    let entries = admitted(&plan, &manifests, &running.ravel, &running.minecraft)
+        .expect("the fixture packages declare the version this repository pins");
+    let mut mods: Vec<Box<dyn Mod>> = entries
+        .iter()
+        .map(|entry| -> Box<dyn Mod> {
+            if entry.mod_id == *ClientOnlyMod::declared_id() {
+                Box::new(ClientOnlyMod::new(side, &log))
+            } else {
+                Box::new(NoopMod::new())
+            }
+        })
+        .collect();
+    let mut machine = LifecycleMachine::new(side, entries).expect("a legal admitted lifecycle");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods)
+            .expect("every active member has a mod value"),
+        &environment(),
+    )
+    .expect("a parked package does not fail the set");
 
     let surface = ModSurface::of(&machine);
     let listed = surface
@@ -349,12 +357,13 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
             encode(&Overlay::new(vec!["drawn".to_owned()])),
         );
         let refusal = deliver_packet(
-            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(
+            &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
                 &mut machine,
                 &mut [&mut client, &mut server],
             )
             .expect("all active mods have hosts"),
             &arriving,
+            &ravel_bootstrap_runtime::environment(),
         )
         .expect_err("a server side is not an end of a client-bound link");
 
@@ -390,9 +399,10 @@ fn the_same_packet_on_the_client_round_trips_into_the_overlay_the_server_sent() 
 
     let arriving = PacketDelivery::new(overlay_id(), Direction::ToClient, Side::Client, payload);
     let delivered = deliver_packet(
-        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut client])
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut client])
             .expect("all active mods have hosts"),
         &arriving,
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the client is the receiving end");
 
@@ -433,12 +443,13 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
         payload,
     );
     let delivered = deliver_packet(
-        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(
             &mut machine,
             &mut [&mut client, &mut server],
         )
         .expect("all active mods have hosts"),
         &arriving,
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the server half owns the contract and is running");
 
@@ -479,9 +490,10 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
         payload,
     );
     let delivered = deliver_packet(
-        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut server])
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut server])
             .expect("all active mods have hosts"),
         &arriving,
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the routing reached the owner");
     let failure = delivered.failure().map(ToString::to_string);

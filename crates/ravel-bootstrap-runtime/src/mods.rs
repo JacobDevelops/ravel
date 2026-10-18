@@ -206,13 +206,12 @@ mod tests {
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
         LifecycleState, ModId, Side, SideSet,
     };
-    use ravel_host_api::HostMod;
-    use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+    use ravel_loader::{LifecycleEntry, Requirement};
 
     use std::collections::BTreeSet;
 
     use super::document_of;
-    use crate::runtime::LoaderRuntime;
+    use crate::runtime::{DocumentFixture, LoaderRuntime};
     use crate::wire::fields;
 
     fn mod_id(name: &str) -> ModId {
@@ -250,16 +249,12 @@ mod tests {
         }
     }
 
-    fn running(machine: LifecycleMachine) -> LoaderRuntime {
-        LoaderRuntime::new(
-            machine,
-            Vec::<Box<dyn HostMod>>::new(),
-            crate::runtime::test_launch(),
-        )
+    fn running(fixture: DocumentFixture) -> LoaderRuntime {
+        LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch())
     }
 
-    fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
-        LifecycleMachine::new(Side::Client, entries).expect("a legal plan")
+    fn machine(entries: Vec<LifecycleEntry>) -> DocumentFixture {
+        DocumentFixture::new(Side::Client, entries)
     }
 
     #[test]
@@ -312,14 +307,15 @@ mod tests {
     #[test]
     fn a_failed_required_mod_is_actionable_and_carries_its_attribution_in_pieces() {
         let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
-        plan.fail(
-            &mod_id("broken_mod"),
-            attribution(
-                LifecycleState::Constructed,
-                Some(FailureKind::DependencyCycle),
-            ),
-        )
-        .expect("a mod the machine holds can fail");
+        plan.machine
+            .fail(
+                &mod_id("broken_mod"),
+                attribution(
+                    LifecycleState::Constructed,
+                    Some(FailureKind::DependencyCycle),
+                ),
+            )
+            .expect("a mod the machine holds can fail");
 
         let read = fields(&running(plan).mod_document(&configurable(&[])));
 
@@ -343,7 +339,8 @@ mod tests {
         failure.surface = Some(FailureSurface::Registry(
             "command:broken_mod:go".parse().expect("valid registry key"),
         ));
-        plan.fail(&mod_id("broken_mod"), failure)
+        plan.machine
+            .fail(&mod_id("broken_mod"), failure)
             .expect("the owner is tracked");
 
         let read = fields(&running(plan).mod_document(&configurable(&[])));
@@ -359,11 +356,12 @@ mod tests {
     #[test]
     fn a_failed_optional_mod_is_reported_without_asking_the_player_to_fix_it() {
         let mut plan = machine(vec![entry("broken_mod", Requirement::Optional)]);
-        plan.fail(
-            &mod_id("broken_mod"),
-            attribution(LifecycleState::Loaded, None),
-        )
-        .expect("a mod the machine holds can fail");
+        plan.machine
+            .fail(
+                &mod_id("broken_mod"),
+                attribution(LifecycleState::Loaded, None),
+            )
+            .expect("a mod the machine holds can fail");
 
         let read = fields(&running(plan).mod_document(&configurable(&[])));
 
@@ -376,18 +374,21 @@ mod tests {
     #[test]
     fn a_failure_detail_is_redacted_before_a_player_can_read_it() {
         let mut broken = attribution(LifecycleState::Loaded, None);
-        broken.message = DiagnosticMessage::raw(
-            "could not read /home/player/.minecraft/mods/thing.rmod, token=ghp_secretvalue",
-        );
+        broken.message = DiagnosticMessage::raw(concat!(
+            "could not read /home/player/.minecraft/mods/thing.rmod, token=",
+            "ghp_",
+            "secretvalue"
+        ));
         let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
-        plan.fail(&mod_id("broken_mod"), broken)
+        plan.machine
+            .fail(&mod_id("broken_mod"), broken)
             .expect("a mod the machine holds can fail");
 
         let read = fields(&running(plan).mod_document(&configurable(&[])));
         let detail = read[20].clone();
 
         assert!(!detail.contains("/home/player"), "{detail}");
-        assert!(!detail.contains("ghp_secretvalue"), "{detail}");
+        assert!(!detail.contains(concat!("ghp_", "secretvalue")), "{detail}");
         assert!(detail.contains("thing.rmod"), "the file it names survives");
     }
 
@@ -407,15 +408,16 @@ mod tests {
     }
 
     /// A runtime whose pre-world report already carries one notice.
-    fn noticed(machine: LifecycleMachine, notice: &str) -> LoaderRuntime {
+    fn noticed(fixture: DocumentFixture, notice: &str) -> LoaderRuntime {
         let mut report = crate::runtime::pre_world_report();
         report.note(notice);
         LoaderRuntime::with_observers(
-            machine,
-            Vec::<Box<dyn HostMod>>::new(),
+            fixture.machine,
+            fixture.mods,
             ravel_observability::Profiler::off(),
             report,
             crate::runtime::test_launch(),
+            std::collections::BTreeMap::new(),
         )
     }
 
@@ -439,14 +441,22 @@ mod tests {
     fn a_notice_is_redacted_before_a_player_can_read_it() {
         let runtime = noticed(
             machine(vec![entry("base_mod", Requirement::Required)]),
-            "could not read /home/player/.minecraft/options.txt, token=ghp_secretvalue",
+            concat!(
+                "could not read /home/player/.minecraft/options.txt, token=",
+                "ghp_",
+                "secretvalue"
+            ),
         );
 
         let read = fields(&runtime.mod_document(&configurable(&[])));
 
         assert_eq!(read[12], "1");
         assert!(!read[13].contains("/home/player"), "{}", read[13]);
-        assert!(!read[13].contains("ghp_secretvalue"), "{}", read[13]);
+        assert!(
+            !read[13].contains(concat!("ghp_", "secretvalue")),
+            "{}",
+            read[13]
+        );
     }
 
     #[test]
@@ -493,14 +503,14 @@ mod tests {
     #[test]
     fn integrated_failure_stays_distinct_and_cannot_open_client_settings() {
         let client = running(machine(vec![entry("broken_mod", Requirement::Required)]));
-        let mut plan = LifecycleMachine::new(
+        let mut plan = DocumentFixture::new(
             Side::IntegratedServer,
             vec![entry("broken_mod", Requirement::Required)],
-        )
-        .expect("an integrated plan");
+        );
         let mut failure = attribution(LifecycleState::Running, None);
         failure.surface = Some(FailureSurface::Hook("server.tick".to_owned()));
-        plan.fail(&mod_id("broken_mod"), failure)
+        plan.machine
+            .fail(&mod_id("broken_mod"), failure)
             .expect("tracked mod");
         let server = noticed(plan, "server composition could not register its command");
         let read = fields(

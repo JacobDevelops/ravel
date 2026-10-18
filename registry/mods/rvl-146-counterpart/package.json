@@ -66,11 +66,11 @@
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "97fdc9853c0974f0c8a0d1823e005c21e886ed12fe60aee045a9fcb2064c5979"
+        "sha256": "215a13ae4138fb62ca0cddb564d10d9b7c0e937306258b5b35175262062fe3c7"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "5f8f6aa8146399874d44aa16b692ff332aca23c2798211c224fa74fa54cb485d"
+        "sha256": "264b29b3337cd75fbadf5846d5ad63ae68165313614b18a4b6a182c34f41aafe"
       },
       {
         "path": "src/menus.rs",

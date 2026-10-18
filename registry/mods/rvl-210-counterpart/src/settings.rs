@@ -11,7 +11,10 @@
 //! where it is written. [`Scope`] is that vocabulary and [`Declared::document`]
 //! is the consequence.
 
-use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
+use ravel_sdk::Side;
+use ravel_sdk::config::{
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+};
 
 use core::fmt;
 
@@ -79,23 +82,17 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Reads the values in force, keeping a shipped default for a key the
-    /// resolution does not carry.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration) -> Self {
-        Self {
-            scratch_world_shortcut: DEVELOPMENT_SHORTCUT
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(false),
-            silence_music: DEVELOPMENT_SILENCE_MUSIC
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(false),
-        }
+    /// Reads the values in force, refusing a missing key or a value of the wrong kind.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        Ok(Self {
+            scratch_world_shortcut: resolved.boolean(&key(DEVELOPMENT_SHORTCUT))?,
+            silence_music: resolved.boolean(&key(DEVELOPMENT_SILENCE_MUSIC))?,
+        })
     }
+}
+
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
 }
 
 /// The scope vocabulary of section 5.2.
@@ -113,9 +110,6 @@ pub enum Scope {
 }
 
 impl Scope {
-    /// All three, in the order section 5.2 names them.
-    pub const ALL: [Self; 3] = [Self::Client, Self::Server, Self::Common];
-
     /// The document a setting of this scope is written into.
     #[must_use]
     pub const fn document(self) -> &'static str {
@@ -128,9 +122,9 @@ impl Scope {
 
     /// Whether a side resolves a setting of this scope.
     #[must_use]
-    pub const fn resolved_by(self, side: ravel_sdk::Side) -> bool {
+    pub const fn resolved_by(self, side: Side) -> bool {
         match self {
-            Self::Client => matches!(side, ravel_sdk::Side::Client),
+            Self::Client => matches!(side, Side::Client),
             Self::Server => side.is_server(),
             Self::Common => true,
         }
@@ -254,6 +248,15 @@ pub enum ChangeRefused {
         /// The name asked for.
         property: String,
     },
+    /// The caller's side does not resolve the setting's scope.
+    WrongSide {
+        /// The property asked for.
+        property: String,
+        /// The declared scope.
+        scope: Scope,
+        /// The side attempting the write.
+        side: Side,
+    },
     /// The setting is not marked changeable at runtime.
     NotChangeable {
         /// The name asked for.
@@ -274,6 +277,18 @@ impl fmt::Display for ChangeRefused {
             Self::NoSuchProperty { property } => {
                 write!(formatter, "no setting is declared as {property}")
             }
+            Self::WrongSide {
+                property,
+                scope,
+                side,
+            } => {
+                write!(
+                    formatter,
+                    "{property} has scope {}, not writable on {}",
+                    scope.document(),
+                    side.as_str(),
+                )
+            }
             Self::NotChangeable { property } => {
                 write!(
                     formatter,
@@ -286,6 +301,8 @@ impl fmt::Display for ChangeRefused {
         }
     }
 }
+
+impl std::error::Error for ChangeRefused {}
 
 /// The settings a dependent declared, collected per document.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -359,9 +376,9 @@ impl Framework {
     ///
     /// # Errors
     ///
-    /// Returns [`ChangeRefused`] when nothing carries the name, when the setting
-    /// is not changeable at runtime, or when the value is of another kind.
-    pub fn write(&mut self, property: &str, value: Value) -> Result<(), ChangeRefused> {
+    /// Returns [`ChangeRefused`] for an unknown property, a side outside its scope,
+    /// a setting not changeable at runtime, or a value of another kind.
+    pub fn write(&mut self, property: &str, value: Value, side: Side) -> Result<(), ChangeRefused> {
         let Some(declared) = self
             .declared
             .iter_mut()
@@ -371,6 +388,13 @@ impl Framework {
                 property: property.to_owned(),
             });
         };
+        if !declared.scope.resolved_by(side) {
+            return Err(ChangeRefused::WrongSide {
+                property: property.to_owned(),
+                scope: declared.scope,
+                side,
+            });
+        }
         if !declared.changeable {
             return Err(ChangeRefused::NotChangeable {
                 property: property.to_owned(),
@@ -425,6 +449,77 @@ mod tests {
     use ravel_sdk::Side;
 
     #[test]
+    fn the_packaged_defaults_resolve_to_the_launch_settings() {
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the packaged defaults resolve");
+        assert_eq!(Settings::read(&resolved), Ok(Settings::default()));
+    }
+
+    #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        for name in OWN_KEYS {
+            let changed = DOCUMENT.replace(name, "development.renamed");
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the changed declaration resolves");
+            assert_eq!(
+                Settings::read(&resolved),
+                Err(ValueError::Unknown { key: key(name) })
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrong_declared_kind_is_returned_instead_of_defaulted() {
+        let changed = DOCUMENT
+            .replace(r#""type": "boolean""#, r#""type": "integer""#)
+            .replace(r#""default": false"#, r#""default": 0"#);
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed declaration resolves");
+        assert!(matches!(
+            Settings::read(&resolved),
+            Err(ValueError::AccessKind { .. })
+        ));
+    }
+
+    #[test]
+    fn runtime_writes_enforce_scope_for_every_side_and_preserve_refused_values() {
+        for scope in [Scope::Client, Scope::Server, Scope::Common] {
+            for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
+                let mut framework = Framework::new();
+                framework.declare(Declared::new(
+                    "scoped.one",
+                    "scoped",
+                    "scope guard",
+                    scope,
+                    true,
+                    Value::Number(3),
+                ));
+                let result = framework.write("scoped.one", Value::Number(9), side);
+                if scope.resolved_by(side) {
+                    assert_eq!(result, Ok(()));
+                    assert_eq!(framework.read("scoped.one"), Ok(&Value::Number(9)));
+                } else {
+                    assert_eq!(
+                        result,
+                        Err(ChangeRefused::WrongSide {
+                            property: "scoped.one".to_owned(),
+                            scope,
+                            side,
+                        })
+                    );
+                    assert_eq!(framework.read("scoped.one"), Ok(&Value::Number(3)));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_packaged_document_parses_and_declares_both_settings() {
         let declaration = declaration().expect("the packaged document is well formed");
         for key in OWN_KEYS {
@@ -434,7 +529,6 @@ mod tests {
                 "the document declares it"
             );
         }
-        assert_eq!(OWN_KEYS.len(), 2);
     }
 
     #[test]
@@ -460,13 +554,6 @@ mod tests {
     }
 
     #[test]
-    fn the_scope_vocabulary_is_three_values_and_each_names_its_own_document() {
-        assert_eq!(Scope::ALL.len(), 3);
-        let documents: Vec<&str> = Scope::ALL.iter().map(|scope| scope.document()).collect();
-        assert_eq!(documents, vec!["client", "server", "common"]);
-    }
-
-    #[test]
     fn a_scope_decides_which_side_resolves_the_setting_at_all() {
         assert!(Scope::Client.resolved_by(Side::Client));
         assert!(!Scope::Client.resolved_by(Side::DedicatedServer));
@@ -486,7 +573,7 @@ mod tests {
             Ok(&Value::Truth(false))
         );
         framework
-            .write(DEVELOPMENT_SHORTCUT, Value::Truth(true))
+            .write(DEVELOPMENT_SHORTCUT, Value::Truth(true), Side::Client)
             .expect("the setting is changeable");
         assert_eq!(
             framework.read(DEVELOPMENT_SHORTCUT),
@@ -506,7 +593,7 @@ mod tests {
             Value::Number(3),
         ));
         assert_eq!(
-            framework.write("fixed.one", Value::Number(9)),
+            framework.write("fixed.one", Value::Number(9), Side::Client),
             Err(ChangeRefused::NotChangeable {
                 property: "fixed.one".to_owned()
             })
@@ -518,7 +605,7 @@ mod tests {
     fn a_write_of_another_kind_is_refused_rather_than_replacing_the_declared_one() {
         let mut framework = own_framework();
         assert_eq!(
-            framework.write(DEVELOPMENT_SHORTCUT, Value::Number(1)),
+            framework.write(DEVELOPMENT_SHORTCUT, Value::Number(1), Side::Client),
             Err(ChangeRefused::WrongKind {
                 declared: "truth",
                 written: "number",
@@ -540,7 +627,7 @@ mod tests {
             })
         );
         assert_eq!(
-            framework.write("never.declared", Value::Truth(true)),
+            framework.write("never.declared", Value::Truth(true), Side::Client),
             Err(ChangeRefused::NoSuchProperty {
                 property: "never.declared".to_owned()
             })

@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "146703a34f656d6662d8906cf98de8bda583b56aac9d651c736aca653846eb3f"
+        "sha256": "bc326bcbdcbdaa0fdeb88599f4cc530c20dccc13a32dd09b175177664a7968b7"
       },
       {
         "path": "aliases.json",
@@ -58,7 +58,7 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "aea385a5185b7fa0212a39dcc80d35bae48611f49992925076027d722979fab2"
+        "sha256": "e979c8778ac02e2655ae941b37df327f11a7d9ca225350859b8ea8f30598622e"
       },
       {
         "path": "src/channel.rs",
@@ -66,35 +66,35 @@
       },
       {
         "path": "src/commands.rs",
-        "sha256": "bc3093bfc63ad58116e960108e30091ca32d94fae29bdac95630dab65c8a2771"
+        "sha256": "30501716116fcfe7b920fca59430f595944fc32ed3afa54ca34e18063813ca27"
       },
       {
         "path": "src/declarations.rs",
-        "sha256": "91e35e1c36663cbd4fff9ef3d4cf9fe81dd23c5b6403d9765716673689bd95b5"
+        "sha256": "25200b82b084dff65f9e85ccd9fb700080a7675c2961a3cf6563539a55953561"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "5f6ab3b778b9b6d11f3b391497b3fcf2bbe0e97e623ef309098211ef690c39ec"
+        "sha256": "5b1a8fbce49c30e56a8d937aa41932dad86f7bf890ae3064e431a0dff1d8f3e0"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "c6a3b6a434c807e221a25908588fddb125fab5a99b223c68252d958fc4fe269a"
+        "sha256": "f34511520b75d1cd7b6c40fcdfbb54de41eafe192d38f05e4e5729ca06801dfb"
       },
       {
         "path": "src/menus.rs",
-        "sha256": "e685a57a722b942949799672ad31d86e00786f5e6b8054bd8a981cb8670b14d6"
+        "sha256": "9d70c2192ad1d08e40d1c0dc80957ec81ba9885beaef5a8ca8b212efa8ffd45f"
       },
       {
         "path": "src/persistence.rs",
-        "sha256": "b5718962bc95b503eddc2243be51056a21e7967154cdf446a6fc69fb59c3af30"
+        "sha256": "40c561dbe30cb111c2a8c721fcb8cc78c4c14bd02d4a3aa5d30a8d177cd11a14"
       },
       {
         "path": "src/quantity.rs",
-        "sha256": "6d73d2449abc2b2f873161520a1f148ade399a45949ee3544b9b4ee44f28d3b4"
+        "sha256": "6b79473cbe5b404bbd7e2c2da0f413f048e8b923b497e706dc33e71d31e01a8f"
       },
       {
         "path": "src/query.rs",
-        "sha256": "f686256567410e3f6353cd6ceb097cce7e88d31742cabb09af1caf1537e27f86"
+        "sha256": "9ce4dc01b02e5996d78d54ee37e5a58659f54bafc8114935ec36e05e3d23e293"
       },
       {
         "path": "src/query/selection.rs",
@@ -102,19 +102,19 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "d7406cb32ec5d431d72b306e4ea3daa3da54e7cc0b30bd00efd649feab134d32"
+        "sha256": "3456b662e002a76b3ee49e1ee451ae1421d10bc548ec47ddaa643eeb26bc63e4"
       },
       {
         "path": "src/shapes.rs",
-        "sha256": "7c135dd5445805d8f6bee5ff48f5cacee538533364409875ed698129a6f46c3d"
+        "sha256": "d3d74abd00a7ac27c7c8add3d35cdfd338b5f40520be3786ec3b02a8d6e57693"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "9ccee913d5d0b48b2e8a944dc7f0701cc7a935bd53f1dab22ae8cc34858753a0"
+        "sha256": "ed01c2069f4a1993a38e1159ebd0ab6a9743723eb9ef329847dbb9aed0400664"
       },
       {
         "path": "src/transport.rs",
-        "sha256": "7fdfa98a3c9b9fb77509b9900896e7c7e2022f7ac515f22ba7723a34fcbff69c"
+        "sha256": "84c6844da87dd65f2da11f46b8316e71a598b7ae95d6384fecbeec0fed93d046"
       }
     ]
   },

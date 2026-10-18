@@ -18,6 +18,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use ravel_sdk::ModId;
+use ravel_sdk::content::ContentId;
+
 use crate::data::{Placement, Stack};
 use crate::shapes::{Pattern, PatternRefused, small_grid_positions};
 
@@ -116,7 +119,7 @@ pub const BUILT_IN_DATA: [&str; 5] = ["amount", "text", "flag", "position", "sta
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Module {
     /// The namespace of the mod that supplies it.
-    pub owner: String,
+    pub owner: ModId,
     /// The module's own name.
     pub name: String,
     /// What the module's data is.
@@ -130,21 +133,21 @@ pub struct Module {
 /// One channel kind a dependent supplies to the cabling group.
 ///
 /// Published and not implemented: nothing in this entry ticks a channel or
-/// resolves a consumer. What is enforced is the window, which is the group's own
-/// stated refusal.
+/// resolves a consumer. Registration enforces the window and consistency between
+/// the identifier's namespace and the self-asserted owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ChannelKind {
     /// The kind's identifier.
-    pub identifier: String,
+    pub identifier: ContentId,
     /// The namespace of the mod that supplies it.
-    pub owner: String,
+    pub owner: ModId,
 }
 
 /// What a dimension read answers with.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DimensionReport {
     /// Who owns the dimension.
-    pub owner: String,
+    pub owner: ModId,
     /// How much energy it holds.
     pub energy: i64,
     /// How much it can hold.
@@ -167,10 +170,10 @@ pub struct Extracted {
 pub struct Surface {
     closed: bool,
     modules: Vec<Module>,
-    data_factories: Vec<(String, String)>,
+    data_factories: Vec<(ModId, ContentId)>,
     channels: Vec<ChannelKind>,
     instructions: primitives::Runtime,
-    dimensions: BTreeMap<String, DimensionReport>,
+    dimensions: BTreeMap<ContentId, DimensionReport>,
     rules: Vec<(String, String)>,
     overlay: Option<Overlay>,
     receivers: BTreeMap<String, Vec<(Placement, u32, String)>>,
@@ -207,17 +210,21 @@ impl Surface {
 
     /// Registers a factory for a data kind that is not one of the five built in.
     ///
-    /// A dependent may only register one under its own namespace, which is what
-    /// stops a mod claiming a data kind on another mod's behalf.
+    /// The namespace must match the supplied owner. This checks consistency,
+    /// not caller authentication: the owner is self-asserted.
     ///
     /// # Errors
     ///
     /// Returns [`SurfaceRefused::Closed`] after the window and
     /// [`SurfaceRefused::ForeignNamespace`] for a kind outside the registrant's
     /// own namespace.
-    pub fn register_data_factory(&mut self, owner: &str, kind: &str) -> Result<(), SurfaceRefused> {
+    pub fn register_data_factory(
+        &mut self,
+        owner: &ModId,
+        kind: &ContentId,
+    ) -> Result<(), SurfaceRefused> {
         self.window()?;
-        if kind.split_once(':').map(|(namespace, _)| namespace) != Some(owner) {
+        if kind.namespace() != owner {
             return Err(SurfaceRefused::ForeignNamespace);
         }
         self.data_factories
@@ -235,10 +242,10 @@ impl Surface {
     pub fn register_module(&mut self, module: Module) -> Result<(), SurfaceRefused> {
         self.window()?;
         let known = BUILT_IN_DATA.contains(&module.data.as_str())
-            || self
-                .data_factories
-                .iter()
-                .any(|(_, kind)| kind == &module.data);
+            || module
+                .data
+                .parse::<ContentId>()
+                .is_ok_and(|data| self.data_factories.iter().any(|(_, kind)| kind == &data));
         if !known {
             return Err(SurfaceRefused::UnknownData { data: module.data });
         }
@@ -265,10 +272,13 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Returns [`SurfaceRefused::Closed`] after the window, which is this
-    /// group's one stated refusal.
+    /// Returns [`SurfaceRefused::Closed`] after the window and
+    /// [`SurfaceRefused::ForeignNamespace`] when the identifier and owner differ.
     pub fn register_channel(&mut self, channel: ChannelKind) -> Result<(), SurfaceRefused> {
         self.window()?;
+        if channel.identifier.namespace() != &channel.owner {
+            return Err(SurfaceRefused::ForeignNamespace);
+        }
         self.channels.push(channel);
         Ok(())
     }
@@ -327,16 +337,17 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Returns [`SurfaceRefused::Closed`] after the window. §15 states the
-    /// refusal for cabling and leaves it implicit here; it is the same rule,
-    /// because a dimension published after the barrier is one a dependent that
-    /// read the set at the barrier will never see.
+    /// Returns [`SurfaceRefused::Closed`] after the window and
+    /// [`SurfaceRefused::ForeignNamespace`] when the identifier and owner differ.
     pub fn publish_dimension(
         &mut self,
-        identifier: &str,
+        identifier: &ContentId,
         report: DimensionReport,
     ) -> Result<(), SurfaceRefused> {
         self.window()?;
+        if identifier.namespace() != &report.owner {
+            return Err(SurfaceRefused::ForeignNamespace);
+        }
         self.dimensions.insert(identifier.to_owned(), report);
         Ok(())
     }
@@ -347,7 +358,7 @@ impl Surface {
     /// Declared server-side only: a client asks the server rather than reading
     /// one of its own.
     #[must_use]
-    pub fn read_dimension(&self, identifier: &str) -> Option<&DimensionReport> {
+    pub fn read_dimension(&self, identifier: &ContentId) -> Option<&DimensionReport> {
         self.dimensions.get(identifier)
     }
 
@@ -789,15 +800,53 @@ impl fmt::Display for SurfaceRefused {
     }
 }
 
-impl std::error::Error for SurfaceRefused {}
+impl std::error::Error for SurfaceRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Pattern(refused) => Some(refused),
+            Self::Closed
+            | Self::ForeignNamespace
+            | Self::UnknownData { .. }
+            | Self::UnknownInstruction { .. }
+            | Self::AbsentParameter { .. }
+            | Self::WrongParameter { .. }
+            | Self::ParameterCount { .. }
+            | Self::BadBody { .. }
+            | Self::WrongOutput { .. }
+            | Self::StaleFeed { .. }
+            | Self::OverlayLog { .. }
+            | Self::PushedGrid { .. }
+            | Self::ReceiverTaken { .. }
+            | Self::NoReceiver { .. } => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn surface_errors_preserve_the_complete_record_source_chain() {
+        use crate::data::RecordRefused;
+        use std::error::Error;
+
+        let record = RecordRefused::Shape { record: None };
+        let refused = SurfaceRefused::Pattern(PatternRefused::Record(record.clone()));
+        let pattern = refused.source().expect("the wrapped pattern error");
+        assert!(pattern.downcast_ref::<PatternRefused>().is_some());
+        assert_eq!(
+            pattern
+                .source()
+                .and_then(|source| source.downcast_ref::<RecordRefused>()),
+            Some(&record)
+        );
+        assert!(SurfaceRefused::Closed.source().is_none());
+    }
+
     fn module(data: &str) -> Module {
         Module {
-            owner: "dependent".to_owned(),
+            owner: "dependent".parse().expect("a legal owner"),
             name: "gauge".to_owned(),
             data: data.to_owned(),
             energy_per_tick: 4,
@@ -865,7 +914,10 @@ mod tests {
     fn a_registered_factory_makes_the_dependents_own_data_kind_admissible() {
         let mut surface = Surface::new();
         surface
-            .register_data_factory("dependent", "dependent:curve")
+            .register_data_factory(
+                &"dependent".parse().expect("a legal owner"),
+                &"dependent:curve".parse().expect("a legal kind"),
+            )
             .expect("its own namespace");
         surface
             .register_module(module("dependent:curve"))
@@ -877,7 +929,10 @@ mod tests {
     fn a_dependent_cannot_register_a_data_kind_in_another_mods_namespace() {
         let mut surface = Surface::new();
         assert_eq!(
-            surface.register_data_factory("dependent", "elsewhere:curve"),
+            surface.register_data_factory(
+                &"dependent".parse().expect("a legal owner"),
+                &"elsewhere:curve".parse().expect("a legal kind"),
+            ),
             Err(SurfaceRefused::ForeignNamespace)
         );
     }
@@ -895,8 +950,8 @@ mod tests {
         );
         assert_eq!(
             surface.register_channel(ChannelKind {
-                identifier: "dependent:power".to_owned(),
-                owner: "dependent".to_owned(),
+                identifier: "dependent:power".parse().expect("a legal identifier"),
+                owner: "dependent".parse().expect("a legal owner"),
             }),
             Err(SurfaceRefused::Closed)
         );
@@ -905,14 +960,17 @@ mod tests {
             Err(SurfaceRefused::Closed)
         );
         assert_eq!(
-            surface.register_data_factory("dependent", "dependent:curve"),
+            surface.register_data_factory(
+                &"dependent".parse().expect("a legal owner"),
+                &"dependent:curve".parse().expect("a legal kind"),
+            ),
             Err(SurfaceRefused::Closed)
         );
         assert_eq!(
             surface.publish_dimension(
-                "dependent:deep",
+                &"dependent:deep".parse().expect("a legal identifier"),
                 DimensionReport {
-                    owner: "dependent".to_owned(),
+                    owner: "dependent".parse().expect("a legal owner"),
                     energy: 0,
                     capacity: 0,
                     probes: 0,
@@ -1015,9 +1073,9 @@ mod tests {
         let mut surface = Surface::new();
         surface
             .publish_dimension(
-                "dependent:deep",
+                &"dependent:deep".parse().expect("a legal identifier"),
                 DimensionReport {
-                    owner: "dependent".to_owned(),
+                    owner: "dependent".parse().expect("a legal owner"),
                     energy: 12,
                     capacity: 100,
                     probes: 3,
@@ -1027,12 +1085,16 @@ mod tests {
 
         assert_eq!(
             surface
-                .read_dimension("dependent:deep")
+                .read_dimension(&"dependent:deep".parse().expect("a legal identifier"))
                 .expect("it was published")
                 .probes,
             3
         );
-        assert!(surface.read_dimension("dependent:absent").is_none());
+        assert!(
+            surface
+                .read_dimension(&"dependent:absent".parse().expect("a legal identifier"))
+                .is_none()
+        );
     }
 
     #[test]

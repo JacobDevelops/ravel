@@ -13,6 +13,13 @@ saved-data ownership, networking channels — is expressed through Ravel rather 
 The support command is exposed through `Mod::content_declaration` before the default registration
 barrier claims it. Invalid declaration constants are lifecycle refusals, not constructor panics.
 
+Block, item and entity predicates and their candidates take parsed `ContentId` identities with
+explicit namespaces; bare names are refused by the shared identity grammar. Candidates require an
+identity rather than manufacturing an invalid empty default. Validator, channel-identity and
+declaration failures retain typed source errors. Fluid debug output follows the nested property
+groups instead of flattening their old names.
+Tests retain behavioral and uniqueness checks without restating fixed-array lengths.
+
 ## What each section became
 
 | Section | Here | Where |
@@ -80,7 +87,7 @@ barrier claims it. Invalid declaration constants are lifecycle refusals, not con
 | §10.2 the two document shapes and the key that parts them | implemented | `src/highlights.rs` |
 | §10.2 flattening, sharing and discarding the named table | implemented | `src/highlights.rs` |
 | §10.2 the exact-state lookup and the length rule | implemented | `src/highlights.rs` |
-| §10.2 the fixed colour with only the opacity non-zero | implemented | `src/highlights.rs` |
+| §10.2 the fixed highlight colour | implemented in the portable draw output | `src/highlights.rs` |
 | §10.2 intercepting the outline and the reload listener | host-blocked | — |
 | §11 the packed layout | implemented | `src/colour.rs` |
 | §11 the naming table's two first-registration-wins mechanisms | implemented | `src/colour.rs` |
@@ -272,9 +279,8 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
 
 ## Evidence
 
-Every rule with a number, an ordering, a refusal or a format has an inline test. Among them: the
-packed layout's channel order and its round trip, the transparent-white default, both naming
-mechanisms winning on the first registration and the table's ceiling, an animated colour agreeing
+Portable rules have inline tests. Among them: the packed layout's channel order and its round trip,
+both naming mechanisms winning on the first registration and the table's ceiling, an animated colour agreeing
 with itself within a frame and returning after six sixty-degree steps, a grey having no hue to turn,
 the three network arms and their discriminators, the default arm carrying no body, a value followed
 by more reading only its own bytes, five refusals off the wire and a lying length prefix refused
@@ -350,7 +356,7 @@ overriding all four, complexity defaulting to true with the loader told the inve
 stacks, lazy namespace creation, two namespaces keeping their own, an empty namespace, one
 registration per identifier, the namespace ceiling, a provider with and without a serialiser, the
 pointer reset, the item test being the dependent's own rather than the example list; the fluid
-vocabulary, the client vocabulary, a record registered after the first look never seen and one
+vocabulary, a record registered after the first look never seen and one
 registered before it held, one registration per fluid, the registration ceiling, and lookups of
 absent names bounded by that same ceiling with a read-through past it; the clip intersection,
 popping restoring, disjoint clips enclosing nothing, the clip ceiling, pose composition, cursor

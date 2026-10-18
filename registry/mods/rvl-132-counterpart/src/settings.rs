@@ -18,7 +18,9 @@
 
 use core::fmt;
 
-use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
+use ravel_sdk::config::{
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+};
 
 use crate::data::{Comparator, MAX_IGNORED};
 use crate::recipes::{Closure, DEFAULT_CLOSURE_CAP, MAX_CLOSURE_CAP};
@@ -133,8 +135,10 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 }
 
 /// What a resolution refuses.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Refused {
+    /// A declared setting is missing or has the wrong kind.
+    Value(ValueError),
     /// The ignored-component list is longer than [`MAX_IGNORED_TEXT`].
     ListTooLong {
         /// The published ceiling.
@@ -150,6 +154,7 @@ pub enum Refused {
 impl fmt::Display for Refused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Value(error) => error.fmt(formatter),
             Self::ListTooLong { limit } => {
                 write!(
                     formatter,
@@ -164,6 +169,25 @@ impl fmt::Display for Refused {
             }
         }
     }
+}
+
+impl std::error::Error for Refused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Value(error) => Some(error),
+            Self::ListTooLong { .. } | Self::TooManyIgnored { .. } => None,
+        }
+    }
+}
+
+impl From<ValueError> for Refused {
+    fn from(error: ValueError) -> Self {
+        Self::Value(error)
+    }
+}
+
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
 }
 
 /// The values in force for one launch.
@@ -194,47 +218,19 @@ impl Settings {
         }
     }
 
-    /// Reads the values in force, keeping a shipped default for a key the
-    /// resolution does not carry.
+    /// Reads every declared setting from the resolved configuration.
     ///
-    /// A resolution is not a trusted input: a list past either ceiling keeps the
-    /// shipped default rather than being truncated, because a silently shortened
-    /// ignore list changes what machines accept and says nothing.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Refused::ListTooLong`] and [`Refused::TooManyIgnored`], both of
-    /// which leave every value at its shipped default.
+    /// Missing or wrongly typed values and ignored lists past either ceiling
+    /// are refused without partially applying the resolution.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
-        let shipped = Self::shipped();
-        let abort_on_invalid_recipe = ABORT_ON_INVALID_RECIPE
-            .parse()
+        let abort_on_invalid_recipe = resolved.boolean(&key(ABORT_ON_INVALID_RECIPE))?;
+        let abort_on_bundle_failure = resolved.boolean(&key(ABORT_ON_BUNDLE_FAILURE))?;
+        let log_unequal_data = resolved.boolean(&key(LOG_UNEQUAL_DATA))?;
+        let ignored = ignored_from(resolved.text(&key(IGNORED_COMPONENTS))?)?;
+        let cap = usize::try_from(resolved.integer(&key(CLOSURE_CAP))?)
             .ok()
-            .and_then(|key| resolved.boolean(&key).ok())
-            .unwrap_or(shipped.abort_on_invalid_recipe);
-        let abort_on_bundle_failure = ABORT_ON_BUNDLE_FAILURE
-            .parse()
-            .ok()
-            .and_then(|key| resolved.boolean(&key).ok())
-            .unwrap_or(shipped.abort_on_bundle_failure);
-        let log_unequal_data = LOG_UNEQUAL_DATA
-            .parse()
-            .ok()
-            .and_then(|key| resolved.boolean(&key).ok())
-            .unwrap_or(shipped.log_unequal_data);
-        let text = IGNORED_COMPONENTS
-            .parse()
-            .ok()
-            .and_then(|key| resolved.text(&key).ok())
-            .unwrap_or_default();
-        let ignored = ignored_from(text)?;
-        let cap = CLOSURE_CAP
-            .parse()
-            .ok()
-            .and_then(|key| resolved.integer(&key).ok())
-            .and_then(|cap| usize::try_from(cap).ok())
             .filter(|cap| *cap >= 1 && *cap <= MAX_CLOSURE_CAP)
-            .unwrap_or(shipped.closure_cap);
+            .unwrap_or(DEFAULT_CLOSURE_CAP);
         Ok(Self {
             abort_on_invalid_recipe,
             abort_on_bundle_failure,
@@ -301,6 +297,24 @@ mod tests {
     use crate::data::{Components, Value};
 
     #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        for name in KEYS {
+            let changed = DOCUMENT.replace(name, "renamed.key");
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the changed declaration resolves");
+            let refused = Settings::read(&resolved).expect_err("the declared key is missing");
+            assert!(matches!(refused, Refused::Value(_)));
+            assert!(
+                std::error::Error::source(&refused)
+                    .expect("the typed value failure is retained")
+                    .downcast_ref::<ValueError>()
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
     fn the_packaged_declaration_parses_and_names_five_settings() {
         let declared = declaration().expect("a packaged document");
         assert_eq!(declared.settings().len(), 5);
@@ -326,15 +340,6 @@ mod tests {
         for outbound in ["ping", "analytics", "telemetry", "update", "version"] {
             assert!(!keys.iter().any(|key| key.contains(outbound)), "{outbound}");
         }
-        assert_eq!(DECLINED.len(), 2);
-        assert_eq!(keys.len(), KEYS.len());
-    }
-
-    #[test]
-    fn four_of_section_threes_six_are_here_and_one_is_added() {
-        assert_eq!(KEYS.len(), 5);
-        assert_eq!(KEYS.len() - 1 + DECLINED.len(), 6);
-        assert!(KEYS.contains(&CLOSURE_CAP));
     }
 
     #[test]
@@ -371,12 +376,10 @@ mod tests {
 
     #[test]
     fn the_shipped_values_are_the_ones_the_document_declares() {
-        let shipped = Settings::shipped();
-        assert!(!shipped.abort_on_invalid_recipe);
-        assert!(!shipped.abort_on_bundle_failure);
-        assert!(!shipped.log_unequal_data);
-        assert_eq!(shipped.ignored.len(), 0);
-        assert_eq!(shipped.closure_cap, DEFAULT_CLOSURE_CAP);
+        let resolved =
+            LayeredConfiguration::resolve(declaration().expect("a packaged document"), None, None)
+                .expect("the shipped defaults resolve");
+        assert_eq!(Settings::read(&resolved), Ok(Settings::shipped()));
     }
 
     #[test]

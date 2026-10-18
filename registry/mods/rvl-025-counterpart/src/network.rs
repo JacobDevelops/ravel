@@ -83,7 +83,11 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
     let identity = identity
         .parse()
         .map_err(|_| WireError::ContentId { text: identity })?;
-    let count = u8::try_from(reader.u32()?).unwrap_or(u8::MAX);
+    let count = reader.u32()?;
+    let count = u8::try_from(count).map_err(|_| WireError::TooLarge {
+        needed: usize::try_from(count).unwrap_or(usize::MAX),
+        limit: usize::from(u8::MAX),
+    })?;
     let damage = reader.u32()?.cast_signed();
     let carrier_ready = reader.bool()?;
     let cyclable = reader.bool()?;
@@ -644,13 +648,6 @@ pub fn readout_answer(
     )
 }
 
-/// The dimension-qualified position a readout answer is about, where a caller
-/// needs one.
-#[must_use]
-pub fn placed(dimension: &str, at: (i32, i32, i32)) -> Option<Placement> {
-    Placement::new(dimension, at).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,6 +655,23 @@ mod tests {
 
     fn stack(identity: &str) -> Stack {
         Stack::of(identity).expect("a legal identity")
+    }
+
+    #[test]
+    fn a_wire_stack_refuses_a_count_larger_than_a_byte() {
+        for count in [u32::from(u8::MAX) + 1, u32::MAX] {
+            let mut writer = PacketWriter::default();
+            writer.text("counterpart:beam");
+            writer.u32(count);
+            let bytes = writer.finish();
+            assert_eq!(
+                read_stack(&mut PacketReader::new(&bytes)),
+                Err(WireError::TooLarge {
+                    needed: usize::try_from(count).expect("a u32 fits the host"),
+                    limit: usize::from(u8::MAX),
+                })
+            );
+        }
     }
 
     #[test]
@@ -1127,11 +1141,5 @@ mod tests {
                 ("maximum".to_owned(), Reading::Amount(20)),
             ]
         );
-    }
-
-    #[test]
-    fn an_answer_is_qualified_by_a_dimension_when_a_caller_needs_one() {
-        assert!(placed("counterpart:deep", (0, 0, 0)).is_some());
-        assert!(placed("", (0, 0, 0)).is_none());
     }
 }

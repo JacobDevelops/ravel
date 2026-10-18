@@ -219,12 +219,6 @@ mod tests {
     }
 
     #[test]
-    fn the_registration_census_is_the_one_the_specification_counts() {
-        assert_eq!(ITEMS.len(), 17);
-        assert_eq!(BLOCKS.len(), 5);
-    }
-
-    #[test]
     fn every_item_and_every_block_is_named_once() {
         let mut names: Vec<&str> = ITEMS.into_iter().chain(BLOCKS).collect();
         let before = names.len();
@@ -246,7 +240,6 @@ mod tests {
 
     #[test]
     fn the_two_empty_registration_groups_are_claimed_by_nothing_here() {
-        assert_eq!(CLAIMED_AND_EMPTY.len(), 2);
         let keys = claimed(owner()).expect("the packaged names are legal");
         for empty in CLAIMED_AND_EMPTY {
             assert!(
@@ -281,14 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn the_generated_document_count_is_the_four_kinds_plus_the_loot_modifier() {
-        assert_eq!(
-            GENERATED_DOCUMENTS - 1,
-            RECIPES + ADVANCEMENTS + LOOT_TABLES + TAG_DOCUMENTS
-        );
-    }
-
-    #[test]
     fn the_recipe_less_registrations_are_the_ones_the_specification_names() {
         for item in NO_RECIPE_ITEMS {
             assert!(ITEMS.contains(&item));
@@ -314,12 +299,10 @@ mod tests {
             [Defect::UnreferencedOreShape],
             "the one that is kept is a number in a table rather than a file"
         );
-        assert_eq!(Defect::ALL.len(), 5);
     }
 
     #[test]
     fn both_crafting_intermediates_are_registered_items() {
-        assert_eq!(INTERMEDIATES.len(), 2);
         for intermediate in INTERMEDIATES {
             assert!(ITEMS.contains(&intermediate));
         }

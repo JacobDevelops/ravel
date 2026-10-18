@@ -36,11 +36,6 @@ pub enum Point {
     Stopped,
 }
 
-impl Point {
-    /// Both, in the order this enum declares them.
-    pub const ALL: [Self; 2] = [Self::Reloaded, Self::Stopped];
-}
-
 /// What a cache refuses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Refused {
@@ -60,6 +55,8 @@ impl fmt::Display for Refused {
         }
     }
 }
+
+impl std::error::Error for Refused {}
 
 /// One station cache key.
 ///
@@ -299,7 +296,6 @@ mod tests {
             .expect("a small table");
         caches.invalidate(Point::Stopped);
         assert!(caches.is_empty());
-        assert_eq!(Point::ALL.len(), 2);
     }
 
     #[test]

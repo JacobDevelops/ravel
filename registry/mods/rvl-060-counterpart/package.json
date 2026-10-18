@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "2bfe49a67f73c94a54179e9ccd3eec94b21eee0b6b48bd37e9aacc08625d222d"
+        "sha256": "ee320b9d19b7ef3115cba29cdb42dc06db23f2f9f55aa22051bb0faae8c3e92e"
       },
       {
         "path": "aliases.json",
@@ -55,11 +55,11 @@
       },
       {
         "path": "src/channel.rs",
-        "sha256": "25f917b98da951e1c5165921b1b7513951938bdf1f9c4d0d00efc3331286be22"
+        "sha256": "dda5c24e3bb62c072eb960c5bcdfda8223a1faf40b7aa55c108a4e4f5a171e97"
       },
       {
         "path": "src/colour.rs",
-        "sha256": "a34a2303f4460b883f7e9f26428df609b52468bc62e4bb248f8d6c1388307da6"
+        "sha256": "81c3556f5ab8b739696181e997d7aa61852980864ee97aacef23b3aeebb17337"
       },
       {
         "path": "src/data.rs",
@@ -67,7 +67,7 @@
       },
       {
         "path": "src/declaration.rs",
-        "sha256": "48190cc92821f5f300feb71976e6d9a7e314a5af65a32f7ca8e3cb7425b72176"
+        "sha256": "409c47999cbd3baa9c0ca855d02976cd94da82b21841b84edc93db19a188b565"
       },
       {
         "path": "src/dumps.rs",
@@ -75,11 +75,11 @@
       },
       {
         "path": "src/fluids.rs",
-        "sha256": "bd2c1fcb5f8b7f4f90ea4e8035524b4592b6c8ebc8c0e69c05191d275828a148"
+        "sha256": "f591c54ef7352e01311fa93705e4dc678f31843493dacbc8392488223cd72485"
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "28ae5b50d9415e1e698a6af62fe7a5188ef590253312b6f7be1d615ca0cf4d30"
+        "sha256": "330875b4025ef90738422acdf8b0f42a2c1f23ad9339fc05582eb1dfcd728e78"
       },
       {
         "path": "src/highlights/declarations.rs",
@@ -91,11 +91,11 @@
       },
       {
         "path": "src/matching.rs",
-        "sha256": "9af8ecb9abdc09698c01b020f3db0fdcfe79ee2d595ee35eef82ab79a943796d"
+        "sha256": "7553074844993fefa8ae31c042d88adac036085ca5b9f043edd89ed45e7299bd"
       },
       {
         "path": "src/presentation.rs",
-        "sha256": "69697e945909751e90753a7367d8d23936718a6a1ba6eb0eecc1f2cf3cabbcf7"
+        "sha256": "94afbbef6430b9b498eea03000eb75587b194d5c930cb1b0654a006e2ba40cc8"
       },
       {
         "path": "src/shapes.rs",
@@ -103,7 +103,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "f383c77cb536512d735db983eaa230eb0f197f076486a2a5155601da78aae582"
+        "sha256": "060e82a6a5bd743b61384f435e2414a7d373eab4d1c6fc6267b195d1e4613575"
       },
       {
         "path": "src/transport.rs",
@@ -111,7 +111,7 @@
       },
       {
         "path": "src/validators.rs",
-        "sha256": "abd431c958ea15d7478b5e252ff1f08ee44305c660ccb4a68f5b193178c881bc"
+        "sha256": "6e426c111fb431b4fe53a2860297ece63c2a3cabd4991bea7800c48a25fda5ca"
       },
       {
         "path": "src/validators/matching.rs",

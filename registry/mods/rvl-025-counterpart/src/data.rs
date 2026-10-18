@@ -361,8 +361,8 @@ impl Stack {
     /// # Errors
     ///
     /// Returns [`RecordRefused`] for a document that is not an object, for an
-    /// identity that is missing, empty, over-long or malformed, and for a component map
-    /// above [`MAX_COMPONENTS`] or carrying an over-long name.
+    /// identity that is missing, empty, over-long or malformed, malformed scalar
+    /// fields, or a component map above [`MAX_COMPONENTS`] or carrying an over-long name.
     pub fn from_saved(document: &JsonValue) -> Result<Self, RecordRefused> {
         let object = document
             .as_object()
@@ -397,35 +397,34 @@ impl Stack {
             }
         }
 
-        let flag = |name: &str| {
-            object
-                .get(name)
-                .and_then(JsonValue::as_bool)
-                .unwrap_or_default()
-        };
         Ok(Self {
             identity,
-            count: u8::try_from(object.get("count").and_then(JsonValue::as_u64).unwrap_or(1))
-                .unwrap_or(u8::MAX),
-            damage: object
-                .get("damage")
-                .and_then(JsonValue::as_i64)
-                .map_or(0, |value| {
-                    i32::try_from(value).unwrap_or(if value < 0 { i32::MIN } else { i32::MAX })
-                }),
+            count: saved_field(document, "count", 1, |value| {
+                value.as_u64().and_then(|value| u8::try_from(value).ok())
+            })?,
+            damage: saved_field(document, "damage", 0, |value| {
+                value.as_i64().and_then(|value| i32::try_from(value).ok())
+            })?,
             components,
-            carrier_ready: flag("carrier_ready"),
-            cyclable: flag("cyclable"),
-            upgradable: flag("upgradable"),
-            infusion: u32::try_from(
-                object
-                    .get("infusion")
-                    .and_then(JsonValue::as_u64)
-                    .unwrap_or_default(),
-            )
-            .unwrap_or(u32::MAX),
+            carrier_ready: saved_field(document, "carrier_ready", false, JsonValue::as_bool)?,
+            cyclable: saved_field(document, "cyclable", false, JsonValue::as_bool)?,
+            upgradable: saved_field(document, "upgradable", false, JsonValue::as_bool)?,
+            infusion: saved_field(document, "infusion", 0, |value| {
+                value.as_u64().and_then(|value| u32::try_from(value).ok())
+            })?,
         })
     }
+}
+
+pub(crate) fn saved_field<T>(
+    document: &JsonValue,
+    name: &str,
+    default: T,
+    read: impl FnOnce(&JsonValue) -> Option<T>,
+) -> Result<T, RecordRefused> {
+    document.get(name).map_or(Ok(default), |value| {
+        read(value).ok_or(RecordRefused::Shape { record: None })
+    })
 }
 
 /// A position qualified by the dimension it is in, which is what §11 stores.
@@ -651,20 +650,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saved_stack_numbers_saturate_at_the_destination_bounds() {
+    fn saved_stack_scalars_refuse_wrong_types_and_overflow() {
+        let original = Stack::of("counterpart:beam")
+            .expect("legal identity")
+            .to_saved();
+        for (name, value) in [
+            ("damage", ravel_sdk::json!("5")),
+            ("damage", ravel_sdk::json!(i64::MAX)),
+            ("damage", ravel_sdk::json!(i64::MIN)),
+            ("infusion", ravel_sdk::json!(-1)),
+            ("infusion", ravel_sdk::json!("1")),
+            ("infusion", ravel_sdk::json!(u64::MAX)),
+            ("carrier_ready", ravel_sdk::json!("true")),
+            ("cyclable", ravel_sdk::json!(1)),
+            ("upgradable", ravel_sdk::json!(null)),
+        ] {
+            let mut document = original.clone();
+            document[name] = value;
+            assert_eq!(
+                Stack::from_saved(&document),
+                Err(RecordRefused::Shape { record: None })
+            );
+        }
+        let minimal = ravel_sdk::json!({ "identity": "counterpart:beam" });
+        assert_eq!(
+            Stack::from_saved(&minimal).expect("absent defaults"),
+            Stack::of("counterpart:beam").expect("legal identity")
+        );
+    }
+
+    #[test]
+    fn saved_stack_counts_refuse_malformed_or_overflowing_values() {
         let mut document = Stack::of("counterpart:beam")
             .expect("legal identity")
             .to_saved();
-        document["count"] = ravel_sdk::json!(u64::MAX);
-        document["infusion"] = ravel_sdk::json!(u64::MAX);
-        document["damage"] = ravel_sdk::json!(i64::MAX);
-        let high = Stack::from_saved(&document).expect("numeric overflow saturates");
-        assert_eq!(high.count, u8::MAX);
-        assert_eq!(high.infusion, u32::MAX);
-        assert_eq!(high.damage, i32::MAX);
-        document["damage"] = ravel_sdk::json!(i64::MIN);
-        let low = Stack::from_saved(&document).expect("negative overflow saturates");
-        assert_eq!(low.damage, i32::MIN);
+        for count in [
+            ravel_sdk::json!(256),
+            ravel_sdk::json!(u64::MAX),
+            ravel_sdk::json!(-1),
+            ravel_sdk::json!("1"),
+            ravel_sdk::json!(null),
+        ] {
+            document["count"] = count;
+            assert_eq!(
+                Stack::from_saved(&document),
+                Err(RecordRefused::Shape { record: None })
+            );
+        }
+        for count in [0, u8::MAX] {
+            document["count"] = ravel_sdk::json!(count);
+            assert_eq!(
+                Stack::from_saved(&document).expect("a byte count").count,
+                count
+            );
+        }
+        document.as_object_mut().expect("an object").remove("count");
+        assert_eq!(
+            Stack::from_saved(&document).expect("an absent count").count,
+            1
+        );
     }
 
     #[test]

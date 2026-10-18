@@ -20,36 +20,6 @@ use core::fmt;
 
 mod selection;
 
-/// The twenty-two handlers, in the order they are tried.
-///
-/// The order is grammar. `.length` is read as the length form because the length
-/// handler is tried before the named-child one, and `!=` is read as not-equal
-/// because that handler is tried before logical not.
-pub const HANDLERS: [&str; 22] = [
-    "root",
-    "length",
-    "named child",
-    "named child in bracket form",
-    "parent",
-    "all children",
-    "current node",
-    "list element by position",
-    "list slice",
-    "union of expressions",
-    "parenthesised grouping",
-    "less-than",
-    "less-than-or-equal",
-    "greater-than",
-    "greater-than-or-equal",
-    "not-equal",
-    "equal",
-    "string equality",
-    "logical and",
-    "logical or",
-    "logical not",
-    "filter expression",
-];
-
 /// The longest query this parser reads.
 pub const MAX_LENGTH: usize = 4096;
 
@@ -348,6 +318,8 @@ impl fmt::Display for EvaluateError {
     }
 }
 
+impl std::error::Error for EvaluateError {}
+
 impl fmt::Display for ParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -375,6 +347,8 @@ impl fmt::Display for ParseError {
         }
     }
 }
+
+impl std::error::Error for ParseError {}
 
 fn at_path<'document>(
     document: &'document JsonValue,
@@ -689,17 +663,6 @@ mod tests {
             "held": { "count": 7, "name": "one" },
             "rows": [{ "count": 1 }, { "count": 5 }, { "count": 9 }]
         })
-    }
-
-    #[test]
-    fn the_published_handler_list_is_twenty_two_long_and_in_the_stated_order() {
-        assert_eq!(HANDLERS.len(), 22);
-        assert_eq!(HANDLERS[0], "root");
-        assert_eq!(HANDLERS[1], "length");
-        assert_eq!(HANDLERS[2], "named child");
-        assert_eq!(HANDLERS[15], "not-equal");
-        assert_eq!(HANDLERS[20], "logical not");
-        assert_eq!(HANDLERS[21], "filter expression");
     }
 
     #[test]

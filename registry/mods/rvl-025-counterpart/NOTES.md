@@ -18,6 +18,22 @@ in `Modes::verdict`; the saved `exclusion` boolean and the `Modes` debug display
 retain their original form. Machine arithmetic retains primitive single-precision
 conversion semantics, and signed packet fields retain their original bit patterns.
 
+Configuration reads return missing-key and wrong-kind errors rather than silently
+substituting shipped defaults, including integer values outside the reader's range.
+Saved stack scalar fields and match-rule flags default only when absent and refuse
+present malformed values; saved and wire stack counts refuse overflow instead of
+clamping. Saved carrier selections must name a valid slot, rather than being clamped.
+Both declared server commands reject client-side invocations before reading or
+mutating held state. Surface, matching, pattern, and carrier errors preserve wrapped
+refusals through `Error::source`.
+Surface registration owners are validated but self-asserted `ModId`s: `ServiceRequest`
+does not authenticate the caller. Factory kinds, channel identifiers, and dimension
+identifiers are validated `ContentId`s whose namespace must match the supplied owner.
+Missing, wrong-typed, malformed, and foreign-namespace identifiers are refused before
+mutation; an omitted or empty owner cannot claim an empty-namespace factory. Optional
+module and dimension scalar fields default only when absent; malformed present fields
+are refused without registration or replacement of an existing dimension.
+
 ## What each section became
 
 | Section | Here | Where |
@@ -143,8 +159,8 @@ conversion semantics, and signed packet fields retain their original bit pattern
   rather than a behaviour.
 - **The four record decoders are bounded (§4, §8, §9, §10).** A saved document is a file an operator
   edits by hand and a payload is bytes a client sent, so every list is bounded before it is
-  allocated, every name is bounded before it is kept, and a carrier's stored selection is clamped
-  into its six slots. The ceilings are declared numbers to raise, far above any store this package
+  allocated, every name is bounded before it is kept, and a carrier's stored selection must
+  name one of its six slots. The ceilings are declared numbers to raise, far above any store this package
   builds. Bounding by what a payload claims rather than by a fixed ceiling was rejected: a claimed
   count is the attacker's number.
 - **The infusion factor is read out of §3, not out of the section §7 cites (§7).** §7 says the

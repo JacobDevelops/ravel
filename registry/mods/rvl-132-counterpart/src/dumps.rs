@@ -79,7 +79,7 @@ pub fn storage() -> String {
             rendered,
             "{:?}\t{}\t{}\t{}",
             adapter.shape,
-            adapter.class.name(),
+            adapter.class.as_str(),
             adapter.shape.kind(),
             adapter.shape.slotted()
         )

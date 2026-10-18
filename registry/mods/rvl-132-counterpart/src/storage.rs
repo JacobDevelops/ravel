@@ -51,7 +51,7 @@ impl Class {
 
     /// What the class is called.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Block => "block",
             Self::Item => "item",
@@ -268,6 +268,8 @@ impl fmt::Display for Refused {
         }
     }
 }
+
+impl std::error::Error for Refused {}
 
 /// A store that holds nothing and accepts nothing.
 ///
@@ -1092,8 +1094,6 @@ mod tests {
     fn twelve_adapters_are_installed_four_shapes_on_each_of_three_classes() {
         let table = table();
         assert_eq!(table.len(), 12);
-        assert_eq!(Shape::ALL.len(), 4);
-        assert_eq!(Class::ALL.len(), 3);
         for shape in Shape::ALL {
             for class in Class::ALL {
                 assert!(installed(shape, class), "{shape:?} on {class:?}");
@@ -1113,7 +1113,7 @@ mod tests {
         assert_eq!(Shape::Charge.kind(), SCALAR);
         assert!(Shape::SlottedItem.slotted());
         assert!(!Shape::SlotlessItem.slotted());
-        assert_eq!(Class::Block.name(), "block");
+        assert_eq!(Class::Block.as_str(), "block");
     }
 
     #[test]

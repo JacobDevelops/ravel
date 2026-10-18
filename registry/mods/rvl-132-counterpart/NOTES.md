@@ -14,6 +14,14 @@ expressed through Ravel rather than rebuilt.
 Station grids and brewing simulations share the ingredient-kind check in `src/recipes.rs`.
 Both reject mixed kinds before applying their distinct empty-input and count policies.
 
+Settings reads preserve typed configuration failures through `settings::Refused::Value`; a missing
+declared key is refused rather than replaced with a default. The empty content declaration is
+infallible. Component nesting is checked by `Value::verify_depth`, independently of quantity
+ceilings. Held-item identities use `ContentId`, and error wrappers expose their underlying sources.
+Fixed-array length assertions and dead test-only lifecycle inventories have been removed.
+`storage::Class` and `forms::Serialiser` expose enum spellings through `as_str`; the former `name`
+accessors are removed, including from report generation and serialiser installation.
+
 ## The interface vocabulary is RVL-210's, and is consumed rather than rebuilt
 
 The wave decided that the interface vocabulary §5 lists is owned by RVL-210's counterpart, which
@@ -413,11 +421,11 @@ tried again, a reload invalidating both where the original invalidates neither, 
 same, and a fresh set being empty.
 
 The settings: the document parsing and naming five settings in order, neither outbound setting being a
-key under any of five spellings, four of six plus one added, the three server-scoped ones declared
-`common` and the diagnostic one `client`, the shipped values, an empty list, a list trimmed sorted and
-deduplicated, a list refused past either ceiling and admitted at the name ceiling, the comparator
-rebuilt from the values in force, and the closure rebuilt from the cap in force including two out-of-
-range caps falling back.
+key under any of five spellings, missing declared keys retaining typed errors and their sources,
+the three server-scoped settings declared `common` and the diagnostic one `client`, resolved defaults
+agreeing with the shipped values, an empty list, a list trimmed sorted and deduplicated, a list refused
+past either ceiling and admitted at the name ceiling, the comparator rebuilt from the values in force,
+and the closure rebuilt from the cap in force including two out-of-range caps falling back.
 
 The entry: claiming nothing at the registration barrier, construction installing the two serialisers
 and nothing else, registering the kinds before the serialisers refused, the adapter table before
@@ -425,13 +433,11 @@ common setup refused, registration registering three kinds and wiring them and i
 adapters, a dependent's kind wired too, the vanilla bundle installed and the registry baked, the
 third-party bundle making 47, a resolved ignore list reaching both data-carrying kinds, a resource
 reload invalidating every cache, a tick invalidating nothing, a server stopping invalidating
-everything, the settings document declared, the lifecycle steps kept in order, and three distinct late
-lifecycle points.
+everything, the settings document declared, and the lifecycle steps kept in order.
 
-The census: the widening groups adding up to fifteen two ways, the shipped sources against the harness
-and companions, the shipped resources, four blocked values and one blocked placement, the recount
-naming a set in both directions with no entry on two sides at once, four dependents observing five
-things, and what this package carries agreeing with what the census counts.
+The census: the widening groups adding up to fifteen, four blocked values and one blocked placement,
+the recount naming a set in both directions with no entry on two sides at once, and four dependents
+observing five things.
 
 The generated documents: `generated/capabilities.txt` is the vanilla bundle's 46 attachments as
 `capabilities::vanilla()` tables them, `generated/storage.txt` is the twelve adapters as
@@ -443,4 +449,4 @@ bytes in the package, so a table that changes without its document fails. Settin
 `RAVEL_REGENERATE_GENERATED` makes that test write the documents instead of comparing them, which is
 how they are produced.
 
-`checks/verify-counterpart-build.sh` runs them: 278 tests.
+`checks/verify-counterpart-build.sh` runs the counterpart tests.

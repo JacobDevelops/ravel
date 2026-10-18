@@ -141,6 +141,22 @@ impl fmt::Display for TagError {
     }
 }
 
+impl std::error::Error for TagError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Data(error) => Some(error),
+            Self::Identifier { error, .. } => Some(error),
+            Self::Shape { .. }
+            | Self::Missing { .. }
+            | Self::Range { .. }
+            | Self::TooDeep { .. }
+            | Self::TooMany { .. }
+            | Self::NoEscape { .. }
+            | Self::NoEscapeDeclared { .. } => None,
+        }
+    }
+}
+
 impl From<data::Refused> for TagError {
     fn from(refused: data::Refused) -> Self {
         Self::Data(refused)
@@ -823,7 +839,7 @@ impl Serialiser {
 
     /// The name it is installed under.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Candidate => "candidate",
             Self::Set => "candidate_set",
@@ -917,7 +933,7 @@ impl Serialisers {
     /// twice.
     pub fn install_own(&mut self) -> Result<(), TagError> {
         for serialiser in Serialiser::ALL {
-            if !self.file(serialiser.name(), Some(serialiser)) {
+            if !self.file(serialiser.as_str(), Some(serialiser)) {
                 return Err(TagError::Shape {
                     expected: "a table this package has not already contributed to",
                 });
@@ -1034,6 +1050,25 @@ mod tests {
     use super::*;
     use crate::kinds::{ConditionSet, Ingredient, Scalar, Stackable};
     use rvl_210_counterpart::quantity::QuantityKind;
+
+    #[test]
+    fn wrapped_tag_errors_expose_their_typed_sources() {
+        use std::error::Error;
+        let data = TagError::Data(data::Refused::TooDeep { limit: 3 });
+        assert!(data.source().expect("data source").is::<data::Refused>());
+        let value = "bare".to_owned();
+        let error = value
+            .parse::<ravel_sdk::content::ContentId>()
+            .expect_err("an explicit namespace is required");
+        let identifier = TagError::Identifier { value, error };
+        assert!(
+            identifier
+                .source()
+                .expect("identity source")
+                .is::<ContentIdError>()
+        );
+        assert!(TagError::Shape { expected: "a tag" }.source().is_none());
+    }
 
     fn round_trip(tag: &Tag) -> Tag {
         Tag::from_json(&tag.to_json()).expect("a tag this module wrote")

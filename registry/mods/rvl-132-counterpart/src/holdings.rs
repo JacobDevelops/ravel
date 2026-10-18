@@ -51,6 +51,8 @@ impl fmt::Display for Refused {
     }
 }
 
+impl std::error::Error for Refused {}
+
 /// The list an item holds, which is the whole of what either store is.
 ///
 /// Every single-slot operation reads the list out, mutates it and writes it

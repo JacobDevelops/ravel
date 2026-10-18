@@ -275,11 +275,34 @@ impl std::fmt::Display for PatternRefused {
     }
 }
 
-impl std::error::Error for PatternRefused {}
+impl std::error::Error for PatternRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Record(refused) => Some(refused),
+            Self::Position { .. } | Self::Length { .. } => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wrapped_record_refusal_remains_the_error_source() {
+        use std::error::Error;
+
+        let record = RecordRefused::Shape { record: None };
+        let refused = PatternRefused::Record(record.clone());
+        assert_eq!(
+            refused
+                .source()
+                .and_then(|source| source.downcast_ref::<RecordRefused>()),
+            Some(&record)
+        );
+        assert!(PatternRefused::Position { index: 0 }.source().is_none());
+        assert!(PatternRefused::Length { found: 0 }.source().is_none());
+    }
 
     fn stack(identity: &str) -> Stack {
         Stack::of(identity).expect("a legal identity")
@@ -396,7 +419,6 @@ mod tests {
 
         assert_eq!(card.all_inputs().len(), INPUTS);
         assert_eq!(card.small_grid_ingredients().len(), SMALL * SMALL);
-        assert_eq!(card.small_grid_stacks().len(), SMALL * SMALL);
         assert!(
             card.all_inputs()[3].is_some(),
             "the whole-pattern readback sees position three"

@@ -26,9 +26,6 @@ pub enum TargetClass {
 }
 
 impl TargetClass {
-    /// All four, in the order the registry names them.
-    pub const ALL: [Self; 4] = [Self::Block, Self::BlockEntity, Self::Entity, Self::Item];
-
     /// The name the listener for this class is installed under.
     #[must_use]
     pub const fn listener(self) -> &'static str {
@@ -111,6 +108,8 @@ impl fmt::Display for Refused {
         }
     }
 }
+
+impl std::error::Error for Refused {}
 
 /// The most attachments the registry holds.
 pub const MAX_ATTACHMENTS: usize = 4096;
@@ -220,7 +219,12 @@ mod tests {
     fn a_listener_is_installed_on_the_first_registration_of_its_class_and_not_before() {
         let mut registry = Registry::new();
         assert_eq!(registry.listeners().len(), 0);
-        for class in TargetClass::ALL {
+        for class in [
+            TargetClass::Block,
+            TargetClass::BlockEntity,
+            TargetClass::Entity,
+            TargetClass::Item,
+        ] {
             assert!(!registry.listener_installed(class));
         }
         registry
@@ -238,7 +242,12 @@ mod tests {
     #[test]
     fn each_of_the_four_classes_installs_its_own_listener_once() {
         let mut registry = Registry::new();
-        for class in TargetClass::ALL {
+        for class in [
+            TargetClass::Block,
+            TargetClass::BlockEntity,
+            TargetClass::Entity,
+            TargetClass::Item,
+        ] {
             for name in ["one", "two"] {
                 registry
                     .register(class, Address::Specific(name.to_owned()), "store")
@@ -246,11 +255,12 @@ mod tests {
             }
         }
         assert_eq!(registry.listeners().len(), 4);
-        let mut named: Vec<&str> = TargetClass::ALL
-            .iter()
-            .map(|class| class.listener())
-            .collect();
-        named.sort_unstable();
+        let named = vec![
+            "block_capabilities",
+            "block_entity_capabilities",
+            "entity_capabilities",
+            "item_capabilities",
+        ];
         let mut installed = registry.listeners();
         installed.sort_unstable();
         assert_eq!(installed, named);

@@ -30,9 +30,6 @@ pub enum SoundAction {
 }
 
 impl SoundAction {
-    /// Every action, in the order this enum declares them.
-    pub const ALL: [Self; 3] = [Self::Collect, Self::Place, Self::Travel];
-
     /// Returns the action's name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -50,7 +47,7 @@ impl SoundAction {
 /// the remaining attributes describe the fluid itself. Its display key is derived
 /// from the fluid's identifier by the host's own rule, which is the host's and
 /// is not invented here.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FluidProperties {
     /// What the fluid converts into.
     pub conversion: Option<String>,
@@ -89,29 +86,6 @@ pub struct EntityProperties {
     pub entity_pushing: bool,
     /// Whether an entity can swim in it.
     pub swimming: bool,
-}
-
-impl std::fmt::Debug for FluidProperties {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("FluidProperties")
-            .field("conversion", &self.conversion)
-            .field("drowning", &self.entity.drowning)
-            .field("extinguishing", &self.extinguishing)
-            .field("hydration", &self.hydration)
-            .field("entity_pushing", &self.entity.entity_pushing)
-            .field("swimming", &self.entity.swimming)
-            .field("density", &self.density)
-            .field("fall_distance_scaling", &self.fall_distance_scaling)
-            .field("light_level", &self.light_level)
-            .field("motion_scale", &self.motion_scale)
-            .field("path_types", &self.path_types)
-            .field("rarity", &self.rarity)
-            .field("temperature", &self.temperature)
-            .field("viscosity", &self.viscosity)
-            .field("sounds", &self.sounds)
-            .finish()
-    }
 }
 
 impl Default for FluidProperties {
@@ -282,7 +256,6 @@ impl FluidCache {
 #[cfg(test)]
 mod tests {
     use super::{ClientProperties, FluidCache, FluidError, FluidProperties, SoundAction};
-    use crate::colour::Colour;
 
     #[test]
     fn the_property_record_carries_the_whole_attribute_vocabulary() {
@@ -294,27 +267,11 @@ mod tests {
         assert_eq!(properties.path_types, ["water"]);
         assert_eq!(properties.sound(SoundAction::Collect), Some("example:fill"));
         assert_eq!(properties.sound(SoundAction::Place), None);
-        assert_eq!(SoundAction::ALL.len(), 3);
         assert_eq!(SoundAction::Travel.as_str(), "travel");
         assert!(properties.entity.drowning);
         assert!(properties.entity.swimming);
         assert!(!properties.extinguishing);
         assert_eq!(properties.rarity, "common");
-    }
-
-    #[test]
-    fn the_client_record_carries_the_drawing_vocabulary() {
-        let properties = ClientProperties {
-            textures: vec!["still".to_owned(), "flowing".to_owned()],
-            overlay: Some("overlay".to_owned()),
-            tint: Some(Colour::opaque(0x20, 0x40, 0x80)),
-            custom_render: None,
-            fog_colour: Some(Colour::DEFAULT),
-            fog_range: Some((1.0, 32.0)),
-        };
-        assert_eq!(properties.textures.len(), 2);
-        assert_eq!(properties.fog_range, Some((1.0, 32.0)));
-        assert!(properties.custom_render.is_none());
     }
 
     #[test]

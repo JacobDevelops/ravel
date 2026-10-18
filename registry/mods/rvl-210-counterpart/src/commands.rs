@@ -98,6 +98,8 @@ impl fmt::Display for Refused {
     }
 }
 
+impl std::error::Error for Refused {}
+
 /// The most arguments each subcommand takes.
 ///
 /// The settings subcommand takes a property name and optionally a value, so it
@@ -141,7 +143,6 @@ mod tests {
 
     #[test]
     fn the_tree_carries_seven_subcommands_named_once_each() {
-        assert_eq!(SUBCOMMANDS.len(), 7);
         let mut names: Vec<&str> = SUBCOMMANDS.iter().map(|(name, _)| *name).collect();
         names.sort_unstable();
         names.dedup();

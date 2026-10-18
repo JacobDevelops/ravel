@@ -16,8 +16,8 @@ files go.
 **This package owns the interface vocabulary of §10.** §18 raised it as the thing blocking both this
 counterpart and RVL-132's, and the wave decision settles it here: `quantity::QuantityKind`,
 `quantity::Conditions`, `quantity::Partitioned`, `storage::Store` and `storage::SlottedStore` are
-declared in this crate and re-exported at its root. §17's "what dependents need" list is the crate
-root's public surface.
+declared in this crate. Dependents consume these module interfaces; selected types are also
+re-exported at the crate root for convenience.
 
 ## What each section became
 
@@ -25,7 +25,7 @@ root's public surface.
 | --- | --- | --- |
 | §2 side, lifecycle and the two table halves | implemented | `src/lib.rs` |
 | §2 the client-only crafting helper tables as a runtime side test | implemented | `src/lib.rs` |
-| §2 the three advancement-trigger hooks | implemented as declared data | `src/lib.rs` |
+| §2 the three advancement-trigger hooks | implemented as declared data; event hooks not installed | `src/declarations.rs` |
 | §2 the load-complete latch | implemented | `src/lib.rs` |
 | §3 the two settings, their scope and their grouping | implemented | `src/settings.rs` |
 | §4 the sixteen declared entries and the fifteen that register | implemented | `src/declarations.rs` |
@@ -39,7 +39,7 @@ root's public surface.
 | §6 the field-ordering rule | implemented | `src/transport.rs` |
 | §6 the type-to-encoder table and both halves of its loading | implemented | `src/transport.rs` |
 | §6 the thirteen message kinds and the position base | implemented as data | `src/transport.rs` |
-| §6 the three delivery targets and the fifty-block radius | implemented | `src/transport.rs` |
+| §6 the three delivery targets and caller-selected radius | implemented | `src/transport.rs` |
 | §6 the portable encoder list the original enumerates | declarable only; four kinds, named here rather than transcribed | `src/transport.rs` |
 | §7 the value channel and all seven readers | implemented | `src/channel.rs` |
 | §8 the slot-range vocabulary and shift-click transfer | implemented | `src/menus.rs` |
@@ -54,7 +54,7 @@ root's public surface.
 | §10 the storage interfaces, slotted and slotless | declared here and implemented by dependents | `src/storage.rs` |
 | §10 the move and its conditional raise | implemented | `src/storage.rs` |
 | §10 the difference tracker | implemented | `src/storage.rs` |
-| §11 the twenty-two handlers in the published order | implemented, with the declared change | `src/query/selection.rs` |
+| §11 expression parsing and precedence | implemented, with the declared change | `src/query/selection.rs` |
 | §11 evaluation as a set of matches | implemented | `src/query.rs` |
 | §11 navigation over the parsed form | implemented | `src/query.rs` |
 | §12 the detector, its constraints and its failure detail | implemented, with the declared change | `src/shapes.rs` |
@@ -92,9 +92,8 @@ root's public surface.
 - **Neither half of §9 is reproduced.** The five hard-coded account identifiers are other people's
   identity and the server-start fetch is unannounced outbound network access from a library a pack
   author installed for its collection types. The specification states this divergence and its reason,
-  and this package carries neither. What survives is the delivery shape the effect used:
-  `transport::Target::Nearby` and `Target::COSMETIC_RADIUS`, so a server owner who wants the effect
-  has the mechanism without the list.
+  and this package carries neither. The generic `transport::Target::Nearby` delivery shape
+  supports a caller-selected radius without carrying the account list or defining an effect.
 - **A runtime settings change is not written back to its file (§5.3).** The specification records the
   write-back path as unread. `settings::Framework::write` changes the in-memory value, which is the
   behaviour that was read, and writes no file. A counterpart that guessed would be writing a file on a
@@ -214,7 +213,7 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
 
 ## Evidence
 
-179 inline tests, and every rule with a number, an ordering, a refusal or a format has one: both
+Inline tests cover the rules with a number, an ordering, a refusal or a format: both
 settings client-scoped under one grouping with both defaults off, the three-value scope vocabulary
 and which side resolves each, a runtime write taking effect and a non-changeable setting refusing
 one, a write of the wrong kind refused, the thirty-four kind count with each named once, a kind
@@ -227,8 +226,8 @@ order, a round trip through it, two peers in different orders reading different 
 name and no framing in the bytes, every truncation of a message refused, a wrong-kind value refused,
 the portable codecs present before common setup and the platform ones absent, a second platform load
 answering false, thirteen message kinds with the position base outside them, the position base's
-three fields following a dependent's own, all three delivery targets including fifty blocks exactly
-and 50.1 outside it, a non-finite radius reaching nobody, all seven channel readers on what was
+three fields following a dependent's own, all three delivery targets including an inclusive nearby
+radius boundary and a same-level restriction, a non-finite radius reaching nobody, all seven channel readers on what was
 sent, the numeric and truth readers collapsing absent and wrong-kind, the text and list readers
 keeping them apart, the raw and single display-text readers collapsing them, the allocator stopping
 at its limit, a send for an identifier past that limit refused, the slot roles and every shift-click
@@ -247,7 +246,7 @@ changing nothing, a slotted result naming its slot and a slotted store answering
 insertion went through where the slotless form answers only the amount, the inconsistency naming
 what the simulation promised where a concurrent drain made the real extraction short, a difference
 folding repeated entries and reporting a partial change as an amount, a tank refusing a second
-instance and bounded by its capacity, the twenty-two handlers in the published order, `.length`
+instance and bounded by its capacity, `.length`
 beating a named child and the bracket form reaching a child really called that, `!=` beating logical
 not and logical not still reachable, every navigation form, a negative element and one past either
 end, a slice past the end and a backwards slice, a union reporting each node once, every comparison
@@ -280,7 +279,7 @@ not. The command tree as the whole of the barrier claim is covered by the real-l
 tests in `../../../tests/conformance/tests/integration/registry_lifecycle.rs`, alone and alongside
 every counterpart on each side.
 
-One of the 179 is `dumps::tests::the_generated_documents_regenerate_byte_for_byte`, which is
+`dumps::tests::the_generated_documents_regenerate_byte_for_byte` is
 not about a rule but about the three documents under `generated/`. `dumps::documents` renders them
 out of the functions that already derive their content — `declarations::own_declarations` with its
 registration order and per-side companion lists for `generated/census.json`, `commands::SUBCOMMANDS`
@@ -293,6 +292,20 @@ which is the only way they are produced: there is no binary and no build script.
 transcribed: `generated/census.json`'s registration list is the sixteen declared entries regrouped
 by the vocabulary rather than the declaration list retyped, and every count in it is a `len()` of
 what the crate produced rather than a number written beside it.
+
+Settings reads return typed missing-key and wrong-kind errors. Packaged defaults resolve to
+`Settings::default()`.
+Every runtime framework write checks the caller's side against the declared scope and returns
+`ChangeRefused::WrongSide` without changing the value when the scope does not apply. This policy
+also applies to direct writes through `framework_mut()`, not just the settings command.
+
+Saved counter payloads must contain a counters object. Missing or wrongly typed tables are refused
+rather than accepted as an empty set, which would restart previously allocated identifiers.
+All package error types implement `std::error::Error`; transport wire refusals expose their cause.
+Packet deliveries must name one of `transport::MESSAGE_KINDS`; undeclared packet paths are refused
+without incrementing the delivery count. The loader routes packets to the owner of their identifier,
+so a dependent's own contracts are handled by that dependent.
+After saving a store, its owner can acknowledge the saved state with `clear_dirty()`.
 
 ## Host blockers
 

@@ -744,7 +744,20 @@ impl std::fmt::Display for ValidatorError {
     }
 }
 
-impl std::error::Error for ValidatorError {}
+impl std::error::Error for ValidatorError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Pattern(error) => Some(error),
+            Self::NotAnObject
+            | Self::FamilyNotNamed
+            | Self::UnknownKind(_)
+            | Self::FieldMissing(_)
+            | Self::WrongShape(_)
+            | Self::TooDeep(_)
+            | Self::TooWide(_) => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -757,6 +770,17 @@ mod tests {
         VocabularyUnavailable,
     };
     use crate::data::Tag;
+
+    #[test]
+    fn a_pattern_refusal_exposes_its_typed_source() {
+        let refused = ValidatorError::Pattern(PatternError::Unsupported('('));
+        let source = std::error::Error::source(&refused).expect("the wrapped pattern failure");
+        assert_eq!(
+            source.downcast_ref::<PatternError>(),
+            Some(&PatternError::Unsupported('('))
+        );
+        assert!(std::error::Error::source(&ValidatorError::NotAnObject).is_none());
+    }
 
     #[test]
     fn numeric_width_conversion_keeps_truncation_saturation_and_ieee_equality() {
@@ -782,7 +806,6 @@ mod tests {
 
     #[test]
     fn eleven_kinds_sit_in_four_families_with_the_counts_the_specification_states() {
-        assert_eq!(KindName::ALL.len(), 11);
         let count = |family: Family| {
             KindName::ALL
                 .into_iter()

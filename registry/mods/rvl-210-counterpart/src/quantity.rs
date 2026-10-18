@@ -123,6 +123,8 @@ impl fmt::Display for KindError {
     }
 }
 
+impl std::error::Error for KindError {}
+
 /// A thing that can be counted, matched and stored.
 ///
 /// Items, fluid volumes and energy are the three the original's family uses and

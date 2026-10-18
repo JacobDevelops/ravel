@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "af1ce56984850b56e644e19ce16f9f2011a4cab628fe965fabbaf58cbbbffb3d"
+        "sha256": "cf9fa541bc9cc963d7244583947651fad5296d1e1720bd3fbd0ea7657af27da7"
       },
       {
         "path": "aliases.json",
@@ -63,39 +63,39 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "35ebd1f336658602cfe2ae994c5eadd31378c5688973da751449e2aa4843de3f"
+        "sha256": "ec5cf4b30a615f1ded9acbff9c1c15bcd9deb4160168473fd5190184d072b7bd"
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "54a4b6a4010409fd3c3f990115c2dbc9e11aba7f1b5b3742d48ac34b244c9520"
+        "sha256": "f24d69db6dc42bc084f71b32a5fb6aae37d1d86a1a4a241484d987ae1c95357a"
       },
       {
         "path": "src/census.rs",
-        "sha256": "24c7c6b170b03ae3b46f018808305b763ef63a0236afe8ab709158080d655c6b"
+        "sha256": "7103dbc15ad15132ba714208011cbd76a5cc8cfd4fef38efb058e6a34862e526"
       },
       {
         "path": "src/data.rs",
-        "sha256": "974d4828183a0be9631c192f7d0b9af4931da19e080aaa651e8223e88d8456df"
+        "sha256": "4621a751d109046a96b475b0a13143f20ae03cbfe47a314f3829aaa476a5ce3f"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "075148cd9eb9bc867c09ba8f363f56afca4e85ad59c914674a0682205bad73e3"
+        "sha256": "8e9090a487cee6d9792ed6d685e5a90814a8b5b3b07f11edefe38413083f8878"
       },
       {
         "path": "src/forms.rs",
-        "sha256": "d0c260ca07aeda23cb55536cb9e0dffa5ec6d07cdffbac6ea8be87842cdf1b8c"
+        "sha256": "6502d5b6788c6c669d1de355139aed9ef37ebb543178c1c17d4df87d454c8233"
       },
       {
         "path": "src/holdings.rs",
-        "sha256": "f214805fd174ed02c0efade4e07f24bae3c0c6118af85ccea94e6c9921ad3207"
+        "sha256": "e4aed5255bf574dc2a71e1b38f60809e05e6d8729a0d758bee9a10618b34c5d9"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "4b78ac231491f2e97e34f4e3a0f56891f05bb8a6a0b89d265e526d4394e67300"
+        "sha256": "fb397aab207104f100ad2b0ac64dc63d1caf2ecf1099ad18fddcb9f55eb439c3"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "3d5a1addbf9ded2792cfb2e2cc8a155f114d4a4dad66298b37eac320e95e3a86"
+        "sha256": "ea9aca72ba0017a666a14aa1528c6d2dbffae79640a9c272e2827f3eb96f8a75"
       },
       {
         "path": "src/readings.rs",
@@ -103,7 +103,7 @@
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "0e80b5d0c681e1f75f15b750228081477f7950a309e85a29d705920c3443b879"
+        "sha256": "d3ff401f75756c7d293a1a586e6cf30a8cfa69544ff7dcf30626bad0963e75a8"
       },
       {
         "path": "src/recipes/selection.rs",
@@ -111,11 +111,11 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "9d481566852ab3d9d58fa3f5ae5cd04e665ba18500d3944a4745e9afa1b4464e"
+        "sha256": "13e47b23a3b8fb9c764eb2b65f8157300ead8450c2e56531f3a50eb48565d8a1"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "a740e89b03333c07efc4b41b795d1fbbcc5b1a2336886fbe37c4d29272945e35"
+        "sha256": "8d9042a9484fea6a71367fbaf85b7eb866e659718c544f728cd26cad4bf68e04"
       }
     ]
   },

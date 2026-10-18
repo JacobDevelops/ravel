@@ -135,6 +135,8 @@ impl fmt::Display for Reason {
     }
 }
 
+impl std::error::Error for Reason {}
+
 /// A region that satisfied every constraint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Region {

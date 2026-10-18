@@ -348,6 +348,8 @@ impl std::fmt::Display for Recovery {
     }
 }
 
+impl std::error::Error for Recovery {}
+
 /// What a read produced.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Loaded {

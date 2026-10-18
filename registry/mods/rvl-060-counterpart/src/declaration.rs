@@ -45,7 +45,7 @@ pub enum Special {
 }
 
 impl Special {
-    /// Every special kind, which is one.
+    /// Every special kind available to name lookup.
     pub const ALL: [Self; 1] = [Self::Fluid];
 
     /// Returns the name this kind is asked for by.
@@ -128,7 +128,9 @@ pub enum RegistryError {
     /// The object was asked for before registration ran.
     NotRegistered(String),
     /// The declaration itself was refused.
-    Declaration(String),
+    Declaration(ContentDeclarationError),
+    /// A special declaration's identity was refused.
+    Identity(ContentIdError),
     /// The collection already holds [`MAX_ENTRIES`].
     Full(usize),
     /// The collection already holds [`MAX_GROUPS`] groups.
@@ -148,6 +150,7 @@ impl std::fmt::Display for RegistryError {
                 write!(formatter, "`{key}` was asked for before registration ran")
             }
             Self::Declaration(detail) => write!(formatter, "{detail}"),
+            Self::Identity(error) => write!(formatter, "{error}"),
             Self::Full(ceiling) => write!(formatter, "a namespace holds {ceiling} entries already"),
             Self::TooManyGroups(ceiling) => {
                 write!(formatter, "a namespace holds {ceiling} groups already")
@@ -162,7 +165,19 @@ impl std::fmt::Display for RegistryError {
     }
 }
 
-impl std::error::Error for RegistryError {}
+impl std::error::Error for RegistryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Declaration(error) => Some(error),
+            Self::Identity(error) => Some(error),
+            Self::NotSpecial(_)
+            | Self::NotRegistered(_)
+            | Self::Full(_)
+            | Self::TooManyGroups(_)
+            | Self::AlreadyInitialised => None,
+        }
+    }
+}
 
 /// A namespace-scoped collection of declarations.
 ///
@@ -203,12 +218,10 @@ impl Registry {
         if self.handles.len() >= MAX_ENTRIES {
             return Err(RegistryError::Full(MAX_ENTRIES));
         }
-        let key =
-            self.declaration
-                .entry(kind, path)
-                .map_err(|error: ContentDeclarationError| {
-                    RegistryError::Declaration(error.to_string())
-                })?;
+        let key = self
+            .declaration
+            .entry(kind, path)
+            .map_err(RegistryError::Declaration)?;
         let handle = Handle { key };
         self.handles.push(handle.clone());
         Ok(handle)
@@ -282,7 +295,7 @@ impl Registry {
     ///
     /// Returns [`RegistryError::NotSpecial`] for any name other than the fluid
     /// one, which is the refusal §4 says to keep, and
-    /// [`RegistryError::Declaration`] for a path that is not a legal identifier.
+    /// [`RegistryError::Identity`] for a path that is not a legal identifier.
     pub fn declare_special(
         &self,
         kind_name: &str,
@@ -290,7 +303,7 @@ impl Registry {
     ) -> Result<(Special, ContentId), RegistryError> {
         let special = Special::named(kind_name)?;
         let id = ContentId::new(self.declaration.owner().clone(), path)
-            .map_err(|error: ContentIdError| RegistryError::Declaration(error.to_string()))?;
+            .map_err(RegistryError::Identity)?;
         Ok((special, id))
     }
 
@@ -516,7 +529,6 @@ mod tests {
 
     #[test]
     fn exactly_one_registry_is_modelled_specially_and_every_other_ask_is_refused() {
-        assert_eq!(Special::ALL.len(), 1);
         assert_eq!(Special::named("fluid"), Ok(Special::Fluid));
         assert_eq!(
             Special::named("gas"),
@@ -560,10 +572,24 @@ mod tests {
     #[test]
     fn an_illegal_path_is_refused_at_the_declaration_point() {
         let mut registry = registry();
-        assert!(matches!(
-            registry.declare(ContentKind::Block, "NOT A PATH"),
-            Err(RegistryError::Declaration(_))
-        ));
+        let refusal = registry
+            .declare(ContentKind::Block, "NOT A PATH")
+            .expect_err("an illegal declaration path");
+        assert!(matches!(refusal, RegistryError::Declaration(_)));
+        assert!(
+            std::error::Error::source(&refusal)
+                .and_then(|source| source.downcast_ref::<super::ContentDeclarationError>())
+                .is_some()
+        );
+        let refusal = registry
+            .declare_special("fluid", "NOT A PATH")
+            .expect_err("an illegal special identity");
+        assert!(matches!(refusal, RegistryError::Identity(_)));
+        assert!(
+            std::error::Error::source(&refusal)
+                .and_then(|source| source.downcast_ref::<super::ContentIdError>())
+                .is_some()
+        );
     }
 
     #[test]

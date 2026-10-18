@@ -513,7 +513,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -544,6 +544,9 @@ impl Mod for Entry {
         let name = invocation.key.id().path();
         let filed = commands::resolve(name)
             .ok_or_else(|| ModError::refused("this entry files no command under that name"))?;
+        if filed.on_server && !invocation.side.is_server() {
+            return Err(ModError::refused("this command runs only on a server"));
+        }
         match filed.name {
             commands::EVALUATE => {
                 let held = self.card_menu_open().then_some(&mut self.card);
@@ -730,8 +733,8 @@ mod tests {
         entry
             .surface_mut()
             .register_channel(capabilities::ChannelKind {
-                identifier: "dependent:power".to_owned(),
-                owner: "dependent".to_owned(),
+                identifier: "dependent:power".parse().expect("a legal identifier"),
+                owner: "dependent".parse().expect("a legal owner"),
             })
             .expect("the window is open before the deferred work");
 
@@ -740,8 +743,8 @@ mod tests {
             entry
                 .surface_mut()
                 .register_channel(capabilities::ChannelKind {
-                    identifier: "dependent:fluid".to_owned(),
-                    owner: "dependent".to_owned(),
+                    identifier: "dependent:fluid".parse().expect("a legal identifier"),
+                    owner: "dependent".parse().expect("a legal owner"),
                 }),
             Err(SurfaceRefused::Closed)
         );
@@ -855,6 +858,19 @@ mod tests {
             .expect("the shipped defaults resolve");
         entry.configure(&resolved).expect("they read back");
         assert_eq!(entry.settings(), &Settings::default());
+    }
+
+    #[test]
+    fn configure_propagates_a_missing_key_without_changing_settings() {
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let before = *entry.settings();
+        let changed = settings::DOCUMENT.replace(settings::ENERGY_CAPACITY, "infusing.renamed");
+        let declaration = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declaration, None, None)
+            .expect("the changed declaration resolves");
+
+        assert!(entry.configure(&resolved).is_err());
+        assert_eq!(entry.settings(), &before);
     }
 
     #[test]
@@ -1116,6 +1132,37 @@ mod tests {
             1,
             "the command moved the carrier rather than answering that it had"
         );
+    }
+
+    #[test]
+    fn a_client_cycle_command_is_refused_before_mutating_the_carrier() {
+        let mut entry = Entry::new(Side::DedicatedServer);
+        entry.holding_mut().kind = network::Held::Carrier;
+        entry.holding_mut().hand = Some(Hand::Main);
+        let mut device = Stack::of("counterpart:device").expect("a legal identity");
+        device.carrier_ready = true;
+        entry
+            .carrier_mut()
+            .insert(1, device)
+            .expect("supported device");
+        let before = entry.carrier().clone();
+        let key = census::claimed(MOD_ID.parse().expect("a legal identity"))
+            .expect("legal names")
+            .into_iter()
+            .find(|key| key.id().path() == commands::CYCLE)
+            .expect("the cycle command is claimed");
+
+        assert!(
+            entry
+                .run_command(&CommandInvocation::new(
+                    key,
+                    Side::Client,
+                    vec!["true".to_owned()],
+                ))
+                .is_err()
+        );
+        assert_eq!(entry.carrier(), &before);
+        assert_eq!(entry.cycled, None);
     }
 
     #[test]

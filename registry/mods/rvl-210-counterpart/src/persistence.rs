@@ -111,6 +111,8 @@ impl FieldTypes {
 /// What persistence refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PersistError {
+    /// The stored envelope has no counters object.
+    NoCounterTable,
     /// The table holds no entry for a field's declared type.
     NoFieldType {
         /// The field.
@@ -148,6 +150,9 @@ pub enum PersistError {
 impl fmt::Display for PersistError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NoCounterTable => {
+                formatter.write_str("the stored payload holds no counters table")
+            }
             Self::NoFieldType { field, declared } => {
                 write!(
                     formatter,
@@ -175,6 +180,8 @@ impl fmt::Display for PersistError {
         }
     }
 }
+
+impl std::error::Error for PersistError {}
 
 /// The fields one object marks as persistable.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -353,13 +360,13 @@ impl Counters {
     ///
     /// # Errors
     ///
-    /// Returns [`PersistError::UnreadableCounter`] naming a counter that is not
-    /// a whole number, and [`PersistError::TooManyCounters`] when the stored set
-    /// is larger than [`MAX_COUNTERS`].
+    /// Returns [`PersistError::NoCounterTable`] for a missing or malformed table,
+    /// [`PersistError::UnreadableCounter`] for a non-integer counter, or
+    /// [`PersistError::TooManyCounters`] for a set larger than [`MAX_COUNTERS`].
     pub fn load(&mut self, stored: &JsonValue) -> Result<(), PersistError> {
         self.held.clear();
         let Some(counters) = stored.get("counters").and_then(JsonValue::as_object) else {
-            return Ok(());
+            return Err(PersistError::NoCounterTable);
         };
         if counters.len() > MAX_COUNTERS {
             return Err(PersistError::TooManyCounters {
@@ -374,23 +381,6 @@ impl Counters {
         }
         Ok(())
     }
-}
-
-/// What the entry does to a dependent's saved-data objects across the server
-/// lifecycle, in the order section two states.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Drive {
-    /// Reset, before the server starts.
-    Reset,
-    /// Load, and notify after loading, once it has started.
-    LoadAndNotify,
-    /// Save, as it stops.
-    Save,
-}
-
-impl Drive {
-    /// The three steps in the order they happen.
-    pub const ORDER: [Self; 3] = [Self::Reset, Self::LoadAndNotify, Self::Save];
 }
 
 #[cfg(test)]
@@ -569,11 +559,16 @@ mod tests {
             "the refusal leaves the counters empty, so a caller that ignores it \
              is not silently handed a used value from a half-loaded set"
         );
+    }
 
+    #[test]
+    fn a_missing_or_malformed_counter_table_is_refused() {
+        for stored in [json!({}), json!({ "counters": "not a table" })] {
+            let mut counters = Counters::new();
+            assert_eq!(counters.load(&stored), Err(PersistError::NoCounterTable));
+        }
         let mut counters = Counters::new();
-        assert_eq!(counters.load(&json!({ "counters": "not a table" })), Ok(()));
-        assert!(counters.is_empty());
-        assert_eq!(counters.load(&json!({})), Ok(()));
+        assert_eq!(counters.load(&json!({ "counters": {} })), Ok(()));
         assert!(counters.is_empty());
     }
 
@@ -624,14 +619,6 @@ mod tests {
             counters.next("counter0000"),
             Ok(Some(2)),
             "an existing counter is not refused by the limit"
-        );
-    }
-
-    #[test]
-    fn the_lifecycle_drives_saved_data_in_the_order_the_specification_states() {
-        assert_eq!(
-            Drive::ORDER,
-            [Drive::Reset, Drive::LoadAndNotify, Drive::Save]
         );
     }
 }

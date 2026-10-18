@@ -13,7 +13,8 @@
 //! reproduced. [`Settings`] resolves all four together.
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, SettingSide,
+    ValueError,
 };
 
 /// The key the ceiling on completed upgrade steps is written under.
@@ -128,40 +129,22 @@ impl Default for Settings {
 impl Settings {
     /// Reads all four validated integer settings together for one launch.
     ///
-    /// Keys absent from this configuration retain their shipped defaults.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration) -> Self {
-        Self {
-            upgrade_ceiling: UPGRADE_CEILING
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| i32::try_from(value).ok())
-                .unwrap_or(DEFAULT_UPGRADE_CEILING)
-                .max(1),
-            energy_per_tick: ENERGY_PER_TICK
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| i32::try_from(value).ok())
-                .unwrap_or(DEFAULT_ENERGY_PER_TICK)
-                .max(0),
-            energy_capacity: ENERGY_CAPACITY
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| i32::try_from(value).ok())
-                .unwrap_or(DEFAULT_ENERGY_CAPACITY)
-                .max(0),
-            energy_accepted: ENERGY_ACCEPTED
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| i32::try_from(value).ok())
-                .unwrap_or(DEFAULT_ENERGY_ACCEPTED)
-                .max(0),
-        }
+    /// Returns a typed access error for a missing key, wrong kind or out-of-range integer.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        let integer = |name: &str| {
+            i32::try_from(resolved.integer(&key(name))?).map_err(|_| ValueError::IntegerRange)
+        };
+        Ok(Self {
+            upgrade_ceiling: integer(UPGRADE_CEILING)?.max(1),
+            energy_per_tick: integer(ENERGY_PER_TICK)?.max(0),
+            energy_capacity: integer(ENERGY_CAPACITY)?.max(0),
+            energy_accepted: integer(ENERGY_ACCEPTED)?.max(0),
+        })
     }
+}
+
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
 }
 
 /// Returns the side every setting in this document is declared on.
@@ -232,7 +215,7 @@ mod tests {
         )
         .expect("the boundary values resolve");
         assert_eq!(
-            Settings::read(&resolved),
+            Settings::read(&resolved).expect("the declared integers read"),
             Settings {
                 upgrade_ceiling: 1,
                 energy_per_tick: 0,
@@ -247,7 +230,7 @@ mod tests {
         let declaration = declaration().expect("the shipped document is legal");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the shipped defaults resolve");
-        assert_eq!(Settings::read(&resolved), Settings::default());
+        assert_eq!(Settings::read(&resolved), Ok(Settings::default()));
     }
 
     use super::*;
@@ -263,22 +246,30 @@ mod tests {
     }
 
     #[test]
-    fn an_unresolved_launch_runs_on_the_four_shipped_defaults() {
-        let resolved = LayeredConfiguration::resolve(declaration().expect("it parses"), None, None)
-            .expect("the defaults resolve");
-        assert_eq!(Settings::read(&resolved), Settings::default());
-        assert_eq!(Settings::default().upgrade_ceiling, 256);
-        assert_eq!(Settings::default().energy_per_tick, 600);
-        assert_eq!(Settings::default().energy_capacity, 60_000);
-        assert_eq!(Settings::default().energy_accepted, 600);
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        for missing in [
+            UPGRADE_CEILING,
+            ENERGY_PER_TICK,
+            ENERGY_CAPACITY,
+            ENERGY_ACCEPTED,
+        ] {
+            let changed = DOCUMENT.replace(missing, "infusing.renamed");
+            let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the changed declaration resolves");
+            assert!(Settings::read(&resolved).is_err());
+        }
     }
 
     #[test]
-    fn the_ceiling_is_floored_at_one_even_when_nothing_resolved_it() {
-        let resolved = LayeredConfiguration::resolve(declaration().expect("it parses"), None, None)
-            .expect("the defaults resolve");
-        let settings = Settings::read(&resolved);
-        assert!(settings.upgrade_ceiling >= 1);
+    fn a_widened_declaration_cannot_silently_default_an_out_of_range_integer() {
+        let changed = DOCUMENT
+            .replace("2147483647.0", "4294967295.0")
+            .replace("\"default\": 60000", "\"default\": 2147483648");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the widened declaration resolves");
+        assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
     }
 
     #[test]

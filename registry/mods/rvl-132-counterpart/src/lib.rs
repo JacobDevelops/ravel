@@ -66,18 +66,6 @@ use crate::storage::Adapter;
 /// The identity this package is declared and validated under.
 pub const MOD_ID: &str = "rvl_132_counterpart";
 
-/// The three lifecycle points section two says this entry asks the loader for,
-/// each at a deliberately late priority.
-///
-/// The late priority matters for the second: a dependent that registers a kind
-/// of its own is free to run earlier, and nothing here depends on ordering
-/// against one.
-pub const LATE_POINTS: [&str; 3] = [
-    "registry_construction",
-    "registry_population",
-    "cross_mod_message",
-];
-
 /// How far through section two's ordering the entry has got.
 ///
 /// Section two names two orderings that are load-bearing: the adapters are
@@ -101,7 +89,7 @@ pub enum Step {
 }
 
 /// What this entry refuses.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Refused {
     /// A step ran before the step section two puts before it.
     OutOfOrder {
@@ -135,10 +123,22 @@ impl core::fmt::Display for Refused {
     }
 }
 
+impl std::error::Error for Refused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Kinds(error) => Some(error),
+            Self::Bundle(error) => Some(error),
+            Self::Settings(error) => Some(error),
+            Self::Serialisers(error) => Some(error),
+            Self::OutOfOrder { .. } => None,
+        }
+    }
+}
+
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Result<ContentDeclaration, ModError>,
+    declaration: ContentDeclaration,
     settings: Settings,
     comparator: Comparator,
     serialisers: Serialisers,
@@ -188,13 +188,9 @@ impl Entry {
     /// anywhere in the tree. The three kinds go into RVL-210's ingredient-kind
     /// registry, which is not one of Ravel's four registry kinds, so the content
     /// declaration is empty rather than absent.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ModError::Refused`] when the declared identity is not a legal
-    /// one, which for a constant would be a packaging failure.
-    pub fn declaration() -> Result<ContentDeclaration, ModError> {
-        Ok(ContentDeclaration::new(Self::declared_id().clone()))
+    #[must_use]
+    pub fn declaration() -> ContentDeclaration {
+        ContentDeclaration::new(Self::declared_id().clone())
     }
 
     /// The values in force.
@@ -430,7 +426,6 @@ impl Mod for Entry {
         match state {
             LifecycleState::Constructed => {
                 settings::declaration().map_err(ModError::from_display)?;
-                self.declaration.as_ref().map_err(Clone::clone)?;
                 // Registry construction sits inside this state, and the
                 // serialisers go in before registry population.
                 self.install_serialisers().map_err(ModError::from_display)?;
@@ -461,11 +456,7 @@ impl Mod for Entry {
     fn content_declaration(
         &self,
     ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
-        self.declaration
-            .as_ref()
-            .map(std::borrow::Cow::Borrowed)
-            .map(Some)
-            .map_err(Clone::clone)
+        Ok(Some(std::borrow::Cow::Borrowed(&self.declaration)))
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
@@ -500,18 +491,44 @@ mod tests {
     use crate::kinds::REGISTERED;
 
     #[test]
-    fn deferred_declaration_keeps_the_original_error_detail() {
-        let original = ModError::refused("the original packaged content failure");
-        let mut entry = Entry::new();
-        entry.declaration = Err(original.clone());
-        assert_eq!(
-            entry
-                .content_declaration()
-                .expect_err("the declaration refused"),
-            original
+    fn wrapped_refusals_expose_their_typed_sources() {
+        use std::error::Error;
+        let kinds = Refused::Kinds(kinds::NotRegistered::Full { limit: 2 });
+        assert!(
+            kinds
+                .source()
+                .expect("kind source")
+                .is::<kinds::NotRegistered>()
         );
-        assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
-        assert_eq!(entry.entered(), []);
+        let bundle = Refused::Bundle(capabilities::NotInstalled::NoTarget);
+        assert!(
+            bundle
+                .source()
+                .expect("bundle source")
+                .is::<capabilities::NotInstalled>()
+        );
+        let settings = Refused::Settings(settings::Refused::ListTooLong { limit: 4 });
+        assert!(
+            settings
+                .source()
+                .expect("settings source")
+                .is::<settings::Refused>()
+        );
+        let serialisers = Refused::Serialisers(forms::TagError::Shape { expected: "a tag" });
+        assert!(
+            serialisers
+                .source()
+                .expect("serialiser source")
+                .is::<forms::TagError>()
+        );
+        assert!(
+            Refused::OutOfOrder {
+                wanted: Step::SetUp,
+                reached: Step::Constructed,
+            }
+            .source()
+            .is_none()
+        );
     }
 
     fn run_to_registered() -> Entry {
@@ -527,7 +544,7 @@ mod tests {
 
     #[test]
     fn the_entry_claims_nothing_at_the_registration_barrier() {
-        let declared = Entry::declaration().expect("a legal identity");
+        let declared = Entry::declaration();
         assert_eq!(declared.entries().len(), 0);
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
     }
@@ -765,17 +782,6 @@ mod tests {
             entry.entered(),
             [LifecycleState::Constructed, LifecycleState::Registered]
         );
-    }
-
-    #[test]
-    fn three_late_lifecycle_points_are_named() {
-        assert_eq!(LATE_POINTS.len(), 3);
-        let mut sorted = LATE_POINTS;
-        sorted.sort_unstable();
-        sorted.iter().reduce(|left, right| {
-            assert_ne!(left, right);
-            right
-        });
     }
 
     #[test]

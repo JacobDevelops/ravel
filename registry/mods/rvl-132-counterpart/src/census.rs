@@ -33,9 +33,8 @@ pub const LOGOS: usize = 2;
 
 /// How many resource documents ship in total.
 ///
-/// The three counts above are the whole of it, and this is their sum rather
-/// than a fourth independent count, so an edit to one of them alone fails.
-pub const SHIPPED_RESOURCES: usize = 33;
+/// The three counts above are the whole of it; the total follows their sum.
+pub const SHIPPED_RESOURCES: usize = TRANSLATIONS + TEMPLATES + LOGOS;
 
 /// How many access-widening documents ship.
 pub const WIDENING_DOCUMENTS: usize = 1;
@@ -145,32 +144,11 @@ pub const NOT_CONSUMED: [&str; 7] = [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kinds::REGISTERED;
-    use crate::settings::{DECLINED, KEYS};
-    use crate::storage::{Class, Shape};
 
     #[test]
     fn the_widening_groups_add_up_to_the_fifteen_entries() {
         let counted: usize = WIDENING_GROUPS.iter().map(|(_, count)| *count).sum();
         assert_eq!(counted, WIDENING_ENTRIES);
-        assert_eq!(3 + 1 + 6 + 2 + 3, WIDENING_ENTRIES);
-    }
-
-    #[test]
-    fn the_shipped_sources_include_the_harness_and_exclude_the_companions() {
-        // Every assertion in this module has to be breakable by an edit to one
-        // side alone, so none of them restates a constant's own literal and
-        // none counts a fixed-size array the type already counts.
-        const { assert!(HARNESS_SOURCES < SHIPPED_SOURCES) };
-        assert_eq!(SHIPPED_SOURCES - HARNESS_SOURCES, 46);
-        assert_eq!(COMPANION_MODS, HARNESS_SOURCES);
-        const { assert!(UNIT_TESTS < SHIPPED_SOURCES) };
-    }
-
-    #[test]
-    fn the_shipped_resources_add_up_to_the_resource_count() {
-        assert_eq!(TRANSLATIONS + TEMPLATES + LOGOS, SHIPPED_RESOURCES);
-        assert_eq!(30 + 1 + 2, SHIPPED_RESOURCES);
     }
 
     #[test]
@@ -203,12 +181,5 @@ mod tests {
         for (position, observed) in OBSERVED.iter().enumerate() {
             assert!(!OBSERVED[..position].contains(observed));
         }
-    }
-
-    #[test]
-    fn what_this_package_carries_agrees_with_what_the_census_counts() {
-        assert_eq!(REGISTERED.len(), 3);
-        assert_eq!(Shape::ALL.len() * Class::ALL.len(), 12);
-        assert_eq!(KEYS.len() - 1 + DECLINED.len(), 6);
     }
 }

@@ -99,9 +99,6 @@ pub const PLATFORM_CODECS: [(&str, &str); 2] = [
 /// This platform's additions to the persistable field-type table.
 pub const PLATFORM_FIELD_TYPES: [&str; 2] = ["position", "identifier"];
 
-/// The three advancement-trigger event hooks installed at common setup.
-pub const TRIGGER_HOOKS: [&str; 3] = ["screen_opened", "item_crafted", "first_item_obtained"];
-
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
@@ -283,10 +280,9 @@ impl Entry {
 
     /// Loads what common setup loads, on the side it is running on.
     ///
-    /// The producer set, the two table halves and the trigger hooks land on
-    /// every side. The crafting helper tables are a client-only build, which is
-    /// a side test at runtime rather than a client-only declaration, so on a
-    /// dedicated server that table is never built.
+    /// The producer set and the two table halves load on every side. The crafting
+    /// helper tables are a client-only build, which is a side test at runtime
+    /// rather than a client-only declaration, so a dedicated server never builds them.
     pub fn common_setup(&mut self, side: Side) {
         for name in dumps::SHIPPED {
             self.producers.collect(name);
@@ -321,17 +317,6 @@ impl Entry {
         };
         match arguments.next() {
             Some(written) => {
-                if self
-                    .framework
-                    .declared()
-                    .iter()
-                    .find(|held| held.property() == property)
-                    .is_some_and(|declared| !declared.scope().resolved_by(side))
-                {
-                    return Err(ModError::refused(
-                        "settings write is on the wrong side for its scope",
-                    ));
-                }
                 let value = match written.as_str() {
                     "true" => settings::Value::Truth(true),
                     "false" => settings::Value::Truth(false),
@@ -341,7 +326,7 @@ impl Entry {
                     ),
                 };
                 self.framework
-                    .write(property, value)
+                    .write(property, value, side)
                     .map_err(ModError::from_display)?;
             }
             None => {
@@ -403,7 +388,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -435,15 +420,13 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        // A delivery that is not one of the thirteen is not this entry's and is
-        // left alone rather than refused: the transport carries a dependent's
-        // own messages too, and refusing them here would break the dependent.
-        if transport::MESSAGE_KINDS
-            .iter()
-            .any(|kind| delivery.id.id().path() == *kind)
-        {
-            self.carried = self.carried.saturating_add(1);
+        if !transport::MESSAGE_KINDS.contains(&delivery.id.id().path()) {
+            return Err(ModError::refused(format!(
+                "undeclared packet {}",
+                delivery.id.id()
+            )));
         }
+        self.carried = self.carried.saturating_add(1);
         Ok(())
     }
 
@@ -533,6 +516,44 @@ mod tests {
         fn loads(&self, _mod_id: &ModId) -> bool {
             false
         }
+    }
+
+    #[test]
+    fn undeclared_packets_are_refused_without_counting_a_delivery() {
+        use ravel_sdk::network::{Direction, PacketId};
+
+        let mut entry = Entry::new();
+        for kind in transport::MESSAGE_KINDS {
+            let delivery = PacketDelivery::new(
+                PacketId::new(
+                    format!("{MOD_ID}:{kind}")
+                        .parse()
+                        .expect("a legal packet id"),
+                ),
+                Direction::ToServer,
+                Side::DedicatedServer,
+                Vec::new(),
+            );
+            entry
+                .receive_packet(&delivery)
+                .expect("a declared message is accepted");
+        }
+        let before = entry.carried();
+        let delivery = PacketDelivery::new(
+            PacketId::new(
+                format!("{MOD_ID}:undeclared")
+                    .parse()
+                    .expect("a legal packet id"),
+            ),
+            Direction::ToServer,
+            Side::DedicatedServer,
+            Vec::new(),
+        );
+        let refusal = entry
+            .receive_packet(&delivery)
+            .expect_err("unknown contracts are refused");
+        assert!(refusal.to_string().contains("undeclared packet"));
+        assert_eq!(entry.carried(), before);
     }
 
     #[test]
@@ -642,22 +663,6 @@ mod tests {
             entry.codecs().get("position").is_none(),
             "a platform entry before common setup has nothing to read"
         );
-    }
-
-    #[test]
-    fn three_trigger_hooks_are_installed_and_each_names_a_declared_trigger() {
-        assert_eq!(TRIGGER_HOOKS.len(), 3);
-        let declared = declarations::own_declarations();
-        for hook in TRIGGER_HOOKS {
-            assert!(
-                declared
-                    .declared()
-                    .iter()
-                    .any(|declaration| declaration.name() == hook
-                        && declaration.kind() == "advancement_trigger_kind"),
-                "{hook} is hooked and not declared"
-            );
-        }
     }
 
     #[test]
@@ -932,6 +937,22 @@ mod tests {
     }
 
     #[test]
+    fn a_world_with_a_missing_or_malformed_counter_table_refuses_to_open() {
+        for payload in [json!({}), json!({ "counters": "not a table" })] {
+            let mut entry = Entry::new();
+            let saved =
+                SavedDataEnvelope::current(Entry::declared_id().clone(), DATA_VERSION, payload);
+            let declaration = entry
+                .saved_data_declaration()
+                .expect("a valid declaration")
+                .expect("the entry saves counters");
+            let plan = SavedDataPlan::open(&declaration, Some(saved.data_version()))
+                .expect("the stored version is current");
+            assert!(entry.open_saved_data(Some(&saved), &plan).is_err());
+        }
+    }
+
+    #[test]
     fn every_platform_codec_names_a_kind_the_table_really_has() {
         // The names used to be remapped through a match that sent anything it
         // did not recognise to the text codec, so a kind that does not exist
@@ -960,50 +981,5 @@ mod tests {
         );
         let invocation = CommandInvocation::new(key, Side::DedicatedServer, Vec::new());
         assert!(entry.run_command(&invocation).is_err());
-    }
-
-    #[test]
-    fn this_package_owns_the_vocabulary_the_dependent_needs_and_names_it_at_the_root() {
-        // Section eighteen raised where the shared vocabulary lives as the thing
-        // blocking both counterparts. It lives here, and this is the test that
-        // says so: every name RVL-132 consumes is reachable from the crate root.
-        let kind: fn(&Conditions) -> u32 = |conditions| conditions.bits();
-        assert_eq!(kind(&Conditions::NONE), Conditions::NONE.bits());
-        let _list = List::new(TokenKind);
-        let _chain = Chain::new(TokenKind);
-        let _value = ValueBox::new(0u32);
-        let _tank: Tank<String> = Tank::new(10);
-        let _query = Query::parse("$").expect("the parse error type is public too");
-        let _registry = Registry::new();
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    struct TokenKind;
-
-    impl QuantityKind for TokenKind {
-        type Instance = u32;
-
-        fn conditions(&self) -> Conditions {
-            Conditions::NONE
-        }
-
-        fn matches(&self, left: &u32, right: &u32, _under: Conditions) -> bool {
-            left == right
-        }
-
-        fn digest(&self, value: &u32, _under: Conditions) -> u64 {
-            u64::from(*value)
-        }
-
-        fn write(&self, value: &u32) -> JsonValue {
-            json!(value)
-        }
-
-        fn read(&self, stored: &JsonValue) -> Result<u32, KindError> {
-            stored
-                .as_u64()
-                .and_then(|value| u32::try_from(value).ok())
-                .ok_or_else(|| KindError::new("not a number"))
-        }
     }
 }

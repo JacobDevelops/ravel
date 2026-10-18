@@ -212,6 +212,8 @@ impl fmt::Display for ShapeError {
     }
 }
 
+impl std::error::Error for ShapeError {}
+
 /// One value on the wire, in the four kinds the portable table writes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
@@ -411,6 +413,15 @@ impl fmt::Display for TransportError {
     }
 }
 
+impl std::error::Error for TransportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Wire(error) => Some(error),
+            Self::NoValue { .. } | Self::NoCodec { .. } | Self::WrongKind { .. } => None,
+        }
+    }
+}
+
 /// Who a message goes to.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
@@ -433,9 +444,6 @@ pub enum Target {
 }
 
 impl Target {
-    /// The radius the cosmetic effect of section nine broadcasts within.
-    pub const COSMETIC_RADIUS: f64 = 50.0;
-
     /// Whether a player at a point in a level is a recipient.
     ///
     /// A non-finite or negative radius reaches nobody rather than everybody: the
@@ -508,6 +516,26 @@ pub fn position_level() -> Level {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wire_refusals_expose_their_cause() {
+        use std::error::Error;
+
+        let table = Codecs::new();
+        let mut reader = PacketReader::new(&[]);
+        let error = shape()
+            .read(&table, &mut reader)
+            .expect_err("the packet is empty");
+        assert!(matches!(error, TransportError::Wire(_)));
+        assert!(error.source().is_some());
+        assert!(
+            TransportError::NoCodec {
+                codec: "missing".to_owned()
+            }
+            .source()
+            .is_none()
+        );
+    }
 
     fn shape() -> Shape {
         Shape::new()
@@ -709,7 +737,6 @@ mod tests {
 
     #[test]
     fn this_entry_registers_thirteen_message_kinds_and_the_base_is_not_one() {
-        assert_eq!(MESSAGE_KINDS.len(), 13);
         let mut sorted = MESSAGE_KINDS.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
@@ -748,13 +775,12 @@ mod tests {
     }
 
     #[test]
-    fn the_cosmetic_effect_carries_fifty_blocks_and_stops_at_its_edge() {
+    fn nearby_delivery_includes_its_radius_boundary_and_requires_the_same_level() {
         let target = Target::Nearby {
             level: "overworld".to_owned(),
             at: [0.0, 0.0, 0.0],
-            radius: Target::COSMETIC_RADIUS,
+            radius: 50.0,
         };
-        assert!((Target::COSMETIC_RADIUS - 50.0).abs() < f64::EPSILON);
         assert!(target.reaches("one", "overworld", [50.0, 0.0, 0.0]));
         assert!(!target.reaches("one", "overworld", [50.1, 0.0, 0.0]));
         assert!(!target.reaches("one", "elsewhere", [0.0, 0.0, 0.0]));

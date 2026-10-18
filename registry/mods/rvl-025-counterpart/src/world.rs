@@ -268,7 +268,6 @@ mod tests {
 
     #[test]
     fn three_ore_blocks_carry_one_behaviour_between_them() {
-        assert_eq!(OreBlock::ALL.len(), 3);
         let mut names: Vec<&str> = OreBlock::ALL.iter().map(|block| block.as_str()).collect();
         names.sort_unstable();
         names.dedup();

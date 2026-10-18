@@ -218,7 +218,7 @@ impl Store {
     }
 
     /// Clears the dirty mark, which the owner does once it has saved.
-    pub const fn cleared(&mut self) {
+    pub const fn clear_dirty(&mut self) {
         self.dirty = false;
     }
 
@@ -514,7 +514,7 @@ mod tests {
         );
         assert_eq!(store.changes(), 1);
         assert!(store.dirty());
-        store.cleared();
+        store.clear_dirty();
         assert!(!store.dirty());
         store.clear(0);
         assert_eq!(store.changes(), 2);

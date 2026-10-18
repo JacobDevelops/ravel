@@ -81,6 +81,8 @@ impl core::fmt::Display for Refused {
     }
 }
 
+impl std::error::Error for Refused {}
+
 /// One component value.
 ///
 /// The shapes are the ones a typed data component carries. What matters about
@@ -126,13 +128,13 @@ impl Value {
         }
     }
 
-    /// Whether this value nests no deeper than [`MAX_VALUE_DEPTH`].
+    /// Checks that this value nests no deeper than [`MAX_VALUE_DEPTH`].
     ///
     /// # Errors
     ///
     /// Returns [`Refused::TooDeep`] when it does. Depth is measured before any
     /// comparison or digest walks the value, so no walk can run away.
-    pub fn bounded(&self) -> Result<(), Refused> {
+    pub fn verify_depth(&self) -> Result<(), Refused> {
         if self.depth() > MAX_VALUE_DEPTH {
             return Err(Refused::TooDeep {
                 limit: MAX_VALUE_DEPTH,
@@ -215,7 +217,7 @@ pub fn components(
                 limit: MAX_COMPONENTS,
             });
         }
-        value.bounded()?;
+        value.verify_depth()?;
         map.insert(name, value);
     }
     Ok(map)
@@ -455,7 +457,7 @@ mod tests {
         }
         assert_eq!(value.depth(), MAX_VALUE_DEPTH + 1);
         assert_eq!(
-            value.bounded(),
+            value.verify_depth(),
             Err(Refused::TooDeep {
                 limit: MAX_VALUE_DEPTH
             })
@@ -469,7 +471,7 @@ mod tests {
             value = Value::Sequence(vec![value]);
         }
         assert_eq!(value.depth(), MAX_VALUE_DEPTH);
-        assert_eq!(value.bounded(), Ok(()));
+        assert_eq!(value.verify_depth(), Ok(()));
     }
 
     #[test]

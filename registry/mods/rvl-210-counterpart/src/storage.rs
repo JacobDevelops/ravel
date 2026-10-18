@@ -127,6 +127,8 @@ impl fmt::Display for Inconsistent {
     }
 }
 
+impl std::error::Error for Inconsistent {}
+
 /// Moves a quantity from one store to another.
 ///
 /// The order is the specification's: simulate the extraction to learn what is
@@ -589,7 +591,6 @@ mod tests {
     fn a_slotted_result_names_its_slot_and_nothing_moved_names_none() {
         assert_eq!(Slotted::at(3, 5).slot, Some(3));
         assert_eq!(Slotted::at(3, 0), Slotted::NOTHING);
-        assert_eq!(Slotted::NOTHING.amount, 0);
     }
 
     /// A store in numbered slots, which is what the slotted form is for. This

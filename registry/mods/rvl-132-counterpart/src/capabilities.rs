@@ -202,8 +202,8 @@ pub fn vanilla() -> Vec<Attachment> {
 pub enum NotInstalled {
     /// RVL-210's registry refused an attachment.
     Registry {
-        /// What it said.
-        detail: String,
+        /// The registry's typed refusal.
+        error: Refused,
     },
     /// The third-party bundle names no target.
     NoTarget,
@@ -212,7 +212,7 @@ pub enum NotInstalled {
 impl fmt::Display for NotInstalled {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Registry { detail } => formatter.write_str(detail),
+            Self::Registry { error } => write!(formatter, "{error}"),
             Self::NoTarget => {
                 formatter.write_str("the third-party bundle was enabled without naming a target")
             }
@@ -220,11 +220,18 @@ impl fmt::Display for NotInstalled {
     }
 }
 
+impl std::error::Error for NotInstalled {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Registry { error } => Some(error),
+            Self::NoTarget => None,
+        }
+    }
+}
+
 impl From<Refused> for NotInstalled {
     fn from(refused: Refused) -> Self {
-        Self::Registry {
-            detail: refused.to_string(),
-        }
+        Self::Registry { error: refused }
     }
 }
 
@@ -340,7 +347,7 @@ where
     K::Instance: Clone + fmt::Debug + Eq,
 {
     /// The held item's identity.
-    pub identity: String,
+    pub identity: ravel_sdk::content::ContentId,
     /// The store it publishes, absent when it publishes none of this kind.
     pub store: Option<Pool<K>>,
 }
@@ -452,7 +459,6 @@ mod tests {
         assert_eq!(counted(FLUIDS), 3);
         assert_eq!(counted(CHARGE), 3);
         assert_eq!(counted(RECIPES), 8);
-        assert_eq!(5 + 5 + 22 + 3 + 3 + 8, VANILLA_ATTACHMENTS);
     }
 
     #[test]
@@ -463,7 +469,6 @@ mod tests {
             .collect();
         let expected: BTreeSet<&str> = FROM_VOCABULARY.into_iter().chain(FROM_PLATFORM).collect();
         assert_eq!(named, expected);
-        assert_eq!(expected.len(), 6);
     }
 
     #[test]
@@ -471,8 +476,6 @@ mod tests {
         for capability in FROM_VOCABULARY {
             assert!(!FROM_PLATFORM.contains(&capability), "{capability}");
         }
-        assert_eq!(FROM_VOCABULARY.len(), 3);
-        assert_eq!(FROM_PLATFORM.len(), 3);
     }
 
     #[test]
@@ -576,6 +579,12 @@ mod tests {
             .expect_err("a baked registry takes nothing");
         assert!(matches!(refusal, NotInstalled::Registry { .. }));
         assert!(refusal.to_string().contains("baked"));
+        assert!(
+            std::error::Error::source(&refusal)
+                .expect("the registry refusal is retained")
+                .downcast_ref::<Refused>()
+                .is_some()
+        );
     }
 
     #[test]
@@ -593,7 +602,7 @@ mod tests {
     #[test]
     fn an_entity_holding_an_item_that_publishes_no_store_publishes_none_either() {
         let carrier: Carrier<Stackable> = Carrier::holding(Holding {
-            identity: "minecraft:stone".to_owned(),
+            identity: "minecraft:stone".parse().expect("a content identity"),
             store: None,
         });
         assert!(!carrier.publishes());
@@ -610,7 +619,7 @@ mod tests {
     #[test]
     fn the_stores_operations_forward_to_the_held_items_store() {
         let mut carrier = Carrier::holding(Holding {
-            identity: "minecraft:shulker_box".to_owned(),
+            identity: "minecraft:shulker_box".parse().expect("a content identity"),
             store: Some(Pool::new(Stackable::default(), 1_000)),
         });
         assert!(carrier.publishes());
@@ -640,12 +649,12 @@ mod tests {
         let mut carrier: Carrier<Stackable> = Carrier::empty();
         assert!(!carrier.publishes());
         carrier.put(Some(Holding {
-            identity: "minecraft:shulker_box".to_owned(),
+            identity: "minecraft:shulker_box".parse().expect("a content identity"),
             store: Some(Pool::new(Stackable::default(), 1_000)),
         }));
         assert!(carrier.publishes());
         carrier.put(Some(Holding {
-            identity: "minecraft:stone".to_owned(),
+            identity: "minecraft:stone".parse().expect("a content identity"),
             store: None,
         }));
         assert!(!carrier.publishes());
@@ -673,7 +682,7 @@ mod tests {
             Attempt::Real,
         );
         let mut carrier = Carrier::holding(Holding {
-            identity: "minecraft:shulker_box".to_owned(),
+            identity: "minecraft:shulker_box".parse().expect("a content identity"),
             store: Some(first),
         });
         assert_eq!(
@@ -681,12 +690,14 @@ mod tests {
             "minecraft:stone"
         );
         let was = carrier.put(Some(Holding {
-            identity: "minecraft:white_shulker_box".to_owned(),
+            identity: "minecraft:white_shulker_box"
+                .parse()
+                .expect("a content identity"),
             store: Some(second),
         }));
         assert_eq!(
             was.map(|held| held.identity),
-            Some("minecraft:shulker_box".to_owned())
+            Some("minecraft:shulker_box".parse().expect("a content identity"))
         );
         assert_eq!(carrier.contents()[0].identity.to_string(), "minecraft:dirt");
         assert_eq!(carrier.contents()[0].count, 5);
@@ -701,10 +712,10 @@ mod tests {
         );
         assert!(
             NotInstalled::Registry {
-                detail: "refused".to_owned()
+                error: Refused::Full { limit: 4 }
             }
             .to_string()
-            .contains("refused")
+            .contains("at most 4 attachments")
         );
     }
 }

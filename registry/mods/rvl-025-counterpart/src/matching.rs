@@ -339,20 +339,15 @@ impl MatchRule {
             tags.push(tag.to_owned());
         }
 
-        let flag = |name: &str| {
-            object
-                .get(name)
-                .and_then(JsonValue::as_bool)
-                .unwrap_or_default()
-        };
+        let flag = |name: &str| crate::data::saved_field(document, name, false, JsonValue::as_bool);
         Ok(Self {
             stacks,
             tags,
             modes: Modes {
-                damage: flag("damage"),
-                components: flag("components"),
-                namespace: flag("namespace"),
-                verdict: if flag("exclusion") {
+                damage: flag("damage")?,
+                components: flag("components")?,
+                namespace: flag("namespace")?,
+                verdict: if flag("exclusion")? {
                     VerdictMode::Exclusion
                 } else {
                     VerdictMode::Inclusion
@@ -400,11 +395,49 @@ impl fmt::Display for FillRefused {
     }
 }
 
-impl std::error::Error for FillRefused {}
+impl std::error::Error for FillRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Record(refused) => Some(refused),
+            Self::Full { .. } => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_rule_flags_refuse_present_non_booleans() {
+        let original = MatchRule::default().to_saved();
+        for name in ["damage", "components", "namespace", "exclusion"] {
+            for value in [
+                ravel_sdk::json!("true"),
+                ravel_sdk::json!(1),
+                ravel_sdk::json!(null),
+            ] {
+                let mut document = original.clone();
+                document[name] = value;
+                assert!(MatchRule::from_saved(&document).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn a_wrapped_record_refusal_remains_the_error_source() {
+        use std::error::Error;
+
+        let record = RecordRefused::Shape { record: None };
+        let refused = FillRefused::Record(record.clone());
+        assert_eq!(
+            refused
+                .source()
+                .and_then(|source| source.downcast_ref::<RecordRefused>()),
+            Some(&record)
+        );
+        assert!(FillRefused::Full { limit: 0 }.source().is_none());
+    }
 
     fn stack(identity: &str) -> Stack {
         Stack::of(identity).expect("a legal identity")

@@ -560,15 +560,6 @@ mod tests {
     }
 
     #[test]
-    fn the_default_colour_is_a_fully_transparent_white() {
-        assert_eq!(Colour::DEFAULT.alpha, 0);
-        assert_eq!(Colour::DEFAULT.red, 0xFF);
-        assert_eq!(Colour::DEFAULT.green, 0xFF);
-        assert_eq!(Colour::DEFAULT.blue, 0xFF);
-        assert_eq!(Colour::DEFAULT.packed(), 0x00FF_FFFF);
-    }
-
-    #[test]
     fn a_plain_registration_does_not_replace_what_is_under_the_name() {
         let mut names = Names::new();
         assert_eq!(

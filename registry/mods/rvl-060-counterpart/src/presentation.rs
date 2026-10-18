@@ -767,7 +767,6 @@ mod tests {
 
     #[test]
     fn there_are_four_built_in_categories_and_a_registration_point_for_a_dependents_own() {
-        assert_eq!(Category::BUILT_IN.len(), 4);
         let mut facts = SystemFacts::new();
         for category in Category::BUILT_IN {
             facts

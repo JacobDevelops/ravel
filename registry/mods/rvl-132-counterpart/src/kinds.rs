@@ -935,6 +935,8 @@ impl fmt::Display for NotRegistered {
     }
 }
 
+impl std::error::Error for NotRegistered {}
+
 /// The most kinds the shared registry holds.
 pub const MAX_KINDS: usize = 512;
 
@@ -1088,8 +1090,6 @@ mod tests {
 
     #[test]
     fn the_three_kinds_decompose_into_seven_category_types() {
-        let total = Stack::CATEGORIES.len() + Portion::CATEGORIES.len() + Charge::CATEGORIES.len();
-        assert_eq!(total, 7);
         assert_eq!(
             Stack::CATEGORIES.iter().filter(|c| c.primary).count()
                 + Portion::CATEGORIES.iter().filter(|c| c.primary).count()

@@ -239,8 +239,8 @@ impl Carrier {
 
     /// Reads a carrier back.
     ///
-    /// The selection is clamped into the six slots rather than trusted, because
-    /// this record arrives from a saved world and from the network. A stored
+    /// The selection must name one of the six slots, because this record arrives
+    /// from a saved world and from the network. A stored
     /// item that does not declare carrier support is kept, not dropped: it is
     /// exactly the state [`Carrier::replacement`] refuses, and dropping it here
     /// would hide the refusal instead of surfacing it.
@@ -248,8 +248,8 @@ impl Carrier {
     /// # Errors
     ///
     /// Returns [`CarrierRefused::Record`] for a document that is not the
-    /// carrier's shape, and [`CarrierRefused::Slot`] for a slot list that is not
-    /// exactly [`SLOTS`] long.
+    /// carrier's shape or carries a malformed selection, and [`CarrierRefused::Slot`]
+    /// for a slot list that is not exactly [`SLOTS`] long or an out-of-range selection.
     pub fn from_saved(document: &JsonValue) -> Result<Self, CarrierRefused> {
         let object = document
             .as_object()
@@ -265,13 +265,13 @@ impl Carrier {
         if slots.len() != SLOTS {
             return Err(CarrierRefused::Slot { index: slots.len() });
         }
-        let selected = object
-            .get("selected")
-            .and_then(JsonValue::as_u64)
-            .unwrap_or_default();
-        let selected = usize::try_from(selected)
-            .unwrap_or(usize::MAX)
-            .min(SLOTS - 1);
+        let selected = crate::data::saved_field(document, "selected", 0, |value| {
+            value.as_u64().and_then(|value| usize::try_from(value).ok())
+        })
+        .map_err(CarrierRefused::Record)?;
+        if selected >= SLOTS {
+            return Err(CarrierRefused::Slot { index: selected });
+        }
         Ok(Self { slots, selected })
     }
 }
@@ -302,11 +302,34 @@ impl std::fmt::Display for CarrierRefused {
     }
 }
 
-impl std::error::Error for CarrierRefused {}
+impl std::error::Error for CarrierRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Record(refused) => Some(refused),
+            Self::Slot { .. } | Self::Unsupported => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wrapped_record_refusal_remains_the_error_source() {
+        use std::error::Error;
+
+        let record = RecordRefused::Shape { record: None };
+        let refused = CarrierRefused::Record(record.clone());
+        assert_eq!(
+            refused
+                .source()
+                .and_then(|source| source.downcast_ref::<RecordRefused>()),
+            Some(&record)
+        );
+        assert!(CarrierRefused::Slot { index: 0 }.source().is_none());
+        assert!(CarrierRefused::Unsupported.source().is_none());
+    }
 
     fn ready(identity: &str) -> Stack {
         let mut stack = Stack::of(identity).expect("a legal identity");
@@ -457,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn a_carrier_round_trips_and_a_hostile_selection_is_clamped() {
+    fn a_carrier_round_trips_and_a_hostile_selection_is_refused() {
         let mut carrier = Carrier::new();
         carrier
             .insert(4, ready("counterpart:device"))
@@ -467,12 +490,19 @@ mod tests {
         let read = Carrier::from_saved(&carrier.to_saved()).expect("what was written reads back");
         assert_eq!(read, carrier);
 
-        let hostile = ravel_sdk::json!({
-            "slots": [null, null, null, null, null, null],
-            "selected": u64::MAX,
-        });
-        let clamped = Carrier::from_saved(&hostile).expect("the record is well formed");
-        assert_eq!(clamped.selected(), SLOTS - 1);
+        for selected in [
+            ravel_sdk::json!(u64::MAX),
+            ravel_sdk::json!(SLOTS),
+            ravel_sdk::json!(-1),
+            ravel_sdk::json!("0"),
+            ravel_sdk::json!(null),
+        ] {
+            let hostile = ravel_sdk::json!({
+                "slots": [null, null, null, null, null, null],
+                "selected": selected,
+            });
+            assert!(Carrier::from_saved(&hostile).is_err());
+        }
     }
 
     #[test]

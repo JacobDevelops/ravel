@@ -254,7 +254,7 @@ pub enum ChannelError {
     /// A kind with this name is already declared.
     Duplicate(String),
     /// The identifier the derivation produced is not a legal content path.
-    Identity(String),
+    Identity(ContentIdError),
     /// A body is larger than [`MAX_BODY_BYTES`].
     BodyTooLarge,
     /// A body's shape is not the one the kind declared.
@@ -291,7 +291,19 @@ impl std::fmt::Display for ChannelError {
     }
 }
 
-impl std::error::Error for ChannelError {}
+impl std::error::Error for ChannelError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Identity(error) => Some(error),
+            Self::Full(_)
+            | Self::Duplicate(_)
+            | Self::BodyTooLarge
+            | Self::WrongShape { .. }
+            | Self::WrongDirection { .. }
+            | Self::UnknownKind(_) => None,
+        }
+    }
+}
 
 /// A channel: a base identifier, a protocol version and its packet kinds.
 #[derive(Clone, Debug)]
@@ -395,7 +407,7 @@ impl Channel {
             .kind(name)
             .ok_or_else(|| ChannelError::UnknownKind(name.to_owned()))?;
         let id = ContentId::new(self.owner.clone(), self.payload_id(name))
-            .map_err(|error: ContentIdError| ChannelError::Identity(error.to_string()))?;
+            .map_err(ChannelError::Identity)?;
         Ok(PacketContract::new(
             PacketId::new(id),
             kind.direction(),
@@ -743,6 +755,11 @@ mod tests {
         assert!(
             matches!(refusal, ChannelError::Identity(_)),
             "a repaired spelling would route two different derivations to one name"
+        );
+        assert!(
+            std::error::Error::source(&refusal)
+                .and_then(|source| source.downcast_ref::<super::ContentIdError>())
+                .is_some()
         );
 
         let other = {

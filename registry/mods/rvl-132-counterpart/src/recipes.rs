@@ -126,6 +126,8 @@ impl fmt::Display for Refused {
     }
 }
 
+impl std::error::Error for Refused {}
+
 /// The input-count range a view admits.
 ///
 /// Defect one: the original's brewing predicate is a disjunction of "at least

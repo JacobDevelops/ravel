@@ -22,6 +22,7 @@
 
 use std::collections::BTreeMap;
 
+use ravel_sdk::content::ContentId;
 use ravel_sdk::{JsonValue, json};
 
 use crate::data::{DataPredicate, Tag};
@@ -453,7 +454,7 @@ impl StatePredicate {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockPredicate {
     /// The block this names, which is required.
-    pub identity: String,
+    pub identity: ContentId,
     /// An optional test over the block entity's fully-saved form.
     pub stored: Option<DataPredicate>,
     /// An optional test over the position.
@@ -463,10 +464,10 @@ pub struct BlockPredicate {
 }
 
 /// What a caller knows about a block at a position.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BlockCandidate {
     /// The block's identity.
-    pub identity: String,
+    pub identity: ContentId,
     /// The state at the position.
     pub state: State,
     /// The block entity's fully-saved form, when there is one there.
@@ -478,9 +479,9 @@ pub struct BlockCandidate {
 impl BlockPredicate {
     /// Names a block, with no other test.
     #[must_use]
-    pub fn new(identity: &str) -> Self {
+    pub fn new(identity: ContentId) -> Self {
         Self {
-            identity: identity.to_owned(),
+            identity,
             stored: None,
             location: None,
             state: StatePredicate::anything(),
@@ -521,7 +522,7 @@ impl BlockPredicate {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityPredicate {
     /// The entity kind this names, which is required.
-    pub kind: String,
+    pub kind: ContentId,
     /// An optional test over the position.
     pub location: Option<String>,
     /// The status effects that must be present.
@@ -535,10 +536,10 @@ pub struct EntityPredicate {
 }
 
 /// What a caller knows about an entity.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EntityCandidate {
     /// The entity's kind.
-    pub kind: String,
+    pub kind: ContentId,
     /// Where it is, when the caller has a location to offer.
     pub location: Option<String>,
     /// Its status effects.
@@ -551,6 +552,21 @@ pub struct EntityCandidate {
     pub target: Option<Box<Self>>,
 }
 
+impl EntityCandidate {
+    /// Names an entity kind with no optional observations.
+    #[must_use]
+    pub fn new(kind: ContentId) -> Self {
+        Self {
+            kind,
+            location: None,
+            effects: Vec::new(),
+            stored: None,
+            flags: Vec::new(),
+            target: None,
+        }
+    }
+}
+
 /// How deep a target chain will be followed.
 ///
 /// An entity that targets an entity that targets it is a cycle the walk would
@@ -560,9 +576,9 @@ pub const MAX_TARGET_DEPTH: usize = 8;
 impl EntityPredicate {
     /// Names an entity kind, with no other test.
     #[must_use]
-    pub fn new(kind: &str) -> Self {
+    pub fn new(kind: ContentId) -> Self {
         Self {
-            kind: kind.to_owned(),
+            kind,
             location: None,
             effects: Vec::new(),
             stored: None,
@@ -659,7 +675,7 @@ impl Bound {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ItemPredicate {
     /// The item this names, which is required.
-    pub identity: String,
+    pub identity: ContentId,
     /// An optional test over the stack's stored data.
     pub stored: Option<DataPredicate>,
     /// A bound on the remaining durability.
@@ -669,10 +685,10 @@ pub struct ItemPredicate {
 }
 
 /// What a caller knows about an item stack.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ItemCandidate {
     /// The stack's item identity.
-    pub identity: String,
+    pub identity: ContentId,
     /// The stack's stored data.
     pub stored: Option<Tag>,
     /// The remaining durability, absent for an item that does not take damage.
@@ -684,9 +700,9 @@ pub struct ItemCandidate {
 impl ItemPredicate {
     /// Names an item, with no other test.
     #[must_use]
-    pub fn new(identity: &str) -> Self {
+    pub fn new(identity: ContentId) -> Self {
         Self {
-            identity: identity.to_owned(),
+            identity,
             stored: None,
             durability: Bound::ANY,
             count: Bound::ANY,
@@ -954,7 +970,8 @@ mod tests {
 
     #[test]
     fn a_block_predicate_tests_the_block_the_state_the_location_and_the_stored_data() {
-        let mut predicate = BlockPredicate::new("lantern");
+        let mut predicate =
+            BlockPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         predicate.state = StatePredicate::new([("facing", Matcher::Exact("north".to_owned()))]);
         predicate.location = Some("cave".to_owned());
         predicate.stored = Some(DataPredicate::new(
@@ -962,7 +979,7 @@ mod tests {
             Mode::Lenient,
         ));
         let candidate = BlockCandidate {
-            identity: "lantern".to_owned(),
+            identity: "minecraft:lantern".parse().expect("a content identity"),
             state: state(&[("facing", "north")]),
             stored: Some(Tag::compound([("lit", Tag::Int(1)), ("age", Tag::Int(0))])),
             location: Some("cave".to_owned()),
@@ -974,7 +991,7 @@ mod tests {
         assert!(!predicate.holds(&definition(), &elsewhere));
 
         let mut other = candidate.clone();
-        other.identity = "torch".to_owned();
+        other.identity = "minecraft:torch".parse().expect("a content identity");
         assert!(!predicate.holds(&definition(), &other));
 
         let mut turned = candidate;
@@ -984,11 +1001,14 @@ mod tests {
 
     #[test]
     fn a_block_predicate_with_a_stored_test_needs_a_block_entity_to_be_there() {
-        let mut predicate = BlockPredicate::new("lantern");
+        let mut predicate =
+            BlockPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         predicate.stored = Some(DataPredicate::anything());
         let bare = BlockCandidate {
-            identity: "lantern".to_owned(),
-            ..BlockCandidate::default()
+            identity: "minecraft:lantern".parse().expect("a content identity"),
+            state: State::new(),
+            stored: None,
+            location: None,
         };
         assert!(
             !predicate.holds(&definition(), &bare),
@@ -999,24 +1019,27 @@ mod tests {
 
     #[test]
     fn a_block_predicate_defaults_its_state_test_to_anything() {
-        let predicate = BlockPredicate::new("lantern");
+        let predicate =
+            BlockPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         let candidate = BlockCandidate {
-            identity: "lantern".to_owned(),
+            identity: "minecraft:lantern".parse().expect("a content identity"),
             state: state(&[("facing", "west")]),
-            ..BlockCandidate::default()
+            stored: None,
+            location: None,
         };
         assert!(predicate.holds(&definition(), &candidate));
     }
 
     #[test]
     fn an_entity_predicate_tests_its_kind_and_its_five_optional_tests() {
-        let mut predicate = EntityPredicate::new("wanderer");
+        let mut predicate =
+            EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
         predicate.effects = vec!["haste".to_owned()];
         predicate.flags = vec!["airborne".to_owned()];
         predicate.location = Some("cave".to_owned());
         predicate.stored = Some(DataPredicate::new(Tag::Int(3), Mode::Lenient));
         let candidate = EntityCandidate {
-            kind: "wanderer".to_owned(),
+            kind: "example:wanderer".parse().expect("a content identity"),
             location: Some("cave".to_owned()),
             effects: vec!["haste".to_owned(), "speed".to_owned()],
             stored: Some(Tag::Long(3)),
@@ -1036,43 +1059,41 @@ mod tests {
 
     #[test]
     fn a_predicate_naming_a_target_is_not_satisfied_by_an_entity_that_has_none() {
-        let mut predicate = EntityPredicate::new("wanderer");
-        predicate.target = Some(Box::new(EntityPredicate::new("traveller")));
-        let alone = EntityCandidate {
-            kind: "wanderer".to_owned(),
-            ..EntityCandidate::default()
-        };
+        let mut predicate =
+            EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
+        predicate.target = Some(Box::new(EntityPredicate::new(
+            "example:traveller".parse().expect("a content identity"),
+        )));
+        let alone = EntityCandidate::new("example:wanderer".parse().expect("a content identity"));
         assert!(!predicate.holds(&alone));
         let hunting = EntityCandidate {
-            kind: "wanderer".to_owned(),
-            target: Some(Box::new(EntityCandidate {
-                kind: "traveller".to_owned(),
-                ..EntityCandidate::default()
-            })),
-            ..EntityCandidate::default()
+            target: Some(Box::new(EntityCandidate::new(
+                "example:traveller".parse().expect("a content identity"),
+            ))),
+            ..EntityCandidate::new("example:wanderer".parse().expect("a content identity"))
         };
         assert!(predicate.holds(&hunting));
     }
 
     #[test]
     fn a_target_chain_is_bounded_rather_than_followed_forever() {
-        let mut predicate = EntityPredicate::new("wanderer");
-        let mut inner = EntityPredicate::new("wanderer");
+        let mut predicate =
+            EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
+        let mut inner =
+            EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
         for _ in 0..super::MAX_TARGET_DEPTH {
-            let mut outer = EntityPredicate::new("wanderer");
+            let mut outer =
+                EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
             outer.target = Some(Box::new(inner));
             inner = outer;
         }
         predicate.target = Some(Box::new(inner));
-        let mut candidate = EntityCandidate {
-            kind: "wanderer".to_owned(),
-            ..EntityCandidate::default()
-        };
+        let mut candidate =
+            EntityCandidate::new("example:wanderer".parse().expect("a content identity"));
         for _ in 0..(super::MAX_TARGET_DEPTH + 4) {
             candidate = EntityCandidate {
-                kind: "wanderer".to_owned(),
                 target: Some(Box::new(candidate)),
-                ..EntityCandidate::default()
+                ..EntityCandidate::new("example:wanderer".parse().expect("a content identity"))
             };
         }
         assert!(!predicate.holds(&candidate));
@@ -1080,36 +1101,40 @@ mod tests {
 
     #[test]
     fn the_item_predicate_holds_for_the_stack_it_names() {
-        let predicate = ItemPredicate::new("lantern");
+        let predicate =
+            ItemPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         let named = ItemCandidate {
-            identity: "lantern".to_owned(),
+            identity: "minecraft:lantern".parse().expect("a content identity"),
             count: 1,
-            ..ItemCandidate::default()
+            stored: None,
+            durability: None,
         };
         assert!(
             predicate.holds(&named),
             "the original returns false here, which is the inverted identity test"
         );
         let other = ItemCandidate {
-            identity: "torch".to_owned(),
+            identity: "minecraft:torch".parse().expect("a content identity"),
             count: 1,
-            ..ItemCandidate::default()
+            stored: None,
+            durability: None,
         };
         assert!(!predicate.holds(&other));
     }
 
     #[test]
     fn a_durability_bound_other_than_any_fails_outright_for_an_item_that_takes_no_damage() {
-        let mut predicate = ItemPredicate::new("lantern");
+        let mut predicate =
+            ItemPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         predicate.durability = Bound {
             lower: Some(0),
             upper: None,
         };
         let indestructible = ItemCandidate {
-            identity: "lantern".to_owned(),
+            identity: "minecraft:lantern".parse().expect("a content identity"),
             durability: None,
             count: 1,
-            ..ItemCandidate::default()
+            stored: None,
         };
         assert!(
             !predicate.holds(&indestructible),
@@ -1119,22 +1144,23 @@ mod tests {
 
     #[test]
     fn the_durability_compared_is_the_remaining_amount_rather_than_the_damage_taken() {
-        let mut predicate = ItemPredicate::new("pick");
+        let mut predicate =
+            ItemPredicate::new("minecraft:pick".parse().expect("a content identity"));
         predicate.durability = Bound {
             lower: Some(100),
             upper: None,
         };
         let fresh = ItemCandidate {
-            identity: "pick".to_owned(),
+            identity: "minecraft:pick".parse().expect("a content identity"),
             durability: Some(250),
             count: 1,
-            ..ItemCandidate::default()
+            stored: None,
         };
         let worn = ItemCandidate {
-            identity: "pick".to_owned(),
+            identity: "minecraft:pick".parse().expect("a content identity"),
             durability: Some(5),
             count: 1,
-            ..ItemCandidate::default()
+            stored: None,
         };
         assert!(predicate.holds(&fresh));
         assert!(!predicate.holds(&worn));
@@ -1142,15 +1168,17 @@ mod tests {
 
     #[test]
     fn a_count_bound_is_inclusive_at_both_ends() {
-        let mut predicate = ItemPredicate::new("lantern");
+        let mut predicate =
+            ItemPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         predicate.count = Bound {
             lower: Some(2),
             upper: Some(4),
         };
         let with = |count| ItemCandidate {
-            identity: "lantern".to_owned(),
+            identity: "minecraft:lantern".parse().expect("a content identity"),
             count,
-            ..ItemCandidate::default()
+            stored: None,
+            durability: None,
         };
         assert!(predicate.holds(&with(2)));
         assert!(predicate.holds(&with(4)));
@@ -1163,15 +1191,21 @@ mod tests {
     #[test]
     fn each_composite_predicate_exposes_its_stored_tag_for_inspection() {
         let expected = Tag::compound([("lit", Tag::Byte(1))]);
-        let mut block = BlockPredicate::new("lantern");
+        let mut block =
+            BlockPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         block.stored = Some(DataPredicate::new(expected.clone(), Mode::Lenient));
         assert_eq!(block.stored_tag(), Some(&expected));
-        let mut entity = EntityPredicate::new("wanderer");
+        let mut entity =
+            EntityPredicate::new("example:wanderer".parse().expect("a content identity"));
         entity.stored = Some(DataPredicate::new(expected.clone(), Mode::Strict));
         assert_eq!(entity.stored_tag(), Some(&expected));
-        let mut item = ItemPredicate::new("lantern");
+        let mut item = ItemPredicate::new("minecraft:lantern".parse().expect("a content identity"));
         item.stored = Some(DataPredicate::new(expected.clone(), Mode::Lenient));
         assert_eq!(item.stored_tag(), Some(&expected));
-        assert!(ItemPredicate::new("lantern").stored_tag().is_none());
+        assert!(
+            ItemPredicate::new("minecraft:lantern".parse().expect("a content identity"))
+                .stored_tag()
+                .is_none()
+        );
     }
 }

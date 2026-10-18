@@ -62,12 +62,6 @@ pub const MAX_SEGMENTS: usize = 4096;
 /// The most outlines one load may flatten.
 pub const MAX_OUTLINES: usize = 8192;
 
-/// The fixed colour every highlight is drawn in.
-///
-/// Process-wide, and the opacity's shipped default is the only one of the four
-/// channels that is not zero.
-pub const HIGHLIGHT_COLOUR: Colour = Colour::new(0x00, 0x00, 0x00, 0x66);
-
 /// Why a highlight document was refused.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OutlineError {
@@ -188,7 +182,12 @@ pub enum Drawn<'a> {
     /// The block's own class declares an outline, which wins outright.
     OwnOutline,
     /// A loaded outline for this exact state.
-    Loaded(&'a [f32]),
+    Loaded {
+        /// The flattened segments to draw.
+        segments: &'a [f32],
+        /// The process-wide shipped colour and opacity.
+        colour: Colour,
+    },
     /// Nothing here, so the host draws its usual outline.
     HostDefault,
 }
@@ -203,7 +202,12 @@ pub fn draw(outlines: &Outlines, state: StateId, declares_own: bool) -> Drawn<'_
     if declares_own {
         return Drawn::OwnOutline;
     }
-    outlines.at(state).map_or(Drawn::HostDefault, Drawn::Loaded)
+    outlines
+        .at(state)
+        .map_or(Drawn::HostDefault, |segments| Drawn::Loaded {
+            segments,
+            colour: Colour::new(0x00, 0x00, 0x00, 0x66),
+        })
 }
 
 /// Loads the two document shapes into flattened outlines.
@@ -326,9 +330,9 @@ mod tests {
     use ravel_sdk::{Side, json};
 
     use super::{
-        Contributed, Declaration, Declaring, Drawn, FLOATS_PER_SEGMENT, Failure, HIGHLIGHT_COLOUR,
-        OutlineError, Outlines, PackError, PackKind, Segment, Spellings, SpellingsUnavailable,
-        StateId, contribute, draw, flatten_segment, load,
+        Contributed, Declaration, Declaring, Drawn, FLOATS_PER_SEGMENT, Failure, OutlineError,
+        Outlines, PackError, PackKind, Segment, Spellings, SpellingsUnavailable, StateId,
+        contribute, draw, flatten_segment, load,
     };
 
     fn spellings() -> Spellings {
@@ -626,10 +630,14 @@ mod tests {
         )
         .expect("one well-formed document");
         assert_eq!(draw(&outlines, StateId(1), true), Drawn::OwnOutline);
-        assert!(matches!(
-            draw(&outlines, StateId(1), false),
-            Drawn::Loaded(_)
-        ));
+        let Drawn::Loaded { segments, colour } = draw(&outlines, StateId(1), false) else {
+            panic!("a loaded outline is drawn when the block declares none");
+        };
+        assert_eq!(
+            segments,
+            outlines.at(StateId(1)).expect("the loaded geometry")
+        );
+        assert_eq!(colour, crate::colour::Colour::new(0, 0, 0, 0x66));
         assert_eq!(draw(&outlines, StateId(9), false), Drawn::HostDefault);
     }
 
@@ -693,14 +701,6 @@ mod tests {
         let outlines = load(&[], &[], &spellings()).expect("nothing to load");
         assert_eq!(outlines.states(), 0);
         assert_eq!(outlines.arrays(), 0);
-    }
-
-    #[test]
-    fn the_shipped_colour_is_transparent_in_every_channel_but_the_opacity() {
-        assert_eq!(HIGHLIGHT_COLOUR.red, 0);
-        assert_eq!(HIGHLIGHT_COLOUR.green, 0);
-        assert_eq!(HIGHLIGHT_COLOUR.blue, 0);
-        assert_ne!(HIGHLIGHT_COLOUR.alpha, 0);
     }
 
     #[test]

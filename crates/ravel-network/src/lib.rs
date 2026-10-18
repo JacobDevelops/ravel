@@ -61,6 +61,18 @@ pub enum WireError {
         /// The bytes that were left.
         available: usize,
     },
+    /// A field exceeds its contract's size ceiling.
+    TooLarge {
+        /// The size the payload requires.
+        needed: usize,
+        /// The largest size the contract accepts.
+        limit: usize,
+    },
+    /// A field's bytes are structurally readable but its value is not accepted.
+    InvalidValue {
+        /// The domain-specific reason the value was refused.
+        message: String,
+    },
     /// The body ended and bytes remained.
     TrailingBytes {
         /// How many bytes nothing accounted for.
@@ -101,6 +113,11 @@ impl fmt::Display for WireError {
                 formatter,
                 "the packet ends early: a field needs {needed} bytes and {available} are left"
             ),
+            Self::TooLarge { needed, limit } => write!(
+                formatter,
+                "a packet field's size is {needed} and its limit is {limit}"
+            ),
+            Self::InvalidValue { message } => formatter.write_str(message),
             Self::TrailingBytes { unread } => write!(
                 formatter,
                 "the packet body ended with {unread} bytes nothing accounts for"

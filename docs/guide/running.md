@@ -124,6 +124,8 @@ is a `PacketId` and does print, `direction()` and `version()`.
 A payload is refused rather than misread in every way it can be wrong, and
 `WireError` is the whole of those refusals. Its variants are
 `WireError::Truncated`, the buffer ending inside a field;
+`WireError::TooLarge`, a field exceeding its contract's size ceiling;
+`WireError::InvalidValue`, a readable field whose value its domain refuses;
 `WireError::TrailingBytes`, the body ending with bytes left over;
 `WireError::NotUtf8`, a length-prefixed text field that is not UTF-8;
 `WireError::NotABool`, a boolean byte that is neither zero nor one;

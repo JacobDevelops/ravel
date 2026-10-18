@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{Converted, Counts, Input, Refused, check_input_kinds};
+use super::{Converted, Counts, Input, RecipeRefused, check_input_kinds};
 use crate::forms::{Candidate, CandidateSet};
 use crate::kinds::{ConditionSet, Flags, Stack};
 
@@ -33,11 +33,11 @@ impl Closure {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::Cap`] past [`MAX_CLOSURE_CAP`] and for a cap of zero,
+    /// Returns [`RecipeRefused::Cap`] past [`MAX_CLOSURE_CAP`] and for a cap of zero,
     /// which would refuse a pack with any brewing at all.
-    pub const fn new(cap: usize) -> Result<Self, Refused> {
+    pub const fn new(cap: usize) -> Result<Self, RecipeRefused> {
         if cap == 0 || cap > MAX_CLOSURE_CAP {
-            return Err(Refused::Cap {
+            return Err(RecipeRefused::Cap {
                 limit: MAX_CLOSURE_CAP,
             });
         }
@@ -68,7 +68,7 @@ impl Closure {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::ProbableCycle`] once the accumulated set passes the
+    /// Returns [`RecipeRefused::ProbableCycle`] once the accumulated set passes the
     /// cap. The closure is unbounded under a badly-behaved mod, so this is the
     /// bound rather than a diagnostic.
     pub fn compute(
@@ -77,7 +77,7 @@ impl Closure {
         ingredients: &[Stack],
         mix: impl Fn(&Stack, &Stack) -> Option<Stack>,
         keep: impl Fn(&Stack, &Stack) -> bool,
-    ) -> Result<Vec<Converted>, Refused> {
+    ) -> Result<Vec<Converted>, RecipeRefused> {
         let mut recipes = Vec::new();
         let mut seen: BTreeSet<(String, String, String)> = BTreeSet::new();
         let mut reached: BTreeSet<String> = BTreeSet::new();
@@ -98,7 +98,7 @@ impl Closure {
                         continue;
                     }
                     if recipes.len() >= self.cap {
-                        return Err(Refused::ProbableCycle { cap: self.cap });
+                        return Err(RecipeRefused::ProbableCycle { cap: self.cap });
                     }
                     recipes.push(brewing_recipe(ingredient, input, &output));
                     if reached.insert(identify(&output)) {
@@ -125,17 +125,17 @@ impl Closure {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::MixedKinds`] when the inputs name more than one
-    /// ingredient kind, [`Refused::NoInput`] for no inputs at all and
-    /// [`Refused::Count`] outside [`Counts::BREWING`].
+    /// Returns [`RecipeRefused::MixedKinds`] when the inputs name more than one
+    /// ingredient kind, [`RecipeRefused::NoInput`] for no inputs at all and
+    /// [`RecipeRefused::Count`] outside [`Counts::BREWING`].
     pub fn simulate(
         &self,
         inputs: &[Input],
         mix: impl Fn(&Stack, &Stack) -> Option<Stack>,
-    ) -> Result<Option<Vec<Stack>>, Refused> {
+    ) -> Result<Option<Vec<Stack>>, RecipeRefused> {
         check_input_kinds(inputs)?;
         let Some((first, rest)) = inputs.split_first() else {
-            return Err(Refused::NoInput);
+            return Err(RecipeRefused::NoInput);
         };
         Counts::BREWING.check(inputs.len())?;
         let mut running = first.value.clone();
@@ -199,7 +199,7 @@ fn one_of(value: &Stack) -> CandidateSet<Stack> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Closure, Input, Refused, Stack};
+    use super::{Closure, Input, RecipeRefused, Stack};
 
     fn stack(name: &str) -> Stack {
         Stack::of(name.parse().expect("a valid identity"), 1)
@@ -238,16 +238,16 @@ mod tests {
         for (count, named) in [(2, 2), (4, 2), (5, 3)] {
             assert_eq!(
                 closure.simulate(&inputs[..count], |_, _| panic!("mixed kinds must not mix")),
-                Err(Refused::MixedKinds { named })
+                Err(RecipeRefused::MixedKinds { named })
             );
         }
         assert_eq!(
             closure.simulate(&[], |_, _| panic!("no inputs must not mix")),
-            Err(Refused::NoInput)
+            Err(RecipeRefused::NoInput)
         );
         assert_eq!(
             closure.simulate(&inputs[..1], |_, _| panic!("one input must not mix")),
-            Err(Refused::Count {
+            Err(RecipeRefused::Count {
                 given: 1,
                 least: 2,
                 most: 4,
@@ -256,7 +256,7 @@ mod tests {
         let same_kind = vec![inputs[0].clone(); 5];
         assert_eq!(
             closure.simulate(&same_kind, |_, _| panic!("too many inputs must not mix")),
-            Err(Refused::Count {
+            Err(RecipeRefused::Count {
                 given: 5,
                 least: 2,
                 most: 4,

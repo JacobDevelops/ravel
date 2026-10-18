@@ -180,12 +180,6 @@ impl Entry {
         self.settings.as_ref().map_err(Clone::clone)
     }
 
-    /// The flag table this entry published into.
-    #[must_use]
-    pub const fn flags(&self) -> &FlagTable {
-        &self.flags
-    }
-
     /// The three registries.
     #[must_use]
     pub const fn registries(&self) -> &Registries {
@@ -473,6 +467,7 @@ impl Mod for Entry {
 
     fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
+            self.machines.clear();
             return Ok(());
         };
         let Some(held) = envelope
@@ -524,7 +519,9 @@ mod tests {
             .configure(&resolved)
             .expect("configuration publishes flags");
         let service = Entry::flags_service().expect("legal service");
-        let disabled = settings::flag_id(settings::RECIPES_PLAIN_GRID_SEEDS).expect("legal flag");
+        let disabled =
+            rvl_042_counterpart::flags::setting_flag(MOD_ID, settings::RECIPES_PLAIN_GRID_SEEDS)
+                .expect("legal flag");
         let answer = entry
             .answer_service(&ServiceRequest::new(
                 service.clone(),
@@ -589,6 +586,30 @@ mod tests {
                 .configuration_declaration()
                 .expect("valid configuration")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn a_world_without_saved_data_does_not_inherit_the_previous_world() {
+        let mut entry = Entry::new();
+        let envelope = SavedDataEnvelope::current(
+            Entry::declared_id().clone(),
+            machines::DATA_VERSION,
+            json!({"machines": {"previous": {}}}),
+        );
+        entry
+            .open_saved_data(Some(&envelope))
+            .expect("a populated world opens");
+        assert!(entry.machine("previous").is_some());
+        entry.open_saved_data(None).expect("an empty world opens");
+        assert!(entry.machine("previous").is_none());
+        assert_eq!(
+            entry
+                .save_saved_data()
+                .expect("the empty world saves")
+                .expect("the entry saves data")
+                .payload(),
+            &json!({"machines": {}})
         );
     }
 

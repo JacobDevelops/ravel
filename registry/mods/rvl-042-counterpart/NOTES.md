@@ -37,7 +37,7 @@ Ravel rather than rebuilt.
 | §10 reusable entries | implemented | `src/reusable.rs` |
 | §11 derived arithmetic | implemented | `src/arithmetic.rs` |
 | §12 client presentation | gating only | `src/settings.rs` |
-| §13 the command | declared as a name only | `src/lib.rs` |
+| §13 the command | declared as a name only; execution explicitly refused as host-blocked | `src/lib.rs` |
 
 Shared stacks and optional harvest seeds carry validated `ContentId` identities. A stack with
 count zero is empty regardless of its valid identity; stores continue to model vacant slots as
@@ -114,6 +114,8 @@ package declares the shape where a shape is declarable and carries no pretend im
   `arithmetic::sweep_harvest` asks its listener at each position and a cancel stops that position
   alone.
 - **The command (§13).** The name is claimed; the energy store it would fill is host-blocked.
+  `Entry::run_command` explicitly refuses execution with that reason rather than reporting success
+  without filling a store.
 
 ## Two smaller shapes worth stating
 

@@ -91,7 +91,7 @@ pub enum TagError {
         input: &'static str,
     },
     /// The data map the form carries was refused.
-    Data(data::Refused),
+    Data(data::DataRefused),
     /// A textual item or fluid identity violates Ravel's identifier grammar.
     Identifier {
         /// The rejected spelling.
@@ -157,8 +157,8 @@ impl std::error::Error for TagError {
     }
 }
 
-impl From<data::Refused> for TagError {
-    fn from(refused: data::Refused) -> Self {
+impl From<data::DataRefused> for TagError {
+    fn from(refused: data::DataRefused) -> Self {
         Self::Data(refused)
     }
 }
@@ -1054,8 +1054,12 @@ mod tests {
     #[test]
     fn wrapped_tag_errors_expose_their_typed_sources() {
         use std::error::Error;
-        let data = TagError::Data(data::Refused::TooDeep { limit: 3 });
-        assert!(data.source().expect("data source").is::<data::Refused>());
+        let data = TagError::Data(data::DataRefused::TooDeep { limit: 3 });
+        assert!(
+            data.source()
+                .expect("data source")
+                .is::<data::DataRefused>()
+        );
         let value = "bare".to_owned();
         let error = value
             .parse::<ravel_sdk::content::ContentId>()
@@ -1763,7 +1767,7 @@ mod tests {
             .contains(ESCAPE_INPUT)
         );
         assert!(
-            TagError::Data(data::Refused::TooDeep { limit: 1 })
+            TagError::Data(data::DataRefused::TooDeep { limit: 1 })
                 .to_string()
                 .contains("nests past")
         );

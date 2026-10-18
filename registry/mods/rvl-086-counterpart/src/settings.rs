@@ -18,13 +18,12 @@
 //! reads the switch it is named for, which is the second declared change: the
 //! original binds one flag to a switch belonging to an unrelated feature.
 
-use ravel_sdk::Declared;
 use ravel_sdk::config::{
     AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
-use ravel_sdk::content::{ContentId, ContentIdError};
+use ravel_sdk::content::ContentIdError;
 use ravel_sdk::network::{
-    Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
+    Direction, Packet, PacketContract, PacketReader, PacketWriter, WireError,
 };
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
@@ -819,14 +818,7 @@ pub const PACKET_VERSION: u32 = 1;
 
 impl Packet for Decisive {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ContentId::new(crate::Entry::declared_id().clone(), DECISIVE_PACKET)
-                    .expect("the packaged packet path is legal"),
-            ),
-            Direction::ToClient,
-            PACKET_VERSION,
-        )
+        crate::packet_contract(DECISIVE_PACKET, Direction::ToClient)
     }
 
     fn write(&self, writer: &mut PacketWriter) {

@@ -175,21 +175,27 @@ pub struct Settings {
     pub debug_logging: bool,
     /// Whether a placed block records who placed it.
     pub record_owner: bool,
-    /// The most of one upgrade material a machine may absorb.
-    pub infusion_ceiling: i64,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            debug_logging: false,
-            record_owner: true,
-            infusion_ceiling: INFUSION_CEILING_DEFAULT,
-        }
-    }
+    infusion_ceiling: i32,
 }
 
 impl Settings {
+    /// Resolves the packaged defaults without configuration layers.
+    ///
+    /// # Errors
+    /// Returns a packaging failure if the declaration or defaults are invalid.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declaration = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declaration, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+    }
+
+    /// The validated positive ceiling for one upgrade material.
+    #[must_use]
+    pub const fn infusion_ceiling(&self) -> i32 {
+        self.infusion_ceiling
+    }
+
     /// Reads the three server values out of a resolved configuration.
     ///
     /// A value outside the supported positive `i32` range is refused rather than
@@ -206,7 +212,7 @@ impl Settings {
         Ok(Self {
             debug_logging: resolved.boolean(DEBUG_LOGGING)?,
             record_owner: resolved.boolean(RECORD_OWNER)?,
-            infusion_ceiling: i64::from(infusion_ceiling),
+            infusion_ceiling,
         })
     }
 }
@@ -318,10 +324,10 @@ mod tests {
 
     #[test]
     fn the_server_settings_default_to_off_on_and_two_hundred_and_fifty_six() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged defaults resolve");
         assert!(!settings.debug_logging);
         assert!(settings.record_owner);
-        assert_eq!(settings.infusion_ceiling, 256);
+        assert_eq!(settings.infusion_ceiling(), 256);
     }
 
     #[test]
@@ -336,7 +342,7 @@ mod tests {
         let settings = Settings::read(&resolved).expect("declared settings have matching types");
         assert!(settings.debug_logging);
         assert!(!settings.record_owner);
-        assert_eq!(settings.infusion_ceiling, 64);
+        assert_eq!(settings.infusion_ceiling(), 64);
     }
 
     #[test]

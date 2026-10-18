@@ -184,20 +184,24 @@ impl Colours {
     }
 }
 
+fn contract(path: &str, direction: Direction) -> PacketContract {
+    PacketContract::new(
+        PacketId::new(
+            ContentId::new(crate::Entry::declared_id().clone(), path)
+                .expect("a packaged payload name is a legal content path"),
+        ),
+        direction,
+        CHANNEL_VERSION,
+    )
+}
+
 /// The unit payload that plays the experience-pickup sound on a client.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ExperienceSound;
 
 impl Packet for ExperienceSound {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ContentId::new(crate::Entry::declared_id().clone(), "experience_sound")
-                    .expect("a packaged payload name is a legal content path"),
-            ),
-            Direction::ToClient,
-            CHANNEL_VERSION,
-        )
+        contract("experience_sound", Direction::ToClient)
     }
 
     fn write(&self, _writer: &mut PacketWriter) {}
@@ -218,14 +222,7 @@ pub struct CachePayload {
 
 impl Packet for CachePayload {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ContentId::new(crate::Entry::declared_id().clone(), "ingredient_cache")
-                    .expect("a packaged payload name is a legal content path"),
-            ),
-            Direction::ToClient,
-            CHANNEL_VERSION,
-        )
+        contract("ingredient_cache", Direction::ToClient)
     }
 
     fn write(&self, writer: &mut PacketWriter) {
@@ -274,14 +271,7 @@ pub struct ColourPayload {
 
 impl Packet for ColourPayload {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ContentId::new(crate::Entry::declared_id().clone(), "colour_map")
-                    .expect("a packaged payload name is a legal content path"),
-            ),
-            Direction::ToClient,
-            CHANNEL_VERSION,
-        )
+        contract("colour_map", Direction::ToClient)
     }
 
     fn write(&self, writer: &mut PacketWriter) {
@@ -314,14 +304,7 @@ pub struct OffsetNudge {
 
 impl Packet for OffsetNudge {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ContentId::new(crate::Entry::declared_id().clone(), "offset_nudge")
-                    .expect("a packaged payload name is a legal content path"),
-            ),
-            Direction::ToServer,
-            CHANNEL_VERSION,
-        )
+        contract("offset_nudge", Direction::ToServer)
     }
 
     fn write(&self, writer: &mut PacketWriter) {

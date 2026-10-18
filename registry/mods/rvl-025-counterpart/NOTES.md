@@ -14,9 +14,13 @@ resolution, saved-data ownership, side isolation, packet contracts and their fra
 through Ravel rather than rebuilt, which is §1.1's disposition.
 
 The Rust matching API represents inclusion versus exclusion with `VerdictMode`
-in `Modes::verdict`; the saved `exclusion` boolean and the `Modes` debug display
-retain their original form. Machine arithmetic retains primitive single-precision
-conversion semantics, and signed packet fields retain their original bit patterns.
+in `Modes::verdict`; the saved `exclusion` boolean retains its original form, while
+derived Debug output reflects the enum. Machine arithmetic retains primitive single-precision
+conversion semantics, and signed packet fields retain their original bit patterns. The upgrade
+ceiling is unsigned after refusing configuration narrowing, so machine comparisons need no clamp.
+`Entry::close_registration` closes the interface surface and returns the registrations for the
+caller to file; `is_registration_closed` reports that window's state. Packet identities use the
+entry's declared namespace.
 
 Configuration reads return missing-key and wrong-kind errors rather than silently
 substituting shipped defaults, including integer values outside the reader's range.

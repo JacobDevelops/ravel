@@ -29,7 +29,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
 | §3 the five client-side bytecode transformations | declarable only; not reachable | — |
 | §4 the thirty-four groups | implemented | `src/grouping.rs` |
 | §4 the aggregate resolving through its leaves | implemented | `src/grouping.rs` |
-| §5 the three commands | implemented | `src/commands.rs`, `src/population.rs` |
+| §5 the three commands | implemented; reclamation and sweep invocations refused pending permission metadata | `src/commands.rs`, `src/population.rs` |
 | §5 the permission level of each | declarable only; intended operator level recorded below | — |
 | §5 the eighteen translated lines | implemented | `src/presentation.rs` |
 | §5 the two read-only displays | implemented | `src/presentation.rs` |
@@ -136,13 +136,17 @@ and nothing carries a pretend implementation.
   Ravel mod does. The declaration is evidence about sides, which §6 and this package both use, and
   nothing else about it is carried.
 - **Each command's permission level (§5).** The intended operator level is two, recorded here rather
-  than exposed by an unused constant and accessor. Nothing enforces it, and nothing here can:
-  a `CommandInvocation` carries the claimed key, side and words, but no invoker or permission level.
-  The side *is* enforced.
-- **Where the population comes from (§5).** Ravel publishes no entity surface, so the two
-  world-acting commands read and change `population::Population` rather than a world. Every rule the commands
-  decide — the totals, the per-kind lines, the empty case and the player refusal — is decided over
-  that value and is tested. What is host-blocked is the filling of it.
+  than exposed by an unused constant and accessor. A `CommandInvocation` carries the claimed key,
+  side and words, but no invoker or permission level, so the entry cannot establish operator authority.
+  `Entry::run_command` therefore refuses reclamation and entity sweep before reading or changing
+  retained state or the population. The read-only tally remains available on server sides, and the
+  side rule is enforced. Direct calls to the portable console implement the decision rules, not
+  authorization of player invocations.
+- **Where the population comes from (§5).** Ravel publishes no entity surface, so the portable
+  world-acting rules read and change `population::Population` rather than a world. Their totals,
+  per-kind lines, empty case and player refusal are implemented over that value and tested. Filling
+  it from the world is host-blocked; command invocation also withholds the mutating rules until
+  permission metadata is available.
 - **Delivery of a packet (§10).** Ravel's network module states that nothing carries a mod's packet
   to the other end at this revision. The contract, the framing, the refusals and the side rule are
   this package's own and are tested as written here rather than against the original; the leg after

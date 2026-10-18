@@ -157,12 +157,12 @@ pub const INTERACTIONS: [Interaction; 5] = [
 ];
 
 /// A modifier attached to a tool.
-pub trait Slotted {
+pub trait ToolModifier {
     /// Offers the modifier one interaction, answering whether it acted.
-    fn offered(&mut self, interaction: Interaction) -> bool;
+    fn offer(&mut self, interaction: Interaction) -> bool;
 
     /// Offers the modifier an inventory tick, which answers nothing.
-    fn ticked(&mut self);
+    fn tick(&mut self);
 }
 
 /// Offers one interaction to every attached modifier, in attachment order.
@@ -171,10 +171,10 @@ pub trait Slotted {
 /// success if any one of them acted. So a modifier that consumes an event does
 /// not prevent a later one from seeing it, and attachment order is observable
 /// only through side effects rather than through which modifier wins.
-pub fn dispatch(modifiers: &mut [Box<dyn Slotted>], interaction: Interaction) -> bool {
+pub fn dispatch(modifiers: &mut [Box<dyn ToolModifier>], interaction: Interaction) -> bool {
     let mut acted = false;
     for modifier in modifiers.iter_mut() {
-        acted |= modifier.offered(interaction);
+        acted |= modifier.offer(interaction);
     }
     acted
 }
@@ -184,15 +184,15 @@ pub fn dispatch(modifiers: &mut [Box<dyn Slotted>], interaction: Interaction) ->
 /// The base result is discarded and only the modifiers' verdict is returned.
 /// Whether that discard is reachable as a behavioural difference depends on what
 /// the base tool kind answers, which this entry does not decide.
-pub fn break_block(modifiers: &mut [Box<dyn Slotted>], base: &dyn Fn() -> bool) -> bool {
+pub fn break_block(modifiers: &mut [Box<dyn ToolModifier>], base: &dyn Fn() -> bool) -> bool {
     let _discarded = base();
     dispatch(modifiers, Interaction::BreakBlock)
 }
 
 /// Offers the inventory tick to every modifier, answering nothing.
-pub fn tick(modifiers: &mut [Box<dyn Slotted>]) {
+pub fn tick(modifiers: &mut [Box<dyn ToolModifier>]) {
     for modifier in modifiers.iter_mut() {
-        modifier.ticked();
+        modifier.tick();
     }
 }
 
@@ -210,25 +210,25 @@ mod tests {
         ticks: Ticks,
     }
 
-    impl Slotted for Recorder {
-        fn offered(&mut self, _interaction: Interaction) -> bool {
+    impl ToolModifier for Recorder {
+        fn offer(&mut self, _interaction: Interaction) -> bool {
             self.seen.borrow_mut().push(self.name);
             self.acts
         }
 
-        fn ticked(&mut self) {
+        fn tick(&mut self) {
             *self.ticks.borrow_mut() += 1;
         }
     }
 
     type Seen = Rc<RefCell<Vec<&'static str>>>;
     type Ticks = Rc<RefCell<u32>>;
-    type Pair = (Vec<Box<dyn Slotted>>, Seen, Ticks);
+    type Pair = (Vec<Box<dyn ToolModifier>>, Seen, Ticks);
 
     fn pair(first_acts: bool, second_acts: bool) -> Pair {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let ticks = Rc::new(RefCell::new(0));
-        let modifiers: Vec<Box<dyn Slotted>> = vec![
+        let modifiers: Vec<Box<dyn ToolModifier>> = vec![
             Box::new(Recorder {
                 name: "first",
                 acts: first_acts,

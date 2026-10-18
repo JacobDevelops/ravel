@@ -72,6 +72,49 @@ fn flags_are_resolved_from_the_configured_dependency_not_our_table() {
 }
 
 #[test]
+fn the_flag_service_answers_all_five_values_and_refuses_unpublished_flags() {
+    let resolved = LayeredConfiguration::resolve(
+        settings::declaration().expect("legal declaration"),
+        None,
+        None,
+    )
+    .expect("valid defaults");
+    let mut entry = Entry::new();
+    entry.configure(&resolved).expect("flags are published");
+    let service = Entry::flags_service().expect("legal service");
+    let declaration = entry
+        .service_declaration()
+        .expect("legal declaration")
+        .expect("published flags service");
+    assert!(declaration.provides().any(|id| id == &service));
+    for (key, enabled) in settings::PUBLISHED {
+        let flag = rvl_042_counterpart::flags::setting_flag(MOD_ID, key).expect("legal flag");
+        let answer = entry
+            .answer_service(&ServiceRequest::new(
+                service.clone(),
+                json!({"flag": flag.to_string()}),
+            ))
+            .expect("published flags are answerable");
+        assert_eq!(
+            answer.value(),
+            &json!(enabled(entry.settings().expect("valid settings")))
+        );
+    }
+    for flag in ["missing", "other:flag", "rvl_002_counterpart:missing"] {
+        assert!(
+            entry
+                .answer_service(&ServiceRequest::new(service.clone(), json!({"flag": flag})))
+                .is_err()
+        );
+    }
+    assert!(
+        entry
+            .answer_service(&ServiceRequest::new(service, json!({})))
+            .is_err()
+    );
+}
+
+#[test]
 fn a_packaged_settings_refusal_is_reported_at_constructed() {
     let mut entry = Entry::new();
     entry.settings = Err(ModError::refused("invalid packaged settings"));

@@ -127,7 +127,7 @@ impl Stack {
 
 /// Why a matcher or a portion was refused.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum QuantityRefused {
     /// A matcher accepting nothing, which could only ever reject.
     AcceptsNothing,
     /// A matcher accepting more than [`MAX_ACCEPTED`] identifiers.
@@ -154,7 +154,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for QuantityRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::AcceptsNothing => formatter.write_str("a matcher accepting nothing"),
@@ -178,7 +178,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for QuantityRefused {}
 
 /// Why the declared form's spellings could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -287,18 +287,18 @@ impl Matcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::AcceptsNothing`] for an empty set and
-    /// [`Refused::TooManyAccepted`] past [`MAX_ACCEPTED`].
+    /// Returns [`QuantityRefused::AcceptsNothing`] for an empty set and
+    /// [`QuantityRefused::TooManyAccepted`] past [`MAX_ACCEPTED`].
     pub fn accepting(
         flavour: Flavour,
         accepted: impl IntoIterator<Item = ContentId>,
-    ) -> Result<Self, Refused> {
+    ) -> Result<Self, QuantityRefused> {
         let accepted: Vec<ContentId> = accepted.into_iter().collect();
         if accepted.is_empty() {
-            return Err(Refused::AcceptsNothing);
+            return Err(QuantityRefused::AcceptsNothing);
         }
         if accepted.len() > MAX_ACCEPTED {
-            return Err(Refused::TooManyAccepted(accepted.len()));
+            return Err(QuantityRefused::TooManyAccepted(accepted.len()));
         }
         Ok(Self { flavour, accepted })
     }
@@ -351,11 +351,11 @@ impl Portion {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::ZeroCount`] for a declared count of none and
-    /// [`Refused::CountOutOfRange`] past [`MAX_COUNT`].
-    pub fn declared(matcher: Matcher, count: u32) -> Result<Self, Refused> {
+    /// Returns [`QuantityRefused::ZeroCount`] for a declared count of none and
+    /// [`QuantityRefused::CountOutOfRange`] past [`MAX_COUNT`].
+    pub fn declared(matcher: Matcher, count: u32) -> Result<Self, QuantityRefused> {
         if count == 0 {
-            return Err(Refused::ZeroCount);
+            return Err(QuantityRefused::ZeroCount);
         }
         Self::holding(matcher, count)
     }
@@ -364,10 +364,10 @@ impl Portion {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::CountOutOfRange`] past [`MAX_COUNT`].
-    pub fn holding(matcher: Matcher, count: u32) -> Result<Self, Refused> {
+    /// Returns [`QuantityRefused::CountOutOfRange`] past [`MAX_COUNT`].
+    pub fn holding(matcher: Matcher, count: u32) -> Result<Self, QuantityRefused> {
         if count > MAX_COUNT {
-            return Err(Refused::CountOutOfRange(i64::from(count)));
+            return Err(QuantityRefused::CountOutOfRange(i64::from(count)));
         }
         Ok(Self { matcher, count })
     }
@@ -453,38 +453,40 @@ impl Portion {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::NotAnObject`] for a document that is not an object,
-    /// [`Refused::MissingMatcher`] when the matcher field is absent,
-    /// [`Refused::CountNotWhole`] for a count that is present and is not a whole
-    /// number, [`Refused::ZeroCount`] for a declared count of none, and
-    /// [`Refused::CountOutOfRange`] for a negative count or one past
+    /// Returns [`QuantityRefused::NotAnObject`] for a document that is not an object,
+    /// [`QuantityRefused::MissingMatcher`] when the matcher field is absent,
+    /// [`QuantityRefused::CountNotWhole`] for a count that is present and is not a whole
+    /// number, [`QuantityRefused::ZeroCount`] for a declared count of none, and
+    /// [`QuantityRefused::CountOutOfRange`] for a negative count or one past
     /// [`MAX_COUNT`].
     pub fn read_declared(
         document: &JsonValue,
         spellings: &PortionSpellings,
-    ) -> Result<(JsonValue, u32), Refused> {
+    ) -> Result<(JsonValue, u32), QuantityRefused> {
         if !document.is_object() {
-            return Err(Refused::NotAnObject);
+            return Err(QuantityRefused::NotAnObject);
         }
         let matcher_form = document
             .get(spellings.matcher())
-            .ok_or_else(|| Refused::MissingMatcher {
+            .ok_or_else(|| QuantityRefused::MissingMatcher {
                 key: spellings.matcher().to_owned(),
             })?
             .clone();
         let count = match document.get(spellings.count()) {
             None => 1,
             Some(value) => {
-                let declared = value.as_i64().ok_or_else(|| Refused::CountNotWhole {
-                    key: spellings.count().to_owned(),
-                })?;
+                let declared = value
+                    .as_i64()
+                    .ok_or_else(|| QuantityRefused::CountNotWhole {
+                        key: spellings.count().to_owned(),
+                    })?;
                 if declared == 0 {
-                    return Err(Refused::ZeroCount);
+                    return Err(QuantityRefused::ZeroCount);
                 }
                 u32::try_from(declared)
                     .ok()
                     .filter(|count| *count <= MAX_COUNT)
-                    .ok_or(Refused::CountOutOfRange(declared))?
+                    .ok_or(QuantityRefused::CountOutOfRange(declared))?
             }
         };
         Ok((matcher_form, count))
@@ -495,21 +497,21 @@ impl Portion {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::MatcherTooLong`] past [`MAX_MATCHER_BYTES`] and
-    /// [`Refused::CountOutOfRange`] past [`MAX_COUNT`]. The count bound is
+    /// Returns [`QuantityRefused::MatcherTooLong`] past [`MAX_MATCHER_BYTES`] and
+    /// [`QuantityRefused::CountOutOfRange`] past [`MAX_COUNT`]. The count bound is
     /// applied here as well as at the reader, which is the half the original
     /// does not have.
-    pub fn write(&self, matcher_form: &[u8]) -> Result<Vec<u8>, Refused> {
+    pub fn write(&self, matcher_form: &[u8]) -> Result<Vec<u8>, QuantityRefused> {
         if matcher_form.len() > MAX_MATCHER_BYTES {
-            return Err(Refused::MatcherTooLong(matcher_form.len()));
+            return Err(QuantityRefused::MatcherTooLong(matcher_form.len()));
         }
         if self.count > MAX_COUNT {
-            return Err(Refused::CountOutOfRange(i64::from(self.count)));
+            return Err(QuantityRefused::CountOutOfRange(i64::from(self.count)));
         }
         let mut bytes = Vec::with_capacity(matcher_form.len() + 4);
         bytes.extend_from_slice(matcher_form);
         let count = i32::try_from(self.count)
-            .map_err(|_| Refused::CountOutOfRange(i64::from(self.count)))?;
+            .map_err(|_| QuantityRefused::CountOutOfRange(i64::from(self.count)))?;
         bytes.extend_from_slice(&count.to_be_bytes());
         Ok(bytes)
     }
@@ -523,23 +525,26 @@ impl Portion {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::Truncated`] for a buffer with no room for the count,
-    /// [`Refused::MatcherTooLong`] for a matcher form past
-    /// [`MAX_MATCHER_BYTES`], and [`Refused::CountOutOfRange`] for a negative
+    /// Returns [`QuantityRefused::Truncated`] for a buffer with no room for the count,
+    /// [`QuantityRefused::MatcherTooLong`] for a matcher form past
+    /// [`MAX_MATCHER_BYTES`], and [`QuantityRefused::CountOutOfRange`] for a negative
     /// count.
-    pub fn read(bytes: &[u8]) -> Result<(Vec<u8>, u32), Refused> {
-        let end = bytes.len().checked_sub(4).ok_or(Refused::Truncated)?;
+    pub fn read(bytes: &[u8]) -> Result<(Vec<u8>, u32), QuantityRefused> {
+        let end = bytes
+            .len()
+            .checked_sub(4)
+            .ok_or(QuantityRefused::Truncated)?;
         if end > MAX_MATCHER_BYTES {
-            return Err(Refused::MatcherTooLong(end));
+            return Err(QuantityRefused::MatcherTooLong(end));
         }
         let count_bytes: [u8; 4] = bytes
             .get(end..)
-            .ok_or(Refused::Truncated)?
+            .ok_or(QuantityRefused::Truncated)?
             .try_into()
-            .map_err(|_| Refused::Truncated)?;
+            .map_err(|_| QuantityRefused::Truncated)?;
         let count = i32::from_be_bytes(count_bytes);
         if count < 0 {
-            return Err(Refused::CountOutOfRange(i64::from(count)));
+            return Err(QuantityRefused::CountOutOfRange(i64::from(count)));
         }
         Ok((bytes[..end].to_vec(), count.unsigned_abs()))
     }
@@ -553,7 +558,7 @@ mod tests {
 
     use super::{
         Consumed, Flavour, MAX_ACCEPTED, MAX_COUNT, MAX_MATCHER_BYTES, Matcher, Portion,
-        PortionSpellings, Refused, SpellingsUnavailable, Stack,
+        PortionSpellings, QuantityRefused, SpellingsUnavailable, Stack,
     };
 
     fn id(path: &str) -> ContentId {
@@ -654,7 +659,7 @@ mod tests {
     fn a_declared_count_of_none_is_refused_and_an_empty_portion_is_not_declared() {
         assert_eq!(
             Portion::declared(matcher(), 0),
-            Err(Refused::ZeroCount),
+            Err(QuantityRefused::ZeroCount),
             "a recipe asking for none of something is a mistake where it is written"
         );
         assert!(Portion::empty(matcher()).is_empty());
@@ -664,7 +669,7 @@ mod tests {
     fn a_count_past_the_bound_is_refused_at_the_declaration_and_at_the_writer() {
         assert_eq!(
             Portion::holding(matcher(), MAX_COUNT + 1),
-            Err(Refused::CountOutOfRange(i64::from(MAX_COUNT) + 1))
+            Err(QuantityRefused::CountOutOfRange(i64::from(MAX_COUNT) + 1))
         );
         assert!(Portion::holding(matcher(), MAX_COUNT).is_ok());
     }
@@ -673,12 +678,12 @@ mod tests {
     fn a_matcher_accepting_nothing_or_too_much_is_refused() {
         assert_eq!(
             Matcher::accepting(Flavour::Item, []),
-            Err(Refused::AcceptsNothing)
+            Err(QuantityRefused::AcceptsNothing)
         );
         let many: Vec<ContentId> = (0..=MAX_ACCEPTED).map(|n| id(&format!("one{n}"))).collect();
         assert_eq!(
             Matcher::accepting(Flavour::Item, many),
-            Err(Refused::TooManyAccepted(MAX_ACCEPTED + 1))
+            Err(QuantityRefused::TooManyAccepted(MAX_ACCEPTED + 1))
         );
     }
 
@@ -693,7 +698,10 @@ mod tests {
         let mut bytes = portion(7).write(&[]).expect("an empty matcher form");
         let count = bytes.len() - 4;
         bytes[count..].copy_from_slice(&(-5i32).to_be_bytes());
-        assert_eq!(Portion::read(&bytes), Err(Refused::CountOutOfRange(-5)));
+        assert_eq!(
+            Portion::read(&bytes),
+            Err(QuantityRefused::CountOutOfRange(-5))
+        );
     }
 
     #[test]
@@ -701,14 +709,14 @@ mod tests {
         let long = vec![0u8; MAX_MATCHER_BYTES + 5];
         assert_eq!(
             Portion::read(&long),
-            Err(Refused::MatcherTooLong(MAX_MATCHER_BYTES + 1))
+            Err(QuantityRefused::MatcherTooLong(MAX_MATCHER_BYTES + 1))
         );
     }
 
     #[test]
     fn a_wire_form_with_no_room_for_the_count_is_refused() {
-        assert_eq!(Portion::read(&[]), Err(Refused::Truncated));
-        assert_eq!(Portion::read(&[0, 0, 0]), Err(Refused::Truncated));
+        assert_eq!(Portion::read(&[]), Err(QuantityRefused::Truncated));
+        assert_eq!(Portion::read(&[0, 0, 0]), Err(QuantityRefused::Truncated));
     }
 
     #[test]
@@ -746,7 +754,7 @@ mod tests {
         assert_eq!(document["amount"], json!(2));
         assert_eq!(
             Portion::read_declared(&document, &PortionSpellings::placeholder()),
-            Err(Refused::MissingMatcher {
+            Err(QuantityRefused::MissingMatcher {
                 key: "accepts".to_owned()
             }),
             "a document under one spelling does not read under another"
@@ -794,16 +802,16 @@ mod tests {
         };
         assert_eq!(
             Portion::read_declared(&with(0), &spellings),
-            Err(Refused::ZeroCount)
+            Err(QuantityRefused::ZeroCount)
         );
         assert_eq!(
             Portion::read_declared(&with(-3), &spellings),
-            Err(Refused::CountOutOfRange(-3)),
+            Err(QuantityRefused::CountOutOfRange(-3)),
             "the wire form's bound applies to the declared form too"
         );
         assert_eq!(
             Portion::read_declared(&with(i64::from(MAX_COUNT) + 1), &spellings),
-            Err(Refused::CountOutOfRange(i64::from(MAX_COUNT) + 1))
+            Err(QuantityRefused::CountOutOfRange(i64::from(MAX_COUNT) + 1))
         );
     }
 
@@ -812,11 +820,11 @@ mod tests {
         let spellings = PortionSpellings::placeholder();
         assert_eq!(
             Portion::read_declared(&json!([1, 2]), &spellings),
-            Err(Refused::NotAnObject)
+            Err(QuantityRefused::NotAnObject)
         );
         assert_eq!(
             Portion::read_declared(&json!({}), &spellings),
-            Err(Refused::MissingMatcher {
+            Err(QuantityRefused::MissingMatcher {
                 key: spellings.matcher().to_owned()
             })
         );
@@ -825,7 +833,7 @@ mod tests {
         wrong[spellings.count()] = json!("two");
         assert_eq!(
             Portion::read_declared(&wrong, &spellings),
-            Err(Refused::CountNotWhole {
+            Err(QuantityRefused::CountNotWhole {
                 key: spellings.count().to_owned()
             })
         );
@@ -836,7 +844,7 @@ mod tests {
         let long = vec![0u8; MAX_MATCHER_BYTES + 1];
         assert_eq!(
             portion(1).write(&long),
-            Err(Refused::MatcherTooLong(MAX_MATCHER_BYTES + 1))
+            Err(QuantityRefused::MatcherTooLong(MAX_MATCHER_BYTES + 1))
         );
     }
 

@@ -25,6 +25,7 @@
 
 use std::collections::BTreeMap;
 
+use ravel_sdk::Declared;
 use ravel_sdk::network::{
     Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
@@ -56,9 +57,8 @@ pub const MAX_VALUES: usize = 64;
 pub const READ_RANGE: i64 = 64;
 
 fn contract(name: &str, direction: Direction) -> PacketContract {
-    let id = format!("rvl_025_counterpart:{name}")
-        .parse()
-        .expect("a constant this package spells is a legal content id");
+    let id = ravel_sdk::content::ContentId::new(crate::Entry::declared_id().clone(), name)
+        .expect("a constant this package spells is a legal content path");
     PacketContract::new(PacketId::new(id), direction, VERSION)
 }
 

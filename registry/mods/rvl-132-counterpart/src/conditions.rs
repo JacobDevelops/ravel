@@ -15,28 +15,28 @@ fn shipped_settings_failure_is_refused_at_constructed() {
 #[test]
 fn wrapped_refusals_expose_their_typed_sources() {
     use std::error::Error;
-    let kinds = Refused::Kinds(kinds::NotRegistered::Full { limit: 2 });
+    let kinds = EntryRefused::Kinds(kinds::NotRegistered::Full { limit: 2 });
     assert!(
         kinds
             .source()
             .expect("kind source")
             .is::<kinds::NotRegistered>()
     );
-    let bundle = Refused::Bundle(capabilities::NotInstalled::NoTarget);
+    let bundle = EntryRefused::Bundle(capabilities::NotInstalled::NoTarget);
     assert!(
         bundle
             .source()
             .expect("bundle source")
             .is::<capabilities::NotInstalled>()
     );
-    let settings = Refused::Settings(settings::Refused::ListTooLong { limit: 4 });
+    let settings = EntryRefused::Settings(settings::SettingsRefused::ListTooLong { limit: 4 });
     assert!(
         settings
             .source()
             .expect("settings source")
-            .is::<settings::Refused>()
+            .is::<settings::SettingsRefused>()
     );
-    let serialisers = Refused::Serialisers(forms::TagError::Shape { expected: "a tag" });
+    let serialisers = EntryRefused::Serialisers(forms::TagError::Shape { expected: "a tag" });
     assert!(
         serialisers
             .source()
@@ -44,7 +44,7 @@ fn wrapped_refusals_expose_their_typed_sources() {
             .is::<forms::TagError>()
     );
     assert!(
-        Refused::OutOfOrder {
+        EntryRefused::OutOfOrder {
             wanted: Step::SetUp,
             reached: Step::Constructed,
         }
@@ -89,7 +89,7 @@ fn registering_the_kinds_before_the_serialisers_is_refused() {
     let mut entry = Entry::new();
     assert_eq!(
         entry.register_kinds(),
-        Err(Refused::OutOfOrder {
+        Err(EntryRefused::OutOfOrder {
             wanted: Step::KindsRegistered,
             reached: Step::Constructed
         })
@@ -104,7 +104,7 @@ fn asking_for_the_adapter_table_before_common_setup_is_refused() {
     entry.register_kinds().expect("a fresh registry");
     assert_eq!(
         entry.install_adapters(),
-        Err(Refused::OutOfOrder {
+        Err(EntryRefused::OutOfOrder {
             wanted: Step::AdaptersInstalled,
             reached: Step::KindsRegistered
         })
@@ -210,7 +210,7 @@ fn the_abort_setting_turns_a_bundle_failure_into_a_refusal() {
         .abort_on_bundle_failure = true;
     assert!(matches!(
         entry.load_compatibility(None),
-        Err(Refused::Bundle(_))
+        Err(EntryRefused::Bundle(_))
     ));
     assert_eq!(entry.bundle_failures().len(), 0);
 }
@@ -221,10 +221,16 @@ fn the_third_party_bundle_adds_one_attachment_when_a_target_is_named() {
     assert_eq!(entry.load_compatibility(Some("other:station")), Ok(47));
 }
 
+fn configuration_ignoring(names: &str) -> LayeredConfiguration {
+    let document =
+        settings::DOCUMENT.replace("\"default\": \"\"", &format!("\"default\": \"{names}\""));
+    let declared = ConfigurationDeclaration::parse(&document).expect("a legal declaration");
+    LayeredConfiguration::resolve(declared, None, None).expect("legal defaults")
+}
+
 #[test]
 fn initial_comparator_uses_shipped_ignored_components() {
-    let mut settings = Settings::shipped().expect("valid shipped settings");
-    settings.ignored = vec!["wear".to_owned()];
+    let settings = Settings::read(&configuration_ignoring("wear")).expect("a one-name list");
     let entry = Entry::with_settings(Ok(settings));
     assert_eq!(entry.comparator().ignored().collect::<Vec<_>>(), ["wear"]);
 }
@@ -239,16 +245,16 @@ fn unavailable_initial_settings_or_comparator_refuse_at_constructed() {
     );
     assert_eq!(unavailable.entered(), []);
 
-    let mut invalid = Settings::shipped().expect("valid shipped settings");
-    invalid.ignored = (0..=crate::data::MAX_IGNORED)
-        .map(|index| format!("component{index}"))
+    let names: Vec<String> = (0..=data::MAX_IGNORED)
+        .map(|index| format!("k{index}"))
         .collect();
-    let original = ModError::from_display(
-        invalid
-            .comparator()
-            .expect_err("the comparator exceeds its limit"),
-    );
-    let mut unavailable = Entry::with_settings(Ok(invalid));
+    let invalid =
+        Settings::read(&configuration_ignoring(&names.join(","))).map_err(ModError::from_display);
+    let original = invalid
+        .as_ref()
+        .expect_err("too many ignored kinds")
+        .clone();
+    let mut unavailable = Entry::with_settings(invalid);
     assert!(unavailable.comparator().ignored().next().is_none());
     assert_eq!(
         unavailable.enter(LifecycleState::Constructed),
@@ -261,12 +267,9 @@ fn unavailable_initial_settings_or_comparator_refuse_at_constructed() {
 fn a_resolved_ignore_list_rebuilds_the_comparator_the_kinds_are_built_against() {
     let mut entry = Entry::new();
     assert!(entry.comparator().ignored().next().is_none());
-    entry.settings.as_mut().expect("valid settings").ignored = vec!["wear".to_owned()];
-    entry.comparator = entry
-        .settings()
-        .expect("valid settings")
-        .comparator()
-        .expect("a one-name list");
+    entry
+        .configure(&configuration_ignoring("wear"))
+        .expect("a valid ignored list");
     assert_eq!(
         entry.comparator().ignored().collect::<Vec<&str>>(),
         ["wear"]
@@ -348,7 +351,7 @@ fn the_lifecycle_steps_taken_are_kept_in_order() {
 #[test]
 fn refusals_say_what_was_wrong() {
     assert!(
-        Refused::OutOfOrder {
+        EntryRefused::OutOfOrder {
             wanted: Step::SetUp,
             reached: Step::Constructed
         }
@@ -356,22 +359,22 @@ fn refusals_say_what_was_wrong() {
         .contains("out of the order")
     );
     assert!(
-        Refused::Settings(settings::Refused::ListTooLong { limit: 4 })
+        EntryRefused::Settings(settings::SettingsRefused::ListTooLong { limit: 4 })
             .to_string()
             .contains("longer than 4")
     );
     assert!(
-        Refused::Kinds(kinds::NotRegistered::Full { limit: 2 })
+        EntryRefused::Kinds(kinds::NotRegistered::Full { limit: 2 })
             .to_string()
             .contains("at most 2")
     );
     assert!(
-        Refused::Bundle(capabilities::NotInstalled::NoTarget)
+        EntryRefused::Bundle(capabilities::NotInstalled::NoTarget)
             .to_string()
             .contains("naming a target")
     );
     assert!(
-        Refused::Serialisers(forms::TagError::Shape { expected: "a tag" })
+        EntryRefused::Serialisers(forms::TagError::Shape { expected: "a tag" })
             .to_string()
             .contains("a tag")
     );

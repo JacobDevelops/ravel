@@ -97,7 +97,7 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Settings {
     /// How many completed steps count as fully infused.
-    pub upgrade_ceiling: i32,
+    pub upgrade_ceiling: u32,
     /// The undiscounted price of one tick of infusing.
     pub energy_per_tick: i32,
     /// How much the machine's buffer holds.

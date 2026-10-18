@@ -32,7 +32,7 @@ struct Parser<'written> {
 
 impl<'written> Parser<'written> {
     fn rest(&self) -> &'written str {
-        self.written.get(self.at..).unwrap_or_default()
+        &self.written[self.at..]
     }
 
     fn eat(&mut self, token: &str) -> bool {
@@ -167,15 +167,16 @@ impl<'written> Parser<'written> {
                 at,
             });
         };
-        let inside = self.rest().get(..end).unwrap_or_default().to_owned();
+        let inside = self.rest()[..end].to_owned();
         // 8 list element by position
         if let Ok(index) = inside.trim().parse::<i64>() {
             self.at += end + 1;
             return Ok(Step::Element(index));
         }
         // 9 list slice
-        if inside.contains(':') && !inside.contains('|') {
-            let (from, to) = inside.split_once(':').unwrap_or((&inside, ""));
+        if let Some((from, to)) = inside.split_once(':')
+            && !inside.contains('|')
+        {
             let bound = |written: &str| -> Option<i64> { written.trim().parse::<i64>().ok() };
             self.at += end + 1;
             return Ok(Step::Slice(bound(from), bound(to)));
@@ -323,7 +324,7 @@ impl<'written> Parser<'written> {
             let Some(end) = self.rest().find('\'') else {
                 return Err(ParseError::Unclosed { opened: "text", at });
             };
-            let text = self.rest().get(..end).unwrap_or_default().to_owned();
+            let text = self.rest()[..end].to_owned();
             self.at += end + 1;
             return Ok(Literal::Text(text));
         }
@@ -339,7 +340,7 @@ impl<'written> Parser<'written> {
                 !character.is_ascii_digit() && character != '-' && character != '.'
             })
             .unwrap_or_else(|| self.rest().len());
-        let written = self.rest().get(..end).unwrap_or_default();
+        let written = &self.rest()[..end];
         match written.parse::<f64>() {
             Ok(number) if number.is_finite() => {
                 self.at += end;
@@ -357,7 +358,7 @@ impl<'written> Parser<'written> {
             .rest()
             .find(|character: char| !character.is_ascii_alphanumeric() && character != '_')
             .unwrap_or_else(|| self.rest().len());
-        let name = self.rest().get(..end).unwrap_or_default().to_owned();
+        let name = self.rest()[..end].to_owned();
         self.at += end;
         name
     }

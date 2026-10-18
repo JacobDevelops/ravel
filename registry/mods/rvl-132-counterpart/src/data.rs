@@ -34,7 +34,7 @@ pub const MAX_IGNORED: usize = 128;
 
 /// What a data map refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum DataRefused {
     /// The map names more component kinds than [`MAX_COMPONENTS`].
     TooManyComponents {
         /// How many it named.
@@ -56,7 +56,7 @@ pub enum Refused {
     },
 }
 
-impl core::fmt::Display for Refused {
+impl core::fmt::Display for DataRefused {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::TooManyComponents { named, limit } => {
@@ -81,7 +81,7 @@ impl core::fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for DataRefused {}
 
 /// One component value.
 ///
@@ -132,11 +132,11 @@ impl Value {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::TooDeep`] when it does. Depth is measured before any
+    /// Returns [`DataRefused::TooDeep`] when it does. Depth is measured before any
     /// comparison or digest walks the value, so no walk can run away.
-    pub fn verify_depth(&self) -> Result<(), Refused> {
+    pub fn verify_depth(&self) -> Result<(), DataRefused> {
         if self.depth() > MAX_VALUE_DEPTH {
-            return Err(Refused::TooDeep {
+            return Err(DataRefused::TooDeep {
                 limit: MAX_VALUE_DEPTH,
             });
         }
@@ -203,16 +203,16 @@ pub type Components = BTreeMap<String, Value>;
 ///
 /// # Errors
 ///
-/// Returns [`Refused::TooManyComponents`] past [`MAX_COMPONENTS`] and
-/// [`Refused::TooDeep`] for a value nesting past [`MAX_VALUE_DEPTH`]. Both are
+/// Returns [`DataRefused::TooManyComponents`] past [`MAX_COMPONENTS`] and
+/// [`DataRefused::TooDeep`] for a value nesting past [`MAX_VALUE_DEPTH`]. Both are
 /// checked before the map is built, because the caller is usually a decoder.
 pub fn components(
     entries: impl IntoIterator<Item = (String, Value)>,
-) -> Result<Components, Refused> {
+) -> Result<Components, DataRefused> {
     let mut map = Components::new();
     for (name, value) in entries {
         if map.len() >= MAX_COMPONENTS && !map.contains_key(&name) {
-            return Err(Refused::TooManyComponents {
+            return Err(DataRefused::TooManyComponents {
                 named: map.len() + 1,
                 limit: MAX_COMPONENTS,
             });
@@ -240,12 +240,12 @@ impl Comparator {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::TooManyIgnored`] past [`MAX_IGNORED`]. The list comes
+    /// Returns [`DataRefused::TooManyIgnored`] past [`MAX_IGNORED`]. The list comes
     /// from a resolved setting, which is not a trusted input.
-    pub fn new(ignored: impl IntoIterator<Item = String>) -> Result<Self, Refused> {
+    pub fn new(ignored: impl IntoIterator<Item = String>) -> Result<Self, DataRefused> {
         let ignored: BTreeSet<String> = ignored.into_iter().collect();
         if ignored.len() > MAX_IGNORED {
-            return Err(Refused::TooManyIgnored {
+            return Err(DataRefused::TooManyIgnored {
                 named: ignored.len(),
                 limit: MAX_IGNORED,
             });
@@ -458,7 +458,7 @@ mod tests {
         assert_eq!(value.depth(), MAX_VALUE_DEPTH + 1);
         assert_eq!(
             value.verify_depth(),
-            Err(Refused::TooDeep {
+            Err(DataRefused::TooDeep {
                 limit: MAX_VALUE_DEPTH
             })
         );
@@ -479,7 +479,7 @@ mod tests {
         let entries = (0..=MAX_COMPONENTS).map(|index| (format!("k{index}"), Value::Whole(0)));
         assert_eq!(
             components(entries),
-            Err(Refused::TooManyComponents {
+            Err(DataRefused::TooManyComponents {
                 named: MAX_COMPONENTS + 1,
                 limit: MAX_COMPONENTS
             })
@@ -497,7 +497,7 @@ mod tests {
         let names = (0..=MAX_IGNORED).map(|index| format!("k{index}"));
         assert_eq!(
             Comparator::new(names),
-            Err(Refused::TooManyIgnored {
+            Err(DataRefused::TooManyIgnored {
                 named: MAX_IGNORED + 1,
                 limit: MAX_IGNORED
             })
@@ -518,17 +518,17 @@ mod tests {
     #[test]
     fn refusals_say_what_was_wrong() {
         assert!(
-            Refused::TooDeep { limit: 3 }
+            DataRefused::TooDeep { limit: 3 }
                 .to_string()
                 .contains("nests past")
         );
         assert!(
-            Refused::TooManyComponents { named: 9, limit: 8 }
+            DataRefused::TooManyComponents { named: 9, limit: 8 }
                 .to_string()
                 .contains("component kinds")
         );
         assert!(
-            Refused::TooManyIgnored { named: 9, limit: 8 }
+            DataRefused::TooManyIgnored { named: 9, limit: 8 }
                 .to_string()
                 .contains("ignored kinds")
         );

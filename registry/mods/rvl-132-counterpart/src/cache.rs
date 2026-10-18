@@ -38,7 +38,7 @@ pub enum Point {
 
 /// What a cache refuses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum CacheRefused {
     /// The station cache holds as many keys as it publishes.
     Full {
         /// The published ceiling.
@@ -46,7 +46,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for CacheRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Full { limit } => {
@@ -56,7 +56,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for CacheRefused {}
 
 /// One station cache key.
 ///
@@ -105,17 +105,17 @@ impl Caches {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::Full`] past [`MAX_STATION_KEYS`].
+    /// Returns [`CacheRefused::Full`] past [`MAX_STATION_KEYS`].
     pub fn station(
         &mut self,
         key: &Key,
         convert: impl FnOnce() -> Vec<Converted>,
-    ) -> Result<&[Converted], Refused> {
+    ) -> Result<&[Converted], CacheRefused> {
         if let Some(index) = self.stations.iter().position(|(held, _)| held == key) {
             return Ok(&self.stations[index].1);
         }
         if self.stations.len() >= MAX_STATION_KEYS {
-            return Err(Refused::Full {
+            return Err(CacheRefused::Full {
                 limit: MAX_STATION_KEYS,
             });
         }
@@ -230,7 +230,7 @@ mod tests {
             caches
                 .station(&Key::new("minecraft:smelting", "one_too_many"), Vec::new)
                 .err(),
-            Some(Refused::Full {
+            Some(CacheRefused::Full {
                 limit: MAX_STATION_KEYS
             })
         );
@@ -308,6 +308,10 @@ mod tests {
 
     #[test]
     fn refusals_say_what_was_wrong() {
-        assert!(Refused::Full { limit: 4 }.to_string().contains("at most 4"));
+        assert!(
+            CacheRefused::Full { limit: 4 }
+                .to_string()
+                .contains("at most 4")
+        );
     }
 }

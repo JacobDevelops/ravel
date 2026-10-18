@@ -62,7 +62,7 @@ use ravel_sdk::{JsonValue, json};
 
 pub use crate::capabilities::{Address, Registry, TargetClass};
 pub use crate::channel::Channel;
-pub use crate::declarations::{Declaration, Declarations};
+pub use crate::declarations::{Declaration, DeclarationKind, Declarations};
 pub use crate::menus::{Ranges, Role, Stack, Store};
 pub use crate::persistence::{Counters, FieldTypes, Marked};
 pub use crate::quantity::{
@@ -103,7 +103,7 @@ pub const PLATFORM_FIELD_TYPES: [&str; 2] = ["position", "identifier"];
 #[derive(Debug)]
 pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     framework: Framework,
     declarations: Declarations,
     codecs: Codecs,
@@ -130,7 +130,7 @@ impl Entry {
     pub fn new() -> Self {
         Self {
             declaration: Self::declaration(),
-            settings: Settings::default(),
+            settings: Settings::shipped(),
             framework: settings::own_framework(),
             declarations: declarations::own_declarations(),
             codecs: Codecs::new(),
@@ -147,9 +147,11 @@ impl Entry {
     }
 
     /// The values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the retained packaged-default failure.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// The settings framework a dependent declares through.
@@ -270,7 +272,7 @@ impl Entry {
     /// path, which for these names would be a packaging failure.
     pub fn declaration() -> Result<ContentDeclaration, ModError> {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
-        for (name, _) in commands::SUBCOMMANDS {
+        for (name, _, _) in commands::SUBCOMMANDS {
             declaration
                 .entry(ContentKind::Command, name)
                 .map_err(ModError::from_display)?;
@@ -305,36 +307,19 @@ impl Entry {
         }
     }
 
-    /// Reads or writes one setting, which is what the settings subcommand does.
-    ///
-    /// A written value is read as a truth value or a whole number when it is
-    /// one and as text otherwise, so a value of the wrong kind reaches
-    /// [`Framework::write`] and is refused there rather than coerced.
-    fn run_settings(&mut self, arguments: &[String], side: Side) -> Result<(), ModError> {
-        let mut arguments = arguments.iter();
-        let Some(property) = arguments.next() else {
+    /// Reads one setting; writes await reviewed invocation permissions.
+    fn run_settings(&self, arguments: &[String]) -> Result<(), ModError> {
+        let Some(property) = arguments.first() else {
             return Ok(());
         };
-        match arguments.next() {
-            Some(written) => {
-                let value = match written.as_str() {
-                    "true" => settings::Value::Truth(true),
-                    "false" => settings::Value::Truth(false),
-                    other => other.parse::<i64>().map_or_else(
-                        |_| settings::Value::Text(other.to_owned()),
-                        settings::Value::Number,
-                    ),
-                };
-                self.framework
-                    .write(property, value, side)
-                    .map_err(ModError::from_display)?;
-            }
-            None => {
-                self.framework
-                    .read(property)
-                    .map_err(ModError::from_display)?;
-            }
+        if arguments.len() > 1 {
+            return Err(ModError::refused(
+                "operator-only until invocations carry a permission level",
+            ));
         }
+        self.framework
+            .read(property)
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 }
@@ -344,7 +329,7 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         match state {
             LifecycleState::Constructed => {
-                settings::declaration().map_err(ModError::from_display)?;
+                self.settings()?;
                 self.declaration.as_ref().map_err(Clone::clone)?;
             }
             LifecycleState::Running => {
@@ -388,7 +373,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        self.settings = Ok(Settings::read(resolved).map_err(ModError::from_display)?);
         Ok(())
     }
 
@@ -407,7 +392,7 @@ impl Mod for Entry {
         let resolved =
             commands::resolve(name, &invocation.arguments).map_err(ModError::from_display)?;
         match resolved {
-            commands::SETTINGS => self.run_settings(&invocation.arguments, invocation.side)?,
+            commands::SETTINGS => self.run_settings(&invocation.arguments)?,
             // The same emptying section seven's reload causes, because this is
             // the subcommand that causes it.
             commands::RELOAD => self.channel = Channel::new(),
@@ -501,6 +486,35 @@ mod tests {
         fn loads(&self, _mod_id: &ModId) -> bool {
             false
         }
+    }
+    #[test]
+    fn shipped_settings_failure_is_retained_until_configuration_succeeds() {
+        let original = ModError::refused("invalid packaged settings");
+        let mut entry = Entry::new();
+        entry.settings = Err(original.clone());
+        assert_eq!(entry.settings(), Err(original.clone()));
+        assert_eq!(
+            entry.enter(LifecycleState::Constructed),
+            Err(original.clone())
+        );
+        assert_eq!(entry.entered(), []);
+        assert_eq!(entry.settings(), Err(original));
+
+        let resolved = LayeredConfiguration::resolve(
+            settings::declaration().expect("valid packaged declaration"),
+            None,
+            None,
+        )
+        .expect("valid packaged defaults");
+        entry.configure(&resolved).expect("configuration recovers");
+        assert_eq!(
+            entry.settings().expect("configured settings"),
+            &Settings::shipped().expect("packaged defaults")
+        );
+        entry
+            .enter(LifecycleState::Constructed)
+            .expect("configured settings permit construction");
+        assert_eq!(entry.entered(), [LifecycleState::Constructed]);
     }
 
     #[test]
@@ -759,37 +773,38 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_subcommand_writes_the_setting_it_names() {
+    fn the_settings_subcommand_withholds_writes_without_invocation_permissions() {
         let mut entry = Entry::new();
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SHORTCUT),
             Ok(&settings::Value::Truth(false))
         );
-        invoke(
+        let refusal = invoke(
             &mut entry,
             commands::SETTINGS,
             &[settings::DEVELOPMENT_SHORTCUT, "true"],
         )
-        .expect("a changeable setting written with a truth value");
+        .expect_err("writes require reviewed permissions");
+        assert_eq!(
+            refusal,
+            ModError::refused("operator-only until invocations carry a permission level")
+        );
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SHORTCUT),
-            Ok(&settings::Value::Truth(true)),
-            "the tree resolved the name and then wrote through it"
+            Ok(&settings::Value::Truth(false)),
+            "a withheld write changes nothing"
         );
     }
 
     #[test]
-    fn settings_writes_follow_each_property_scope_while_reads_remain_available() {
+    fn settings_writes_are_withheld_on_every_side_while_reads_remain_available() {
         let key = RegistryKey::new(
             ContentKind::Command,
             ContentId::new(Entry::declared_id().clone(), commands::SETTINGS)
                 .expect("a legal command path"),
         );
         for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
-            for (property, scope) in [
-                (settings::DEVELOPMENT_SHORTCUT, Scope::Client),
-                ("dependent.server", Scope::Server),
-            ] {
+            for property in [settings::DEVELOPMENT_SHORTCUT, "dependent.server"] {
                 let mut entry = Entry::new();
                 entry.framework_mut().declare(settings::Declared::new(
                     "dependent.server",
@@ -804,11 +819,15 @@ mod tests {
                     side,
                     vec![property.to_owned(), "true".to_owned()],
                 );
-                let allowed = scope.resolved_by(side);
-                assert_eq!(entry.run_command(&write).is_ok(), allowed);
+                assert_eq!(
+                    entry.run_command(&write),
+                    Err(ModError::refused(
+                        "operator-only until invocations carry a permission level"
+                    ))
+                );
                 assert_eq!(
                     entry.framework().read(property),
-                    Ok(&settings::Value::Truth(allowed))
+                    Ok(&settings::Value::Truth(false))
                 );
                 let read = CommandInvocation::new(key.clone(), side, vec![property.to_owned()]);
                 assert!(entry.run_command(&read).is_ok());
@@ -817,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_subcommand_refuses_a_name_the_framework_lacks_and_a_value_of_another_kind() {
+    fn the_settings_subcommand_refuses_unknown_reads_and_withholds_wrong_kind_writes() {
         let mut entry = Entry::new();
         assert!(
             invoke(&mut entry, commands::SETTINGS, &["never_declared"]).is_err(),
@@ -830,7 +849,7 @@ mod tests {
                 &[settings::DEVELOPMENT_SILENCE_MUSIC, "seventeen"],
             )
             .is_err(),
-            "text written over a truth value is refused rather than coerced"
+            "a command write is withheld regardless of value kind"
         );
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SILENCE_MUSIC),

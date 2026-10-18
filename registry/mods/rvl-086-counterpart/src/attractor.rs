@@ -13,13 +13,10 @@
 //! against the container's own slot count and refuses a slot the sender does not
 //! own, before anything is read out of it.
 
-use ravel_sdk::Declared;
 use ravel_sdk::network::{
-    Direction, Packet, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
+    Direction, Packet, PacketContract, PacketReader, PacketWriter, WireError,
 };
 use rvl_042_counterpart::arithmetic::Position;
-
-use crate::settings::PACKET_VERSION;
 
 /// The name the item-level boolean is stored and synchronised under.
 pub const SWITCHED_ON: &str = "switched_on";
@@ -129,17 +126,7 @@ pub struct Switched {
 
 impl Packet for Toggle {
     fn contract() -> PacketContract {
-        PacketContract::new(
-            PacketId::new(
-                ravel_sdk::content::ContentId::new(
-                    crate::Entry::declared_id().clone(),
-                    TOGGLE_PACKET,
-                )
-                .expect("the packaged packet path is legal"),
-            ),
-            Direction::ToServer,
-            PACKET_VERSION,
-        )
+        crate::packet_contract(TOGGLE_PACKET, Direction::ToServer)
     }
 
     fn write(&self, writer: &mut PacketWriter) {
@@ -267,7 +254,7 @@ pub struct Pickup {
 }
 
 /// One loose thing the sweep may collect.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Loose {
     /// Where it is.
     pub at: Position,
@@ -304,21 +291,6 @@ impl Loose {
             orb: true,
             ..Self::item(at)
         }
-    }
-}
-
-// Keep host-facing diagnostics flat even though pickup policy is grouped.
-impl std::fmt::Debug for Loose {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Loose")
-            .field("at", &self.at)
-            .field("orb", &self.orb)
-            .field("dead", &self.dead)
-            .field("immovable", &self.immovable)
-            .field("thrown_by_the_holder", &self.pickup.thrown_by_the_holder)
-            .field("pickup_delay", &self.pickup.delayed)
-            .finish()
     }
 }
 
@@ -398,6 +370,7 @@ pub fn tick(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::PACKET_VERSION;
 
     fn container(slots: Vec<Slot>) -> Container {
         Container { slots }

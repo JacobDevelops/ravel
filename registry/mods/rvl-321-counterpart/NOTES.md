@@ -16,10 +16,12 @@ The catalyst-use count and growth-pulse interval declare an upper bound of `u32:
 their runtime representation. Configuration resolution refuses larger values before typed reading;
 the maximum representable value remains valid.
 
-Flag publication and `settings::flag_id` return the shared library's typed identity error instead
-of silently omitting an invalid binding; configuration propagates publication failures. World
-shaping and machine envelopes reuse the entry's already-declared identity, so neither operation
-reparses the package constant or reports an impossible identity failure.
+Flag publication uses the shared `rvl_042_counterpart::flags::setting_flag` helper, which normalizes
+dotted setting keys by replacing dots with underscores and returns the shared library's typed
+identity error rather than silently omitting an invalid binding. Configuration propagates publication
+failures; publication and lookup share that single normalization path. World shaping and machine
+envelopes reuse the entry's already-declared identity, so neither operation reparses the package
+constant or reports an impossible identity failure.
 
 The mod-owned flag table is exposed by the required-service SDK seam: `flags` accepts
 `{"flag": "namespace:name"}` and answers a boolean only for a published identity. Missing or malformed
@@ -122,6 +124,10 @@ are parsed on demand rather than cached separately.
   inside recognized machine objects. A missing `machines` member, a non-object table or a non-object
   machine entry refuses the entire table before replacing in-memory state. An invalid entry's refusal
   names its machine, so malformed input cannot silently become defaults and overwrite the prior envelope.
+- **A world with no saved envelope opens with no machines (§12.3).** `open_saved_data(None)` clears
+  the previous in-memory machine table rather than carrying machines from the last world into a
+  fresh one. This absence path is distinct from a present but malformed table, which is refused
+  without replacing the previous table.
 - **Content references are validated identities.** Crafted entries and tags, charge creatures and
   modifier identities carry `ContentId`; contributions refuse malformed identifiers before registration.
   Machine recipe ticks use named `RecipeStep` inputs; harvester ticks use `Timing` for effective,

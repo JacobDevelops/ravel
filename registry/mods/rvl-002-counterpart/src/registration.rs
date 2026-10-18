@@ -4,6 +4,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
+use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_321_counterpart::model::{Crop, Tier};
 
@@ -76,10 +77,26 @@ impl Entry {
         self.settings.as_ref().map_err(Clone::clone)
     }
 
-    /// The flag table this entry published into.
-    #[must_use]
-    pub const fn flags(&self) -> &FlagTable {
-        &self.flags
+    /// The service answering this mod's published flags.
+    ///
+    /// # Errors
+    /// Returns a refusal if the packaged service identity is malformed.
+    pub fn flags_service() -> Result<ServiceId, ModError> {
+        ContentId::new(Self::declared_id().clone(), "flags")
+            .map(ServiceId::new)
+            .map_err(ModError::from_display)
+    }
+
+    fn answer_flag(&self, arguments: &JsonValue) -> Result<ServiceResponse, ModError> {
+        let flag = arguments
+            .get("flag")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| ModError::refused("a flag request names no flag"))?;
+        let flag = flag.parse().map_err(ModError::from_display)?;
+        if !self.flags.is_published(&flag) {
+            return Err(ModError::refused("this entry has not published that flag"));
+        }
+        Ok(ServiceResponse::new(json!(self.flags.enabled(&flag))))
     }
 
     /// The dependency's ground conversion flag, resolved through its service.
@@ -236,9 +253,19 @@ impl Mod for Entry {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
         declaration
+            .provide(Self::flags_service()?)
+            .map_err(ModError::from_display)?;
+        declaration
             .require(rvl_321_counterpart::Entry::flags_service()?)
             .map_err(ModError::from_display)?;
         Ok(Some(declaration))
+    }
+
+    fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
+        if request.id != Self::flags_service()? {
+            return Err(ModError::refused("this entry does not answer that service"));
+        }
+        self.answer_flag(&request.arguments)
     }
 
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {

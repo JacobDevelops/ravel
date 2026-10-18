@@ -45,6 +45,15 @@ impl FlagId {
     }
 }
 
+/// Builds a flag identity from a dotted configuration key in its owner's namespace.
+///
+/// # Errors
+///
+/// Returns [`ContentIdError`] when the namespace or normalized key is invalid.
+pub fn setting_flag(namespace: &str, key: &str) -> Result<FlagId, ContentIdError> {
+    FlagId::new(namespace, &key.replace('.', "_"))
+}
+
 impl fmt::Display for FlagId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(formatter)

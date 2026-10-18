@@ -22,47 +22,163 @@ use core::fmt;
 /// The kinds of thing a dependent may declare.
 ///
 /// Thirty-four, in the order section 5.1 lists them.
-pub const KINDS: [&str; 34] = [
-    "block",
-    "block_entity",
-    "item",
-    "entity",
-    "menu",
-    "particle",
-    "recipe",
-    "recipe_kind",
-    "sound_event",
-    "status_effect",
-    "villager_profession",
-    "creative_tab",
-    "armour_material",
-    "enchantment_effect_component_kind",
-    "enchantment_entity_effect_kind",
-    "loot_condition",
-    "loot_function",
-    "loot_number_provider",
-    "loot_score_provider",
-    "loot_data_provider",
-    "world_feature",
-    "world_structure",
-    "structure_piece",
-    "trunk_placer",
-    "foliage_placer",
-    "command_argument_kind",
-    "advancement_trigger_kind",
-    "data_component_kind",
-    "capability_declaration",
-    "settings_only",
-    "fluid",
-    "loot_modifier",
-    "biome_modifier",
-    "recipe_condition_kind",
-];
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum DeclarationKind {
+    /// A block.
+    Block,
+    /// A block entity.
+    BlockEntity,
+    /// An item.
+    Item,
+    /// An entity.
+    Entity,
+    /// A menu.
+    Menu,
+    /// A particle.
+    Particle,
+    /// A recipe.
+    Recipe,
+    /// A recipe kind.
+    RecipeKind,
+    /// A sound event.
+    SoundEvent,
+    /// A status effect.
+    StatusEffect,
+    /// A villager profession.
+    VillagerProfession,
+    /// A creative tab.
+    CreativeTab,
+    /// An armour material.
+    ArmourMaterial,
+    /// An enchantment effect component kind.
+    EnchantmentEffectComponentKind,
+    /// An enchantment entity effect kind.
+    EnchantmentEntityEffectKind,
+    /// A loot condition.
+    LootCondition,
+    /// A loot function.
+    LootFunction,
+    /// A loot number provider.
+    LootNumberProvider,
+    /// A loot score provider.
+    LootScoreProvider,
+    /// A loot data provider.
+    LootDataProvider,
+    /// A world feature.
+    WorldFeature,
+    /// A world structure.
+    WorldStructure,
+    /// A structure piece.
+    StructurePiece,
+    /// A trunk placer.
+    TrunkPlacer,
+    /// A foliage placer.
+    FoliagePlacer,
+    /// A command argument kind.
+    CommandArgumentKind,
+    /// An advancement trigger kind.
+    AdvancementTriggerKind,
+    /// A data component kind.
+    DataComponentKind,
+    /// A capability declaration.
+    CapabilityDeclaration,
+    /// Settings without registered content.
+    SettingsOnly,
+    /// A fluid.
+    Fluid,
+    /// A loot modifier.
+    LootModifier,
+    /// A biome modifier.
+    BiomeModifier,
+    /// A recipe condition kind.
+    RecipeConditionKind,
+}
+
+impl DeclarationKind {
+    /// Every kind in section 5.1 registration order.
+    pub const ALL: [Self; 34] = [
+        Self::Block,
+        Self::BlockEntity,
+        Self::Item,
+        Self::Entity,
+        Self::Menu,
+        Self::Particle,
+        Self::Recipe,
+        Self::RecipeKind,
+        Self::SoundEvent,
+        Self::StatusEffect,
+        Self::VillagerProfession,
+        Self::CreativeTab,
+        Self::ArmourMaterial,
+        Self::EnchantmentEffectComponentKind,
+        Self::EnchantmentEntityEffectKind,
+        Self::LootCondition,
+        Self::LootFunction,
+        Self::LootNumberProvider,
+        Self::LootScoreProvider,
+        Self::LootDataProvider,
+        Self::WorldFeature,
+        Self::WorldStructure,
+        Self::StructurePiece,
+        Self::TrunkPlacer,
+        Self::FoliagePlacer,
+        Self::CommandArgumentKind,
+        Self::AdvancementTriggerKind,
+        Self::DataComponentKind,
+        Self::CapabilityDeclaration,
+        Self::SettingsOnly,
+        Self::Fluid,
+        Self::LootModifier,
+        Self::BiomeModifier,
+        Self::RecipeConditionKind,
+    ];
+
+    /// The canonical declaration-document spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::BlockEntity => "block_entity",
+            Self::Item => "item",
+            Self::Entity => "entity",
+            Self::Menu => "menu",
+            Self::Particle => "particle",
+            Self::Recipe => "recipe",
+            Self::RecipeKind => "recipe_kind",
+            Self::SoundEvent => "sound_event",
+            Self::StatusEffect => "status_effect",
+            Self::VillagerProfession => "villager_profession",
+            Self::CreativeTab => "creative_tab",
+            Self::ArmourMaterial => "armour_material",
+            Self::EnchantmentEffectComponentKind => "enchantment_effect_component_kind",
+            Self::EnchantmentEntityEffectKind => "enchantment_entity_effect_kind",
+            Self::LootCondition => "loot_condition",
+            Self::LootFunction => "loot_function",
+            Self::LootNumberProvider => "loot_number_provider",
+            Self::LootScoreProvider => "loot_score_provider",
+            Self::LootDataProvider => "loot_data_provider",
+            Self::WorldFeature => "world_feature",
+            Self::WorldStructure => "world_structure",
+            Self::StructurePiece => "structure_piece",
+            Self::TrunkPlacer => "trunk_placer",
+            Self::FoliagePlacer => "foliage_placer",
+            Self::CommandArgumentKind => "command_argument_kind",
+            Self::AdvancementTriggerKind => "advancement_trigger_kind",
+            Self::DataComponentKind => "data_component_kind",
+            Self::CapabilityDeclaration => "capability_declaration",
+            Self::SettingsOnly => "settings_only",
+            Self::Fluid => "fluid",
+            Self::LootModifier => "loot_modifier",
+            Self::BiomeModifier => "biome_modifier",
+            Self::RecipeConditionKind => "recipe_condition_kind",
+        }
+    }
+}
 
 /// One thing a dependent declares.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Declaration {
-    kind: String,
+    kind: DeclarationKind,
     name: String,
     disableable: bool,
     companion: Option<String>,
@@ -71,9 +187,9 @@ pub struct Declaration {
 impl Declaration {
     /// Declares one piece of content, switchable through the settings document.
     #[must_use]
-    pub fn new(kind: &str, name: &str) -> Self {
+    pub fn new(kind: DeclarationKind, name: &str) -> Self {
         Self {
-            kind: kind.to_owned(),
+            kind,
             name: name.to_owned(),
             disableable: true,
             companion: None,
@@ -96,8 +212,8 @@ impl Declaration {
 
     /// The kind of thing this declares.
     #[must_use]
-    pub fn kind(&self) -> &str {
-        &self.kind
+    pub const fn kind(&self) -> DeclarationKind {
+        self.kind
     }
 
     /// The name it registers under.
@@ -144,11 +260,6 @@ pub enum SwitchRefused {
         /// The name asked for.
         name: String,
     },
-    /// The vocabulary does not admit that kind.
-    NoSuchKind {
-        /// The kind asked for.
-        kind: String,
-    },
 }
 
 impl fmt::Display for SwitchRefused {
@@ -160,9 +271,6 @@ impl fmt::Display for SwitchRefused {
             ),
             Self::NoSuchDeclaration { name } => {
                 write!(formatter, "nothing is declared under the name {name}")
-            }
-            Self::NoSuchKind { kind } => {
-                write!(formatter, "the vocabulary admits no kind called {kind}")
             }
         }
     }
@@ -188,19 +296,8 @@ impl Declarations {
     }
 
     /// Adds one declaration, keeping declaration order.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SwitchRefused::NoSuchKind`] when the kind is outside the
-    /// platform vocabulary.
-    pub fn declare(&mut self, declaration: Declaration) -> Result<(), SwitchRefused> {
-        if !KINDS.contains(&declaration.kind.as_str()) {
-            return Err(SwitchRefused::NoSuchKind {
-                kind: declaration.kind,
-            });
-        }
+    pub fn declare(&mut self, declaration: Declaration) {
         self.declared.push(declaration);
-        Ok(())
     }
 
     /// Everything declared, in declaration order.
@@ -228,7 +325,7 @@ impl Declarations {
         };
         if !declaration.disableable {
             return Err(SwitchRefused::NotDisableable {
-                kind: declaration.kind.clone(),
+                kind: declaration.kind.as_str().to_owned(),
                 name: declaration.name.clone(),
             });
         }
@@ -252,7 +349,7 @@ impl Declarations {
     #[must_use]
     pub fn registration_order(&self) -> Vec<&Declaration> {
         let mut ordered = Vec::new();
-        for kind in KINDS {
+        for kind in DeclarationKind::ALL {
             ordered.extend(
                 self.declared
                     .iter()
@@ -280,33 +377,62 @@ impl Declarations {
 /// nothing. No identifier here is the original's: section four states in as many
 /// words that the seven storable ones are what the provenance record does not
 /// clear and names none of them, so these names are this package's own.
-///
-/// # Panics
-/// Panics if a shipped declaration names a kind outside the vocabulary.
 #[must_use]
 pub fn own_declarations() -> Declarations {
     let mut declared = Declarations::new();
-    let entries: [(&str, &str, Option<&str>); 16] = [
-        ("particle", "soft_glow", Some("soft_glow_renderer")),
+    let entries: [(DeclarationKind, &str, Option<&str>); 16] = [
         (
-            "particle",
+            DeclarationKind::Particle,
+            "soft_glow",
+            Some("soft_glow_renderer"),
+        ),
+        (
+            DeclarationKind::Particle,
             "falling_droplet",
             Some("falling_droplet_renderer"),
         ),
-        ("data_component_kind", "capacity", None),
-        ("data_component_kind", "stored_energy", None),
-        ("data_component_kind", "fluid_content", None),
-        ("data_component_kind", "embedded_store", None),
-        ("advancement_trigger_kind", "screen_opened", None),
-        ("advancement_trigger_kind", "item_crafted", None),
-        ("advancement_trigger_kind", "first_item_obtained", None),
-        ("command_argument_kind", "settings_property", None),
-        ("command_argument_kind", "diagnostic_message", None),
-        ("command_argument_kind", "enumeration_member", None),
-        ("menu", "demonstration_manual", Some("demonstration_screen")),
-        ("loot_modifier", "injected_item", None),
-        ("capability_declaration", "fluid_store", None),
-        ("settings_only", "development_shortcuts", None),
+        (DeclarationKind::DataComponentKind, "capacity", None),
+        (DeclarationKind::DataComponentKind, "stored_energy", None),
+        (DeclarationKind::DataComponentKind, "fluid_content", None),
+        (DeclarationKind::DataComponentKind, "embedded_store", None),
+        (
+            DeclarationKind::AdvancementTriggerKind,
+            "screen_opened",
+            None,
+        ),
+        (
+            DeclarationKind::AdvancementTriggerKind,
+            "item_crafted",
+            None,
+        ),
+        (
+            DeclarationKind::AdvancementTriggerKind,
+            "first_item_obtained",
+            None,
+        ),
+        (
+            DeclarationKind::CommandArgumentKind,
+            "settings_property",
+            None,
+        ),
+        (
+            DeclarationKind::CommandArgumentKind,
+            "diagnostic_message",
+            None,
+        ),
+        (
+            DeclarationKind::CommandArgumentKind,
+            "enumeration_member",
+            None,
+        ),
+        (
+            DeclarationKind::Menu,
+            "demonstration_manual",
+            Some("demonstration_screen"),
+        ),
+        (DeclarationKind::LootModifier, "injected_item", None),
+        (DeclarationKind::CapabilityDeclaration, "fluid_store", None),
+        (DeclarationKind::SettingsOnly, "development_shortcuts", None),
     ];
     for (kind, name, companion) in entries {
         let mut declaration = Declaration::new(kind, name);
@@ -319,9 +445,7 @@ pub fn own_declarations() -> Declarations {
         if name == "settings_property" || name == "diagnostic_message" {
             declaration = declaration.never_disableable();
         }
-        declared
-            .declare(declaration)
-            .expect("every kind these constants name is in the vocabulary");
+        declared.declare(declaration);
     }
     declared
 }
@@ -336,26 +460,6 @@ pub const CLAIMED_KINDS: [ContentKind; 1] = [ContentKind::Command];
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_vocabulary_is_thirty_four_kinds_named_once_each() {
-        let mut sorted = KINDS.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.len(), 34);
-    }
-
-    #[test]
-    fn a_kind_outside_the_vocabulary_is_refused_at_declaration() {
-        let mut declared = Declarations::new();
-        assert_eq!(
-            declared.declare(Declaration::new("nothing_admits_this", "one")),
-            Err(SwitchRefused::NoSuchKind {
-                kind: "nothing_admits_this".to_owned()
-            })
-        );
-        assert_eq!(declared.declared().len(), 0);
-    }
 
     #[test]
     fn the_framework_raises_for_a_declaration_marked_as_not_disableable() {
@@ -400,15 +504,15 @@ mod tests {
     #[test]
     fn every_declaration_of_one_kind_is_registered_before_the_next_kind_begins() {
         let declared = own_declarations();
-        let kinds: Vec<&str> = declared
+        let kinds: Vec<DeclarationKind> = declared
             .registration_order()
             .into_iter()
             .map(Declaration::kind)
             .collect();
-        let mut seen: Vec<&str> = Vec::new();
+        let mut seen: Vec<DeclarationKind> = Vec::new();
         for kind in kinds {
             if seen.last() != Some(&kind) {
-                assert!(!seen.contains(&kind), "the kind {kind} was returned to");
+                assert!(!seen.contains(&kind), "the kind {kind:?} was returned to");
                 seen.push(kind);
             }
         }
@@ -420,7 +524,7 @@ mod tests {
         let components: Vec<&str> = declared
             .registration_order()
             .into_iter()
-            .filter(|declaration| declaration.kind() == "data_component_kind")
+            .filter(|declaration| declaration.kind() == DeclarationKind::DataComponentKind)
             .map(Declaration::name)
             .collect();
         assert_eq!(
@@ -449,14 +553,14 @@ mod tests {
         let registering = declared
             .declared()
             .iter()
-            .filter(|declaration| declaration.kind() != "settings_only")
+            .filter(|declaration| declaration.kind() != DeclarationKind::SettingsOnly)
             .count();
         assert_eq!(registering, 15);
         assert_eq!(
             declared
                 .declared()
                 .iter()
-                .filter(|declaration| declaration.kind() == "settings_only")
+                .filter(|declaration| declaration.kind() == DeclarationKind::SettingsOnly)
                 .count(),
             1
         );
@@ -465,20 +569,20 @@ mod tests {
     #[test]
     fn the_census_of_section_four_is_the_counts_it_states() {
         let declared = own_declarations();
-        let count = |kind: &str| {
+        let count = |kind: DeclarationKind| {
             declared
                 .declared()
                 .iter()
                 .filter(|declaration| declaration.kind() == kind)
                 .count()
         };
-        assert_eq!(count("particle"), 2);
-        assert_eq!(count("data_component_kind"), 4);
-        assert_eq!(count("advancement_trigger_kind"), 3);
-        assert_eq!(count("command_argument_kind"), 3);
-        assert_eq!(count("menu"), 1);
-        assert_eq!(count("loot_modifier"), 1);
-        assert_eq!(count("capability_declaration"), 1);
+        assert_eq!(count(DeclarationKind::Particle), 2);
+        assert_eq!(count(DeclarationKind::DataComponentKind), 4);
+        assert_eq!(count(DeclarationKind::AdvancementTriggerKind), 3);
+        assert_eq!(count(DeclarationKind::CommandArgumentKind), 3);
+        assert_eq!(count(DeclarationKind::Menu), 1);
+        assert_eq!(count(DeclarationKind::LootModifier), 1);
+        assert_eq!(count(DeclarationKind::CapabilityDeclaration), 1);
     }
 
     #[test]
@@ -490,7 +594,7 @@ mod tests {
             .filter(|declaration| {
                 matches!(
                     declaration.kind(),
-                    "data_component_kind" | "advancement_trigger_kind"
+                    DeclarationKind::DataComponentKind | DeclarationKind::AdvancementTriggerKind
                 )
             })
             .count();

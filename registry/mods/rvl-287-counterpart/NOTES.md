@@ -16,8 +16,8 @@ Ravel publishes no model-baking surface at the reviewed public revision.
 The crate inherits the root workspace's strict Clippy rules. `SheetFlags` groups its four joins
 into `north_south` and `west_east` axis pairs; `SheetFlags::new` now accepts those two `[bool; 2]`
 pairs rather than four separate booleans. Within each pair, negative precedes positive. Callers
-use `get(face)` for a direction's join. State-property names, geometry, and the original debug
-field names and order (`north`, `south`, `west`, `east`) remain unchanged.
+use `get(face)` for a direction's join. State-property names and geometry remain unchanged;
+derived Debug diagnostics now expose the actual `north_south` and `west_east` fields.
 
 ## What each section became
 
@@ -126,6 +126,9 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
 - **Grid cell-count refusals distinguish shortage from surplus.** A short cell list names its first
   missing index; a surplus list reports both its declared texture count and addressable area.
   Parsing validates dimensions and count before decoding textures, including invalid out-of-area cells.
+  A present but unreadable cell reports `UnreadableTexture` with its cell index, not `MissingCell`.
+- **A model layer must be a string.** Non-string layer values report `MalformedLayer` with the
+  declared value instead of being misreported as an unknown empty layer name.
 
 ## Derived rather than reproduced, and why
 

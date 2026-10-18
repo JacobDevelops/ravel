@@ -34,15 +34,15 @@ pub enum Origin {
     Own,
 }
 
-/// The seven subcommands and whether each is inherited.
-pub const SUBCOMMANDS: [(&str, Origin); 7] = [
-    (SETTINGS, Origin::Inherited),
-    (VERSION, Origin::Inherited),
-    (DIAGNOSTIC, Origin::Own),
-    (IGNITE, Origin::Own),
-    (RELOAD, Origin::Own),
-    (DUMP, Origin::Own),
-    (MANUAL, Origin::Own),
+/// The seven subcommands, their origin, and maximum argument count.
+pub const SUBCOMMANDS: [(&str, Origin, usize); 7] = [
+    (SETTINGS, Origin::Inherited, 2),
+    (VERSION, Origin::Inherited, 0),
+    (DIAGNOSTIC, Origin::Own, 1),
+    (IGNITE, Origin::Own, 1),
+    (RELOAD, Origin::Own, 0),
+    (DUMP, Origin::Own, 1),
+    (MANUAL, Origin::Own, 1),
 ];
 
 /// What a dependent's own tree carries without declaring it.
@@ -50,8 +50,8 @@ pub const SUBCOMMANDS: [(&str, Origin); 7] = [
 pub fn inherited() -> Vec<&'static str> {
     SUBCOMMANDS
         .iter()
-        .filter(|(_, origin)| *origin != Origin::Own)
-        .map(|(name, _)| *name)
+        .filter(|(_, origin, _)| *origin != Origin::Own)
+        .map(|(name, _, _)| *name)
         .collect()
 }
 
@@ -60,14 +60,14 @@ pub fn inherited() -> Vec<&'static str> {
 pub fn own() -> Vec<&'static str> {
     SUBCOMMANDS
         .iter()
-        .filter(|(_, origin)| *origin == Origin::Own)
-        .map(|(name, _)| *name)
+        .filter(|(_, origin, _)| *origin == Origin::Own)
+        .map(|(name, _, _)| *name)
         .collect()
 }
 
 /// What the tree refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum CommandRefused {
     /// The tree carries no subcommand of that name.
     NoSuchSubcommand {
         /// The name asked for.
@@ -84,7 +84,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for CommandRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoSuchSubcommand { name } => {
@@ -98,7 +98,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for CommandRefused {}
 
 /// The most arguments each subcommand takes.
 ///
@@ -106,31 +106,28 @@ impl std::error::Error for Refused {}
 /// is the only one taking two. Everything else takes at most one.
 #[must_use]
 pub fn arity(name: &str) -> Option<usize> {
-    match name {
-        SETTINGS => Some(2),
-        DIAGNOSTIC | IGNITE | DUMP | MANUAL => Some(1),
-        VERSION | RELOAD => Some(0),
-        _ => None,
-    }
+    SUBCOMMANDS
+        .iter()
+        .find(|(held, _, _)| *held == name)
+        .map(|(_, _, takes)| *takes)
 }
 
 /// Resolves one invocation against the tree.
 ///
 /// # Errors
 ///
-/// Returns [`Refused`] when the tree carries no such subcommand or when it was
+/// Returns [`CommandRefused`] when the tree carries no such subcommand or when it was
 /// given more arguments than it takes.
-pub fn resolve(name: &str, arguments: &[String]) -> Result<&'static str, Refused> {
-    let Some((held, _)) = SUBCOMMANDS.iter().find(|(held, _)| *held == name) else {
-        return Err(Refused::NoSuchSubcommand {
+pub fn resolve(name: &str, arguments: &[String]) -> Result<&'static str, CommandRefused> {
+    let Some((held, _, takes)) = SUBCOMMANDS.iter().find(|(held, _, _)| *held == name) else {
+        return Err(CommandRefused::NoSuchSubcommand {
             name: name.to_owned(),
         });
     };
-    let takes = arity(held).unwrap_or(0);
-    if arguments.len() > takes {
-        return Err(Refused::WrongArity {
+    if arguments.len() > *takes {
+        return Err(CommandRefused::WrongArity {
             name: held,
-            takes,
+            takes: *takes,
             given: arguments.len(),
         });
     }
@@ -143,7 +140,7 @@ mod tests {
 
     #[test]
     fn the_tree_carries_seven_subcommands_named_once_each() {
-        let mut names: Vec<&str> = SUBCOMMANDS.iter().map(|(name, _)| *name).collect();
+        let mut names: Vec<&str> = SUBCOMMANDS.iter().map(|(name, _, _)| *name).collect();
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), 7);
@@ -156,7 +153,7 @@ mod tests {
         assert_eq!(
             SUBCOMMANDS
                 .iter()
-                .filter(|(_, origin)| *origin == Origin::Inherited)
+                .filter(|(_, origin, _)| *origin == Origin::Inherited)
                 .count(),
             2
         );
@@ -164,12 +161,12 @@ mod tests {
 
     #[test]
     fn every_subcommand_resolves_and_a_name_the_tree_lacks_is_refused() {
-        for (name, _) in SUBCOMMANDS {
+        for (name, _, _) in SUBCOMMANDS {
             assert_eq!(resolve(name, &[]), Ok(name));
         }
         assert_eq!(
             resolve("never", &[]),
-            Err(Refused::NoSuchSubcommand {
+            Err(CommandRefused::NoSuchSubcommand {
                 name: "never".to_owned()
             })
         );
@@ -181,7 +178,7 @@ mod tests {
         assert_eq!(resolve(SETTINGS, &two), Ok(SETTINGS));
         assert_eq!(
             resolve(VERSION, &two),
-            Err(Refused::WrongArity {
+            Err(CommandRefused::WrongArity {
                 name: VERSION,
                 takes: 0,
                 given: 2,
@@ -189,7 +186,7 @@ mod tests {
         );
         assert_eq!(
             resolve(DUMP, &two),
-            Err(Refused::WrongArity {
+            Err(CommandRefused::WrongArity {
                 name: DUMP,
                 takes: 1,
                 given: 2,
@@ -200,7 +197,7 @@ mod tests {
     #[test]
     fn only_the_settings_subcommand_takes_a_property_and_a_value() {
         assert_eq!(arity(SETTINGS), Some(2));
-        for (name, _) in SUBCOMMANDS {
+        for (name, _, _) in SUBCOMMANDS {
             if name != SETTINGS {
                 assert!(arity(name).is_some_and(|takes| takes <= 1), "{name}");
             }

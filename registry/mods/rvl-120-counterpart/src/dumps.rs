@@ -137,10 +137,6 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let rendered = documents().expect("the packaged declarations are valid");
         assert_eq!(rendered.len(), 3, "every renderer contributes one document");
-        assert!(
-            !rendered.is_empty(),
-            "the package ships generated documents"
-        );
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
             assert!(document.ends_with('\n'), "{relative} must end in a newline");

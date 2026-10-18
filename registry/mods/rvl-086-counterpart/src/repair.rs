@@ -136,7 +136,7 @@ impl Held {
 
 /// Why a grid does not repair anything.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum RepairRefused {
     /// The repair rule is switched off, which is asked before anything else.
     SwitchedOff,
     /// No damageable item was found in the grid.
@@ -155,7 +155,7 @@ pub enum Refused {
     WorthlessMaterial,
 }
 
-impl std::fmt::Display for Refused {
+impl std::fmt::Display for RepairRefused {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::SwitchedOff => "repair is switched off",
@@ -170,7 +170,7 @@ impl std::fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for RepairRefused {}
 
 /// What one grid produces.
 #[derive(Clone, Debug, PartialEq)]
@@ -253,24 +253,22 @@ impl Cost {
 /// The branches are asked in order and the first that answers wins. A value of
 /// zero is the refusal signal rather than a discount.
 #[must_use]
-pub fn worth(
-    settings: &Settings,
-    table: &Table,
-    tool_entry: &str,
-    material_entry: &str,
-    tool_tagged: &dyn Fn(&str) -> bool,
-    material_tagged: &dyn Fn(&str) -> bool,
-    host_accepts: &dyn Fn(&str, &str) -> bool,
-) -> f64 {
+pub fn worth(context: &Context<'_>, tool_entry: &str, material_entry: &str) -> f64 {
+    let tool_tagged = |tag: &str| (context.tagged)(tool_entry, tag);
+    let material_tagged = |tag: &str| (context.tagged)(material_entry, tag);
+    let settings = context.settings;
+    let table = context.table;
     if let Some(multiplier) =
-        table.multiplier(tool_entry, material_entry, tool_tagged, material_tagged)
+        table.multiplier(tool_entry, material_entry, &tool_tagged, &material_tagged)
     {
         return multiplier;
     }
-    if settings.repair_materials.override_mode && table.names_tool(tool_entry, tool_tagged) {
+    if settings.repair_materials.override_mode && table.names_tool(tool_entry, &tool_tagged) {
         return 0.0;
     }
-    if !settings.repair_materials.disable_defaults && host_accepts(tool_entry, material_entry) {
+    if !settings.repair_materials.disable_defaults
+        && (context.host_accepts)(tool_entry, material_entry)
+    {
         return 1.0;
     }
     0.0
@@ -299,18 +297,18 @@ pub struct Context<'ask> {
 ///
 /// # Errors
 ///
-/// Returns the first [`Refused`] the grid earns. Every refusal voids the whole
+/// Returns the first [`RepairRefused`] the grid earns. Every refusal voids the whole
 /// craft; nothing here repairs partially.
-pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, Refused> {
+pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, RepairRefused> {
     if !context.settings.repair_enabled {
-        return Err(Refused::SwitchedOff);
+        return Err(RepairRefused::SwitchedOff);
     }
 
     let (tool, materials) = ingredients(grid)?;
     let tool_entry = tool.stack.entry.to_string();
     let tool_tagged = |tag: &str| (context.tagged)(&tool_entry, tag);
     if context.blacklist.matches(&tool_entry, &tool_tagged) {
-        return Err(Refused::Blacklisted);
+        return Err(RepairRefused::Blacklisted);
     }
 
     let cost = Cost::of(context.settings, tool.shape);
@@ -326,27 +324,18 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
     let mut material_entry = String::with_capacity(capacity);
     for material in materials {
         if full {
-            return Err(Refused::SurplusAfterFull);
+            return Err(RepairRefused::SurplusAfterFull);
         }
         if material.returns_a_remainder {
-            return Err(Refused::MaterialReturns);
+            return Err(RepairRefused::MaterialReturns);
         }
         material_entry.clear();
         material_entry.push_str(material.stack.entry.namespace().as_str());
         material_entry.push(':');
         material_entry.push_str(material.stack.entry.path());
-        let material_tagged = |tag: &str| (context.tagged)(&material_entry, tag);
-        let value = worth(
-            context.settings,
-            context.table,
-            &tool_entry,
-            &material_entry,
-            &tool_tagged,
-            &material_tagged,
-            context.host_accepts,
-        );
+        let value = worth(context, &tool_entry, &material_entry);
         if value == 0.0 {
-            return Err(Refused::WorthlessMaterial);
+            return Err(RepairRefused::WorthlessMaterial);
         }
         units += value;
         if mended(per_unit, units) >= tool.damage {
@@ -357,7 +346,7 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
     Ok(repair_result(tool, context, per_unit, units))
 }
 
-fn ingredients(grid: &[Option<Held>]) -> Result<(&Held, Vec<&Held>), Refused> {
+fn ingredients(grid: &[Option<Held>]) -> Result<(&Held, Vec<&Held>), RepairRefused> {
     let mut tool: Option<&Held> = None;
     let mut materials: Vec<&Held> = Vec::with_capacity(grid.len().saturating_sub(1));
     for held in grid.iter().flatten() {
@@ -371,12 +360,12 @@ fn ingredients(grid: &[Option<Held>]) -> Result<(&Held, Vec<&Held>), Refused> {
         }
     }
 
-    let tool = tool.ok_or(Refused::NoTool)?;
+    let tool = tool.ok_or(RepairRefused::NoTool)?;
     if tool.damage == 0 {
-        return Err(Refused::Undamaged);
+        return Err(RepairRefused::Undamaged);
     }
     if materials.is_empty() {
-        return Err(Refused::NoMaterials);
+        return Err(RepairRefused::NoMaterials);
     }
     Ok((tool, materials))
 }
@@ -519,6 +508,24 @@ mod tests {
     }
 
     #[test]
+    fn worth_binds_each_tag_query_to_its_entry_from_the_context() {
+        let mut fixture = Fixture::new();
+        fixture.table = Table::parse("tag:example:picks=tag:example:ingots@2", "host");
+        let tagged = |entry: &str, tag: &str| {
+            matches!(
+                (entry, tag),
+                ("example:pick", "example:picks") | ("example:ingot", "example:ingots")
+            )
+        };
+        let context = Context {
+            tagged: &tagged,
+            ..fixture.context(&nothing_accepted)
+        };
+        assert_eq!(worth(&context, "example:pick", "example:ingot"), 2.0);
+        assert_eq!(worth(&context, "example:ingot", "example:pick"), 0.0);
+    }
+
+    #[test]
     fn the_switch_is_asked_before_the_grid_is_read_at_all() {
         let mut fixture = Fixture::new();
         fixture.settings = Settings {
@@ -527,7 +534,7 @@ mod tests {
         };
         assert_eq!(
             repair(&[], &fixture.context(&everything_accepted)),
-            Err(Refused::SwitchedOff)
+            Err(RepairRefused::SwitchedOff)
         );
     }
 
@@ -536,12 +543,12 @@ mod tests {
         let fixture = Fixture::new();
         assert_eq!(
             repair(&[], &fixture.context(&everything_accepted)),
-            Err(Refused::NoTool)
+            Err(RepairRefused::NoTool)
         );
         let only_materials = grid(vec![Held::material(id("example:ingot"))]);
         assert_eq!(
             repair(&only_materials, &fixture.context(&everything_accepted)),
-            Err(Refused::NoTool)
+            Err(RepairRefused::NoTool)
         );
     }
 
@@ -554,12 +561,12 @@ mod tests {
         ]);
         assert_eq!(
             repair(&undamaged, &fixture.context(&everything_accepted)),
-            Err(Refused::Undamaged)
+            Err(RepairRefused::Undamaged)
         );
         let alone = grid(vec![Held::tool(id("example:pick"), Shape::Other, 50, 100)]);
         assert_eq!(
             repair(&alone, &fixture.context(&everything_accepted)),
-            Err(Refused::NoMaterials)
+            Err(RepairRefused::NoMaterials)
         );
     }
 
@@ -600,7 +607,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&everything_accepted)),
-            Err(Refused::Blacklisted)
+            Err(RepairRefused::Blacklisted)
         );
     }
 
@@ -613,7 +620,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&nothing_accepted)),
-            Err(Refused::WorthlessMaterial)
+            Err(RepairRefused::WorthlessMaterial)
         );
     }
 
@@ -628,7 +635,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&everything_accepted)),
-            Err(Refused::MaterialReturns)
+            Err(RepairRefused::MaterialReturns)
         );
     }
 
@@ -654,7 +661,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&surplus, &fixture.context(&everything_accepted)),
-            Err(Refused::SurplusAfterFull)
+            Err(RepairRefused::SurplusAfterFull)
         );
     }
 
@@ -761,7 +768,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&laid, &fixture.context(&everything_accepted)),
-            Err(Refused::WorthlessMaterial)
+            Err(RepairRefused::WorthlessMaterial)
         );
     }
 
@@ -782,7 +789,7 @@ mod tests {
         ]);
         assert_eq!(
             repair(&unnamed, &fixture.context(&everything_accepted)),
-            Err(Refused::WorthlessMaterial)
+            Err(RepairRefused::WorthlessMaterial)
         );
 
         let untouched_tool = grid(vec![

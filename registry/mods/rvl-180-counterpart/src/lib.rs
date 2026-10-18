@@ -312,16 +312,17 @@ impl Mod for Entry {
         let command = Command::from_root(root).ok_or_else(|| {
             ModError::refused(format!("`{root}` is not a command this package claimed"))
         })?;
+        if matches!(command, Command::Reclaim | Command::Sweep) {
+            return Err(ModError::refused(
+                "operator-only until invocations carry a permission level",
+            ));
+        }
         let report = self
             .console
             .run(command, invocation.side, &invocation.arguments)
             .map_err(ModError::from_display)?;
-        // The reclamation is the release, so retaining its own report would
-        // refill what the two readings it just reported were readings around.
-        if command != Command::Reclaim {
-            for key in report.keys() {
-                self.console.retain(key.to_string());
-            }
+        for key in report.keys() {
+            self.console.retain(key.to_string());
         }
         Ok(())
     }
@@ -436,23 +437,21 @@ mod tests {
     }
 
     #[test]
-    fn a_command_a_player_typed_runs_and_its_effect_is_observable() {
+    fn a_player_cannot_remove_entities_without_a_reviewed_permission_level() {
         let mut shared = Entry::new(Side::DedicatedServer);
         shared
             .console_mut()
             .population_mut()
             .record("cow", 4, false)
             .expect("a legal kind");
-
-        shared
-            .run_command(&invocation("entity_sweep", Side::DedicatedServer, &["cow"]))
-            .expect("a server runs the removal");
         assert_eq!(
-            shared.console().population().count_of("cow"),
-            0,
-            "a command that resolved a name and did nothing is the defect this test exists for"
+            shared.run_command(&invocation("entity_sweep", Side::DedicatedServer, &["cow"])),
+            Err(ModError::refused(
+                "operator-only until invocations carry a permission level"
+            ))
         );
-        assert!(shared.console().retained() > 0);
+        assert_eq!(shared.console().population().count_of("cow"), 4);
+        assert_eq!(shared.console().retained(), 0);
     }
 
     #[test]
@@ -478,41 +477,25 @@ mod tests {
     }
 
     #[test]
-    fn the_reclamation_command_releases_what_the_other_commands_held() {
+    fn a_player_cannot_release_retained_state_without_a_reviewed_permission_level() {
         let mut shared = Entry::new(Side::IntegratedServer);
-        shared
-            .console_mut()
-            .population_mut()
-            .record("cow", 1, false)
-            .expect("a legal kind");
-        shared
-            .run_command(&invocation(
-                "entity_sweep",
-                Side::IntegratedServer,
-                &["all"],
+        assert!(shared.console_mut().retain("held".to_owned()));
+        assert_eq!(
+            shared.run_command(&invocation("reclaim_held", Side::IntegratedServer, &[])),
+            Err(ModError::refused(
+                "operator-only until invocations carry a permission level"
             ))
-            .expect("a server runs the removal");
-        assert!(shared.console().retained() > 0);
-
-        shared
-            .run_command(&invocation("reclaim_held", Side::IntegratedServer, &[]))
-            .expect("a server runs the reclamation");
-        assert_eq!(
-            shared.console().retained(),
-            0,
-            "a reclamation the host drove that refilled what it released released nothing"
         );
-
-        let report = shared
-            .console_mut()
-            .run(Command::Reclaim, Side::IntegratedServer, &[])
-            .expect("a server runs the reclamation");
+        assert_eq!(shared.console().retained(), 1);
         assert_eq!(
-            report,
+            shared
+                .console_mut()
+                .run(Command::Reclaim, Side::IntegratedServer, &[])
+                .expect("the underlying operation remains available"),
             Report::Reclaimed {
-                before: 0,
+                before: 1,
                 after: 0,
-                released: 0,
+                released: 1,
             }
         );
     }

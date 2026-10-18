@@ -17,7 +17,7 @@ use ravel_sdk::config::{
     AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 use ravel_sdk::content::ContentIdError;
-use rvl_042_counterpart::flags::{FlagId, FlagTable};
+use rvl_042_counterpart::flags::{FlagTable, setting_flag};
 
 pub const DROPS_CREATURE_MATERIAL_CHANCE: &str = "drops.creature_material_chance";
 pub const RITUAL_CATALYST_USES: &str = "ritual.catalyst_uses";
@@ -465,19 +465,10 @@ const PUBLISHED: [FlagBinding; 14] = [
 /// Returns [`ContentIdError`] when a declared flag binding has an invalid identity.
 pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), ContentIdError> {
     for (key, value) in PUBLISHED {
-        let id = flag_id(key)?;
+        let id = setting_flag(crate::MOD_ID, key)?;
         table.publish_constant(id, value(settings));
     }
     Ok(())
-}
-
-/// The flag identity a setting key is published under.
-///
-/// # Errors
-///
-/// Returns [`ContentIdError`] when the setting key cannot form a legal flag identity.
-pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
-    FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
 #[cfg(test)]
@@ -671,7 +662,7 @@ mod tests {
     fn fourteen_flags_are_published_and_each_carries_its_settings_value() {
         let expected: std::collections::BTreeSet<_> = PUBLISHED
             .iter()
-            .map(|(key, _)| flag_id(key).expect("a legal flag identity"))
+            .map(|(key, _)| setting_flag(crate::MOD_ID, key).expect("a legal flag identity"))
             .collect();
         let mut table = FlagTable::new();
         let settings = Settings::shipped().expect("the shipped settings are valid");
@@ -683,9 +674,31 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
             expected
         );
-        for (key, value) in PUBLISHED {
-            let id = flag_id(key).expect("a legal flag identity");
-            assert_eq!(table.enabled(&id), value(&settings));
+        let declared = declaration().expect("the packaged declaration parses");
+        let shipped = LayeredConfiguration::resolve(declared.clone(), None, None)
+            .expect("the shipped values resolve");
+        for (key, _) in PUBLISHED {
+            let default = shipped.boolean(key).expect("a published boolean");
+            let document = ravel_sdk::config::ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1,
+                    "owner": crate::MOD_ID,
+                    "values": {key: !default},
+                })
+                .to_string(),
+            )
+            .expect("a legal single-setting override");
+            let resolved = LayeredConfiguration::resolve(declared.clone(), Some(&document), None)
+                .expect("the override resolves");
+            let settings = Settings::read(&resolved).expect("matching setting types");
+            let mut table = FlagTable::new();
+            publish(&mut table, &settings).expect("legal flag bindings");
+            for (other, _) in PUBLISHED {
+                let expected =
+                    shipped.boolean(other).expect("a published boolean") ^ (key == other);
+                let id = setting_flag(crate::MOD_ID, other).expect("a legal flag identity");
+                assert_eq!(table.enabled(&id), expected, "{key} changed flag {other}");
+            }
         }
     }
 }

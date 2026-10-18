@@ -199,6 +199,8 @@ pub enum ModelError {
     NoTextures,
     /// The texture set was refused.
     Textures(SlotError),
+    /// The declaration's layer value is not a string.
+    MalformedLayer(String),
     /// The declaration names a layer the vocabulary does not have.
     UnknownLayer(String),
 }
@@ -208,6 +210,9 @@ impl fmt::Display for ModelError {
         match self {
             Self::NoTextures => formatter.write_str("the model declares no texture set"),
             Self::Textures(error) => write!(formatter, "the texture set was refused: {error}"),
+            Self::MalformedLayer(value) => {
+                write!(formatter, "the model layer must be a string, not `{value}`")
+            }
             Self::UnknownLayer(layer) => {
                 write!(formatter, "the model names an unknown layer `{layer}`")
             }
@@ -219,7 +224,7 @@ impl std::error::Error for ModelError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Textures(error) => Some(error),
-            Self::NoTextures | Self::UnknownLayer(_) => None,
+            Self::NoTextures | Self::MalformedLayer(_) | Self::UnknownLayer(_) => None,
         }
     }
 }
@@ -280,8 +285,8 @@ impl Model {
     /// # Errors
     ///
     /// Returns [`ModelError`] when the declaration carries no texture set, when
-    /// the texture set is refused, or when it names a layer the vocabulary does
-    /// not have.
+    /// the texture set is refused, or when the layer is not a string or names a
+    /// layer the vocabulary does not have.
     pub fn parse(
         behaviour: Behaviour,
         declaration: &JsonValue,
@@ -316,7 +321,9 @@ impl Model {
         let layer = match declaration.get(LAYER_KEY) {
             None => Layer::default(),
             Some(named) => {
-                let named = named.as_str().unwrap_or_default();
+                let named = named
+                    .as_str()
+                    .ok_or_else(|| ModelError::MalformedLayer(named.to_string()))?;
                 Layer::by_name(named).ok_or_else(|| ModelError::UnknownLayer(named.to_owned()))?
             }
         };
@@ -1186,6 +1193,22 @@ mod tests {
             Layer::Solid,
             "and the default is the game's"
         );
+    }
+
+    #[test]
+    fn a_non_string_layer_reports_its_declared_value_and_required_type() {
+        let vocabulary = vocabulary();
+        for layer in [json!(3), json!(false), json!(null), json!([]), json!({})] {
+            let mut declaration = declaring("joined_cube", five("base:one"));
+            declaration["layer"] = layer.clone();
+            let error = Model::parse(Behaviour::ConnectedBlock, &declaration, &vocabulary)
+                .expect_err("a layer must be a string");
+            assert_eq!(error, ModelError::MalformedLayer(layer.to_string()));
+            assert_eq!(
+                error.to_string(),
+                format!("the model layer must be a string, not `{layer}`")
+            );
+        }
     }
 
     #[test]

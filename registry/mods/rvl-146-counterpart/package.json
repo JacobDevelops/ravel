@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "e5c208d666ad6e1b8d90a5a0e4fcddb22d2bf141e8d466802eaa46928679db6b"
+        "sha256": "6f13ecb8f99db3b75ddbc21aadbf307c0e670e82eba8f5f9de44b856f61e51b9"
       },
       {
         "path": "aliases.json",
@@ -70,7 +70,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "264b29b3337cd75fbadf5846d5ad63ae68165313614b18a4b6a182c34f41aafe"
+        "sha256": "09377e6548aea6ef34651b73207a06ae6c873be9da7efc533493a1c46c58235c"
       },
       {
         "path": "src/menus.rs",
@@ -82,7 +82,7 @@
       },
       {
         "path": "src/quantity.rs",
-        "sha256": "96f8c5a529c7259b1b065154cca3c93d62b9183803a569c72149179bde9e5b97"
+        "sha256": "5fb9ea1283170c0e685271140cec4000acf7c8ed6d52c71de520e9211222036f"
       },
       {
         "path": "src/recipes.rs",

@@ -163,7 +163,7 @@ pub fn census_document() -> String {
         .iter()
         .map(|declaration| {
             json!({
-                "kind": declaration.kind(),
+                "kind": declaration.kind().as_str(),
                 "name": declaration.name(),
                 "disableable": declaration.disableable(),
                 "companion": declaration.companion(),
@@ -175,7 +175,7 @@ pub fn census_document() -> String {
         .into_iter()
         .map(|declaration| {
             json!({
-                "kind": declaration.kind(),
+                "kind": declaration.kind().as_str(),
                 "name": declaration.name(),
             })
         })
@@ -185,8 +185,8 @@ pub fn census_document() -> String {
         .map(|side| (side.as_str(), declared.companions_on(side)))
         .collect();
     let document = json!({
-        "kinds": declarations::KINDS.as_slice(),
-        "kindCount": declarations::KINDS.len(),
+        "kinds": declarations::DeclarationKind::ALL.map(declarations::DeclarationKind::as_str).as_slice(),
+        "kindCount": declarations::DeclarationKind::ALL.len(),
         "declared": entries,
         "declaredCount": declared.declared().len(),
         "registrationOrder": registered,
@@ -194,27 +194,23 @@ pub fn census_document() -> String {
         "companions": companions,
         "claimedKinds": declarations::CLAIMED_KINDS
             .iter()
-            .map(|kind| format!("{kind:?}"))
-            .collect::<Vec<String>>(),
+            .map(|kind| kind.as_str())
+            .collect::<Vec<&str>>(),
     });
     format!("{document}\n")
 }
 
 /// The seven subcommands as a tab-separated table.
 ///
-/// The arity column is [`commands::arity`] and the inherited column is
+/// The arity column comes from [`commands::SUBCOMMANDS`] and the inherited column is
 /// membership of [`commands::inherited`], so the two facts a dependent observes
 /// -- that it gets two subcommands it never declared, and how many arguments
 /// each name takes -- are computed rather than restated.
-///
-/// # Panics
-/// Panics if a shipped subcommand has no arity.
 #[must_use]
 pub fn commands_table() -> String {
     let inherited = commands::inherited();
     let mut rendered = String::from("subcommand\tarity\tinherited\n");
-    for (name, _) in commands::SUBCOMMANDS {
-        let arity = commands::arity(name).expect("every shipped subcommand has an arity");
+    for (name, _, arity) in commands::SUBCOMMANDS {
         let inherited = inherited.contains(&name);
         writeln!(rendered, "{name}\t{arity}\t{inherited}")
             .expect("writing to a String cannot fail");

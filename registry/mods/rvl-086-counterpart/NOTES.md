@@ -20,10 +20,11 @@ code and most of the tests are.
 Flag publication returns the shared library's typed identity error instead of silently omitting
 an invalid binding. Rebuilding the configured entry propagates that failure.
 Shared stacks, repair constructors, projectile acceptance callbacks and optional crop seeds use
-validated `ContentId` identities. Zero count alone denotes an empty stack. Settings and deciding
-payloads derive grouped Debug diagnostics without changing configuration keys or wire layout.
-Repair refusals implement `Error`; tag declaration failures retain their typed sources through
-`Error::source` instead of flattening them into text.
+validated `ContentId` identities. Zero count alone denotes an empty stack. Settings, deciding
+payloads and loose attractor targets derive grouped Debug diagnostics without changing configuration
+keys or wire layout. Repair refusals are named `RepairRefused` and implement `Error`; material
+worth reads the existing repair `Context` rather than separate callbacks. Tag declaration failures
+retain their typed sources through `Error::source` instead of flattening them into text.
 
 ## What each section became
 

@@ -15,6 +15,7 @@ ownership, networking contracts — is expressed through Ravel rather than rebui
 The recipe API names its operations explicitly: `Search::mark_inputs_changed` records an input
 mutation and `Search::search` performs a search. Channel and registration path refusals expose
 their `ContentIdError` through `std::error::Error::source`; leaf refusals have no source.
+The quantity API names its matcher, portion and codec refusal `quantity::QuantityRefused`.
 Declined and host-blocked areas are documented below rather than exported as unused spec-only
 arrays. Tests exercise registration output and Ravel's stage API directly instead of keeping
 test-only public kind-mapping and stage-side helpers.
@@ -23,7 +24,7 @@ test-only public kind-mapping and stage-side helpers.
 
 | Section | Here | Where |
 | --- | --- | --- |
-| §2 the process-wide slot guarded by a language assertion | answered, not enforced at the entry | `src/lib.rs` |
+| §2 the process-wide slot guarded by a language assertion | fixed, uniqueness is per composition through the loader's one member per mod identity | `src/lib.rs` |
 | §2 the accessor for the running server | implemented, absent on every path | `src/channel.rs` |
 | §2 the client-only overlay subscription | implemented as Ravel's own side isolation | `src/lib.rs` |
 | §2 the entry point that registers nothing of its own | implemented | `src/lib.rs` |
@@ -123,14 +124,17 @@ package for the method's spelling to go.
 
 Every one of §13's twenty-one rows is here, plus this package's own. Each says why.
 
-- **Single construction is answerable (§2).** The original's slot is guarded by a language assertion,
-  which a normal launch disables, so a second construction silently replaces the first and every
-  holder of the first is left pointing at a library nothing else uses. `Entry::sole` claims a
-  process-wide slot and *answers* `AlreadyConstructed` for a second claim, which is the refusal the
-  original swallows. The exported entry builds with `Entry::new`, which claims nothing: the
-  generated members function drives that entry from a test or a diagnostic with no JVM, so a second
-  call in one process is a supported path and an entry that faulted there would unwind out of the
-  host on the JNI path.
+- **Single construction is per composition (§2).** The original's slot is guarded by a language
+  assertion, which a normal launch disables. Ravel rejects duplicate mod identities when resolving
+  a composition, so each composition admits one value per mod id. `Entry::new` builds independent
+  state and claims no process-wide slot; another composition, test or diagnostic can construct
+  the library again in the same process without inheriting a previous composition's lifetime.
+  The obsolete optional singleton API and its global-only test are removed. The section row
+  remains exercised: `checks/verify-notes-rows.sh` counts section-table verdicts, not Rust tests,
+  and `checks/counterpart-verdicts.tsv` classifies both its former `answered` verdict and its
+  current `fixed` verdict as exercised. No section row is added, removed or reclassified, so
+  M6's 550 total, 432 exercised, 74 declarable-only and 44 excluded counts are unchanged;
+  the immutable evidence is not rewritten.
 - **A radius send with no running server answers (§2, §5).** The original reaches the server through
   the process-wide slot rather than through the accessor beside it, so an unset slot faults at the
   send while the accessor next to it would have answered absent. `Sends::deliver` answers

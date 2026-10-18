@@ -73,7 +73,7 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 }
 
 /// The two values in force for one launch.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Settings {
     /// Whether a main-menu shortcut opens a scratch world.
     pub scratch_world_shortcut: bool,
@@ -82,6 +82,17 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// Resolves the packaged defaults without configuration layers.
+    ///
+    /// # Errors
+    /// Returns a packaging failure if the declaration or defaults are invalid.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declaration = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declaration, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+    }
+
     /// Reads the values in force, refusing a missing key or a value of the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
@@ -453,7 +464,10 @@ mod tests {
             None,
         )
         .expect("the packaged defaults resolve");
-        assert_eq!(Settings::read(&resolved), Ok(Settings::default()));
+        assert_eq!(
+            Settings::read(&resolved).expect("defaults read"),
+            Settings::shipped().expect("defaults resolve")
+        );
     }
 
     #[test]
@@ -552,7 +566,7 @@ mod tests {
 
     #[test]
     fn both_shipped_defaults_are_off_so_a_shipped_game_sees_nothing() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged defaults resolve");
         assert!(!settings.scratch_world_shortcut);
         assert!(!settings.silence_music);
     }

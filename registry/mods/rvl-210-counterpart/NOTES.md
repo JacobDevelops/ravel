@@ -62,9 +62,9 @@ re-exported at the crate root for convenience.
 | §13 the per-world counters and their guarantee | implemented, through Ravel's saved-data ownership | `src/persistence.rs`, `src/lib.rs` |
 | §14 the dumping service and its seven producers | implemented | `src/dumps.rs` |
 | §14 the manual engine | not carried; §14 itself says a counterpart draws it in Ravel if at all | — |
-| §15 the seven subcommands, the two that act | implemented | `src/commands.rs`, `src/lib.rs` |
+| §15 the seven subcommands, settings reads and reload | implemented; settings writes withheld pending reviewed invocation permissions | `src/commands.rs`, `src/lib.rs` |
 | §15 the seven subcommands, the five that are declarable only | declarable only | `src/commands.rs`, `src/lib.rs` |
-| §15 the permission levels | not carried; the specification records them as unread; writes require the side resolving each property's declared scope before mutation (client settings on clients, server settings on servers), while reads remain available on either side | `src/lib.rs` |
+| §15 the permission levels | not carried; the specification records them as unread; settings command writes are refused until invocations carry a reviewed permission level, while reads remain available on every side | `src/lib.rs` |
 | §16 the access widening and the one bytecode patch | declarable only | — |
 | §17 the capability-attachment registry | implemented | `src/capabilities.rs` |
 | §17 block-entity lookup, stores, fluids and the side questions | answered by `menus::insert_first`, `Store::count_of`, `storage::fill` and `Tank::drain`; block lookup calls the supplied closure directly and side questions use SDK `Side` matching/predicates, with no package lookup or side API | `src/menus.rs`, `src/storage.rs`, `ravel_sdk::Side` |
@@ -170,7 +170,7 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
 
 - **Twenty-eight of the thirty-four registration kinds (§5.1).** Ravel's registry has four kinds —
   block, item, recipe and command — and nothing this entry declares is a block, an item or a recipe.
-  So the whole of `declarations::KINDS` is a vocabulary a dependent
+  So the whole of `declarations::DeclarationKind::ALL` is a typed vocabulary a dependent
   declares against and this package holds the three rules over, and `Entry::declaration` claims the
   command tree alone. `declarations::CLAIMED_KINDS` says so in one line. The three rules — the
   refusal, the order, the companion split — are what a dependent observes and are all implemented.
@@ -288,7 +288,7 @@ every counterpart on each side.
 not about a rule but about the three documents under `generated/`. `dumps::documents` renders them
 out of the functions that already derive their content — `declarations::own_declarations` with its
 registration order and per-side companion lists for `generated/census.json`, `commands::SUBCOMMANDS`
-with `commands::arity` and `commands::inherited` for `generated/commands.txt`, and
+with its arity column and `commands::inherited` for `generated/commands.txt`, and
 `settings::own_framework` with `Scope::resolved_by` and `Framework::document` for
 `generated/settings.json` — and the test rebuilds all three and compares them byte for byte against
 the tree, so a table that changed without its document changing fails. Setting
@@ -298,11 +298,19 @@ transcribed: `generated/census.json`'s registration list is the sixteen declared
 by the vocabulary rather than the declaration list retyped, and every count in it is a `len()` of
 what the crate produced rather than a number written beside it.
 
-Settings reads return typed missing-key and wrong-kind errors. Packaged defaults resolve to
-`Settings::default()`.
-Every runtime framework write checks the caller's side against the declared scope and returns
-`ChangeRefused::WrongSide` without changing the value when the scope does not apply. This policy
-also applies to direct writes through `framework_mut()`, not just the settings command.
+Settings reads return typed missing-key and wrong-kind errors. `Settings::shipped()` resolves
+packaged defaults from the declaration without layers; entries return retained failures from
+`Entry::settings` and refuse `Constructed` without recording that transition. A successful
+`configure` replaces the retained failure with validated settings. The lifecycle regression test
+covers refusal, preservation of the original error, and recovery through configuration.
+The declaration vocabulary is the closed `DeclarationKind` enum, whose `ALL` order and `as_str`
+spellings drive the census. Claimed kinds use the SDK's canonical spelling: `"command"` rather
+than the Rust debug name `"Command"`.
+Settings command writes are refused on every side until invocations carry a reviewed permission
+level; reads remain available. Direct framework writes through `framework_mut()` still check the
+caller's side against the declared scope and return `ChangeRefused::WrongSide` without mutation
+when the scope does not apply. Capability and command failures use `CapabilityRefused` and
+`CommandRefused`, respectively.
 
 Saved counter payloads must contain a counters object. Missing or wrongly typed tables are refused
 rather than accepted as an empty set, which would restart previously allocated identifiers.

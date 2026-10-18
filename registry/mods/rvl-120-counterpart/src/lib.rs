@@ -86,7 +86,7 @@ pub const INTEGRATIONS: [&str; 4] = [
 pub struct Entry {
     side: Side,
     declaration: Result<ContentDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     colours: Colours,
     commands: Commands,
     grouping: Grouping,
@@ -108,15 +108,13 @@ impl Default for Entry {
 impl Entry {
     /// Builds the library for one side, holding its shipped defaults.
     ///
-    /// Content declaration failures are retained for `Constructed` refusal.
-    /// Configuration declarations are built on request and validated at that
-    /// barrier rather than stored a second time.
+    /// Declaration and default-resolution failures are retained for `Constructed` refusal.
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
             side,
             declaration: census::declaration().map_err(ModError::from_display),
-            settings: Settings::default(),
+            settings: Settings::shipped(),
             colours: Colours::shipped(),
             commands: Commands::new(),
             grouping: Grouping::new(),
@@ -137,9 +135,11 @@ impl Entry {
     }
 
     /// Returns the three server values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the retained packaged-default failure.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// Returns the seventy colours in force.
@@ -278,7 +278,7 @@ impl Mod for Entry {
         self.last_state = Some(state);
         if state == LifecycleState::Constructed {
             self.declaration.as_ref().map_err(Clone::clone)?;
-            settings::declaration().map_err(ModError::from_display)?;
+            self.settings()?;
         }
         Ok(())
     }
@@ -300,7 +300,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        self.settings = Ok(Settings::read(resolved).map_err(ModError::from_display)?);
         self.colours
             .resolve(Document::of(self.side), resolved)
             .map_err(ModError::from_display)?;
@@ -345,6 +345,34 @@ export_mod!(|side| Entry::new(side));
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shipped_settings_failure_is_retained_until_configuration_succeeds() {
+        let original = ModError::refused("invalid packaged settings");
+        let mut shared = Entry::new(Side::Client);
+        shared.settings = Err(original.clone());
+        assert_eq!(shared.settings(), Err(original.clone()));
+        assert_eq!(
+            shared.enter(LifecycleState::Constructed),
+            Err(original.clone())
+        );
+        assert_eq!(shared.settings(), Err(original));
+
+        let resolved = LayeredConfiguration::resolve(
+            settings::declaration().expect("valid packaged declaration"),
+            None,
+            None,
+        )
+        .expect("valid packaged defaults");
+        shared.configure(&resolved).expect("configuration recovers");
+        assert_eq!(
+            shared.settings().expect("configured settings"),
+            &Settings::shipped().expect("packaged defaults")
+        );
+        shared
+            .enter(LifecycleState::Constructed)
+            .expect("configured settings permit construction");
+    }
 
     #[test]
     fn deferred_declarations_preserve_the_original_refusal() {
@@ -638,7 +666,10 @@ mod tests {
         let mut shared = Entry::new(Side::Client);
         shared.configure(&resolved).expect("the defaults are read");
 
-        assert_eq!(shared.settings(), &Settings::default());
+        assert_eq!(
+            shared.settings().expect("configured settings"),
+            &Settings::shipped().expect("packaged defaults")
+        );
         assert_eq!(shared.colours().values().len(), settings::COLOUR_COUNT);
         assert!(
             shared

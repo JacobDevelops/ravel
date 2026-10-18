@@ -269,7 +269,7 @@ pub struct Enchanting {
 
 /// Why an enchanting craft was refused.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum RecipeRefused {
     /// One of the two inputs does not satisfy its ingredient.
     Input,
     /// Neither input covers a single level.
@@ -280,7 +280,7 @@ pub enum Refused {
     Incompatible(String),
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for RecipeRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Input => formatter.write_str("an input does not satisfy its ingredient"),
@@ -296,7 +296,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for RecipeRefused {}
 
 /// What an enchanting craft consumes and produces.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -335,9 +335,9 @@ impl Enchanting {
         held: &BTreeMap<String, u32>,
         compatible: &dyn Fn(&str, &str) -> bool,
         catalogue: &dyn Catalogue,
-    ) -> Result<Enchanted, Refused> {
+    ) -> Result<Enchanted, RecipeRefused> {
         if !self.first.0.matches(first, catalogue) || !self.second.0.matches(second, catalogue) {
-            return Err(Refused::Input);
+            return Err(RecipeRefused::Input);
         }
         let level = first
             .count
@@ -347,15 +347,15 @@ impl Enchanting {
             .unwrap_or(self.maximum)
             .min(self.maximum);
         if level == 0 {
-            return Err(Refused::NoLevel);
+            return Err(RecipeRefused::NoLevel);
         }
         for (present, at) in held {
             if present == &self.enchantment {
                 if *at >= level {
-                    return Err(Refused::NotAnUpgrade);
+                    return Err(RecipeRefused::NotAnUpgrade);
                 }
             } else if !compatible(&self.enchantment, present) {
-                return Err(Refused::Incompatible(present.clone()));
+                return Err(RecipeRefused::Incompatible(present.clone()));
             }
         }
         let entry = if PLAIN_BOOK.split_once(':')
@@ -747,7 +747,7 @@ mod tests {
                 &always,
                 &table
             ),
-            Err(Refused::NoLevel)
+            Err(RecipeRefused::NoLevel)
         );
     }
 
@@ -789,7 +789,7 @@ mod tests {
                 &incompatible,
                 &table
             ),
-            Err(Refused::Incompatible("test:looting".to_owned()))
+            Err(RecipeRefused::Incompatible("test:looting".to_owned()))
         );
     }
 
@@ -816,7 +816,7 @@ mod tests {
                 &always,
                 &table
             ),
-            Err(Refused::NotAnUpgrade)
+            Err(RecipeRefused::NotAnUpgrade)
         );
         assert!(
             recipe

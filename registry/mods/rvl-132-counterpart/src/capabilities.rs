@@ -15,7 +15,7 @@
 
 use core::fmt;
 
-use rvl_210_counterpart::capabilities::{Address, Refused, Registry, TargetClass};
+use rvl_210_counterpart::capabilities::{Address, CapabilityRefused, Registry, TargetClass};
 use rvl_210_counterpart::quantity::Amount;
 use rvl_210_counterpart::storage::{Attempt, Store};
 
@@ -203,7 +203,7 @@ pub enum NotInstalled {
     /// RVL-210's registry refused an attachment.
     Registry {
         /// The registry's typed refusal.
-        error: Refused,
+        error: CapabilityRefused,
     },
     /// The third-party bundle names no target.
     NoTarget,
@@ -229,8 +229,8 @@ impl std::error::Error for NotInstalled {
     }
 }
 
-impl From<Refused> for NotInstalled {
-    fn from(refused: Refused) -> Self {
+impl From<CapabilityRefused> for NotInstalled {
+    fn from(refused: CapabilityRefused) -> Self {
         Self::Registry { error: refused }
     }
 }
@@ -582,7 +582,7 @@ mod tests {
         assert!(
             std::error::Error::source(&refusal)
                 .expect("the registry refusal is retained")
-                .downcast_ref::<Refused>()
+                .downcast_ref::<CapabilityRefused>()
                 .is_some()
         );
     }
@@ -712,7 +712,7 @@ mod tests {
         );
         assert!(
             NotInstalled::Registry {
-                error: Refused::Full { limit: 4 }
+                error: CapabilityRefused::Full { limit: 4 }
             }
             .to_string()
             .contains("at most 4 attachments")

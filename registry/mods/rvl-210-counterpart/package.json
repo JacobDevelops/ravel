@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "1d33abc1526dbf2f289c17d1c0898ca00f6e3aec3af009a130ecaf6a5aa187bb"
+        "sha256": "58a3e0990575c46bdf0602e57423f5db9ba96f3c80377bfcec74951de2d73494"
       },
       {
         "path": "aliases.json",
@@ -46,7 +46,7 @@
       },
       {
         "path": "generated/census.json",
-        "sha256": "53aee2926a9e262c45e5af6ecb5c29fd85c74948d9d9da2ed8341257b55e8821"
+        "sha256": "f3dfbb30266ffbc9ccca0e8e9ffca4f5aa4d18a338198489d60497fd1aacc90b"
       },
       {
         "path": "generated/commands.txt",
@@ -58,7 +58,7 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "e979c8778ac02e2655ae941b37df327f11a7d9ca225350859b8ea8f30598622e"
+        "sha256": "d18fd0c15e2839e887a661b149215ded019e7e36b6b814108ecbd86ca91b35e5"
       },
       {
         "path": "src/channel.rs",
@@ -66,19 +66,19 @@
       },
       {
         "path": "src/commands.rs",
-        "sha256": "30501716116fcfe7b920fca59430f595944fc32ed3afa54ca34e18063813ca27"
+        "sha256": "ace39d11d1d3e60da950ba061ab623dec28df9a7d3b83ab454bd14bd5bba1f56"
       },
       {
         "path": "src/declarations.rs",
-        "sha256": "25200b82b084dff65f9e85ccd9fb700080a7675c2961a3cf6563539a55953561"
+        "sha256": "8df3422d5dfd48b0f27a92b132116120a99cca114d1dc8a294fbf04cc5fce254"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "c59486280c6ed37dc2667b43eb0739ef0d0b4291fa435c4ef4f06e5cca13fc86"
+        "sha256": "23d78e30f3a8747f59932825e21f2ca6ada6787b12729e1abde75ebd126cc61a"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "ea83b1f99c765b3e2d2054e3555180e34cf8fb19e35eb40a4ac3fc6a50fe1dce"
+        "sha256": "41b0ac89bec26785b320f75e841210e242052c45d7306fbac714d3818fbedccb"
       },
       {
         "path": "src/menus.rs",
@@ -98,11 +98,11 @@
       },
       {
         "path": "src/query/selection.rs",
-        "sha256": "701640719352e2fcb089fa009d7b150731583990e5cef25de9065dd099185dcc"
+        "sha256": "4db6418f7088feb82a2d167a3ed39037a513a62dc2e68b22cb50d2c93a0b06c0"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "2a206ec12c75751115c6c11345f4684aee64d52a04fef56c425e5628f7eddb83"
+        "sha256": "b95f3dd1921da393a91c026e972d8f9d54d7d2b8eae99858ef329af4b9f0f71d"
       },
       {
         "path": "src/shapes.rs",

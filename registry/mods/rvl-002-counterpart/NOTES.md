@@ -17,9 +17,10 @@ cluster. Those dependency facts live here rather than as callable functions retu
 Companion absence disables recipes without unregistering the crop's block and item identities.
 Crop construction and tier adjustment accept validated `ContentId` values for materials, ground
 and foundation blocks, matching the dependency's typed model rather than passing unchecked strings.
-Boss drops and ground drops likewise receive validated `ContentId` values and use the shared
-stack's zero-count emptiness contract. Unconsumed spec-count exports and alias functions are
-omitted; catalogue counts are derived by the generated census rather than exposed as duplicate API.
+Boss drops receive validated `ContentId` values and use the shared stack's zero-count emptiness
+contract; ground drops and the fall rule remain the dependency's implementation.
+Unconsumed spec-count exports and alias functions are omitted; catalogue counts are derived by
+the generated census rather than exposed as duplicate API.
 
 ## Root workspace lint migration
 
@@ -29,10 +30,15 @@ whose `shard` and `essence` fields replace the four flat world-generation fields
 keys, defaults, flag publication and generation rules remain unchanged. Derived Debug output
 reflects the grouped fields; it is diagnostic rather than a compatibility contract.
 
-Flag publication and `settings::flag_id` return the shared library's typed identity error instead
+Flag publication and the shared `flags::setting_flag(namespace, key)` return typed identity errors instead
 of silently omitting an invalid binding; configuration propagates publication failures. World
 shaping uses the entry's already-declared identity and is infallible rather than parsing the
 package constant again.
+
+Tool attachments implement `tools::ToolModifier`, whose `offer` and `tick` methods receive
+interactions and inventory ticks without short-circuiting the remaining attachments. The entry
+keeps its published flag table private and exposes its five configured values through `flags`;
+unpublished identities are refused rather than answered as disabled.
 
 ## What each section became
 
@@ -41,7 +47,7 @@ package constant again.
 | §2 side, lifecycle and ordering | implemented | `src/registration.rs` |
 | §2 the two client integration shims | not carried, by the specification's own exclusion | — |
 | §3 the eight settings and their bounds | implemented | `src/settings.rs` |
-| §3 the five published flags | implemented, through the shared library | `src/settings.rs` |
+| §3 the five published flags | implemented, answered by this mod's `flags` service | `src/settings.rs`, `src/registration.rs` |
 | §3 the two consumed flags | implemented as reads of the dependency's namespace | `src/settings.rs` |
 | §4 the extension's namespace declaration | implemented as this entry's own namespace | `src/registration.rs` |
 | §4 the opt-out of all three derivations | implemented | `src/crops.rs` |
@@ -57,7 +63,7 @@ package constant again.
 | §7.3 the creative listing and its order | declarable only, with the order carried as data | `src/census.rs` |
 | §7.4 the six fluid families, thirty registrations | declarable only | `src/census.rs` |
 | §7.5 the colour handler | declarable only, with the tint indices carried | `src/census.rs`, `src/tier.rs` |
-| §8 the sixth-tier ground, drops and fall rule | implemented | `src/ground.rs` |
+| §8 the sixth-tier ground, drops and fall rule | consumed from the dependency | `rvl-321-counterpart::ground` |
 | §8 conversion gated on the dependency's flag | implemented | `src/ground.rs` |
 | §9 all twelve fuel values, as two derivations | implemented | `src/fuel.rs` |
 | §10 the six food rows and the cumulative order | implemented | `src/foods.rs` |

@@ -248,6 +248,12 @@ impl Mod for Entry {
         Ok(())
     }
 
+    fn run_command(&mut self, _: &CommandInvocation) -> Result<(), ModError> {
+        Err(ModError::refused(
+            "the energy store this command fills is host-blocked",
+        ))
+    }
+
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         self.observed.push(event);
         Ok(())
@@ -384,6 +390,23 @@ mod tests {
             );
         }
         assert_eq!(shared.asked(), []);
+    }
+
+    #[test]
+    fn the_claimed_command_refuses_the_host_blocked_energy_store() {
+        let mut entry = Entry::new();
+        let key = RegistryKey::new(
+            ContentKind::Command,
+            ContentId::new(Entry::declared_id().clone(), COMMAND)
+                .expect("the command identity is valid"),
+        );
+        let invocation = CommandInvocation::new(key, Side::DedicatedServer, Vec::new());
+        assert_eq!(
+            entry.run_command(&invocation),
+            Err(ModError::refused(
+                "the energy store this command fills is host-blocked",
+            ))
+        );
     }
 
     #[test]

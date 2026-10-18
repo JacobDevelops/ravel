@@ -249,7 +249,7 @@ pub fn narrowed(amount: Amount) -> (Amount, bool) {
 
 /// What a store refuses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum StorageRefused {
     /// More slots than [`MAX_SLOTS`] were asked for.
     TooManySlots {
         /// How many were asked for.
@@ -259,7 +259,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for StorageRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManySlots { asked, limit } => {
@@ -269,7 +269,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for StorageRefused {}
 
 /// A store that holds nothing and accepts nothing.
 ///
@@ -345,10 +345,10 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::TooManySlots`] past [`MAX_SLOTS`].
-    pub fn new(kind: K, slots: usize, per_slot: Amount) -> Result<Self, Refused> {
+    /// Returns [`StorageRefused::TooManySlots`] past [`MAX_SLOTS`].
+    pub fn new(kind: K, slots: usize, per_slot: Amount) -> Result<Self, StorageRefused> {
         if slots > MAX_SLOTS {
-            return Err(Refused::TooManySlots {
+            return Err(StorageRefused::TooManySlots {
                 asked: slots,
                 limit: MAX_SLOTS,
             });
@@ -1257,7 +1257,7 @@ mod tests {
     fn a_shelf_past_the_slot_ceiling_is_refused_before_it_allocates() {
         assert_eq!(
             Shelf::new(Stackable::default(), MAX_SLOTS + 1, 64),
-            Err(Refused::TooManySlots {
+            Err(StorageRefused::TooManySlots {
                 asked: MAX_SLOTS + 1,
                 limit: MAX_SLOTS
             })
@@ -1782,7 +1782,7 @@ mod tests {
     #[test]
     fn refusals_say_what_was_wrong() {
         assert!(
-            Refused::TooManySlots { asked: 9, limit: 8 }
+            StorageRefused::TooManySlots { asked: 9, limit: 8 }
                 .to_string()
                 .contains("past the 8")
         );

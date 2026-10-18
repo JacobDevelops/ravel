@@ -43,7 +43,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::interception::InterceptionDeclaration;
-use ravel_sdk::network::PacketDelivery;
+use ravel_sdk::network::{Direction, PacketContract, PacketDelivery, PacketId};
 use ravel_sdk::prelude::*;
 use rvl_042_counterpart::flags::FlagTable;
 
@@ -70,6 +70,17 @@ pub const OBSERVED_KEPT: usize = 64;
 /// The host's own namespace is not this package's to name, so it is a value the
 /// loader supplies and this is the shipped placeholder until it does.
 pub const HOST_NAMESPACE: &str = "host";
+
+fn packet_contract(path: &str, direction: Direction) -> PacketContract {
+    PacketContract::new(
+        PacketId::new(
+            ContentId::new(Entry::declared_id().clone(), path)
+                .expect("the packaged packet path is legal"),
+        ),
+        direction,
+        settings::PACKET_VERSION,
+    )
+}
 
 /// What this entry attaches after the registration barrier.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

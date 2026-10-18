@@ -42,7 +42,7 @@ pub enum VerdictMode {
 }
 
 /// The four independent matching choices a rule carries.
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Modes {
     /// Reject a stored entry whose damage differs from the tested stack's.
     pub damage: bool,
@@ -52,18 +52,6 @@ pub struct Modes {
     pub namespace: bool,
     /// Keep or invert the raw verdict.
     pub verdict: VerdictMode,
-}
-
-impl fmt::Debug for Modes {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Modes")
-            .field("damage", &self.damage)
-            .field("components", &self.components)
-            .field("namespace", &self.namespace)
-            .field("exclusion", &(self.verdict == VerdictMode::Exclusion))
-            .finish()
-    }
 }
 
 /// A rule that answers whether a stack passes.

@@ -220,24 +220,12 @@ impl Quad {
 }
 
 /// Which of a thin sheet's four horizontal sides are joined.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct SheetFlags {
     /// Joins towards negative and positive `z`, respectively.
     pub north_south: [bool; 2],
     /// Joins towards negative and positive `x`, respectively.
     pub west_east: [bool; 2],
-}
-
-impl std::fmt::Debug for SheetFlags {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("SheetFlags")
-            .field("north", &self.north_south[0])
-            .field("south", &self.north_south[1])
-            .field("west", &self.west_east[0])
-            .field("east", &self.west_east[1])
-            .finish()
-    }
 }
 
 impl SheetFlags {

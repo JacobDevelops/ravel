@@ -82,7 +82,7 @@ pub struct Attachment {
 
 /// What the registry refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum CapabilityRefused {
     /// The registry is baked and takes nothing more.
     AlreadyBaked {
         /// What was offered.
@@ -95,7 +95,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for CapabilityRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::AlreadyBaked { capability } => write!(
@@ -109,7 +109,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for CapabilityRefused {}
 
 /// The most attachments the registry holds.
 pub const MAX_ATTACHMENTS: usize = 4096;
@@ -141,21 +141,21 @@ impl Registry {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::AlreadyBaked`] after baking, which the registry raises
-    /// rather than ignoring, and [`Refused::Full`] past the published limit.
+    /// Returns [`CapabilityRefused::AlreadyBaked`] after baking, which the registry raises
+    /// rather than ignoring, and [`CapabilityRefused::Full`] past the published limit.
     pub fn register(
         &mut self,
         class: TargetClass,
         address: Address,
         capability: &str,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), CapabilityRefused> {
         if self.baked {
-            return Err(Refused::AlreadyBaked {
+            return Err(CapabilityRefused::AlreadyBaked {
                 capability: capability.to_owned(),
             });
         }
         if self.attachments.len() >= MAX_ATTACHMENTS {
-            return Err(Refused::Full {
+            return Err(CapabilityRefused::Full {
                 limit: MAX_ATTACHMENTS,
             });
         }
@@ -278,7 +278,7 @@ mod tests {
                 Address::Specific("one".to_owned()),
                 "store"
             ),
-            Err(Refused::AlreadyBaked {
+            Err(CapabilityRefused::AlreadyBaked {
                 capability: "store".to_owned()
             })
         );
@@ -371,7 +371,7 @@ mod tests {
                 Address::Specific("last".to_owned()),
                 "store"
             ),
-            Err(Refused::Full {
+            Err(CapabilityRefused::Full {
                 limit: MAX_ATTACHMENTS
             })
         );

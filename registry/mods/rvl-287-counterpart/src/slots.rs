@@ -472,7 +472,8 @@ impl Grid {
     /// # Errors
     ///
     /// Returns [`SlotError::Malformed`] when the declaration is not an object
-    /// carrying two dimensions and a cell list, and whatever [`Grid::new`]
+    /// carrying two dimensions and a cell list, [`SlotError::UnreadableTexture`]
+    /// when a declared cell is not a texture name, and whatever [`Grid::new`]
     /// refuses otherwise.
     pub fn parse(value: &JsonValue) -> Result<Self, SlotError> {
         let dimension = |key: &str| {
@@ -491,11 +492,10 @@ impl Grid {
         Self::validate_shape(width, height, declared.len())?;
         let mut cells = Vec::with_capacity(declared.len());
         for (position, held) in declared.iter().enumerate() {
-            let texture = held.as_str().and_then(TextureId::parse).ok_or_else(|| {
-                SlotError::MissingCell(
-                    u32::try_from(position).expect("a cell index is below MAX_CELLS"),
-                )
-            })?;
+            let texture = held
+                .as_str()
+                .and_then(TextureId::parse)
+                .ok_or_else(|| SlotError::UnreadableTexture(format!("cell {position}")))?;
             cells.push(texture);
         }
         Ok(Self {
@@ -886,6 +886,21 @@ mod tests {
                 declared: 5,
                 area: 4
             })
+        );
+    }
+
+    #[test]
+    fn parsing_distinguishes_unreadable_declared_cells_from_missing_cells() {
+        for texture in [json!(42), json!("Not A Name")] {
+            let value = json!({ "across": 1, "down": 1, "cells": [texture] });
+            assert_eq!(
+                Grid::parse(&value),
+                Err(SlotError::UnreadableTexture("cell 0".to_owned()))
+            );
+        }
+        assert_eq!(
+            Grid::parse(&json!({ "across": 1, "down": 1, "cells": [] })),
+            Err(SlotError::MissingCell(0))
         );
     }
 

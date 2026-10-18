@@ -42,7 +42,7 @@ pub const MAX_CONVERTED: usize = 100_000;
 
 /// What a recipe view refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum RecipeRefused {
     /// The inputs name more than one ingredient kind.
     MixedKinds {
         /// How many they named.
@@ -92,7 +92,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for RecipeRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MixedKinds { named } => write!(
@@ -126,7 +126,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for RecipeRefused {}
 
 /// The input-count range a view admits.
 ///
@@ -162,12 +162,12 @@ impl Counts {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::Count`] outside it.
-    pub const fn check(self, given: usize) -> Result<(), Refused> {
+    /// Returns [`RecipeRefused::Count`] outside it.
+    pub const fn check(self, given: usize) -> Result<(), RecipeRefused> {
         if self.admits(given) {
             return Ok(());
         }
-        Err(Refused::Count {
+        Err(RecipeRefused::Count {
             given,
             least: self.least,
             most: self.most,
@@ -295,15 +295,15 @@ impl Station {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::TooManyRecipes`] past [`MAX_CONVERTED`], and
-    /// [`Refused::InvalidRecipe`] for the first refused conversion when
+    /// Returns [`RecipeRefused::TooManyRecipes`] past [`MAX_CONVERTED`], and
+    /// [`RecipeRefused::InvalidRecipe`] for the first refused conversion when
     /// `abort_on_invalid` is on.
     pub fn enumerate(
         &self,
         world: &[Definition],
         convert: impl Fn(&Definition) -> Option<Converted>,
         abort_on_invalid: bool,
-    ) -> Result<Vec<Converted>, Refused> {
+    ) -> Result<Vec<Converted>, RecipeRefused> {
         let mut converted = Vec::new();
         for definition in world {
             if definition.kind != self.kind || definition.special {
@@ -311,14 +311,14 @@ impl Station {
             }
             let Some(recipe) = convert(definition) else {
                 if abort_on_invalid {
-                    return Err(Refused::InvalidRecipe {
+                    return Err(RecipeRefused::InvalidRecipe {
                         id: definition.id.clone(),
                     });
                 }
                 continue;
             };
             if converted.len() >= MAX_CONVERTED {
-                return Err(Refused::TooManyRecipes {
+                return Err(RecipeRefused::TooManyRecipes {
                     limit: MAX_CONVERTED,
                 });
             }
@@ -331,11 +331,11 @@ impl Station {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::MixedKinds`] when the inputs name more than one
-    /// ingredient kind, [`Refused::NoInput`] when nothing is left after the
-    /// optional empty-slot filter, [`Refused::Count`] outside the declared
-    /// range and [`Refused::TooManyInputs`] past the grid's size.
-    pub fn grid(&self, inputs: &[Input]) -> Result<Vec<Option<Stack>>, Refused> {
+    /// Returns [`RecipeRefused::MixedKinds`] when the inputs name more than one
+    /// ingredient kind, [`RecipeRefused::NoInput`] when nothing is left after the
+    /// optional empty-slot filter, [`RecipeRefused::Count`] outside the declared
+    /// range and [`RecipeRefused::TooManyInputs`] past the grid's size.
+    pub fn grid(&self, inputs: &[Input]) -> Result<Vec<Option<Stack>>, RecipeRefused> {
         check_input_kinds(inputs)?;
         let filled: Vec<&Stack> = inputs
             .iter()
@@ -343,11 +343,11 @@ impl Station {
             .filter(|value| !self.drop_empty || !value.is_empty())
             .collect();
         if filled.is_empty() {
-            return Err(Refused::NoInput);
+            return Err(RecipeRefused::NoInput);
         }
         self.counts.check(filled.len())?;
         if filled.len() > GRID_SIZE {
-            return Err(Refused::TooManyInputs { limit: GRID_SIZE });
+            return Err(RecipeRefused::TooManyInputs { limit: GRID_SIZE });
         }
         let mut grid = vec![None; GRID_SIZE];
         for (position, value) in filled.into_iter().enumerate() {
@@ -366,7 +366,7 @@ impl Station {
         inputs: &[Input],
         recipes: &[Converted],
         kind: &Stackable,
-    ) -> Result<Option<Vec<Stack>>, Refused> {
+    ) -> Result<Option<Vec<Stack>>, RecipeRefused> {
         let grid = self.grid(inputs)?;
         Ok(recipes
             .iter()
@@ -382,17 +382,17 @@ impl Station {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::Output`] when output checking is on and the
+    /// Returns [`RecipeRefused::Output`] when output checking is on and the
     /// definition's output is not that one shape.
     pub fn simulate_from(
         &self,
         definition: &Definition,
         recipes: &[Converted],
         kind: &Stackable,
-    ) -> Result<Option<Vec<Stack>>, Refused> {
+    ) -> Result<Option<Vec<Stack>>, RecipeRefused> {
         if self.check_output {
             if definition.output.len() != 1 {
-                return Err(Refused::Output {
+                return Err(RecipeRefused::Output {
                     detail: "output checking needs a definition naming exactly one instance",
                 });
             }
@@ -413,10 +413,10 @@ impl Station {
     }
 }
 
-fn check_input_kinds(inputs: &[Input]) -> Result<(), Refused> {
+fn check_input_kinds(inputs: &[Input]) -> Result<(), RecipeRefused> {
     let kinds: BTreeSet<&str> = inputs.iter().map(|input| input.kind.as_str()).collect();
     if kinds.len() > 1 {
-        return Err(Refused::MixedKinds { named: kinds.len() });
+        return Err(RecipeRefused::MixedKinds { named: kinds.len() });
     }
     Ok(())
 }
@@ -565,7 +565,7 @@ mod tests {
         ];
         assert_eq!(
             smelting().enumerate(&world, convert, true),
-            Err(Refused::InvalidRecipe {
+            Err(RecipeRefused::InvalidRecipe {
                 id: "bad".to_owned()
             })
         );
@@ -628,7 +628,7 @@ mod tests {
     fn the_brewing_view_refuses_the_counts_the_disjunction_admitted() {
         let closure = Closure::shipped();
         let mix = |_: &Stack, running: &Stack| Some(running.clone());
-        assert_eq!(closure.simulate(&[], mix), Err(Refused::NoInput));
+        assert_eq!(closure.simulate(&[], mix), Err(RecipeRefused::NoInput));
         assert_eq!(
             closure.simulate(
                 &[Input::stackable(Stack::of(
@@ -637,7 +637,7 @@ mod tests {
                 ))],
                 mix
             ),
-            Err(Refused::Count {
+            Err(RecipeRefused::Count {
                 given: 1,
                 least: 2,
                 most: 4
@@ -806,16 +806,19 @@ mod tests {
                 ),
             },
         ];
-        assert_eq!(station.grid(&inputs), Err(Refused::MixedKinds { named: 2 }));
+        assert_eq!(
+            station.grid(&inputs),
+            Err(RecipeRefused::MixedKinds { named: 2 })
+        );
     }
 
     #[test]
     fn empty_inputs_are_refused_after_the_optional_filter() {
         let station = smelting();
-        assert_eq!(station.grid(&[]), Err(Refused::NoInput));
+        assert_eq!(station.grid(&[]), Err(RecipeRefused::NoInput));
         assert_eq!(
             station.grid(&[Input::stackable(Stack::empty())]),
-            Err(Refused::NoInput)
+            Err(RecipeRefused::NoInput)
         );
     }
 
@@ -839,7 +842,7 @@ mod tests {
                 "minecraft:sugar".parse().expect("a valid content identity"),
                 1
             ))]),
-            Err(Refused::Count {
+            Err(RecipeRefused::Count {
                 given: 1,
                 least: 2,
                 most: 4
@@ -890,7 +893,7 @@ mod tests {
             .collect();
         assert_eq!(
             station.grid(&inputs),
-            Err(Refused::TooManyInputs { limit: GRID_SIZE })
+            Err(RecipeRefused::TooManyInputs { limit: GRID_SIZE })
         );
     }
 
@@ -963,7 +966,7 @@ mod tests {
         let kind = Stackable::default();
         assert!(matches!(
             station.simulate_from(&definition, &[], &kind),
-            Err(Refused::Output { .. })
+            Err(RecipeRefused::Output { .. })
         ));
     }
 
@@ -1211,7 +1214,7 @@ mod tests {
                 |input, output| output.identity != input.identity,
             )
             .expect_err("an unbounded closure");
-        assert_eq!(refusal, Refused::ProbableCycle { cap: 500 });
+        assert_eq!(refusal, RecipeRefused::ProbableCycle { cap: 500 });
     }
 
     #[test]
@@ -1223,13 +1226,13 @@ mod tests {
         );
         assert_eq!(
             Closure::new(0),
-            Err(Refused::Cap {
+            Err(RecipeRefused::Cap {
                 limit: MAX_CLOSURE_CAP
             })
         );
         assert_eq!(
             Closure::new(MAX_CLOSURE_CAP + 1),
-            Err(Refused::Cap {
+            Err(RecipeRefused::Cap {
                 limit: MAX_CLOSURE_CAP
             })
         );
@@ -1338,29 +1341,33 @@ mod tests {
 
     #[test]
     fn refusals_say_what_was_wrong() {
-        assert!(Refused::NoInput.to_string().contains("nothing to work on"));
         assert!(
-            Refused::ProbableCycle { cap: 7 }
+            RecipeRefused::NoInput
+                .to_string()
+                .contains("nothing to work on")
+        );
+        assert!(
+            RecipeRefused::ProbableCycle { cap: 7 }
                 .to_string()
                 .contains("probably a cycle")
         );
         assert!(
-            Refused::MixedKinds { named: 2 }
+            RecipeRefused::MixedKinds { named: 2 }
                 .to_string()
                 .contains("admits one")
         );
         assert!(
-            Refused::TooManyInputs { limit: 9 }
+            RecipeRefused::TooManyInputs { limit: 9 }
                 .to_string()
                 .contains("9 positions")
         );
         assert!(
-            Refused::Output { detail: "wrong" }
+            RecipeRefused::Output { detail: "wrong" }
                 .to_string()
                 .contains("wrong")
         );
         assert!(
-            Refused::TooManyRecipes { limit: 4 }
+            RecipeRefused::TooManyRecipes { limit: 4 }
                 .to_string()
                 .contains("than the 4")
         );

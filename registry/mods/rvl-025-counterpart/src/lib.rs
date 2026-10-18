@@ -139,7 +139,7 @@ pub struct Entry {
     client: ClientOnly<ClientState>,
     entered: Vec<LifecycleState>,
     observed: Vec<GameEvent>,
-    deferred: bool,
+    registration_closed: bool,
 }
 
 impl Entry {
@@ -167,7 +167,7 @@ impl Entry {
             client: ClientOnly::built_on(side, ClientState::default),
             entered: Vec::new(),
             observed: Vec::new(),
-            deferred: false,
+            registration_closed: false,
         }
     }
 
@@ -322,21 +322,19 @@ impl Entry {
         &self.observed
     }
 
-    /// Returns whether the deferred work of §2 has run.
+    /// Returns whether this entry's registration window has closed.
     #[must_use]
-    pub const fn deferred_work_done(&self) -> bool {
-        self.deferred
+    pub const fn is_registration_closed(&self) -> bool {
+        self.registration_closed
     }
 
-    /// Runs the work §2 defers to after registration and after configuration.
+    /// Closes the interface surface after registration and configuration.
     ///
-    /// Two things happen here and nowhere earlier: the two commands and the one
-    /// reply encoding are filed with the shared transport, and the published
-    /// interface surface stops accepting registrations. Both need every registry
-    /// populated, and running either earlier gets a partially-populated view.
-    pub fn run_deferred(&mut self) -> &'static [commands::Registration] {
+    /// The caller files the returned command and reply-encoding registrations
+    /// with the shared transport once every registry is populated.
+    pub fn close_registration(&mut self) -> &'static [commands::Registration] {
         self.surface.close();
-        self.deferred = true;
+        self.registration_closed = true;
         &commands::REGISTRATIONS
     }
 
@@ -702,19 +700,19 @@ mod tests {
     }
 
     #[test]
-    fn the_deferred_work_closes_the_surface_and_files_the_three_registrations() {
+    fn closing_registration_closes_the_surface_and_returns_the_three_registrations() {
         let mut entry = Entry::new(Side::DedicatedServer);
         assert!(entry.surface().is_open());
-        assert!(!entry.deferred_work_done());
+        assert!(!entry.is_registration_closed());
 
-        let filed = entry.run_deferred();
+        let filed = entry.close_registration();
         assert_eq!(filed.len(), 3);
         assert!(!entry.surface().is_open());
-        assert!(entry.deferred_work_done());
+        assert!(entry.is_registration_closed());
     }
 
     #[test]
-    fn a_dependent_registers_into_the_surface_before_the_deferred_work_and_not_after() {
+    fn a_dependent_registers_into_the_surface_before_registration_closes_and_not_after() {
         let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .surface_mut()
@@ -722,9 +720,9 @@ mod tests {
                 identifier: "dependent:power".parse().expect("a legal identifier"),
                 owner: "dependent".parse().expect("a legal owner"),
             })
-            .expect("the window is open before the deferred work");
+            .expect("the registration window is open");
 
-        entry.run_deferred();
+        entry.close_registration();
         assert_eq!(
             entry
                 .surface_mut()

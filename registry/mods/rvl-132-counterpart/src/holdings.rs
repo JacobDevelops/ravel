@@ -31,7 +31,7 @@ pub const MAX_ENTRIES: usize = 256;
 
 /// What a list-valued item's store refuses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refused {
+pub enum HoldingsRefused {
     /// The list holds more entries than [`MAX_ENTRIES`].
     TooManyEntries {
         /// How many it holds.
@@ -41,7 +41,7 @@ pub enum Refused {
     },
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for HoldingsRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyEntries { held, limit } => {
@@ -51,7 +51,7 @@ impl fmt::Display for Refused {
     }
 }
 
-impl std::error::Error for Refused {}
+impl std::error::Error for HoldingsRefused {}
 
 /// The list an item holds, which is the whole of what either store is.
 ///
@@ -77,11 +77,11 @@ impl Listing {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused::TooManyEntries`] past [`MAX_ENTRIES`].
-    pub fn of(entries: impl IntoIterator<Item = Stack>) -> Result<Self, Refused> {
+    /// Returns [`HoldingsRefused::TooManyEntries`] past [`MAX_ENTRIES`].
+    pub fn of(entries: impl IntoIterator<Item = Stack>) -> Result<Self, HoldingsRefused> {
         let entries: Vec<Stack> = entries.into_iter().collect();
         if entries.len() > MAX_ENTRIES {
-            return Err(Refused::TooManyEntries {
+            return Err(HoldingsRefused::TooManyEntries {
                 held: entries.len(),
                 limit: MAX_ENTRIES,
             });
@@ -348,7 +348,7 @@ mod tests {
         });
         assert_eq!(
             Listing::of(entries),
-            Err(Refused::TooManyEntries {
+            Err(HoldingsRefused::TooManyEntries {
                 held: MAX_ENTRIES + 1,
                 limit: MAX_ENTRIES
             })
@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn refusals_say_what_was_wrong() {
         assert!(
-            Refused::TooManyEntries { held: 9, limit: 8 }
+            HoldingsRefused::TooManyEntries { held: 9, limit: 8 }
                 .to_string()
                 .contains("past the 8")
         );

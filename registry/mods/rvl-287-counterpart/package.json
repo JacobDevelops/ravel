@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "f0392e21cc376fa0ca1789901b4fac000684030469b1e7e4f5a3632e23360e3d"
+        "sha256": "a2ea11dc0df4641273babe8d7dc8445f07cd9d4c55fa429bf9906190d32bbd61"
       },
       {
         "path": "aliases.json",
@@ -63,11 +63,11 @@
       },
       {
         "path": "src/geometry.rs",
-        "sha256": "4b19a478fda4c778ef2df2da1b12c5e5b583f67596c49cb32e96c889648776c1"
+        "sha256": "3968935497b68c6ec285dbd008e9e1f69b681670997d3a8bfcc43d382af4cfc7"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "85d5ff8ba50df4fdccc5bdaef03e7b5013f4122eb417872d1af93c0ccc76f273"
+        "sha256": "7c3d495e4c1896e27d6033b20740854f8cd794113686d40341ef484e72246f4e"
       },
       {
         "path": "src/lib.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/slots.rs",
-        "sha256": "da32a44cc2b9c0aa0baa821729a2e7a27c08756862b94abda80baddb9d197c32"
+        "sha256": "2f728ac656d678b743df1ed24fd9ec68b31261ddab516a4331ddd7f8ffb2c12b"
       }
     ]
   },

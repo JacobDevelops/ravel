@@ -8,9 +8,9 @@
 //! is the arrangement the specification records: a client and a server that
 //! disagree about these values disagree silently.
 //!
-//! Five of the eight are published as named flags through the shared library
-//! under this entry's own namespace. Two further flags are *read* from the
-//! dependency's namespace and are never published here; [`consumed_flags`] names
+//! Five of the eight are published as named flags in this mod's table and
+//! answered through its `flags` service. Two further flags are *read* from the
+//! dependency's service and are never published here; [`consumed_flags`] names
 //! them, and [`publish`] keeps those separate from this entry's own flags.
 //!
 //! Each setting-key constant matches its key in [`DOCUMENT`].
@@ -19,7 +19,7 @@ use ravel_sdk::config::{
     AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 use ravel_sdk::content::ContentIdError;
-use rvl_042_counterpart::flags::{FlagId, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagTable, setting_flag};
 use rvl_321_counterpart::settings as depended;
 
 pub const DROPS_SOUL_CHANCE: &str = "drops.soul_chance";
@@ -223,32 +223,28 @@ pub(crate) const PUBLISHED: [FlagBinding; 5] = [
 /// Returns [`ContentIdError`] when a declared flag binding has an invalid identity.
 pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), ContentIdError> {
     for (key, value) in PUBLISHED {
-        let id = flag_id(key)?;
+        let id = setting_flag(crate::MOD_ID, key)?;
         table.publish_constant(id, value(settings));
     }
     Ok(())
-}
-
-/// The flag identity a setting key of this entry's is published under.
-///
-/// # Errors
-///
-/// Returns [`ContentIdError`] when the setting key cannot form a legal flag identity.
-pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
-    FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
 /// The two flags this entry reads and never publishes.
 ///
 /// Both live in the dependency's namespace: the tool-enchantability flag that
 /// [`crate::tools`] consults and the ground-conversion flag that
-/// [`crate::ground`] short-circuits on. Naming them through that package's own
-/// [`depended::flag_id`] is what keeps the direction honest — this entry cannot
-/// mint a flag in a namespace it does not own.
+/// [`crate::ground`] short-circuits on. Their explicit namespace identifies the
+/// dependency as the publisher.
 pub fn consumed_flags() -> Result<[FlagId; 2], ContentIdError> {
     Ok([
-        depended::flag_id(depended::GEAR_TOP_TOOLS_ENCHANTABLE)?,
-        depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)?,
+        setting_flag(
+            rvl_321_counterpart::MOD_ID,
+            depended::GEAR_TOP_TOOLS_ENCHANTABLE,
+        )?,
+        setting_flag(
+            rvl_321_counterpart::MOD_ID,
+            depended::GROUND_CONVERT_BY_MATERIAL,
+        )?,
     ])
 }
 
@@ -402,7 +398,7 @@ mod tests {
         let published: Vec<String> = table.published().map(ToString::to_string).collect();
         assert_eq!(published.len(), 5);
         for (key, _) in PUBLISHED {
-            let id = flag_id(key).expect("a legal flag name");
+            let id = setting_flag(crate::MOD_ID, key).expect("a legal flag name");
             assert!(published.contains(&id.to_string()));
             assert_eq!(id.namespace().as_str(), crate::MOD_ID);
         }
@@ -434,8 +430,10 @@ mod tests {
             ..Settings::shipped().expect("the shipped settings are valid")
         };
         publish(&mut table, &settings).expect("legal flag bindings");
-        let fertilisable = flag_id(CROPS_FERTILISABLE).expect("a legal flag name");
-        let deposit = flag_id(WORLD_OUTER_SHARD_DEPOSIT).expect("a legal flag name");
+        let fertilisable =
+            setting_flag(crate::MOD_ID, CROPS_FERTILISABLE).expect("a legal flag name");
+        let deposit =
+            setting_flag(crate::MOD_ID, WORLD_OUTER_SHARD_DEPOSIT).expect("a legal flag name");
         assert!(table.is_published(&fertilisable));
         assert!(table.is_published(&deposit), "both are published");
         assert!(table.enabled(&fertilisable));

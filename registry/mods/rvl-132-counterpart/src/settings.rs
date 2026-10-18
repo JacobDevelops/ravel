@@ -12,9 +12,8 @@
 //!
 //! The third-party list is re-read on every settings load and reload, and the
 //! comparator of section 6.4 is rebuilt from it each time, so the setting takes
-//! effect without a restart. [`Settings::comparator`] is that rebuild, and it is
-//! the only way to get a comparator, so a comparator can never outlive the list
-//! it resolved.
+//! effect without a restart. [`Settings::read`] builds and retains that validated
+//! comparator; [`Settings::comparator`] borrows the one already in force.
 
 use core::fmt;
 
@@ -22,7 +21,7 @@ use ravel_sdk::config::{
     AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 
-use crate::data::{Comparator, MAX_IGNORED};
+use crate::data::Comparator;
 use crate::recipes::Closure;
 
 /// The key an invalid recipe's treatment is switched under.
@@ -136,24 +135,21 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 
 /// What a resolution refuses.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Refused {
+pub enum SettingsRefused {
     /// A declared setting is missing, has the wrong kind, or cannot fit its target type.
     Value(AccessError),
     /// The brewing closure refuses a cap outside its supported domain.
-    Cap(crate::recipes::Refused),
+    Cap(crate::recipes::RecipeRefused),
     /// The ignored-component list is longer than [`MAX_IGNORED_TEXT`].
     ListTooLong {
         /// The published ceiling.
         limit: usize,
     },
-    /// The ignored-component list names more kinds than [`MAX_IGNORED`].
-    TooManyIgnored {
-        /// The published ceiling.
-        limit: usize,
-    },
+    /// The data comparator refuses the ignored-component list.
+    Data(crate::data::DataRefused),
 }
 
-impl fmt::Display for Refused {
+impl fmt::Display for SettingsRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Value(error) => error.fmt(formatter),
@@ -164,27 +160,23 @@ impl fmt::Display for Refused {
                     "an ignored-kind list longer than {limit} characters"
                 )
             }
-            Self::TooManyIgnored { limit } => {
-                write!(
-                    formatter,
-                    "an ignored-kind list naming more than {limit} kinds"
-                )
-            }
+            Self::Data(error) => error.fmt(formatter),
         }
     }
 }
 
-impl std::error::Error for Refused {
+impl std::error::Error for SettingsRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Value(error) => Some(error),
             Self::Cap(error) => Some(error),
-            Self::ListTooLong { .. } | Self::TooManyIgnored { .. } => None,
+            Self::Data(error) => Some(error),
+            Self::ListTooLong { .. } => None,
         }
     }
 }
 
-impl From<AccessError> for Refused {
+impl From<AccessError> for SettingsRefused {
     fn from(error: AccessError) -> Self {
         Self::Value(error)
     }
@@ -197,11 +189,10 @@ pub struct Settings {
     pub abort_on_invalid_recipe: bool,
     /// Whether a failure inside a compatibility bundle aborts loading.
     pub abort_on_bundle_failure: bool,
-    /// The component kinds to ignore when comparing data.
-    pub ignored: Vec<String>,
     /// Whether every unequal-data comparison is logged.
     pub log_unequal_data: bool,
     closure: Closure,
+    comparator: Comparator,
 }
 
 impl Settings {
@@ -217,19 +208,20 @@ impl Settings {
     ///
     /// Missing or wrongly typed values, out-of-range closure caps and ignored
     /// lists past either ceiling are refused without partially applying the resolution.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, SettingsRefused> {
         let abort_on_invalid_recipe = resolved.boolean(ABORT_ON_INVALID_RECIPE)?;
         let abort_on_bundle_failure = resolved.boolean(ABORT_ON_BUNDLE_FAILURE)?;
         let log_unequal_data = resolved.boolean(LOG_UNEQUAL_DATA)?;
-        let ignored = ignored_from(resolved.text(IGNORED_COMPONENTS)?)?;
+        let comparator = Comparator::new(ignored_from(resolved.text(IGNORED_COMPONENTS)?)?)
+            .map_err(SettingsRefused::Data)?;
         let cap = resolved.integer_in::<usize>(CLOSURE_CAP)?;
-        let closure = Closure::new(cap).map_err(Refused::Cap)?;
+        let closure = Closure::new(cap).map_err(SettingsRefused::Cap)?;
         Ok(Self {
             abort_on_invalid_recipe,
             abort_on_bundle_failure,
-            ignored,
             log_unequal_data,
             closure,
+            comparator,
         })
     }
 
@@ -239,16 +231,9 @@ impl Settings {
     /// comparator is rebuilt from it each time. A rebuilt comparator resolves its
     /// list once and keeps it, which is harmless only because the whole
     /// comparator is replaced, and this is the replacement.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Refused::TooManyIgnored`] for a list past [`MAX_IGNORED`].
-    /// [`Settings::read`] guards the list it resolves, but the fields are public
-    /// and a caller may assign one, and a comparator that silently ignores
-    /// nothing is a matching change with no signal.
-    pub fn comparator(&self) -> Result<Comparator, Refused> {
-        Comparator::new(self.ignored.clone())
-            .map_err(|_| Refused::TooManyIgnored { limit: MAX_IGNORED })
+    #[must_use]
+    pub const fn comparator(&self) -> &Comparator {
+        &self.comparator
     }
 
     /// The brewing closure these values put in force.
@@ -262,11 +247,10 @@ impl Settings {
 ///
 /// # Errors
 ///
-/// Returns [`Refused::ListTooLong`] past [`MAX_IGNORED_TEXT`] characters and
-/// [`Refused::TooManyIgnored`] past [`MAX_IGNORED`] names.
-pub fn ignored_from(text: &str) -> Result<Vec<String>, Refused> {
+/// Returns [`SettingsRefused::ListTooLong`] past [`MAX_IGNORED_TEXT`] characters.
+pub fn ignored_from(text: &str) -> Result<Vec<String>, SettingsRefused> {
     if text.len() > MAX_IGNORED_TEXT {
-        return Err(Refused::ListTooLong {
+        return Err(SettingsRefused::ListTooLong {
             limit: MAX_IGNORED_TEXT,
         });
     }
@@ -278,16 +262,13 @@ pub fn ignored_from(text: &str) -> Result<Vec<String>, Refused> {
         .collect();
     names.sort_unstable();
     names.dedup();
-    if names.len() > MAX_IGNORED {
-        return Err(Refused::TooManyIgnored { limit: MAX_IGNORED });
-    }
     Ok(names)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{Components, Value};
+    use crate::data::{Components, MAX_IGNORED, Value};
     use ravel_sdk::config::ValueError;
 
     #[test]
@@ -298,7 +279,7 @@ mod tests {
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the changed declaration resolves");
             let refused = Settings::read(&resolved).expect_err("the declared key is missing");
-            assert!(matches!(refused, Refused::Value(_)));
+            assert!(matches!(refused, SettingsRefused::Value(_)));
             assert!(
                 std::error::Error::source(&refused)
                     .expect("the typed value failure is retained")
@@ -392,14 +373,17 @@ mod tests {
         let long = "a".repeat(MAX_IGNORED_TEXT + 1);
         assert_eq!(
             ignored_from(&long),
-            Err(Refused::ListTooLong {
+            Err(SettingsRefused::ListTooLong {
                 limit: MAX_IGNORED_TEXT
             })
         );
         let many: Vec<String> = (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect();
         assert_eq!(
-            ignored_from(&many.join(",")),
-            Err(Refused::TooManyIgnored { limit: MAX_IGNORED })
+            Comparator::new(ignored_from(&many.join(",")).expect("within text ceiling")),
+            Err(crate::data::DataRefused::TooManyIgnored {
+                named: MAX_IGNORED + 1,
+                limit: MAX_IGNORED,
+            })
         );
         let at_ceiling: Vec<String> = (0..MAX_IGNORED).map(|index| format!("k{index}")).collect();
         assert_eq!(
@@ -414,35 +398,40 @@ mod tests {
 
     #[test]
     fn the_comparator_is_rebuilt_from_the_values_in_force() {
-        let mut settings = Settings::shipped().expect("the packaged settings resolve");
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let sharp = wear_data(0);
         let blunt = wear_data(90);
-        assert!(
-            !settings
-                .comparator()
-                .expect("an empty list")
-                .equal(&sharp, &blunt)
-        );
-        settings.ignored = vec!["wear".to_owned()];
-        assert!(
-            settings
-                .comparator()
-                .expect("a one-name list")
-                .equal(&sharp, &blunt)
-        );
+        assert!(!settings.comparator().equal(&sharp, &blunt));
+        let changed = DOCUMENT.replace("\"default\": \"\"", "\"default\": \"wear\"");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed defaults resolve");
+        let settings = Settings::read(&resolved).expect("a one-name list");
+        assert!(settings.comparator().equal(&sharp, &blunt));
     }
 
     #[test]
-    fn an_over_long_ignore_list_refuses_the_comparator_rather_than_ignoring_nothing() {
-        // The fields are public and assignable, and a comparator that silently
-        // ignores nothing is a matching change with no signal.
-        let settings = Settings {
-            ignored: (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect(),
-            ..Settings::shipped().expect("the packaged settings resolve")
-        };
+    fn an_over_long_ignore_list_refuses_settings_with_its_named_count() {
+        let names: Vec<String> = (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect();
+        let changed = DOCUMENT.replace(
+            "\"default\": \"\"",
+            &format!("\"default\": \"{}\"", names.join(",")),
+        );
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("within the declaration's text ceiling");
+        let refused = Settings::read(&resolved).expect_err("too many ignored kinds");
         assert_eq!(
-            settings.comparator(),
-            Err(Refused::TooManyIgnored { limit: MAX_IGNORED })
+            refused,
+            SettingsRefused::Data(crate::data::DataRefused::TooManyIgnored {
+                named: MAX_IGNORED + 1,
+                limit: MAX_IGNORED,
+            })
+        );
+        assert!(
+            std::error::Error::source(&refused)
+                .expect("the data refusal is retained")
+                .is::<crate::data::DataRefused>()
         );
     }
 
@@ -474,12 +463,12 @@ mod tests {
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the widened declaration resolves");
             let expected = if usize::try_from(cap).is_err() {
-                Refused::Value(AccessError {
+                SettingsRefused::Value(AccessError {
                     key: CLOSURE_CAP.to_owned(),
                     reason: ValueError::TargetRange { target: "usize" },
                 })
             } else {
-                Refused::Cap(crate::recipes::Refused::Cap {
+                SettingsRefused::Cap(crate::recipes::RecipeRefused::Cap {
                     limit: crate::recipes::MAX_CLOSURE_CAP,
                 })
             };
@@ -490,14 +479,14 @@ mod tests {
     #[test]
     fn refusals_say_what_was_wrong() {
         assert!(
-            Refused::ListTooLong { limit: 8 }
+            SettingsRefused::ListTooLong { limit: 8 }
                 .to_string()
                 .contains("longer than 8")
         );
         assert!(
-            Refused::TooManyIgnored { limit: 8 }
+            SettingsRefused::Data(crate::data::DataRefused::TooManyIgnored { named: 9, limit: 8 })
                 .to_string()
-                .contains("more than 8")
+                .contains("ignored kinds")
         );
     }
 }

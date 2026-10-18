@@ -193,11 +193,15 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   test written from §9's own census holds it to naming no login payload.
 - **The unreachable block-state document is not shipped (§4).** It names a model for a block nothing
   registers at the reviewed revision.
-- **Configuration access failures are refused (§3).** `Settings::read` returns missing-key and
-  wrong-kind errors rather than replacing them with defaults. `Colours::resolve` preserves the same
-  typed errors through `ColourRefused::Value`; a refused client document changes no colours.
-  An infusion ceiling outside one to the signed 32-bit maximum still keeps the shipped default
-  rather than being clamped.
+- **Configuration access failures are refused (§3).** `Settings::shipped` resolves the packaged
+  declaration without layers and reads it through the same checked path as loaded configuration;
+  there is no separately maintained default `Settings`. The entry retains a packaged-default failure,
+  returns it from `Entry::settings`, and refuses `Constructed` with that failure until configuration
+  succeeds. `Settings::read` returns missing-key and wrong-kind errors rather than replacing them
+  with defaults. `Colours::resolve` preserves the same typed errors through `ColourRefused::Value`;
+  a refused client document changes no colours. An infusion ceiling outside one to the signed 32-bit
+  maximum is refused rather than defaulted or clamped. The validated ceiling is private, stored as an
+  `i32`, and exposed read-only through `Settings::infusion_ceiling`.
 - **Wire refusals identify the failed boundary (§5, §9, §12.4).** Negative or incomplete framed
   lengths are truncation, not decoded-value limit breaches. A complete preference style containing
   invalid UTF-8 is `NotText`, not truncation. A complete preference record followed by surplus

@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "13ddf0f3cdea02b302d8f77a4a0ac8d1d3d68e0ff470280fd86fbee4e39d4070"
+        "sha256": "b8a6bcaa336a580413860801250c6d779ce3c447c6c52c20a50e77c7bc3e2854"
       },
       {
         "path": "aliases.json",
@@ -63,7 +63,7 @@
       },
       {
         "path": "src/attractor.rs",
-        "sha256": "51726a00d0cebb28d5d46b5ea2be3d232609fd272f716ac466eb234e6414382f"
+        "sha256": "0361baec58a17da75964adbea9b6cce032237737fde4aea14f4dfd20a4aec5ff"
       },
       {
         "path": "src/census.rs",
@@ -83,7 +83,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "67e5a2bee863353a2a41e88ecb24a63d9f577a89326585d4d5833ee9650e689f"
+        "sha256": "355adae7e4ca16ee7a8fba68557cc51af341ed6009dd5bf50a67c5472bf60db2"
       },
       {
         "path": "src/matching.rs",
@@ -99,11 +99,11 @@
       },
       {
         "path": "src/repair.rs",
-        "sha256": "9eb33f9742153b32043aa6b55ea8cf7aac36e374ec90a4ca70e7598f1a0e9316"
+        "sha256": "6605efd998e2e544a5dca56160df27e00d4196ee1ba9ee8febbcfafb9f6dec37"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "823ea3d6eea96b33e12c07134b1ed09ab435b8beaa732368f6106ef2fa1ecdbe"
+        "sha256": "e43884cfa743004796288b8b01dc16a528e1686b085cba0b43b5712b222403df"
       },
       {
         "path": "src/tooltip.rs",

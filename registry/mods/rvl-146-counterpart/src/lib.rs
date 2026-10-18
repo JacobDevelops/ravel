@@ -54,19 +54,12 @@
 //!
 //! # One thing the original does that this does not
 //!
-//! **Single construction is answerable.** The original guards its process-wide
-//! slot with a language assertion, and assertions are disabled in a normal
-//! launch, so a second construction silently replaces the first and every holder
-//! of the first is left pointing at a library nothing else uses.
-//! [`Entry::sole`] claims the slot and *answers* [`AlreadyConstructed`] for a
-//! second claim, which is the refusal the original swallows.
-//!
-//! The exported entry builds with [`Entry::new`], which claims nothing. A host
-//! is not the only caller of that entry — the generated members function drives
-//! it from a test or a diagnostic with no JVM in sight — so a second call in one
-//! process is a supported path, and an entry that faulted there would unwind out
-//! of the host on the JNI path. Single construction is a question this package
-//! answers for a caller that asked it, not a rule it enforces by falling over.
+//! **Single construction is per composition.** The original guards its
+//! process-wide slot with a language assertion, which a normal launch disables.
+//! Ravel instead admits one member per mod identity in each composition. The
+//! library holds no process-wide slot: [`Entry::new`] builds independent state,
+//! so another composition, test or diagnostic can construct it again in the
+//! same process without inheriting a previous composition's lifetime.
 
 pub mod channel;
 pub mod colour;
@@ -83,7 +76,6 @@ pub mod transport;
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
@@ -117,21 +109,6 @@ pub const MAX_MEMORIES: usize = 4096;
 
 /// The most characters a memory's owner name may carry.
 pub const MAX_MEMORY_NAME: usize = 128;
-
-/// Whether the process-wide slot is taken.
-static CONSTRUCTED: AtomicBool = AtomicBool::new(false);
-
-/// The library was constructed twice.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct AlreadyConstructed;
-
-impl fmt::Display for AlreadyConstructed {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("the shared library is already constructed in this process")
-    }
-}
-
-impl std::error::Error for AlreadyConstructed {}
 
 /// Why a memory was not held.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -212,8 +189,8 @@ pub struct Entry {
 impl Entry {
     /// Builds the library on a side.
     ///
-    /// Hosts call this constructor; [`Entry::sole`] additionally claims an
-    /// optional process-wide slot.
+    /// The loader admits one value per mod identity in each composition;
+    /// independent compositions may construct their own library in one process.
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
@@ -227,20 +204,6 @@ impl Entry {
             counts: EventCounts::default(),
             entered: Vec::new(),
         }
-    }
-
-    /// Builds the one library this process may hold.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AlreadyConstructed`] for a second construction. The original
-    /// guards this with a language assertion, which a normal launch disables, so
-    /// the second construction silently replaces the first.
-    pub fn sole(side: Side) -> Result<Self, AlreadyConstructed> {
-        if CONSTRUCTED.swap(true, Ordering::SeqCst) {
-            return Err(AlreadyConstructed);
-        }
-        Ok(Self::new(side))
     }
 
     /// Returns the side this was built on.
@@ -507,8 +470,8 @@ mod tests {
     use ravel_sdk::prelude::*;
 
     use super::{
-        __ravel_entry, AlreadyConstructed, Entry, EventCounts, ItemForm, MAX_MEMORIES,
-        MAX_MEMORY_NAME, MOD_ID, Memory, MemoryRefused, Moment, ReadFailure, TICK_MILLIS,
+        __ravel_entry, Entry, EventCounts, ItemForm, MAX_MEMORIES, MAX_MEMORY_NAME, MOD_ID, Memory,
+        MemoryRefused, Moment, ReadFailure, TICK_MILLIS,
     };
     use crate::colour::Colour;
     use crate::highlights::{Bounds, Key, Place};
@@ -548,20 +511,6 @@ mod tests {
             },
             face: None,
         }
-    }
-
-    #[test]
-    fn the_library_is_constructed_once_and_a_second_construction_is_refused() {
-        // The only test that claims the process-wide slot, which is what makes
-        // it deterministic beside every other test here. Nothing else claims it,
-        // the exported entry included: `sole` is for a caller that can hear the
-        // refusal, and the entry has nowhere to put one.
-        assert!(Entry::sole(Side::Client).is_ok());
-        assert_eq!(Entry::sole(Side::Client).err(), Some(AlreadyConstructed));
-        assert_eq!(
-            AlreadyConstructed.to_string(),
-            "the shared library is already constructed in this process"
-        );
     }
 
     #[test]

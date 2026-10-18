@@ -76,7 +76,7 @@ pub struct Category {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Projection {
     /// A name, which is what an identity axis projects onto.
-    Named(String),
+    Named(ContentId),
     /// A quantity.
     Counted(Amount),
     /// A data map.
@@ -588,9 +588,6 @@ impl Ingredient for Stackable {
                 "a zero-count stack cannot be rebuilt at a non-zero count",
             ));
         }
-        if quantity == value.count {
-            return Ok(value.clone());
-        }
         let mut rebuilt = value.clone();
         rebuilt.count = quantity;
         Ok(rebuilt)
@@ -637,10 +634,13 @@ impl Ingredient for Stackable {
     }
 
     fn project(&self, value: &Stack, category: &Category) -> Option<Projection> {
-        match category.name {
-            "identity" => Some(Projection::Named(value.identity.to_string())),
-            "count" => Some(Projection::Counted(value.count)),
-            "data" => Some(Projection::Detailed(value.data.clone())),
+        if !self.categories().contains(category) {
+            return None;
+        }
+        match category.slot {
+            Stack::IDENTITY => Some(Projection::Named(value.identity.clone())),
+            Stack::COUNT => Some(Projection::Counted(value.count)),
+            Stack::DATA => Some(Projection::Detailed(value.data.clone())),
             _ => None,
         }
     }
@@ -750,9 +750,6 @@ impl Ingredient for Fluid {
                 "a zero-volume portion cannot be rebuilt at a non-zero volume",
             ));
         }
-        if quantity == value.volume {
-            return Ok(value.clone());
-        }
         let mut rebuilt = value.clone();
         rebuilt.volume = quantity;
         Ok(rebuilt)
@@ -789,10 +786,13 @@ impl Ingredient for Fluid {
     }
 
     fn project(&self, value: &Portion, category: &Category) -> Option<Projection> {
-        match category.name {
-            "fluid" => Some(Projection::Named(value.fluid.to_string())),
-            "volume" => Some(Projection::Counted(value.volume)),
-            "data" => Some(Projection::Detailed(value.data.clone())),
+        if !self.categories().contains(category) {
+            return None;
+        }
+        match category.slot {
+            Portion::FLUID => Some(Projection::Named(value.fluid.clone())),
+            Portion::VOLUME => Some(Projection::Counted(value.volume)),
+            Portion::DATA => Some(Projection::Detailed(value.data.clone())),
             _ => None,
         }
     }
@@ -854,11 +854,8 @@ impl Ingredient for Scalar {
         value.amount
     }
 
-    fn with_quantity(&self, value: &Charge, quantity: Amount) -> Result<Charge, KindError> {
+    fn with_quantity(&self, _value: &Charge, quantity: Amount) -> Result<Charge, KindError> {
         within_maximum(quantity, WIDE_MAXIMUM, "charge")?;
-        if quantity == value.amount {
-            return Ok(*value);
-        }
         Ok(Charge::of(quantity))
     }
 
@@ -888,8 +885,11 @@ impl Ingredient for Scalar {
     }
 
     fn project(&self, value: &Charge, category: &Category) -> Option<Projection> {
-        match category.name {
-            "charge" => Some(Projection::Counted(value.amount)),
+        if !self.categories().contains(category) {
+            return None;
+        }
+        match category.slot {
+            Charge::CHARGE => Some(Projection::Counted(value.amount)),
             _ => None,
         }
     }
@@ -1172,7 +1172,7 @@ mod tests {
         );
         assert_eq!(
             kind.project(&stack, &Stack::CATEGORIES[0]),
-            Some(Projection::Named("minecraft:stone".to_owned()))
+            Some(Projection::Named(stack.identity.clone()))
         );
         assert_eq!(
             kind.project(&stack, &Stack::CATEGORIES[1]),
@@ -1183,6 +1183,12 @@ mod tests {
             Some(Projection::Detailed(Components::new()))
         );
         assert_eq!(kind.project(&stack, &Charge::CATEGORIES[0]), None);
+        let renamed = Category {
+            name: "unrecognised",
+            ..Stack::CATEGORIES[0]
+        };
+        assert_eq!(kind.project(&stack, &renamed), None);
+        assert_eq!(kind.project(&stack, &Portion::CATEGORIES[0]), None);
         assert_eq!(
             fluid().project(
                 &Portion::of(

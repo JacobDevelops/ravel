@@ -116,12 +116,10 @@ pub fn shared_component(identifier: &str) -> Option<&'static str> {
 /// Returns the machine's own infusion factor, clamped into zero to one.
 ///
 /// Zero completed steps is a factor of zero and a machine at §3's ceiling is a
-/// factor of one. A ceiling of zero or less would be a division by nothing, so
-/// it is read as one step, which is also the lowest value the setting's declared
-/// range admits.
+/// factor of one. A zero ceiling is already reached at every level, so it
+/// returns one without dividing.
 #[must_use]
-pub fn factor(level: u32, ceiling: i32) -> f32 {
-    let ceiling = ceiling.max(1).unsigned_abs();
+pub fn factor(level: u32, ceiling: u32) -> f32 {
     if level >= ceiling {
         return 1.0;
     }
@@ -278,9 +276,7 @@ impl Machine {
     /// immediately makes an already-infused item unacceptable.
     #[must_use]
     pub fn accepts_subject(stack: &Stack, settings: &Settings) -> bool {
-        !stack.is_empty()
-            && stack.upgradable
-            && u64::from(stack.infusion) < u64::from(settings.upgrade_ceiling.max(1).unsigned_abs())
+        !stack.is_empty() && stack.upgradable && stack.infusion < settings.upgrade_ceiling
     }
 
     /// Puts material into slot zero, up to the slot's own limit.
@@ -609,7 +605,7 @@ mod tests {
         let settings = Settings::shipped().expect("valid settings");
         let mut fresh = loaded(&settings);
         let mut infused = loaded(&settings);
-        infused.set_infusion(settings.upgrade_ceiling.unsigned_abs());
+        infused.set_infusion(settings.upgrade_ceiling);
 
         assert_eq!(fresh.tick(&settings), Ticked::Started { price: 600 });
         assert_eq!(
@@ -627,10 +623,7 @@ mod tests {
             .insert_material(material(4))
             .expect("the material carries the tag");
         machine
-            .insert_subject(
-                subject(settings.upgrade_ceiling.unsigned_abs() - 1),
-                &settings,
-            )
+            .insert_subject(subject(settings.upgrade_ceiling - 1), &settings)
             .expect("one below the ceiling is acceptable");
         machine.energy = settings.energy_capacity;
 
@@ -645,7 +638,7 @@ mod tests {
     fn a_machine_at_the_ceiling_reaches_the_half_price_the_specification_states() {
         let settings = Settings::shipped().expect("valid settings");
         let mut machine = loaded(&settings);
-        machine.set_infusion(settings.upgrade_ceiling.unsigned_abs());
+        machine.set_infusion(settings.upgrade_ceiling);
 
         assert_eq!(machine.infusion(), 256);
         assert_eq!(

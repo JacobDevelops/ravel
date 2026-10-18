@@ -13,7 +13,7 @@ use crate::{invocations, runtime};
 
 /// A semantic refusal, unavailable runtime, or JNI argument error.
 #[derive(Debug)]
-pub enum HookError {
+pub(crate) enum HookError {
     /// A semantic crossing refused, thrown into the JVM.
     Refused {
         /// The refused hook's identifier.

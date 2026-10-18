@@ -58,8 +58,7 @@ pub fn compose(
 
     let admitted = admit(side, members)?;
     let machine = LifecycleMachine::new(side, admitted.entries).map_err(LaunchError::Lifecycle)?;
-    let mut owned = Loaded::new(machine, admitted.mods)
-        .map_err(|error| LaunchError::Composition(error.mod_id().clone()))?;
+    let mut owned = Loaded::new(machine, admitted.mods).map_err(LaunchError::Missing)?;
     let mut loaded = owned.borrow();
     let configurations = open_configuration(
         &mut loaded,
@@ -122,7 +121,7 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
         .iter()
         .find(|value| !entries.iter().any(|entry| &entry.mod_id == value.id()))
     {
-        return Err(LaunchError::Composition(unclaimed.id().clone()));
+        return Err(LaunchError::Unadmitted(unclaimed.id().clone()));
     }
     let installed_packages = manifests
         .into_iter()
@@ -168,6 +167,10 @@ pub fn enter(
 pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
     ravel_bootstrap_runtime::install_panic_hook();
     env.with_env(|env| -> Result<(), LaunchError> {
+        if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            env.throw(LaunchError::IndependentIntegratedUnsupported.redacted())?;
+            return Ok(());
+        }
         if !ravel_bootstrap_runtime::integrated_installed() {
             let result = ravel_bootstrap_runtime::process_launch_context()
                 .map_err(LaunchError::Install)
@@ -284,8 +287,12 @@ pub enum LaunchError {
     Compatibility(CompatibilityError),
     /// The composed package set has no legal load order on this side.
     Resolution(ResolutionError),
-    /// An admitted entry and the composed values do not account for each other.
-    Composition(ModId),
+    /// A composed value names no entry admitted on this side.
+    Unadmitted(ModId),
+    /// An admitted entry has no composed value.
+    Missing(ravel_loader::MissingMod),
+    /// Modern integrated play uses the process runtime rather than a second composition.
+    IndependentIntegratedUnsupported,
     /// The admitted plan could not be established as a lifecycle.
     Lifecycle(LifecycleError),
     /// The set's settings could not be resolved or consumed.
@@ -343,10 +350,14 @@ impl fmt::Display for LaunchError {
             Self::Resolution(error) => {
                 write!(formatter, "the composed set has no load order: {error}")
             }
-            Self::Composition(mod_id) => write!(
+            Self::Unadmitted(mod_id) => write!(
                 formatter,
-                "`{mod_id}` was admitted without a composed value, or holds one nothing admitted"
+                "`{mod_id}` holds a composed value nothing admitted"
             ),
+            Self::Missing(error) => write!(formatter, "an admitted value is missing: {error}"),
+            Self::IndependentIntegratedUnsupported => {
+                formatter.write_str("this adapter serves integrated play from the process runtime")
+            }
             Self::Lifecycle(error) => {
                 write!(formatter, "the admitted set has no lifecycle: {error}")
             }
@@ -403,7 +414,10 @@ impl std::error::Error for LaunchError {
             Self::Interceptions(error) => Some(error),
             Self::Pack(error) => Some(error),
             Self::Options(error) => Some(error),
-            Self::Composition(_) | Self::NotComposed(_) => None,
+            Self::Unadmitted(_) | Self::NotComposed(_) | Self::IndependentIntegratedUnsupported => {
+                None
+            }
+            Self::Missing(error) => Some(error),
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),
         }
@@ -568,6 +582,49 @@ mod tests {
             "{diagnostic}"
         );
         assert!(!diagnostic.contains("/home/player"), "{diagnostic}");
+    }
+
+    #[test]
+    fn unadmitted_values_and_missing_admitted_values_keep_distinct_errors() {
+        use std::error::Error;
+
+        let owner: ModId = "missing_member".parse().expect("valid owner");
+        let machine = ravel_loader::LifecycleMachine::new(
+            Side::Client,
+            vec![ravel_loader::LifecycleEntry {
+                mod_id: owner.clone(),
+                sides: ravel_core::SideSet::new([Side::Client]).expect("client side"),
+                requirement: ravel_loader::Requirement::Required,
+                saved_data_versions: std::collections::BTreeSet::default(),
+            }],
+        )
+        .expect("valid lifecycle");
+        let missing = ravel_loader::Loaded::new(machine, vec![])
+            .expect_err("the admitted owner has no composed value");
+        let unadmitted = super::LaunchError::Unadmitted(owner.clone());
+        let absent = super::LaunchError::Missing(missing.clone());
+
+        assert_eq!(
+            unadmitted.to_string(),
+            "`missing_member` holds a composed value nothing admitted"
+        );
+        assert!(unadmitted.source().is_none());
+        assert_eq!(
+            absent.to_string(),
+            format!("an admitted value is missing: {missing}")
+        );
+        assert_ne!(unadmitted.to_string(), absent.to_string());
+        let source = absent.source().expect("retain the missing-mod error");
+        assert_eq!(
+            source.downcast_ref::<ravel_loader::MissingMod>(),
+            Some(&missing)
+        );
+        assert_eq!(
+            source
+                .downcast_ref::<ravel_loader::MissingMod>()
+                .map(ravel_loader::MissingMod::mod_id),
+            Some(&owner)
+        );
     }
 
     struct RefusingInterceptor {

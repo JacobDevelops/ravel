@@ -563,7 +563,7 @@ fn a_broadcast_reaches_every_mod_in_resolved_order() {
 }
 
 #[test]
-fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
+fn an_event_that_cannot_happen_on_this_side_is_refused() {
     let mut only = Recording::new("server_mod");
     let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
     let mut machine = running(
@@ -572,14 +572,19 @@ fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
         &mut mods,
     );
 
-    let delivery = broadcast(
+    let refused = broadcast(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
         GameEvent::ClientTick,
     )
-    .expect("an empty audience");
-    assert_eq!(delivery.received(), []);
-    assert!(delivery.is_complete());
+    .expect_err("the event cannot happen here");
+    assert_eq!(
+        refused,
+        DispatchRefused::EventWrongSide {
+            event: GameEvent::ClientTick,
+            side: Side::DedicatedServer,
+        }
+    );
 
     let ticked = broadcast(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
@@ -1731,5 +1736,26 @@ fn commands_only_execute_on_the_runtime_world_side() {
             drop(mods);
             assert_eq!(host.ran.len(), usize::from(claimed == running));
         }
+    }
+}
+
+#[test]
+fn broadcast_refuses_events_that_cannot_happen_on_the_executing_side() {
+    for (event, side) in [
+        (GameEvent::ServerTick, Side::Client),
+        (GameEvent::ClientTick, Side::DedicatedServer),
+        (GameEvent::ClientTick, Side::IntegratedServer),
+    ] {
+        let mut machine = LifecycleMachine::new(side, Vec::new()).expect("empty plan");
+        let mut mods: Vec<Box<dyn Mod>> = Vec::new();
+        let result = super::broadcast(
+            &mut LoadedMods::new(&mut machine, &mut mods).expect("paired empty set"),
+            event,
+            side,
+            &mut ravel_observability::Profiler::off(),
+            &crate::tests::environment(),
+        );
+        assert_eq!(result, Err(DispatchRefused::EventWrongSide { event, side }));
+        assert_eq!(machine.halted_by(), None);
     }
 }

@@ -23,6 +23,7 @@ thread_local! {
 
 /// Borrows the runtime selected by side and ownership without cloning its handle.
 pub(crate) fn with_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> Option<T> {
+    // Modern integrated play is served by the process runtime.
     if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         return installed().map(body);
     }

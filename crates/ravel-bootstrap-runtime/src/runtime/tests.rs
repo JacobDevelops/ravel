@@ -1005,7 +1005,9 @@ fn legacy_base_server_tick_is_the_only_simulation_event() -> Result<(), String> 
 #[test]
 fn legacy_commands_preserve_arguments_and_refuse_unclaimed_roots() -> Result<(), String> {
     let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
-    runtime.claim_command_thread()?;
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
     runtime
         .legacy_command("example_mod:warp set home")
         .map_err(|error| error.to_string())?;
@@ -1222,10 +1224,12 @@ fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), S
     let refused = runtime.legacy_event(GameEvent::ServerTick);
     assert_eq!(
         refused,
-        Err(super::dispatch::Undelivered::EventSide {
-            event: GameEvent::ServerTick,
-            side: Side::Client,
-        })
+        Err(super::dispatch::Undelivered::Refused(
+            ravel_loader::DispatchRefused::EventWrongSide {
+                event: GameEvent::ServerTick,
+                side: Side::Client,
+            }
+        ))
     );
     assert_eq!(
         refused.expect_err("wrong side").to_string(),
@@ -1250,7 +1254,9 @@ fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), S
 #[test]
 fn checked_commands_and_packets_respect_real_halts_without_launch_refusals() -> Result<(), String> {
     let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Panics);
-    runtime.claim_command_thread()?;
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
     {
         let mut inner = runtime.inner.lock().map_err(|error| error.to_string())?;
         inner
@@ -1340,7 +1346,9 @@ fn checked_commands_and_packets_charge_the_existing_profiler() -> Result<(), Str
         .lock()
         .map_err(|error| error.to_string())?
         .profiler = ravel_observability::Profiler::from_switch(true);
-    runtime.claim_command_thread()?;
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
     runtime
         .legacy_command("example_mod:warp home")
         .map_err(|error| error.to_string())?;
@@ -1419,8 +1427,12 @@ fn native_command_inventory_binds_the_actual_server_thread() -> Result<(), Strin
     let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
     let runtime = Arc::new(runtime);
     assert!(runtime.legacy_command("example_mod:warp home").is_err());
-    runtime.claim_command_thread()?;
-    runtime.claim_command_thread()?;
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
     runtime
         .legacy_command("example_mod:warp home")
         .map_err(|error| error.to_string())?;
@@ -1441,30 +1453,70 @@ fn native_command_inventory_binds_the_actual_server_thread() -> Result<(), Strin
 fn checked_command_outcomes_preserve_dispatch_refusals_and_callback_failures() -> Result<(), String>
 {
     use super::dispatch::Undelivered;
+    use std::error::Error;
 
     let (runtime, _) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Fails);
+    let precondition = runtime
+        .legacy_command("example_mod:warp")
+        .expect_err("the command thread is not claimed");
+    assert!(matches!(precondition, Undelivered::Precondition(_)));
+    assert!(precondition.source().is_none());
+    runtime
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
+    let refused = runtime
+        .legacy_command("example_mod:missing")
+        .expect_err("the command is not claimed");
     assert!(matches!(
-        runtime.legacy_command("example_mod:warp"),
-        Err(Undelivered::Precondition(_))
+        refused,
+        Undelivered::Refused(ravel_loader::DispatchRefused::Unclaimed { .. })
     ));
-    runtime.claim_command_thread()?;
+    let Undelivered::Refused(expected) = &refused else {
+        unreachable!("the checked refusal variant");
+    };
+    assert_eq!(
+        refused
+            .source()
+            .and_then(|error| error.downcast_ref::<ravel_loader::DispatchRefused>()),
+        Some(expected)
+    );
+    let declined = runtime
+        .legacy_command("example_mod:warp")
+        .expect_err("the callback declines the command");
     assert!(matches!(
-        runtime.legacy_command("example_mod:missing"),
-        Err(Undelivered::Refused(
-            ravel_loader::DispatchRefused::Unclaimed { .. }
-        ))
-    ));
-    assert!(matches!(
-        runtime.legacy_command("example_mod:warp"),
-        Err(Undelivered::Failed(HostError::OperationRefused { detail, .. }))
+        &declined,
+        Undelivered::Declined(HostError::OperationRefused { detail, .. })
             if detail == "choose a destination"
     ));
+    let Undelivered::Declined(expected) = &declined else {
+        unreachable!("the checked decline variant");
+    };
+    assert_eq!(
+        declined
+            .source()
+            .and_then(|error| error.downcast_ref::<HostError>()),
+        Some(expected)
+    );
     let (panicking, _) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Panics);
-    panicking.claim_command_thread()?;
+    panicking
+        .claim_command_thread()
+        .map_err(|error| error.to_string())?;
+    let failed = panicking
+        .legacy_command("example_mod:warp")
+        .expect_err("the callback panics");
     assert!(matches!(
-        panicking.legacy_command("example_mod:warp"),
-        Err(Undelivered::Failed(HostError::Panicked { .. }))
+        &failed,
+        Undelivered::Failed(HostError::Panicked { .. })
     ));
+    let Undelivered::Failed(expected) = &failed else {
+        unreachable!("the checked failure variant");
+    };
+    assert_eq!(
+        failed
+            .source()
+            .and_then(|error| error.downcast_ref::<HostError>()),
+        Some(expected)
+    );
     Ok(())
 }
 

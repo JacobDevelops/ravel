@@ -24,6 +24,9 @@ pub(super) const EVENTS: [(&str, GameEvent); 5] = [
 
 pub(super) const COMMAND: &str = "command.perform-prefixed";
 
+const NOT_SERVER: &str = "native commands require the owning server runtime";
+const WRONG_THREAD: &str = "native commands require the initialized server thread";
+
 pub(super) enum Work {
     Event(GameEvent, Side),
     Command(CommandInvocation),
@@ -35,47 +38,47 @@ pub(super) enum Work {
 pub(crate) enum Undelivered {
     Refused(DispatchRefused),
     Failed(HostError),
+    Declined(HostError),
     Precondition(&'static str),
-    EventSide { event: GameEvent, side: Side },
 }
 
 impl std::fmt::Display for Undelivered {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(error) => std::fmt::Display::fmt(error, formatter),
-            Self::Failed(error) => std::fmt::Display::fmt(error, formatter),
+            Self::Failed(error) | Self::Declined(error) => std::fmt::Display::fmt(error, formatter),
             Self::Precondition(reason) => formatter.write_str(reason),
-            Self::EventSide { event, side } => {
-                write!(formatter, "{event:?} does not happen on {side:?}")
-            }
         }
     }
 }
 
-impl std::error::Error for Undelivered {}
+impl std::error::Error for Undelivered {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Refused(error) => Some(error),
+            Self::Failed(error) | Self::Declined(error) => Some(error),
+            Self::Precondition(_) => None,
+        }
+    }
+}
 
 impl LoaderRuntime {
     /// Delivers a semantic event only after the Java adapter's success/thread checks.
     pub(crate) fn legacy_event(&self, event: GameEvent) -> Result<(), Undelivered> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let side = inner.loaded.machine().side();
-        if !event.happens_on(side) {
-            return Err(Undelivered::EventSide { event, side });
-        }
         inner.deliver_checked(&Work::Event(event, side))
     }
 
     /// Binds command installation after vanilla confirms its owning server thread.
-    pub(crate) fn claim_command_thread(&self) -> Result<(), String> {
+    pub(crate) fn claim_command_thread(&self) -> Result<(), Undelivered> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if !inner.loaded.machine().side().is_server() {
-            return Err("native commands require the owning server runtime".to_owned());
+            return Err(Undelivered::Precondition(NOT_SERVER));
         }
         let thread = std::thread::current().id();
         let result = match inner.command_thread {
-            Some(owner) if owner != thread => {
-                Err("native commands require the server thread".to_owned())
-            }
+            Some(owner) if owner != thread => Err(Undelivered::Precondition(WRONG_THREAD)),
             Some(_) => Ok(()),
             None => {
                 inner.command_thread = Some(thread);
@@ -90,14 +93,10 @@ impl LoaderRuntime {
     pub(crate) fn legacy_command(&self, typed: &str) -> Result<(), Undelivered> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if !inner.loaded.machine().side().is_server() {
-            return Err(Undelivered::Precondition(
-                "native commands require the owning server runtime",
-            ));
+            return Err(Undelivered::Precondition(NOT_SERVER));
         }
         if inner.command_thread != Some(std::thread::current().id()) {
-            return Err(Undelivered::Precondition(
-                "native commands require the initialized server thread",
-            ));
+            return Err(Undelivered::Precondition(WRONG_THREAD));
         }
         let Some(work) = inner.command(typed) else {
             return Err(Undelivered::Precondition("invalid native command"));
@@ -218,10 +217,13 @@ impl Inner {
             Err(error) => return Err(Undelivered::Refused(error)),
         };
         self.carry_outward();
-        delivery
-            .failure()
-            .or_else(|| delivery.declined())
-            .map_or(Ok(()), |error| Err(Undelivered::Failed(error.clone())))
+        if let Some(error) = delivery.failure() {
+            return Err(Undelivered::Failed(error.clone()));
+        }
+        if let Some(error) = delivery.declined() {
+            return Err(Undelivered::Declined(error.clone()));
+        }
+        Ok(())
     }
 
     fn deliver(&mut self, work: &Work) {
@@ -237,12 +239,20 @@ impl Inner {
     fn carry_outward(&mut self) {
         let mut loaded = self.loaded.borrow();
         match ravel_loader::take_play_requests(&mut loaded, self.report.environment()) {
-            Ok(drained) => self.outward.extend(
-                drained
-                    .into_requests()
-                    .into_iter()
-                    .map(|request| outward::play(request.id())),
-            ),
+            Ok(drained) => {
+                if let Some(error) = drained.failure() {
+                    eprintln!(
+                        "[ravel] hook delivery refused: {}",
+                        DiagnosticMessage::redacted(&error.to_string()).text()
+                    );
+                }
+                self.outward.extend(
+                    drained
+                        .into_requests()
+                        .into_iter()
+                        .map(|request| outward::play(request.id())),
+                );
+            }
             // The halt already has its owning failure attribution.
             Err(DispatchRefused::Halted { .. }) => {}
             Err(error) => eprintln!(

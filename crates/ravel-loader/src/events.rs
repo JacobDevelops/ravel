@@ -84,7 +84,7 @@ impl LifecycleMachine {
 /// # Errors
 ///
 /// Returns [`DispatchRefused`] if the executing side is foreign to the runtime,
-/// the set is halted, or an audience member is not reacting.
+/// the event cannot happen on that side, the set is halted, or an audience member is not reacting.
 ///
 /// # Panics
 ///
@@ -104,6 +104,9 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
             claimed: side,
             running,
         });
+    }
+    if !event.happens_on(side) {
+        return Err(DispatchRefused::EventWrongSide { event, side });
     }
     let audience: Vec<_> = machine
         .audience_entries(event, side)

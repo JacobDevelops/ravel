@@ -1,3 +1,5 @@
+//! Handwritten JNI contracts span the bootstrap, composed host, generator, and harness.
+
 use std::collections::BTreeSet;
 
 fn java_names<'a>(source: &'a str, marker: &str) -> BTreeSet<&'a str> {
@@ -12,17 +14,17 @@ fn java_names<'a>(source: &'a str, marker: &str) -> BTreeSet<&'a str> {
 
 #[test]
 fn handwritten_java_natives_match_the_rust_exports() {
-    let generator = include_str!("../../ravel-minecraft-generate/src/render/hooks.rs");
+    let generator = include_str!("../../../../crates/ravel-minecraft-generate/src/render/hooks.rs");
     let sources = [
-        include_str!("content.rs"),
-        include_str!("invocations.rs"),
-        include_str!("legacy.rs"),
-        include_str!("mods.rs"),
-        include_str!("outward.rs"),
-        include_str!("persistence/crossings.rs"),
-        include_str!("profiling.rs"),
-        include_str!("settings.rs"),
-        include_str!("../../ravel-composed-host/src/lib.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/content.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/invocations.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/legacy.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/mods.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/outward.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/persistence/crossings.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/profiling.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/settings.rs"),
+        include_str!("../../../../crates/ravel-composed-host/src/lib.rs"),
     ];
     let exports = sources
         .iter()
@@ -35,7 +37,7 @@ fn handwritten_java_natives_match_the_rust_exports() {
 
 #[test]
 fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
-    let generator = include_str!("../../ravel-minecraft-generate/src/render/hooks.rs");
+    let generator = include_str!("../../../../crates/ravel-minecraft-generate/src/render/hooks.rs");
     let (_, modern) = generator
         .split_once("fn written_declarations()")
         .expect("modern handwritten declarations");
@@ -51,6 +53,6 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
         assert!(expected.remove(screen));
     }
     // Legacy semantic natives belong to the legacy harness, not this modern stand-in.
-    let harness = include_str!("../../../jvm/harness/initialization/dev/ravel/jvm/Hook.java");
+    let harness = include_str!("../../../../jvm/harness/initialization/dev/ravel/jvm/Hook.java");
     assert_eq!(java_names(harness, "public static "), expected);
 }

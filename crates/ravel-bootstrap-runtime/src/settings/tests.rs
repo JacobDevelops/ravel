@@ -639,11 +639,260 @@ fn a_player_value_the_schema_refuses_falls_back_to_the_layer_below() {
 }
 
 #[test]
+fn saving_without_a_disk_document_preserves_unedited_valid_player_values() {
+    let player = document_for(
+        "example_mod",
+        &json!({"render.distance": 8, "render.quality": "fancy", "render.absent": 1}),
+    );
+    let mut screen = screen(None, Some(&player));
+    assert_eq!(
+        refusals(&screen.save(&edits("example_mod", &[("render.fancy", "false")]))),
+        Vec::<(String, String)>::new(),
+    );
+    let written = file::read(&screen.game, &player.owner)
+        .expect("read the new player file")
+        .expect("a persisted document");
+    assert_eq!(
+        written.values.get(&"render.distance".parse().expect("key")),
+        Some(&json!(8)),
+    );
+    assert_eq!(
+        written.values.get(&"render.quality".parse().expect("key")),
+        Some(&json!("fancy")),
+    );
+    assert_eq!(
+        written.values.get(&"render.fancy".parse().expect("key")),
+        Some(&json!(false)),
+    );
+    assert!(
+        !written
+            .values
+            .contains_key(&"render.absent".parse().expect("key"))
+    );
+}
+
+#[test]
 fn a_directory_the_client_has_started_in_is_admitted() {
     let game = crate::tests::fresh_directory("settings-directory", "started");
     std::fs::write(game.join(super::CLIENT_MARKER), "version:1\n")
         .expect("the marker should be writable");
     assert_eq!(super::admit_client_directory(&game), Ok(()));
+}
+
+fn side_launch(side: Side, directory: PathBuf) -> crate::runtime::LaunchContext {
+    side_launch_with_player(side, directory, None)
+}
+
+fn side_launch_with_player(
+    side: Side,
+    directory: PathBuf,
+    player: Option<&ValueDocument>,
+) -> crate::runtime::LaunchContext {
+    let declaration = ConfigurationDeclaration::parse(
+        r#"{
+          "schemaVersion": 1, "owner": "example_mod", "version": 1,
+          "settings": [
+            {"key": "client.flag", "valueSchema": {"type": "boolean"},
+             "default": false, "side": "client", "restartRequired": false},
+            {"key": "server.flag", "valueSchema": {"type": "boolean"},
+             "default": false, "side": "integrated-server", "restartRequired": false},
+            {"key": "common.flag", "valueSchema": {"type": "boolean"},
+             "default": false, "side": "common", "restartRequired": false}
+          ]
+        }"#,
+    )
+    .expect("a side-specific declaration");
+    crate::runtime::LaunchContext::new(
+        side,
+        directory,
+        ravel_loader::Supplied::default(),
+        vec![LayeredConfiguration::resolve(declaration, None, player).expect("valid settings")],
+    )
+}
+
+#[test]
+fn integrated_settings_keep_their_label_and_never_fall_back_to_client_settings() {
+    let client = side_launch(Side::Client, game());
+    let server = side_launch(Side::IntegratedServer, client.game_directory.clone());
+    let identity = "example_mod [integrated-server]";
+    let selected = super::selected_launch(Some(&client), Some(&server), identity);
+    assert!(std::ptr::eq(
+        selected.expect("the server"),
+        std::ptr::from_ref(&server),
+    ));
+    let document = document_of(selected, identity).expect("server settings");
+    let mut reader = Reader::new(&document);
+    assert_eq!(reader.field().as_deref(), Some("1"));
+    assert_eq!(reader.field().as_deref(), Some(identity));
+    assert_eq!(reader.field().as_deref(), Some("integrated-server"));
+    assert_eq!(reader.count(), Some(2));
+    assert_eq!(reader.field().as_deref(), Some("server.flag"));
+    assert!(super::configurable(&server).contains(&"example_mod".parse().expect("mod id")));
+    assert!(super::selected_launch(Some(&client), None, identity).is_none());
+    assert!(document_of(Some(&client), identity).is_none());
+    assert_eq!(
+        refusals(&save_with(
+            Some(&client),
+            &edits(identity, &[("server.flag", "true")])
+        ))
+        .len(),
+        1
+    );
+    assert!(std::ptr::eq(
+        super::selected_launch(Some(&client), Some(&server), "example_mod").expect("the client"),
+        std::ptr::from_ref(&client),
+    ));
+}
+
+#[test]
+fn saving_either_side_preserves_the_other_sides_player_values() {
+    let client = side_launch(Side::Client, game());
+    let server = side_launch(Side::IntegratedServer, client.game_directory.clone());
+    for (identity, key, value) in [
+        ("example_mod", "client.flag", "true"),
+        ("example_mod [integrated-server]", "server.flag", "true"),
+        ("example_mod", "client.flag", "false"),
+    ] {
+        let launch = super::selected_launch(Some(&client), Some(&server), identity);
+        assert_eq!(
+            refusals(&save_with(launch, &edits(identity, &[(key, value)]))),
+            Vec::<(String, String)>::new(),
+        );
+    }
+    let written = file::read(
+        &client.game_directory,
+        &"example_mod".parse().expect("mod id"),
+    )
+    .expect("read the player file")
+    .expect("a persisted document");
+    assert_eq!(
+        written.values.get(&"client.flag".parse().expect("key")),
+        Some(&json!(false))
+    );
+    assert_eq!(
+        written.values.get(&"server.flag".parse().expect("key")),
+        Some(&json!(true))
+    );
+    let server_document = document_of(Some(&server), "example_mod [integrated-server]")
+        .expect("server remains available");
+    let client_document =
+        document_of(Some(&client), "example_mod").expect("client remains available");
+    assert!(!server_document.contains("client.flag"));
+    assert!(!client_document.contains("server.flag"));
+}
+
+#[test]
+fn side_only_edits_preserve_newer_common_values_from_either_store() {
+    for common_side in [Side::Client, Side::IntegratedServer] {
+        let directory = game();
+        let initial = document_for("example_mod", &json!({"common.flag": false}));
+        file::write(&directory, &initial).expect("write the initial common value");
+        let client = side_launch_with_player(Side::Client, directory.clone(), Some(&initial));
+        let server =
+            side_launch_with_player(Side::IntegratedServer, directory.clone(), Some(&initial));
+        let (common_launch, common_identity, other_launch, other_identity, other_key) =
+            if common_side == Side::Client {
+                (
+                    &client,
+                    "example_mod",
+                    &server,
+                    "example_mod [integrated-server]",
+                    "server.flag",
+                )
+            } else {
+                (
+                    &server,
+                    "example_mod [integrated-server]",
+                    &client,
+                    "example_mod",
+                    "client.flag",
+                )
+            };
+        assert_eq!(
+            refusals(&save_with(
+                Some(common_launch),
+                &edits(common_identity, &[("common.flag", "true")]),
+            )),
+            Vec::<(String, String)>::new(),
+        );
+        assert_eq!(
+            refusals(&save_with(
+                Some(other_launch),
+                &edits(other_identity, &[(other_key, "true")]),
+            )),
+            Vec::<(String, String)>::new(),
+        );
+        let written = file::read(&directory, &initial.owner)
+            .expect("read the shared file")
+            .expect("a persisted document");
+        assert_eq!(
+            written.values.get(&"common.flag".parse().expect("key")),
+            Some(&json!(true)),
+        );
+        assert_eq!(
+            written.values.get(&other_key.parse().expect("key")),
+            Some(&json!(true)),
+        );
+    }
+}
+
+#[test]
+fn saving_cleans_rejected_values_but_keeps_another_sides_valid_replacement() {
+    for repaired in [false, true] {
+        let directory = game();
+        let initial = document_for(
+            "example_mod",
+            &json!({
+                "common.flag": "illegal",
+                "client.flag": "illegal",
+                "unknown.flag": true,
+            }),
+        );
+        file::write(&directory, &initial).expect("write rejected player values");
+        let client = side_launch_with_player(Side::Client, directory.clone(), Some(&initial));
+        let server =
+            side_launch_with_player(Side::IntegratedServer, directory.clone(), Some(&initial));
+        if repaired {
+            assert_eq!(
+                refusals(&save_with(
+                    Some(&client),
+                    &edits("example_mod", &[("common.flag", "true")]),
+                )),
+                Vec::<(String, String)>::new(),
+            );
+        }
+        assert_eq!(
+            refusals(&save_with(
+                Some(&server),
+                &edits(
+                    "example_mod [integrated-server]",
+                    &[("server.flag", "true")]
+                ),
+            )),
+            Vec::<(String, String)>::new(),
+        );
+        let written = file::read(&directory, &initial.owner)
+            .expect("read the cleaned file")
+            .expect("a persisted document");
+        assert_eq!(
+            written.values.get(&"common.flag".parse().expect("key")),
+            repaired.then_some(&json!(true)),
+        );
+        assert!(
+            !written
+                .values
+                .contains_key(&"client.flag".parse().expect("key"))
+        );
+        assert!(
+            !written
+                .values
+                .contains_key(&"unknown.flag".parse().expect("key"))
+        );
+        assert_eq!(
+            written.values.get(&"server.flag".parse().expect("key")),
+            Some(&json!(true)),
+        );
+    }
 }
 
 #[test]

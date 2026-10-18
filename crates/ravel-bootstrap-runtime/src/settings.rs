@@ -1,21 +1,24 @@
 //! Settings documents, edits, and JNI crossings.
 //! Fields are length-prefixed in UTF-16 code units to match Java strings.
 //! The store lock is independent of the runtime lock and released before JNI or disk I/O.
+//! Integrated-server identities select the world runtime; both stores merge only edited
+//! player values into the shared file under one write lock, cleaning rejected values.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::PoisonError;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
-use jni::{Env, EnvUnowned};
 use ravel_config::{
-    LayeredConfiguration, ResolvedSetting, ValueDocument, ValueKind, ValueSource, file,
+    LayeredConfiguration, ResolvedSetting, SettingKey, ValueDocument, ValueKind, ValueSchema,
+    ValueSource, file,
 };
 use ravel_core::{DiagnosticMessage, ModId, Side};
 use serde_json::Value;
 
-use crate::guard::{HookError, hand_document, text};
+use crate::guard::{hand_document, text};
 use crate::wire::{Reader, VERSION as WIRE_VERSION, count, field, flag};
 
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
@@ -38,21 +41,45 @@ impl Store {
     }
 }
 
-pub(crate) fn configurable() -> BTreeSet<ModId> {
-    let Some(runtime) = crate::runtime::installed() else {
-        return BTreeSet::new();
-    };
-    runtime
-        .launch
+pub(crate) const INTEGRATED_SUFFIX: &str = " [integrated-server]";
+
+pub(crate) fn configurable(launch: &crate::runtime::LaunchContext) -> BTreeSet<ModId> {
+    launch
         .settings
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .configurable()
 }
 
+fn selected_launch<'a>(
+    process: Option<&'a crate::runtime::LaunchContext>,
+    integrated: Option<&'a crate::runtime::LaunchContext>,
+    owner: &str,
+) -> Option<&'a crate::runtime::LaunchContext> {
+    if owner.ends_with(INTEGRATED_SUFFIX) {
+        integrated
+    } else {
+        process
+    }
+}
+
+fn owner_on(side: Side, identity: &str) -> Option<ModId> {
+    let owner = match identity.strip_suffix(INTEGRATED_SUFFIX) {
+        Some(owner) if side == Side::IntegratedServer => owner,
+        Some(_) => return None,
+        None => identity,
+    };
+    owner.parse().ok()
+}
+
 fn document(owner: &str) -> Option<String> {
+    let integrated = crate::runtime::integrated_runtime();
     document_of(
-        crate::runtime::installed().map(|runtime| &runtime.launch),
+        selected_launch(
+            crate::runtime::installed().map(|runtime| &runtime.launch),
+            integrated.as_ref().map(|runtime| &runtime.launch),
+            owner,
+        ),
         owner,
     )
 }
@@ -75,14 +102,14 @@ impl Store {
             .collect()
     }
 
-    fn document(&self, owner: &str) -> Option<String> {
-        let owner = owner.parse::<ModId>().ok()?;
+    fn document(&self, identity: &str) -> Option<String> {
+        let owner = owner_on(self.side, identity)?;
         let configuration = self.configurations.get(&owner)?;
         let rows = configuration.settings_on(self.side);
 
         let mut out = String::with_capacity(rows.len() * 256 + 64);
         field(&mut out, WIRE_VERSION);
-        field(&mut out, owner.as_str());
+        field(&mut out, identity);
         field(&mut out, self.side.as_str());
         count(&mut out, rows.len());
         for resolved in &rows {
@@ -182,8 +209,18 @@ const fn source_name(source: ValueSource) -> &'static str {
 }
 
 fn save(payload: &str) -> String {
+    let mut reader = Reader::new(payload);
+    let owner = reader
+        .field()
+        .and_then(|_| reader.field())
+        .unwrap_or_default();
+    let integrated = crate::runtime::integrated_runtime();
     save_with(
-        crate::runtime::installed().map(|runtime| &runtime.launch),
+        selected_launch(
+            crate::runtime::installed().map(|runtime| &runtime.launch),
+            integrated.as_ref().map(|runtime| &runtime.launch),
+            &owner,
+        ),
         payload,
     )
 }
@@ -205,6 +242,8 @@ struct Applied {
     refusal_count: usize,
     encoded_refusals: String,
     document: ValueDocument,
+    edited: BTreeSet<String>,
+    rejected: BTreeMap<SettingKey, Option<ValueSchema>>,
 }
 
 impl Store {
@@ -215,11 +254,9 @@ impl Store {
                 "the screen spoke unsupported wire version `{version}`"
             ));
         }
-        let owner = reader
-            .field()
-            .ok_or("the settings payload is truncated")?
-            .parse::<ModId>()
-            .map_err(|_| "the settings owner is not a mod identifier")?;
+        let identity = reader.field().ok_or("the settings payload is truncated")?;
+        let owner = owner_on(self.side, &identity)
+            .ok_or("the settings owner is not a mod identifier for this side")?;
         let count = reader
             .count()
             .ok_or("the settings edit count could not be read")?;
@@ -244,6 +281,7 @@ impl Store {
 
         let mut refused = String::new();
         let mut refusals = 0_usize;
+        let mut edited = BTreeSet::new();
         for (key, typed) in edits {
             let kind = configuration
                 .declaration()
@@ -252,15 +290,34 @@ impl Store {
             if let Err(error) = configuration.set(&key, value_of(kind, &typed), side) {
                 refusals += 1;
                 write_refusal(&mut refused, &key, &error.to_string());
+            } else {
+                edited.insert(key);
             }
         }
-
         Ok(Applied {
             refusal_count: refusals,
             encoded_refusals: refused,
             document: configuration.player_document(),
+            edited,
+            rejected: rejected_schemas(configuration),
         })
     }
+}
+
+fn rejected_schemas(
+    configuration: &LayeredConfiguration,
+) -> BTreeMap<SettingKey, Option<ValueSchema>> {
+    configuration
+        .rejected()
+        .iter()
+        .map(|rejected| {
+            let schema = configuration
+                .declaration()
+                .setting(rejected.key.as_str())
+                .map(|setting| setting.value_schema.clone());
+            (rejected.key.clone(), schema)
+        })
+        .collect()
 }
 
 fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> String {
@@ -268,12 +325,14 @@ fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> Str
         mut refusal_count,
         mut encoded_refusals,
         document,
+        edited,
+        rejected,
     } = match applied {
         Ok(applied) => applied,
         Err(reason) => return refusal("", &reason),
     };
 
-    if let Err(reason) = persist(directory, &document) {
+    if let Err(reason) = persist(directory, document, &edited, &rejected) {
         refusal_count += 1;
         write_refusal(
             &mut encoded_refusals,
@@ -289,9 +348,33 @@ fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> Str
 }
 
 // Persistence failure leaves edits active in memory but absent from the next launch.
-fn persist(directory: &Path, document: &ValueDocument) -> Result<(), String> {
+fn persist(
+    directory: &Path,
+    mut document: ValueDocument,
+    edited: &BTreeSet<String>,
+    rejected: &BTreeMap<SettingKey, Option<ValueSchema>>,
+) -> Result<(), String> {
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
     admit_client_directory(directory)?;
-    file::write(directory, document).map_err(|error| error.to_string())
+    if let Some(mut latest) =
+        file::read(directory, &document.owner).map_err(|error| error.to_string())?
+    {
+        document
+            .values
+            .retain(|key, _| edited.contains(key.as_str()));
+        // Preserve newer values, including valid replacements for launch-time rejections.
+        latest.values.retain(|key, value| {
+            rejected.get(key).is_none_or(|schema| {
+                schema
+                    .as_ref()
+                    .is_some_and(|schema| schema.check(value).is_ok())
+            })
+        });
+        latest.values.extend(document.values);
+        document.values = latest.values;
+    }
+    file::write(directory, &document).map_err(|error| error.to_string())
 }
 
 const CLIENT_MARKER: &str = "options.txt";
@@ -338,37 +421,27 @@ pub fn ravel_settings_document<'local>(
 /// Panics are translated into a JVM exception by the JNI guard.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSaveSettings")]
 pub fn ravel_save_settings<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
     payload: JString<'local>,
 ) -> JString<'local> {
     SAVE_CROSSINGS.fetch_add(1, Ordering::Relaxed);
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let answer = save(&text(env, &payload)?);
-            Ok(env.new_string(answer)?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |env| Ok(Some(save(&text(env, &payload)?))))
 }
 
 /// Reports document and save crossings for process-harness verification.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSettingsCrossings")]
 pub fn ravel_settings_crossings<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let crossings = format!(
-                "{}:{}",
-                DOCUMENT_CROSSINGS.load(Ordering::Relaxed),
-                SAVE_CROSSINGS.load(Ordering::Relaxed)
-            );
-            Ok(env.new_string(crossings)?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| {
+        Ok(Some(format!(
+            "{}:{}",
+            DOCUMENT_CROSSINGS.load(Ordering::Relaxed),
+            SAVE_CROSSINGS.load(Ordering::Relaxed)
+        )))
+    })
 }
 
 #[cfg(test)]

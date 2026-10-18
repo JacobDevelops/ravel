@@ -2,10 +2,10 @@
 //!
 //! Each verb carries an argument count so readers can skip unknown verbs.
 
+use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
-use jni::{Env, EnvUnowned};
 
-use crate::guard::HookError;
+use crate::guard::hand_document;
 use crate::wire::{VERSION, count, field};
 
 /// Adapter verb for a declared sound.
@@ -62,17 +62,14 @@ fn encode(actions: &[Action]) -> String {
 #[must_use]
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelOutwardActions")]
 pub fn ravel_outward_actions<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let payload = crate::runtime::with_selected(|runtime| runtime.drain_outward())
-                .unwrap_or_default();
-            Ok(env.new_string(payload)?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| {
+        Ok(Some(
+            crate::runtime::with_selected(|runtime| runtime.drain_outward()).unwrap_or_default(),
+        ))
+    })
 }
 
 #[cfg(test)]

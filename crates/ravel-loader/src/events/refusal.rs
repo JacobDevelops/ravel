@@ -1,6 +1,7 @@
 use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
+use ravel_host_api::GameEvent;
 use ravel_network::{Direction, PacketId};
 
 /// Why an event or a command reached no mod.
@@ -28,6 +29,13 @@ pub enum DispatchRefused {
         claimed: Side,
         /// The runtime's world execution side.
         running: Side,
+    },
+    /// The event cannot happen on the executing side.
+    EventWrongSide {
+        /// The event requested by the caller.
+        event: GameEvent,
+        /// The executing side requested by the caller.
+        side: Side,
     },
     /// The set is not in a state that reacts.
     NotReacting {
@@ -100,7 +108,7 @@ impl DispatchRefused {
             Self::PacketForeignSide { id, .. } | Self::PacketWrongSide { id, .. } => {
                 Some(id.owner())
             }
-            Self::EventForeignSide { .. } => None,
+            Self::EventForeignSide { .. } | Self::EventWrongSide { .. } => None,
         }
     }
 
@@ -110,6 +118,7 @@ impl DispatchRefused {
             Self::Halted { .. }
             | Self::EventForeignSide { .. }
             | Self::CommandForeignSide { .. }
+            | Self::EventWrongSide { .. }
             | Self::NotReacting { .. }
             | Self::Unclaimed { .. }
             | Self::NotACommand { .. }
@@ -143,6 +152,9 @@ impl fmt::Display for DispatchRefused {
                 claimed.as_str(),
                 running.as_str()
             ),
+            Self::EventWrongSide { event, side } => {
+                write!(formatter, "{event:?} does not happen on {side:?}")
+            }
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",
@@ -206,6 +218,7 @@ impl StructuredFailure for DispatchRefused {
             Self::Unclaimed { .. }
             | Self::EventForeignSide { .. }
             | Self::CommandForeignSide { .. }
+            | Self::EventWrongSide { .. }
             | Self::NotACommand { .. }
             | Self::OwnerWrongSide { .. }
             | Self::PacketForeignSide { .. }

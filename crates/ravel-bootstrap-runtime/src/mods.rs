@@ -1,8 +1,8 @@
 //! Live mod-list and dependency diagnostics encoded for the Java screen.
 //!
 //! Failure details are redacted here; notices were already redacted by the report.
-//! Client screens append labelled integrated-server rows and notices without
-//! exposing that runtime's settings through the client store.
+//! Client screens append labelled integrated-server rows and notices. Settings
+//! use those labels to select the server store without opening client settings.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -18,7 +18,9 @@ use crate::wire::{MODS_VERSION, count, field, flag};
 
 /// Encodes the live mod list, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    let configurable = crate::settings::configurable();
+    let configurable = crate::runtime::installed()
+        .map(|runtime| crate::settings::configurable(&runtime.launch))
+        .unwrap_or_default();
     let integrated = crate::runtime::integrated_runtime();
     document_with_integrated(
         crate::runtime::installed().map(AsRef::as_ref),
@@ -36,6 +38,9 @@ fn document_with_integrated(
     let runtime = runtime?;
     // Each snapshot keeps its rows and notices at the same instant.
     let (client, client_notices) = runtime.mod_view();
+    let server_settings = integrated
+        .map(|runtime| crate::settings::configurable(&runtime.launch))
+        .unwrap_or_default();
     let integrated = integrated.map(LoaderRuntime::mod_view);
     let server = integrated.as_ref().map(|(surface, _)| surface);
     let server_notices = integrated
@@ -61,16 +66,20 @@ fn document_with_integrated(
         .flat_map(ravel_loader::ModSurface::entries)
         .enumerate()
     {
-        // The wire's id field is also the display label. Server rows never open
-        // client settings, and are not collapsed into an identically named client mod.
+        // The display label also identifies the server's independent settings.
         label.clear();
-        write!(label, "{} [integrated-server]", entry.mod_id)
-            .expect("writing into a String cannot fail");
+        write!(
+            label,
+            "{}{}",
+            entry.mod_id,
+            crate::settings::INTEGRATED_SUFFIX
+        )
+        .expect("writing into a String cannot fail");
         labelled_row(
             &mut out,
             client.entries().len() + index,
             entry,
-            false,
+            server_settings.contains(&entry.mod_id),
             &label,
         );
     }
@@ -560,6 +569,24 @@ mod tests {
             .fail(&mod_id("broken_mod"), failure)
             .expect("tracked mod");
         let server = noticed(plan, "server composition could not register its command");
+        let declaration = ravel_config::ConfigurationDeclaration::parse(
+            r#"{"schemaVersion":1,"owner":"broken_mod","version":1,"settings":[
+              {"key":"server.flag","valueSchema":{"type":"boolean"},"default":false,
+               "side":"integrated-server","restartRequired":false}
+            ]}"#,
+        )
+        .expect("server declaration");
+        *server
+            .launch
+            .settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = crate::settings::Store::new(
+            Side::IntegratedServer,
+            vec![
+                ravel_config::LayeredConfiguration::resolve(declaration, None, None)
+                    .expect("server settings"),
+            ],
+        );
         let read = fields(
             &document_with_integrated(Some(&client), Some(&server), &configurable(&["broken_mod"]))
                 .expect("client installed"),
@@ -571,7 +598,10 @@ mod tests {
         assert_eq!(read[10], "true", "client settings retain their identity");
         assert_eq!(read[13], "broken_mod [integrated-server]");
         assert_eq!(read[17], "true", "server failure is actionable");
-        assert_eq!(read[18], "false", "server must not open client settings");
+        assert_eq!(
+            read[18], "true",
+            "server settings retain their own identity"
+        );
         assert_eq!(read[22], "server.tick");
         assert_eq!(read[29], "1");
         assert_eq!(

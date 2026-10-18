@@ -6,7 +6,7 @@ use jni::{Env, EnvUnowned};
 use ravel_save::{MAX_AGGREGATE_BYTES, SavedDataError};
 
 use super::{OpenOutcome, SaveOutcome, StagedPack, open_world_data, runtime, save_world_data};
-use crate::guard::{HookError, text};
+use crate::guard::{HookError, hand_document, text};
 
 enum Incoming {
     Absent,
@@ -36,31 +36,28 @@ fn incoming<'local>(
 /// Panics are translated into a JVM exception by the JNI guard.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelOpenWorldPersistence")]
 pub fn ravel_open_world_persistence<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
     aggregate: JByteArray<'local>,
     identity: JString<'local>,
     fresh_world: jboolean,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let identity = text(env, &identity)?;
-            let outcome = match incoming(env, &aggregate)? {
-                Incoming::Absent => open_world_data(&identity, None, fresh_world != JNI_FALSE),
-                Incoming::Present(bytes) => {
-                    open_world_data(&identity, Some(&bytes), fresh_world != JNI_FALSE)
-                }
-                Incoming::Oversized => OpenOutcome::from(SavedDataError::AggregateTooLarge {
-                    limit: MAX_AGGREGATE_BYTES,
-                }),
-            };
-            Ok(match outcome {
-                OpenOutcome::Staged => env.new_string("")?,
-                OpenOutcome::Refused(diagnostic) => env.new_string(publishable(&diagnostic))?,
-            })
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |env| {
+        let identity = text(env, &identity)?;
+        let outcome = match incoming(env, &aggregate)? {
+            Incoming::Absent => open_world_data(&identity, None, fresh_world != JNI_FALSE),
+            Incoming::Present(bytes) => {
+                open_world_data(&identity, Some(&bytes), fresh_world != JNI_FALSE)
+            }
+            Incoming::Oversized => OpenOutcome::from(SavedDataError::AggregateTooLarge {
+                limit: MAX_AGGREGATE_BYTES,
+            }),
+        };
+        Ok(Some(match outcome {
+            OpenOutcome::Staged => String::new(),
+            OpenOutcome::Refused(diagnostic) => publishable(&diagnostic),
+        }))
+    })
 }
 
 const UNCHANGED: u8 = 0x00;
@@ -158,16 +155,8 @@ pub fn ravel_write_staged_datapack<'local>(
 /// # Panics
 /// Panics are translated into a JVM exception by the JNI guard.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelPackId")]
-pub fn ravel_pack_id<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            Ok(env.new_string(crate::packs::pack_id())?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+pub fn ravel_pack_id<'local>(env: EnvUnowned<'local>, _class: JClass<'local>) -> JString<'local> {
+    hand_document(env, |_| Ok(Some(crate::packs::pack_id().to_owned())))
 }
 
 #[cfg(test)]

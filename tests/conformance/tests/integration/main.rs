@@ -8,6 +8,7 @@ mod content_declarations;
 mod example_package;
 mod guide_snippets;
 mod mod_capabilities;
+mod native_names;
 mod noop_pipeline;
 mod optional_services;
 mod pack_closure;

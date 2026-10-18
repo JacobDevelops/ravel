@@ -10,7 +10,7 @@ use jni::{Env, EnvUnowned};
 use ravel_core::ContentId;
 use ravel_network::PacketId;
 
-use crate::guard::{HookError, text};
+use crate::guard::{HookError, hand_document, text};
 use crate::runtime::{LoaderRuntime, Undelivered};
 use crate::wire::{VERSION, count, field};
 
@@ -47,7 +47,7 @@ fn commands(runtime: &LoaderRuntime) -> String {
 fn command_answer(result: Result<(), Undelivered>) -> String {
     match result {
         Ok(()) => String::new(),
-        Err(Undelivered::Failed(ravel_host_api::HostError::OperationRefused {
+        Err(Undelivered::Declined(ravel_host_api::HostError::OperationRefused {
             detail, ..
         })) => ravel_core::DiagnosticMessage::redacted(&detail)
             .text()
@@ -65,34 +65,29 @@ fn command_answer(result: Result<(), Undelivered>) -> String {
 /// Lists the admitted commands and their explicit vanilla permission policy.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelLegacyCommands")]
 pub fn ravel_legacy_commands<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let runtime = runtime()?;
-            runtime.claim_command_thread().map_err(refused)?;
-            Ok(env.new_string(commands(&runtime))?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| {
+        let runtime = runtime()?;
+        runtime
+            .claim_command_thread()
+            .map_err(|error| refused(error.to_string()))?;
+        Ok(Some(commands(&runtime)))
+    })
 }
 
 /// Executes a Java-authorized command, returning a publishable refusal or empty text.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelLegacyCommand")]
 pub fn ravel_legacy_command<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
     typed: JString<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let typed = text(env, &typed)?;
-            let answer = command_answer(runtime()?.legacy_command(&typed));
-            Ok(env.new_string(answer)?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |env| {
+        let typed = text(env, &typed)?;
+        Ok(Some(command_answer(runtime()?.legacy_command(&typed))))
+    })
 }
 
 /// Delivers canonical semantic events after the Java adapter's success/thread checks.
@@ -204,15 +199,10 @@ fn resource_paths(runtime: &LoaderRuntime) -> String {
 /// Lists only the resource paths admitted into this composition.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelLegacyResourcePaths")]
 pub fn ravel_legacy_resource_paths<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            Ok(env.new_string(resource_paths(runtime()?.as_ref()))?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| Ok(Some(resource_paths(runtime()?.as_ref()))))
 }
 
 /// Reads a winning admitted resource; never opens a caller-supplied filesystem path.
@@ -256,6 +246,19 @@ mod tests {
         DocumentFixture, LoaderRuntime, Undelivered, advance_through, test_launch,
     };
     use crate::wire::fields;
+
+    #[test]
+    fn packet_bounds_match_the_java_adapter() {
+        let java = include_str!("../../../jvm/bootstrap/dev/ravel/jvm/LegacyPayload.java");
+        assert!(java.contains(&format!(
+            "static final int MAX_BYTES = {};",
+            super::MAX_PACKET_BYTES
+        )));
+        assert!(java.contains(&format!(
+            "static final int MAX_CHANNEL_BYTES = {};",
+            super::MAX_CHANNEL_BYTES
+        )));
+    }
 
     #[test]
     fn command_payload_pins_literal_permission_and_usage() -> Result<(), Box<dyn std::error::Error>>
@@ -336,11 +339,11 @@ mod tests {
         let failure = |error| Err(Undelivered::Failed(error));
         assert_eq!(command_answer(Ok(())), "");
         assert_eq!(
-            command_answer(failure(HostError::OperationRefused {
+            command_answer(Err(Undelivered::Declined(HostError::OperationRefused {
                 mod_id: owner.clone(),
                 state: LifecycleState::Running,
                 detail: "choose a destination".to_owned(),
-            })),
+            }))),
             "choose a destination"
         );
         assert_eq!(

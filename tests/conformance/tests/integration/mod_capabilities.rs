@@ -262,14 +262,14 @@ fn a_mod_sees_repeated_ticks_in_the_order_they_were_broadcast() {
 }
 
 #[test]
-fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_everybody() {
+fn a_client_tick_is_refused_on_a_dedicated_server_and_a_server_tick_reaches_everybody() {
     let mut commands = CommandsMod::new();
     let mut events = EventsMod::new();
     let mut resources = ResourcesMod::new();
     let mut mods: Vec<&mut dyn Mod> = vec![&mut commands, &mut events, &mut resources];
     let mut machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
 
-    let delivery = broadcast(
+    let refused = broadcast(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
@@ -277,9 +277,14 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
         &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
-    .expect("an empty audience");
-    assert_eq!(delivery.received(), []);
-    assert!(delivery.is_complete());
+    .expect_err("the event cannot happen here");
+    assert_eq!(
+        refused,
+        DispatchRefused::EventWrongSide {
+            event: GameEvent::ClientTick,
+            side: Side::DedicatedServer,
+        }
+    );
 
     let ticked = broadcast(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)

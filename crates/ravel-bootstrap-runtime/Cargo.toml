@@ -1,6 +1,6 @@
 [package]
 name = "ravel-bootstrap-runtime"
-description = "Safe hook runtime and JVM crossings for Ravel hosts"
+description = "Safe hook runtime, JVM crossings, and game resource/data pack writer for Ravel hosts"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true

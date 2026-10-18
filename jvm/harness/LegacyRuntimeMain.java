@@ -282,11 +282,13 @@ public final class LegacyRuntimeMain {
     private static void helpers() {
         require(LegacyRuntime.PROOF, "legacy helper fixture requires -Dravel.legacy.proof=true");
         require("fixture:nested/test".equals(
-                LegacyRecipes.key("data/fixture/recipes/nested/test.json")), "legacy recipe path mapping");
+                LegacyRecipes.key("data/fixture/recipe/nested/test.json")), "legacy recipe path mapping");
         require("fixture:test".equals(LegacyRecipes.key("assets/fixture/recipes/test.json")),
                 "native legacy assets recipe path mapping");
         require(LegacyRecipes.key("assets/fixture/textures/test.json") == null,
                 "unrelated client asset misclassified as recipe");
+        require(LegacyRecipes.key("data/fixture/recipes/test.json") == null,
+                "noncanonical data recipe directory accepted");
         LegacyRegistry registry = new LegacyRegistry(4095);
         Object first = new Object();
         registry.record(4095, "fixture:first", first);

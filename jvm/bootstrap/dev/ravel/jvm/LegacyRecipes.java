@@ -60,11 +60,12 @@ final class LegacyRecipes {
             return null;
         }
         int namespaceEnd = path.indexOf('/', root);
-        if (namespaceEnd <= root || !path.startsWith("/recipes/", namespaceEnd)) {
+        String directory = root == 5 ? "/recipe/" : "/recipes/";
+        if (namespaceEnd <= root || !path.startsWith(directory, namespaceEnd)) {
             return null;
         }
         String namespace = path.substring(root, namespaceEnd);
-        String name = path.substring(namespaceEnd + 9, path.length() - 5);
+        String name = path.substring(namespaceEnd + directory.length(), path.length() - 5);
         if (!namespace.matches("[a-z0-9_.-]+") || !name.matches("[a-z0-9_./-]+")
                 || name.contains("..")) {
             throw new IllegalArgumentException("invalid legacy recipe path: " + path);

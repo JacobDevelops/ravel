@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Safe hook runtime and JVM crossings linked into Ravel's host libraries.
+//! Safe hook runtime, JVM crossings, and game resource/data pack writer for Ravel hosts.
 
 mod content;
 mod guard;
@@ -16,10 +16,6 @@ mod settings;
 mod side;
 mod wire;
 
-#[cfg(test)]
-mod native_names;
-
-pub use guard::HookError;
 pub use packs::{
     GAME_PACK_DIRECTORY, GamePackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id,
     write_resource_pack, write_world_pack,

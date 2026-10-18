@@ -67,7 +67,7 @@
       },
       {
         "path": "src/inventory.rs",
-        "sha256": "ca1406520d1c337966385653f809cf10b95d040f95fa261a62cac6ec22a03ab8"
+        "sha256": "c833fe5cf6d3260f8e5cf4475f3433ed8bc40f2cbb4bc990f10477f29d8b103d"
       },
       {
         "path": "src/lib.rs",

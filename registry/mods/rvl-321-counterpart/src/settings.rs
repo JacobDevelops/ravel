@@ -310,6 +310,7 @@ pub struct TopGearSettings {
 
 /// Which ore deposits generate.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct DepositSettings {
     /// Chance the third deposit substitutes the rarer ore.
     pub rare_substitution_chance: f64,

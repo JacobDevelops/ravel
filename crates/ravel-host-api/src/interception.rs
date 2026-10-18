@@ -459,11 +459,10 @@ impl fmt::Display for InterceptionRefused {
                 )
             }
             Self::Circular { point, claimants } => {
-                let names: Vec<&str> = claimants.iter().map(ModId::as_str).collect();
                 write!(
                     formatter,
-                    "at `{point}`, `{}` each wait for another, and a cycle has no order",
-                    names.join("`, `")
+                    "at `{point}`, {} each wait for another, and a cycle has no order",
+                    ModId::display_list(claimants)
                 )
             }
         }

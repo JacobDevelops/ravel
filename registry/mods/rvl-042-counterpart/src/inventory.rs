@@ -98,6 +98,7 @@ impl Stack {
 
 /// A saved identity cannot be represented without losing its original spelling.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct LoadRefused {
     /// The identifier exactly as it appeared in the saved row.
     pub spelling: String,

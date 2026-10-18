@@ -30,6 +30,8 @@ content reexports; its declaration failure is `ContentDeclarationError`, distinc
 from configuration declarations. Lifecycle errors retain typed registry keys.
 Client-only access distinguishes a wrong server side from a value never built,
 using `ClientOnlyError::WrongSide` and `ClientOnlyError::NotBuilt`.
+Identity-list diagnostics share `ModId::display_list`, which streams the canonical
+backtick-quoted spelling directly to the formatter without temporary joined strings.
 
 The build default stays 26.1.2 and 1.21.1 support remains. Forward proof targets
 immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on the exact JDK 27 pin in

@@ -220,7 +220,7 @@ mod tests {
     use super::{DriveError, drive_loaded, stop_all};
     use crate::lifecycle::{LifecycleMachine, Requirement};
     use crate::services::ServiceRefused;
-    use crate::tests::entry;
+    use crate::tests::{entry, environment};
 
     struct Recording {
         id: ModId,
@@ -786,14 +786,5 @@ mod tests {
                 .count(),
             3
         );
-    }
-
-    fn environment() -> ravel_core::FailureEnvironment {
-        ravel_core::FailureEnvironment {
-            ravel: "0.1.0".parse().expect("valid version"),
-            minecraft: "Synthetic26.1.5".to_owned(),
-            platform: "test-platform".to_owned(),
-            architecture: "test-architecture".to_owned(),
-        }
     }
 }

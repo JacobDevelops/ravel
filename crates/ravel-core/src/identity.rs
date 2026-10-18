@@ -31,6 +31,14 @@ impl ModId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Displays a comma-separated list of backtick-quoted identities without allocation.
+    ///
+    /// An empty list displays as two backticks.
+    #[must_use]
+    pub fn display_list(ids: &[Self]) -> impl fmt::Display + '_ {
+        ModIdList(ids)
+    }
 }
 
 /// Checks the shared mod-identity and setting-key grammar.
@@ -96,6 +104,21 @@ impl fmt::Display for ModId {
     }
 }
 
+struct ModIdList<'a>(&'a [ModId]);
+
+impl fmt::Display for ModIdList<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("`")?;
+        if let Some((first, rest)) = self.0.split_first() {
+            write!(formatter, "{first}")?;
+            for id in rest {
+                write!(formatter, "`, `{id}")?;
+            }
+        }
+        formatter.write_str("`")
+    }
+}
+
 /// Why a mod identity or setting key fails the shared identifier grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModIdError {
@@ -149,6 +172,22 @@ impl std::error::Error for ModIdError {}
 #[cfg(test)]
 mod tests {
     use super::{ModId, ModIdError};
+
+    #[test]
+    fn identity_lists_quote_names_in_order_including_empty_and_single_lists() {
+        let ids: Vec<ModId> = ["first_mod", "second_mod", "third_mod"]
+            .into_iter()
+            .map(|name| name.parse().expect("valid id"))
+            .collect();
+        for (count, expected) in [
+            (0, "``"),
+            (1, "`first_mod`"),
+            (2, "`first_mod`, `second_mod`"),
+            (3, "`first_mod`, `second_mod`, `third_mod`"),
+        ] {
+            assert_eq!(ModId::display_list(&ids[..count]).to_string(), expected);
+        }
+    }
 
     #[test]
     fn accepted_ids_cover_every_position_of_the_grammar() {

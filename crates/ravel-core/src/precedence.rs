@@ -125,12 +125,11 @@ impl Cycle {
 
 impl fmt::Display for Cycle {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let names: Vec<&str> = self.participants.iter().map(ModId::as_str).collect();
         write!(
             formatter,
-            "`{}` each wait for another, so no order puts every one of them after \
+            "{} each wait for another, so no order puts every one of them after \
              what it declared it follows",
-            names.join("`, `")
+            ModId::display_list(&self.participants)
         )
     }
 }

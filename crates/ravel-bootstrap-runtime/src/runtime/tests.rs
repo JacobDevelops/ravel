@@ -8,7 +8,8 @@ use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod, ModError, Reg
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, Supplied};
 use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
-use super::{COMMAND, EVENTS, LoaderRuntime, advance_through, environment};
+use super::dispatch::{COMMAND, EVENTS};
+use super::{LoaderRuntime, advance_through, environment};
 
 use ravel_data::PlayRequest;
 
@@ -1068,8 +1069,8 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
             let (composition, log) = integrated_composition();
             super::install_integrated(composition, std::env::temp_dir())
                 .map_err(|error| error.to_string())?;
-            let runtime =
-                super::with_thread_selected(Arc::clone).ok_or("missing thread-owned runtime")?;
+            let runtime = super::installation::with_thread_selected(Arc::clone)
+                .ok_or("missing thread-owned runtime")?;
             assert_eq!(
                 runtime
                     .inner

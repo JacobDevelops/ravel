@@ -21,8 +21,8 @@ disabled multi-part block are the four areas §17 excludes and none of them is h
 | §2 the client-only observers | declarable only, as Ravel's own side isolation | `src/lib.rs` |
 | §3 the three server settings and their bounds | implemented | `src/settings.rs` |
 | §3 the seventy colours as a document shape | implemented | `src/settings.rs` |
-| §3 the hexadecimal storage, the forced alpha, the unguarded parse | implemented, one declared change | `src/settings.rs` |
-| §3 the re-resolve scoped to the client document | implemented, driven by the side | `src/lib.rs`, `src/settings.rs` |
+| §3 the hexadecimal storage, the forced alpha, the unguarded parse | implemented, one declared change | `src/settings/colour.rs` |
+| §3 the re-resolve scoped to the client document | implemented, driven by the side | `src/lib.rs`, `src/settings/colour.rs` |
 | §4 the one recipe kind | implemented, claimed at the barrier | `src/census.rs`, `src/lib.rs` |
 | §4 the two attachments and seven component kinds | declarable only, carried as data | `src/census.rs` |
 | §4 the unreachable block-state document | not shipped, deliberately | `src/census.rs` |

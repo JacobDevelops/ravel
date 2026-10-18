@@ -218,25 +218,19 @@ impl ProvisionRefused {
 
 impl fmt::Display for ProvisionRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let names = |mods: &[ModId]| {
-            mods.iter()
-                .map(ModId::as_str)
-                .collect::<Vec<&str>>()
-                .join("`, `")
-        };
         match self {
             Self::NoProvider {
                 library,
                 unsatisfied,
             } => write!(
                 formatter,
-                "`{}` need `{library}`, which no installed mod provides",
-                names(unsatisfied)
+                "{} need `{library}`, which no installed mod provides",
+                ModId::display_list(unsatisfied)
             ),
             Self::Contested { library, providers } => write!(
                 formatter,
-                "`{}` each provide `{library}`, and one launch takes one provider",
-                names(providers)
+                "{} each provide `{library}`, and one launch takes one provider",
+                ModId::display_list(providers)
             ),
             Self::Unsatisfied {
                 library,
@@ -245,9 +239,9 @@ impl fmt::Display for ProvisionRefused {
                 unsatisfied,
             } => write!(
                 formatter,
-                "`{provider}` provides `{library}` at `{version}`, which is outside the range `{}` \
+                "`{provider}` provides `{library}` at `{version}`, which is outside the range {} \
                  declared",
-                names(unsatisfied)
+                ModId::display_list(unsatisfied)
             ),
         }
     }
@@ -271,6 +265,38 @@ mod tests {
 
     fn version(text: &str) -> Version {
         Version::parse(text).expect("a well formed version")
+    }
+
+    #[test]
+    fn refusal_messages_keep_participant_quotes_and_order() {
+        let participants = vec![id("first"), id("second")];
+        let missing = ProvisionRefused::NoProvider {
+            library: "shared_maths".to_owned(),
+            unsatisfied: participants.clone(),
+        };
+        assert_eq!(
+            missing.to_string(),
+            "`first`, `second` need `shared_maths`, which no installed mod provides"
+        );
+        let contested = ProvisionRefused::Contested {
+            library: "shared_maths".to_owned(),
+            providers: participants.clone(),
+        };
+        assert_eq!(
+            contested.to_string(),
+            "`first`, `second` each provide `shared_maths`, and one launch takes one provider"
+        );
+        let unsatisfied = ProvisionRefused::Unsatisfied {
+            library: "shared_maths".to_owned(),
+            provider: id("provider"),
+            version: version("2.1.0"),
+            unsatisfied: participants,
+        };
+        assert_eq!(
+            unsatisfied.to_string(),
+            "`provider` provides `shared_maths` at `2.1.0`, which is outside the range `first`, \
+             `second` declared"
+        );
     }
 
     #[test]

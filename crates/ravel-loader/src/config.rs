@@ -49,10 +49,10 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
             };
             let error = crate::owner_refusal(machine, &mod_id, &refused)
                 .map_err(ConfigRefused::Lifecycle)?;
-            let requirement = machine
-                .fail_callback(&error, environment, None)
-                .map_err(ConfigRefused::Lifecycle)?;
-            if requirement == crate::Requirement::Required || machine.halted_by().is_some() {
+            if machine
+                .fail_setup_callback(&error, environment)
+                .map_err(ConfigRefused::Lifecycle)?
+            {
                 return Err(refused);
             }
             continue;
@@ -88,10 +88,8 @@ fn record_failure(
     source: HostError,
 ) -> Result<(), ConfigRefused> {
     if machine
-        .fail_callback(&source, environment, None)
+        .fail_setup_callback(&source, environment)
         .map_err(ConfigRefused::Lifecycle)?
-        == crate::Requirement::Required
-        || machine.halted_by().is_some()
     {
         return Err(ConfigRefused::Mod {
             mod_id: source.mod_id().clone(),

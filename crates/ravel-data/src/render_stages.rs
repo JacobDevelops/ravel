@@ -215,26 +215,20 @@ impl StageRefused {
 
 impl fmt::Display for StageRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let names = |mods: &[ModId]| {
-            mods.iter()
-                .map(ModId::as_str)
-                .collect::<Vec<&str>>()
-                .join("`, `")
-        };
         match self {
             Self::UnknownContributors { participants } => write!(
                 formatter,
-                "`{}` is ordered against and contributes to no stage, so the order is against \
+                "{} is ordered against and contributes to no stage, so the order is against \
                  nothing",
-                names(participants)
+                ModId::display_list(participants)
             ),
             Self::Circular {
                 stage,
                 participants,
             } => write!(
                 formatter,
-                "at `{stage}`, `{}` each want to follow another, and a cycle has no order",
-                names(participants)
+                "at `{stage}`, {} each want to follow another, and a cycle has no order",
+                ModId::display_list(participants)
             ),
         }
     }
@@ -250,6 +244,28 @@ mod tests {
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a well formed owner id")
+    }
+
+    #[test]
+    fn refusal_messages_keep_participant_quotes_and_order() {
+        let participants = vec![id("first"), id("second")];
+        let unknown = StageRefused::UnknownContributors {
+            participants: participants.clone(),
+        };
+        assert_eq!(
+            unknown.to_string(),
+            "`first`, `second` is ordered against and contributes to no stage, so the order is \
+             against nothing"
+        );
+        let cycle = StageRefused::Circular {
+            stage: RenderStage::AfterTerrain,
+            participants,
+        };
+        assert_eq!(
+            cycle.to_string(),
+            "at `after_terrain`, `first`, `second` each want to follow another, and a cycle has no \
+             order"
+        );
     }
 
     fn entered_before(

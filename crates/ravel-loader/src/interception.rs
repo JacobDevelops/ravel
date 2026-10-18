@@ -79,10 +79,10 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
             };
             let source = crate::owner_refusal(machine, &mod_id, &refused)
                 .map_err(InterceptRefused::Lifecycle)?;
-            let requirement = machine
-                .fail_callback(&source, environment, None)
-                .map_err(InterceptRefused::Lifecycle)?;
-            if requirement == crate::Requirement::Required || machine.halted_by().is_some() {
+            if machine
+                .fail_setup_callback(&source, environment)
+                .map_err(InterceptRefused::Lifecycle)?
+            {
                 return Err(refused);
             }
             continue;
@@ -135,10 +135,10 @@ fn declaration_failure(
     environment: &FailureEnvironment,
     source: HostError,
 ) -> Result<(), InterceptRefused> {
-    let requirement = machine
-        .fail_callback(&source, environment, None)
-        .map_err(InterceptRefused::Lifecycle)?;
-    if requirement == crate::Requirement::Required || machine.halted_by().is_some() {
+    if machine
+        .fail_setup_callback(&source, environment)
+        .map_err(InterceptRefused::Lifecycle)?
+    {
         return Err(InterceptRefused::Mod {
             mod_id: source.mod_id().clone(),
             source,

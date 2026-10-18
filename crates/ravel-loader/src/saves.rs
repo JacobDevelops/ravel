@@ -9,7 +9,7 @@ use ravel_save::{
     MigrationChain, SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan,
 };
 
-use crate::lifecycle::{LifecycleError, LifecycleMachine, Requirement};
+use crate::lifecycle::{LifecycleError, LifecycleMachine};
 use crate::loaded::LoadedMods;
 
 /// Snapshots lifecycle members in load order after checking save and world access.
@@ -244,10 +244,10 @@ fn record_failure<T>(
     mod_id: &ModId,
     source: HostError,
 ) -> Result<Option<T>, SaveRefused> {
-    let requirement = machine
-        .fail_callback(&source, environment, None)
-        .map_err(SaveRefused::Lifecycle)?;
-    if requirement == Requirement::Required || machine.halted_by().is_some() {
+    if machine
+        .fail_setup_callback(&source, environment)
+        .map_err(SaveRefused::Lifecycle)?
+    {
         return Err(SaveRefused::Mod {
             mod_id: mod_id.clone(),
             source,

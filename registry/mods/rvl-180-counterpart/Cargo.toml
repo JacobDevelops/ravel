@@ -1,6 +1,7 @@
 [package]
 name = "rvl-180-counterpart"
 version = "4.6.1"
+description = "Original Rust counterpart of the RVL-180 foundation specification"
 edition = "2024"
 license = "MIT"
 

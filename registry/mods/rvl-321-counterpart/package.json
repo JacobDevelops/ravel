@@ -110,7 +110,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "e842406676371eec50580bed156b01f1d304bd3b3ea56fd4b45f358c4f50e141"
+        "sha256": "dd2de1754ad01ecc368ce3a8aef3321ecfa6bd7e6da9cde15faf630ed3ceca84"
       },
       {
         "path": "src/world.rs",

@@ -434,6 +434,16 @@ impl LifecycleMachine {
         Ok(requirement)
     }
 
+    /// Records a mod callback failure and reports whether the caller must stop.
+    pub(crate) fn fail_setup_callback(
+        &mut self,
+        error: &ravel_host_api::HostError,
+        environment: &FailureEnvironment,
+    ) -> Result<bool, LifecycleError> {
+        let requirement = self.fail_callback(error, environment, None)?;
+        Ok(requirement == Requirement::Required || self.halted_by().is_some())
+    }
+
     pub(crate) fn fail_callback_attributed(
         &mut self,
         error: &ravel_host_api::HostError,

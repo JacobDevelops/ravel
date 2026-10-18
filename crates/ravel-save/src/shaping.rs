@@ -229,25 +229,19 @@ impl ShapingMismatch {
 
 impl fmt::Display for ShapingMismatch {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let names = |mods: &[ModId]| {
-            mods.iter()
-                .map(ModId::as_str)
-                .collect::<Vec<&str>>()
-                .join("`, `")
-        };
         formatter.write_str("this world is not opened by the mods now installed")?;
         if !self.missing.is_empty() {
             write!(
                 formatter,
-                "; `{}` shaped it and is gone",
-                names(&self.missing)
+                "; {} shaped it and is gone",
+                ModId::display_list(&self.missing)
             )?;
         }
         if !self.arrived.is_empty() {
             write!(
                 formatter,
-                "; `{}` would shape it now and did not then",
-                names(&self.arrived)
+                "; {} would shape it now and did not then",
+                ModId::display_list(&self.arrived)
             )?;
         }
         Ok(())

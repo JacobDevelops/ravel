@@ -228,13 +228,23 @@ load, without allocating or attaching an environment. Argument collection,
 string copies, and observers run inside the guarded closure. The guarded path's
 cost is unmeasured; the retired unguarded JVM-entry spike does not measure it.
 
-### Why `miniz_oxide` is the archive dependency
+### JVM artifact readers
 
-The adapter's archive reader parses the ZIP central directory and uses
-`miniz_oxide` only for DEFLATE. It needs exact entry lookup, not archive writing,
-encryption, or other compression formats. The dependency and its `adler2`
-dependency are pure Rust; its licence is `MIT OR Zlib OR Apache-2.0`.
+The generator reads class files with `noak`, including Java modified UTF-8,
+and parses ProGuard records with `proguard`. Ravel retains exact descriptors,
+member selection and bijective namespace checks. `cafebabe` was evaluated but
+cannot expose the raw descriptors needed to reject trailing malformed text.
 
-The reader accepts stored and deflated entries and rejects other compression
-methods and Zip64. The pinned client jar fits classic ZIP limits. `jni` is
-built without `invocation`: Ravel runs inside a JVM rather than hosting one.
+JAR entry lookup uses `zip` with default features disabled and only the Rust
+DEFLATE backend enabled. Entries are read without extraction, and decompression
+is bounded by each entry's declared size and the original 32-bit size ceiling.
+Ravel rejects unsupported compression, Unicode-path overrides and duplicate names
+rather than checking bytes under a name the JVM would not load.
+
+The Rust reader licenses are MIT/Apache-2.0 (`noak`), MIT (`zip`) and BSD-3-Clause
+(`proguard`). Exact-version license exceptions in `deny.toml` cover `proguard`
+and the Zlib-licensed archive dependencies `foldhash` and `zlib-rs`; they do not
+broaden the repository's general allow list. `cargo deny check` remains required.
+
+`jni` is built without `invocation`: Ravel runs inside a JVM rather than hosting
+one.

@@ -887,7 +887,7 @@ mod tests {
     /// A method given a signature carries it as its one attribute, which is how
     /// a class file records what a returned collection holds.
     fn class_of(methods: &[(&str, &str, Option<&str>)]) -> Vec<u8> {
-        let mut strings: Vec<&str> = Vec::new();
+        let mut strings: Vec<&str> = vec!["Fixture"];
         for &(name, descriptor, signature) in methods {
             strings.push(name);
             strings.push(descriptor);
@@ -910,14 +910,16 @@ mod tests {
         bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
         bytes.extend(0_u16.to_be_bytes()); // minor
         bytes.extend(69_u16.to_be_bytes()); // major
-        let pool = u16::try_from(strings.len() + 1).expect("a short pool");
+        let pool = u16::try_from(strings.len() + 2).expect("a short pool");
         bytes.extend(pool.to_be_bytes());
         for text in &strings {
             bytes.push(1); // TAG_UTF8
             bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             bytes.extend(text.as_bytes());
         }
-        for value in [0_u16, 0, 0, 0, 0] {
+        bytes.push(7); // TAG_CLASS
+        bytes.extend(1_u16.to_be_bytes());
+        for value in [0_u16, pool - 1, 0, 0, 0] {
             // flags, this class, no superclass, no interfaces, no fields
             bytes.extend(value.to_be_bytes());
         }

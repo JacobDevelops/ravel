@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use proguard::ProguardRecord;
+
 use super::inputs::{Lookup, MappingSource, Reflected, ReflectedMember, Reflection};
 use super::{GenerateError, classfile, jar};
 
@@ -381,30 +383,48 @@ impl Proguard {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            if line.starts_with(char::is_whitespace) {
-                let class = current
-                    .as_ref()
-                    .ok_or_else(|| unusable(number, "a member precedes every class"))?;
-                let member =
-                    Declared::parse(trimmed).map_err(|detail| unusable(number, &detail))?;
-                declared.entry(class.clone()).or_default().push(member);
-                continue;
+            let record = ProguardRecord::try_parse(line.trim_end().as_bytes())
+                .map_err(|error| unusable(number, &error.to_string()))?;
+            match record {
+                ProguardRecord::Class {
+                    original,
+                    obfuscated,
+                } => {
+                    let from = internal(original);
+                    let to = internal(obfuscated);
+                    if classes.insert(from.clone(), to.clone()).is_some() {
+                        return Err(unusable(number, &format!("{from} is mapped twice")));
+                    }
+                    if let Some(other) = mojang.insert(to.clone(), from.clone()) {
+                        return Err(unusable(
+                            number,
+                            &format!("{other} and {from} both map to {to}"),
+                        ));
+                    }
+                    current = Some(from);
+                }
+                ProguardRecord::Field { .. } | ProguardRecord::Method { .. } => {
+                    let class = current
+                        .as_ref()
+                        .ok_or_else(|| unusable(number, "a member precedes every class"))?;
+                    let member =
+                        Declared::parse(&record).map_err(|detail| unusable(number, &detail))?;
+                    // Qualified methods describe inline stack frames, not
+                    // declarations on this class. Validate them above, but
+                    // leave the linked pair to the actual outer declaration.
+                    if matches!(
+                        record,
+                        ProguardRecord::Method {
+                            original_class: Some(_),
+                            ..
+                        }
+                    ) {
+                        continue;
+                    }
+                    declared.entry(class.clone()).or_default().push(member);
+                }
+                ProguardRecord::Header { .. } | ProguardRecord::R8Header(_) => {}
             }
-
-            let (from, to) =
-                split(trimmed.trim_end_matches(':')).map_err(|detail| unusable(number, &detail))?;
-            let from = internal(from);
-            let to = internal(to);
-            if classes.insert(from.clone(), to.clone()).is_some() {
-                return Err(unusable(number, &format!("{from} is mapped twice")));
-            }
-            if let Some(other) = mojang.insert(to.clone(), from.clone()) {
-                return Err(unusable(
-                    number,
-                    &format!("{other} and {from} both map to {to}"),
-                ));
-            }
-            current = Some(from);
         }
 
         Self::parse_members(classes, mojang, declared)
@@ -576,43 +596,41 @@ struct Declared {
 }
 
 impl Declared {
-    /// Reads one member line, without its leading indentation.
+    /// Converts a parsed member into the reviewed descriptor namespace.
     ///
-    /// A method carries the line range it occupies, which says nothing about the
-    /// name and is dropped. What is kept is the declared type, the name, and the
-    /// parameter list, because those are the descriptor the inventory reviews.
-    fn parse(line: &str) -> Result<Self, String> {
-        let (declaration, runtime) = split(line)?;
-        let declaration = declaration.trim_start_matches(|c: char| c.is_ascii_digit() || c == ':');
-        let (returns, rest) = declaration
-            .split_once(' ')
-            .ok_or_else(|| format!("{declaration} declares no type"))?;
-        let returns = descriptor_of(returns)?;
-
-        let Some((member, parameters)) = rest.split_once('(') else {
-            return Ok(Self {
-                member: rest.to_owned(),
-                descriptor: returns,
-                runtime: runtime.to_owned(),
-            });
+    /// Line metadata is deliberately ignored, not parsed as part of the name.
+    fn parse(record: &ProguardRecord<'_>) -> Result<Self, String> {
+        let (member, descriptor, runtime) = match record {
+            ProguardRecord::Field {
+                ty,
+                original,
+                obfuscated,
+            } => ((*original).to_owned(), descriptor_of(ty)?, obfuscated),
+            ProguardRecord::Method {
+                ty,
+                original,
+                obfuscated,
+                arguments,
+                ..
+            } => {
+                let mut descriptor = String::from("(");
+                if !arguments.is_empty() {
+                    for parameter in arguments.split(',').map(str::trim) {
+                        descriptor.push_str(&descriptor_of(parameter)?);
+                    }
+                }
+                descriptor.push(')');
+                descriptor.push_str(&descriptor_of(ty)?);
+                ((*original).to_owned(), descriptor, obfuscated)
+            }
+            ProguardRecord::Class { .. }
+            | ProguardRecord::Header { .. }
+            | ProguardRecord::R8Header(_) => return Err("record declares no member".to_owned()),
         };
-        let parameters = parameters
-            .strip_suffix(')')
-            .ok_or_else(|| format!("{rest} never closes its parameter list"))?;
-        let mut descriptor = String::from("(");
-        for parameter in parameters
-            .split(',')
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-        {
-            descriptor.push_str(&descriptor_of(parameter)?);
-        }
-        descriptor.push(')');
-        descriptor.push_str(&returns);
         Ok(Self {
-            member: member.to_owned(),
+            member,
             descriptor,
-            runtime: runtime.to_owned(),
+            runtime: (*runtime).to_owned(),
         })
     }
 }
@@ -622,12 +640,6 @@ fn unusable(number: usize, detail: &str) -> GenerateError {
     GenerateError::Input(format!(
         "the client mapping is unusable at line {number}: {detail}"
     ))
-}
-
-/// Splits one `from -> to` line.
-fn split(line: &str) -> Result<(&str, &str), String> {
-    line.split_once(" -> ")
-        .ok_or_else(|| format!("{line} maps nothing onto anything"))
 }
 
 /// The internal form of a name the mapping writes with dots.
@@ -884,14 +896,14 @@ com.example.Plain -> com.example.Plain:
     fn a_line_the_parser_cannot_read_is_refused_rather_than_skipped() {
         for (mapping, expected) in [
             ("    void tick() -> a\n", "a member precedes every class"),
-            ("com.example.A:\n", "maps nothing onto anything"),
+            ("com.example.A:\n", "not a valid proguard record"),
             (
                 "com.example.A -> x:\n    nothing -> a\n",
-                "declares no type",
+                "not a valid proguard record",
             ),
             (
                 "com.example.A -> x:\n    void tick( -> a\n",
-                "never closes its parameter list",
+                "not a valid proguard record",
             ),
             (
                 "com.example.A -> x:\n    void tick([]) -> a\n",
@@ -906,6 +918,45 @@ com.example.Plain -> com.example.Plain:
     }
 
     #[test]
+    fn original_line_ranges_do_not_change_member_descriptors() {
+        let mapping = Proguard::parse(
+            "com.example.A -> x:\n    1:2:int[] read(java.lang.String,int[]):40:41 -> a\n\
+             \tvoid tick():50 -> b\n",
+        )
+        .expect("both ProGuard original-line suffix forms are records");
+
+        assert_eq!(
+            mapping
+                .runtime_member("com/example/A", "read", "(Ljava/lang/String;[I)[I")
+                .expect("line metadata is not part of a descriptor"),
+            ("a".to_owned(), "(Ljava/lang/String;[I)[I".to_owned())
+        );
+        assert_eq!(
+            mapping
+                .runtime_member("com/example/A", "tick", "()V")
+                .expect("a suffix does not require a minified line prefix"),
+            ("b".to_owned(), "()V".to_owned())
+        );
+    }
+
+    #[test]
+    fn malformed_records_are_not_accepted_as_partial_declarations() {
+        for line in [
+            "com.example.A -> x",
+            "com.example.A -> x: trailing",
+            "com.example.A -> x::",
+            "com.example.A -> x:\n    1:void tick() -> a",
+            "com.example.A -> x:\n    1:x:void tick() -> a",
+            "com.example.A -> x:\n    void tick():x -> a",
+            "com.example.A -> x:\n    void tick(int,,long) -> a",
+        ] {
+            let error = Proguard::parse(line).expect_err("every record must be complete");
+
+            assert!(error.to_string().contains("at line"), "{error}");
+        }
+    }
+
+    #[test]
     fn two_lines_declaring_one_member_are_refused_rather_than_last_wins() {
         let error =
             Proguard::parse("com.example.A -> x:\n    void tick() -> a\n    void tick() -> b\n")
@@ -913,6 +964,31 @@ com.example.Plain -> com.example.Plain:
 
         assert!(error.to_string().contains("tick()V"), "{error}");
         assert!(error.to_string().contains("twice"), "{error}");
+    }
+
+    #[test]
+    fn inline_frames_do_not_collide_with_the_outer_declaration() {
+        let mapping = Proguard::parse(
+            "com.example.A -> x:\n    1:1:void com.example.B.tick():5:5 -> a\n\
+             \t1:1:void run():10:10 -> a\n",
+        )
+        .expect("an inline frame and its outer declaration share a linked pair");
+
+        assert_eq!(
+            mapping
+                .runtime_member("com/example/A", "run", "()V")
+                .expect("only the outer method declares the linked pair"),
+            ("a".to_owned(), "()V".to_owned())
+        );
+        assert_eq!(mapping.mojang_member("com/example/A", "a", "()V"), "run");
+        for name in ["tick", "com.example.B.tick"] {
+            assert!(
+                mapping
+                    .runtime_member("com/example/A", name, "()V")
+                    .is_err(),
+                "an inline frame must not invent a declaration for {name}"
+            );
+        }
     }
 
     #[test]
@@ -1048,7 +1124,7 @@ com.example.Plain -> com.example.Plain:
         .expect_err("the source requires a real mapping");
 
         assert!(
-            error.to_string().contains("maps nothing onto anything"),
+            error.to_string().contains("not a valid proguard record"),
             "{error}"
         );
     }
@@ -1058,8 +1134,8 @@ com.example.Plain -> com.example.Plain:
     /// Written out rather than reached for, because the point of every test
     /// below is a class file that declares something other than what the
     /// surface says, and no real jar holds one of those.
-    fn class_file(members: &[(&str, &str, bool)]) -> Vec<u8> {
-        let mut pool = Vec::new();
+    fn class_file(class: &str, members: &[(&str, &str, bool)]) -> Vec<u8> {
+        let mut pool = vec![class.to_owned(), "java/lang/Object".to_owned()];
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         for (name, descriptor, method) in members {
@@ -1079,7 +1155,7 @@ com.example.Plain -> com.example.Plain:
         bytes.extend(0_u16.to_be_bytes()); // minor
         bytes.extend(69_u16.to_be_bytes()); // major
         bytes.extend(
-            u16::try_from(pool.len() + 1)
+            u16::try_from(pool.len() + 3)
                 .expect("a small pool")
                 .to_be_bytes(),
         );
@@ -1088,7 +1164,12 @@ com.example.Plain -> com.example.Plain:
             bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             bytes.extend(text.as_bytes());
         }
-        for value in [0_u16, 0, 0, 0] {
+        let this = u16::try_from(pool.len() + 1).expect("a small pool");
+        for name in [1_u16, 2] {
+            bytes.push(7); // Class
+            bytes.extend(name.to_be_bytes());
+        }
+        for value in [0x0021_u16, this, this + 1, 0] {
             bytes.extend(value.to_be_bytes()); // access, this, super, interfaces
         }
         for table in [&fields, &methods] {
@@ -1126,7 +1207,9 @@ com.example.Plain -> com.example.Plain:
 
     /// An archive holding one class file under the entry the mapping asks for.
     fn holding(entry: &str, members: &[(&str, &str, bool)]) -> jar::Archive {
-        fixture::parse(fixture::stored(entry, &class_file(members))).expect("a synthetic archive")
+        let class = entry.strip_suffix(".class").expect("a class entry");
+        fixture::parse(fixture::stored(entry, &class_file(class, members)))
+            .expect("a synthetic archive")
     }
 
     /// The identity is where this check has teeth: nothing translates, so
@@ -1229,15 +1312,13 @@ com.example.Plain -> com.example.Plain:
     }
 
     /// A width is a method's, so a field of that name is not the member meant.
-    /// The class file is built to declare one anyway, carrying a descriptor no
-    /// field could have, because a fixture that could not hold the defect proves
-    /// nothing about the check that refuses it.
+    /// A valid field declaration must not satisfy even a zero-argument lookup.
     #[test]
     fn a_field_is_not_the_member_a_declared_width_asked_for() {
         let error = verify_reflected_members(
             &declaring("com.example.Alpha", "tick", None, Some(0)),
             &Mapping::Identity,
-            &holding("com/example/Alpha.class", &[("tick", "()V", false)]),
+            &holding("com/example/Alpha.class", &[("tick", "I", false)]),
         )
         .expect_err("a field is not a method however it is spelled");
 

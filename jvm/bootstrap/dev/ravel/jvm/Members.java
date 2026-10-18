@@ -1,5 +1,6 @@
 package dev.ravel.jvm;
 
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -21,9 +22,8 @@ import java.lang.reflect.Method;
  * the class file declared first, potentially reading a world with the method
  * that writes one.
  *
- * <p>Descriptors are built from the reflected member rather than read off it,
- * because the JVM exposes no descriptor on {@link Method}. What is built here is
- * the erased form the class file carries, which is what the generator emitted.
+ * <p>The JDK builds erased descriptors from the reflected member's types,
+ * matching the class-file form emitted by the generator.
  */
 final class Members {
 
@@ -80,7 +80,7 @@ final class Members {
         String descriptor = descriptor(member);
         for (Field candidate : owner.getDeclaredFields()) {
             if (candidate.getName().equals(name)
-                    && descriptor.equals(descriptorOf(candidate.getType()))) {
+                    && descriptor.equals(candidate.getType().descriptorString())) {
                 candidate.setAccessible(true);
                 return candidate;
             }
@@ -122,39 +122,7 @@ final class Members {
 
     /** The erased descriptor of one argument list and return type. */
     private static String descriptorOf(Class<?>[] parameters, Class<?> returned) {
-        StringBuilder text = new StringBuilder(parameters.length * 24 + 16);
-        text.append('(');
-        for (Class<?> parameter : parameters) {
-            text.append(descriptorOf(parameter));
-        }
-        text.append(')');
-        return text.append(descriptorOf(returned)).toString();
-    }
-
-    /**
-     * The descriptor of one type.
-     *
-     * <p>An array's binary name is already its descriptor once the package
-     * separators are the ones a class file writes, which is why only the
-     * primitives and the plain reference case are spelled out.
-     */
-    private static String descriptorOf(Class<?> type) {
-        String name = type.getName();
-        if (name.charAt(0) == '[') {
-            return name.replace('.', '/');
-        }
-        return switch (name) {
-            case "boolean" -> "Z";
-            case "byte" -> "B";
-            case "char" -> "C";
-            case "short" -> "S";
-            case "int" -> "I";
-            case "long" -> "J";
-            case "float" -> "F";
-            case "double" -> "D";
-            case "void" -> "V";
-            default -> "L" + name.replace('.', '/') + ";";
-        };
+        return MethodType.methodType(returned, parameters).toMethodDescriptorString();
     }
 
     /**

@@ -8,12 +8,14 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-miniz_oxide.workspace = true
+noak.workspace = true
+proguard.workspace = true
 ravel-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

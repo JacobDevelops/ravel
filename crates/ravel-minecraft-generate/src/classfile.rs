@@ -2,6 +2,14 @@
 
 use std::fmt;
 
+use noak::MStr;
+use noak::descriptor::{MethodDescriptor, TypeDescriptor};
+use noak::error::{DecodeError, DecodeErrorKind};
+use noak::reader::DecodeMany;
+use noak::reader::attributes::AttributeContent;
+use noak::reader::cpool::{ConstantPool, Index, Utf8};
+use noak::reader::{Attribute, Class};
+
 /// One validated JVM type, retaining its exact spelling for opaque handles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DescriptorType<'a> {
@@ -151,17 +159,6 @@ pub(super) fn source_name(class: &str) -> String {
     class.replace('/', ".")
 }
 
-/// Class files start with this magic number.
-const MAGIC: u32 = 0xCAFE_BABE;
-
-/// Constant pool tag for a modified-UTF-8 string.
-const TAG_UTF8: u8 = 1;
-/// Constant pool tag for a class reference, which names a string.
-const TAG_CLASS: u8 = 7;
-/// Constant pool tags that take two slots instead of one.
-const TAG_LONG: u8 = 5;
-const TAG_DOUBLE: u8 = 6;
-
 /// Access flag marking a member as static.
 pub(super) const ACC_STATIC: u16 = 0x0008;
 /// Access flags a stub reproduces from the class it stands in for.
@@ -174,8 +171,67 @@ pub(super) const ACC_ABSTRACT: u16 = 0x0400;
 /// Access flag marking a member the compiler invented.
 const ACC_SYNTHETIC: u16 = 0x1000;
 
-/// The attribute a class file records an unerased declaration under.
-const SIGNATURE: &str = "Signature";
+/// Decodes modified UTF-8 without silently replacing unpaired surrogates.
+fn text(value: &MStr) -> Result<String, ClassFileError> {
+    value
+        .chars()
+        .collect::<Result<String, _>>()
+        .map_err(|surrogate| {
+            ClassFileError(format!(
+                "unpaired surrogate {surrogate:#x} in a classfile string"
+            ))
+        })
+}
+
+/// Walks all attribute envelopes, including nested code and record attributes.
+/// Unknown attributes remain opaque; a Signature must be exactly one CP index.
+fn attributes<'a>(
+    pool: &ConstantPool<'a>,
+    entries: DecodeMany<'a, Attribute<'a>, u16>,
+) -> Result<Option<&'a MStr>, ClassFileError> {
+    let mut signature = None;
+    for entry in entries {
+        let entry = entry?;
+        let name = pool.retrieve(entry.name())?;
+        if name.as_bytes() == b"Signature" && entry.content().len() != 2 {
+            return Err(ClassFileError(format!(
+                "Signature attribute has length {} rather than two",
+                entry.content().len()
+            )));
+        }
+        if name.as_bytes() == b"LineNumberTable" {
+            // noak 0.7 decodes start_pc as u32; JVMS 4.7.12 specifies u16.
+            let content = entry.content();
+            let valid = content.first_chunk::<2>().is_some_and(|count| {
+                content.len() == 2 + usize::from(u16::from_be_bytes(*count)) * 4
+            });
+            if !valid {
+                return Err(ClassFileError(
+                    "LineNumberTable attribute has inconsistent length and entry count".to_owned(),
+                ));
+            }
+            continue;
+        }
+        let content = match entry.read_content(pool) {
+            Ok(content) => content,
+            Err(error) if error.kind() == DecodeErrorKind::UnknownAttributeName => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if let AttributeContent::Signature(value) = content {
+            signature = Some(pool.retrieve(value.signature())?);
+        } else if let AttributeContent::Code(value) = content {
+            attributes(pool, value.attributes())?;
+        } else if let AttributeContent::Record(value) = content {
+            for component in value.components() {
+                let component = component?;
+                pool.retrieve(component.name())?;
+                TypeDescriptor::parse(pool.retrieve(component.descriptor())?)?;
+                attributes(pool, component.attributes())?;
+            }
+        }
+    }
+    Ok(signature)
+}
 
 /// Anything that stops a class file from being read.
 #[derive(Debug)]
@@ -184,6 +240,12 @@ pub(super) struct ClassFileError(String);
 impl fmt::Display for ClassFileError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "the class file is unreadable: {}", self.0)
+    }
+}
+
+impl From<DecodeError> for ClassFileError {
+    fn from(error: DecodeError) -> Self {
+        Self(error.to_string())
     }
 }
 
@@ -246,210 +308,110 @@ impl Hierarchy {
     }
 }
 
-/// Reads every declared member of one class file.
-pub(super) fn members(bytes: &[u8]) -> Result<Vec<Member>, ClassFileError> {
-    let (pool, mut reader) = header(bytes)?;
-    reader.skip(6)?; // access flags, this class, super class
-    let interfaces = reader.u16()?;
-    reader.skip(usize::from(interfaces) * 2)?;
+fn member<'a>(
+    pool: &ConstantPool<'a>,
+    name: Index<Utf8<'a>>,
+    descriptor: Index<Utf8<'a>>,
+    flags: u16,
+    method: bool,
+    entries: DecodeMany<'a, Attribute<'a>, u16>,
+) -> Result<Member, ClassFileError> {
+    let descriptor = pool.retrieve(descriptor)?;
+    if method {
+        MethodDescriptor::parse(descriptor)?;
+    } else {
+        TypeDescriptor::parse(descriptor)?;
+    }
+    Ok(Member {
+        name: text(pool.retrieve(name)?)?,
+        descriptor: text(descriptor)?,
+        flags,
+        method,
+        signature: attributes(pool, entries)?.map(text).transpose()?,
+    })
+}
 
-    let mut members = Vec::new();
-    for method in [false, true] {
-        let count = reader.u16()?;
-        for _ in 0..count {
-            let flags = reader.u16()?;
-            let name = pool.string(&mut reader)?;
-            let descriptor = pool.string(&mut reader)?;
-            let signature = attributes(&pool, &mut reader)?;
-            members.push(Member {
-                name,
-                descriptor,
-                flags,
-                method,
-                signature,
-            });
-        }
+/// Parses one complete class, validating hierarchy references and class attributes.
+fn parse(bytes: &[u8]) -> Result<Class<'_>, ClassFileError> {
+    let class = Class::new(bytes)?;
+    if class.buffer_size() != bytes.len() {
+        return Err(ClassFileError(
+            "Extra bytes after reading class file".to_owned(),
+        ));
+    }
+    let pool = class.pool();
+    pool.retrieve(class.this_class())?;
+    if let Some(super_class) = class.super_class() {
+        pool.retrieve(super_class)?;
+    }
+    for interface in class.interfaces() {
+        pool.retrieve(interface?)?;
+    }
+    attributes(pool, class.attributes())?;
+    Ok(class)
+}
+
+/// Reads fields first, then methods, retaining each table's declaration order.
+pub(super) fn members(bytes: &[u8]) -> Result<Vec<Member>, ClassFileError> {
+    let class = parse(bytes)?;
+    let pool = class.pool();
+    let fields = class.fields();
+    let methods = class.methods();
+    let capacity =
+        fields.iter().size_hint().1.unwrap_or(0) + methods.iter().size_hint().1.unwrap_or(0);
+    let mut members = Vec::with_capacity(capacity);
+    for field in fields {
+        let field = field?;
+        members.push(member(
+            pool,
+            field.name(),
+            field.descriptor(),
+            field.access_flags().bits(),
+            false,
+            field.attributes(),
+        )?);
+    }
+    for method in methods {
+        let method = method?;
+        members.push(member(
+            pool,
+            method.name(),
+            method.descriptor(),
+            method.access_flags().bits(),
+            true,
+            method.attributes(),
+        )?);
     }
     Ok(members)
 }
 
-/// Reads the class's own flags and the types it sits under.
+/// Reads hierarchy metadata without materializing unused member strings.
 pub(super) fn hierarchy(bytes: &[u8]) -> Result<Hierarchy, ClassFileError> {
-    let (pool, mut reader) = header(bytes)?;
-    let flags = reader.u16()?;
-    reader.skip(2)?; // this class
-    let super_index = reader.u16()?;
-    // Only `java/lang/Object` has no superclass, and it writes index zero.
-    let super_class = if super_index == 0 {
-        None
-    } else {
-        Some(pool.class(super_index)?)
-    };
-
-    let count = reader.u16()?;
-    let mut interfaces = Vec::with_capacity(usize::from(count));
-    for _ in 0..count {
-        let index = reader.u16()?;
-        interfaces.push(pool.class(index)?);
-    }
-
+    let class = parse(bytes)?;
+    let pool = class.pool();
+    let super_class = class
+        .super_class()
+        .map(|index| text(pool.retrieve(index)?.name))
+        .transpose()?;
+    let interfaces = class
+        .interfaces()
+        .into_iter()
+        .map(|index| text(pool.retrieve(index?)?.name))
+        .collect::<Result<Vec<_>, ClassFileError>>()?;
     Ok(Hierarchy {
         super_class,
         interfaces,
-        flags,
+        flags: class.access_flags().bits(),
     })
-}
-
-/// Reads the magic, the version, and the constant pool, leaving the rest.
-fn header(bytes: &[u8]) -> Result<(Pool, Reader<'_>), ClassFileError> {
-    let mut reader = Reader { bytes, at: 0 };
-    if reader.u32()? != MAGIC {
-        return Err(ClassFileError(
-            "it does not start with the class file magic".to_owned(),
-        ));
-    }
-    reader.skip(4)?; // minor and major version
-    let pool = constant_pool(&mut reader)?;
-    Ok((pool, reader))
-}
-
-/// The constant pool entries a generator reads, indexed as the class file does.
-struct Pool {
-    /// Modified-UTF-8 entries.
-    strings: Vec<Option<String>>,
-    /// Class entries, each holding the pool index of its own name.
-    classes: Vec<Option<u16>>,
-}
-
-impl Pool {
-    /// Reads the next index and returns the string it names.
-    fn string(&self, reader: &mut Reader<'_>) -> Result<String, ClassFileError> {
-        let index = usize::from(reader.u16()?);
-        self.strings
-            .get(index)
-            .and_then(Option::as_ref)
-            .cloned()
-            .ok_or_else(|| ClassFileError(format!("constant pool entry {index} is not a string")))
-    }
-
-    /// Resolves a class entry to the internal name it holds.
-    fn class(&self, index: u16) -> Result<String, ClassFileError> {
-        let name = self
-            .classes
-            .get(usize::from(index))
-            .and_then(|entry| *entry)
-            .ok_or_else(|| ClassFileError(format!("constant pool entry {index} is not a class")))?;
-        self.strings
-            .get(usize::from(name))
-            .and_then(Option::as_ref)
-            .cloned()
-            .ok_or_else(|| ClassFileError(format!("class entry {index} names no string")))
-    }
-}
-
-fn constant_pool(reader: &mut Reader<'_>) -> Result<Pool, ClassFileError> {
-    let count = usize::from(reader.u16()?);
-    let mut strings = vec![None; count.max(1)];
-    let mut classes = vec![None; count.max(1)];
-    let mut index = 1;
-    while index < count {
-        let tag = reader.u8()?;
-        match tag {
-            TAG_UTF8 => {
-                let length = usize::from(reader.u16()?);
-                let bytes = reader.take(length)?;
-                // Modified UTF-8 differs from UTF-8 only for NUL and
-                // supplementary characters, which member names do not use.
-                strings[index] = Some(String::from_utf8_lossy(bytes).into_owned());
-            }
-            TAG_CLASS => classes[index] = Some(reader.u16()?),
-            TAG_LONG | TAG_DOUBLE => {
-                reader.skip(8)?;
-                // These occupy two pool slots, a quirk the format never dropped.
-                index += 1;
-            }
-            _ => reader.skip(constant_width(tag)?)?,
-        }
-        index += 1;
-    }
-    Ok(Pool { strings, classes })
-}
-
-/// Bytes following a constant pool tag, for the tags that are fixed width.
-fn constant_width(tag: u8) -> Result<usize, ClassFileError> {
-    match tag {
-        7 | 8 | 16 | 19 | 20 => Ok(2), // Class, String, MethodType, Module, Package
-        15 => Ok(3),                   // MethodHandle
-        3 | 4 | 9 | 10 | 11 | 12 | 17 | 18 => Ok(4), // numbers, references, Dynamic
-        unknown => Err(ClassFileError(format!(
-            "constant pool tag {unknown} is unknown"
-        ))),
-    }
-}
-
-/// Walks one member's attribute table, answering its `Signature` where it has
-/// one.
-fn attributes(pool: &Pool, reader: &mut Reader<'_>) -> Result<Option<String>, ClassFileError> {
-    let count = reader.u16()?;
-    let mut signature = None;
-    for _ in 0..count {
-        let name = pool.string(reader)?;
-        let length = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
-        if name == SIGNATURE {
-            // A `Signature` attribute is one pool index and nothing else, so one
-            // of any other length is malformed rather than something to skip.
-            if length != 2 {
-                return Err(ClassFileError(format!(
-                    "a Signature attribute is {length} bytes rather than two"
-                )));
-            }
-            signature = Some(pool.string(reader)?);
-        } else {
-            reader.skip(length)?;
-        }
-    }
-    Ok(signature)
-}
-
-struct Reader<'bytes> {
-    bytes: &'bytes [u8],
-    at: usize,
-}
-
-impl<'bytes> Reader<'bytes> {
-    fn take(&mut self, count: usize) -> Result<&'bytes [u8], ClassFileError> {
-        let end = self
-            .at
-            .checked_add(count)
-            .filter(|end| *end <= self.bytes.len())
-            .ok_or_else(|| ClassFileError("it ends before its members do".to_owned()))?;
-        let slice = &self.bytes[self.at..end];
-        self.at = end;
-        Ok(slice)
-    }
-
-    fn skip(&mut self, count: usize) -> Result<(), ClassFileError> {
-        self.take(count).map(|_| ())
-    }
-
-    fn u8(&mut self) -> Result<u8, ClassFileError> {
-        Ok(self.take(1)?[0])
-    }
-
-    fn u16(&mut self) -> Result<u16, ClassFileError> {
-        let bytes = self.take(2)?;
-        Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
-    }
-
-    fn u32(&mut self) -> Result<u32, ClassFileError> {
-        let bytes = self.take(4)?;
-        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ACC_INTERFACE, MAGIC, TAG_CLASS, TAG_UTF8, hierarchy, members};
+    use super::{ACC_INTERFACE, hierarchy, members};
+
+    const MAGIC: u32 = 0xCAFE_BABE;
+    const TAG_CLASS: u8 = 7;
+    const TAG_UTF8: u8 = 1;
 
     fn class_prefix(strings: &[&str], other_entries: u16) -> Vec<u8> {
         let size = 10 + strings.iter().map(|text| text.len() + 3).sum::<usize>();
@@ -468,16 +430,16 @@ mod tests {
     }
 
     fn one_hierarchy_class(flags: u16) -> Vec<u8> {
-        let mut bytes = class_prefix(&["some/Parent", "some/Contract"], 2);
-        for name in [1_u16, 2] {
+        let mut bytes = class_prefix(&["some/Parent", "some/Contract", "some/Child"], 3);
+        for name in [1_u16, 2, 3] {
             bytes.push(TAG_CLASS);
             bytes.extend(name.to_be_bytes());
         }
         bytes.extend(flags.to_be_bytes()); // access flags
-        bytes.extend(0_u16.to_be_bytes()); // this class
-        bytes.extend(3_u16.to_be_bytes()); // super class
+        bytes.extend(6_u16.to_be_bytes()); // this class
+        bytes.extend(4_u16.to_be_bytes()); // super class
         bytes.extend(1_u16.to_be_bytes()); // one interface
-        bytes.extend(4_u16.to_be_bytes());
+        bytes.extend(5_u16.to_be_bytes());
         bytes.extend(0_u16.to_be_bytes()); // fields
         bytes.extend(0_u16.to_be_bytes()); // methods
         bytes.extend(0_u16.to_be_bytes()); // class attributes
@@ -486,17 +448,28 @@ mod tests {
 
     /// Builds the smallest class file that declares one static method.
     fn one_method_class() -> Vec<u8> {
-        let mut bytes = class_prefix(&["hook", "(I)Z"], 0);
+        one_member_class("(I)Z", true)
+    }
+
+    fn one_member_class(descriptor: &str, method: bool) -> Vec<u8> {
+        let mut bytes = class_prefix(&["hook", descriptor, "some/Child"], 1);
+        bytes.push(TAG_CLASS);
+        bytes.extend(3_u16.to_be_bytes());
         bytes.extend(0_u16.to_be_bytes()); // access flags
-        bytes.extend(0_u16.to_be_bytes()); // this class
+        bytes.extend(4_u16.to_be_bytes()); // this class
         bytes.extend(0_u16.to_be_bytes()); // super class
         bytes.extend(0_u16.to_be_bytes()); // interfaces
-        bytes.extend(0_u16.to_be_bytes()); // fields
-        bytes.extend(1_u16.to_be_bytes()); // methods
+        if method {
+            bytes.extend(0_u16.to_be_bytes()); // no fields
+        }
+        bytes.extend(1_u16.to_be_bytes()); // one field or method
         bytes.extend(0x0008_u16.to_be_bytes()); // ACC_STATIC
         bytes.extend(1_u16.to_be_bytes()); // name index
         bytes.extend(2_u16.to_be_bytes()); // descriptor index
         bytes.extend(0_u16.to_be_bytes()); // method attributes
+        if !method {
+            bytes.extend(0_u16.to_be_bytes()); // no methods
+        }
         bytes.extend(0_u16.to_be_bytes()); // class attributes
         bytes
     }
@@ -516,7 +489,7 @@ mod tests {
     fn bytes_that_are_not_a_class_file_are_refused() {
         let error = members(b"not a class file").expect_err("this must not parse");
 
-        assert!(error.to_string().contains("class file magic"));
+        assert!(error.to_string().contains("invalid file prefix"), "{error}");
     }
 
     #[test]
@@ -526,7 +499,10 @@ mod tests {
 
         let error = members(&bytes).expect_err("a truncated file must not parse");
 
-        assert!(error.to_string().contains("ends before"));
+        assert!(
+            error.to_string().contains("unexpected end of input"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -570,7 +546,7 @@ mod tests {
 
         let error = hierarchy(&bytes).expect_err("a string is not a supertype");
 
-        assert!(error.to_string().contains("is not a class"), "{error}");
+        assert!(error.to_string().contains("tag mismatch"), "{error}");
     }
 
     #[test]
@@ -593,10 +569,13 @@ mod tests {
                 "Unrelated",
                 "Signature",
                 "()Ljava/util/List<Lsome/Line;>;",
+                "some/Child",
             ],
-            0,
+            1,
         );
-        for value in [0_u16, 0, 0, 0, 0] {
+        bytes.push(TAG_CLASS);
+        bytes.extend(6_u16.to_be_bytes());
+        for value in [0_u16, 7, 0, 0, 0] {
             // flags, this class, no superclass, no interfaces, no fields
             bytes.extend(value.to_be_bytes());
         }
@@ -640,7 +619,11 @@ mod tests {
         let error =
             members(&one_signed_method_class(3)).expect_err("a three-byte signature is malformed");
 
-        assert!(error.to_string().contains("rather than two"), "{error}");
+        assert!(
+            error.to_string().contains("length 3 rather than two"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("Signature attribute"), "{error}");
     }
 
     #[test]
@@ -650,6 +633,211 @@ mod tests {
 
         let error = members(&bytes).expect_err("an unknown tag must not parse");
 
-        assert!(error.to_string().contains("constant pool tag 200"));
+        assert!(error.to_string().contains("invalid tag"), "{error}");
+    }
+
+    #[test]
+    fn modified_utf8_member_names_decode_without_replacement_characters() {
+        for (encoded, expected) in [
+            (&b"m\xc0\x80"[..], "m\0"),
+            (&b"m\xed\xa0\x81\xed\xb0\x80"[..], "m\u{10400}"),
+        ] {
+            let mut bytes = one_method_class();
+            bytes[11..13].copy_from_slice(
+                &u16::try_from(encoded.len())
+                    .expect("a short name")
+                    .to_be_bytes(),
+            );
+            bytes.splice(13..17, encoded.iter().copied());
+
+            let read = members(&bytes).expect("modified UTF-8 is the classfile encoding");
+
+            assert_eq!(read[0].name, expected);
+        }
+    }
+
+    #[test]
+    fn malformed_descriptors_are_not_reformatted_into_valid_members() {
+        for (descriptor, method) in [
+            ("(I)ZZ", true),
+            ("(I)Vextra", true),
+            ("Iextra", false),
+            ("V", false),
+        ] {
+            let error = members(&one_member_class(descriptor, method))
+                .expect_err("the complete raw descriptor must be validated");
+            assert!(
+                error.to_string().contains("invalid descriptor"),
+                "{descriptor}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn extra_bytes_after_a_class_are_refused() {
+        let mut bytes = one_method_class();
+        bytes.push(0);
+
+        let error = members(&bytes).expect_err("a complete class cannot have a trailing byte");
+
+        assert!(error.to_string().contains("Extra bytes"), "{error}");
+    }
+
+    #[test]
+    fn malformed_nested_code_attributes_are_not_hidden_by_a_valid_outer_length() {
+        let mut bytes = class_prefix(&["hook", "()V", "Code", "some/Child"], 1);
+        bytes.push(TAG_CLASS);
+        bytes.extend(4_u16.to_be_bytes());
+        for value in [0_u16, 5, 0, 0, 0, 1, 1, 1, 2, 1, 3] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(12_u32.to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes()); // max stack
+        bytes.extend(0_u16.to_be_bytes()); // max locals
+        bytes.extend(0_u32.to_be_bytes()); // code length
+        bytes.extend(0_u16.to_be_bytes()); // exception handlers
+        bytes.extend(1_u16.to_be_bytes()); // missing nested attribute
+        bytes.extend(0_u16.to_be_bytes()); // class attributes, outside Code
+
+        let error = members(&bytes).expect_err("nested attribute envelopes must be traversed");
+        assert!(
+            error.to_string().contains("unexpected end of input"),
+            "{error}"
+        );
+    }
+
+    fn one_line_table_class(content: &[u8]) -> Vec<u8> {
+        let mut bytes = class_prefix(&["hook", "()V", "Code", "LineNumberTable", "some/Child"], 1);
+        bytes.push(TAG_CLASS);
+        bytes.extend(5_u16.to_be_bytes());
+        for value in [0_u16, 6, 0, 0, 0, 1, 1, 1, 2, 1, 3] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend((19 + u32::try_from(content.len()).expect("short table")).to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes()); // max stack
+        bytes.extend(1_u16.to_be_bytes()); // max locals
+        bytes.extend(1_u32.to_be_bytes()); // code length
+        bytes.push(0xb1); // return
+        bytes.extend(0_u16.to_be_bytes()); // exception handlers
+        bytes.extend(1_u16.to_be_bytes()); // nested attribute count
+        bytes.extend(4_u16.to_be_bytes()); // LineNumberTable
+        bytes.extend(
+            u32::try_from(content.len())
+                .expect("short table")
+                .to_be_bytes(),
+        );
+        bytes.extend(content);
+        bytes.extend(0_u16.to_be_bytes()); // class attributes
+        bytes
+    }
+
+    #[test]
+    fn line_number_table_uses_two_u16_values_per_entry() {
+        let bytes = one_line_table_class(&[0, 1, 0, 0, 0x12, 0x34]);
+        let read = members(&bytes).expect("a valid javac line table uses four-byte entries");
+
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].name, "hook");
+        assert_eq!(read[0].descriptor, "()V");
+    }
+
+    #[test]
+    fn line_number_table_refuses_missing_truncated_and_extra_entries() {
+        for content in [
+            &[0][..],
+            &[0, 1, 0, 0, 0x12][..],
+            &[0, 0, 0, 0][..],
+            &[0, 2, 0, 0, 0x12, 0x34][..],
+        ] {
+            let error = members(&one_line_table_class(content))
+                .expect_err("the complete table must match its declared entry count");
+
+            assert!(
+                error.to_string().contains("LineNumberTable attribute"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn fields_precede_methods_and_each_keeps_its_declaration_order() {
+        let mut bytes = class_prefix(&["z", "a", "I", "()V", "some/Child"], 1);
+        bytes.push(TAG_CLASS);
+        bytes.extend(5_u16.to_be_bytes());
+        for value in [0_u16, 6, 0, 0] {
+            bytes.extend(value.to_be_bytes());
+        }
+        for descriptor in [3_u16, 4] {
+            bytes.extend(2_u16.to_be_bytes());
+            for name in [1_u16, 2] {
+                for value in [1_u16, name, descriptor, 0] {
+                    bytes.extend(value.to_be_bytes());
+                }
+            }
+        }
+        bytes.extend(0_u16.to_be_bytes());
+
+        let read = members(&bytes).expect("both member tables are valid");
+        let order: Vec<_> = read
+            .iter()
+            .map(|member| (member.name.as_str(), member.method))
+            .collect();
+
+        assert_eq!(
+            order,
+            [("z", false), ("a", false), ("z", true), ("a", true)]
+        );
+    }
+
+    #[test]
+    fn modern_record_attributes_are_parsed_and_truncation_is_refused() {
+        let mut bytes = class_prefix(&["some/Record", "Record", "value", "I"], 1);
+        bytes.push(TAG_CLASS);
+        bytes.extend(1_u16.to_be_bytes());
+        for value in [0_u16, 5, 0, 0, 0, 0, 1, 2] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(8_u32.to_be_bytes());
+        for value in [1_u16, 3, 4, 0] {
+            bytes.extend(value.to_be_bytes());
+        }
+
+        assert_eq!(members(&bytes).expect("a modern record attribute").len(), 0);
+        let count_at = bytes.len() - 8;
+        bytes[count_at..count_at + 2].copy_from_slice(&2_u16.to_be_bytes());
+        assert!(
+            members(&bytes).is_err(),
+            "a record cannot claim a missing second component"
+        );
+        bytes[count_at..count_at + 2].copy_from_slice(&1_u16.to_be_bytes());
+        bytes.pop();
+        assert!(
+            members(&bytes).is_err(),
+            "a truncated record must be refused"
+        );
+    }
+
+    #[test]
+    fn modern_module_attributes_are_supported() {
+        let mut bytes = class_prefix(&["module-info", "Module", "example.module"], 2);
+        bytes.push(TAG_CLASS);
+        bytes.extend(1_u16.to_be_bytes());
+        bytes.push(19); // CONSTANT_Module
+        bytes.extend(3_u16.to_be_bytes());
+        for value in [0x8000_u16, 4, 0, 0, 0, 0, 1, 2] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(16_u32.to_be_bytes());
+        for value in [5_u16, 0, 0, 0, 0, 0, 0, 0] {
+            bytes.extend(value.to_be_bytes());
+        }
+
+        assert_eq!(members(&bytes).expect("a modern module attribute").len(), 0);
+        assert_eq!(
+            hierarchy(&bytes)
+                .expect("a module has no parent")
+                .super_class,
+            None
+        );
     }
 }

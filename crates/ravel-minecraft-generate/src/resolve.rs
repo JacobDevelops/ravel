@@ -406,15 +406,17 @@ mod tests {
         class.extend(0xCAFE_BABE_u32.to_be_bytes());
         class.extend(0_u16.to_be_bytes()); // minor
         class.extend(69_u16.to_be_bytes()); // major
-        class.extend(3_u16.to_be_bytes()); // constant pool count
-        for text in [hook.member.as_str(), hook.descriptor.as_str()] {
+        class.extend(5_u16.to_be_bytes()); // constant pool count
+        for text in [hook.member.as_str(), hook.descriptor.as_str(), "Fixture"] {
             class.push(1); // modified UTF-8
             class.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             class.extend(text.as_bytes());
         }
+        class.push(7); // class
+        class.extend(3_u16.to_be_bytes());
         // access flags, this, super, interfaces, fields, one method, then the
         // method's flags, name index, descriptor index, and both attribute counts.
-        for value in [0_u16, 0, 0, 0, 0, 1, flags, 1, 2, 0, 0] {
+        for value in [0_u16, 4, 0, 0, 0, 1, flags, 1, 2, 0, 0] {
             class.extend(value.to_be_bytes());
         }
         (inventory, fixture::stored(&entry, &class))
@@ -503,13 +505,15 @@ mod tests {
         class.extend(0xCAFE_BABE_u32.to_be_bytes());
         class.extend(0_u16.to_be_bytes());
         class.extend(69_u16.to_be_bytes());
-        class.extend(3_u16.to_be_bytes());
-        for text in [member, "(C)Z"] {
+        class.extend(5_u16.to_be_bytes());
+        for text in [member, "(C)Z", "a"] {
             class.push(1);
             class.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             class.extend(text.as_bytes());
         }
-        for value in [0_u16, 0, 0, 0, 0, 1, 0x0008, 1, 2, 0, 0] {
+        class.push(7);
+        class.extend(3_u16.to_be_bytes());
+        for value in [0_u16, 4, 0, 0, 0, 1, 0x0008, 1, 2, 0, 0] {
             class.extend(value.to_be_bytes());
         }
         (inventory, mapping, fixture::stored("a.class", &class))

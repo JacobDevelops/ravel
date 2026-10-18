@@ -28,10 +28,13 @@ stable contracts toward concrete host internals.
   they generate — is that crate's model, and `ravel-pack` reads the same
   declarations to check a pack's registry closure and to merge its members' tags;
   a model living in the facade would make a feature crate depend on the facade.
-- `ravel-minecraft-generate` depends only on `ravel-core`, `miniz_oxide`, `serde`,
-  `serde_json`, `sha2` and `toml`; it is used only by build tooling. JVM names and
-  descriptor tokens live in its classfile module, shared by source rendering,
-  hook-shape classification and tooling inventory counts.
+- `ravel-minecraft-generate` is used only by build tooling and depends only on
+  `ravel-core`, `serde`, `serde_json`, `sha2`, `toml`, `noak`, `zip` and `proguard`.
+  `noak` retains raw JVM descriptors and decodes modified UTF-8; `zip` provides
+  archive integrity and bounded DEFLATE reads; `proguard` parses mapping records.
+  Artifact admission, descriptor validation and mapping uniqueness remain ours.
+  JVM names and descriptor tokens live in its classfile module, shared by source
+  rendering, hook-shape classification and tooling inventory counts.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's

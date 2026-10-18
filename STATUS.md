@@ -25,6 +25,12 @@ M0–M5 measured ATM11 0.2.1 (Minecraft 26.1.2); M6 measured ATM10 To the Sky 2.
 
 ### Current player path
 
+Minecraft 1.12.2 passes official live agent acceptance on the pinned JDK 27.
+An integrated session and reopen, a connected dedicated server and a dedicated
+restart exercise all 29 legacy semantic hooks; see `docs/runbooks/legacy-launch.md`.
+Its eligibility stays generation-only until the gate's live obligations are
+defined for legacy versions; `docs/handoff/HANDOFF.md` names the blocker.
+
 **Ravel has run inside a real Minecraft 1.21.1 client.** Private launch captures under
 `evidence/private/launch-1.21.1/` prove source-distributed examples compiled into the instance's host,
 loaded through `-Dravel.host`, and listed on the mods screen. A Rust-declared block renders, places,

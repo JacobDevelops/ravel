@@ -34,9 +34,18 @@ must come from the integration owner's results for the current tree, not old cou
 
 ## WP4 acceptance boundary
 
-- Minecraft 1.12.2 remains generation-only until its official client and dedicated
-  server acceptance runs exercise the semantic ports and all thirteen harness sections.
-  The new ports and live harness have not yet passed that acceptance or the full gate.
+- Minecraft 1.12.2 remains generation-only even though official live acceptance
+  passed (see below). Promotion is blocked on gate semantics, not on the port:
+  with `live`, `ravel:test` runs the whole workspace suite at 1.12.2, and 6 of
+  3,952 tests fail on modern-only obligations. Three `content_declarations`
+  conformance tests compose `examples/content-mod`, which correctly declares
+  `>=1.21.0, <27.0.0`. The adapter test
+  `the_table_carries_both_a_method_and_a_field_target` requires an
+  `InstanceField` hook target, and the legacy inventory has none. The xtask
+  `java_shape` and `scaffold` reflection checks require `reflection.toml` to
+  declare the modern `GameNames` roles used by shared `Content.java` and
+  `Outward.java`, which the legacy source closure does not compile. Promotion
+  needs live obligations gated on the `legacy-1-12` capability, not on eligibility.
 - Keep native access limited to the named `dev.ravel.agent` module and the four
   existing LWJGL modules. Do not grant unnamed modules native access; narrator/JNA
   remains intentionally unsupported.
@@ -59,7 +68,7 @@ must come from the integration owner's results for the current tree, not old cou
 - Integration checks now pass for the legacy agent/screen build, official linkage
   scan (3,310 classes and 726 references), platform math/shutdown/loader checks,
   generator/runtime/package suites, and all-targets clippy. The full verification
-  gate passes with 3,932 tests for each modern version and 93.00% line coverage.
+  gate passes with 3,952 tests for each modern version and 92.93% line coverage.
   Generic transformation covers all 29 reviewed hooks, typed
   execution and descriptor refusals, palette call provenance, hierarchy,
   initialization, side selection, loader identity, and JNI semantic boundaries.
@@ -79,8 +88,17 @@ must come from the integration owner's results for the current tree, not old cou
 - The port is split into four compiling changes: generated hook contracts, native
   runtime and test mods, Java bridges, and acceptance harness/tasks/docs. Each
   passes workspace all-targets/all-features clippy with warnings denied alone.
-- Integrated and connected-dedicated live acceptance and persistence restart
-  evidence remain unexecuted. The offline gate does not establish live eligibility.
+- Official live acceptance passes: `cargo make ravel:legacy-agent-live` exited 0 with
+  an integrated session and reopen, a connected-dedicated session and a dedicated
+  restart. All 29 hooks appeared in fresh logs, and persisted native visits advanced
+  by exactly one on reopen and restart. `docs/runbooks/legacy-launch.md` records the
+  durations and which hooks gameplay drove rather than acceptance probes. Four fixes
+  found by the first live run are in the stack. Server-bound fixture packets decode
+  through the official no-argument constructor and `Packet.read`, because dedicated
+  jars strip the client-only constructor. F3+T holds F3 until the reload is observed.
+  `live.py` reads the aggregate's `owners`. The legacy proof report writes to the
+  stderr descriptor, because the game's redirected streams drop output after logger
+  shutdown.
 
 ## Research pointers
 

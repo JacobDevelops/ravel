@@ -145,9 +145,35 @@ and `evidence-server-agent/`. All remain under the ignored local fixture root.
 Dedicated startup still checks the actual seed, vanilla save, successful exit,
 and absence of LWJGL/GLFW/OpenAL/JInput native libraries.
 
-Agent acceptance results are **pending lead integration execution**. No agent
-launch duration, exit status, hook count, or harness section is inferred from the
-recorded vanilla runs below. Packaging is not hook, semantic, or live acceptance.
+On 2026-10-18 `mise exec -- numen run -- cargo make ravel:legacy-agent-live`
+exited 0 in 56 seconds on Temurin 27+35 under Xvfb. All thirteen harness
+sections passed. The integrated client exited 0 after 30.3 seconds; its
+automation completed menu clicks, typed world name and seed, creation, 100
+ticks, `AL_PLAYING` audio, F3+T resource and atlas reload, walk, look, wheel,
+resize, fullscreen, paused-tick check, save/quit and reopen in 28.0 seconds.
+Integrated checkpoints recorded 1 then 2 native visits. The dedicated server with
+a connected official client exited 0 after 13.8 seconds; the client run took
+8.7 seconds. The dedicated restart exited 0 after 2.6 seconds, and checkpoints
+advanced from 3 to 4 visits. No client native loaded on the server. All 29 hooks
+appeared in fresh process logs.
+A separate `client-agent display` run on the desktop display used an NVIDIA
+OpenGL 4.6 context and exited 0 after 27.7 seconds, with the same automated
+actions and `AL_PLAYING` audio. That run did not perform the F3+T reload,
+paused-tick check or integrated checkpoints, so the Xvfb run above is the
+acceptance record.
+
+Vanilla play, Robot input and lifecycle drove 23 of the 29 hooks. These are
+bootstrap, block and item registration, item metadata, all four tick hooks,
+resource and atlas reload, recipe registration, the four saved-data hooks,
+world save, screen open and draw, title init, both world-open hooks, command
+install, and global palette size. The other six ran from acceptance probes
+calling the real transformed methods on the owning thread: block-state-from-metadata,
+block-metadata-from-state, fire damage, both payload hooks and command execution.
+The payload packets crossed the real connections, and dedicated console commands
+also executed. The Ravel mods and settings screens were opened by a probe.
+Adapter callback counters alone are not gameplay proof. Missing fixture
+blockstate and item models log warnings only. Rendering stayed vanilla, and no
+performance claim is made.
 
 ## JVM permissions
 

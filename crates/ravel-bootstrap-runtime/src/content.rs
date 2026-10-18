@@ -2,12 +2,12 @@
 
 use std::sync::PoisonError;
 
+use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
-use jni::{Env, EnvUnowned};
 use ravel_core::ContentKind;
 use ravel_data::ContentBehaviour;
 
-use crate::guard::HookError;
+use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{VERSION, count, field, flag};
 
@@ -76,18 +76,10 @@ fn describe(out: &mut String, behaviour: ContentBehaviour) {
 /// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelAdmittedContent")]
 pub fn ravel_admitted_content<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            match document() {
-                Some(document) => Ok(env.new_string(document)?),
-                None => Ok(JString::default()),
-            }
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| Ok(document()))
 }
 
 #[cfg(test)]
@@ -97,7 +89,7 @@ mod tests {
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 
     use super::document_of;
-    use crate::runtime::LoaderRuntime;
+    use crate::runtime::{LoaderRuntime, advance_through};
     use crate::wire::fields;
 
     fn id(name: &str) -> ModId {
@@ -116,14 +108,7 @@ mod tests {
             .collect();
         let mut machine =
             LifecycleMachine::new(Side::Client, entries).expect("a valid plan for one side");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-        ] {
-            machine.advance_all(state).expect("a legal advance");
-        }
+        advance_through(&mut machine, LifecycleState::Constructed);
         LoaderRuntime::new(machine, Vec::new(), crate::runtime::test_launch())
     }
 

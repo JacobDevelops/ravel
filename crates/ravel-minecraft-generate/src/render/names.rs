@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
-use crate::GenerateError;
+use crate::error::GenerateError;
 use crate::inputs::{self, Adapter, Inventory, Lookup, Reflection};
 use crate::mapping::Mapping;
 

@@ -1,7 +1,7 @@
 //! Validates hook descriptors and derives the shared Java/JNI hook shape.
 
-use crate::GenerateError;
 use crate::classfile::method_types;
+use crate::error::GenerateError;
 use crate::inputs::Inventory;
 use crate::resolve::Resolved;
 

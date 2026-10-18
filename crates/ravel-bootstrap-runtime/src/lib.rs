@@ -49,6 +49,17 @@ mod tests {
     use ravel_minecraft::HookKind;
     use ravel_minecraft_adapter::pinned::TARGETS;
 
+    /// Creates an empty per-process directory under the system temporary directory, clearing
+    /// whatever an earlier run left behind.
+    pub(crate) fn fresh_directory(label: &str, name: &str) -> std::path::PathBuf {
+        let at = std::env::temp_dir().join(format!("ravel-{label}-{}-{name}", std::process::id()));
+        if at.exists() {
+            std::fs::remove_dir_all(&at).expect("remove the previous test directory");
+        }
+        std::fs::create_dir_all(&at).expect("a writable temporary directory");
+        at
+    }
+
     #[test]
     fn every_callable_target_has_an_exported_symbol_and_no_field_does() {
         let source = include_str!(env!("RAVEL_GENERATED_EXPORTS"));

@@ -105,16 +105,7 @@ mod tests {
             }],
         )
         .expect("one mod is a valid plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        crate::tests::advance_through(&mut machine, LifecycleState::Running);
         machine
     }
 

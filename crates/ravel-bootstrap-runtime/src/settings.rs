@@ -16,7 +16,7 @@ use ravel_core::{ModId, Side};
 use ravel_observability::redact;
 use serde_json::Value;
 
-use crate::guard::{HookError, text};
+use crate::guard::{HookError, hand_document, text};
 use crate::wire::{Reader, VERSION as WIRE_VERSION, field};
 
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
@@ -324,21 +324,12 @@ fn write_refusal(out: &mut String, key: &str, reason: &str) {
 /// Panics are translated into a JVM exception by the JNI guard.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSettingsDocument")]
 pub fn ravel_settings_document<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
     owner: JString<'local>,
 ) -> JString<'local> {
     DOCUMENT_CROSSINGS.fetch_add(1, Ordering::Relaxed);
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let owner = text(env, &owner)?;
-            match document(&owner) {
-                Some(document) => Ok(env.new_string(document)?),
-                None => Ok(JString::default()),
-            }
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |env| Ok(document(&text(env, &owner)?)))
 }
 
 /// Applies settings edits and returns refusals.

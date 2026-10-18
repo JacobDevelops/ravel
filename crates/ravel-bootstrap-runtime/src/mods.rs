@@ -5,12 +5,12 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
+use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
-use jni::{Env, EnvUnowned};
 use ravel_core::{DiagnosticMessage, FailureAttribution, FailureSurface, ModId};
 use ravel_loader::{ModEntry, Requirement};
 
-use crate::guard::HookError;
+use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{MODS_VERSION, count, field, flag};
 
@@ -134,18 +134,10 @@ const fn requirement_name(requirement: Requirement) -> &'static str {
 /// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelModSurface")]
 pub fn ravel_mod_surface<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            match document() {
-                Some(document) => Ok(env.new_string(document)?),
-                None => Ok(JString::default()),
-            }
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| Ok(document()))
 }
 
 #[cfg(test)]

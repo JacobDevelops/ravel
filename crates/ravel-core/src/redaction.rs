@@ -1,4 +1,4 @@
-use crate::DiagnosticMessage;
+use crate::diagnostics::DiagnosticMessage;
 
 const REDACTED: &str = "[redacted]";
 
@@ -345,7 +345,7 @@ fn separator(character: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticMessage, Redaction};
+    use crate::diagnostics::{DiagnosticMessage, Redaction};
 
     use super::redact;
 

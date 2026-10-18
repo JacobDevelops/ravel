@@ -91,6 +91,31 @@ pub(crate) fn test_launch() -> LaunchContext {
     )
 }
 
+/// Advances every mod in `machine` along the success path, from `Validated` through `last`.
+#[cfg(test)]
+pub(crate) fn advance_through(machine: &mut LifecycleMachine, last: ravel_core::LifecycleState) {
+    use ravel_core::LifecycleState;
+
+    const SUCCESS_PATH: [LifecycleState; 6] = [
+        LifecycleState::Validated,
+        LifecycleState::Resolved,
+        LifecycleState::Loaded,
+        LifecycleState::Constructed,
+        LifecycleState::Registered,
+        LifecycleState::Running,
+    ];
+    assert!(
+        SUCCESS_PATH.contains(&last),
+        "{last:?} is not on the success path"
+    );
+    for state in SUCCESS_PATH {
+        machine.advance_all(state).expect("a legal step");
+        if state == last {
+            break;
+        }
+    }
+}
+
 static RUNTIME: OnceLock<Arc<LoaderRuntime>> = OnceLock::new();
 
 pub(crate) fn installed() -> Option<&'static Arc<LoaderRuntime>> {

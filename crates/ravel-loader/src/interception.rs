@@ -165,7 +165,7 @@ mod tests {
     use super::{InterceptRefused, intercept};
     use crate::lifecycle::LifecycleMachine;
     use crate::loaded::LoadedMods;
-    use crate::tests::entry;
+    use crate::tests::{advance_through, entry};
 
     // Reverse lexical order ensures ordering assertions depend on the declared edge.
     const GUARD: &str = "zephyr_guard";
@@ -284,16 +284,7 @@ mod tests {
                 .collect(),
         )
         .expect("a legal plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Running);
         machine
     }
 

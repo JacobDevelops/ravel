@@ -629,8 +629,7 @@ mod tests {
     use ravel_host_api::{HostError, HostMod, ModError};
     use ravel_observability::redact;
 
-    use super::{LifecycleError, LifecycleMachine, executes_mod_code, has_registered};
-    use crate::Requirement;
+    use super::{LifecycleError, LifecycleMachine, Requirement, executes_mod_code, has_registered};
     use crate::tests::entry;
 
     const SUCCESS_PATH: [LifecycleState; 8] = [

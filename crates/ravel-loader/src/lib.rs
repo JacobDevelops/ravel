@@ -73,7 +73,7 @@ mod tests {
     use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
     use ravel_host_api::{HostError, ModError};
 
-    use crate::lifecycle::{LifecycleEntry, Requirement};
+    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 
     pub(crate) fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
         LifecycleEntry {
@@ -81,6 +81,28 @@ mod tests {
             sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
             requirement: Requirement::Required,
             saved_data_versions: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Advances every mod in `machine` along the success path, from `Validated` through `last`.
+    pub(crate) fn advance_through(machine: &mut LifecycleMachine, last: LifecycleState) {
+        const SUCCESS_PATH: [LifecycleState; 6] = [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ];
+        assert!(
+            SUCCESS_PATH.contains(&last),
+            "{last:?} is not on the success path"
+        );
+        for state in SUCCESS_PATH {
+            machine.advance_all(state).expect("a legal step");
+            if state == last {
+                break;
+            }
         }
     }
 

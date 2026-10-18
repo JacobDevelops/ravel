@@ -8,7 +8,7 @@ use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError,
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
-use super::{COMMAND, EVENTS, LoaderRuntime, environment};
+use super::{COMMAND, EVENTS, LoaderRuntime, advance_through, environment};
 
 use ravel_data::PlayRequest;
 
@@ -143,14 +143,7 @@ fn parts(
         saved_data_versions: BTreeSet::new(),
     };
     let mut machine = LifecycleMachine::new(side, vec![entry]).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Constructed);
     {
         let mut window = machine
             .registration_window(&id(MOD))
@@ -176,16 +169,7 @@ fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
         saved_data_versions: BTreeSet::new(),
     };
     let mut machine = LifecycleMachine::new(side, vec![entry]).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Running);
     LoaderRuntime::new(machine, vec![host], crate::runtime::test_launch())
 }
 
@@ -346,14 +330,7 @@ fn driven_pair(
             })
         })
         .collect();
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("step");
-    }
+    advance_through(&mut machine, LifecycleState::Constructed);
     for host in &mut mods {
         let mut window = machine.registration_window(host.id()).expect("window");
         host.register(&mut window).expect("register");

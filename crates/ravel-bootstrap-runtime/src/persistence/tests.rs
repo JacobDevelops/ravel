@@ -12,12 +12,7 @@ fn a_world_path_that_names_no_absolute_directory_is_refused() {
 }
 
 fn scratch(name: &str) -> std::path::PathBuf {
-    let at = std::env::temp_dir().join(format!("ravel-world-guard-{}-{name}", std::process::id()));
-    if at.exists() {
-        std::fs::remove_dir_all(&at).expect("remove the previous test directory");
-    }
-    std::fs::create_dir_all(&at).expect("a writable temporary directory");
-    at
+    crate::tests::fresh_directory("world-guard", name)
 }
 
 #[test]
@@ -113,7 +108,7 @@ use ravel_save::{
 use serde_json::json;
 
 use super::{OpenOutcome, SaveOutcome, StagedPack, WorldIdentity};
-use crate::runtime::LoaderRuntime;
+use crate::runtime::{LoaderRuntime, advance_through};
 
 const OWNER: &str = "saved_data";
 const OTHER_OWNER: &str = "other_saved_data";
@@ -365,16 +360,7 @@ fn owners_running_with_requirement(
         .collect();
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("independent mods are a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Running);
     (
         LoaderRuntime::with_observers(
             machine,
@@ -556,16 +542,7 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
         .collect();
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("independent mods are a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Running);
     (
         LoaderRuntime::with_observers(
             machine,
@@ -640,16 +617,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         saved_data_versions: BTreeSet::new(),
     }];
     let mut machine = LifecycleMachine::new(Side::Client, entries).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Running);
     let runtime = LoaderRuntime::with_observers(
         machine,
         hosts,
@@ -1120,16 +1088,7 @@ fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
             }],
         )
         .expect("one owner is a legal plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Running);
         let runtime = LoaderRuntime::new(
             machine,
             vec![Box::new(Owning {
@@ -1383,16 +1342,7 @@ fn shipped_running() -> LoaderRuntime {
     }];
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("one mod is a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
+    advance_through(&mut machine, LifecycleState::Running);
     LoaderRuntime::with_observers(
         machine,
         vec![Box::new(shipped)],

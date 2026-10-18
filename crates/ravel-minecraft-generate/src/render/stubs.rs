@@ -2,9 +2,9 @@
 
 use std::fmt::Write as _;
 
-use crate::GenerateError;
 use crate::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use crate::classfile::{java_type, signature, source_name, split};
+use crate::error::GenerateError;
 use crate::inputs::Adapter;
 use crate::mapping::Mapping;
 use crate::stubs::{self, Member, Stub};

@@ -14,6 +14,8 @@ the tracked `official-dependencies.sha256`. Downloaded artifacts, assets,
 generated worlds, screenshots and logs remain under ignored
 `tests/fixtures/local/legacy-platform/`. Build verification acquires no assets;
 only client launch requests the pinned asset set.
+Acquisition publishes verified manifest, native-library and class-path outputs
+atomically; server completion is published only after acceptance succeeds.
 
 The legacy class loader rewrites constant-pool class/descriptor references
 according to the single `adapter-owners.txt` inventory into Ravel's

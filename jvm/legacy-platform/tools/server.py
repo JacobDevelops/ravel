@@ -8,7 +8,7 @@ import threading
 import time
 
 
-def main():
+def main() -> None:
     began = time.monotonic()
     game = Path(sys.argv[1])
     evidence = game.parent / 'evidence-server'
@@ -61,8 +61,10 @@ def main():
     libraries = (evidence / 'libraries.log').read_text().lower()
     if any(name in libraries for name in ('lwjgl', 'glfw', 'openal', 'jinput')):
         raise SystemExit('Dedicated server loaded a client native library')
-    complete.write_text(f'seed={seed}\nstartup=true\nsave=true\nclientNatives=false\nexit=0\n'
-                        + 'durationMs=' + str(round((time.monotonic() - began) * 1000)) + '\n')
+    temporary = complete.with_suffix('.tmp')
+    temporary.write_text(f'seed={seed}\nstartup=true\nsave=true\nclientNatives=false\nexit=0\n'
+                         + 'durationMs=' + str(round((time.monotonic() - began) * 1000)) + '\n')
+    temporary.replace(complete)
 
 
 if __name__ == '__main__':

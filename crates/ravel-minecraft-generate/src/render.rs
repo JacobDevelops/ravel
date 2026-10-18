@@ -30,6 +30,134 @@ mod tests {
     use crate::mapping::Mapping;
 
     #[test]
+    fn mapping_locks_preserve_order_and_record_only_translated_names() {
+        let mut adapter = adapter();
+        adapter.mapping_source = MappingSource::OfficialProguardMappings;
+        let mut mappings = adapter.inputs.client_jar.clone();
+        mappings.sha256 = Some("reviewed-mappings".to_owned());
+        adapter.inputs.client_mappings = Some(mappings);
+        let (_, mut resolved) = reviewed(&[CANDIDATES[1], CANDIDATES[0]]);
+        resolved[0].runtime_member = "b".to_owned();
+
+        let lock = super::locks::lock(&adapter, &resolved);
+
+        assert!(lock.contains("clientMappingsSha256 = \"reviewed-mappings\""));
+        let (translated, unchanged) = lock
+            .split_once("[target.\"registry.register\"]")
+            .expect("second target");
+        assert!(translated.contains("[target.\"server.tick\"]"));
+        assert!(translated.contains("runtimeMember = \"b\""));
+        assert!(!translated.contains("runtimeClass"));
+        assert!(!translated.contains("runtimeDescriptor"));
+        assert!(!unchanged.contains("runtime"));
+    }
+
+    #[test]
+    fn bindings_keep_pack_minors_spelling_and_reviewed_target_order() {
+        let mut adapter = adapter();
+        adapter.mapping_source = MappingSource::OfficialProguardMappings;
+        adapter.pack_format.resource_minor = 2;
+        adapter.pack_format.data_minor = 3;
+        adapter.pack_format.spelling = Spelling::MinMaxFormat;
+        let (mut inventory, mut resolved) = reviewed(&[CANDIDATES[1], CANDIDATES[0]]);
+        inventory.hooks[0].kind = Kind::StaticMethod;
+        resolved[0].is_static = true;
+        resolved[0].runtime_class = "a".to_owned();
+        resolved[0].runtime_member = "b".to_owned();
+        resolved[0].runtime_descriptor = "(Lc;)Ld;".to_owned();
+
+        let rust = bindings(&adapter, &inventory, &resolved);
+
+        assert!(rust.contains("RESOURCE_PACK_FORMAT: PackFormat = PackFormat::new(7, 2);"));
+        assert!(rust.contains("DATA_PACK_FORMAT: PackFormat = PackFormat::new(11, 3);"));
+        assert!(rust.contains("PackFormatSpelling::MinMaxFormat;"));
+        assert!(rust.contains("\"a\",\n    \"b\",\n    \"(Lc;)Ld;\",\n    HookKind::StaticMethod"));
+        assert!(
+            rust.contains("TARGETS: [HookTarget; 2] = [\n    SERVER_TICK,\n    REGISTRY_REGISTER,")
+        );
+    }
+
+    #[test]
+    fn exports_copy_text_borrow_bytes_and_allocate_no_empty_argument_vector() {
+        let (inventory, resolved) = reviewed(&[
+            ("payload.copy", "a.B", "copy", "(Ljava/lang/String;[B)V"),
+            ("payload.empty", "a.B", "empty", "()V"),
+        ]);
+        let shapes = shapes(&inventory, &resolved).expect("valid shapes");
+        let rust = exports(&shapes);
+
+        assert!(rust.contains("argument0: ::jni::objects::JString<'local>"));
+        assert!(rust.contains("argument1: ::jni::objects::JByteArray<'local>"));
+        assert!(rust.contains("|env| ::std::result::Result::Ok("));
+        assert!(rust.contains("HookValue::Text(crate::guard::text(env, &argument0)?)"));
+        assert!(rust.contains("JavaHandle::new(\"[B\", &argument1)"));
+        assert!(rust.contains("|_env| ::std::result::Result::Ok(::std::vec::Vec::new())"));
+        let java = hook_java(&adapter(), &shapes);
+        assert!(java.contains(
+            "public static native void payloadCopy(String argument0, byte[] argument1);"
+        ));
+        assert!(java.contains("public static native void payloadEmpty();"));
+    }
+
+    #[test]
+    fn member_names_skip_counted_lookups_and_refuse_colliding_constants() {
+        use crate::inputs::ReflectedMember;
+
+        let mut surface = Reflection {
+            schema_version: 1,
+            minecraft: "0.0.0-test".to_owned(),
+            classes: vec![Reflected {
+                name: "SCREEN".to_owned(),
+                class: "a.B".to_owned(),
+                runtime: "a/B".to_owned(),
+                members: vec![
+                    ReflectedMember {
+                        name: "<init>".to_owned(),
+                        lookup: crate::inputs::Lookup::Descriptor("()V".to_owned()),
+                    },
+                    ReflectedMember {
+                        name: "drawRow".to_owned(),
+                        lookup: crate::inputs::Lookup::Descriptor("(I)V".to_owned()),
+                    },
+                    ReflectedMember {
+                        name: "counted".to_owned(),
+                        lookup: crate::inputs::Lookup::Parameters(1),
+                    },
+                ],
+            }],
+        };
+        let java = super::names::game_members(&adapter(), &surface, &Mapping::Identity)
+            .expect("distinct constants");
+        assert!(java.contains("SCREEN_NEW = \"<init>:()V\";"));
+        assert!(java.contains("SCREEN_DRAW_ROW = \"drawRow:(I)V\";"));
+        assert!(!java.contains("SCREEN_COUNTED"));
+        surface.classes[0].members.push(ReflectedMember {
+            name: "drawRow".to_owned(),
+            lookup: crate::inputs::Lookup::Descriptor("(II)V".to_owned()),
+        });
+        let error = super::names::game_members(&adapter(), &surface, &Mapping::Identity)
+            .expect_err("overloads cannot share a constant");
+        assert!(
+            error
+                .to_string()
+                .contains("SCREEN_DRAW_ROW would be written down twice")
+        );
+    }
+
+    #[test]
+    fn menu_rows_distinguish_derived_placement_from_negative_offsets() {
+        let (mut inventory, _) =
+            reviewed(&[(crate::inputs::TITLE_MENU_SEAM, "a.B", "row", "(I)I")]);
+        let derived = super::names::menu_layout(&adapter(), &inventory);
+        assert!(derived.contains("RAVEL_ROW = DERIVED;"));
+        inventory.hooks[0].descriptor = "()V".to_owned();
+        inventory.hooks[0].title_menu_row = Some(-24);
+        let explicit = super::names::menu_layout(&adapter(), &inventory);
+        assert!(explicit.contains("RAVEL_ROW = -24;"));
+        assert!(explicit.contains("DERIVED = Integer.MIN_VALUE;"));
+    }
+
+    #[test]
     fn mapping_provenance_pins_a_declared_server_without_changing_modern_locks() {
         let mut adapter = adapter();
         let modern = super::locks::lock(&adapter, &[]);

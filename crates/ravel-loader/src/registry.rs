@@ -108,7 +108,7 @@ mod tests {
     use ravel_host_api::{Registrar, RegistrationRefused};
 
     use crate::lifecycle::{LifecycleError, LifecycleMachine};
-    use crate::tests::entry;
+    use crate::tests::{advance_through, entry};
 
     fn id(text: &str) -> ModId {
         text.parse().expect("a legal mod id")
@@ -127,14 +127,7 @@ mod tests {
                 .collect(),
         )
         .expect("a legal plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Constructed);
         machine
     }
 

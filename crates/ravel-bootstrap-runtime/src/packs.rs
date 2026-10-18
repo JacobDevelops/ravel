@@ -55,13 +55,7 @@ mod tests {
     use ravel_loader::Supplied;
 
     fn directory(name: &str) -> PathBuf {
-        let at =
-            std::env::temp_dir().join(format!("ravel-world-pack-{}-{name}", std::process::id()));
-        if at.exists() {
-            std::fs::remove_dir_all(&at).expect("remove the previous test directory");
-        }
-        std::fs::create_dir_all(&at).expect("a writable temporary directory");
-        at
+        crate::tests::fresh_directory("world-pack", name)
     }
 
     // A launch with no declared files still publishes the version's metadata.

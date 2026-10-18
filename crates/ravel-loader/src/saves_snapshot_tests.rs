@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, Requirement};
 use crate::loaded::LoadedMods;
 use crate::saves::{SaveRefused, produce_saved_data};
-use crate::tests::entry;
+use crate::tests::{advance_through, entry};
 
 type Calls = Arc<Mutex<Vec<ModId>>>;
 
@@ -65,16 +65,7 @@ fn environment() -> FailureEnvironment {
 fn machine(entries: Vec<LifecycleEntry>, running: bool) -> LifecycleMachine {
     let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("legal plan");
     if running {
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("legal transition");
-        }
+        advance_through(&mut machine, LifecycleState::Running);
     }
     machine
 }

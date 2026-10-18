@@ -106,6 +106,24 @@ where
     outcome.resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Hands Java the document `produce` returns, or null when there is none.
+///
+/// Panics and errors become Java `RuntimeException`s rather than unwinding into the JVM.
+pub(crate) fn hand_document<'local>(
+    mut env: EnvUnowned<'local>,
+    produce: impl FnOnce(&Env<'local>) -> Result<Option<String>, HookError>,
+) -> JString<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
+            match produce(env)? {
+                Some(document) => Ok(env.new_string(document)?),
+                None => Ok(JString::default()),
+            }
+        },
+    )
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Copies a `java.lang.String` argument out of the JVM.
 ///
 /// # Errors

@@ -1,10 +1,10 @@
 //! Launch-time profiling opt-in and reports encoded for the Java screen.
 
+use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
-use jni::{Env, EnvUnowned};
 use ravel_observability::{Metric, ProfilingReport};
 
-use crate::guard::HookError;
+use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{VERSION, count, field, flag};
 
@@ -73,18 +73,10 @@ fn render(report: &ProfilingReport) -> String {
 /// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelProfilingReport")]
 pub fn ravel_profiling_report<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            match document() {
-                Some(document) => Ok(env.new_string(document)?),
-                None => Ok(JString::default()),
-            }
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    hand_document(env, |_| Ok(document()))
 }
 
 #[cfg(test)]
@@ -99,7 +91,7 @@ mod tests {
     use ravel_observability::{Metric, Profiler};
 
     use super::document_of;
-    use crate::runtime::LoaderRuntime;
+    use crate::runtime::{LoaderRuntime, advance_through};
     use crate::wire::fields;
 
     fn mod_id(name: &str) -> ModId {
@@ -141,16 +133,7 @@ mod tests {
         };
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry]).expect("a one-mod plan is valid");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Running);
         let mods: Vec<Box<dyn HostMod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
         Arc::new(LoaderRuntime::with_observers(
             machine,

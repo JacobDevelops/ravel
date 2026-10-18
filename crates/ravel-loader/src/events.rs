@@ -446,7 +446,7 @@ mod tests {
     use super::{Delivery, DispatchRefused, broadcast, deliver_packet, route};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
-    use crate::tests::entry;
+    use crate::tests::{advance_through, entry};
 
     fn id(text: &str) -> ModId {
         text.parse().expect("a legal mod id")
@@ -748,14 +748,7 @@ mod tests {
         mods: &mut [&mut dyn HostMod],
     ) -> LifecycleMachine {
         let mut machine = LifecycleMachine::new(side, entries).expect("a legal plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Constructed);
         let order: Vec<ModId> = machine.order().cloned().collect();
         for mod_id in order {
             let mut window = machine
@@ -1141,14 +1134,7 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
                 .expect("a legal plan");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-        ] {
-            machine.advance_all(state).expect("a legal step");
-        }
+        advance_through(&mut machine, LifecycleState::Constructed);
         {
             let mut window = machine
                 .registration_window(&id("example_mod"))

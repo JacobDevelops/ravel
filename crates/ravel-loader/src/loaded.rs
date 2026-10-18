@@ -127,7 +127,7 @@ mod tests {
 
     use super::LoadedMods;
     use crate::lifecycle::LifecycleMachine;
-    use crate::tests::entry;
+    use crate::tests::{advance_through, entry};
 
     struct Recording {
         id: ModId,
@@ -182,16 +182,7 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("missing", &[Side::Client])])
                 .expect("valid lifecycle");
-        for state in [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ] {
-            machine.advance_all(state).expect("valid lifecycle step");
-        }
+        advance_through(&mut machine, LifecycleState::Running);
         let error = LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [])
             .expect_err("running owners still need hosts");
         assert_eq!(

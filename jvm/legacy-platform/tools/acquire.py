@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+import tempfile
 import urllib.request
 import zipfile
 
@@ -21,12 +22,12 @@ PINS = dict((name, pin) for pin, name in
             (line.split('  ', 1) for line in LEDGER.read_text().splitlines()))
 
 
-def digest(path, algorithm):
+def digest(path: Path, algorithm: str) -> str:
     with path.open('rb') as source:
         return hashlib.file_digest(source, algorithm).hexdigest()
 
 
-def acquire(item, destination, local=None):
+def acquire(item: dict, destination: Path, local: Path | None = None) -> tuple[str, str]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
         temporary = destination.with_suffix(destination.suffix + '.download')
@@ -69,20 +70,44 @@ def asset_jobs(version):
             for item in json.loads(index_path.read_text())['objects'].values()]
 
 
-def main():
+def atomic_write(path: Path, content: bytes) -> None:
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            output.write(content)
+            output.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def extract_natives(libraries: list[Path]) -> None:
+    native_dir = WORK / 'natives'
+    native_dir.mkdir(exist_ok=True)
+    for path in libraries:
+        if not path.name.endswith('-natives-linux.jar'):
+            continue
+        with zipfile.ZipFile(path) as archive:
+            for name in archive.namelist():
+                if name.endswith('.so'):
+                    atomic_write(native_dir / Path(name).name, archive.read(name))
+
+
+def main() -> None:
     WORK.mkdir(parents=True, exist_ok=True)
     manifest = INPUT / 'version.json'
     if not manifest.exists():
         manifest = WORK / 'version.json'
-        if not manifest.exists():
-            with urllib.request.urlopen(MANIFEST_URL, timeout=90) as response:
-                manifest.write_bytes(response.read())
-    if digest(manifest, 'sha256') != MANIFEST_SHA256:
+    if manifest.exists():
+        content = manifest.read_bytes()
+    else:
+        with urllib.request.urlopen(MANIFEST_URL, timeout=90) as response:
+            content = response.read()
+    if hashlib.sha256(content).hexdigest() != MANIFEST_SHA256:
         raise RuntimeError('Pinned 1.12.2 version manifest SHA256 mismatch')
-    version = json.loads(manifest.read_text())
-    if manifest != WORK / 'version.json':
-        shutil.copyfile(manifest, WORK / 'version.json')
-    PINS['version.json'] = MANIFEST_SHA256
+    version = json.loads(content)
+    if manifest != WORK / 'version.json' or not manifest.exists():
+        atomic_write(WORK / 'version.json', content)
     jobs = []
     for side in ('client', 'server'):
         jobs.append((version['downloads'][side], WORK / (side + '.jar'), INPUT / (side + '.jar')))
@@ -90,18 +115,14 @@ def main():
     for library in version['libraries']:
         if not allowed(library):
             continue
-        artifact = library['downloads'].get('artifact')
-        if artifact:
-            path = WORK / 'libraries' / artifact['path']
-            jobs.append((artifact, path, None))
-            if path not in libraries:
-                libraries.append(path)
-        native = library['downloads'].get('classifiers', {}).get('natives-linux')
-        if native:
-            path = WORK / 'libraries' / native['path']
-            jobs.append((native, path, None))
-            if path not in libraries:
-                libraries.append(path)
+        downloads = library['downloads']
+        for artifact in (downloads.get('artifact'),
+                         downloads.get('classifiers', {}).get('natives-linux')):
+            if artifact:
+                path = WORK / 'libraries' / artifact['path']
+                jobs.append((artifact, path, None))
+                if path not in libraries:
+                    libraries.append(path)
     if sys.argv[1:] == ['--assets']:
         jobs.extend(asset_jobs(version))
     elif sys.argv[1:]:
@@ -110,19 +131,13 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
         for _ in pool.map(lambda job: acquire(*job), unique.values()):
             pass
-    native_dir = WORK / 'natives'
-    native_dir.mkdir(exist_ok=True)
-    for path in libraries:
-        if path.name.endswith('-natives-linux.jar'):
-            with zipfile.ZipFile(path) as archive:
-                for name in archive.namelist():
-                    if name.endswith('.so'):
-                        (native_dir / Path(name).name).write_bytes(archive.read(name))
+    extract_natives(libraries)
     for side in ('client', 'server'):
         entries = [WORK / (side + '.jar')]
         if side == 'client':
             entries.extend(libraries)
-        (WORK / (side + '-classpath.txt')).write_text(''.join(str(path) + '\n' for path in entries))
+        atomic_write(WORK / (side + '-classpath.txt'),
+                     ''.join(str(path) + '\n' for path in entries).encode())
     print('Official SHA1 and local SHA256 ledger enforced:', LEDGER)
 
 

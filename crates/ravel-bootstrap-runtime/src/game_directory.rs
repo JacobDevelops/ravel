@@ -24,15 +24,7 @@ mod tests {
     use super::{MARKER, admit};
 
     fn directory(name: &str) -> std::path::PathBuf {
-        let directory = std::env::temp_dir().join(format!(
-            "ravel-game-directory-{}-{name}",
-            std::process::id()
-        ));
-        if directory.exists() {
-            std::fs::remove_dir_all(&directory).expect("remove the previous test directory");
-        }
-        std::fs::create_dir_all(&directory).expect("a writable temporary directory");
-        directory
+        crate::tests::fresh_directory("game-directory", name)
     }
 
     #[test]

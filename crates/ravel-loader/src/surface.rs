@@ -94,19 +94,11 @@ mod tests {
 
     use ravel_core::{
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState,
-        ModId, RedactionPolicy, Side, SideSet,
+        ModId, Side, SideSet,
     };
 
     use super::ModSurface;
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
-
-    struct KeepEverything;
-
-    impl RedactionPolicy for KeepEverything {
-        fn apply(&self, text: &str) -> String {
-            text.to_owned()
-        }
-    }
 
     fn id(text: &str) -> ModId {
         text.parse().expect("a legal mod id")
@@ -135,7 +127,7 @@ mod tests {
                 platform: "linux".to_owned(),
                 architecture: "x86_64".to_owned(),
             },
-            message: DiagnosticMessage::redacted(&KeepEverything, "requires `example_library`"),
+            message: DiagnosticMessage::redacted("requires `example_library`"),
         }
     }
 

@@ -181,9 +181,9 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`ravel_sdk::sides::WrongSide`] on a server side, where there is
+    /// Returns [`ravel_sdk::sides::ClientOnlyError::WrongSide`] on a server side, where there is
     /// no client view because nothing built one.
-    pub fn client_view(&self) -> Result<&ClientState, ravel_sdk::sides::WrongSide> {
+    pub fn client_view(&self) -> Result<&ClientState, ravel_sdk::sides::ClientOnlyError> {
         self.client.get(self.side)
     }
 

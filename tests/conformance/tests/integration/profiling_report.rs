@@ -320,11 +320,10 @@ fn a_profiled_dispatch_attributes_the_delivery_to_the_mod_that_received_it() {
     assert_eq!(report.mods().len(), 1);
     assert_eq!(report.mods()[0].mod_id, id("example_mod"));
     assert_eq!(report.mods()[0].cost.event_calls, 3);
-    assert_eq!(report.mods()[0].cost.hook_calls(), 3);
     assert_eq!(
-        report.mods()[0].cost.boundary_calls(),
+        report.mods()[0].cost.hook_calls(),
         3,
-        "one crossing per delivery, charged to the mod it reached"
+        "one game-hook delivery per event or command, charged to the mod it reached"
     );
 }
 

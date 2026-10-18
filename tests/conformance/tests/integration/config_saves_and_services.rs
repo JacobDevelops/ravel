@@ -188,6 +188,7 @@ fn a_provider_is_started_before_the_mod_that_requires_it() {
             &mut [&mut shop, &mut stock],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect("the graph resolves");
 
@@ -217,6 +218,7 @@ fn a_service_nothing_answers_names_the_mod_that_wanted_it_and_starts_nothing() {
             &mut [&mut shop],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect_err("nothing answers the service");
 
@@ -255,6 +257,7 @@ fn a_provider_this_side_parks_is_a_service_nothing_answers() {
                 &mut [&mut shop, &mut stock],
             )
             .expect("all active mods have hosts"),
+            &environment(),
         ),
         Err(ServiceRefused::NoProvider {
             consumer: ShopMod::declared_id().clone(),
@@ -330,6 +333,7 @@ fn two_mods_that_require_each_other_are_refused_and_both_are_named() {
             &mut [&mut latch, &mut bolt],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect_err("no order starts either of them");
 
@@ -406,11 +410,17 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
         &BTreeMap::new(),
     )
     .expect_err("the first step cannot read this shape");
+    assert_eq!(machine.state(owner), Ok(LifecycleState::Failed));
+    assert_eq!(stock.stock(), &Stock::default());
+
+    // A different world has its own admission session; the failed session is not replayed.
+    let mut next_machine = self::machine(vec![entry(owner, &[SIDE])]);
+    let mut next_stock = StockMod::new();
 
     open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
-            &mut machine,
-            &mut [&mut stock],
+            &mut next_machine,
+            &mut [&mut next_stock],
         )
         .expect("all active mods have hosts"),
         &environment(),
@@ -418,7 +428,9 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
         &BTreeMap::new(),
     )
     .expect("a legal version-1 world");
-    assert_eq!(stock.stock().stock, 5);
+    assert_eq!(next_stock.stock().stock, 5);
+    assert_eq!(stock.stock(), &Stock::default());
+    assert_eq!(machine.state(owner), Ok(LifecycleState::Failed));
 }
 
 #[derive(Default)]
@@ -643,6 +655,7 @@ fn a_consumer_that_refuses_its_answer_refuses_the_whole_set_rather_than_starting
             &mut [&mut shop, &mut fussy, &mut stock],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect_err("`fussy` refuses");
 

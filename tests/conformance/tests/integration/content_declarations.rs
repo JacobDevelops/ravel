@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
-use ravel_data::{ContentDeclaration, DeclarationError, TagId, TagSet};
+use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId, TagSet};
 use ravel_example_content_mod::{ContentMod, MODEL, RECIPE};
 use ravel_host_api::{HostError, HostMod, Registrar};
 use ravel_host_runtime::{Member, compose, write_resource_pack, write_world_pack};
@@ -199,7 +199,7 @@ fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes
 
     for key in &declared {
         assert_eq!(
-            machine.owner_of(key),
+            machine.registry_owner(key),
             Some(ContentMod::declared_id()),
             "`{key}` was declared and claimed, so the barrier owns it for this mod"
         );
@@ -224,7 +224,7 @@ fn a_declared_entry_the_barrier_never_saw_has_no_owner() {
     let mut content = ContentMod::new();
     let (machine, _) = register_all(vec![entry("content")], &mut [&mut content]);
 
-    assert_eq!(machine.owner_of(&never), None);
+    assert_eq!(machine.registry_owner(&never), None);
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn a_declaration_names_its_content_once_and_refuses_the_second_naming() {
 
     assert_eq!(
         declaration.entry(ContentKind::Block, "copper"),
-        Err(DeclarationError::DuplicateEntry { key: block })
+        Err(ContentDeclarationError::DuplicateEntry { key: block })
     );
     assert_eq!(declaration.entries().len(), 2);
 }
@@ -251,7 +251,7 @@ fn a_declaration_that_names_illegal_content_is_refused_before_any_barrier() {
         assert!(
             matches!(
                 declaration.entry(ContentKind::Block, path),
-                Err(DeclarationError::Path { .. })
+                Err(ContentDeclarationError::Path { .. })
             ),
             "{path:?} is not a legal content path"
         );
@@ -291,7 +291,7 @@ fn a_second_mod_claiming_the_examples_block_is_refused_and_told_who_owns_it() {
     assert_eq!(refusal.state(), LifecycleState::Constructed);
 
     assert_eq!(
-        machine.owner_of(&contested),
+        machine.registry_owner(&contested),
         Some(ContentMod::declared_id())
     );
     assert_eq!(machine.registry_claim_count(&id("rival")), 0);
@@ -329,7 +329,7 @@ fn a_foreign_claim_cannot_reserve_the_examples_namespace_before_its_owner() {
     assert!(detail.contains(&contested.to_string()), "{detail}");
 
     assert_eq!(
-        machine.owner_of(&contested),
+        machine.registry_owner(&contested),
         Some(ContentMod::declared_id())
     );
     assert_eq!(machine.registry_claim_count(&id("rival")), 0);
@@ -362,7 +362,7 @@ fn a_second_mod_claiming_a_name_the_example_did_not_declare_is_accepted() {
     for (mod_id, outcome) in outcomes {
         outcome.unwrap_or_else(|error| panic!("`{mod_id}` was refused: {error}"));
     }
-    assert_eq!(machine.owner_of(&mine), Some(&id("rival")));
+    assert_eq!(machine.registry_owner(&mine), Some(&id("rival")));
 }
 
 #[test]
@@ -407,7 +407,7 @@ fn a_tag_cannot_hold_a_member_from_a_registry_it_does_not_group() {
 
     assert_eq!(
         declaration.tag(&items, &block),
-        Err(DeclarationError::TagKind {
+        Err(ContentDeclarationError::TagKind {
             tag: items.clone(),
             member: block,
         })
@@ -427,7 +427,7 @@ fn two_of_one_mods_declarations_cannot_produce_the_same_file() {
     assert!(
         matches!(
             declaration.resource(generated.clone(), b"{}".to_vec()),
-            Err(DeclarationError::ProducedPath { ref path, .. }) if path == &generated
+            Err(ContentDeclarationError::ProducedPath { ref path, .. }) if path == &generated
         ),
         "a locale already writes that file"
     );
@@ -444,7 +444,7 @@ fn one_mod_supplying_one_path_twice_is_refused_rather_than_overwritten() {
         .expect("the first supply");
     assert_eq!(
         declaration.resource(model.clone(), b"{\"changed\": true}".to_vec()),
-        Err(DeclarationError::DuplicateResource {
+        Err(ContentDeclarationError::DuplicateResource {
             path: model.clone()
         })
     );
@@ -839,12 +839,7 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let ravel_host_runtime::Composition {
-        machine,
-        mods,
-        configurations,
-        resources,
-    } = compose(
+    let composition = compose(
         &game,
         Side::IntegratedServer,
         vec![Member {
@@ -857,15 +852,12 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     let world = game.join("saves").join("New World");
     std::fs::create_dir_all(&world).expect("a writable world directory");
 
-    let written = write_world_pack(&resources, &world).expect("the pack should write");
+    let written = write_world_pack(&composition.resources, &world).expect("the pack should write");
     ravel_bootstrap_runtime::install(
-        machine,
-        mods,
+        composition,
         ravel_bootstrap_runtime::pre_world_report(),
         game.clone(),
-        resources,
-        configurations,
-        false,
+        ravel_observability::Profiler::off(),
     )
     .expect("the composed runtime should install");
 

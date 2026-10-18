@@ -53,6 +53,15 @@ fn host(name: &str, calls: &Calls) -> SnapshotHost {
     }
 }
 
+fn environment() -> FailureEnvironment {
+    FailureEnvironment {
+        ravel: "1.0.0".parse().expect("version"),
+        minecraft: "snapshot-test".to_owned(),
+        platform: "test".to_owned(),
+        architecture: "test".to_owned(),
+    }
+}
+
 fn machine(entries: Vec<LifecycleEntry>, running: bool) -> LifecycleMachine {
     let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("legal plan");
     if running {
@@ -112,6 +121,7 @@ fn snapshot_guards_refuse_before_callbacks_and_forward_lifecycle_errors() {
         let refused = produce_saved_data(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut owner])
                 .expect("complete hosts"),
+            &environment(),
             None,
         )
         .expect_err("lifecycle access is denied");
@@ -146,34 +156,46 @@ fn snapshot_refusal_follows_lifecycle_order_not_service_slot_order() {
     let refused = produce_saved_data(
         &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
             .expect("complete hosts in service order"),
+        &environment(),
         None,
     )
     .expect_err("alpha refuses first");
     assert!(matches!(refused, SaveRefused::Owner { mod_id, .. } if mod_id == id("alpha")));
     assert_eq!(*calls.lock().expect("test log"), vec![id("alpha")]);
-    assert_eq!(machine.state(&id("alpha")), Ok(LifecycleState::Running));
-    assert_eq!(machine.failure(&id("alpha")), Ok(None));
+    assert_eq!(machine.state(&id("alpha")), Ok(LifecycleState::Failed));
+    let failure = machine
+        .failure(&id("alpha"))
+        .expect("known owner")
+        .expect("recorded failure");
+    assert_eq!(failure.mod_id, Some(id("alpha")));
+    assert_eq!(failure.state, LifecycleState::Running);
+    assert_eq!(failure.environment, environment());
 }
 
 #[test]
-fn optional_snapshot_refusal_is_returned_without_recording_failure() {
+fn optional_snapshot_refusal_records_the_owner_failure() {
     let calls = Calls::default();
     let mut owner = host("owner", &calls);
     owner.refuses = true;
     let mut optional = entry("owner", &[Side::DedicatedServer]);
     optional.requirement = Requirement::Optional;
     let mut machine = machine(vec![optional], true);
-    let transcript = machine.transcript().to_vec();
     let refused = produce_saved_data(
         &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut owner])
             .expect("complete hosts"),
+        &environment(),
         None,
     )
     .expect_err("optional snapshot failure still refuses the save");
     assert!(matches!(refused, SaveRefused::Owner { mod_id, .. } if mod_id == id("owner")));
-    assert_eq!(machine.state(&id("owner")), Ok(LifecycleState::Running));
-    assert_eq!(machine.failure(&id("owner")), Ok(None));
-    assert_eq!(machine.transcript(), transcript);
+    assert_eq!(machine.state(&id("owner")), Ok(LifecycleState::Failed));
+    let failure = machine
+        .failure(&id("owner"))
+        .expect("known owner")
+        .expect("recorded failure");
+    assert_eq!(failure.mod_id, Some(id("owner")));
+    assert_eq!(failure.state, LifecycleState::Running);
+    assert_eq!(failure.environment, environment());
     assert_eq!(*calls.lock().expect("test log"), vec![id("owner")]);
 }
 
@@ -212,6 +234,7 @@ fn failed_owners_keep_prior_envelopes_and_parked_and_extra_hosts_are_not_called(
             &mut [&mut extra, &mut healthy, &mut parked, &mut failed],
         )
         .expect("all loading hosts are supplied"),
+        &environment(),
         Some(&prior),
     )
     .expect("failed data remains opaque and healthy owners may return no envelope");
@@ -250,6 +273,7 @@ fn healthy_snapshots_replace_only_the_producers_own_envelope() {
         let result = produce_saved_data(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
                 .expect("complete reversed slots"),
+            &environment(),
             Some(&prior),
         );
         if foreign {
@@ -271,6 +295,13 @@ fn healthy_snapshots_replace_only_the_producers_own_envelope() {
             vec![id("alpha"), id("zeta")]
         );
         assert_eq!(machine.state(&id("alpha")), Ok(LifecycleState::Running));
-        assert_eq!(machine.state(&id("zeta")), Ok(LifecycleState::Running));
+        assert_eq!(
+            machine.state(&id("zeta")),
+            Ok(if foreign {
+                LifecycleState::Failed
+            } else {
+                LifecycleState::Running
+            })
+        );
     }
 }

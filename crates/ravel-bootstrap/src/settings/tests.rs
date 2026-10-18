@@ -5,7 +5,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::{ModId, Reader, Store, answer, document, field, file, save};
+use super::{ModId, Reader, Store, document_of, field, file, persist_and_answer, save_with};
 
 fn declaration() -> ConfigurationDeclaration {
     ConfigurationDeclaration::parse(
@@ -129,15 +129,12 @@ impl Screen {
     fn new(configurations: Vec<LayeredConfiguration>) -> Self {
         let game = game();
         Self {
-            store: Store::new(Side::Client, configurations, Ok(game.clone())),
+            store: Store::new(Side::Client, configurations, game.clone()),
             game,
         }
     }
 
-    fn saving_to(
-        configurations: Vec<LayeredConfiguration>,
-        directory: Result<PathBuf, String>,
-    ) -> Self {
+    fn saving_to(configurations: Vec<LayeredConfiguration>, directory: PathBuf) -> Self {
         Self {
             store: Store::new(Side::Client, configurations, directory),
             game: game(),
@@ -158,7 +155,7 @@ impl Screen {
     }
 
     fn save(&mut self, payload: &str) -> String {
-        answer(self.store.apply(&mut Reader::new(payload)))
+        persist_and_answer(self.store.apply(&mut Reader::new(payload)))
     }
 }
 
@@ -234,7 +231,7 @@ fn an_owner_with_nothing_to_show_on_this_side_is_not_offered_a_screen() {
         None,
     )
     .expect("the layers should resolve");
-    let store = Store::new(Side::Client, vec![here, elsewhere], Ok(game()));
+    let store = Store::new(Side::Client, vec![here, elsewhere], game());
 
     let offered: Vec<String> = store
         .configurable()
@@ -404,17 +401,15 @@ fn an_edit_the_player_makes_is_on_disk_and_in_force_after_a_relaunch() {
 fn a_save_that_cannot_reach_a_game_directory_says_so_rather_than_looking_saved() {
     let configuration = LayeredConfiguration::resolve(declaration(), None, None)
         .expect("the layers should resolve");
-    let mut screen = Screen::saving_to(
-        vec![configuration],
-        Err("no game directory here".to_owned()),
-    );
+    let missing = game().join("absent");
+    let mut screen = Screen::saving_to(vec![configuration], missing);
 
     let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
     let refused = refusals(&answer);
     assert_eq!(refused.len(), 1, "{answer}");
     assert_eq!(refused[0].0, "", "a whole-file failure names no key");
-    assert_eq!(refused[0].1, "no game directory here");
+    assert!(refused[0].1.contains("options.txt"), "{answer}");
 }
 
 #[test]
@@ -441,7 +436,7 @@ fn a_file_save_failure_does_not_expose_its_private_path_to_the_screen() {
     std::fs::write(&blocked, "blocked").expect("the blocking file should be writable");
     let configuration = LayeredConfiguration::resolve(declaration(), None, None)
         .expect("the layers should resolve");
-    let mut screen = Screen::saving_to(vec![configuration], Ok(blocked.clone()));
+    let mut screen = Screen::saving_to(vec![configuration], blocked.clone());
 
     let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
@@ -458,12 +453,10 @@ fn a_file_save_failure_does_not_expose_its_private_path_to_the_screen() {
 #[test]
 fn a_game_directory_failure_is_redacted_before_the_screen_can_read_it() {
     let private = game();
+    std::fs::remove_file(private.join("options.txt")).expect("remove the client marker");
     let configuration = LayeredConfiguration::resolve(declaration(), None, None)
         .expect("the layers should resolve");
-    let mut screen = Screen::saving_to(
-        vec![configuration],
-        Err(format!("`{}` is not the game directory", private.display())),
-    );
+    let mut screen = Screen::saving_to(vec![configuration], private.clone());
 
     let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
@@ -594,10 +587,41 @@ fn an_owner_this_process_does_not_hold_has_no_document_rather_than_an_empty_one(
 
 #[test]
 fn a_screen_opened_before_anything_is_installed_reads_nothing_and_saves_nothing() {
-    assert_eq!(document("example_mod"), None);
+    assert_eq!(document_of(None, "example_mod"), None);
     assert_eq!(
-        refusals(&save(&edits("example_mod", &[("render.distance", "8")]))).len(),
+        refusals(&save_with(
+            None,
+            &edits("example_mod", &[("render.distance", "8")])
+        ))
+        .len(),
         1
+    );
+}
+
+#[test]
+fn malformed_settings_and_unknown_owners_have_specific_refusals() {
+    let mut screen = screen(None, None);
+    let mut version = String::new();
+    field(&mut version, "unsupported");
+    for (payload, expected) in [
+        (version, "unsupported wire version"),
+        (edits("not a mod id", &[]), "not a mod identifier"),
+        (edits("other_mod", &[]), "no settings are declared"),
+        ("1:1".to_owned(), "truncated"),
+        (
+            format!("{}extra", edits("example_mod", &[])),
+            "trailing data",
+        ),
+    ] {
+        let answer = screen.save(&payload);
+        let reasons = refusals(&answer);
+        assert_eq!(reasons.len(), 1, "{answer}");
+        assert!(reasons[0].1.contains(expected), "{answer}");
+    }
+    let missing = save_with(None, &edits("example_mod", &[]));
+    assert_eq!(
+        refusals(&missing)[0].1,
+        "the loader runtime is not installed"
     );
 }
 

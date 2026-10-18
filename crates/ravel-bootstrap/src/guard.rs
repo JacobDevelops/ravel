@@ -24,8 +24,6 @@ pub enum HookError {
     },
     /// The observer registry's read lock is poisoned.
     Unavailable,
-    /// A runtime has already been installed for this process.
-    AlreadyInstalled,
     /// Reading a hook argument failed.
     Jvm(jni::errors::Error),
 }
@@ -35,15 +33,19 @@ impl fmt::Display for HookError {
         match self {
             Self::Vetoed { hook, reason } => write!(formatter, "{hook} was refused: {reason}"),
             Self::Unavailable => formatter.write_str("the hook registry is unavailable"),
-            Self::AlreadyInstalled => {
-                formatter.write_str("the loader runtime is already installed")
-            }
             Self::Jvm(error) => write!(formatter, "the JVM refused a hook argument: {error}"),
         }
     }
 }
 
-impl std::error::Error for HookError {}
+impl std::error::Error for HookError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Jvm(error) => Some(error),
+            Self::Vetoed { .. } | Self::Unavailable => None,
+        }
+    }
+}
 
 impl From<jni::errors::Error> for HookError {
     fn from(error: jni::errors::Error) -> Self {
@@ -175,6 +177,8 @@ pub(crate) mod tests {
         let error: HookError = jni::errors::Error::JavaException.into();
 
         assert!(error.to_string().starts_with("the JVM refused"));
+        let source = std::error::Error::source(&error).expect("the JVM cause survives");
+        assert!(source.downcast_ref::<jni::errors::Error>().is_some());
         assert!(matches!(error, HookError::Jvm(_)));
     }
 }

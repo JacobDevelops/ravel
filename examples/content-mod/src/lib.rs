@@ -266,7 +266,7 @@ pub fn declared_entries() -> Result<Vec<RegistryKey>, ModError> {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::content::{
-        ContentDeclaration, ContentKind, DeclarationError, Registrar, RegistrationRefused,
+        ContentDeclaration, ContentDeclarationError, ContentKind, Registrar, RegistrationRefused,
         RegistryKey,
     };
     use ravel_sdk::events::GameEvent;
@@ -461,7 +461,10 @@ mod tests {
         let error = declaration
             .tag(&ContentMod::lanterns(ContentKind::Item), &block)
             .expect_err("an item tag holds items");
-        assert!(matches!(error, DeclarationError::TagKind { .. }), "{error}");
+        assert!(
+            matches!(error, ContentDeclarationError::TagKind { .. }),
+            "{error}"
+        );
     }
 
     #[test]

@@ -24,10 +24,10 @@
 //! let mut client = ClientOnly::built_on(Side::Client, LatestReport::default);
 //! client.get_mut(Side::Client)?.lines.push("copper lanterns: 3".to_owned());
 //! assert_eq!(client.get(Side::Client)?.lines.len(), 1);
-//! # Ok::<(), ravel_sdk::sides::WrongSide>(())
+//! # Ok::<(), ravel_sdk::sides::ClientOnlyError>(())
 //! ```
 //!
-//! Convert [`WrongSide`] with [`crate::ModError::refused`] when wrong-side access
-//! must stop the mod. The host attributes the refusal to the hook it called.
+//! Convert [`ClientOnlyError`] with [`crate::ModError::refused`] when a missing
+//! value or wrong-side access must stop the mod. The host attributes the refusal to the hook it called.
 
-pub use ravel_core::{ClientOnly, EmptySideSet, Side, SideSet, WrongSide};
+pub use ravel_core::{ClientOnly, ClientOnlyError, EmptySideSet, Side, SideSet};

@@ -79,7 +79,7 @@ pub mod validators;
 use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey};
 use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::prelude::*;
-use ravel_sdk::sides::WrongSide;
+use ravel_sdk::sides::ClientOnlyError;
 
 pub use crate::channel::{Body, Channel, Kind, Peer, Position, Suffixes, Target};
 pub use crate::colour::{Animated, Colour, Names};
@@ -345,8 +345,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on a server side, where the value was never built.
-    pub fn client(&self) -> Result<&ClientState, WrongSide> {
+    /// Returns [`ClientOnlyError::WrongSide`] on a server side, where the value was never built.
+    pub fn client(&self) -> Result<&ClientState, ClientOnlyError> {
         self.client.get(self.side)
     }
 
@@ -354,8 +354,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on a server side.
-    pub fn client_mut(&mut self) -> Result<&mut ClientState, WrongSide> {
+    /// Returns [`ClientOnlyError::WrongSide`] on a server side.
+    pub fn client_mut(&mut self) -> Result<&mut ClientState, ClientOnlyError> {
         self.client.get_mut(self.side)
     }
 

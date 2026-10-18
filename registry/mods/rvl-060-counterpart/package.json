@@ -67,7 +67,7 @@
       },
       {
         "path": "src/declaration.rs",
-        "sha256": "6a85c53f7cc2f6b58af02a1021009d6eda678880da8f854960e9448a6be1ffd8"
+        "sha256": "48190cc92821f5f300feb71976e6d9a7e314a5af65a32f7ca8e3cb7425b72176"
       },
       {
         "path": "src/dumps.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "4c5c3e4b57922ca257f2d15567a924e85a8882b75513530f7507c16d87a484b8"
+        "sha256": "dc1c4bc7c05ccc1aa4cf96088e1c9b3f070fa539f0c815b3b836735d18467e22"
       },
       {
         "path": "src/matching.rs",

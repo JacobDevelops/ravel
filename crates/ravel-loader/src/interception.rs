@@ -66,7 +66,7 @@ pub fn intercept<H: std::ops::DerefMut<Target: HostMod>>(
         crate::callback(owner, state, || host.intercept(occasion))
     };
     points
-        .ask(point.as_str(), machine.side(), &mut asked)
+        .ask(point, machine.side(), &mut asked)
         .map_err(InterceptRefused::Refused)
 }
 

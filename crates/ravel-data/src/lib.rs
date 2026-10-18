@@ -12,7 +12,9 @@ mod server_data;
 mod tags;
 
 pub use audio::{AudioDeclaration, AudioEntry, AudioError, AudioEvent, PlayRequest};
-pub use declare::{ContentDeclaration, DeclarationError};
+pub use declare::{
+    BlockBehaviour, ContentBehaviour, ContentDeclaration, ContentDeclarationError, ItemBehaviour,
+};
 pub use generate::{GeneratedData, GeneratedFile};
 pub use render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
 pub use resources::{Override, Resource, ResourceSet};

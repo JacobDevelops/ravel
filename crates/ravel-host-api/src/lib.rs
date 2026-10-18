@@ -20,9 +20,9 @@ use std::fmt;
 
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_core::{
-    ContentBehaviour, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
+    ContentKind, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
 };
-use ravel_data::{ContentDeclaration, PlayRequest};
+use ravel_data::{ContentBehaviour, ContentDeclaration, PlayRequest};
 use ravel_network::PacketDelivery;
 use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
@@ -342,7 +342,9 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Unsupported`] by default for other inputs, or a mod's refusal; failure withholds the world.
+    /// Returns [`ModError::Unsupported`] by default for other inputs, or a mod's refusal.
+    /// A required mod's failure withholds the world; an optional mod's failure fails
+    /// that mod and keeps its stored envelope unread.
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
@@ -474,7 +476,7 @@ pub trait Registrar {
     ///
     /// # Errors
     ///
-    /// Returns [`RegistrationRefused`] for an owned identifier or a closed barrier.
+    /// Returns [`RegistrationRefused`] for an owned identifier, a foreign namespace, or a closed barrier.
     fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused>;
 
     /// Claims `key` with behaviour; the default discards the description.
@@ -521,6 +523,13 @@ pub enum RegistrationRefused {
         /// The mod that attempted to declare it.
         mod_id: ModId,
     },
+    /// The behaviour describes a different content kind than the key.
+    MismatchedBehaviour {
+        /// The identifier being described.
+        key: RegistryKey,
+        /// The kind the behaviour describes.
+        described: ContentKind,
+    },
 }
 
 impl RegistrationRefused {
@@ -530,6 +539,7 @@ impl RegistrationRefused {
         match self {
             Self::Conflict { key, .. }
             | Self::Closed { key }
+            | Self::MismatchedBehaviour { key, .. }
             | Self::ForeignDeclaration { key, .. } => key,
         }
     }
@@ -549,6 +559,11 @@ impl fmt::Display for RegistrationRefused {
                 formatter,
                 "`{mod_id}` cannot register `{key}` in another mod's namespace"
             ),
+            Self::MismatchedBehaviour { key, described } => write!(
+                formatter,
+                "`{key}` cannot use behaviour describing `{}`",
+                described.as_str()
+            ),
         }
     }
 }
@@ -560,7 +575,9 @@ impl StructuredFailure for RegistrationRefused {
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
             Self::Conflict { .. } => Some(FailureKind::ConflictingRegistryClaim),
-            Self::Closed { .. } | Self::ForeignDeclaration { .. } => None,
+            Self::Closed { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::MismatchedBehaviour { .. } => None,
         }
     }
 

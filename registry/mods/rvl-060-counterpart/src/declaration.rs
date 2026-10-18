@@ -31,7 +31,8 @@ use std::collections::BTreeMap;
 
 use ravel_sdk::ModId;
 use ravel_sdk::content::{
-    ContentDeclaration, ContentId, ContentIdError, ContentKind, DeclarationError, RegistryKey,
+    ContentDeclaration, ContentDeclarationError, ContentId, ContentIdError, ContentKind,
+    RegistryKey,
 };
 
 /// The kinds the loader models specially rather than as a plain registry.
@@ -202,10 +203,12 @@ impl Registry {
         if self.handles.len() >= MAX_ENTRIES {
             return Err(RegistryError::Full(MAX_ENTRIES));
         }
-        let key = self
-            .declaration
-            .entry(kind, path)
-            .map_err(|error: DeclarationError| RegistryError::Declaration(error.to_string()))?;
+        let key =
+            self.declaration
+                .entry(kind, path)
+                .map_err(|error: ContentDeclarationError| {
+                    RegistryError::Declaration(error.to_string())
+                })?;
         let handle = Handle { key };
         self.handles.push(handle.clone());
         Ok(handle)

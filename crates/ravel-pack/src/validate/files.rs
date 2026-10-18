@@ -162,7 +162,7 @@ fn ravel_path(rest: &str) -> RelativePath {
 
 /// Uses the same pack-settings directory as the configuration reader.
 fn pack_settings_path(owner: &ModId) -> RelativePath {
-    RelativePath::try_from(format!("{}/{owner}.json", file::PACK_DIRECTORY))
+    RelativePath::try_from(format!("{}/{owner}.json", file::PACK_CONFIG_DIRECTORY))
         .expect("a mod id cannot spell an illegal path")
 }
 

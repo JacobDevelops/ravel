@@ -777,7 +777,10 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
     let validated = validate(&pack, &manifests, &content, &[configuration("base_mod")])
         .expect("every closure holds");
     let written = validated
-        .file(&path(&format!("{}/base_mod.json", file::PACK_DIRECTORY)))
+        .file(&path(&format!(
+            "{}/base_mod.json",
+            file::PACK_CONFIG_DIRECTORY
+        )))
         .expect("the pack writes its own layer");
     let text = String::from_utf8(written.bytes().to_vec()).expect("the document is UTF-8");
     assert!(text.contains("\"limit\""), "{text}");
@@ -786,7 +789,7 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
         "every written document ends in a newline"
     );
     assert!(
-        file::PACK_DIRECTORY.starts_with(RESERVED_PREFIX),
+        file::PACK_CONFIG_DIRECTORY.starts_with(RESERVED_PREFIX),
         "the pack layer is under the prefix `reserved` keeps everything else out of"
     );
 }

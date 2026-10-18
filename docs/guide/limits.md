@@ -54,14 +54,11 @@ its manifest stops it too. You can build a conforming mod, test it thoroughly as
 a library, and install it into an instance to have it validated and compiled into
 a host. You cannot yet drop it into an instance and see it run.
 
-One thing to plan around while that is true: a generated workspace supplies the
-dependencies a mod is written against and no others. Those are `ravel-sdk`,
-`ravel-host-api`, `ravel-core`, `ravel-config`, `ravel-data`, `ravel-package`,
-`ravel-save`, `serde` and `serde_json`, which is the set this repository's own
-test mods inherit, so a `Cargo.toml` that builds against a checkout builds once
-installed. Anything else you depend on has to name its own version rather than
-inherit one: `rand.workspace = true` builds nowhere but in a workspace that
-declares `rand`.
+One thing to plan around while that is true: a generated workspace supplies
+`ravel-sdk`, `serde` and `serde_json` for mod dependencies. Inheriting any other
+`ravel-*` crate is refused: author code uses the SDK facade, not loader internals.
+Other dependencies must name their own versions rather than inherit one:
+`rand.workspace = true` builds nowhere but in a workspace that declares `rand`.
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side, and it no longer runs at `premain` either.

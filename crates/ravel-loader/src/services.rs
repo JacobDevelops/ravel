@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure, precedence};
+use ravel_core::{
+    FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure, precedence,
+};
 use ravel_host_api::{
     HostError, HostMod, ServiceCallFailed, ServiceDeclaration, ServiceDirectory, ServiceId,
     ServiceRequest, ServiceResponse, ServiceUnavailable,
 };
 
-use crate::lifecycle::LifecycleMachine;
+use crate::lifecycle::{LifecycleError, LifecycleMachine, Requirement};
 
 /// The order the set's services were opened in.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,40 +37,36 @@ impl ServiceOrder {
 /// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or callback failure.
 pub fn open_services<H: std::ops::DerefMut<Target: HostMod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
+    environment: &FailureEnvironment,
 ) -> Result<ServiceOrder, ServiceRefused> {
     let (machine, mods) = loaded.parts();
-    open_with_context(&mut &*machine, mods)
-}
-
-/// Opens each callback at most once, allowing the driver to fail optional owners and continue.
-pub(crate) fn open_services_with_failure_handler<
-    E: From<ServiceRefused>,
-    H: std::ops::DerefMut<Target: HostMod>,
->(
-    loaded: &mut crate::LoadedMods<'_, H>,
-    on_failure: impl FnMut(&mut LifecycleMachine, HostError) -> Result<(), E>,
-) -> Result<ServiceOrder, E> {
-    let (machine, mods) = loaded.parts();
     open_with_context(
-        &mut Tracked {
+        &mut ServiceContext {
             machine,
-            on_failure,
+            environment,
         },
         mods,
     )
 }
 
-trait ServiceContext<E> {
-    fn machine(&self) -> &LifecycleMachine;
-    fn fail(&mut self, source: HostError) -> Result<(), E>;
+struct ServiceContext<'a> {
+    machine: &'a mut LifecycleMachine,
+    environment: &'a FailureEnvironment,
 }
 
-impl ServiceContext<ServiceRefused> for &LifecycleMachine {
+impl ServiceContext<'_> {
     fn machine(&self) -> &LifecycleMachine {
-        self
+        self.machine
     }
 
     fn fail(&mut self, source: HostError) -> Result<(), ServiceRefused> {
+        let requirement = self
+            .machine
+            .fail_callback(&source, self.environment, None)
+            .map_err(ServiceRefused::Lifecycle)?;
+        if requirement == Requirement::Optional {
+            return Ok(());
+        }
         Err(ServiceRefused::Consumer {
             mod_id: source.mod_id().clone(),
             source,
@@ -76,31 +74,13 @@ impl ServiceContext<ServiceRefused> for &LifecycleMachine {
     }
 }
 
-struct Tracked<'a, F> {
-    machine: &'a mut LifecycleMachine,
-    on_failure: F,
-}
-
-impl<E, F> ServiceContext<E> for Tracked<'_, F>
-where
-    F: FnMut(&mut LifecycleMachine, HostError) -> Result<(), E>,
-{
-    fn machine(&self) -> &LifecycleMachine {
-        self.machine
-    }
-
-    fn fail(&mut self, source: HostError) -> Result<(), E> {
-        (self.on_failure)(self.machine, source)
-    }
-}
-
-fn open_with_context<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: HostMod>>(
-    context: &mut impl ServiceContext<E>,
+fn open_with_context<H: std::ops::DerefMut<Target: HostMod>>(
+    context: &mut ServiceContext<'_>,
     mods: &mut [H],
-) -> Result<ServiceOrder, E> {
+) -> Result<ServiceOrder, ServiceRefused> {
     let declarations = declared(context, mods)?;
     let providers = providers(&declarations);
-    let mut order = dependency_order(&declarations, &providers).map_err(E::from)?;
+    let mut order = dependency_order(&declarations, &providers)?;
 
     crate::loaded::arrange(mods, &order);
     for position in 0..mods.len() {
@@ -145,10 +125,10 @@ fn open_with_context<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: Host
 /// # Errors
 ///
 /// Returns [`ServiceRefused::ForeignDeclaration`] naming both identities.
-fn declared<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: HostMod>>(
-    context: &mut impl ServiceContext<E>,
+fn declared<H: std::ops::DerefMut<Target: HostMod>>(
+    context: &mut ServiceContext<'_>,
     mods: &[H],
-) -> Result<BTreeMap<ModId, ServiceDeclaration>, E> {
+) -> Result<BTreeMap<ModId, ServiceDeclaration>, ServiceRefused> {
     let mut declarations = BTreeMap::new();
     for host in mods {
         let machine = context.machine();
@@ -171,10 +151,10 @@ fn declared<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: HostMod>>(
             }
         };
         if declaration.owner() != host.id() {
-            return Err(E::from(ServiceRefused::ForeignDeclaration {
+            return Err(ServiceRefused::ForeignDeclaration {
                 mod_id: host.id().clone(),
                 owner: declaration.owner().clone(),
-            }));
+            });
         }
         declarations.insert(host.id().clone(), declaration);
     }
@@ -230,17 +210,15 @@ fn dependency_order(
 }
 
 /// A directory over the mods already started.
-struct Started<'a, H: std::ops::DerefMut<Target: HostMod>, E, C> {
+struct Started<'a, 'm, H: std::ops::DerefMut<Target: HostMod>> {
     caller: ModId,
     declaration: &'a ServiceDeclaration,
     mods: &'a mut [H],
-    context: &'a mut C,
-    failure: Option<E>,
+    context: &'a mut ServiceContext<'m>,
+    failure: Option<ServiceRefused>,
 }
 
-impl<H: std::ops::DerefMut<Target: HostMod>, E, C: ServiceContext<E>> ServiceDirectory
-    for Started<'_, H, E, C>
-{
+impl<H: std::ops::DerefMut<Target: HostMod>> ServiceDirectory for Started<'_, '_, H> {
     fn call(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ServiceCallFailed> {
         if !self.declaration.calls(&request.id) {
             return Err(ServiceCallFailed::Unavailable(
@@ -266,10 +244,10 @@ impl<H: std::ops::DerefMut<Target: HostMod>, E, C: ServiceContext<E>> ServiceDir
         match crate::callback(&mod_id, state, || provider.answer_service(request)) {
             Ok(response) => Ok(response),
             Err(source) => {
-                if let Err(error) = self.context.fail(source) {
+                if let Err(error) = self.context.fail(source.clone()) {
                     self.failure = Some(error);
                 }
-                Err(unavailable(self.declaration, request))
+                Err(ServiceCallFailed::Refused(source))
             }
         }
     }
@@ -287,6 +265,8 @@ fn unavailable(declaration: &ServiceDeclaration, request: &ServiceRequest) -> Se
 /// Why a set's services did not open.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ServiceRefused {
+    /// The lifecycle refused failure attribution.
+    Lifecycle(LifecycleError),
     /// Nothing running in this set answers a service a mod requires.
     NoProvider {
         /// The mod that requires it.
@@ -318,6 +298,7 @@ pub enum ServiceRefused {
 impl fmt::Display for ServiceRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Lifecycle(error) => error.fmt(formatter),
             Self::NoProvider { consumer, service } => write!(
                 formatter,
                 "`{consumer}` requires `{service}` and nothing running answers it"
@@ -347,6 +328,7 @@ impl fmt::Display for ServiceRefused {
 impl std::error::Error for ServiceRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Lifecycle(error) => Some(error),
             Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => None,
             Self::Consumer { source, .. } => Some(source),
         }
@@ -357,6 +339,7 @@ impl StructuredFailure for ServiceRefused {
     /// Only missing providers and cycles are dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
+            Self::Lifecycle(error) => error.failure_kind(),
             Self::NoProvider { .. } => Some(FailureKind::MissingRequiredDependency),
             Self::Cycle { .. } => Some(FailureKind::DependencyCycle),
             Self::Consumer { .. } | Self::ForeignDeclaration { .. } => None,
@@ -365,6 +348,7 @@ impl StructuredFailure for ServiceRefused {
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
+            Self::Lifecycle(error) => error.lifecycle_state(),
             Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => {
                 LifecycleState::Resolved
             }
@@ -374,7 +358,11 @@ impl StructuredFailure for ServiceRefused {
 
     /// A consumer's refusal carries the sentence that mod wrote.
     fn quotes_untrusted_text(&self) -> bool {
-        matches!(self, Self::Consumer { .. })
+        match self {
+            Self::Consumer { .. } => true,
+            Self::Lifecycle(error) => error.quotes_untrusted_text(),
+            Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => false,
+        }
     }
 }
 
@@ -391,6 +379,15 @@ mod tests {
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
     use crate::tests::entry;
+
+    fn environment() -> ravel_core::FailureEnvironment {
+        ravel_core::FailureEnvironment {
+            ravel: "0.1.0".parse().expect("valid version"),
+            minecraft: "Synthetic26.1.5".to_owned(),
+            platform: "test".to_owned(),
+            architecture: "test".to_owned(),
+        }
+    }
 
     struct Failing {
         id: ModId,
@@ -445,6 +442,7 @@ mod tests {
                     &mut [&mut host, &mut provider],
                 )
                 .expect("all active hosts are supplied"),
+                &environment(),
             )
             .expect_err("callback failure stays contained");
             let ServiceRefused::Consumer { mod_id, source } = refusal else {
@@ -465,8 +463,12 @@ mod tests {
             ServiceDeclaration::new(id("consumer"), [], [service("provider", "answer")])
                 .expect("valid declaration");
         let mut providers: [&mut dyn HostMod; 1] = [&mut provider];
-        let machine = machine(vec![entry("provider", &[Side::DedicatedServer])]);
-        let mut context = &machine;
+        let mut machine = machine(vec![entry("provider", &[Side::DedicatedServer])]);
+        let environment = environment();
+        let mut context = super::ServiceContext {
+            machine: &mut machine,
+            environment: &environment,
+        };
         let mut directory = super::Started {
             caller: id("consumer"),
             declaration: &declaration,
@@ -481,8 +483,8 @@ mod tests {
             ))
             .expect_err("provider refusal is contained");
         assert!(matches!(
-            error,
-            ravel_host_api::ServiceCallFailed::Unavailable(_)
+            &error,
+            ravel_host_api::ServiceCallFailed::Refused(source) if source.mod_id() == &id("provider")
         ));
         let Some(ServiceRefused::Consumer { source, .. }) = directory.failure else {
             panic!("expected provider attribution");
@@ -498,26 +500,28 @@ mod tests {
             id: id("zfail"),
             phase: "refusal",
         };
+        let mut failed = entry("zfail", &[Side::DedicatedServer]);
+        failed.requirement = Requirement::Optional;
         let mut machine = machine(vec![
             entry("provider", &[Side::DedicatedServer]),
             entry("consumer", &[Side::DedicatedServer]),
-            entry("zfail", &[Side::DedicatedServer]),
+            failed,
         ]);
-        let mut refusals = Vec::new();
-        super::open_services_with_failure_handler(
+        open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(
                 &mut machine,
                 &mut [&mut healthy, &mut refusing, &mut provider],
             )
             .expect("all active hosts are supplied"),
-            |_, source| {
-                refusals.push(source);
-                Ok::<(), ServiceRefused>(())
-            },
+            &environment(),
         )
-        .expect("the handler permits continuation");
-        assert_eq!(refusals.len(), 1);
-        assert_eq!(refusals[0].mod_id(), &id("zfail"));
+        .expect("an optional refusal permits continuation");
+        assert_eq!(machine.state(&id("zfail")), Ok(LifecycleState::Failed));
+        let failure = machine
+            .failure(&id("zfail"))
+            .expect("known owner")
+            .expect("optional refusal is retained");
+        assert_eq!(failure.mod_id, Some(id("zfail")));
         assert_eq!(healthy.reached, ["provider"]);
         assert_eq!(provider.answered, [service("provider", "answer")]);
     }
@@ -626,7 +630,8 @@ mod tests {
         assert_eq!(
             open_services(
                 &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
-                    .expect("all active hosts are supplied")
+                    .expect("all active hosts are supplied"),
+                &environment(),
             ),
             Err(ServiceRefused::Consumer {
                 mod_id: id("refusing_mod"),
@@ -658,6 +663,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("the graph resolves");
 
@@ -693,6 +699,7 @@ mod tests {
                 &mut [&mut thief, &mut consumer],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("a mod declares only its own services");
 
@@ -735,6 +742,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("the chain resolves");
 
@@ -769,6 +777,7 @@ mod tests {
         let refusal = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("no order starts either");
         assert_eq!(
@@ -792,6 +801,7 @@ mod tests {
         let refusal = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("nothing answers `absent:prices`");
         assert_eq!(
@@ -823,7 +833,8 @@ mod tests {
                     &mut machine,
                     &mut [&mut consumer, &mut warehouse]
                 )
-                .expect("all active hosts are supplied")
+                .expect("all active hosts are supplied"),
+                &environment(),
             ),
             Err(ServiceRefused::NoProvider {
                 consumer: id("consumer"),
@@ -861,6 +872,7 @@ mod tests {
                 &mut [&mut anvil, &mut mill, &mut warehouse],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("the mod in the mill of the chain refuses");
         assert!(matches!(
@@ -942,6 +954,7 @@ mod tests {
                 &mut [&mut sneaking, &mut warehouse],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("the call was not declared");
         assert!(
@@ -975,6 +988,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut plain])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("nothing to resolve resolves");
         assert_eq!(opened.order(), []);
@@ -990,6 +1004,7 @@ mod tests {
         declaration: ServiceDeclaration,
         reached: Vec<String>,
         absent: Vec<ServiceId>,
+        refused: Vec<ServiceId>,
     }
 
     impl Hedging {
@@ -1005,6 +1020,7 @@ mod tests {
                 .expect("a legal declaration"),
                 reached: Vec::new(),
                 absent: Vec::new(),
+                refused: Vec::new(),
             }
         }
     }
@@ -1029,7 +1045,7 @@ mod tests {
             Ok(ServiceResponse::new(json!(self.id.as_str())))
         }
 
-        // Optional consumers can carry on when a failed provider becomes unavailable.
+        // Optional consumers distinguish absence from a reached provider's refusal.
         fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
             let optional: Vec<ServiceId> = self.declaration.may_use().cloned().collect();
             for wanted in optional {
@@ -1038,6 +1054,7 @@ mod tests {
                         .reached
                         .push(answer.value().as_str().unwrap_or_default().to_owned()),
                     Err(failed) if failed.is_absent() => self.absent.push(wanted),
+                    Err(ravel_host_api::ServiceCallFailed::Refused(_)) => self.refused.push(wanted),
                     Err(failed) => {
                         return Err(ModError::Refused {
                             detail: failed.to_string(),
@@ -1108,6 +1125,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("the graph resolves");
 
@@ -1135,6 +1153,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("an absent provider refuses none");
 
@@ -1160,7 +1179,8 @@ mod tests {
         assert_eq!(
             open_services(
                 &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
-                    .expect("all active hosts are supplied")
+                    .expect("all active hosts are supplied"),
+                &environment(),
             ),
             Err(ServiceRefused::NoProvider {
                 consumer: id("consumer"),
@@ -1184,6 +1204,7 @@ mod tests {
                 &mut [&mut consumer, &mut warehouse],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("the provider said no");
 
@@ -1195,7 +1216,14 @@ mod tests {
             refusal.to_string().contains("not answering today"),
             "{refusal}"
         );
-        assert_eq!(consumer.absent, [service("warehouse", "prices")]);
+        assert_eq!(consumer.absent, Vec::new());
+        assert_eq!(consumer.refused, [service("warehouse", "prices")]);
+        let failure = machine
+            .failure(&id("warehouse"))
+            .expect("known provider")
+            .expect("recorded refusal");
+        assert_eq!(failure.mod_id, Some(id("warehouse")));
+        assert_eq!(failure.environment, environment());
     }
 
     #[test]
@@ -1230,9 +1258,9 @@ mod tests {
         let result = crate::drive(Side::DedicatedServer, &environment, composed);
         if requirement == Requirement::Required {
             assert!(
-                matches!(result, Err(crate::DriveError::Host { attribution, .. })
-                if attribution.mod_id == Some(id("warehouse"))
-                    && attribution.state == LifecycleState::Registered)
+                matches!(result, Err(crate::DriveError::Services(ServiceRefused::Consumer { mod_id, source }))
+                if mod_id == id("warehouse")
+                    && source.state() == LifecycleState::Registered)
             );
         } else {
             let (machine, _) = result.expect("the optional provider may fail");
@@ -1271,6 +1299,7 @@ mod tests {
         let refusal = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect_err("no order starts either");
         assert_eq!(
@@ -1297,6 +1326,7 @@ mod tests {
         let opened = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first])
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("no edge, no cycle");
         assert_eq!(opened.order(), [id("first")]);
@@ -1318,6 +1348,7 @@ mod tests {
                 &mut [&mut consumer, &mut warehouse],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("a parked provider refuses no optional consumer");
 
@@ -1349,6 +1380,7 @@ mod tests {
         let forward = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries.clone()), &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("resolves");
         assert_eq!(
@@ -1363,6 +1395,7 @@ mod tests {
         let reversed = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries), &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("resolves");
         assert_eq!(
@@ -1399,6 +1432,7 @@ mod tests {
                 &mut [&mut warehouse, &mut consumer],
             )
             .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("resolves");
         assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
@@ -1425,6 +1459,7 @@ mod tests {
         let forward = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries.clone()), &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("resolves");
         assert_eq!(
@@ -1439,6 +1474,7 @@ mod tests {
         let reversed = open_services(
             &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries), &mut mods)
                 .expect("all active hosts are supplied"),
+            &environment(),
         )
         .expect("resolves");
         assert_eq!(

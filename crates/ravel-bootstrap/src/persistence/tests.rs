@@ -376,7 +376,13 @@ fn owners_running_with_requirement(
         machine.advance_all(state).expect("a legal step");
     }
     (
-        LoaderRuntime::with_observers(machine, hosts, ravel_observability::Profiler::off(), report),
+        LoaderRuntime::with_observers(
+            machine,
+            hosts,
+            ravel_observability::Profiler::off(),
+            report,
+            crate::runtime::test_launch(),
+        ),
         held,
     )
 }
@@ -566,6 +572,7 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
             hosts,
             ravel_observability::Profiler::off(),
             crate::runtime::pre_world_report(),
+            crate::runtime::test_launch(),
         ),
         held,
         refusing,
@@ -648,6 +655,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         hosts,
         ravel_observability::Profiler::off(),
         crate::runtime::pre_world_report(),
+        crate::runtime::test_launch(),
     );
     runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -1128,6 +1136,7 @@ fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
                 id: id(OWNER),
                 held: Arc::clone(&held),
             })],
+            crate::runtime::test_launch(),
         );
         runtime
             .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -1389,11 +1398,12 @@ fn shipped_running() -> LoaderRuntime {
         vec![Box::new(shipped)],
         ravel_observability::Profiler::off(),
         crate::runtime::pre_world_report(),
+        crate::runtime::test_launch(),
     )
 }
 
 #[test]
-fn a_launch_that_stages_no_pack_does_not_ask_for_a_reload() {
+fn a_launch_with_no_declared_resources_still_stages_pack_metadata() {
     let staging = std::env::temp_dir().join(format!("ravel-unstaged-{}", std::process::id()));
     if staging.exists() {
         std::fs::remove_dir_all(&staging).expect("remove the previous staging directory");
@@ -1402,8 +1412,8 @@ fn a_launch_that_stages_no_pack_does_not_ask_for_a_reload() {
 
     let staged = shipped_running().write_staged_pack(&staging.to_string_lossy());
 
-    assert_eq!(staged, StagedPack::Nothing);
-    assert!(!staging.join("ravel").exists());
+    assert_eq!(staged, StagedPack::Written);
+    assert!(staging.join("ravel/pack.mcmeta").is_file());
     std::fs::remove_dir_all(staging).expect("remove the staging directory");
 }
 
@@ -1776,6 +1786,17 @@ fn a_world_requiring_a_package_is_refused_and_the_same_world_without_one_is_not(
     runtime
         .stage_world(WorldIdentity::of(FIRST), Some(&requiring_none), true)
         .expect("the same world declaring no requirement opens");
+
+    let (runtime, _held) = running();
+    runtime
+        .inner
+        .lock()
+        .expect("healthy lock")
+        .installed_packages
+        .insert(id("base"), ravel_core::Version::new(2, 0, 0));
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), Some(&requiring), true)
+        .expect("an installed matching package satisfies the world's requirement");
 }
 
 fn stored_requiring(required: Vec<ravel_save::RequiredPackage>) -> Vec<u8> {

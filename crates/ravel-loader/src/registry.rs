@@ -1,4 +1,5 @@
-use ravel_core::{ContentBehaviour, ModId, RegistryKey};
+use ravel_core::{ModId, RegistryKey};
+use ravel_data::ContentBehaviour;
 use ravel_host_api::{Registrar, RegistrationRefused};
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
@@ -58,7 +59,7 @@ impl Registration<'_> {
     ) -> Result<(), RegistrationRefused> {
         match self
             .machine
-            .claim_described_registry_identifier(&self.mod_id, &key, behaviour)
+            .claim_registry_identifier_describing(&self.mod_id, &key, behaviour)
         {
             Ok(()) => {
                 self.claimed.push(key);
@@ -69,6 +70,9 @@ impl Registration<'_> {
             }
             Err(LifecycleError::ForeignRegistryClaim { mod_id, .. }) => {
                 Err(RegistrationRefused::ForeignDeclaration { key, mod_id })
+            }
+            Err(LifecycleError::MismatchedContentBehaviour { described, .. }) => {
+                Err(RegistrationRefused::MismatchedBehaviour { key, described })
             }
             Err(error) => {
                 // Preserve detailed loader errors behind the mod-facing closed window.
@@ -95,12 +99,6 @@ impl LifecycleMachine {
     ) -> Result<Registration<'_>, LifecycleError> {
         self.state(mod_id)?;
         Ok(Registration::new(self, mod_id.clone()))
-    }
-
-    /// Returns the identity that owns a typed registry entry.
-    #[must_use]
-    pub fn owner_of(&self, key: &RegistryKey) -> Option<&ModId> {
-        self.registry_owner(key)
     }
 }
 
@@ -154,14 +152,39 @@ mod tests {
         assert_eq!(window.claimed(), [block.clone(), item.clone()]);
         assert!(window.unexpected().is_none());
 
-        assert_eq!(machine.owner_of(&block), Some(&id("example_mod")));
-        assert_eq!(machine.owner_of(&item), Some(&id("example_mod")));
+        assert_eq!(machine.registry_owner(&block), Some(&id("example_mod")));
+        assert_eq!(machine.registry_owner(&item), Some(&id("example_mod")));
     }
 
     #[test]
     fn an_unclaimed_key_has_no_owner() {
         let machine = constructed(&["example_mod"]);
-        assert_eq!(machine.owner_of(&key(ContentKind::Recipe, "a:b")), None);
+        assert_eq!(
+            machine.registry_owner(&key(ContentKind::Recipe, "a:b")),
+            None
+        );
+    }
+
+    #[test]
+    fn mismatched_behaviour_is_truthfully_refused_without_an_unexpected_loader_error() {
+        let mut machine = constructed(&["example_mod"]);
+        let item = key(ContentKind::Item, "example_mod:copper");
+        let mut window = machine
+            .registration_window(&id("example_mod"))
+            .expect("known mod");
+        assert_eq!(
+            window.claim_describing(
+                item.clone(),
+                ravel_data::ContentBehaviour::Block(ravel_data::BlockBehaviour::default()),
+            ),
+            Err(RegistrationRefused::MismatchedBehaviour {
+                key: item.clone(),
+                described: ContentKind::Block,
+            })
+        );
+        assert!(window.unexpected().is_none());
+        assert_eq!(window.claimed(), []);
+        assert_eq!(machine.registry_owner(&item), None);
     }
 
     #[test]
@@ -181,7 +204,7 @@ mod tests {
             );
             assert_eq!(window.claimed(), []);
             assert!(window.unexpected().is_none());
-            assert_eq!(machine.owner_of(&foreign), None);
+            assert_eq!(machine.registry_owner(&foreign), None);
         }
     }
 
@@ -220,7 +243,7 @@ mod tests {
             Err(RegistrationRefused::Closed { key: late.clone() })
         );
         assert!(window.unexpected().is_none());
-        assert_eq!(machine.owner_of(&late), None);
+        assert_eq!(machine.registry_owner(&late), None);
     }
 
     #[test]
@@ -254,7 +277,7 @@ mod tests {
             }
             other => panic!("expected a registration-window refusal, got {other:?}"),
         }
-        assert_eq!(machine.owner_of(&early), None);
+        assert_eq!(machine.registry_owner(&early), None);
     }
 
     #[test]

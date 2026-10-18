@@ -32,7 +32,7 @@ use ravel_sdk::network::{
     WireError,
 };
 use ravel_sdk::sides::{ClientOnly, Side};
-use ravel_sdk::{JsonValue, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "client_only";
@@ -258,14 +258,7 @@ impl Mod for ClientOnlyMod {
         let key = ENABLED
             .parse()
             .map_err(|_| ModError::refused(format!("`{ENABLED}` is not a legal setting key")))?;
-        let enabled = resolved
-            .value(&key)
-            .and_then(JsonValue::as_bool)
-            .ok_or_else(|| {
-                ModError::refused(format!(
-                    "`{ENABLED}` resolved to something that is not a switch"
-                ))
-            })?;
+        let enabled = resolved.boolean(&key).map_err(ModError::from_display)?;
         self.enabled = Some(enabled);
         Ok(())
     }

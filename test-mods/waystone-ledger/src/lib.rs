@@ -500,30 +500,16 @@ impl Mod for WaystoneLedger {
             .parse()
             .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
         let capacity = resolved
-            .value(&capacity_key)
-            .and_then(JsonValue::as_u64)
-            .ok_or_else(|| {
-                ModError::refused(format!(
-                    "`{CAPACITY}` resolved to something that is not a count"
-                ))
-            })?;
-        self.capacity = usize::try_from(capacity).map_err(|_| {
-            ModError::refused(format!(
-                "`{CAPACITY}` resolved to a count this platform cannot hold"
-            ))
-        })?;
+            .integer(&capacity_key)
+            .map_err(ModError::from_display)?;
+        self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
 
         let overwrite_key = OVERWRITE
             .parse()
             .map_err(|_| ModError::refused(format!("`{OVERWRITE}` is not a legal setting key")))?;
         self.overwrite = resolved
-            .value(&overwrite_key)
-            .and_then(JsonValue::as_bool)
-            .ok_or_else(|| {
-                ModError::refused(format!(
-                    "`{OVERWRITE}` resolved to something that is not a yes or a no"
-                ))
-            })?;
+            .boolean(&overwrite_key)
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -543,18 +529,14 @@ impl Mod for WaystoneLedger {
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
+        _plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.waystones.clear();
             return Ok(());
         };
-        // The payload is at whatever version the world stored, so the chain
-        // crosses the steps the plan names before anything is read.
-        let current = Self::migrations()
-            .apply(plan, envelope.payload())
-            .map_err(ModError::from_display)?;
-        let stored = current
+        let stored = envelope
+            .payload()
             .get("waystones")
             .and_then(JsonValue::as_array)
             .ok_or_else(|| ModError::refused("the stored ledger holds no waystone list"))?;
@@ -635,7 +617,7 @@ mod tests {
     };
     use ravel_sdk::config::{LayeredConfiguration, ValueDocument, ValueSource};
     use ravel_sdk::content::{
-        ContentKind, DeclarationError, Registrar, RegistrationRefused, RegistryKey,
+        ContentDeclarationError, ContentKind, Registrar, RegistrationRefused, RegistryKey,
     };
     use ravel_sdk::events::CommandInvocation;
     use ravel_sdk::generate::GeneratedFile;
@@ -724,12 +706,18 @@ mod tests {
         }
     }
 
-    fn opened(at: u32, payload: JsonValue) -> Result<WaystoneLedger, ModError> {
+    fn opened(at: u32, payload: &JsonValue) -> Result<WaystoneLedger, ModError> {
         let mut ledger = configured(Side::IntegratedServer);
         let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions()?, Some(version(at)))
             .expect("a declared version");
+        let payload = WaystoneLedger::migrations()
+            .apply(&plan, payload)
+            .map_err(ModError::from_display)?;
+        let current = WaystoneLedger::saved_versions()?.current();
+        let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions()?, Some(current))
+            .expect("the current version");
         let envelope =
-            SavedDataEnvelope::current(WaystoneLedger::declared_id().clone(), version(at), payload);
+            SavedDataEnvelope::current(WaystoneLedger::declared_id().clone(), current, payload);
         ledger.open_saved_data(Some(&envelope), &plan)?;
         Ok(ledger)
     }
@@ -828,7 +816,10 @@ mod tests {
         let error = declaration
             .tag(&WaystoneLedger::waystones_tag(ContentKind::Item), &block)
             .expect_err("an item tag holds items");
-        assert!(matches!(error, DeclarationError::TagKind { .. }), "{error}");
+        assert!(
+            matches!(error, ContentDeclarationError::TagKind { .. }),
+            "{error}"
+        );
     }
 
     #[test]
@@ -992,7 +983,7 @@ mod tests {
     fn a_version_one_world_keeps_every_point_and_gains_the_dimension_it_lacked() {
         let ledger = opened(
             1,
-            json!({ "points": [
+            &json!({ "points": [
                 { "name": "home", "x": 10, "y": 64, "z": -30 },
                 { "name": "mine", "x": -400, "y": 12, "z": 88 }
             ]}),
@@ -1013,11 +1004,14 @@ mod tests {
     #[test]
     fn a_version_one_shape_the_step_cannot_read_refuses_and_leaves_the_ledger_empty() {
         let refusal =
-            opened(1, json!({ "waystones": [] })).expect_err("version 1 named its list `points`");
+            opened(1, &json!({ "waystones": [] })).expect_err("version 1 named its list `points`");
         assert!(refusal.to_string().contains("points"), "{refusal}");
 
-        let partial = opened(1, json!({ "points": [{ "name": "home", "x": 1, "y": 2 }] }))
-            .expect_err("a point with no `z` is not a point");
+        let partial = opened(
+            1,
+            &json!({ "points": [{ "name": "home", "x": 1, "y": 2 }] }),
+        )
+        .expect_err("a point with no `z` is not a point");
         assert!(partial.to_string().contains('z'), "{partial}");
     }
 
@@ -1276,7 +1270,7 @@ mod tests {
 
     #[test]
     fn no_refusal_this_mod_writes_names_a_path_or_a_secret() {
-        let refusal = opened(1, json!({ "note": "nothing" })).expect_err("no `points` list");
+        let refusal = opened(1, &json!({ "note": "nothing" })).expect_err("no `points` list");
         let detail = refusal.to_string();
         assert!(!detail.contains('/'), "{detail}");
         assert!(!detail.contains('\\'), "{detail}");

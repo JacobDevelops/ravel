@@ -19,23 +19,23 @@ pub fn open_resources<H: std::ops::DerefMut<Target: HostMod>>(
     let mut generated: Vec<(ModId, GeneratedData)> = Vec::new();
 
     for mod_id in machine.order() {
-        if !machine
-            .entry(mod_id)
-            .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
-        {
+        let state = machine
+            .state(mod_id)
+            .expect("the lifecycle entry is tracked");
+        if !machine.entry(mod_id).is_ok_and(|entry| {
+            entry.sides.loads_on(machine.side()) && state != LifecycleState::Failed
+        }) {
             continue;
         }
         let host = mods
             .iter()
             .find(|host| host.id() == mod_id)
             .expect("the paired view checked every loading owner");
-        let Some(declaration) = crate::callback(mod_id, LifecycleState::Registered, || {
-            host.content_declaration()
-        })
-        .map_err(|source| ResourceRefused::Mod {
-            mod_id: mod_id.clone(),
-            source,
-        })?
+        let Some(declaration) = crate::callback(mod_id, state, || host.content_declaration())
+            .map_err(|source| ResourceRefused::Mod {
+                mod_id: mod_id.clone(),
+                source,
+            })?
         else {
             continue;
         };
@@ -147,7 +147,10 @@ impl StructuredFailure for ResourceRefused {
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
-        LifecycleState::Registered
+        match self {
+            Self::Mod { source, .. } => source.state(),
+            Self::ForeignDeclaration { .. } => LifecycleState::Registered,
+        }
     }
 
     fn quotes_untrusted_text(&self) -> bool {
@@ -178,6 +181,8 @@ mod tests {
         declared_owner: ModId,
         supplies: Vec<(RelativePath, Vec<u8>)>,
         refuses_declaration: bool,
+        calls: std::cell::Cell<usize>,
+        fails_start: bool,
     }
 
     impl Supplying {
@@ -186,6 +191,8 @@ mod tests {
                 id: id(name),
                 declared_owner: id(name),
                 refuses_declaration: false,
+                calls: std::cell::Cell::new(0),
+                fails_start: false,
                 supplies: supplies
                     .iter()
                     .map(|(at, bytes)| (path(at), (*bytes).as_bytes().to_vec()))
@@ -205,6 +212,9 @@ mod tests {
         }
 
         fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
+            if self.fails_start {
+                return Err(ravel_host_api::ModError::Unsupported);
+            }
             Ok(())
         }
 
@@ -212,6 +222,7 @@ mod tests {
             &self,
         ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ravel_host_api::ModError>
         {
+            self.calls.set(self.calls.get() + 1);
             if self.refuses_declaration {
                 return Err(ravel_host_api::ModError::Unsupported);
             }
@@ -263,7 +274,7 @@ mod tests {
                 mod_id: id("refusing_mod"),
                 source: HostError::Unsupported {
                     mod_id: id("refusing_mod"),
-                    state: LifecycleState::Registered,
+                    state: LifecycleState::Discovered,
                 },
             })
         );
@@ -356,6 +367,28 @@ mod tests {
 
         assert_eq!(supplied.generated(), []);
         assert_eq!(supplied.bytes(&path("assets/client.json")), None);
+    }
+
+    #[test]
+    fn failed_optional_owners_neither_declare_nor_supply_resources() {
+        let mut host = Supplying::new("failed_mod", &[("assets/failed.json", "bad")]);
+        host.fails_start = true;
+        let mut planned = entry("failed_mod", &[Side::DedicatedServer]);
+        planned.requirement = crate::Requirement::Optional;
+        let mut machine = machine(vec![planned]);
+        let environment = ravel_core::FailureEnvironment {
+            ravel: "0.1.0".parse().expect("valid version"),
+            minecraft: "test".to_owned(),
+            platform: "test".to_owned(),
+            architecture: "test".to_owned(),
+        };
+        let mut hosts: [&mut dyn HostMod; 1] = [&mut host];
+        let mut loaded = crate::LoadedMods::new(&mut machine, &mut hosts).expect("paired host");
+        crate::drive_loaded(&mut loaded, &environment).expect("optional failure permits startup");
+        let supplied = open_resources(&mut loaded).expect("failed owners are skipped");
+        assert_eq!(supplied.generated(), []);
+        assert_eq!(supplied.bytes(&path("assets/failed.json")), None);
+        assert_eq!(host.calls.get(), 0);
     }
 
     #[test]

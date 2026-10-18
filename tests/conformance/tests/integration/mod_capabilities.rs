@@ -58,7 +58,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
     let mut machine = running(three_mod_plan(), Side::Client, &mut mods);
 
     for key in CommandsMod::new().claims() {
-        assert_eq!(machine.owner_of(&key), Some(&id("commands")));
+        assert_eq!(machine.registry_owner(&key), Some(&id("commands")));
     }
 
     let invocation = CommandInvocation::new(
@@ -273,7 +273,7 @@ fn a_command_owned_by_a_mod_that_does_not_load_here_is_refused_rather_than_swall
         &mut mods,
     );
     let owned = CommandsMod::new().key("warp");
-    assert_eq!(machine.owner_of(&owned), Some(&id("commands")));
+    assert_eq!(machine.registry_owner(&owned), Some(&id("commands")));
 
     let mut elsewhere = LifecycleMachine::new(
         Side::DedicatedServer,
@@ -355,7 +355,7 @@ fn two_mods_cannot_claim_the_same_command_root() {
     let text = error.to_string();
     assert!(text.contains("commands"), "{text}");
     assert!(text.contains(ContentKind::Command.as_str()), "{text}");
-    assert_eq!(machine.owner_of(&contested), Some(&id("commands")));
+    assert_eq!(machine.registry_owner(&contested), Some(&id("commands")));
 }
 
 #[test]

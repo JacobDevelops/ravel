@@ -234,12 +234,6 @@ impl ModCost {
     pub const fn hook_calls(&self) -> u64 {
         self.event_calls.saturating_add(self.command_calls)
     }
-
-    /// Java-boundary deliveries, with the caveats in [`Metric::BoundaryCalls`].
-    #[must_use]
-    pub const fn boundary_calls(&self) -> u64 {
-        self.hook_calls()
-    }
 }
 
 /// Opt-in per-mod profiling; disabled calls read no clock and touch no map.
@@ -573,7 +567,6 @@ mod tests {
         assert_eq!(report.mods()[0].cost.event_calls, 2);
         assert_eq!(report.mods()[0].cost.command_calls, 0);
         assert_eq!(report.mods()[0].cost.hook_calls(), 2);
-        assert_eq!(report.mods()[0].cost.boundary_calls(), 2);
         assert_eq!(report.mods()[0].cost.slow_callbacks, 0);
     }
 
@@ -684,7 +677,6 @@ mod tests {
     fn a_cost_that_was_never_charged_is_zero_across_every_measured_metric() {
         let cost = ModCost::default();
         assert_eq!(cost.hook_calls(), 0);
-        assert_eq!(cost.boundary_calls(), 0);
         assert_eq!(cost.inclusive_nanos, 0);
 
         let measured = Metric::ALL

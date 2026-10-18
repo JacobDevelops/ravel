@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_core::{
-    DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId,
-    StructuredFailure, Version,
+    FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure, Version,
 };
 use ravel_host_api::{HostError, HostMod};
 use ravel_save::{
@@ -17,8 +16,7 @@ use crate::loaded::LoadedMods;
 /// Snapshots lifecycle members in load order after checking save and world access.
 ///
 /// Failed hosts retain their prior envelopes without callbacks. Healthy hosts may return no
-/// envelope. Unlike world admission, any snapshot callback failure refuses the snapshot,
-/// without recording a lifecycle failure; the caller owns that attribution.
+/// envelope. Any snapshot failure refuses the snapshot and records its owner's failure.
 ///
 /// # Errors
 ///
@@ -26,6 +24,16 @@ use crate::loaded::LoadedMods;
 /// [`SaveRefused::Owner`] for callback failure, or [`SaveRefused::ForeignEnvelope`]
 /// when a host attempts to write another owner's data.
 pub fn produce_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
+    environment: &FailureEnvironment,
+    prior: Option<&SavedDataAggregate>,
+) -> Result<SavedDataAggregate, SaveRefused> {
+    let result = snapshot(loaded, prior);
+    let (machine, _) = loaded.parts();
+    record_refusal(machine, environment, result)
+}
+
+fn snapshot<H: std::ops::DerefMut<Target: HostMod>>(
     loaded: &mut LoadedMods<'_, H>,
     prior: Option<&SavedDataAggregate>,
 ) -> Result<SavedDataAggregate, SaveRefused> {
@@ -77,11 +85,24 @@ pub fn produce_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
 /// required callback failures and invalid data prevent world opening.
 /// Callback failures are attributed using the supplied session `environment`, including
 /// its Minecraft and Ravel versions; persistence failures have no failure surface.
+/// World compatibility refusals, such as newer stored data or unmet package requirements,
+/// leave owners healthy so another compatible world can be opened in the same session.
 ///
 /// # Errors
 ///
 /// Returns [`SaveRefused`] for invalid data or migrations, foreign ownership, or owner refusal.
 pub fn open_saved_data<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
+    environment: &FailureEnvironment,
+    bytes: Option<&[u8]>,
+    packages: &BTreeMap<ModId, Version>,
+) -> Result<SavedDataAggregate, SaveRefused> {
+    let result = open(loaded, environment, bytes, packages);
+    let (machine, _) = loaded.parts();
+    record_refusal(machine, environment, result)
+}
+
+fn open<H: std::ops::DerefMut<Target: HostMod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
     bytes: Option<&[u8]>,
@@ -239,29 +260,58 @@ fn record_failure<T>(
     mod_id: &ModId,
     source: HostError,
 ) -> Result<Option<T>, SaveRefused> {
-    let required = machine
-        .entry(mod_id)
-        .expect("loaded owner is tracked")
-        .requirement
-        == Requirement::Required;
-    let attribution = FailureAttribution {
-        mod_id: Some(mod_id.clone()),
-        version: None,
-        dependency_chain: Vec::new(),
-        state: source.state(),
-        kind: None,
-        surface: None,
-        environment: environment.clone(),
-        message: DiagnosticMessage::raw(source.to_string()),
-    };
-    let recorded = machine.fail(mod_id, attribution);
-    if required || recorded.is_err() {
+    let requirement = machine
+        .fail_callback(&source, environment, None)
+        .map_err(SaveRefused::Lifecycle)?;
+    if requirement == Requirement::Required {
         return Err(SaveRefused::Owner {
             mod_id: mod_id.clone(),
             source,
         });
     }
     Ok(None)
+}
+
+fn record_refusal<T>(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    result: Result<T, SaveRefused>,
+) -> Result<T, SaveRefused> {
+    if let Err(refused) = &result
+        && let Some(owner) = refused.owner()
+        && machine.entry(owner).is_ok()
+        && breaks_owner_contract(refused)
+    {
+        let source = match refused {
+            SaveRefused::Owner { source, .. } => source.clone(),
+            SaveRefused::Lifecycle(_)
+            | SaveRefused::Data(_)
+            | SaveRefused::ForeignDeclaration { .. }
+            | SaveRefused::ForeignEnvelope { .. } => HostError::Refused {
+                mod_id: owner.clone(),
+                state: machine.state(owner).map_err(SaveRefused::Lifecycle)?,
+                detail: refused.to_string(),
+            },
+        };
+        machine
+            .fail_callback(&source, environment, None)
+            .map_err(SaveRefused::Lifecycle)?;
+    }
+    result
+}
+
+fn breaks_owner_contract(refused: &SaveRefused) -> bool {
+    matches!(
+        refused,
+        SaveRefused::Owner { .. }
+            | SaveRefused::ForeignDeclaration { .. }
+            | SaveRefused::ForeignEnvelope { .. }
+            | SaveRefused::Data(
+                SavedDataError::MigrationFailed { .. }
+                    | SavedDataError::MissingMigration { .. }
+                    | SavedDataError::NoVersionsDeclared { .. }
+            )
+    )
 }
 
 fn loads_here(machine: &LifecycleMachine, mod_id: &ModId) -> bool {
@@ -898,6 +948,82 @@ mod tests {
     }
 
     #[test]
+    fn incompatible_world_inputs_do_not_quarantine_an_owner_or_block_retry() {
+        for requirement in [Requirement::Required, Requirement::Optional] {
+            for future in [true, false] {
+                let mut host = Storing::new("stored");
+                let mut planned = entry("stored", &[Side::DedicatedServer]);
+                planned.requirement = requirement;
+                let mut machine = machine(vec![planned]);
+                let environment = environment();
+                let compatible = world(&[("stored", 3, json!({"compatible": true}))]);
+                let refused_bytes = incompatible_world(future);
+                let mut hosts: [&mut dyn HostMod; 1] = [&mut host];
+                let mut loaded = LoadedMods::new(&mut machine, &mut hosts).expect("paired host");
+                crate::drive_loaded(&mut loaded, &environment).expect("owner starts");
+                open_saved_data(
+                    &mut loaded,
+                    &environment,
+                    Some(&compatible),
+                    &BTreeMap::new(),
+                )
+                .expect("first compatible world opens");
+                let refused = open_saved_data(
+                    &mut loaded,
+                    &environment,
+                    Some(&refused_bytes),
+                    &BTreeMap::new(),
+                )
+                .expect_err("incompatible input is refused");
+                assert!(
+                    matches!(
+                        refused,
+                        SaveRefused::Data(SavedDataError::FutureVersion { .. }) if future
+                    ) || matches!(
+                        refused,
+                        SaveRefused::Data(SavedDataError::MissingPackage { .. }) if !future
+                    )
+                );
+                open_saved_data(
+                    &mut loaded,
+                    &environment,
+                    Some(&compatible),
+                    &BTreeMap::new(),
+                )
+                .expect("same running owner can retry a compatible world");
+                assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Running));
+                assert!(
+                    machine
+                        .failure(&id("stored"))
+                        .expect("tracked owner")
+                        .is_none()
+                );
+                assert_eq!(host.read, Some(json!({"compatible": true})));
+            }
+        }
+    }
+
+    fn incompatible_world(future: bool) -> Vec<u8> {
+        let mut aggregate = SavedDataAggregate::fresh();
+        let required = if future {
+            Vec::new()
+        } else {
+            vec![ravel_save::RequiredPackage {
+                id: id("missing_package"),
+                version: "1.0.0".parse().expect("valid version"),
+            }]
+        };
+        aggregate.replace(SavedDataEnvelope::new(
+            id("stored"),
+            version(if future { 4 } else { 3 }),
+            required,
+            None,
+            json!({}),
+        ));
+        aggregate.to_bytes().expect("valid world input")
+    }
+
+    #[test]
     fn a_world_two_versions_behind_reaches_the_current_shape_before_the_mod_reads_it() {
         let bytes = world(&[("stored", 1, json!({ "count": 7 }))]);
         let mut host = Storing::new("stored");
@@ -995,17 +1121,24 @@ mod tests {
             }))
         );
         assert!(host.read.is_none(), "a mod read a world that was refused");
+        assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Failed));
 
         let mut whole = Storing::new("stored");
+        // Repairing a mod's declaration starts a new session; the broken owner stays failed.
+        let mut repaired_session = LifecycleMachine::new(
+            Side::DedicatedServer,
+            vec![entry("stored", &[Side::DedicatedServer])],
+        )
+        .expect("a legal plan");
         open_saved_data(
-            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut whole])
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut repaired_session, &mut [&mut whole])
                 .expect("complete host set"),
             &environment(),
             Some(&bytes),
             &BTreeMap::new(),
         )
         .expect("the chain covers every declared version");
-        assert!(whole.read.is_some());
+        assert_eq!(whole.read, Some(json!({ "counts": [7], "total": 0 })));
     }
 
     #[test]

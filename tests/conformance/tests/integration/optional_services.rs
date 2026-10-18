@@ -12,6 +12,15 @@ use ravel_test_mod_optional_service::{Bearings, CompassMod, SurveyMod, landmarks
 
 const SIDE: Side = Side::DedicatedServer;
 
+fn environment() -> ravel_core::FailureEnvironment {
+    ravel_core::FailureEnvironment {
+        ravel: "0.1.0".parse().expect("valid version"),
+        minecraft: "Synthetic26.1.5".to_owned(),
+        platform: "test".to_owned(),
+        architecture: "test".to_owned(),
+    }
+}
+
 fn entry(mod_id: &ModId, sides: &[Side]) -> LifecycleEntry {
     LifecycleEntry {
         mod_id: mod_id.clone(),
@@ -41,6 +50,7 @@ fn an_installed_optional_provider_is_composed_before_the_mod_that_may_use_it() {
             &mut [&mut compass, &mut survey],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect("the graph resolves");
 
@@ -71,6 +81,7 @@ fn the_same_compass_alone_loads_and_records_doing_without() {
             &mut [&mut compass],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect("an absent provider refuses nothing");
 
@@ -97,6 +108,7 @@ fn an_optional_provider_this_side_parks_is_absence_rather_than_a_refusal() {
             &mut [&mut compass, &mut survey],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect("a parked provider refuses no optional consumer");
 
@@ -120,6 +132,7 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
             &mut [&mut compass, &mut survey],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect_err("the public path reports the provider's refusal");
 
@@ -129,7 +142,17 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
     ));
     let rendered = refusal.to_string();
     assert!(rendered.contains("no chart loaded"), "{rendered}");
-    assert_eq!(compass.bearings(), &Bearings::Alone);
+    assert_eq!(compass.bearings(), &Bearings::Unwired);
+    assert_eq!(
+        machine.state(SurveyMod::declared_id()),
+        Ok(ravel_core::LifecycleState::Failed)
+    );
+    let failure = machine
+        .failure(SurveyMod::declared_id())
+        .expect("known survey")
+        .expect("recorded provider failure");
+    assert_eq!(failure.mod_id.as_ref(), Some(SurveyMod::declared_id()));
+    assert_eq!(failure.environment, environment());
 }
 
 #[test]
@@ -144,6 +167,7 @@ fn a_required_service_nothing_answers_still_refuses_the_whole_set() {
                 &mut [&mut shop],
             )
             .expect("all active mods have hosts"),
+            &environment(),
         ),
         Err(ServiceRefused::NoProvider {
             consumer: ShopMod::declared_id().clone(),
@@ -168,6 +192,7 @@ fn a_required_and_an_optional_consumer_of_the_same_absent_provider_disagree() {
             &mut [&mut compass, &mut shop],
         )
         .expect("all active mods have hosts"),
+        &environment(),
     )
     .expect_err("the shop's provider is missing");
 

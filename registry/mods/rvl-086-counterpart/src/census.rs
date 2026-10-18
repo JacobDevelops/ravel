@@ -14,7 +14,8 @@
 use std::fmt;
 
 use ravel_sdk::content::{
-    ContentDeclaration, ContentId, ContentIdError, ContentKind, DeclarationError, RegistryKey,
+    ContentDeclaration, ContentDeclarationError, ContentId, ContentIdError, ContentKind,
+    RegistryKey,
 };
 use ravel_sdk::tags::TagId;
 use rvl_042_counterpart::arithmetic::Colour;
@@ -395,7 +396,7 @@ pub enum TagRefused {
     /// The tag's own name is not a legal identity.
     Name(String),
     /// The declaration refused the membership itself.
-    Declaration(DeclarationError),
+    Declaration(ContentDeclarationError),
 }
 
 impl fmt::Display for TagRefused {
@@ -407,8 +408,8 @@ impl fmt::Display for TagRefused {
     }
 }
 
-impl From<DeclarationError> for TagRefused {
-    fn from(source: DeclarationError) -> Self {
+impl From<ContentDeclarationError> for TagRefused {
+    fn from(source: ContentDeclarationError) -> Self {
         Self::Declaration(source)
     }
 }

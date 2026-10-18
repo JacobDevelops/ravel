@@ -1,7 +1,7 @@
 //! Generated workspace manifests and host source.
 //!
 //! Mods inherit only the SDK and author serialization dependencies. JNI, core,
-//! runtime, and bootstrap are direct host dependencies, never workspace exports.
+//! and runtime are direct host dependencies, never workspace exports.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -59,20 +59,6 @@ pub(super) fn host_manifest(
             path_dependency(&ravel_root.join("crates").join(name)),
         );
     }
-    dependencies.insert(
-        "ravel-bootstrap-runtime".to_owned(),
-        table([
-            ("package", "ravel-bootstrap".into()),
-            (
-                "path",
-                ravel_root
-                    .join("crates/ravel-bootstrap")
-                    .to_string_lossy()
-                    .into_owned()
-                    .into(),
-            ),
-        ]),
-    );
     for member in members {
         dependencies.insert(
             member.crate_name.clone(),
@@ -164,7 +150,7 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
          use jni::EnvUnowned;\n\
          use jni::objects::JClass;\n\
          use ravel_core::Side;\n\
-         use ravel_host_runtime::{{Member, initialize}};\n\
+         use ravel_host_runtime::Member;\n\
          \n\
          {manifests}\
          /// The packages this host was generated from.\n\
@@ -186,24 +172,12 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
          /// transformer sees.\n\
          #[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitialize\")]\n\
          pub fn ravel_initialize<'local>(\n\
-         \x20   mut env: EnvUnowned<'local>,\n\
+         \x20   env: EnvUnowned<'local>,\n\
          \x20   _class: JClass<'local>,\n\
          \x20   side: jni::sys::jint,\n\
          \x20   profiling_requested: jni::sys::jboolean,\n\
          ) {{\n\
-         \x20   ravel_bootstrap_runtime::install_panic_hook();\n\
-         \x20   env.with_env(|env| -> Result<(), ravel_host_runtime::LaunchError> {{\n\
-         \x20       // Read before the members are built, because a member may be\n\
-         \x20       // built differently on each side.\n\
-         \x20       let result = ravel_host_runtime::side(side).and_then(|named| {{\n\
-         \x20           initialize(named, || members(named), profiling_requested != jni::sys::JNI_FALSE)\n\
-         \x20       }});\n\
-         \x20       if let Err(error) = result {{\n\
-         \x20           env.throw(error.redacted())?;\n\
-         \x20       }}\n\
-         \x20       Ok(())\n\
-         \x20   }})\n\
-         \x20   .resolve::<jni::errors::ThrowRuntimeExAndDefault>();\n\
+         \x20   ravel_host_runtime::enter(env, side, profiling_requested, members);\n\
          }}\n"
     )
 }

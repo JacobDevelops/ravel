@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 
 use crate::guard::HookError;
+use crate::runtime::InstallError;
 
 struct Observers {
     // The empty-registry fast path must not acquire the lock.
@@ -21,16 +22,15 @@ impl Observers {
         }
     }
 
-    fn register(&self, observer: Box<dyn HookObserver>) -> Result<(), HookError> {
-        self.register_with(observer, || Ok(()))
-    }
-
     fn register_with(
         &self,
         observer: Box<dyn HookObserver>,
-        publish: impl FnOnce() -> Result<(), HookError>,
-    ) -> Result<(), HookError> {
-        let mut registry = self.registry.write().map_err(|_| HookError::Unavailable)?;
+        publish: impl FnOnce() -> Result<(), InstallError>,
+    ) -> Result<(), InstallError> {
+        let mut registry = self
+            .registry
+            .write()
+            .map_err(|_| InstallError::RegistryUnavailable)?;
         publish()?;
         registry.push(observer);
         drop(registry);
@@ -60,20 +60,11 @@ impl Observers {
 
 static OBSERVERS: Observers = Observers::new();
 
-/// Registers an observer for subsequent hook invocations.
-///
-/// # Errors
-///
-/// Returns an error if the registry's write lock is poisoned.
-pub fn register(observer: Box<dyn HookObserver>) -> Result<(), HookError> {
-    OBSERVERS.register(observer)
-}
-
 /// Publishes runtime state only after the observer registry is writable.
 pub(crate) fn register_with(
     observer: Box<dyn HookObserver>,
-    publish: impl FnOnce() -> Result<(), HookError>,
-) -> Result<(), HookError> {
+    publish: impl FnOnce() -> Result<(), InstallError>,
+) -> Result<(), InstallError> {
     OBSERVERS.register_with(observer, publish)
 }
 
@@ -118,7 +109,7 @@ mod tests {
         assert!(!observers.is_observed(), "the registry starts empty");
 
         observers
-            .register(Box::new(Watching))
+            .register_with(Box::new(Watching), || Ok(()))
             .expect("the registry should accept an observer");
 
         assert!(observers.is_observed());
@@ -132,8 +123,12 @@ mod tests {
     #[test]
     fn the_first_refusal_stops_the_call_and_names_the_hook() {
         let observers = Observers::new();
-        observers.register(Box::new(Watching)).expect("registers");
-        observers.register(Box::new(Refusing)).expect("registers");
+        observers
+            .register_with(Box::new(Watching), || Ok(()))
+            .expect("registers");
+        observers
+            .register_with(Box::new(Refusing), || Ok(()))
+            .expect("registers");
 
         let error = observers
             .deliver(&TARGETS[0], &[HookValue::Int(65)])
@@ -159,7 +154,10 @@ mod tests {
             published = true;
             Ok(())
         });
-        assert!(matches!(result, Err(crate::guard::HookError::Unavailable)));
+        assert!(matches!(
+            result,
+            Err(crate::runtime::InstallError::RegistryUnavailable)
+        ));
         assert!(!published);
         assert!(!observers.is_observed());
     }
@@ -168,11 +166,11 @@ mod tests {
     fn a_refused_publication_does_not_register_an_observer() {
         let observers = Observers::new();
         let result = observers.register_with(Box::new(Watching), || {
-            Err(crate::guard::HookError::AlreadyInstalled)
+            Err(crate::runtime::InstallError::AlreadyInstalled)
         });
         assert!(matches!(
             result,
-            Err(crate::guard::HookError::AlreadyInstalled)
+            Err(crate::runtime::InstallError::AlreadyInstalled)
         ));
         assert!(!observers.is_observed());
         assert!(

@@ -76,12 +76,12 @@ stable contracts toward concrete host internals.
   dependency.
 - Feature crates for configuration, data, saves, networking, observability, and
   packs depend on public contracts rather than concrete hook implementations.
-- `ravel-observability` owns the redaction policy `SPEC.md` §9.1 requires, and it
-  is the only crate that can produce a `Redaction::Applied` message:
-  `ravel-core` names the obligation as `RedactionPolicy` and holds none of the
-  rules, and `DiagnosticMessage::redacted` earns the tag by running a policy
-  rather than by being told one ran. Every failure in the workspace reports its
-  own text as `Redaction::Raw`; the report surface redacts it on the way in.
+- `ravel-core` implements the redaction rules `SPEC.md` §9.1 requires.
+  `DiagnosticMessage::redacted` earns `Redaction::Applied` only by running those
+  rules itself, not by trusting a caller-supplied policy or safety assertion.
+  `ravel-observability` reexports the same redactor and credential detector for
+  reporting and tracked-text checks. Failures report their own text as
+  `Redaction::Raw`; the publication surface applies the shared redactor.
 - `ravel-observability` also owns the opt-in profiling coordinator, and owns the
   statement of what it can attribute. `Metric::support` is one table naming, per
   metric, whether a collector measures it exactly, approximately, or not at all,
@@ -105,6 +105,10 @@ stable contracts toward concrete host internals.
   `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
   It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
   and exposes only safe Rust upward. SDK and mod dependency graphs must not reach it.
+  The host entries delegate JNI side decoding and redacted exceptions to
+  `ravel-host-runtime`; its initialization installs the panic reporter before
+  constructing members. Bootstrap owns the installed composition, including the
+  admitted package-version map used to check saved-data requirements.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

@@ -7,10 +7,10 @@ mod config;
 mod discovery;
 mod driver;
 mod events;
+mod game_pack;
 mod interception;
 mod lifecycle;
 mod loaded;
-mod pack;
 mod registry;
 mod resources;
 mod saves;
@@ -27,7 +27,12 @@ pub use discovery::{
 };
 pub use driver::{DriveError, drive, drive_loaded, stop_all};
 pub use events::{
-    Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route, route_profiled,
+    Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route,
+    route_profiled, take_play_requests,
+};
+pub use game_pack::{
+    GAME_PACK_DIRECTORY, GamePackError, Half, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id,
+    replaced_paths, write_game_pack,
 };
 pub use interception::{InterceptRefused, intercept};
 pub use lifecycle::{
@@ -35,9 +40,6 @@ pub use lifecycle::{
     executes_mod_code,
 };
 pub use loaded::{LoadedMods, MissingHost};
-pub use pack::{
-    Half, PACK_DIRECTORY, PackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id, write_pack,
-};
 pub use registry::Registration;
 pub use resources::{ResourceRefused, Supplied, open_resources};
 pub use saves::{SaveRefused, open_saved_data, produce_saved_data};

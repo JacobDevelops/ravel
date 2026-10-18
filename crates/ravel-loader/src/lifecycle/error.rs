@@ -58,14 +58,14 @@ pub enum LifecycleError {
         /// The claiming mod.
         mod_id: ModId,
         /// The identifier it claimed.
-        identifier: String,
+        identifier: RegistryKey,
     },
     /// A registry identifier was claimed by a mod that is not constructed.
     RegistrationWindow {
         /// The claiming mod.
         mod_id: ModId,
         /// The identifier it claimed.
-        identifier: String,
+        identifier: RegistryKey,
         /// The state the claim arrived in.
         state: LifecycleState,
     },
@@ -79,7 +79,7 @@ pub enum LifecycleError {
     /// Two mods claim one registry identifier.
     ConflictingRegistryClaim {
         /// The contested identifier.
-        identifier: String,
+        identifier: RegistryKey,
         /// The mod that already owns it.
         owner: ModId,
         /// The mod that claimed it second.
@@ -88,7 +88,7 @@ pub enum LifecycleError {
     /// A mod described claimed content as a kind the identifier does not name.
     MismatchedContentBehaviour {
         /// The identifier that was described.
-        identifier: String,
+        identifier: RegistryKey,
         /// The kind the description describes.
         described: ContentKind,
     },
@@ -184,7 +184,7 @@ impl fmt::Display for LifecycleError {
 
 fn fmt_registry_conflict(
     formatter: &mut fmt::Formatter<'_>,
-    identifier: &str,
+    identifier: &RegistryKey,
     owner: &ModId,
     claimant: &ModId,
 ) -> fmt::Result {

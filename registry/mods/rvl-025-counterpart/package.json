@@ -74,7 +74,7 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "c25b450dcd265a50222258f096deb8f735f20df5aeb0fe1fd0d8297a108b5d1d"
+        "sha256": "f94bee611e4be766c29130c8753ad7ee73b9f1f99d019880303d366234f99f15"
       },
       {
         "path": "src/commands.rs",
@@ -90,7 +90,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "9d5119a331ae4fd8379f9c8db891f83c2760b135bf24538d20807f3960a5b576"
+        "sha256": "25e7b19df4b3b842cc0e494ada44a1895b9d3ea5d7df623a30b7ada795c06434"
       },
       {
         "path": "src/machines.rs",

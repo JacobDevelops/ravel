@@ -45,7 +45,7 @@ pub mod slots;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
-use ravel_sdk::sides::{ClientOnly, WrongSide};
+use ravel_sdk::sides::{ClientOnly, ClientOnlyError};
 use ravel_sdk::{JsonValue, ModId};
 
 pub use crate::conditions::{BlockState, Condition, Groups, Vocabulary};
@@ -221,9 +221,9 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on every server side, where there is no
+    /// Returns [`ClientOnlyError::WrongSide`] on every server side, where there is no
     /// client-side state to return.
-    pub fn client(&self) -> Result<&ClientState, WrongSide> {
+    pub fn client(&self) -> Result<&ClientState, ClientOnlyError> {
         self.client.get(self.side)
     }
 
@@ -232,7 +232,7 @@ impl Entry {
     /// # Errors
     ///
     /// The same as [`Entry::client`].
-    pub fn client_mut(&mut self) -> Result<&mut ClientState, WrongSide> {
+    pub fn client_mut(&mut self) -> Result<&mut ClientState, ClientOnlyError> {
         self.client.get_mut(self.side)
     }
 
@@ -663,10 +663,13 @@ mod tests {
     fn client_accessors_report_the_actual_server_side() {
         for side in [Side::DedicatedServer, Side::IntegratedServer] {
             let mut entry = Entry::new(side);
-            assert_eq!(entry.client().expect_err("no client state").side(), side);
+            assert_eq!(
+                entry.client().expect_err("no client state").side(),
+                Some(side)
+            );
             assert_eq!(
                 entry.client_mut().expect_err("no client state").side(),
-                side
+                Some(side)
             );
         }
     }

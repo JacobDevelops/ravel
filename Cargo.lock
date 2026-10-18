@@ -343,7 +343,6 @@ name = "ravel-composed-host"
 version = "0.0.0"
 dependencies = [
  "jni",
- "ravel-bootstrap",
  "ravel-config",
  "ravel-core",
  "ravel-host-api",
@@ -436,6 +435,7 @@ name = "ravel-data"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "serde",
  "serde_json",
 ]
 
@@ -492,6 +492,7 @@ dependencies = [
  "ravel-observability",
  "ravel-package",
  "ravel-resolve",
+ "semver",
  "serde_json",
 ]
 
@@ -645,7 +646,6 @@ name = "ravel-test-mod-configuration"
 version = "0.0.0"
 dependencies = [
  "ravel-sdk",
- "serde_json",
 ]
 
 [[package]]

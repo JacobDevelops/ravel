@@ -3,10 +3,10 @@ use std::fmt;
 use std::path::PathBuf;
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure, Version};
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::HostMod;
 use ravel_loader::{
     DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
-    MissingHost, ServiceRefused, admitted, drive_loaded, executes_mod_code, stop_all,
+    MissingHost, admitted, drive_loaded, executes_mod_code, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -202,10 +202,8 @@ pub enum PipelineError {
     Resolution(ResolutionError),
     /// The lifecycle refused a step of the run.
     Lifecycle(LifecycleError),
-    /// A mod declined a step it was driven through.
-    Host(HostError),
-    /// The production service barrier refused the set.
-    Services(ServiceRefused),
+    /// The production driver refused the set, retaining its failure attribution.
+    Drive(DriveError),
     /// An active lifecycle member has no supplied host.
     MissingHost(MissingHost),
     /// The caller supplied a value for a mod the package set does not contain.
@@ -226,8 +224,7 @@ impl fmt::Display for PipelineError {
             Self::Compatibility(error) => write!(formatter, "validation failed: {error}"),
             Self::Resolution(error) => write!(formatter, "resolution failed: {error}"),
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
-            Self::Host(error) => write!(formatter, "the run failed: {error}"),
-            Self::Services(error) => write!(formatter, "the run failed: {error}"),
+            Self::Drive(error) => write!(formatter, "the run failed: {error}"),
             Self::MissingHost(error) => write!(formatter, "the run failed: {error}"),
             Self::UnexpectedMod { mod_id } => write!(
                 formatter,
@@ -254,8 +251,7 @@ impl PipelineError {
             Self::Compatibility(error) => Some(error),
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
-            Self::Host(error) => Some(error),
-            Self::Services(error) => Some(error),
+            Self::Drive(error) => Some(error),
             Self::MissingHost(error) => Some(error),
             Self::Unreadable { .. } | Self::UnexpectedMod { .. } => None,
         }
@@ -263,14 +259,7 @@ impl PipelineError {
 }
 impl From<DriveError> for PipelineError {
     fn from(error: DriveError) -> Self {
-        match error {
-            DriveError::Lifecycle(error) => Self::Lifecycle(error),
-            DriveError::Host { source, .. } => Self::Host(source),
-            DriveError::Services(error) => Self::Services(error),
-            DriveError::Identity { constructed, .. } => Self::UnexpectedMod {
-                mod_id: constructed,
-            },
-        }
+        Self::Drive(error)
     }
 }
 

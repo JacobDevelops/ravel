@@ -9,23 +9,28 @@ pub use options::{OptionsError, Seeded, seed_pack};
 /// Writes the explicitly supplied world pack at the world-open boundary.
 pub use ravel_bootstrap_runtime::write_world_pack;
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    HookError, SideError, install, pre_world_report, resource_pack_metadata, side as running_side,
+    InstallError, SideError, install, pre_world_report, resource_pack_metadata,
+    side as running_side,
 };
-use ravel_config::{LayeredConfiguration, file};
+use ravel_config::file;
 use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
 pub use ravel_loader::Written;
 use ravel_loader::{
-    ConfigRefused, DiscoveryRefused, DriveError, Half, LifecycleEntry, LifecycleError,
-    LifecycleMachine, LoadedMods, PACK_DIRECTORY, PackError, RESOURCE_PACKS, ResourceRefused,
-    Supplied, admitted, discover, drive_loaded, open_configuration, open_resources, write_pack,
+    ConfigRefused, DiscoveryRefused, DriveError, GAME_PACK_DIRECTORY, GamePackError, Half,
+    LifecycleEntry, LifecycleError, LifecycleMachine, LoadedMods, RESOURCE_PACKS, ResourceRefused,
+    Supplied, admitted, discover, drive_loaded, open_configuration, open_resources,
+    write_game_pack,
 };
+use ravel_observability::Profiler;
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
+use semver::Version;
 
 /// Running versions and launch-report environment.
 pub use ravel_bootstrap_runtime::environment;
@@ -49,17 +54,8 @@ pub struct Member {
 
 type Admitted = Vec<(LifecycleEntry, Box<dyn HostMod>)>;
 
-/// Lifecycle, mods, resolved settings, and supplied files for one launch.
-pub struct Composition {
-    /// The driven lifecycle and admitted identities.
-    pub machine: LifecycleMachine,
-    /// The compiled members, including parked members.
-    pub mods: Vec<Box<dyn HostMod>>,
-    /// The settings handed to configured members.
-    pub configurations: Vec<LayeredConfiguration>,
-    /// The resources layered after registration.
-    pub resources: Supplied,
-}
+/// Lifecycle, mods, resolved settings, supplied files, and package versions for one launch.
+pub use ravel_bootstrap_runtime::Composition;
 
 /// Admits and configures a composed set, opening services before any mod starts.
 ///
@@ -75,7 +71,8 @@ pub fn compose(
 
     let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
 
-    let (entries, mut mods): (Vec<_>, Vec<_>) = admit(side, members)?.into_iter().unzip();
+    let (admitted, installed_packages) = admit(side, members)?;
+    let (entries, mut mods): (Vec<_>, Vec<_>) = admitted.into_iter().unzip();
     let mut machine = LifecycleMachine::new(side, entries).map_err(LaunchError::Lifecycle)?;
     let mut loaded = LoadedMods::new(&mut machine, &mut mods)
         .map_err(|error| LaunchError::Composition(error.mod_id().clone()))?;
@@ -98,6 +95,7 @@ pub fn compose(
         mods,
         configurations,
         resources,
+        installed_packages,
     })
 }
 
@@ -115,7 +113,10 @@ fn account_for_installed(game_directory: &Path, members: &[Member]) -> Result<()
     Ok(())
 }
 
-fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
+fn admit(
+    side: Side,
+    members: Vec<Member>,
+) -> Result<(Admitted, BTreeMap<ModId, Version>), LaunchError> {
     let mut manifests = Vec::with_capacity(members.len());
     let mut values = Vec::with_capacity(members.len());
     for member in members {
@@ -139,7 +140,34 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     if let Some(unclaimed) = values.first() {
         return Err(LaunchError::Composition(unclaimed.id().clone()));
     }
-    Ok(composed)
+    let installed_packages = manifests
+        .into_iter()
+        .map(|manifest| (manifest.id, manifest.version))
+        .collect();
+    Ok((composed, installed_packages))
+}
+
+/// Enters the shared launch path and translates failures into redacted JVM exceptions.
+pub fn enter(
+    mut env: jni::EnvUnowned<'_>,
+    side_code: jni::sys::jint,
+    profiling_requested: jni::sys::jboolean,
+    members: impl FnOnce(Side) -> Vec<Member>,
+) {
+    env.with_env(|env| -> Result<(), LaunchError> {
+        let result = side(side_code).and_then(|side| {
+            initialize(
+                side,
+                || members(side),
+                profiling_requested != jni::sys::JNI_FALSE,
+            )
+        });
+        if let Err(error) = result {
+            env.throw(error.redacted())?;
+        }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 /// Constructs, composes, and installs members only if no runtime is installed.
@@ -152,18 +180,14 @@ pub fn initialize(
     members: impl FnOnce() -> Vec<Member>,
     profiling_requested: bool,
 ) -> Result<(), LaunchError> {
+    ravel_bootstrap_runtime::install_panic_hook();
     if ravel_bootstrap_runtime::is_installed() {
-        return Err(LaunchError::Install(HookError::AlreadyInstalled));
+        return Err(LaunchError::Install(InstallError::AlreadyInstalled));
     }
     let game_directory = std::env::current_dir().map_err(LaunchError::CurrentDirectory)?;
-    let Composition {
-        machine,
-        mods,
-        configurations,
-        resources,
-    } = compose(&game_directory, side, members())?;
+    let composition = compose(&game_directory, side, members())?;
     // The client scans resource packs during startup, before runtime installation.
-    write_resource_pack(&game_directory, &resources)?;
+    write_resource_pack(&game_directory, &composition.resources)?;
     let seeded = seed_pack(&game_directory).map_err(LaunchError::Options)?;
     // World data is written later, when the world-open crossing supplies its path.
     let mut report = pre_world_report();
@@ -171,13 +195,10 @@ pub fn initialize(
         report.note(&notice);
     }
     install(
-        machine,
-        mods,
+        composition,
         report,
         game_directory,
-        resources,
-        configurations,
-        profiling_requested,
+        Profiler::from_switch(profiling_requested),
     )
     .map_err(LaunchError::Install)
 }
@@ -233,8 +254,10 @@ pub fn write_resource_pack(
     game_directory: &Path,
     resources: &Supplied,
 ) -> Result<Written, LaunchError> {
-    write_pack(
-        &game_directory.join(RESOURCE_PACKS).join(PACK_DIRECTORY),
+    write_game_pack(
+        &game_directory
+            .join(RESOURCE_PACKS)
+            .join(GAME_PACK_DIRECTORY),
         resources,
         Half::Assets,
         &resource_pack_metadata(Half::Assets.description()),
@@ -274,13 +297,13 @@ pub enum LaunchError {
     /// The set's services could not be resolved or consumed.
     Services(ravel_loader::ServiceRefused),
     /// The set's files could not be written as a pack the game reads.
-    Pack(PackError),
+    Pack(GamePackError),
     /// The player's settings could not be read or replaced.
     Options(OptionsError),
     /// The lifecycle could not drive a composed value.
     Drive(DriveError),
     /// The driven runtime could not be installed.
-    Install(HookError),
+    Install(InstallError),
 }
 
 impl LaunchError {
@@ -404,13 +427,17 @@ mod tests {
             "the rejected launch must not create its directory"
         );
         ravel_bootstrap_runtime::install(
-            ravel_loader::LifecycleMachine::new(Side::Client, vec![]).expect("empty plan"),
-            vec![],
+            super::Composition {
+                machine: ravel_loader::LifecycleMachine::new(Side::Client, vec![])
+                    .expect("empty plan"),
+                mods: vec![],
+                configurations: vec![],
+                resources: ravel_loader::Supplied::default(),
+                installed_packages: std::collections::BTreeMap::new(),
+            },
             ravel_bootstrap_runtime::pre_world_report(),
             game.clone(),
-            ravel_loader::Supplied::default(),
-            vec![],
-            false,
+            ravel_observability::Profiler::off(),
         )
         .expect("install the first runtime");
         let mut constructed = false;
@@ -426,7 +453,7 @@ mod tests {
         .expect_err("a second launch is refused");
         assert!(matches!(
             error,
-            super::LaunchError::Install(ravel_bootstrap_runtime::HookError::AlreadyInstalled)
+            super::LaunchError::Install(ravel_bootstrap_runtime::InstallError::AlreadyInstalled)
         ));
         assert!(!constructed);
         assert!(
@@ -799,7 +826,7 @@ mod tests {
             let (machine, _) = ravel_loader::drive(
                 side,
                 &environment(),
-                admit(side, members).expect("a compatible set"),
+                admit(side, members).expect("a compatible set").0,
             )
             .expect("the composed set should start");
 

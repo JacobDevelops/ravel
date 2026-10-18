@@ -1,3 +1,6 @@
+//! Minecraft resource and data packs, distinct from the modpacks declared by `ravel-pack`.
+//! The writer owns both the installed tree and its sibling staging path.
+
 use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
@@ -12,9 +15,9 @@ pub const RESOURCE_PACKS: &str = "resourcepacks";
 pub const WORLD_DATA_PACKS: &str = "datapacks";
 
 /// The one directory Ravel writes in either place.
-pub const PACK_DIRECTORY: &str = "ravel";
+pub const GAME_PACK_DIRECTORY: &str = "ravel";
 
-/// The folder-source identifier for [`PACK_DIRECTORY`].
+/// The folder-source identifier for [`GAME_PACK_DIRECTORY`].
 #[must_use]
 pub fn pack_id() -> &'static str {
     concat!("file/", "ravel")
@@ -58,13 +61,13 @@ impl Half {
 ///
 /// # Errors
 ///
-/// Returns a [`PackError`] for any filesystem refusal; the caller must refuse the launch.
-pub fn write_pack(
+/// Returns a [`GamePackError`] for any filesystem refusal; the caller must refuse the launch.
+pub fn write_game_pack(
     root: &Path,
     supplied: &Supplied,
     half: Half,
     metadata: &str,
-) -> Result<Written, PackError> {
+) -> Result<Written, GamePackError> {
     // Declarations include overridden offers; write each path only once.
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut wanted: Vec<(String, Vec<u8>)> =
@@ -108,12 +111,20 @@ pub fn write_pack(
     if root.exists() {
         remove(root)?;
     }
-    std::fs::rename(&staged, root).map_err(|source| PackError {
+    std::fs::rename(&staged, root).map_err(|source| GamePackError {
         path: root.to_path_buf(),
         action: Action::Replace,
         source,
     })?;
     Ok(written)
+}
+
+/// Returns the game pack root and sibling staging directory the writer may replace.
+///
+/// Callers checking filesystem boundaries must check both paths before writing.
+#[must_use]
+pub fn replaced_paths(root: &Path) -> [PathBuf; 2] {
+    [root.to_path_buf(), staging(root)]
 }
 
 // Stage beside the pack so staging files cannot become pack contents.
@@ -169,24 +180,24 @@ fn collect(at: &Path, root: &Path, into: &mut Vec<String>) -> bool {
     true
 }
 
-fn remove(path: &Path) -> Result<(), PackError> {
-    std::fs::remove_dir_all(path).map_err(|source| PackError {
+fn remove(path: &Path) -> Result<(), GamePackError> {
+    std::fs::remove_dir_all(path).map_err(|source| GamePackError {
         path: path.to_path_buf(),
         action: Action::Replace,
         source,
     })
 }
 
-fn create(path: &Path, root: &Path) -> Result<(), PackError> {
-    std::fs::create_dir_all(path).map_err(|source| PackError {
+fn create(path: &Path, root: &Path) -> Result<(), GamePackError> {
+    std::fs::create_dir_all(path).map_err(|source| GamePackError {
         path: relative(path, root),
         action: Action::Create,
         source,
     })
 }
 
-fn write(path: &Path, root: &Path, bytes: &[u8]) -> Result<(), PackError> {
-    std::fs::write(path, bytes).map_err(|source| PackError {
+fn write(path: &Path, root: &Path, bytes: &[u8]) -> Result<(), GamePackError> {
+    std::fs::write(path, bytes).map_err(|source| GamePackError {
         path: relative(path, root),
         action: Action::Write,
         source,
@@ -197,7 +208,7 @@ fn write(path: &Path, root: &Path, bytes: &[u8]) -> Result<(), PackError> {
 fn relative(path: &Path, root: &Path) -> PathBuf {
     path.strip_prefix(root).map_or_else(
         |_| path.to_path_buf(),
-        |inside| Path::new(PACK_DIRECTORY).join(inside),
+        |inside| Path::new(GAME_PACK_DIRECTORY).join(inside),
     )
 }
 
@@ -231,7 +242,7 @@ impl Written {
 
 /// What the filesystem refused while a pack was being written.
 #[derive(Debug)]
-pub struct PackError {
+pub struct GamePackError {
     path: PathBuf,
     action: Action,
     source: io::Error,
@@ -248,7 +259,7 @@ enum Action {
     Write,
 }
 
-impl fmt::Display for PackError {
+impl fmt::Display for GamePackError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let verb = match self.action {
             Action::Replace => "the previous pack at",
@@ -264,7 +275,7 @@ impl fmt::Display for PackError {
     }
 }
 
-impl std::error::Error for PackError {
+impl std::error::Error for GamePackError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.source)
     }
@@ -274,7 +285,16 @@ impl std::error::Error for PackError {
 mod tests {
     #[test]
     fn the_pack_id_is_the_directory_the_folder_source_would_have_listed() {
-        assert_eq!(super::pack_id(), format!("file/{PACK_DIRECTORY}"));
+        assert_eq!(super::pack_id(), format!("file/{GAME_PACK_DIRECTORY}"));
+    }
+
+    #[test]
+    fn replacement_paths_include_the_root_and_sibling_staging_directory() {
+        let root = PathBuf::from("resourcepacks").join("custom");
+        assert_eq!(
+            super::replaced_paths(&root),
+            [root, PathBuf::from("resourcepacks").join("custom.pending")]
+        );
     }
 
     use std::collections::BTreeSet;
@@ -286,7 +306,7 @@ mod tests {
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{HostMod, ModError};
 
-    use super::{Half, PACK_DIRECTORY, write_pack};
+    use super::{GAME_PACK_DIRECTORY, Half, write_game_pack};
 
     const METADATA: &str = "{\n  \"pack\": {}\n}\n";
 
@@ -401,7 +421,7 @@ mod tests {
 
     #[test]
     fn the_written_pack_is_the_asset_half_of_the_set_and_nothing_else() {
-        let root = directory("assets").join(PACK_DIRECTORY);
+        let root = directory("assets").join(GAME_PACK_DIRECTORY);
         let set = supplied(&[(
             "first_mod",
             &[
@@ -411,7 +431,8 @@ mod tests {
             ],
         )]);
 
-        let written = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        let written =
+            write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(
             tree(&root),
@@ -437,14 +458,15 @@ mod tests {
 
     #[test]
     fn a_contested_path_is_written_from_the_mod_that_supplies_it() {
-        let root = directory("contested").join(PACK_DIRECTORY);
+        let root = directory("contested").join(GAME_PACK_DIRECTORY);
         let shared = "assets/shared/lang/en_us.json";
         let set = supplied(&[
             ("base_mod", &[(shared, "base")]),
             ("skin_mod", &[(shared, "skin")]),
         ]);
 
-        let written = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        let written =
+            write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(tree(&root), [shared, "pack.mcmeta"]);
         assert_eq!(written.paths(), tree(&root));
@@ -459,12 +481,12 @@ mod tests {
 
     #[test]
     fn a_second_write_leaves_nothing_the_set_no_longer_supplies() {
-        let root = directory("replace").join(PACK_DIRECTORY);
+        let root = directory("replace").join(GAME_PACK_DIRECTORY);
         let first = supplied(&[("first_mod", &[("assets/first_mod/lang/en_us.json", "{}")])]);
-        write_pack(&root, &first, Half::Assets, METADATA).expect("the first pack writes");
+        write_game_pack(&root, &first, Half::Assets, METADATA).expect("the first pack writes");
 
         let second = supplied(&[("other_mod", &[("assets/other_mod/lang/en_us.json", "{}")])]);
-        write_pack(&root, &second, Half::Assets, METADATA).expect("the second pack writes");
+        write_game_pack(&root, &second, Half::Assets, METADATA).expect("the second pack writes");
 
         assert_eq!(
             tree(&root),
@@ -476,7 +498,7 @@ mod tests {
 
     #[test]
     fn the_data_half_holds_the_data_paths_and_none_of_the_assets() {
-        let root = directory("data").join(PACK_DIRECTORY);
+        let root = directory("data").join(GAME_PACK_DIRECTORY);
         let set = supplied(&[(
             "first_mod",
             &[
@@ -486,7 +508,7 @@ mod tests {
             ],
         )]);
 
-        let written = write_pack(&root, &set, Half::Data, METADATA).expect("the pack writes");
+        let written = write_game_pack(&root, &set, Half::Data, METADATA).expect("the pack writes");
 
         assert_eq!(
             tree(&root),
@@ -504,10 +526,10 @@ mod tests {
 
     #[test]
     fn a_set_supplying_no_assets_writes_a_pack_holding_only_its_metadata() {
-        let root = directory("empty").join(PACK_DIRECTORY);
+        let root = directory("empty").join(GAME_PACK_DIRECTORY);
         let set = supplied(&[("first_mod", &[("data/first_mod/tags/item/x.json", "{}")])]);
 
-        write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(tree(&root), ["pack.mcmeta"]);
         std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
@@ -517,7 +539,7 @@ mod tests {
     // Contents alone would not detect rewriting identical bytes; compare timestamps too.
     #[test]
     fn a_second_write_of_an_unchanged_set_touches_nothing() {
-        let root = directory("unchanged").join(PACK_DIRECTORY);
+        let root = directory("unchanged").join(GAME_PACK_DIRECTORY);
         let set = supplied(&[(
             "first_mod",
             &[
@@ -525,11 +547,11 @@ mod tests {
                 ("assets/first_mod/models/block/a.json", "{\"a\":1}"),
             ],
         )]);
-        let first = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        let first = write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
         let before = timestamps(&root);
         assert_eq!(before.len(), 3);
 
-        let again = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        let again = write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(
             again.paths(),
@@ -558,7 +580,7 @@ mod tests {
             ],
         )]);
         let replaced =
-            write_pack(&root, &changed, Half::Assets, METADATA).expect("the pack writes");
+            write_game_pack(&root, &changed, Half::Assets, METADATA).expect("the pack writes");
         assert!(replaced.changed(), "a set that differs replaces the tree");
         assert_ne!(timestamps(&root), before);
         std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
@@ -567,13 +589,13 @@ mod tests {
 
     #[test]
     fn a_leftover_staging_directory_is_removed_before_the_pack_is_built() {
-        let root = directory("leftover").join(PACK_DIRECTORY);
+        let root = directory("leftover").join(GAME_PACK_DIRECTORY);
         let staged = root.with_file_name("ravel.pending");
         std::fs::create_dir_all(staged.join("assets/ghost")).expect("a writable directory");
         std::fs::write(staged.join("assets/ghost/old.json"), b"{}").expect("a writable file");
         let set = supplied(&[("first_mod", &[("assets/first_mod/lang/en_us.json", "{}")])]);
 
-        write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
+        write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(
             tree(&root),
@@ -591,8 +613,13 @@ mod tests {
         std::fs::write(&blocked, b"not a directory").expect("a writable file");
         let set = supplied(&[("first_mod", &[("assets/first_mod/lang/en_us.json", "{}")])]);
 
-        let refused = write_pack(&blocked.join(PACK_DIRECTORY), &set, Half::Assets, METADATA)
-            .expect_err("a file in the way refuses the pack");
+        let refused = write_game_pack(
+            &blocked.join(GAME_PACK_DIRECTORY),
+            &set,
+            Half::Assets,
+            METADATA,
+        )
+        .expect_err("a file in the way refuses the pack");
 
         assert!(
             refused.to_string().contains("could not be written"),

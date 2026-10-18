@@ -2,11 +2,13 @@
 //!
 //! Repository creation selects packs; create-world initialization must also reload
 //! staged data. The world-open fallback covers paths that skip those hooks.
-//! Repeated writes are safe because `write_pack` leaves identical trees untouched.
+//! Repeated writes are safe because `write_game_pack` leaves identical trees untouched.
 
 use std::path::Path;
 
-use ravel_loader::{Half, PACK_DIRECTORY, Supplied, WORLD_DATA_PACKS, Written, write_pack};
+use ravel_loader::{
+    GAME_PACK_DIRECTORY, Half, Supplied, WORLD_DATA_PACKS, Written, write_game_pack,
+};
 
 /// Writes the launch's supplied data into `world`.
 ///
@@ -16,7 +18,7 @@ use ravel_loader::{Half, PACK_DIRECTORY, Supplied, WORLD_DATA_PACKS, Written, wr
 pub fn write_world_pack(
     supplied: &Supplied,
     world: &Path,
-) -> Result<Written, ravel_loader::PackError> {
+) -> Result<Written, ravel_loader::GamePackError> {
     write_data_pack(supplied, &world.join(WORLD_DATA_PACKS))
 }
 
@@ -28,14 +30,17 @@ pub fn write_world_pack(
 pub(crate) fn write_staged_pack(
     supplied: &Supplied,
     holder: &Path,
-) -> Result<Written, ravel_loader::PackError> {
+) -> Result<Written, ravel_loader::GamePackError> {
     write_data_pack(supplied, holder)
 }
 
 // Staging copies the holder's contents, so the pack belongs directly inside it.
-fn write_data_pack(supplied: &Supplied, holder: &Path) -> Result<Written, ravel_loader::PackError> {
-    write_pack(
-        &holder.join(PACK_DIRECTORY),
+fn write_data_pack(
+    supplied: &Supplied,
+    holder: &Path,
+) -> Result<Written, ravel_loader::GamePackError> {
+    write_game_pack(
+        &holder.join(GAME_PACK_DIRECTORY),
         supplied,
         Half::Data,
         &crate::runtime::data_pack_metadata(Half::Data.description()),

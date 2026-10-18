@@ -253,27 +253,6 @@ fn the_generated_host_names_every_installed_package_in_mod_id_order() {
         source.contains("profiling_requested: jni::sys::jboolean"),
         "{source}"
     );
-    assert!(
-        source.contains(
-            "initialize(named, || members(named), profiling_requested != jni::sys::JNI_FALSE)"
-        ),
-        "{source}"
-    );
-    assert!(
-        source.contains("ravel_bootstrap_runtime::install_panic_hook();"),
-        "{source}"
-    );
-    assert!(
-        source.find("install_panic_hook();").expect("panic hook")
-            < source.find("members(named)").expect("member callbacks"),
-        "{source}"
-    );
-    assert!(
-        source.contains("ravel_host_runtime::side(side).and_then(|named|"),
-        "{source}"
-    );
-    assert!(source.contains("env.throw(error.redacted())?;"), "{source}");
-    assert!(!source.contains("throw_new"), "{source}");
 
     let agent = include_str!("../../../jvm/bootstrap/dev/ravel/jvm/Agent.java");
     assert!(agent.contains(
@@ -479,35 +458,18 @@ fn the_examples_this_repository_ships_install_and_compile(cache: &Path) {
 
 const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
-         \x20   // The library name the generated host declares, which is the\n\
-         \x20   // name the JVM loads and therefore the name a dependent links.\n\
-         \x20   ravel_bootstrap_runtime::install_panic_hook();\n\
-         \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
-         \x20   let ravel_host_runtime::Composition {\n\
-         \x20       machine, mods, configurations, resources,\n\
-         \x20   } = ravel_host_runtime::compose(\n\
-         \x20       std::path::Path::new(&game),\n\
+         \x20   std::env::set_current_dir(&game).expect(\"the game directory exists\");\n\
+         \x20   ravel_host_runtime::initialize(\n\
          \x20       ravel_core::Side::Client,\n\
-         \x20       members,\n\
-         \x20   )\n\
-         \x20   .expect(\"the generated host composes\");\n\
-         \x20   for id in machine.order() {\n\
-         \x20       println!(\"{id}\");\n\
-         \x20   }\n\
-         \x20   // The rest of what a launch does with the composed set. Written\n\
-         \x20   // here rather than asserted in the parent process, because the\n\
-         \x20   // point is that the generated host reaches it.\n\
-         \x20   let game = std::path::Path::new(&game);\n\
-         \x20   ravel_host_runtime::write_resource_pack(game, &resources)\n\
-         \x20       .expect(\"the generated host writes its pack\");\n\
-         \x20   let world = game.join(\"saves\").join(\"Driven\");\n\
+         \x20       || ravel_bootstrap::members(ravel_core::Side::Client),\n\
+         \x20       false,\n\
+         \x20   ).expect(\"the generated host initializes\");\n\
+         \x20   let world = std::path::Path::new(&game).join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
-         \x20   ravel_host_runtime::write_world_pack(&resources, &world)\n\
-         \x20       .expect(\"the generated host writes a world pack\");\n\
-         \x20   ravel_bootstrap_runtime::install(\n\
-         \x20       machine, mods, ravel_bootstrap_runtime::pre_world_report(),\n\
-         \x20       game.to_path_buf(), resources, configurations, false,\n\
-         \x20   ).expect(\"the generated host installs its runtime\");\n\
+         \x20   assert_eq!(\n\
+         \x20       ravel_bootstrap_runtime::stage(world.to_str().expect(\"world path\"), None, true),\n\
+         \x20       ravel_bootstrap_runtime::OpenOutcome::Staged,\n\
+         \x20   );\n\
          }\n";
 
 fn the_written_packs_hold_the_examples_content(instance: &Path) {
@@ -611,7 +573,7 @@ fn write_driver(instance: &Path) -> PathBuf {
              ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
              ravel-generated-host = {{ path = \"../ravel/host\" }}\n\
              ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n\
-             ravel-bootstrap-runtime = {{ package = \"ravel-bootstrap\", path = \"{root}/crates/ravel-bootstrap\" }}\n",
+             ravel-bootstrap = {{ path = \"{root}/crates/ravel-bootstrap\" }}\n",
             root = root.display()
         ),
     )
@@ -638,6 +600,11 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
         String::from_utf8_lossy(&built.stderr)
     );
 
+    fs::write(
+        instance.join("options.txt"),
+        "resourcePacks:[\"vanilla\"]\n",
+    )
+    .expect("initial player settings");
     let marks = instance.join("marks");
     let run = Command::new(cache.join("release/ravel-build-driver"))
         .arg(instance)
@@ -649,19 +616,17 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
         "the generated host refused to compose: {}",
         String::from_utf8_lossy(&run.stderr)
     );
-    assert!(
-        String::from_utf8_lossy(&run.stdout).contains("installed_mod"),
-        "the driven set does not hold the installed package: {}",
-        String::from_utf8_lossy(&run.stdout)
-    );
-
-    assert!(
-        String::from_utf8_lossy(&run.stdout).contains("content"),
-        "the driven set does not hold the installed example: {}",
-        String::from_utf8_lossy(&run.stdout)
-    );
 
     the_written_packs_hold_the_examples_content(instance);
+    let settings = fs::read_to_string(instance.join("options.txt")).expect("seeded settings");
+    assert_eq!(
+        settings,
+        format!(
+            "resourcePacks:[\"vanilla\",\"{}\"]\n",
+            ravel_loader::pack_id()
+        )
+    );
+    assert!(instance.join("ravel/seeded-packs").is_file());
 
     let recorded = fs::read_to_string(&marks).expect("the installed mod recorded nothing");
     assert!(
@@ -774,25 +739,17 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
         host["dependencies"]["jni"],
         root["workspace"]["dependencies"]["jni"]
     );
-    for name in [
-        "ravel-core",
-        "ravel-host-runtime",
-        "ravel-bootstrap-runtime",
-    ] {
-        let package = if name == "ravel-bootstrap-runtime" {
-            "ravel-bootstrap"
-        } else {
-            name
-        };
-        let path = ravel_root().join("crates").join(package);
+    for name in ["ravel-core", "ravel-host-runtime"] {
+        let path = ravel_root().join("crates").join(name);
         assert_eq!(host["dependencies"][name]["path"].as_str(), path.to_str());
         assert!(host["dependencies"][name].get("workspace").is_none());
         assert!(!dependencies.contains_key(name));
-        assert!(!dependencies.contains_key(package));
     }
-    assert_eq!(
-        host["dependencies"]["ravel-bootstrap-runtime"]["package"].as_str(),
-        Some("ravel-bootstrap")
+    assert!(host["dependencies"].get("ravel-bootstrap").is_none());
+    assert!(
+        host["dependencies"]
+            .get("ravel-bootstrap-runtime")
+            .is_none()
     );
     assert_eq!(
         plan.installation_lock(),
@@ -913,6 +870,52 @@ fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() 
     );
 }
 
+#[test]
+fn path_dependencies_keep_the_sdk_boundary_even_when_seeded() {
+    let mods = std::collections::BTreeMap::from([("installed-mod", "installed_mod")]);
+    for name in ["ravel-sdk", "ravel-host-api", "serde"] {
+        let path_package = format!("[[package]]\nname = \"{name}\"\nversion = \"1.0.0\"\n");
+        let resolved = format!(
+            "{path_package}\n[[package]]\nname = \"installed-mod\"\nversion = \"1.0.0\"\n\
+             dependencies = [\"{name} 1.0.0\"]\n"
+        );
+        let result = super::compile::vetted_dependencies(&path_package, &resolved, &mods);
+        if name == "ravel-sdk" {
+            result.expect("the seed SDK is the public path boundary");
+        } else {
+            let refused = result.expect_err("even seeded paths cannot expose host internals");
+            assert!(
+                matches!(&refused, BuildRefused::UnpinnedDependency { package, mods, .. }
+                    if package == name && mods == &["installed_mod"]),
+                "{refused:?}"
+            );
+        }
+        let refused = super::compile::vetted_dependencies(
+            "[[package]]\nname = \"seed\"\nversion = \"1.0.0\"\n",
+            &resolved,
+            &mods,
+        )
+        .expect_err("a path package absent from the seed is unvetted");
+        assert!(
+            matches!(&refused, BuildRefused::UnpinnedDependency { package, .. } if package == name),
+            "{refused:?}"
+        );
+    }
+    let resolved = "[[package]]\nname = \"installed-mod\"\nversion = \"1.0.0\"\n\
+        dependencies = [\"other-mod\"]\n\
+        [[package]]\nname = \"other-mod\"\nversion = \"1.0.0\"\n";
+    let mods = std::collections::BTreeMap::from([
+        ("installed-mod", "installed_mod"),
+        ("other-mod", "other_mod"),
+    ]);
+    super::compile::vetted_dependencies(
+        "[[package]]\nname = \"seed\"\nversion = \"1.0.0\"\n",
+        resolved,
+        &mods,
+    )
+    .expect("planned members may depend on one another");
+}
+
 fn a_package_naming_internal_workspace_dependencies_refuses(cache: &Path) {
     let instance = instance("internal-dependency");
     install_with(
@@ -968,7 +971,11 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
         .expect("resolved lock");
     assert!(lock.contains("name = \"ravel-generated-host\""));
     assert!(lock.contains("name = \"rvl-120-counterpart\""));
-    let mods = std::collections::BTreeMap::from([("rvl-120-counterpart", "rvl_120_counterpart")]);
+    let mods = plan
+        .members()
+        .iter()
+        .map(|member| (member.crate_name.as_str(), member.mod_id.as_str()))
+        .collect();
     super::compile::vetted_dependencies(plan.installation_lock(), &lock, &mods)
         .expect("the installed host uses only vetted external dependencies");
     let pinned = |document: &str| {

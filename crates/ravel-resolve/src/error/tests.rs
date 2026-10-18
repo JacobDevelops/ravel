@@ -121,6 +121,6 @@ fn every_side_is_named_the_way_the_package_schema_spells_it() {
         (Side::IntegratedServer, "integrated-server"),
         (Side::DedicatedServer, "dedicated-server"),
     ] {
-        assert_eq!(super::side_name(side), expected);
+        assert_eq!(side.as_str(), expected);
     }
 }

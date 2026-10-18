@@ -89,7 +89,7 @@ use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
-use ravel_sdk::sides::WrongSide;
+use ravel_sdk::sides::ClientOnlyError;
 
 pub use crate::channel::{Channel, Sends, Target};
 pub use crate::colour::Colour;
@@ -365,8 +365,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on a server side, where the value was never built.
-    pub fn client(&self) -> Result<&ClientState, WrongSide> {
+    /// Returns [`ClientOnlyError::WrongSide`] on a server side, where the value was never built.
+    pub fn client(&self) -> Result<&ClientState, ClientOnlyError> {
         self.client.get(self.side)
     }
 
@@ -374,8 +374,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on a server side.
-    pub fn client_mut(&mut self) -> Result<&mut ClientState, WrongSide> {
+    /// Returns [`ClientOnlyError::WrongSide`] on a server side.
+    pub fn client_mut(&mut self) -> Result<&mut ClientState, ClientOnlyError> {
         self.client.get_mut(self.side)
     }
 

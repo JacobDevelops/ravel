@@ -2,12 +2,96 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ravel_core::{ContentId, ContentIdError, ContentKind, ModId, RegistryKey, RelativePath};
+use serde::{Deserialize, Serialize};
 
 use crate::generate::{
     GeneratedData, blockstate_document, item_definition_document, item_model_document,
     loot_table_document, sprite_model_document, tag_document, translation_document,
 };
 use crate::tags::TagId;
+
+/// Primitive block properties, defaulting to a stone-like block.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct BlockBehaviour {
+    /// How long the block takes to break. Negative means unbreakable.
+    pub hardness: f32,
+    /// How well the block resists an explosion.
+    pub explosion_resistance: f32,
+    /// Whether the block drops nothing when broken with the wrong tool.
+    pub requires_correct_tool: bool,
+    /// Whether the block is offered a random tick.
+    pub random_ticks: bool,
+}
+
+impl Default for BlockBehaviour {
+    fn default() -> Self {
+        Self {
+            hardness: 1.5,
+            explosion_resistance: 6.0,
+            requires_correct_tool: false,
+            random_ticks: false,
+        }
+    }
+}
+
+/// Primitive item properties.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct ItemBehaviour {
+    /// How many of the item one stack holds.
+    pub stack_size: u8,
+    /// Whether the item survives fire and lava.
+    pub fire_resistant: bool,
+}
+
+impl Default for ItemBehaviour {
+    fn default() -> Self {
+        Self {
+            stack_size: 64,
+            fire_resistant: false,
+        }
+    }
+}
+
+/// A block or item description, separate from its immutable registry identity.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ContentBehaviour {
+    /// A block's behaviour.
+    Block(BlockBehaviour),
+    /// An item's behaviour.
+    Item(ItemBehaviour),
+}
+
+impl ContentBehaviour {
+    /// Returns the kind of content this describes.
+    #[must_use]
+    pub const fn kind(&self) -> ContentKind {
+        match self {
+            Self::Block(_) => ContentKind::Block,
+            Self::Item(_) => ContentKind::Item,
+        }
+    }
+
+    /// Returns whether this describes content of `kind`.
+    #[must_use]
+    pub const fn describes(&self, kind: ContentKind) -> bool {
+        matches!(
+            (self, kind),
+            (Self::Block(_), ContentKind::Block) | (Self::Item(_), ContentKind::Item)
+        )
+    }
+
+    /// Returns default block or item behaviour, or `None` for recipes and commands.
+    #[must_use]
+    pub fn default_for(kind: ContentKind) -> Option<Self> {
+        match kind {
+            ContentKind::Block => Some(Self::Block(BlockBehaviour::default())),
+            ContentKind::Item => Some(Self::Item(ItemBehaviour::default())),
+            ContentKind::Recipe | ContentKind::Command => None,
+        }
+    }
+}
 
 /// One mod's registry entries, tag memberships, translations, and supplied resources.
 ///
@@ -18,7 +102,7 @@ use crate::tags::TagId;
 ///
 /// ```
 /// use ravel_core::{ContentId, ContentKind, ModId};
-/// use ravel_data::{ContentDeclaration, DeclarationError, TagId};
+/// use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId};
 ///
 /// let owner: ModId = "example_mod".parse().expect("a legal mod id");
 /// let mut declaration = ContentDeclaration::new(owner);
@@ -56,7 +140,7 @@ use crate::tags::TagId;
 ///         "data/example_mod/loot_table/blocks/copper_lantern.json",
 ///     ]
 /// );
-/// # Ok::<(), DeclarationError>(())
+/// # Ok::<(), ContentDeclarationError>(())
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContentDeclaration {
@@ -118,12 +202,12 @@ impl ContentDeclaration {
         &mut self,
         kind: ContentKind,
         path: &str,
-    ) -> Result<RegistryKey, DeclarationError> {
+    ) -> Result<RegistryKey, ContentDeclarationError> {
         let id = ContentId::new(self.owner.clone(), path)
-            .map_err(|source| DeclarationError::Path { source })?;
+            .map_err(|source| ContentDeclarationError::Path { source })?;
         let key = RegistryKey::new(kind, id);
         if self.entries.contains(&key) {
-            return Err(DeclarationError::DuplicateEntry { key });
+            return Err(ContentDeclarationError::DuplicateEntry { key });
         }
         self.entries.push(key.clone());
         Ok(key)
@@ -148,9 +232,13 @@ impl ContentDeclaration {
     /// # Errors
     ///
     /// Returns kind mismatch, duplicate membership, or output-path collision errors.
-    pub fn tag(&mut self, tag: &TagId, member: &RegistryKey) -> Result<(), DeclarationError> {
+    pub fn tag(
+        &mut self,
+        tag: &TagId,
+        member: &RegistryKey,
+    ) -> Result<(), ContentDeclarationError> {
         if !tag.admits(member) {
-            return Err(DeclarationError::TagKind {
+            return Err(ContentDeclarationError::TagKind {
                 tag: tag.clone(),
                 member: member.clone(),
             });
@@ -160,7 +248,7 @@ impl ContentDeclaration {
             .get(tag)
             .is_some_and(|members| members.contains(member))
         {
-            return Err(DeclarationError::DuplicateTagMember {
+            return Err(ContentDeclarationError::DuplicateTagMember {
                 tag: tag.clone(),
                 member: member.clone(),
             });
@@ -201,14 +289,14 @@ impl ContentDeclaration {
         locale: &str,
         key: &str,
         text: &str,
-    ) -> Result<(), DeclarationError> {
+    ) -> Result<(), ContentDeclarationError> {
         if !is_locale(locale) {
-            return Err(DeclarationError::Locale {
+            return Err(ContentDeclarationError::Locale {
                 candidate: locale.to_owned(),
             });
         }
         if key.is_empty() {
-            return Err(DeclarationError::EmptyTranslationKey);
+            return Err(ContentDeclarationError::EmptyTranslationKey);
         }
 
         if self
@@ -216,7 +304,7 @@ impl ContentDeclaration {
             .get(locale)
             .is_some_and(|entries| entries.contains_key(key))
         {
-            return Err(DeclarationError::DuplicateTranslation {
+            return Err(ContentDeclarationError::DuplicateTranslation {
                 locale: locale.to_owned(),
                 key: key.to_owned(),
             });
@@ -252,9 +340,13 @@ impl ContentDeclaration {
     /// # Errors
     ///
     /// Returns duplicate-resource or output-path collision errors within this declaration.
-    pub fn resource(&mut self, path: RelativePath, bytes: Vec<u8>) -> Result<(), DeclarationError> {
+    pub fn resource(
+        &mut self,
+        path: RelativePath,
+        bytes: Vec<u8>,
+    ) -> Result<(), ContentDeclarationError> {
         if self.resources.contains_key(&path) {
-            return Err(DeclarationError::DuplicateResource { path });
+            return Err(ContentDeclarationError::DuplicateResource { path });
         }
         Self::claim(&mut self.produced, path.clone(), &Producer::Supplied)?;
         self.resources.insert(path, bytes);
@@ -382,10 +474,10 @@ impl ContentDeclaration {
         table: &mut BTreeMap<RelativePath, Producer>,
         path: RelativePath,
         writer: &Producer,
-    ) -> Result<(), DeclarationError> {
+    ) -> Result<(), ContentDeclarationError> {
         match table.get(&path) {
             Some(existing) if existing == writer => Ok(()),
-            Some(existing) => Err(DeclarationError::ProducedPath {
+            Some(existing) => Err(ContentDeclarationError::ProducedPath {
                 path,
                 existing: existing.to_string(),
                 incoming: writer.to_string(),
@@ -400,7 +492,7 @@ impl ContentDeclaration {
 
 /// Invalid or conflicting declarations within one mod.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DeclarationError {
+pub enum ContentDeclarationError {
     /// The declared path is not a legal content path.
     Path {
         /// Why the path was refused.
@@ -455,7 +547,7 @@ pub enum DeclarationError {
     },
 }
 
-impl fmt::Display for DeclarationError {
+impl fmt::Display for ContentDeclarationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Path { source } => write!(formatter, "{source}"),
@@ -501,7 +593,7 @@ impl fmt::Display for DeclarationError {
     }
 }
 
-impl std::error::Error for DeclarationError {
+impl std::error::Error for ContentDeclarationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Path { source } => Some(source),
@@ -540,7 +632,7 @@ fn is_locale(candidate: &str) -> bool {
 mod tests {
     use ravel_core::{ContentId, ContentIdError, ContentKind, ModId, RegistryKey, RelativePath};
 
-    use super::{ContentDeclaration, DeclarationError};
+    use super::{ContentDeclaration, ContentDeclarationError};
     use crate::generate::GeneratedFile;
     use crate::tags::TagId;
 
@@ -604,7 +696,10 @@ mod tests {
         let error = declaration
             .entry(ContentKind::Block, "lantern")
             .expect_err("the block is already declared");
-        assert_eq!(error, DeclarationError::DuplicateEntry { key: block });
+        assert_eq!(
+            error,
+            ContentDeclarationError::DuplicateEntry { key: block }
+        );
         assert!(error.to_string().contains("with itself"), "{error}");
         assert_eq!(
             declaration.entries().len(),
@@ -620,7 +715,7 @@ mod tests {
             .expect_err("an uppercase path is illegal");
         assert_eq!(
             error,
-            DeclarationError::Path {
+            ContentDeclarationError::Path {
                 source: ContentIdError::PathCharacter {
                     character: 'C',
                     index: 0,
@@ -650,7 +745,7 @@ mod tests {
             .expect_err("a block does not join an item tag");
         assert_eq!(
             error,
-            DeclarationError::TagKind {
+            ContentDeclarationError::TagKind {
                 tag: lanterns.clone(),
                 member: block,
             }
@@ -673,7 +768,7 @@ mod tests {
             .expect_err("the second join");
         assert_eq!(
             error,
-            DeclarationError::DuplicateTagMember {
+            ContentDeclarationError::DuplicateTagMember {
                 tag: lanterns.clone(),
                 member: item.clone(),
             }
@@ -729,7 +824,7 @@ mod tests {
                 .expect_err(candidate);
             assert_eq!(
                 error,
-                DeclarationError::Locale {
+                ContentDeclarationError::Locale {
                     candidate: candidate.to_owned(),
                 }
             );
@@ -752,7 +847,7 @@ mod tests {
         let mut declaration = declaration();
         assert_eq!(
             declaration.translation("en_us", "", "Lantern"),
-            Err(DeclarationError::EmptyTranslationKey)
+            Err(ContentDeclarationError::EmptyTranslationKey)
         );
 
         declaration
@@ -767,7 +862,7 @@ mod tests {
             .expect_err("the key already has English text");
         assert_eq!(
             error,
-            DeclarationError::DuplicateTranslation {
+            ContentDeclarationError::DuplicateTranslation {
                 locale: "en_us".to_owned(),
                 key: "block.example_mod.lantern".to_owned(),
             }
@@ -798,7 +893,7 @@ mod tests {
             .expect_err("the second supply");
         assert_eq!(
             error,
-            DeclarationError::DuplicateResource {
+            ContentDeclarationError::DuplicateResource {
                 path: model.clone()
             }
         );
@@ -832,7 +927,7 @@ mod tests {
             .expect_err("the file is already supplied");
         assert!(matches!(
             error,
-            DeclarationError::ProducedPath { ref path, .. } if path == &generated
+            ContentDeclarationError::ProducedPath { ref path, .. } if path == &generated
         ));
         assert!(
             supplied_first.tags().next().is_none(),
@@ -866,7 +961,7 @@ mod tests {
             .expect_err("the locale already writes it");
         assert!(matches!(
             error,
-            DeclarationError::ProducedPath { ref path, .. } if path == &lang
+            ContentDeclarationError::ProducedPath { ref path, .. } if path == &lang
         ));
         assert!(
             error.to_string().contains("en_us"),

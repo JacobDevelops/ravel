@@ -62,7 +62,7 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "bc4f61d41f2f7d676601cef703f2c3791855a3295d82667db0929991fab02a66"
+        "sha256": "88e79e7b3533aa2943f9a5ad3b2a8e064f5c0e8dd38cb82d27111e4c77d409d0"
       },
       {
         "path": "src/commands.rs",

@@ -39,10 +39,11 @@
 //! ```
 
 pub use ravel_core::{
-    BlockBehaviour, ContentBehaviour, ContentId, ContentIdError, ContentKind, ContentKindError,
-    ItemBehaviour, RegistryKey, RegistryKeyError,
+    ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
 };
-pub use ravel_data::{ContentDeclaration, DeclarationError};
+pub use ravel_data::{
+    BlockBehaviour, ContentBehaviour, ContentDeclaration, ContentDeclarationError, ItemBehaviour,
+};
 pub use ravel_host_api::{Registrar, RegistrationRefused};
 
 pub use ravel_host_api::claim_all;

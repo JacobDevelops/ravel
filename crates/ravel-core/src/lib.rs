@@ -8,27 +8,28 @@ mod diagnostics;
 mod identity;
 mod paths;
 mod precedence;
+mod redaction;
 mod sides;
 mod states;
 
 use serde::{Deserialize, Serialize};
 
 pub use content::{
-    BlockBehaviour, ContentBehaviour, ContentId, ContentIdError, ContentKind, ContentKindError,
-    ItemBehaviour, RegistryKey, RegistryKeyError,
+    ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
 };
 pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
-    Redaction, RedactionPolicy, StructuredFailure,
+    Redaction, StructuredFailure,
 };
 pub use identity::{ModId, ModIdError, check_identifier};
 pub use paths::{RelativePath, RelativePathError};
 pub use precedence::{Cycle, precedence};
+pub use redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS, contains_credential, redact};
 /// An exact semantic version of a mod or Ravel, not a Minecraft release.
 pub use semver::Version;
 /// A Cargo-style compatibility range over [`Version`]; bare versions mean `^`.
 pub use semver::VersionReq as VersionRange;
-pub use sides::{ClientOnly, EmptySideSet, Side, SideSet, WrongSide};
+pub use sides::{ClientOnly, ClientOnlyError, EmptySideSet, Side, SideSet};
 pub use states::LifecycleState;
 
 /// The environment variable selecting a build's tracked Minecraft version.

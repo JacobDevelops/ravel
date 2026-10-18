@@ -1,7 +1,8 @@
 //! Versioned world data and atomic migration chains.
 //!
-//! A mod runs its [`MigrationChain`] over the stored payload using the host's
-//! [`SavedDataPlan`], then reads current data and returns a [`SavedDataEnvelope`].
+//! A mod returns its [`MigrationChain`] from [`crate::Mod::saved_data_migrations`].
+//! The loader applies it before [`crate::Mod::open_saved_data`] receives a current
+//! envelope. Mods read that payload and return a [`SavedDataEnvelope`] when saving.
 //! The host owns file I/O; unmet package requirements refuse opening.
 //!
 //! # Examples

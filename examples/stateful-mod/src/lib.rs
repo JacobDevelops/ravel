@@ -167,19 +167,8 @@ impl Mod for Journal {
         let key = CAPACITY
             .parse()
             .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
-        let capacity = resolved
-            .value(&key)
-            .and_then(JsonValue::as_u64)
-            .ok_or_else(|| {
-                ModError::refused(format!(
-                    "`{CAPACITY}` resolved to something that is not a count"
-                ))
-            })?;
-        self.capacity = usize::try_from(capacity).map_err(|_| {
-            ModError::refused(format!(
-                "`{CAPACITY}` resolved to a count this platform cannot hold"
-            ))
-        })?;
+        let capacity = resolved.integer(&key).map_err(ModError::from_display)?;
+        self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -191,7 +180,7 @@ impl Mod for Journal {
         Ok(Some(self.chain()))
     }
 
-    /// Migrates the stored payload to the current version and reads it.
+    /// Reads the current payload after the loader has applied migrations.
     ///
     /// # Errors
     ///
@@ -199,16 +188,13 @@ impl Mod for Journal {
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
+        _plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             return Ok(());
         };
-        let current = self
-            .chain()
-            .apply(plan, envelope.payload())
-            .map_err(ModError::from_display)?;
-        let stored = current
+        let stored = envelope
+            .payload()
             .get("entries")
             .and_then(JsonValue::as_array)
             .ok_or_else(|| ModError::refused("the stored journal holds no entry list"))?;
@@ -254,7 +240,7 @@ mod tests {
     use ravel_sdk::config::LayeredConfiguration;
     use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
     use ravel_sdk::services::ServiceRequest;
-    use ravel_sdk::{Declared, JsonValue, Mod, json};
+    use ravel_sdk::{Declared, JsonValue, Mod, ModError, json};
 
     use super::{CAPACITY, Journal, VERSIONS, entries_service, version};
 
@@ -270,13 +256,20 @@ mod tests {
         journal
     }
 
-    fn opened(at: u32, payload: JsonValue) -> Result<Journal, ravel_sdk::ModError> {
+    fn opened(at: u32, payload: &JsonValue) -> Result<Journal, ModError> {
         let mut journal = configured();
         let plan = SavedDataPlan::open(&journal.declaration()?, Some(version(at)))
             .expect("a declared version");
+        let payload = journal
+            .chain()
+            .apply(&plan, payload)
+            .map_err(ModError::from_display)?;
+        let current = journal.declaration()?.current();
+        let plan = SavedDataPlan::open(&journal.declaration()?, Some(current))
+            .expect("the current version");
         let envelope = SavedDataEnvelope::new(
             Journal::declared_id().clone(),
-            version(at),
+            current,
             Vec::new(),
             None,
             payload,
@@ -300,20 +293,20 @@ mod tests {
 
     #[test]
     fn a_version_one_world_keeps_the_entry_it_held() {
-        let journal = opened(1, json!({ "entry": "found copper" })).expect("the step runs");
+        let journal = opened(1, &json!({ "entry": "found copper" })).expect("the step runs");
         assert_eq!(journal.entries(), ["found copper"]);
     }
 
     #[test]
     fn a_version_one_world_that_held_nothing_becomes_an_empty_list() {
-        let journal = opened(1, json!({ "entry": "" })).expect("the step runs");
+        let journal = opened(1, &json!({ "entry": "" })).expect("the step runs");
         assert_eq!(journal.entries(), Vec::<String>::new());
     }
 
     #[test]
     fn a_shape_the_step_cannot_read_refuses_and_leaves_the_journal_empty() {
         let refusal =
-            opened(1, json!({ "note": "found copper" })).expect_err("version 1 held no `entry`");
+            opened(1, &json!({ "note": "found copper" })).expect_err("version 1 held no `entry`");
         assert!(refusal.to_string().contains("`entry`"), "{refusal}");
     }
 

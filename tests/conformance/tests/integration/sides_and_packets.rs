@@ -171,7 +171,7 @@ fn a_value_built_for_the_client_is_still_refused_to_the_server_half_of_one_proce
 
     for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
         let refusal = built_for_the_client.get(side).expect_err(side.as_str());
-        assert_eq!(refusal.side(), side);
+        assert_eq!(refusal.side(), Some(side));
         assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
     }
     assert_eq!(built_for_the_client.get(Side::Client), Ok(&"the overlay"));

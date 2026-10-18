@@ -230,20 +230,13 @@ pub mod state {
         fn open_saved_data(
             &mut self,
             envelope: Option<&SavedDataEnvelope>,
-            plan: &SavedDataPlan,
+            _plan: &SavedDataPlan,
         ) -> Result<(), ModError> {
             let Some(envelope) = envelope else {
                 self.entries.clear();
                 return Ok(());
             };
-            // The payload is at whatever version the world stored, so the chain
-            // crosses the steps the plan names before anything is read.
-            let current = self
-                .saved_data_migrations()?
-                .expect("this mod declares a chain")
-                .apply(plan, envelope.payload())
-                .map_err(ModError::from_display)?;
-            self.entries = read_entries(&current);
+            self.entries = read_entries(envelope.payload());
             Ok(())
         }
 
@@ -261,7 +254,6 @@ pub mod state {
 ///
 /// The document itself is JSON, beside this file; this is the code half.
 pub mod settings {
-    use ravel_sdk::JsonValue;
     use ravel_sdk::prelude::*;
 
     /// A mod whose one setting is how many lanterns a stack holds.
@@ -295,14 +287,8 @@ pub mod settings {
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
             let key: SettingKey = CAPACITY.parse().expect("the key this mod declared");
-            self.capacity = resolved
-                .value(&key)
-                .and_then(JsonValue::as_u64)
-                .ok_or_else(|| {
-                    ModError::refused(
-                        "`lanterns.capacity` resolved to something that is not a count",
-                    )
-                })?;
+            self.capacity = u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
+                .map_err(ModError::from_display)?;
             Ok(())
         }
     }
@@ -526,24 +512,31 @@ mod tests {
             .saved_data_declaration()
             .expect("valid saved-data declaration")
             .expect("this mod owns world data");
-        state
+        let chain = state
             .saved_data_migrations()
             .expect("valid saved-data migrations")
-            .expect("and declares a chain")
+            .expect("and declares a chain");
+        chain
             .covers(&declaration)
             .expect("every version above the oldest has a step");
 
         let one = SavedDataVersion::new(1).expect("1 is not zero");
         let plan =
             SavedDataPlan::open(&declaration, Some(one)).expect("a version-1 world is admissible");
+        let payload = chain
+            .apply(&plan, &json!({ "entry": "found copper" }))
+            .expect("the loader migrates a version-1 world");
+        let current = declaration.current();
         let stored = SavedDataEnvelope::current(
             crate::state::CopperLanterns::declared_id().clone(),
-            one,
-            json!({ "entry": "found copper" }),
+            current,
+            payload,
         );
+        let plan = SavedDataPlan::open(&declaration, Some(current))
+            .expect("the current version is admissible");
         state
             .open_saved_data(Some(&stored), &plan)
-            .expect("the chain reads a version-1 world");
+            .expect("the callback reads the loader's current payload");
 
         let saved = state
             .save_saved_data()
@@ -588,11 +581,10 @@ mod tests {
         assert_eq!(settings.capacity(), 16);
     }
 
-    /// The guide tells an author the value type is `ravel_sdk::JsonValue` and that
-    /// `serde_json` cannot be named from a mod crate. This crate can name only
-    /// what a mod can, so writing the type down here is the check.
+    /// JSON payload types remain available through the SDK even when a mod does
+    /// not need a direct `serde_json` dependency.
     #[test]
-    fn a_resolved_value_is_a_json_value_a_mod_can_name() {
+    fn a_json_payload_is_a_value_a_mod_can_name() {
         fn capacity(value: &JsonValue) -> Option<u64> {
             value.as_u64()
         }

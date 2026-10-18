@@ -409,8 +409,30 @@ fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
     let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
         .expect_err("the mod declines to register");
 
-    assert!(matches!(error, PipelineError::Host(_)), "{error}");
+    assert!(
+        matches!(
+            &error,
+            PipelineError::Drive(ravel_loader::DriveError::Host { .. })
+        ),
+        "{error}"
+    );
     assert!(error.to_string().starts_with("the run failed"));
+    let PipelineError::Drive(ravel_loader::DriveError::Host {
+        source,
+        attribution,
+    }) = &error
+    else {
+        panic!("the pipeline must retain the attributed driver failure");
+    };
+    assert_eq!(attribution.mod_id.as_ref(), Some(source.mod_id()));
+    assert_eq!(attribution.state, source.state());
+    assert_eq!(
+        error
+            .stage()
+            .expect("structured driver failure")
+            .lifecycle_state(),
+        source.state()
+    );
     assert_eq!(
         noop.entered,
         [LifecycleState::Loaded, LifecycleState::Constructed],
@@ -535,9 +557,11 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
             "the run failed: ",
         ),
         (
-            PipelineError::Host(
-                ModError::Unsupported.with_context(id("example_mod"), LifecycleState::Stopping),
-            ),
+            PipelineError::Drive(ravel_loader::DriveError::Lifecycle(
+                LifecycleError::UnknownMod {
+                    mod_id: id("example_mod"),
+                },
+            )),
             "the run failed: ",
         ),
         (missing_host(), "the run failed: "),
@@ -591,7 +615,13 @@ fn the_harness_uses_the_production_service_barrier_before_running() {
     let error = run(&packages, &host(), Side::Client, &mut [&mut consumer])
         .expect_err("the required service provider is absent");
 
-    assert!(matches!(error, PipelineError::Services(_)), "{error}");
+    assert!(
+        matches!(
+            &error,
+            PipelineError::Drive(ravel_loader::DriveError::Services(_))
+        ),
+        "{error}"
+    );
     assert_eq!(
         consumer.entered,
         [

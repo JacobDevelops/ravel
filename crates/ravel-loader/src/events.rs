@@ -8,6 +8,8 @@ use ravel_observability::{CallKind, Profiler};
 use crate::lifecycle::LifecycleMachine;
 use crate::loaded::LoadedMods;
 
+type DrainedPlayRequests = (Vec<ravel_data::PlayRequest>, Option<(ModId, HostError)>);
+
 /// Only running and stopping mods may react.
 const fn reacts(state: LifecycleState) -> bool {
     matches!(state, LifecycleState::Running | LifecycleState::Stopping)
@@ -236,25 +238,26 @@ pub fn broadcast_profiled<H: std::ops::DerefMut<Target: HostMod>>(
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
-    let audience = machine.audience(event);
-    for (entry, state) in machine.audience_entries(event) {
-        let mod_id = &entry.mod_id;
-        if !reacts(state) {
+    let audience: Vec<_> = machine
+        .audience_entries(event)
+        .map(|(entry, state)| (entry.mod_id.clone(), state))
+        .collect();
+    for (mod_id, state) in &audience {
+        if !reacts(*state) {
             return Err(DispatchRefused::NotReacting {
                 mod_id: mod_id.clone(),
-                state,
+                state: *state,
             });
         }
     }
 
     let mut received = Vec::with_capacity(audience.len());
-    for mod_id in audience {
+    for (mod_id, state) in audience {
         let host = mods
             .iter_mut()
             .find(|host| host.id() == &mod_id)
             .expect("LoadedMods checked every loading owner");
         let observed = profiler.measure(&mod_id, CallKind::Event, || {
-            let state = machine.state(&mod_id).expect("the audience was validated");
             crate::callback(&mod_id, state, || host.observe(event))
         });
         if let Err(failure) = observed {
@@ -269,6 +272,50 @@ pub fn broadcast_profiled<H: std::ops::DerefMut<Target: HostMod>>(
         received,
         failure: None,
     })
+}
+
+/// Drains outward play requests in lifecycle order, stopping at an attributable failure.
+///
+/// Failed, parked and nonexecuting owners are not called. Requests naming another
+/// owner are refused before any request from that callback is exposed.
+///
+/// # Errors
+///
+/// Returns [`DispatchRefused`] if the set is halted.
+pub fn take_play_requests<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
+) -> Result<DrainedPlayRequests, DispatchRefused> {
+    let (machine, mods) = loaded.parts();
+    ensure_active(machine)?;
+    let mut requests = Vec::new();
+    for (entry, state) in machine.tracked_entries() {
+        if !entry.sides.loads_on(machine.side()) || !reacts(state) {
+            continue;
+        }
+        let mod_id = &entry.mod_id;
+        let host = mods
+            .iter_mut()
+            .find(|host| host.id() == mod_id)
+            .expect("LoadedMods checked every loading owner");
+        let drained = crate::callback(mod_id, state, || Ok(host.take_play_requests()));
+        let drained = match drained {
+            Ok(drained) => drained,
+            Err(error) => return Ok((requests, Some((mod_id.clone(), error)))),
+        };
+        if let Some(foreign) = drained.iter().find(|request| request.owner() != mod_id) {
+            let error = HostError::Refused {
+                mod_id: mod_id.clone(),
+                state,
+                detail: format!(
+                    "outward play request belongs to `{}`, not `{mod_id}`",
+                    foreign.owner()
+                ),
+            };
+            return Ok((requests, Some((mod_id.clone(), error))));
+        }
+        requests.extend(drained);
+    }
+    Ok((requests, None))
 }
 
 /// Routes `delivery` to its owner after checking the claimed side and direction.
@@ -375,7 +422,7 @@ pub fn route_profiled<H: std::ops::DerefMut<Target: HostMod>>(
         });
     }
     let owner = machine
-        .owner_of(&invocation.key)
+        .registry_owner(&invocation.key)
         .ok_or_else(|| DispatchRefused::Unclaimed {
             key: invocation.key.clone(),
         })?
@@ -1599,5 +1646,135 @@ mod tests {
             failure.to_string().contains("example_mod:ping"),
             "{failure}"
         );
+    }
+
+    struct Outward {
+        id: ModId,
+        requests: Vec<ravel_data::PlayRequest>,
+        panics: bool,
+        drains: usize,
+    }
+
+    impl Outward {
+        fn new(owner: &str, request_owner: &str) -> Self {
+            let mut audio = ravel_data::AudioDeclaration::new(id(request_owner));
+            audio.entry("tone", b"audio").expect("valid entry");
+            audio.event("tone").expect("declared entry");
+            Self {
+                id: id(owner),
+                requests: vec![audio.play("tone", Side::Client).expect("client playback")],
+                panics: false,
+                drains: 0,
+            }
+        }
+    }
+
+    impl HostMod for Outward {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _: LifecycleState) -> Result<(), ModError> {
+            Ok(())
+        }
+
+        fn take_play_requests(&mut self) -> Vec<ravel_data::PlayRequest> {
+            self.drains += 1;
+            assert!(!self.panics, "outward callback panic");
+            std::mem::take(&mut self.requests)
+        }
+    }
+
+    #[test]
+    fn outward_drain_preserves_order_and_rejects_a_foreign_batch() {
+        let mut first = Outward::new("first_mod", "first_mod");
+        let mut second = Outward::new("second_mod", "foreign_mod");
+        let mut machine = running(
+            vec![
+                entry("first_mod", &Side::ALL),
+                entry("second_mod", &Side::ALL),
+            ],
+            Side::Client,
+            &mut [&mut first, &mut second],
+        );
+        let (requests, failure) = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+                .expect("paired owners"),
+        )
+        .expect("active set");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].owner(), &id("first_mod"));
+        let (owner, error) = failure.expect("foreign request refused");
+        assert_eq!(owner, id("second_mod"));
+        assert_eq!(error.mod_id(), &owner);
+        assert!(matches!(
+            error,
+            HostError::Refused {
+                state: LifecycleState::Running,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn outward_drain_catches_panics_and_skips_parked_owners() {
+        let mut active = Outward::new("active_mod", "active_mod");
+        active.panics = true;
+        let mut parked = Outward::new("parked_mod", "parked_mod");
+        let mut machine = running(
+            vec![
+                entry("parked_mod", &[Side::DedicatedServer]),
+                entry("active_mod", &Side::ALL),
+            ],
+            Side::Client,
+            &mut [&mut parked, &mut active],
+        );
+        let (requests, failure) = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut parked, &mut active])
+                .expect("paired owners"),
+        )
+        .expect("active set");
+        assert_eq!(requests, Vec::new());
+        assert_eq!(
+            failure,
+            Some((
+                id("active_mod"),
+                HostError::Panicked {
+                    mod_id: id("active_mod"),
+                    state: LifecycleState::Running,
+                }
+            ))
+        );
+        assert_eq!(parked.drains, 0);
+        assert_eq!(active.drains, 1);
+    }
+
+    #[test]
+    fn outward_drain_skips_failed_optional_owners() {
+        let mut failed = Outward::new("failed_mod", "failed_mod");
+        let mut active = Outward::new("active_mod", "active_mod");
+        let mut optional = entry("failed_mod", &Side::ALL);
+        optional.requirement = Requirement::Optional;
+        let mut machine = running(
+            vec![optional, entry("active_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut failed, &mut active],
+        );
+        machine
+            .fail(
+                &id("failed_mod"),
+                failure_attribution("failed_mod", "failed"),
+            )
+            .expect("optional owner can fail");
+        let (requests, failure) = super::take_play_requests(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut failed, &mut active])
+                .expect("paired owners"),
+        )
+        .expect("optional failure does not halt the set");
+        assert!(failure.is_none());
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].owner(), &id("active_mod"));
+        assert_eq!(failed.drains, 0);
+        assert_eq!(active.drains, 1);
     }
 }

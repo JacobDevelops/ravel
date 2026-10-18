@@ -17,13 +17,12 @@ mod settings;
 mod side;
 mod wire;
 
-pub use dispatch::register;
 pub use guard::HookError;
 pub use packs::write_world_pack;
 pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
 pub use runtime::{
-    LoaderRuntime, data_pack_metadata, environment, install, install_panic_hook, is_installed,
-    pre_world_report, resource_pack_metadata,
+    Composition, InstallError, LaunchContext, LoaderRuntime, data_pack_metadata, environment,
+    install, install_panic_hook, is_installed, pre_world_report, resource_pack_metadata,
 };
 pub use side::{SideError, side};
 

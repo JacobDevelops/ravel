@@ -7,9 +7,8 @@ use std::fmt::Write;
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
-use ravel_core::{DiagnosticMessage, FailureAttribution, FailureSurface, ModId, Side};
+use ravel_core::{DiagnosticMessage, FailureAttribution, FailureSurface, ModId};
 use ravel_loader::{ModEntry, Requirement};
-use ravel_observability::Redactor;
 
 use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
@@ -37,7 +36,7 @@ impl LoaderRuntime {
 
         let mut out = String::new();
         field(&mut out, MODS_VERSION);
-        field(&mut out, side_name(surface.side()));
+        field(&mut out, surface.side().as_str());
         count(&mut out, surface.actionable().count());
         count(&mut out, surface.entries().len());
         for (index, entry) in surface.entries().iter().enumerate() {
@@ -117,7 +116,7 @@ fn attribution(out: &mut String, failure: &FailureAttribution) {
 
 /// Redacts failure details at the publishing boundary, regardless of their tag.
 fn publishable(message: &DiagnosticMessage) -> DiagnosticMessage {
-    DiagnosticMessage::redacted(&Redactor, message.text())
+    DiagnosticMessage::redacted(message.text())
 }
 
 /// Names whether the set fails closed without a mod.
@@ -125,15 +124,6 @@ const fn requirement_name(requirement: Requirement) -> &'static str {
     match requirement {
         Requirement::Required => "required",
         Requirement::Optional => "optional",
-    }
-}
-
-/// Names the side a set is running on.
-const fn side_name(side: Side) -> &'static str {
-    match side {
-        Side::Client => "client",
-        Side::IntegratedServer => "integrated-server",
-        Side::DedicatedServer => "dedicated-server",
     }
 }
 
@@ -209,7 +199,11 @@ mod tests {
     }
 
     fn running(machine: LifecycleMachine) -> LoaderRuntime {
-        LoaderRuntime::new(machine, Vec::<Box<dyn HostMod>>::new())
+        LoaderRuntime::new(
+            machine,
+            Vec::<Box<dyn HostMod>>::new(),
+            crate::runtime::test_launch(),
+        )
     }
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
@@ -369,6 +363,7 @@ mod tests {
             Vec::<Box<dyn HostMod>>::new(),
             ravel_observability::Profiler::off(),
             report,
+            crate::runtime::test_launch(),
         )
     }
 
@@ -402,19 +397,18 @@ mod tests {
         assert!(!read[13].contains("ghp_secretvalue"), "{}", read[13]);
     }
 
-    // Redaction is not idempotent: a second pass would redact the marker itself.
     #[test]
     fn a_notice_carrying_a_credential_is_marked_once_and_not_twice() {
         let runtime = noticed(
             machine(vec![entry("base_mod", Requirement::Required)]),
-            "the launcher passed token hunter2 to the game",
+            concat!("the launcher passed token=", "hunter2 to the game"),
         );
 
         let read = fields(&runtime.mod_document(&configurable(&[])));
 
         assert!(!read[13].contains("hunter2"), "{}", read[13]);
         assert_eq!(
-            read[13], "the launcher passed token [redacted] to the game",
+            read[13], "the launcher passed token=[redacted] to the game",
             "one marker, not a marker over a marker"
         );
     }

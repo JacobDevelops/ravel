@@ -138,12 +138,13 @@ impl<T> ClientOnly<T> {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on server sides or when no value was built.
-    pub fn get(&self, side: Side) -> Result<&T, WrongSide> {
+    /// Returns [`ClientOnlyError::WrongSide`] on server sides, or
+    /// [`ClientOnlyError::NotBuilt`] on the client when no value was built.
+    pub fn get(&self, side: Side) -> Result<&T, ClientOnlyError> {
         if side.is_server() {
-            return Err(WrongSide { side });
+            return Err(ClientOnlyError::WrongSide { side });
         }
-        self.value.as_ref().ok_or(WrongSide { side })
+        self.value.as_ref().ok_or(ClientOnlyError::NotBuilt)
     }
 
     /// Returns the value mutably, under the same rule as [`ClientOnly::get`].
@@ -151,11 +152,11 @@ impl<T> ClientOnly<T> {
     /// # Errors
     ///
     /// The same as [`ClientOnly::get`].
-    pub fn get_mut(&mut self, side: Side) -> Result<&mut T, WrongSide> {
+    pub fn get_mut(&mut self, side: Side) -> Result<&mut T, ClientOnlyError> {
         if side.is_server() {
-            return Err(WrongSide { side });
+            return Err(ClientOnlyError::WrongSide { side });
         }
-        self.value.as_mut().ok_or(WrongSide { side })
+        self.value.as_mut().ok_or(ClientOnlyError::NotBuilt)
     }
 
     /// Returns whether the value was built.
@@ -165,31 +166,43 @@ impl<T> ClientOnly<T> {
     }
 }
 
-/// A side asked for a client-only value it may not hold.
+/// Why a client-only value could not be accessed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct WrongSide {
-    side: Side,
+pub enum ClientOnlyError {
+    /// A server side asked for a client-only value.
+    WrongSide {
+        /// The side that asked.
+        side: Side,
+    },
+    /// The client asked for a value that was never built.
+    NotBuilt,
 }
 
-impl WrongSide {
-    /// The side that asked.
+impl ClientOnlyError {
+    /// The refused server side, or `None` when the value was not built.
     #[must_use]
-    pub const fn side(&self) -> Side {
-        self.side
+    pub const fn side(&self) -> Option<Side> {
+        match self {
+            Self::WrongSide { side } => Some(*side),
+            Self::NotBuilt => None,
+        }
     }
 }
 
-impl fmt::Display for WrongSide {
+impl fmt::Display for ClientOnlyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "the `{}` side holds no client-only value; client-only code runs on the client alone",
-            self.side.as_str()
-        )
+        match self {
+            Self::WrongSide { side } => write!(
+                formatter,
+                "the `{}` side holds no client-only value; client-only code runs on the client alone",
+                side.as_str()
+            ),
+            Self::NotBuilt => formatter.write_str("the client-only value was never built"),
+        }
     }
 }
 
-impl std::error::Error for WrongSide {}
+impl std::error::Error for ClientOnlyError {}
 
 /// A side declaration named no side at all.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -237,19 +250,28 @@ mod tests {
 
         for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
             let refusal = held.get(side).expect_err(side.as_str());
-            assert_eq!(refusal.side(), side);
+            assert_eq!(refusal.side(), Some(side));
             assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
-            assert!(held.get_mut(side).is_err(), "{}", side.as_str());
+            assert_eq!(
+                held.get_mut(side),
+                Err(super::ClientOnlyError::WrongSide { side }),
+                "{}",
+                side.as_str()
+            );
         }
     }
 
     #[test]
     fn a_value_that_was_never_built_is_refused_on_the_client_too() {
-        let absent = ClientOnly::<u32>::built_on(Side::DedicatedServer, || 7);
+        let mut absent = ClientOnly::<u32>::built_on(Side::DedicatedServer, || 7);
         assert!(!absent.is_present());
+        let refusal = absent.get(Side::Client).expect_err("no value was built");
+        assert_eq!(refusal, super::ClientOnlyError::NotBuilt);
+        assert_eq!(refusal.side(), None);
+        assert_eq!(refusal.to_string(), "the client-only value was never built");
         assert_eq!(
-            absent.get(Side::Client).map(|_| ()),
-            Err(super::WrongSide { side: Side::Client })
+            absent.get_mut(Side::Client),
+            Err(super::ClientOnlyError::NotBuilt)
         );
     }
 

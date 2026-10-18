@@ -117,7 +117,10 @@ fn running(
     behaviour: Behaviour,
 ) -> (LoaderRuntime, Arc<Mutex<Log>>) {
     let (machine, mods, log) = parts(side, claims, behaviour);
-    (LoaderRuntime::new(machine, mods), log)
+    (
+        LoaderRuntime::new(machine, mods, crate::runtime::test_launch()),
+        log,
+    )
 }
 
 fn parts(
@@ -167,7 +170,7 @@ fn playing(side: Side) -> LoaderRuntime {
 
 fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
     let entry = LifecycleEntry {
-        mod_id: id("audio"),
+        mod_id: host.id().clone(),
         sides: SideSet::new([side]).expect("a non-empty side set"),
         requirement: Requirement::Required,
         saved_data_versions: BTreeSet::new(),
@@ -183,7 +186,7 @@ fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
     ] {
         machine.advance_all(state).expect("a legal step");
     }
-    LoaderRuntime::new(machine, vec![host])
+    LoaderRuntime::new(machine, vec![host], crate::runtime::test_launch())
 }
 
 #[test]
@@ -277,9 +280,34 @@ fn the_same_mod_on_a_client_does_fill_it() {
     );
 }
 
+#[test]
+fn an_outward_request_cannot_impersonate_another_owner() {
+    let runtime = held(
+        Side::Client,
+        Box::new(AsksOnEveryEvent {
+            id: id("thief"),
+            asked: Vec::new(),
+        }),
+    );
+    runtime.observe(&target("client.tick"), &[]);
+    assert_eq!(runtime.drain_outward(), "");
+    let inner = runtime.inner.lock().expect("healthy lock");
+    assert_eq!(
+        inner.machine.state(&id("thief")),
+        Ok(LifecycleState::Failed)
+    );
+    let failure = inner
+        .machine
+        .failure(&id("thief"))
+        .expect("owner")
+        .expect("attributed");
+    assert_eq!(failure.mod_id, Some(id("thief")));
+    drop(inner);
+}
+
 fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
     let (machine, mods) = driven_pair(behaviour, log);
-    LoaderRuntime::new(machine, mods)
+    LoaderRuntime::new(machine, mods, crate::runtime::test_launch())
 }
 
 fn driven_pair(
@@ -341,7 +369,7 @@ fn outward_drains_follow_lifecycle_order_after_service_slot_reordering() {
     let log = Arc::new(Mutex::new(Log::default()));
     let (machine, mut mods) = driven_pair(Behaviour::Records, &log);
     mods.swap(0, 1);
-    let runtime = LoaderRuntime::new(machine, mods);
+    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
 
     runtime.observe(&target("client.tick"), &[]);
 
@@ -493,6 +521,7 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
             id: id(MOD),
             drains: Arc::clone(&drains),
         })],
+        crate::runtime::test_launch(),
     );
     for _ in 0..2 {
         assert_eq!(
@@ -529,6 +558,7 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
             id: id(MOD),
             drains: Arc::clone(&drains),
         })],
+        crate::runtime::test_launch(),
     );
     {
         let mut inner = runtime.inner.lock().expect("healthy lock");
@@ -552,13 +582,16 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
     let (machine, mods, log) = parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
 
     super::install(
-        machine,
-        mods,
+        super::Composition {
+            machine,
+            mods,
+            configurations: Vec::new(),
+            resources: ravel_loader::Supplied::default(),
+            installed_packages: std::collections::BTreeMap::new(),
+        },
         super::pre_world_report(),
         std::env::temp_dir(),
-        ravel_loader::Supplied::default(),
-        Vec::new(),
-        false,
+        ravel_observability::Profiler::off(),
     )
     .expect("the registry accepts an observer");
     crate::dispatch::deliver(&target("server.tick"), &[]).expect("nothing here vetoes");
@@ -572,15 +605,18 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
         parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
     assert!(matches!(
         super::install(
-            machine,
-            mods,
+            super::Composition {
+                machine,
+                mods,
+                configurations: Vec::new(),
+                resources: ravel_loader::Supplied::default(),
+                installed_packages: std::collections::BTreeMap::new(),
+            },
             super::pre_world_report(),
             std::env::temp_dir(),
-            ravel_loader::Supplied::default(),
-            Vec::new(),
-            true,
+            ravel_observability::Profiler::from_switch(true),
         ),
-        Err(crate::guard::HookError::AlreadyInstalled)
+        Err(super::InstallError::AlreadyInstalled)
     ));
     crate::dispatch::deliver(&target("server.tick"), &[])
         .expect("the original runtime remains active");

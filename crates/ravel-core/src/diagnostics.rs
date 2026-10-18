@@ -17,16 +17,10 @@ pub trait StructuredFailure: std::error::Error {
     /// Returns whether the message quotes text not authored by Ravel.
     fn quotes_untrusted_text(&self) -> bool;
 
-    /// Returns raw failure text; publishing requires a [`RedactionPolicy`].
+    /// Returns raw failure text; publishing requires diagnostic redaction.
     fn diagnostic(&self) -> DiagnosticMessage {
         DiagnosticMessage::raw(self.to_string())
     }
-}
-
-/// Redacts secrets and identifying paths before diagnostic publication.
-pub trait RedactionPolicy {
-    /// Returns `text` with everything the policy removes taken out.
-    fn apply(&self, text: &str) -> String;
 }
 
 /// A dependency, side, or registry failure category.
@@ -82,29 +76,21 @@ pub enum Redaction {
     Applied,
 }
 
-/// Diagnostic text whose publishable state can only be earned by running a policy.
+/// Diagnostic text whose publishable state requires the built-in redaction policy.
 ///
 /// Serialization is output-only so documents cannot claim that redaction ran.
 ///
 /// # Examples
 ///
 /// ```
-/// use ravel_core::{DiagnosticMessage, Redaction, RedactionPolicy};
-///
-/// struct DropEverything;
-///
-/// impl RedactionPolicy for DropEverything {
-///     fn apply(&self, _: &str) -> String {
-///         "[redacted]".to_owned()
-///     }
-/// }
+/// use ravel_core::{DiagnosticMessage, Redaction};
 ///
 /// let raw = DiagnosticMessage::raw("could not read /home/player/token.txt");
 /// assert_eq!(raw.redaction(), Redaction::Raw);
 /// assert!(!raw.is_publishable());
 ///
-/// let published = DiagnosticMessage::redacted(&DropEverything, raw.text());
-/// assert_eq!(published.text(), "[redacted]");
+/// let published = DiagnosticMessage::redacted(raw.text());
+/// assert_eq!(published.text(), "could not read token.txt");
 /// assert!(published.is_publishable());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -123,14 +109,11 @@ impl DiagnosticMessage {
         }
     }
 
-    /// Runs `policy` over `text` and records the result as publishable.
+    /// Applies Ravel's credential and identifying-path redaction policy.
     #[must_use]
-    pub fn redacted<P>(policy: &P, text: &str) -> Self
-    where
-        P: RedactionPolicy + ?Sized,
-    {
+    pub fn redacted(text: &str) -> Self {
         Self {
-            text: policy.apply(text),
+            text: crate::redaction::redact_text(text),
             redaction: Redaction::Applied,
         }
     }
@@ -188,16 +171,8 @@ pub struct FailureEnvironment {
 /// ```
 /// use ravel_core::{
 ///     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState,
-///     ModId, RedactionPolicy,
+///     ModId,
 /// };
-///
-/// struct KeepEverything;
-///
-/// impl RedactionPolicy for KeepEverything {
-///     fn apply(&self, text: &str) -> String {
-///         text.to_owned()
-///     }
-/// }
 ///
 /// let failure = FailureAttribution {
 ///     mod_id: Some("example_mod".parse()?),
@@ -212,7 +187,7 @@ pub struct FailureEnvironment {
 ///         platform: "linux".to_owned(),
 ///         architecture: "x86_64".to_owned(),
 ///     },
-///     message: DiagnosticMessage::redacted(&KeepEverything, "requires `example_library`"),
+///     message: DiagnosticMessage::redacted("requires `example_library`"),
 /// };
 ///
 /// assert!(failure.state.can_transition_to(LifecycleState::Failed));
@@ -246,17 +221,9 @@ mod tests {
 
     use super::{
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
-        Redaction, RedactionPolicy, StructuredFailure,
+        Redaction, StructuredFailure,
     };
     use crate::states::LifecycleState;
-
-    struct Verbatim;
-
-    impl RedactionPolicy for Verbatim {
-        fn apply(&self, text: &str) -> String {
-            text.to_owned()
-        }
-    }
 
     #[derive(Debug)]
     struct Bare;
@@ -297,7 +264,7 @@ mod tests {
             kind: Some(FailureKind::MissingRequiredDependency),
             surface: None,
             environment: environment(),
-            message: DiagnosticMessage::redacted(&Verbatim, "requires `example_library`"),
+            message: DiagnosticMessage::redacted("requires `example_library`"),
         }
     }
 
@@ -362,15 +329,7 @@ mod tests {
 
     #[test]
     fn only_running_a_policy_produces_a_publishable_message() {
-        struct Truncating;
-
-        impl RedactionPolicy for Truncating {
-            fn apply(&self, text: &str) -> String {
-                text.rsplit('/').next().unwrap_or_default().to_owned()
-            }
-        }
-
-        let published = DiagnosticMessage::redacted(&Truncating, "/home/player/instance/mods");
+        let published = DiagnosticMessage::redacted("/home/player/instance/mods");
         assert_eq!(published.text(), "mods");
         assert_eq!(published.redaction(), Redaction::Applied);
         assert!(published.is_publishable());

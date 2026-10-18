@@ -212,14 +212,8 @@ impl Mod for StockMod {
         let key = RESTOCK_SIZE
             .parse()
             .map_err(|_| ModError::refused("this mod's own setting key is not a legal key"))?;
-        self.restock_size = resolved
-            .value(&key)
-            .and_then(JsonValue::as_u64)
-            .ok_or_else(|| {
-                ModError::refused(format!(
-                    "`{RESTOCK_SIZE}` resolved to something that is not a count"
-                ))
-            })?;
+        self.restock_size = u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -239,16 +233,12 @@ impl Mod for StockMod {
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
+        _plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             return Ok(());
         };
-        let current = self
-            .chain()
-            .apply(plan, envelope.payload())
-            .map_err(ModError::from_display)?;
-        self.read(&current)
+        self.read(envelope.payload())
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -368,11 +358,18 @@ mod tests {
         )
     }
 
-    fn opened(at: u32, payload: JsonValue) -> Result<StockMod, ModError> {
+    fn opened(at: u32, payload: &JsonValue) -> Result<StockMod, ModError> {
         let mut stock = StockMod::new();
         let plan = SavedDataPlan::open(&stock.declaration()?, Some(version(at)))
             .expect("a declared version");
-        stock.open_saved_data(Some(&envelope(at, payload)), &plan)?;
+        let payload = stock
+            .chain()
+            .apply(&plan, payload)
+            .map_err(ModError::from_display)?;
+        let current = stock.declaration()?.current();
+        let plan =
+            SavedDataPlan::open(&stock.declaration()?, Some(current)).expect("the current version");
+        stock.open_saved_data(Some(&envelope(current.get(), payload)), &plan)?;
         Ok(stock)
     }
 
@@ -401,7 +398,7 @@ mod tests {
         // The version-3 shape holds a unit price that version 1 does not, and a
         // currency that only the first step supplies, so this value is reachable
         // from version 1 by no shorter route.
-        let stock = opened(1, json!({ "stock": 12 })).expect("both steps run");
+        let stock = opened(1, &json!({ "stock": 12 })).expect("both steps run");
         assert_eq!(
             stock.stock(),
             &Stock {
@@ -416,7 +413,7 @@ mod tests {
     fn a_world_at_the_current_version_is_read_without_a_step() {
         let stock = opened(
             3,
-            json!({ "stock": 4, "currency": "shard", "unitPrice": 7 }),
+            &json!({ "stock": 4, "currency": "shard", "unitPrice": 7 }),
         )
         .expect("nothing to migrate");
         assert_eq!(stock.stock().currency, "shard");
@@ -425,7 +422,7 @@ mod tests {
 
     #[test]
     fn a_stored_shape_a_step_cannot_read_refuses_and_leaves_the_mod_empty() {
-        let refusal = opened(1, json!({ "count": 12 })).expect_err("version 1 held no `stock`");
+        let refusal = opened(1, &json!({ "count": 12 })).expect_err("version 1 held no `stock`");
         assert!(refusal.to_string().contains("no `stock`"), "{refusal}");
 
         // And nothing was read: a refused world leaves this mod holding nothing,
@@ -457,7 +454,7 @@ mod tests {
 
     #[test]
     fn what_this_mod_writes_is_what_it_reads_back() {
-        let opened = opened(1, json!({ "stock": 12 })).expect("both steps run");
+        let opened = opened(1, &json!({ "stock": 12 })).expect("both steps run");
         let envelope = opened
             .save_saved_data()
             .expect("this mod owns world data")
@@ -512,7 +509,7 @@ mod tests {
     fn a_provider_answers_with_what_it_currently_holds() {
         let mut stock = opened(
             3,
-            json!({ "stock": 4, "currency": "shard", "unitPrice": 7 }),
+            &json!({ "stock": 4, "currency": "shard", "unitPrice": 7 }),
         )
         .expect("its own shape");
         let request =

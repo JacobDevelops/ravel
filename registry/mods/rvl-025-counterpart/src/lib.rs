@@ -297,9 +297,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`ravel_sdk::sides::WrongSide`] on every server side, where the
-    /// state was never built.
-    pub fn client(&self) -> Result<&ClientState, ravel_sdk::sides::WrongSide> {
+    /// Returns [`ravel_sdk::sides::ClientOnlyError`] when this is a server or state was never built.
+    pub fn client(&self) -> Result<&ClientState, ravel_sdk::sides::ClientOnlyError> {
         self.client.get(self.side)
     }
 
@@ -307,8 +306,8 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`ravel_sdk::sides::WrongSide`] on every server side.
-    pub fn client_mut(&mut self) -> Result<&mut ClientState, ravel_sdk::sides::WrongSide> {
+    /// Returns [`ravel_sdk::sides::ClientOnlyError`] when this is a server or state was never built.
+    pub fn client_mut(&mut self) -> Result<&mut ClientState, ravel_sdk::sides::ClientOnlyError> {
         self.client.get_mut(self.side)
     }
 
@@ -829,10 +828,13 @@ mod tests {
 
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
             let mut server = Entry::new(side);
-            assert_eq!(server.client().expect_err("no server state").side(), side);
+            assert_eq!(
+                server.client().expect_err("no server state").side(),
+                Some(side)
+            );
             assert_eq!(
                 server.client_mut().expect_err("no server state").side(),
-                side
+                Some(side)
             );
         }
     }

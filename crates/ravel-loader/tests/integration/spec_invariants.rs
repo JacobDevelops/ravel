@@ -212,13 +212,14 @@ fn constructed_registry_set() -> LifecycleMachine {
 fn assert_late_claims_refused(machine: &mut LifecycleMachine, names: [&str; 2], when: &str) {
     for name in names {
         assert_eq!(
-            machine.claim_registry_identifier(
+            machine.claim_registry_identifier_describing(
                 &id(name),
-                &"block:late:block".parse().expect("valid key")
+                &"block:late:block".parse().expect("valid key"),
+                None,
             ),
             Err(LifecycleError::RegistrationBarrierClosed {
                 mod_id: id(name),
-                identifier: "block:late:block".to_owned(),
+                identifier: "block:late:block".parse().expect("valid key"),
             }),
             "{name} claimed an identifier {when}"
         );
@@ -238,9 +239,10 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
     let names = ["first_mod", "second_mod"];
     assert!(!machine.registration_barrier_closed());
     machine
-        .claim_registry_identifier(
+        .claim_registry_identifier_describing(
             &id("first_mod"),
             &"block:first_mod:block".parse().expect("valid key"),
+            None,
         )
         .expect("claims are accepted before the barrier");
 
@@ -259,9 +261,10 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
         "no mod starts while another is still registering"
     );
     machine
-        .claim_registry_identifier(
+        .claim_registry_identifier_describing(
             &id("second_mod"),
             &"block:second_mod:block".parse().expect("valid key"),
+            None,
         )
         .expect("the barrier is still open for a mod that has not registered");
 

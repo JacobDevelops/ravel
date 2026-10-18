@@ -87,10 +87,11 @@ impl CopperLanterns {
 }
 ```
 
-Reaching for it on a server side returns `WrongSide`, which is yours to convert:
-a mod that treats it as fatal returns `ModError::Refused`, and one with nothing
-to report — the `if let Ok` above — carries on. `is_present()` answers the other
-question, whether the value was built at all, which is what a test asserts on.
+Reaching for it on a server side returns `ClientOnlyError::WrongSide`, which is
+yours to convert: a mod that treats it as fatal returns `ModError::Refused`, and
+one with nothing to report — the `if let Ok` above — carries on. On the client,
+a value that was never built returns `ClientOnlyError::NotBuilt` instead.
+`is_present()` answers whether the value was built at all, which is what a test asserts on.
 
 Client-only means state a mod keeps *because* it is on the client — what a
 `to-client` packet last carried, what a client tick last counted. **Drawing is

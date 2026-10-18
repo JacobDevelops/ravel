@@ -62,6 +62,10 @@ impl ServiceDeclaration {
 
     /// Declares provided, required, and optional services.
     ///
+    /// Bind the lists to `provides`, `requires`, and `may_use` names before calling
+    /// this constructor when more than one is nonempty: required and optional
+    /// dependencies intentionally have different admission consequences.
+    ///
     /// # Errors
     ///
     /// Returns an error for foreign ownership, self-dependencies, or required/optional overlap.

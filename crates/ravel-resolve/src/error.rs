@@ -80,7 +80,7 @@ impl fmt::Display for ResolutionError {
             } => write!(
                 formatter,
                 "`{dependant}` requires `{dependency}`, which does not load on the {} side",
-                side_name(*side)
+                side.as_str()
             ),
             Self::UnsatisfiedVersion {
                 dependant,
@@ -141,14 +141,6 @@ fn cycle_path(members: &[ModId]) -> String {
         rendered.push(first);
     }
     rendered.join(" -> ")
-}
-
-fn side_name(side: Side) -> &'static str {
-    match side {
-        Side::Client => "client",
-        Side::IntegratedServer => "integrated-server",
-        Side::DedicatedServer => "dedicated-server",
-    }
 }
 
 #[cfg(test)]

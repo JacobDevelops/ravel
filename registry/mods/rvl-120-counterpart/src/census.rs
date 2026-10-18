@@ -12,7 +12,7 @@
 //! marker rather than a translation. There are **two** real keys and a
 //! language-parity run should expect two.
 
-use ravel_sdk::content::{ContentDeclaration, ContentKind, DeclarationError, RegistryKey};
+use ravel_sdk::content::{ContentDeclaration, ContentDeclarationError, ContentKind, RegistryKey};
 use ravel_sdk::{Declared, ModError};
 
 /// The one crafting recipe kind this package claims.
@@ -70,9 +70,9 @@ pub const DATA_DOCUMENTS: usize = 0;
 ///
 /// # Errors
 ///
-/// Returns [`DeclarationError`] when a declared path is not a legal content
+/// Returns [`ContentDeclarationError`] when a declared path is not a legal content
 /// path, which for these constants is a packaging failure.
-pub fn declaration() -> Result<ContentDeclaration, DeclarationError> {
+pub fn declaration() -> Result<ContentDeclaration, ContentDeclarationError> {
     let mut declaration = ContentDeclaration::new(crate::Entry::declared_id().clone());
     declaration.entry(ContentKind::Recipe, RECIPE_KIND)?;
     Ok(declaration)

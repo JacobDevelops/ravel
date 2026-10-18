@@ -69,13 +69,11 @@ impl ConfigurationMod {
             )));
         }
         self.enabled = configuration
-            .value(&key(ENABLED))
-            .and_then(serde_json::Value::as_bool)
-            .ok_or_else(|| ModError::refused(format!("`{ENABLED}` is not a boolean")))?;
+            .boolean(&key(ENABLED))
+            .map_err(ModError::from_display)?;
         configuration
-            .value(&key(PROFILE))
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| ModError::refused(format!("`{PROFILE}` is not a string")))?
+            .text(&key(PROFILE))
+            .map_err(ModError::from_display)?
             .clone_into(&mut self.profile);
         Ok(())
     }
@@ -141,12 +139,11 @@ mod tests {
     use ravel_sdk::config::{
         ConfigurationDeclaration, LayeredConfiguration, PackOverride, SettingSide, ValueDocument,
     };
-    use ravel_sdk::{LifecycleState, Mod, ModId, Side};
-    use serde_json::json;
+    use ravel_sdk::{JsonValue, LifecycleState, Mod, ModId, Side, json};
 
     use super::{ConfigurationMod, MOD_ID, key};
 
-    fn document(values: &serde_json::Value) -> ValueDocument {
+    fn document(values: &JsonValue) -> ValueDocument {
         ValueDocument::parse(
             &json!({
                 "schemaVersion": 1,
@@ -238,9 +235,10 @@ mod tests {
                 .expect("an invalid player value falls back");
 
         assert_eq!(configuration.rejected().len(), 1);
-        assert_eq!(
-            configuration.value(&key("client.enabled")),
-            Some(&json!(true))
+        assert!(
+            configuration
+                .boolean(&key("client.enabled"))
+                .expect("the setting is a boolean")
         );
     }
 

@@ -28,20 +28,23 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: HostMod>>(
 
     for entry in machine.entries() {
         let mod_id = entry.mod_id.clone();
-        if !entry.sides.loads_on(machine.side()) {
+        let state = machine
+            .state(&mod_id)
+            .expect("the lifecycle entry is tracked");
+        if !entry.sides.loads_on(machine.side()) || state == LifecycleState::Failed {
             continue;
         }
         let host = mods
             .iter_mut()
             .find(|host| host.id() == &mod_id)
             .expect("the paired view checked every loading owner");
-        let Some(declaration) = crate::callback(&mod_id, LifecycleState::Constructed, || {
-            host.configuration_declaration()
-        })
-        .map_err(|source| ConfigRefused::Mod {
-            mod_id: mod_id.clone(),
-            source,
-        })?
+        let Some(declaration) =
+            crate::callback(&mod_id, state, || host.configuration_declaration()).map_err(
+                |source| ConfigRefused::Mod {
+                    mod_id: mod_id.clone(),
+                    source,
+                },
+            )?
         else {
             continue;
         };
@@ -65,12 +68,11 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: HostMod>>(
         for dropped in resolved.rejected() {
             configured.dropped.push((mod_id.clone(), dropped.clone()));
         }
-        crate::callback(&mod_id, LifecycleState::Constructed, || {
-            host.configure(&resolved)
-        })
-        .map_err(|source| ConfigRefused::Mod {
-            mod_id: mod_id.clone(),
-            source,
+        crate::callback(&mod_id, state, || host.configure(&resolved)).map_err(|source| {
+            ConfigRefused::Mod {
+                mod_id: mod_id.clone(),
+                source,
+            }
         })?;
         configured.resolved.push(resolved);
         configured.order.push(mod_id);
@@ -200,7 +202,12 @@ impl StructuredFailure for ConfigRefused {
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
-        LifecycleState::Constructed
+        match self {
+            Self::Mod { source, .. } => source.state(),
+            Self::PlayerFile { .. } | Self::ForeignDeclaration { .. } | Self::Layer { .. } => {
+                LifecycleState::Discovered
+            }
+        }
     }
 
     fn quotes_untrusted_text(&self) -> bool {
@@ -388,10 +395,43 @@ mod tests {
                 mod_id,
                 source: HostError::Unsupported {
                     mod_id: source_mod_id,
-                    state: LifecycleState::Constructed,
+                    state: LifecycleState::Discovered,
                 },
             } if mod_id == id("refusing_mod") && source_mod_id == id("refusing_mod")
         ));
+        assert_eq!(host.applied, None);
+    }
+
+    #[test]
+    fn failed_optional_owner_never_declares_or_selects_player_settings() {
+        let mut host = Settled::new("failed_mod");
+        host.refuses_declaration = true;
+        let mut planned = entry("failed_mod", &[Side::DedicatedServer]);
+        planned.requirement = crate::Requirement::Optional;
+        let mut machine = machine(vec![planned]);
+        let environment = ravel_core::FailureEnvironment {
+            ravel: "0.1.0".parse().expect("valid version"),
+            minecraft: "test".to_owned(),
+            platform: "test".to_owned(),
+            architecture: "test".to_owned(),
+        };
+        machine
+            .fail_callback(
+                &HostError::Unsupported {
+                    mod_id: id("failed_mod"),
+                    state: LifecycleState::Discovered,
+                },
+                &environment,
+                None,
+            )
+            .expect("optional owner can fail");
+        super::open_configuration(
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("paired host"),
+            &BTreeMap::new(),
+            |_| panic!("a failed owner must not read player settings"),
+        )
+        .expect("failed owners are skipped");
         assert_eq!(host.applied, None);
     }
 

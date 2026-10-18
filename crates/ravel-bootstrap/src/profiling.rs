@@ -157,6 +157,7 @@ mod tests {
             mods,
             profiler,
             crate::runtime::pre_world_report(),
+            crate::runtime::test_launch(),
         ))
     }
 

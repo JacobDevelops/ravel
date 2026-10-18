@@ -163,7 +163,11 @@ fn assert_started(
         assert_saved_data(host.as_ref(), manifest);
         let expected = expected_claims(host.as_ref());
         for key in &expected {
-            assert_eq!(machine.owner_of(key), Some(host.id()), "{key} on {side:?}");
+            assert_eq!(
+                machine.registry_owner(key),
+                Some(host.id()),
+                "{key} on {side:?}"
+            );
         }
         // Every expected key is present; equality also excludes undeclared extras.
         assert_eq!(

@@ -12,8 +12,8 @@ use crate::document::{DocumentError, ValueDocument};
 /// The directory under a game directory that holds player configuration.
 const DIRECTORY: &str = "config";
 
-/// The directory a written pack keeps its settings layer in, under the pack root.
-pub const PACK_DIRECTORY: &str = "ravel/config";
+/// The modpack settings layer directory, relative to the game directory.
+pub const PACK_CONFIG_DIRECTORY: &str = "ravel/config";
 
 /// The suffix a file is written under before it is put in place.
 const STAGING_SUFFIX: &str = ".pending";
@@ -24,22 +24,25 @@ pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
     game_directory.join(DIRECTORY).join(format!("{owner}.json"))
 }
 
-/// The file one owner's pack values live in, under a written pack's root.
+/// The file one owner's modpack values live in, at `<game>/ravel/config/<owner>.json`.
 #[must_use]
-pub fn pack_path(root: &Path, owner: &ModId) -> PathBuf {
-    root.join(PACK_DIRECTORY).join(format!("{owner}.json"))
+pub fn pack_path(game_directory: &Path, owner: &ModId) -> PathBuf {
+    game_directory
+        .join(PACK_CONFIG_DIRECTORY)
+        .join(format!("{owner}.json"))
 }
 
-/// Reads every pack settings document a written pack holds, keyed by owner.
+/// Reads modpack settings documents from `<game>/ravel/config`, keyed by owner.
 ///
-/// A missing pack configuration directory returns an empty map.
+/// `game_directory` is the game directory, not a resource or data pack root.
+/// A missing modpack configuration directory returns an empty map.
 ///
 /// # Errors
 ///
 /// Returns the same errors as [`read`], plus [`FileError::Name`] for a JSON file
 /// whose name is not a mod id and so names no owner at all.
-pub fn read_pack(root: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileError> {
-    let directory = root.join(PACK_DIRECTORY);
+pub fn read_pack(game_directory: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileError> {
+    let directory = game_directory.join(PACK_CONFIG_DIRECTORY);
     let listing = match fs::read_dir(&directory) {
         Ok(listing) => listing,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
@@ -352,7 +355,7 @@ mod tests {
     fn every_pack_document_is_read_back_under_the_owner_its_file_is_named_for() {
         let root = directory("pack-layer");
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
-        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
             .expect("a writable pack directory");
         for owner in [owner(), other.clone()] {
             std::fs::write(
@@ -364,7 +367,7 @@ mod tests {
         // Not a document, and not read as one: a pack directory holds Ravel's own
         // files and this is what says the reader takes only the ones it named.
         std::fs::write(
-            root.join(super::PACK_DIRECTORY).join("notes.txt"),
+            root.join(super::PACK_CONFIG_DIRECTORY).join("notes.txt"),
             "ignored",
         )
         .expect("the file should be writable");
@@ -393,7 +396,7 @@ mod tests {
     fn a_pack_document_naming_one_owner_and_stating_another_refuses_the_whole_layer() {
         let root = directory("pack-mismatched");
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
-        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
             .expect("a writable pack directory");
         std::fs::write(
             super::pack_path(&root, &owner()),
@@ -411,10 +414,11 @@ mod tests {
     #[test]
     fn a_pack_document_whose_name_is_not_a_mod_id_states_nobodys_values() {
         let root = directory("pack-unnamed");
-        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
             .expect("a writable pack directory");
         std::fs::write(
-            root.join(super::PACK_DIRECTORY).join("Not A Mod.json"),
+            root.join(super::PACK_CONFIG_DIRECTORY)
+                .join("Not A Mod.json"),
             ValueDocument::empty(owner()).to_json(),
         )
         .expect("the file should be writable");

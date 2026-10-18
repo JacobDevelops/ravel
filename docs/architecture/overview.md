@@ -24,6 +24,13 @@ Minecraft-specific hooks, mappings, and bindings live behind an explicit
 version adapter. General loader, package, SDK, and pack contracts must not
 encode any Minecraft version's internals.
 
+Core owns identifiers, sides and lifecycle vocabulary. Declarative block/item
+behaviour belongs to `ravel-data`, with the SDK retaining its author-facing
+content reexports; its declaration failure is `ContentDeclarationError`, distinct
+from configuration declarations. Lifecycle errors retain typed registry keys.
+Client-only access distinguishes a wrong server side from a value never built,
+using `ClientOnlyError::WrongSide` and `ClientOnlyError::NotBuilt`.
+
 The build default stays 26.1.2 and 1.21.1 support remains. Forward proof targets
 immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on the exact JDK 27 pin in
 `mise.toml`. It means native behavioural parity through Rust counterparts,
@@ -77,12 +84,29 @@ Ravel into a Java mod host.
   Rust owns admission, migration and staged/live world identity; Java owns game
   calls and vanilla file handling, and a failed replacement preserves the prior
   aggregate without aborting vanilla saving.
+  The loader applies each owner's migration chain before calling
+  `Mod::open_saved_data`, which receives a current-version envelope and its
+  current-version plan. The installed composition supplies package versions for
+  required-package admission on real game opens, not only in fixture tests.
   The 1.12.2 port must use legacy WorldSavedData/MapStorage semantics rather than
   claim modern SavedData factories/codecs exist; numeric IDs, metadata and
   global/per-dimension identity require version-local evidence before live closure.
 - **Outward actions.** Rust answers an inbound crossing with data describing an
   action, and the receiver-aware Java adapter performs it against the game.
   Rust does not call game methods, and `JavaHandle` exposes no such capability.
+- **Runtime ownership.** Bootstrap installation consumes a complete composition,
+  launch directory, pre-world report and profiler; no installed runtime lacks
+  launch state. Host initialization owns panic-hook installation and the shared
+  JNI entry body. The loader applies one owner-attribution operation to callback
+  failures across lifecycle driving, saves and bootstrap dispatch. Service,
+  resource and configuration entry points use the same owner-participation
+  and lifecycle rules; a refusing service provider is an error, not an absent
+  optional provider. `PipelineError::Drive` preserves the attributed drive error.
+- **Diagnostic publication.** `DiagnosticMessage::redacted` applies the shared
+  core redactor rather than trusting a caller-supplied policy to assert safety.
+  Observability exposes the same credential detector used by that redactor.
+  Profiling reports count host calls through `hook_calls`, without a second
+  name for the same measurement.
 - **Claims and checks.** Measured claims have an independent reading proved by
   mutation; judged claims carry per-input verdicts, reasons and bases in data,
   checked for two-way congruence with behaviour, and mechanisms disclose their
@@ -126,8 +150,11 @@ Ravel into a Java mod host.
   host and mod entries offline; every resolved external name, version, source,
   and checksum must match an installation lock entry before compilation runs
   with `--locked`. An unvetted third-party resolution is refused, not silently
-  added to the installation's dependency graph. Generated SDK-author serde
-  dependencies and host JNI dependencies come from the root manifest.
+  added to the installation's dependency graph. Source-less packages must be
+  planned members, the generated host, or identities already in the installation
+  lock. A member's direct path dependencies may reach only the SDK or another
+  planned member, not host internals or vendored third-party code. Generated
+  SDK-author serde dependencies and host JNI dependencies come from the root manifest.
 - **Acceptance runs.** The acceptance model describes structured
   `GameEvent`/`Observation` data by registered content keys and planned
   `Directive` data for the existing outward instruction crossing.

@@ -1,14 +1,15 @@
 use std::fmt;
 
 use ravel_core::{
-    DiagnosticMessage, FailureAttribution, FailureEnvironment, LifecycleState, ModId, Side,
+    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Side,
+    StructuredFailure,
 };
 use ravel_host_api::{HostError, HostMod};
 
 use crate::lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleMachine, Requirement, executes_mod_code,
 };
-use crate::services::{ServiceRefused, open_services_with_failure_handler};
+use crate::services::{ServiceRefused, open_services};
 
 const START_ORDER: [LifecycleState; 6] = [
     LifecycleState::Validated,
@@ -69,9 +70,7 @@ pub fn drive_loaded<H: std::ops::DerefMut<Target: HostMod>>(
             register(loaded, environment, &order)?;
         }
         if state == LifecycleState::Registered {
-            open_services_with_failure_handler(loaded, |machine, error| {
-                fail(machine, environment, error)
-            })?;
+            open_services(loaded, environment)?;
         }
     }
     Ok(())
@@ -135,32 +134,21 @@ fn fail(
     environment: &FailureEnvironment,
     error: HostError,
 ) -> Result<(), DriveError> {
-    let mod_id = error.mod_id();
-    let required = machine
-        .entry(mod_id)
-        .map_err(DriveError::Lifecycle)?
-        .requirement
-        == Requirement::Required;
-    let attribution = FailureAttribution {
-        mod_id: Some(mod_id.clone()),
-        version: None,
-        dependency_chain: Vec::new(),
-        state: error.state(),
-        kind: None,
-        surface: None,
-        environment: environment.clone(),
-        message: DiagnosticMessage::raw(error.to_string()),
-    };
-    let required_attribution = required.then(|| Box::new(attribution.clone()));
-    machine
-        .fail(mod_id, attribution)
+    let requirement = machine
+        .fail_callback(&error, environment, None)
         .map_err(DriveError::Lifecycle)?;
-    required_attribution.map_or(Ok(()), |attribution| {
-        Err(DriveError::Host {
+    if requirement == Requirement::Required {
+        let attribution = machine
+            .failure(error.mod_id())
+            .map_err(DriveError::Lifecycle)?
+            .expect("the callback failure was recorded")
+            .clone();
+        return Err(DriveError::Host {
             source: error,
-            attribution,
-        })
-    })
+            attribution: Box::new(attribution),
+        });
+    }
+    Ok(())
 }
 
 fn register<H: std::ops::DerefMut<Target: HostMod>>(
@@ -251,12 +239,41 @@ impl std::error::Error for DriveError {
     }
 }
 
+impl StructuredFailure for DriveError {
+    fn failure_kind(&self) -> Option<FailureKind> {
+        match self {
+            Self::Identity { .. } => Some(FailureKind::DuplicateIdentity),
+            Self::Lifecycle(error) => error.failure_kind(),
+            Self::Services(error) => error.failure_kind(),
+            Self::Host { source, .. } => source.failure_kind(),
+        }
+    }
+
+    fn lifecycle_state(&self) -> LifecycleState {
+        match self {
+            Self::Identity { .. } => LifecycleState::Discovered,
+            Self::Lifecycle(error) => error.lifecycle_state(),
+            Self::Services(error) => error.lifecycle_state(),
+            Self::Host { source, .. } => source.state(),
+        }
+    }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        match self {
+            Self::Identity { .. } => false,
+            Self::Lifecycle(error) => error.quotes_untrusted_text(),
+            Self::Services(error) => error.quotes_untrusted_text(),
+            Self::Host { source, .. } => source.quotes_untrusted_text(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::{HostMod, ModError, Registrar, ServiceDeclaration, ServiceId};
+    use ravel_host_api::{HostError, HostMod, ModError, Registrar, ServiceDeclaration, ServiceId};
 
     use super::{DriveError, drive, drive_loaded, stop_all};
     use crate::lifecycle::Requirement;
@@ -704,7 +721,19 @@ mod tests {
                         Ok(LifecycleState::Running)
                     );
                 } else {
-                    assert!(matches!(outcome, Err(DriveError::Host { .. })));
+                    let Err(DriveError::Services(ServiceRefused::Consumer { mod_id, source })) =
+                        outcome
+                    else {
+                        panic!("required service callback failure refuses startup");
+                    };
+                    assert_eq!(mod_id, id("service_mod"));
+                    assert_eq!(
+                        source,
+                        HostError::Panicked {
+                            mod_id: id("service_mod"),
+                            state: LifecycleState::Registered,
+                        }
+                    );
                     assert!(
                         !states
                             .lock()

@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    ContentBehaviour, FailureAttribution, LifecycleState, ModId, RegistryKey, Side, SideSet,
+    DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureSurface, LifecycleState,
+    ModId, RegistryKey, Side, SideSet, StructuredFailure,
 };
+use ravel_data::ContentBehaviour;
 
 /// Whether a lifecycle state can run mod code.
 #[must_use]
@@ -376,6 +378,37 @@ impl LifecycleMachine {
         Ok(())
     }
 
+    /// Records a callback failure once and returns the owner's participation requirement.
+    ///
+    /// # Errors
+    ///
+    /// Returns a lifecycle refusal for an unknown owner or an ended lifecycle.
+    pub fn fail_callback(
+        &mut self,
+        error: &ravel_host_api::HostError,
+        environment: &FailureEnvironment,
+        surface: Option<FailureSurface>,
+    ) -> Result<Requirement, LifecycleError> {
+        let mod_id = error.mod_id();
+        let requirement = self.entry(mod_id)?.requirement;
+        if self.state(mod_id)? != LifecycleState::Failed {
+            self.fail(
+                mod_id,
+                FailureAttribution {
+                    mod_id: Some(mod_id.clone()),
+                    version: None,
+                    dependency_chain: Vec::new(),
+                    state: error.state(),
+                    kind: error.failure_kind(),
+                    surface,
+                    environment: environment.clone(),
+                    message: DiagnosticMessage::raw(error.to_string()),
+                },
+            )?;
+        }
+        Ok(requirement)
+    }
+
     /// Claims a registry identifier for a mod before the registration barrier.
     ///
     /// # Errors
@@ -385,23 +418,10 @@ impl LifecycleMachine {
     /// registered, [`LifecycleError::RegistrationWindow`] while the set is
     /// still registering but this mod is not constructed,
     /// [`LifecycleError::ForeignRegistryClaim`] for another mod's namespace,
-    /// and [`LifecycleError::ConflictingRegistryClaim`] when already owned.
-    pub fn claim_registry_identifier(
-        &mut self,
-        mod_id: &ModId,
-        identifier: &RegistryKey,
-    ) -> Result<(), LifecycleError> {
-        self.claim_described_registry_identifier(mod_id, identifier, None)
-    }
-
-    /// Claims `identifier` and records how the value it names behaves.
-    ///
-    /// # Errors
-    ///
-    /// Every refusal [`Self::claim_registry_identifier`] makes, plus
+    /// [`LifecycleError::ConflictingRegistryClaim`] when already owned, or
     /// [`LifecycleError::MismatchedContentBehaviour`] when the description does
     /// not describe the kind the identifier names.
-    pub fn claim_described_registry_identifier(
+    pub fn claim_registry_identifier_describing(
         &mut self,
         mod_id: &ModId,
         identifier: &RegistryKey,
@@ -412,13 +432,13 @@ impl LifecycleMachine {
         if closed {
             return Err(LifecycleError::RegistrationBarrierClosed {
                 mod_id: tracked.entry.mod_id.clone(),
-                identifier: identifier.to_string(),
+                identifier: identifier.clone(),
             });
         }
         if tracked.state != LifecycleState::Constructed {
             return Err(LifecycleError::RegistrationWindow {
                 mod_id: tracked.entry.mod_id.clone(),
-                identifier: identifier.to_string(),
+                identifier: identifier.clone(),
                 state: tracked.state,
             });
         }
@@ -430,7 +450,7 @@ impl LifecycleMachine {
         }
         if let Some(owner) = self.claims.get(identifier) {
             return Err(LifecycleError::ConflictingRegistryClaim {
-                identifier: identifier.to_string(),
+                identifier: identifier.clone(),
                 owner: owner.clone(),
                 claimant: tracked.entry.mod_id.clone(),
             });
@@ -441,7 +461,7 @@ impl LifecycleMachine {
             && !behaviour.describes(identifier.kind())
         {
             return Err(LifecycleError::MismatchedContentBehaviour {
-                identifier: identifier.to_string(),
+                identifier: identifier.clone(),
                 described: behaviour.kind(),
             });
         }
@@ -602,14 +622,15 @@ mod tests {
     use std::borrow::Cow;
 
     use ravel_core::{
-        ContentBehaviour, ContentKind, FailureAttribution, FailureEnvironment, FailureKind,
+        ContentKind, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
         LifecycleState, ModId, Redaction, Side, StructuredFailure,
     };
-    use ravel_data::ContentDeclaration;
+    use ravel_data::{ContentBehaviour, ContentDeclaration};
     use ravel_host_api::{HostError, HostMod, ModError};
     use ravel_observability::redact;
 
     use super::{LifecycleError, LifecycleMachine, executes_mod_code, has_registered};
+    use crate::Requirement;
     use crate::tests::entry;
 
     const SUCCESS_PATH: [LifecycleState; 8] = [
@@ -785,6 +806,46 @@ mod tests {
     }
 
     #[test]
+    fn callback_failure_retains_its_phase_context_and_first_attribution() {
+        let owner = id("example_mod");
+        let mut machine = machine_at(LifecycleState::Running);
+        let error = HostError::Refused {
+            mod_id: owner.clone(),
+            state: LifecycleState::Running,
+            detail: "callback refused".to_owned(),
+        };
+        let environment = attribution("example_mod", LifecycleState::Running).environment;
+        let surface = FailureSurface::Hook("world_load".to_owned());
+        let requirement = machine.entry(&owner).expect("known owner").requirement;
+        assert_eq!(
+            machine.fail_callback(&error, &environment, Some(surface.clone())),
+            Ok(requirement)
+        );
+        let recorded = machine
+            .failure(&owner)
+            .expect("known owner")
+            .expect("failure retained")
+            .clone();
+        assert_eq!(recorded.mod_id, Some(owner.clone()));
+        assert_eq!(recorded.state, LifecycleState::Running);
+        assert_eq!(recorded.kind, error.failure_kind());
+        assert_eq!(recorded.environment, environment);
+        assert_eq!(recorded.surface, Some(surface));
+        let event_count = machine.transcript().len();
+        let mut other_environment = environment.clone();
+        other_environment.platform = "different".to_owned();
+        assert_eq!(
+            machine.fail_callback(&error, &other_environment, None),
+            Ok(requirement)
+        );
+        assert_eq!(
+            machine.failure(&owner).expect("known owner"),
+            Some(&recorded)
+        );
+        assert_eq!(machine.transcript().len(), event_count);
+    }
+
+    #[test]
     fn advancing_the_whole_set_moves_nothing_when_one_mod_cannot_take_the_step() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
@@ -848,13 +909,14 @@ mod tests {
         let mut machine = machine_at(LifecycleState::Loaded);
         let mod_id = id("example_mod");
         assert_eq!(
-            machine.claim_registry_identifier(
+            machine.claim_registry_identifier_describing(
                 &mod_id,
-                &"block:example_mod:block".parse().expect("valid key")
+                &"block:example_mod:block".parse().expect("valid key"),
+                None,
             ),
             Err(LifecycleError::RegistrationWindow {
                 mod_id: mod_id.clone(),
-                identifier: "block:example_mod:block".to_owned(),
+                identifier: "block:example_mod:block".parse().expect("valid key"),
                 state: LifecycleState::Loaded,
             })
         );
@@ -863,9 +925,10 @@ mod tests {
             .advance(&mod_id, LifecycleState::Constructed)
             .expect("legal");
         machine
-            .claim_registry_identifier(
+            .claim_registry_identifier_describing(
                 &mod_id,
                 &"block:example_mod:block".parse().expect("valid key"),
+                None,
             )
             .expect("the window is open while constructed");
         assert_eq!(
@@ -899,15 +962,17 @@ mod tests {
 
         // Claim order differs from identifier order.
         machine
-            .claim_registry_identifier(
+            .claim_registry_identifier_describing(
                 &id("second_mod"),
                 &"item:second_mod:ingot".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
         machine
-            .claim_registry_identifier(
+            .claim_registry_identifier_describing(
                 &id("first_mod"),
                 &"block:first_mod:copper".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
 
@@ -942,10 +1007,10 @@ mod tests {
         let mut machine = machine_at(LifecycleState::Constructed);
         let mod_id = id("example_mod");
         machine
-            .claim_described_registry_identifier(
+            .claim_registry_identifier_describing(
                 &mod_id,
                 &"block:example_mod:obsidian".parse().expect("valid key"),
-                Some(ContentBehaviour::Block(ravel_core::BlockBehaviour {
+                Some(ContentBehaviour::Block(ravel_data::BlockBehaviour {
                     hardness: 50.0,
                     explosion_resistance: 1200.0,
                     requires_correct_tool: true,
@@ -954,9 +1019,10 @@ mod tests {
             )
             .expect("accepted");
         machine
-            .claim_registry_identifier(
+            .claim_registry_identifier_describing(
                 &mod_id,
                 &"item:example_mod:ingot".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
 
@@ -968,13 +1034,13 @@ mod tests {
         assert_eq!(
             described,
             vec![
-                ContentBehaviour::Block(ravel_core::BlockBehaviour {
+                ContentBehaviour::Block(ravel_data::BlockBehaviour {
                     hardness: 50.0,
                     explosion_resistance: 1200.0,
                     requires_correct_tool: true,
                     random_ticks: false,
                 }),
-                ContentBehaviour::Item(ravel_core::ItemBehaviour::default()),
+                ContentBehaviour::Item(ravel_data::ItemBehaviour::default()),
             ],
             "a claim that described nothing gets its kind's default rather than \
              arriving undescribed"
@@ -987,11 +1053,11 @@ mod tests {
         let mod_id = id("example_mod");
 
         let error = machine
-            .claim_described_registry_identifier(
+            .claim_registry_identifier_describing(
                 &mod_id,
                 &"item:example_mod:copper".parse().expect("valid key"),
                 Some(ContentBehaviour::Block(
-                    ravel_core::BlockBehaviour::default(),
+                    ravel_data::BlockBehaviour::default(),
                 )),
             )
             .expect_err("an item described as a block is a value no registry builds");
@@ -1014,7 +1080,7 @@ mod tests {
         let foreign = "block:other_mod:copper".parse().expect("valid key");
         let mod_id = id("example_mod");
         assert_eq!(
-            machine.claim_registry_identifier(&mod_id, &foreign),
+            machine.claim_registry_identifier_describing(&mod_id, &foreign, None),
             Err(LifecycleError::ForeignRegistryClaim {
                 key: foreign.clone(),
                 mod_id: mod_id.clone(),
@@ -1103,6 +1169,60 @@ mod tests {
     }
 
     #[test]
+    fn optional_mismatched_registration_fails_only_its_owner() {
+        struct Mismatched {
+            owner: ModId,
+        }
+        impl HostMod for Mismatched {
+            fn id(&self) -> &ModId {
+                &self.owner
+            }
+
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+                Ok(())
+            }
+
+            fn register(
+                &mut self,
+                registrar: &mut dyn ravel_host_api::Registrar,
+            ) -> Result<(), ModError> {
+                registrar
+                    .claim_describing(
+                        "item:example_mod:copper".parse().expect("valid key"),
+                        ContentBehaviour::Block(ravel_data::BlockBehaviour::default()),
+                    )
+                    .map_err(ModError::from_display)?;
+                Ok(())
+            }
+        }
+        let mut optional = entry("example_mod", &[Side::Client]);
+        optional.requirement = Requirement::Optional;
+        let mut machine = LifecycleMachine::new(Side::Client, vec![optional]).expect("valid plan");
+        let mut host = Mismatched {
+            owner: id("example_mod"),
+        };
+        crate::drive_loaded(
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
+            &attribution("example_mod", LifecycleState::Constructed).environment,
+        )
+        .expect("an optional registration refusal does not abort the set");
+        assert_eq!(
+            machine.state(&id("example_mod")),
+            Ok(LifecycleState::Failed)
+        );
+        let failure = machine
+            .failure(&id("example_mod"))
+            .expect("known owner")
+            .expect("registration failure retained");
+        assert_eq!(failure.state, LifecycleState::Constructed);
+        assert_eq!(machine.claimed_content().count(), 0);
+        machine
+            .world_access()
+            .expect("optional failure permits world access");
+    }
+
+    #[test]
     fn an_owner_cannot_claim_one_registry_identifier_twice() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
@@ -1122,18 +1242,20 @@ mod tests {
         }
 
         machine
-            .claim_registry_identifier(
+            .claim_registry_identifier_describing(
                 &id("first_mod"),
                 &"block:first_mod:block".parse().expect("valid key"),
+                None,
             )
             .expect("the first claim is accepted");
         assert_eq!(
-            machine.claim_registry_identifier(
+            machine.claim_registry_identifier_describing(
                 &id("first_mod"),
-                &"block:first_mod:block".parse().expect("valid key")
+                &"block:first_mod:block".parse().expect("valid key"),
+                None,
             ),
             Err(LifecycleError::ConflictingRegistryClaim {
-                identifier: "block:first_mod:block".to_owned(),
+                identifier: "block:first_mod:block".parse().expect("valid key"),
                 owner: id("first_mod"),
                 claimant: id("first_mod"),
             })
@@ -1223,9 +1345,10 @@ mod tests {
             Err(refusal())
         );
         assert_eq!(
-            machine.claim_registry_identifier(
+            machine.claim_registry_identifier_describing(
                 &unknown,
-                &"block:other_mod:block".parse().expect("valid key")
+                &"block:other_mod:block".parse().expect("valid key"),
+                None,
             ),
             Err(refusal())
         );
@@ -1344,27 +1467,27 @@ mod tests {
             (
                 LifecycleError::RegistrationBarrierClosed {
                     mod_id: id("example_mod"),
-                    identifier: "example_mod:block".to_owned(),
+                    identifier: "block:example_mod:block".parse().expect("valid key"),
                 },
                 "the set closed the registration barrier, so `example_mod` cannot claim \
-                 `example_mod:block`",
+                 `block:example_mod:block`",
             ),
             (
                 LifecycleError::RegistrationWindow {
                     mod_id: id("example_mod"),
-                    identifier: "example_mod:block".to_owned(),
+                    identifier: "block:example_mod:block".parse().expect("valid key"),
                     state: LifecycleState::Loaded,
                 },
-                "`example_mod` can claim `example_mod:block` only while constructed, but it is \
+                "`example_mod` can claim `block:example_mod:block` only while constructed, but it is \
                  `loaded`",
             ),
             (
                 LifecycleError::ConflictingRegistryClaim {
-                    identifier: "shared:block".to_owned(),
+                    identifier: "block:shared:block".parse().expect("valid key"),
                     owner: id("first_mod"),
                     claimant: id("second_mod"),
                 },
-                "`second_mod` claimed the registry identifier `shared:block`, which `first_mod` \
+                "`second_mod` claimed the registry identifier `block:shared:block`, which `first_mod` \
                  already owns",
             ),
             (
@@ -1404,7 +1527,7 @@ mod tests {
             ),
             (
                 LifecycleError::MismatchedContentBehaviour {
-                    identifier: "item:example_mod:copper".to_owned(),
+                    identifier: "item:example_mod:copper".parse().expect("valid key"),
                     described: ContentKind::Block,
                 },
                 "`item:example_mod:copper` was described as block content, which is not the kind \
@@ -1497,7 +1620,7 @@ mod tests {
             (
                 LifecycleError::RegistrationWindow {
                     mod_id: id("example_mod"),
-                    identifier: "example_mod:block".to_owned(),
+                    identifier: "block:example_mod:block".parse().expect("valid key"),
                     state: LifecycleState::Loaded,
                 },
                 LifecycleState::Loaded,
@@ -1519,7 +1642,7 @@ mod tests {
         for (error, expected) in [
             (
                 LifecycleError::ConflictingRegistryClaim {
-                    identifier: "shared:block".to_owned(),
+                    identifier: "block:shared:block".parse().expect("valid key"),
                     owner: id("first_mod"),
                     claimant: id("second_mod"),
                 },
@@ -1535,7 +1658,7 @@ mod tests {
             (
                 LifecycleError::RegistrationBarrierClosed {
                     mod_id: id("example_mod"),
-                    identifier: "example_mod:block".to_owned(),
+                    identifier: "block:example_mod:block".parse().expect("valid key"),
                 },
                 LifecycleState::Registered,
             ),

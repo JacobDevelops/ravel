@@ -6,7 +6,7 @@
 use jni::EnvUnowned;
 use jni::objects::JClass;
 use ravel_core::Side;
-use ravel_host_runtime::{Member, initialize as run};
+use ravel_host_runtime::Member;
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
 use ravel_test_mod_configuration::ConfigurationMod;
 use ravel_test_mod_registries::RegistriesMod;
@@ -59,26 +59,12 @@ pub fn compose(game_directory: &std::path::Path, side: Side) -> Result<Compositi
 /// Starts the tracked JVM harness fixture before game methods run.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
 pub fn ravel_initialize<'local>(
-    mut env: EnvUnowned<'local>,
+    env: EnvUnowned<'local>,
     _class: JClass<'local>,
     side: jni::sys::jint,
     profiling_requested: jni::sys::jboolean,
 ) {
-    ravel_bootstrap_runtime::install_panic_hook();
-    env.with_env(|env| -> Result<(), LaunchError> {
-        let result = ravel_host_runtime::side(side).and_then(|named| {
-            run(
-                named,
-                || members(named),
-                profiling_requested != jni::sys::JNI_FALSE,
-            )
-        });
-        if let Err(error) = result {
-            env.throw(error.redacted())?;
-        }
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    ravel_host_runtime::enter(env, side, profiling_requested, members);
 }
 
 #[cfg(test)]
@@ -373,13 +359,25 @@ mod tests {
     #[test]
     fn the_world_owning_mod_carries_the_versions_it_declares() {
         let game = directory("saved-versions");
-        let Composition { machine, .. } =
-            compose(&game, Side::Client).expect("the tracked composition should start");
+        let Composition {
+            machine,
+            installed_packages,
+            ..
+        } = compose(&game, Side::Client).expect("the tracked composition should start");
 
         assert!(
             machine.order().any(|id| id == &saved_owner()),
             "the world-owning mod is part of the driven load order"
         );
+        for package in super::members(Side::Client) {
+            let manifest = ravel_package::PackageManifest::parse(&package.package)
+                .expect("the member manifest");
+            assert_eq!(
+                installed_packages.get(&manifest.id),
+                Some(&manifest.version),
+                "the installed package version survives composition"
+            );
+        }
     }
 
     #[test]

@@ -11,7 +11,7 @@
 //! and [`Defect`] states the decision beside the defect.
 
 use ravel_sdk::ModId;
-use ravel_sdk::content::{ContentDeclaration, ContentKind, DeclarationError, RegistryKey};
+use ravel_sdk::content::{ContentDeclaration, ContentDeclarationError, ContentKind, RegistryKey};
 
 /// The seventeen items, in the order this package registers them.
 ///
@@ -168,10 +168,10 @@ impl Defect {
 ///
 /// # Errors
 ///
-/// Returns [`DeclarationError`] when a name this package spells is not a legal
+/// Returns [`ContentDeclarationError`] when a name this package spells is not a legal
 /// content path or is declared twice, both of which are packaging failures for
 /// constants.
-pub fn declaration(owner: ModId) -> Result<ContentDeclaration, DeclarationError> {
+pub fn declaration(owner: ModId) -> Result<ContentDeclaration, ContentDeclarationError> {
     let mut declaration = ContentDeclaration::new(owner);
     for block in BLOCKS {
         declaration.entry(ContentKind::Block, block)?;
@@ -204,7 +204,7 @@ pub fn creative_grouping() -> Vec<&'static str> {
 /// # Errors
 ///
 /// Returns whatever [`declaration`] refuses.
-pub fn claimed(owner: ModId) -> Result<Vec<RegistryKey>, DeclarationError> {
+pub fn claimed(owner: ModId) -> Result<Vec<RegistryKey>, ContentDeclarationError> {
     Ok(declaration(owner)?.entries().to_vec())
 }
 

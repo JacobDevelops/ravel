@@ -1,16 +1,14 @@
 //! Identity-keyed world admission, checkpoints, and data-pack publication.
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::{Arc, PoisonError};
 
 use jni::sys::jint;
 use ravel_core::ModId;
-use ravel_host_api::{Outcome, Point};
+use ravel_host_api::Point;
 use ravel_loader::LoadedMods;
 use ravel_save::{SavedDataAggregate, SavedDataError};
-use semver::Version;
 
 use crate::runtime::LoaderRuntime;
 
@@ -21,6 +19,13 @@ struct Checkpoint {
     identity: WorldIdentity,
     aggregate: SavedDataAggregate,
     dirty: bool,
+}
+
+impl Checkpoint {
+    fn refresh(&mut self, produced: SavedDataAggregate) {
+        self.dirty |= produced != self.aggregate;
+        self.aggregate = produced;
+    }
 }
 
 #[derive(Default)]
@@ -161,7 +166,18 @@ impl fmt::Display for PersistenceError {
     }
 }
 
-impl std::error::Error for PersistenceError {}
+impl std::error::Error for PersistenceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Lifecycle(error) => Some(error),
+            Self::MissingHost(error) => Some(error),
+            Self::World(error) => Some(error),
+            Self::Admission(error) => Some(error),
+            Self::Host(error) => Some(error),
+            Self::Interception(error) => Some(error),
+        }
+    }
+}
 
 impl LoaderRuntime {
     fn write_world_pack(&self, world: &str) {
@@ -178,17 +194,10 @@ impl LoaderRuntime {
         write: fn(
             &ravel_loader::Supplied,
             &Path,
-        ) -> Result<ravel_loader::Written, ravel_loader::PackError>,
+        ) -> Result<ravel_loader::Written, ravel_loader::GamePackError>,
     ) -> StagedPack {
         let path = Path::new(directory);
-        let Some(launch) = &self.launch else {
-            self.inner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .report
-                .note("no data pack was written: the runtime has no launch directory");
-            return StagedPack::Nothing;
-        };
+        let launch = &self.launch;
         if let Err(refusal) = admissible_world(path, &launch.game_directory) {
             self.inner
                 .lock()
@@ -254,80 +263,27 @@ impl LoaderRuntime {
         inner: &mut crate::runtime::Inner,
         bytes: Option<&[u8]>,
     ) -> Result<SavedDataAggregate, PersistenceError> {
-        // One complete view protects both the old world's snapshot and new admission.
-        let opened = 'opening: {
-            let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
-                .map_err(PersistenceError::MissingHost)?;
-            if inner.persistence.staged.is_none()
-                && let Some(live) = &mut inner.persistence.live
-            {
-                let produced =
-                    match ravel_loader::produce_saved_data(&mut loaded, Some(&live.aggregate)) {
-                        Ok(produced) => produced,
-                        Err(refused) => break 'opening Err(refused),
-                    };
-                live.dirty |= produced != live.aggregate;
-                live.aggregate = produced;
-            }
-            // Composition supplies no package versions, so declared requirements fail closed.
-            let uncheckable: BTreeMap<ModId, Version> = BTreeMap::new();
-            Ok(ravel_loader::open_saved_data(
-                &mut loaded,
-                &crate::runtime::environment(),
-                bytes,
-                &uncheckable,
-            ))
-        };
-        let opened = match opened {
-            Ok(opened) => opened,
-            Err(refused) => {
-                let error = Self::snapshot_refusal(refused);
-                Self::record_save_failure(inner, &error)?;
-                return Err(error);
-            }
-        };
-        let aggregate = match opened {
-            Ok(aggregate) => aggregate,
-            Err(refused) => {
-                Self::record_admission_failure(inner, &refused)?;
-                return Err(PersistenceError::Admission(refused));
-            }
-        };
-        Ok(aggregate)
-    }
-
-    fn record_admission_failure(
-        inner: &mut crate::runtime::Inner,
-        refused: &ravel_loader::SaveRefused,
-    ) -> Result<(), PersistenceError> {
-        match refused {
-            ravel_loader::SaveRefused::Owner { mod_id, source } => {
-                inner
-                    .record_failure(mod_id, source, None)
-                    .map_err(PersistenceError::Lifecycle)?;
-            }
-            ravel_loader::SaveRefused::ForeignDeclaration { mod_id, .. }
-            | ravel_loader::SaveRefused::ForeignEnvelope { mod_id, .. }
-            | ravel_loader::SaveRefused::Data(
-                SavedDataError::MigrationFailed { owner: mod_id, .. }
-                | SavedDataError::MissingMigration { owner: mod_id, .. }
-                | SavedDataError::NoVersionsDeclared { owner: mod_id },
-            ) => {
-                let error = ravel_host_api::HostError::Refused {
-                    mod_id: mod_id.clone(),
-                    state: inner
-                        .machine
-                        .state(mod_id)
-                        .map_err(PersistenceError::Lifecycle)?,
-                    detail: refused.to_string(),
-                };
-                inner
-                    .record_failure(mod_id, &error, None)
-                    .map_err(PersistenceError::Lifecycle)?;
-            }
-            ravel_loader::SaveRefused::Lifecycle(_) | ravel_loader::SaveRefused::Data(_) => {}
+        let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
+            .map_err(PersistenceError::MissingHost)?;
+        if inner.persistence.staged.is_none()
+            && let Some(live) = &mut inner.persistence.live
+        {
+            live.refresh(
+                ravel_loader::produce_saved_data(
+                    &mut loaded,
+                    &crate::runtime::environment(),
+                    Some(&live.aggregate),
+                )
+                .map_err(PersistenceError::Admission)?,
+            );
         }
-        Ok(())
+        ravel_loader::open_saved_data(
+            &mut loaded,
+            &crate::runtime::environment(),
+            bytes,
+            &inner.installed_packages,
+        )
+        .map_err(PersistenceError::Admission)
     }
 
     // A veto withholds only Ravel data and preserves dirty state for the next save.
@@ -339,73 +295,40 @@ impl LoaderRuntime {
         if let Some(failure) = round.failure() {
             return Err(PersistenceError::Host(failure.clone()));
         }
-        if round.outcome() == Outcome::Proceed {
-            return Ok(None);
-        }
-        Ok(Some(
-            round
-                .asked()
-                .last()
-                .cloned()
-                .expect("a refusal comes from a mod that was asked"),
-        ))
+        Ok(round.refused_by().cloned())
     }
 
-    fn record_save_failure(
+    fn record_interception_failure(
         inner: &mut crate::runtime::Inner,
         error: &PersistenceError,
-    ) -> Result<(), PersistenceError> {
-        match error {
+    ) -> Result<(), ravel_loader::LifecycleError> {
+        let failure = match error {
             PersistenceError::Host(source)
             | PersistenceError::Interception(ravel_loader::InterceptRefused::Mod {
                 source, ..
-            }) => inner
-                .record_failure(source.mod_id(), source, None)
-                .map_err(PersistenceError::Lifecycle)?,
+            }) => source.clone(),
             PersistenceError::Interception(
                 refused @ ravel_loader::InterceptRefused::ForeignDeclaration { mod_id, .. },
-            ) => {
-                let source = ravel_host_api::HostError::Refused {
-                    mod_id: mod_id.clone(),
-                    state: inner
-                        .machine
-                        .state(mod_id)
-                        .map_err(PersistenceError::Lifecycle)?,
-                    detail: refused.to_string(),
-                };
-                inner
-                    .record_failure(mod_id, &source, None)
-                    .map_err(PersistenceError::Lifecycle)?;
-            }
-            PersistenceError::Admission(
-                refused @ ravel_loader::SaveRefused::ForeignEnvelope { .. },
-            ) => Self::record_admission_failure(inner, refused)?,
+            ) => ravel_host_api::HostError::Refused {
+                mod_id: mod_id.clone(),
+                state: inner.machine.state(mod_id)?,
+                detail: refused.to_string(),
+            },
             PersistenceError::Lifecycle(_)
             | PersistenceError::MissingHost(_)
             | PersistenceError::World(_)
             | PersistenceError::Admission(_)
-            | PersistenceError::Interception(_) => {}
-        }
-        Ok(())
+            | PersistenceError::Interception(_) => return Ok(()),
+        };
+        inner.record_failure(failure.mod_id(), &failure, None)
     }
 
     fn snapshot(
         loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::HostMod>>,
         prior: Option<&SavedDataAggregate>,
     ) -> Result<SavedDataAggregate, PersistenceError> {
-        ravel_loader::produce_saved_data(loaded, prior).map_err(Self::snapshot_refusal)
-    }
-
-    fn snapshot_refusal(refused: ravel_loader::SaveRefused) -> PersistenceError {
-        match refused {
-            ravel_loader::SaveRefused::Owner { source, .. } => PersistenceError::Host(source),
-            ravel_loader::SaveRefused::Lifecycle(error) => PersistenceError::Lifecycle(error),
-            error @ (ravel_loader::SaveRefused::Data(_)
-            | ravel_loader::SaveRefused::ForeignDeclaration { .. }
-            | ravel_loader::SaveRefused::ForeignEnvelope { .. }) => {
-                PersistenceError::Admission(error)
-            }
-        }
+        ravel_loader::produce_saved_data(loaded, &crate::runtime::environment(), prior)
+            .map_err(PersistenceError::Admission)
     }
 
     fn save_checkpoint(checkpoint: &mut Checkpoint) -> SaveOutcome {
@@ -438,7 +361,7 @@ impl LoaderRuntime {
         })();
         let outcome = match saved {
             Ok(outcome) => outcome,
-            Err(error) => match Self::record_save_failure(inner, &error) {
+            Err(error) => match Self::record_interception_failure(inner, &error) {
                 Ok(()) => SaveOutcome::Failed(error.to_string()),
                 Err(recording) => SaveOutcome::Failed(recording.to_string()),
             },
@@ -469,22 +392,15 @@ impl LoaderRuntime {
             }
             return Ok(answer);
         }
-        if persistence
+        if let Some(live) = persistence
             .live
-            .as_ref()
-            .is_some_and(|live| &live.identity == identity)
+            .as_mut()
+            .filter(|live| &live.identity == identity)
         {
             if persistence.staged.is_none() {
-                let prior = persistence.live.as_ref().map(|live| &live.aggregate);
-                let produced = Self::snapshot(loaded, prior)?;
-                if let Some(live) = &mut persistence.live {
-                    live.dirty |= produced != live.aggregate;
-                    live.aggregate = produced;
-                }
+                live.refresh(Self::snapshot(loaded, Some(&live.aggregate))?);
             }
-            if let Some(live) = &mut persistence.live {
-                return Ok(Self::save_checkpoint(live));
-            }
+            return Ok(Self::save_checkpoint(live));
         }
         Ok(SaveOutcome::IdentityMismatch(format!(
             "save receiver `{identity}` matches neither live nor staged world state"
@@ -525,18 +441,17 @@ fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
 
 // The writer replaces these entries, so a link among them would redirect it outside `world`.
 fn pack_targets_are_real(world: &Path) -> Result<(), String> {
-    use ravel_loader::{PACK_DIRECTORY, WORLD_DATA_PACKS};
-    // `write_pack` stages beside its root under this name.
-    let pending = format!("{PACK_DIRECTORY}.pending");
-    let packs = Path::new(WORLD_DATA_PACKS);
-    for target in [
-        packs.to_path_buf(),
-        packs.join(PACK_DIRECTORY),
-        packs.join(&pending),
-        Path::new(PACK_DIRECTORY).to_path_buf(),
-        Path::new(&pending).to_path_buf(),
-    ] {
-        let path = world.join(&target);
+    use ravel_loader::{GAME_PACK_DIRECTORY, WORLD_DATA_PACKS};
+    let packs = world.join(WORLD_DATA_PACKS);
+    let roots = [
+        packs.join(GAME_PACK_DIRECTORY),
+        world.join(GAME_PACK_DIRECTORY),
+    ];
+    for path in std::iter::once(packs).chain(
+        roots
+            .iter()
+            .flat_map(|root| ravel_loader::replaced_paths(root)),
+    ) {
         if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return Err(format!(
                 "`{}` is a symbolic link, and a pack is written only to real directories \

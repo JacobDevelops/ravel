@@ -174,7 +174,7 @@ impl InterceptionDeclaration {
 ///
 /// ```
 /// use ravel_core::{ModId, Side};
-/// use ravel_host_api::{Outcome, Points};
+/// use ravel_host_api::{Outcome, Point, Points};
 ///
 /// let guard: ModId = "guard_mod".parse()?;
 /// let ledger: ModId = "ledger_mod".parse()?;
@@ -184,7 +184,7 @@ impl InterceptionDeclaration {
 /// points.answer_at(&guard, "block_is_broken");
 /// points.after(&ledger, &guard);
 ///
-/// let round = points.ask("block_is_broken", Side::IntegratedServer, &mut |owner, _| {
+/// let round = points.ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |owner, _| {
 ///     Ok(if owner == &guard {
 ///         Outcome::Refuse
 ///     } else {
@@ -307,16 +307,11 @@ impl Points {
     /// Panics if the internally built order names a mod that does not answer here.
     pub fn ask(
         &self,
-        point: &str,
+        point: Point,
         side: Side,
         respond: &mut dyn FnMut(&ModId, Occasion) -> Result<Outcome, crate::HostError>,
     ) -> Result<Round, InterceptionRefused> {
         self.admit()?;
-        let point =
-            Point::published(point).ok_or_else(|| InterceptionRefused::UnpublishedPoint {
-                name: point.to_owned(),
-                claimants: Vec::new(),
-            })?;
 
         let at_point: Vec<&Answer> = self
             .answers
@@ -341,6 +336,7 @@ impl Points {
         let mut asked = Vec::with_capacity(order.len());
         let mut outcome = Outcome::Proceed;
         let mut failure = None;
+        let mut refused_by = None;
         for owner in order {
             assert!(
                 at_point.iter().any(|answer| answer.owner == owner),
@@ -351,6 +347,7 @@ impl Points {
                 Ok(answered) => {
                     outcome = answered;
                     if outcome == Outcome::Refuse {
+                        refused_by = Some(owner);
                         break;
                     }
                 }
@@ -365,6 +362,7 @@ impl Points {
             point,
             asked,
             outcome,
+            refused_by,
             failure,
         })
     }
@@ -376,6 +374,7 @@ pub struct Round {
     point: Point,
     asked: Vec<ModId>,
     outcome: Outcome,
+    refused_by: Option<ModId>,
     failure: Option<(ModId, crate::HostError)>,
 }
 
@@ -396,6 +395,12 @@ impl Round {
     #[must_use]
     pub const fn outcome(&self) -> Outcome {
         self.outcome
+    }
+
+    /// Returns the mod that answered [`Outcome::Refuse`], excluding callback failures.
+    #[must_use]
+    pub const fn refused_by(&self) -> Option<&ModId> {
+        self.refused_by.as_ref()
     }
 
     /// Returns the failure that ended the round with [`Outcome::Refuse`], if any.
@@ -539,7 +544,7 @@ mod tests {
         points.after(&late, &early);
 
         let round = points
-            .ask("block_is_broken", Side::IntegratedServer, &mut |_, _| {
+            .ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |_, _| {
                 Ok(Outcome::Proceed)
             })
             .expect("a published point is asked");
@@ -548,6 +553,7 @@ mod tests {
         assert!(asked_before(&round, &early, &late));
         assert_eq!(round.outcome(), Outcome::Proceed);
         assert_eq!(round.point(), Point::BlockIsBroken);
+        assert_eq!(round.refused_by(), None);
     }
 
     #[test]
@@ -563,7 +569,7 @@ mod tests {
         let refusing = early.clone();
         let round = points
             .ask(
-                "block_is_broken",
+                Point::BlockIsBroken,
                 Side::IntegratedServer,
                 &mut |owner, _| {
                     Ok(if owner == &refusing {
@@ -575,6 +581,7 @@ mod tests {
             )
             .expect("a published point is asked");
 
+        assert_eq!(round.refused_by(), Some(&early));
         assert_eq!(round.asked(), [early]);
         assert_eq!(round.outcome(), Outcome::Refuse);
         assert_eq!(round.failed_by(), None);
@@ -593,7 +600,7 @@ mod tests {
         let refusing = elsewhere.clone();
         let round = points
             .ask(
-                "block_is_broken",
+                Point::BlockIsBroken,
                 Side::IntegratedServer,
                 &mut |owner, _| {
                     Ok(if owner == &refusing {
@@ -616,7 +623,7 @@ mod tests {
 
         let round = points
             .ask(
-                "world_is_saved",
+                Point::WorldIsSaved,
                 Side::DedicatedServer,
                 &mut |_, occasion: Occasion| {
                     assert_eq!(occasion.point(), Point::WorldIsSaved);
@@ -648,9 +655,11 @@ mod tests {
 
         assert!(
             points
-                .ask("block_is_broken", Side::IntegratedServer, &mut |_, _| Ok(
-                    Outcome::Proceed
-                ))
+                .ask(
+                    Point::BlockIsBroken,
+                    Side::IntegratedServer,
+                    &mut |_, _| Ok(Outcome::Proceed)
+                )
                 .is_err()
         );
     }
@@ -702,16 +711,17 @@ mod tests {
     }
 
     #[test]
-    fn asking_a_name_no_point_publishes_is_refused_rather_than_answered_empty() {
+    fn an_unanswered_published_point_proceeds_without_a_refusing_owner() {
         let points = Points::default();
-        let refusal = points
-            .ask(
-                "a_point_nobody_publishes",
-                Side::IntegratedServer,
-                &mut |_, _| Ok(Outcome::Proceed),
-            )
-            .expect_err("an unpublished point is not an empty round");
-        assert_eq!(refusal.point(), "a_point_nobody_publishes");
+        let round = points
+            .ask(Point::WorldIsSaved, Side::IntegratedServer, &mut |_, _| {
+                panic!("no mod answers here")
+            })
+            .expect("a typed point is published");
+        assert_eq!(round.point(), Point::WorldIsSaved);
+        assert_eq!(round.asked(), []);
+        assert_eq!(round.outcome(), Outcome::Proceed);
+        assert_eq!(round.refused_by(), None);
     }
 
     #[test]
@@ -726,7 +736,7 @@ mod tests {
         points.after(&second, &first);
 
         let refusal = points
-            .ask("block_is_broken", Side::IntegratedServer, &mut |_, _| {
+            .ask(Point::BlockIsBroken, Side::IntegratedServer, &mut |_, _| {
                 Ok(Outcome::Proceed)
             })
             .expect_err("a cycle has no order and is not given one");
@@ -758,12 +768,13 @@ mod tests {
             detail: "foreign error identity".to_owned(),
         };
         let round = points
-            .ask("world_is_saved", Side::DedicatedServer, &mut |_, _| {
+            .ask(Point::WorldIsSaved, Side::DedicatedServer, &mut |_, _| {
                 Err(failure.clone())
             })
             .expect("published point");
         assert_eq!(round.failed_by(), Some(&owner));
         assert_eq!(round.failure(), Some(&failure));
         assert_eq!(round.outcome(), Outcome::Refuse);
+        assert_eq!(round.refused_by(), None);
     }
 }

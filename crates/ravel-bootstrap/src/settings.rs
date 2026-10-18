@@ -25,14 +25,14 @@ static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 pub(crate) struct Store {
     side: Side,
     configurations: BTreeMap<ModId, LayeredConfiguration>,
-    game_directory: Result<PathBuf, String>,
+    game_directory: PathBuf,
 }
 
 impl Store {
     pub(crate) fn new(
         side: Side,
         configurations: Vec<LayeredConfiguration>,
-        game_directory: Result<PathBuf, String>,
+        game_directory: PathBuf,
     ) -> Self {
         Self {
             side,
@@ -46,11 +46,11 @@ impl Store {
 }
 
 pub(crate) fn configurable() -> BTreeSet<ModId> {
-    let Some(launch) = crate::runtime::installed().and_then(|runtime| runtime.launch.as_ref())
-    else {
+    let Some(runtime) = crate::runtime::installed() else {
         return BTreeSet::new();
     };
-    launch
+    runtime
+        .launch
         .settings
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -58,7 +58,14 @@ pub(crate) fn configurable() -> BTreeSet<ModId> {
 }
 
 fn document(owner: &str) -> Option<String> {
-    let launch = crate::runtime::installed()?.launch.as_ref()?;
+    document_of(
+        crate::runtime::installed().map(|runtime| &runtime.launch),
+        owner,
+    )
+}
+
+fn document_of(launch: Option<&crate::runtime::LaunchContext>, owner: &str) -> Option<String> {
+    let launch = launch?;
     launch
         .settings
         .lock()
@@ -83,7 +90,7 @@ impl Store {
         let mut out = String::with_capacity(rows.len() * 256 + 64);
         field(&mut out, WIRE_VERSION);
         field(&mut out, owner.as_str());
-        field(&mut out, side_name(self.side));
+        field(&mut out, self.side.as_str());
         field(&mut out, &rows.len().to_string());
         for resolved in &rows {
             row(&mut out, configuration, resolved);
@@ -181,62 +188,75 @@ const fn source_name(source: ValueSource) -> &'static str {
     }
 }
 
-const fn side_name(side: Side) -> &'static str {
-    match side {
-        Side::Client => "client",
-        Side::IntegratedServer => "integrated-server",
-        Side::DedicatedServer => "dedicated-server",
-    }
+fn save(payload: &str) -> String {
+    save_with(
+        crate::runtime::installed().map(|runtime| &runtime.launch),
+        payload,
+    )
 }
 
-fn save(payload: &str) -> String {
+fn save_with(launch: Option<&crate::runtime::LaunchContext>, payload: &str) -> String {
+    let Some(launch) = launch else {
+        return refusal("", "the loader runtime is not installed");
+    };
     // Release the store lock before disk I/O.
-    let applied = crate::runtime::installed()
-        .and_then(|runtime| runtime.launch.as_ref())
-        .and_then(|launch| {
-            launch
-                .settings
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .apply(&mut Reader::new(payload))
-        });
-    answer(applied)
+    let applied = launch
+        .settings
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .apply(&mut Reader::new(payload));
+    persist_and_answer(applied)
 }
 
 struct Applied {
-    refusals: usize,
-    refused: String,
+    refusal_count: usize,
+    encoded_refusals: String,
     document: ValueDocument,
-    directory: Result<PathBuf, String>,
+    directory: PathBuf,
 }
 
 impl Store {
-    fn apply(&mut self, reader: &mut Reader) -> Option<Applied> {
-        if reader.field()? != WIRE_VERSION {
-            return None;
+    fn apply(&mut self, reader: &mut Reader) -> Result<Applied, String> {
+        let version = reader.field().ok_or("the settings payload is truncated")?;
+        if version != WIRE_VERSION {
+            return Err(format!(
+                "the screen spoke unsupported wire version `{version}`"
+            ));
         }
-        let owner = reader.field()?.parse::<ModId>().ok()?;
-        let count = reader.count()?;
+        let owner = reader
+            .field()
+            .ok_or("the settings payload is truncated")?
+            .parse::<ModId>()
+            .map_err(|_| "the settings owner is not a mod identifier")?;
+        let count = reader
+            .count()
+            .ok_or("the settings edit count could not be read")?;
 
         // Parse all edits before mutation to reject truncated payloads atomically.
         let mut edits = Vec::new();
         for _ in 0..count {
-            edits.push((reader.field()?, reader.field()?));
+            edits.push((
+                reader.field().ok_or("the settings payload is truncated")?,
+                reader.field().ok_or("the settings payload is truncated")?,
+            ));
         }
         if !reader.finished() {
-            return None;
+            return Err("the settings payload contains trailing data".to_owned());
         }
 
         let side = self.side;
         let directory = self.game_directory.clone();
-        let configuration = self.configurations.get_mut(&owner)?;
+        let configuration = self
+            .configurations
+            .get_mut(&owner)
+            .ok_or_else(|| format!("no settings are declared for `{owner}`"))?;
 
         let mut refused = String::new();
         let mut refusals = 0_usize;
         for (key, typed) in edits {
             let Ok(parsed) = key.parse::<SettingKey>() else {
                 refusals += 1;
-                entry(&mut refused, &key, "that is not a setting name");
+                write_refusal(&mut refused, &key, "that is not a setting name");
                 continue;
             };
             let kind = configuration
@@ -245,44 +265,43 @@ impl Store {
                 .and_then(|setting| setting.value_schema.kind);
             if let Err(error) = configuration.set(&parsed, value_of(kind, &typed), side) {
                 refusals += 1;
-                entry(&mut refused, parsed.as_str(), &error.to_string());
+                write_refusal(&mut refused, parsed.as_str(), &error.to_string());
             }
         }
 
-        Some(Applied {
-            refusals,
-            refused,
+        Ok(Applied {
+            refusal_count: refusals,
+            encoded_refusals: refused,
             document: configuration.player_document(),
             directory,
         })
     }
 }
 
-fn answer(applied: Option<Applied>) -> String {
-    let Some(Applied {
-        mut refusals,
-        mut refused,
+fn persist_and_answer(applied: Result<Applied, String>) -> String {
+    let Applied {
+        mut refusal_count,
+        mut encoded_refusals,
         document,
         directory,
-    }) = applied
-    else {
-        return refusal("", "the settings the screen sent could not be read");
+    } = match applied {
+        Ok(applied) => applied,
+        Err(reason) => return refusal("", &reason),
     };
 
-    if let Err(reason) = persist(directory.as_deref(), &document) {
-        refusals += 1;
-        entry(&mut refused, "", redact(&reason).text());
+    if let Err(reason) = persist(&directory, &document) {
+        refusal_count += 1;
+        write_refusal(&mut encoded_refusals, "", redact(&reason).text());
     }
 
-    let mut out = String::with_capacity(refused.len() + 8);
-    field(&mut out, &refusals.to_string());
-    out.push_str(&refused);
+    let mut out = String::with_capacity(encoded_refusals.len() + 8);
+    field(&mut out, &refusal_count.to_string());
+    out.push_str(&encoded_refusals);
     out
 }
 
 // Persistence failure leaves edits active in memory but absent from the next launch.
-fn persist(directory: Result<&Path, &String>, document: &ValueDocument) -> Result<(), String> {
-    let directory = directory.map_err(Clone::clone)?;
+fn persist(directory: &Path, document: &ValueDocument) -> Result<(), String> {
     crate::game_directory::admit(directory)?;
     file::write(directory, document).map_err(|error| error.to_string())
 }
@@ -290,11 +309,11 @@ fn persist(directory: Result<&Path, &String>, document: &ValueDocument) -> Resul
 fn refusal(key: &str, reason: &str) -> String {
     let mut out = String::new();
     field(&mut out, "1");
-    entry(&mut out, key, reason);
+    write_refusal(&mut out, key, reason);
     out
 }
 
-fn entry(out: &mut String, key: &str, reason: &str) {
+fn write_refusal(out: &mut String, key: &str, reason: &str) {
     field(out, key);
     field(out, reason);
 }

@@ -9,7 +9,7 @@ use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
     SavedDataPlan, SavedDataVersion,
 };
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, declare_mod};
 use serde::{Deserialize, Serialize};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -192,18 +192,18 @@ impl SavedDataMod {
     }
 
     /// Runs [`Self::step`] over a stored payload, for one declared version.
-    fn migrate(payload: &serde_json::Value, to: u32) -> Result<serde_json::Value, MigrationFailed> {
+    fn migrate(payload: &JsonValue, to: u32) -> Result<JsonValue, MigrationFailed> {
         let mut state: SavedState = serde_json::from_value(payload.clone())
             .map_err(|error| MigrationFailed::new(error.to_string()))?;
         Self::step(&mut state, Self::version(to));
         serde_json::to_value(&state).map_err(|error| MigrationFailed::new(error.to_string()))
     }
 
-    fn migrate_to_two(payload: &serde_json::Value) -> Result<serde_json::Value, MigrationFailed> {
+    fn migrate_to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
         Self::migrate(payload, 2)
     }
 
-    fn migrate_to_three(payload: &serde_json::Value) -> Result<serde_json::Value, MigrationFailed> {
+    fn migrate_to_three(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
         Self::migrate(payload, 3)
     }
 
@@ -285,16 +285,14 @@ impl Mod for SavedDataMod {
     ///
     /// # Errors
     ///
-    /// Returns a [`ModError`] when this mod's own setting key stops
-    /// being a legal one.
+    /// Returns a [`ModError`] for an invalid key, a non-integer setting, or
+    /// a limit this platform cannot represent.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         let key = WAYPOINT_LIMIT.parse().map_err(|_| {
             ModError::refused(format!("`{WAYPOINT_LIMIT}` is not a legal setting key"))
         })?;
-        self.waypoint_limit = resolved
-            .value(&key)
-            .and_then(serde_json::Value::as_u64)
-            .and_then(|limit| usize::try_from(limit).ok());
+        let limit = resolved.integer(&key).map_err(ModError::from_display)?;
+        self.waypoint_limit = Some(usize::try_from(limit).map_err(ModError::from_display)?);
         Ok(())
     }
 
@@ -356,8 +354,7 @@ mod tests {
 
     use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
     use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
-    use ravel_sdk::{LifecycleState, Mod, ModId, Side};
-    use serde_json::json;
+    use ravel_sdk::{JsonValue, LifecycleState, Mod, ModId, Side, json};
 
     use super::{DECLARATION, MOD_ID, SavedDataMod, SavedState, VERSIONS};
 
@@ -366,7 +363,7 @@ mod tests {
     }
 
     /// One envelope, as an admitted aggregate would hand it to this mod.
-    fn envelope(at: u32, payload: serde_json::Value) -> SavedDataEnvelope {
+    fn envelope(at: u32, payload: JsonValue) -> SavedDataEnvelope {
         SavedDataEnvelope::new(
             MOD_ID.parse().expect("a legal mod id"),
             version(at),
@@ -529,17 +526,9 @@ mod tests {
 
     /// A plan that stopped describing the envelope beside it refuses delivery.
     ///
-    /// The plan is what tells the mod which migrations to apply, so a plan and an
-    /// envelope that disagree would migrate a world by the wrong number of steps
-    /// and write the result back as current. This mod resolves the plan again from
-    /// what it was actually handed and refuses when the two differ.
-    ///
-    /// Unreachable from the production crossing for the same reason as the
-    /// refusal above, and defensive in the same way: `stage_world` builds the plan
-    /// from the very envelope it then delivers, so this branch guards a host that
-    /// paired them wrongly rather than a world that presented a disagreeing plan.
-    /// What kills that host-side defect is `ravel-bootstrap`'s own suite, where
-    /// building every plan from `None` fails a named test.
+    /// The loader migrates the envelope before delivery and passes the plan for
+    /// that current envelope. Recomputing it here defensively rejects a host
+    /// that accidentally delivers the pre-migration plan.
     #[test]
     fn a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery() {
         let mut saved = SavedDataMod::new();
@@ -617,6 +606,26 @@ mod tests {
         }
 
         assert_eq!(host.state().waypoints.len(), limit);
+    }
+
+    #[test]
+    fn configuration_refuses_wrong_shapes_and_unrepresentable_limits() {
+        for (schema, default) in [
+            (json!({ "type": "boolean" }), json!(true)),
+            (json!({ "type": "integer" }), json!(-1)),
+        ] {
+            let mut declaration: JsonValue = DECLARATION.parse().expect("valid JSON");
+            declaration["settings"][0]["valueSchema"] = schema;
+            declaration["settings"][0]["default"] = default;
+            let declaration = ConfigurationDeclaration::parse(&declaration.to_string())
+                .expect("the altered declaration is valid");
+            let resolved = LayeredConfiguration::resolve(declaration, None, None)
+                .expect("the altered default resolves");
+            let mut host = SavedDataMod::new();
+
+            assert!(host.configure(&resolved).is_err());
+            assert_eq!(host.waypoint_limit(), None);
+        }
     }
 
     #[test]

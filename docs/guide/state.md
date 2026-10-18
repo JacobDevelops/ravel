@@ -77,25 +77,23 @@ impl Mod for CopperLanterns {
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         let key: SettingKey = CAPACITY.parse().expect("the key this mod declared");
-        self.capacity = resolved
-            .value(&key)
-            .and_then(JsonValue::as_u64)
-            .ok_or_else(|| {
-                ModError::refused(
-                    "`lanterns.capacity` resolved to something that is not a count",
-                )
-            })?;
+        self.capacity =
+            u64::try_from(resolved.integer(&key).map_err(ModError::from_display)?)
+                .map_err(ModError::from_display)?;
         Ok(())
     }
 }
 ```
 
-A resolved value is a `ravel_sdk::JsonValue`, because a setting's shape belongs to
-the mod that declared it. `serde_json` is not a dependency of your crate and
-cannot be named from it, so `use ravel_sdk::JsonValue;` is how you write the type
-down — in a signature, or as the receiver of an associated function like
-`JsonValue::as_u64` above. The closure form `.and_then(|value|
-value.as_u64())` needs no import at all and is equally correct.
+Read declared settings with `LayeredConfiguration::integer`, `boolean`, `text`,
+or the matching typed accessor. These methods report missing keys and wrong
+shapes rather than turning them into an absent value. Map those errors through
+`ModError::from_display`, and use checked conversions when an integer becomes
+an unsigned or platform-sized count.
+
+For saved payloads and other JSON-shaped data, use the SDK's `JsonValue` and
+`json!` exports. A mod that needs serde's serialization functions can explicitly
+inherit the generated workspace's `serde` and `serde_json` dependencies.
 
 `json!` builds a value. To read one out of *text* — a file your mod read, a
 string a player typed at a command — use `str::parse`, because `JsonValue`
@@ -158,20 +156,13 @@ impl Mod for CopperLanterns {
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
+        _plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
             self.entries.clear();
             return Ok(());
         };
-        // The payload is at whatever version the world stored, so the chain
-        // crosses the steps the plan names before anything is read.
-        let current = self
-            .saved_data_migrations()?
-            .expect("this mod declares a chain")
-            .apply(plan, envelope.payload())
-            .map_err(ModError::from_display)?;
-        self.entries = read_entries(&current);
+        self.entries = read_entries(envelope.payload());
         Ok(())
     }
 

@@ -84,9 +84,9 @@ fn redact(text: &str, game_directory: &Path) -> String {
 }
 
 // Installed path packages and the generated host are not members of the root
-// lockfile. Every resolution starts from the installation's lockfile, lets
-// Cargo add those local entries offline, then admits only external identities
-// and checksums vetted by that seed. A previous instance lock is never reused,
+// lockfile. Cargo may add those entries offline; every other identity must be
+// vetted by the seed. Mods may directly reach only the SDK and planned members
+// through path dependencies. A previous instance lock is never reused,
 // because Cargo prunes unused pins from it.
 fn resolve_locked_graph(
     plan: &HostPlan,
@@ -137,7 +137,10 @@ pub(super) fn vetted_dependencies(
     let resolved =
         lock_packages(resolved).map_err(|detail| BuildRefused::ResolvedLock { detail })?;
     for package in &resolved {
-        if package.get("source").is_none() {
+        let name = field(package, "name");
+        if package.get("source").is_none()
+            && (name == "ravel-generated-host" || mods.contains_key(name))
+        {
             continue;
         }
         let matches = vetted.iter().any(|candidate| {
@@ -145,8 +148,12 @@ pub(super) fn vetted_dependencies(
                 .iter()
                 .all(|field| candidate.get(*field) == package.get(*field))
         });
-        if !matches {
-            let name = field(package, "name");
+        let forbidden_direct_path = package.get("source").is_none()
+            && name != "ravel-sdk"
+            && resolved.iter().any(|dependent| {
+                mods.contains_key(field(dependent, "name")) && depends_on(dependent, package)
+            });
+        if !matches || forbidden_direct_path {
             return Err(BuildRefused::UnpinnedDependency {
                 package: name.to_owned(),
                 version: field(package, "version").to_owned(),
@@ -155,6 +162,22 @@ pub(super) fn vetted_dependencies(
         }
     }
     Ok(())
+}
+
+fn depends_on(dependent: &toml::Value, package: &toml::Value) -> bool {
+    dependent
+        .get("dependencies")
+        .and_then(toml::Value::as_array)
+        .is_some_and(|edges| {
+            edges.iter().filter_map(toml::Value::as_str).any(|edge| {
+                let mut identity = edge.split_whitespace();
+                identity.next() == Some(field(package, "name"))
+                    && identity
+                        .next()
+                        .is_none_or(|version| version == field(package, "version"))
+                    && identity.next().is_none()
+            })
+        })
 }
 
 fn field<'a>(package: &'a toml::Value, name: &str) -> &'a str {

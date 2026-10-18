@@ -4,7 +4,8 @@ use std::sync::PoisonError;
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
-use ravel_core::{ContentBehaviour, ContentKind};
+use ravel_core::ContentKind;
+use ravel_data::ContentBehaviour;
 
 use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
@@ -91,7 +92,8 @@ pub fn ravel_admitted_content<'local>(
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{BlockBehaviour, ContentBehaviour, LifecycleState, ModId, Side, SideSet};
+    use ravel_core::{LifecycleState, ModId, Side, SideSet};
+    use ravel_data::{BlockBehaviour, ContentBehaviour};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 
     use super::document_of;
@@ -122,7 +124,7 @@ mod tests {
         ] {
             machine.advance_all(state).expect("a legal advance");
         }
-        LoaderRuntime::new(machine, Vec::new())
+        LoaderRuntime::new(machine, Vec::new(), crate::runtime::test_launch())
     }
 
     #[test]
@@ -186,7 +188,7 @@ mod tests {
     fn a_described_claim_crosses_with_the_values_the_mod_chose() {
         let runtime = runtime(&["example_mod"]);
         runtime
-            .describe(
+            .claim_describing(
                 &id("example_mod"),
                 &"block:example_mod:obsidian".parse().expect("valid key"),
                 ContentBehaviour::Block(BlockBehaviour {

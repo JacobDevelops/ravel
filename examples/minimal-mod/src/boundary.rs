@@ -147,7 +147,7 @@
 //! ```
 //!
 //! ```compile_fail,E0432
-//! use ravel_observability::Redactor;
+//! use ravel_observability::redact;
 //! ```
 //!
 //! ```compile_fail,E0432

@@ -4,14 +4,12 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::json::{
-    Figure, Rule, array, closed_gates, native_attestation, nonempty, number, read_json,
-    work_packages,
+use crate::evidence::rules::{
+    Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
+use crate::json::{array, nonempty, number, read_json};
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_milestone_figures, verify_record_arithmetic,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::manifest::require_manifest_rule;
 
 fn legacy_fixture_total() -> Option<f64> {
@@ -296,11 +294,11 @@ const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
     }),
 ];
 
-pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m7_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| {
-            work_packages(
+            has_exact_work_packages(
                 v,
                 &[
                     "M7-W0", "M7-W1", "M7-W2", "M7-W3", "M7-W4", "M7-W5", "M7-W6",
@@ -311,7 +309,7 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations:
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| {
             matches!(
                 v["benchmarks"]["protocolVersion"].as_str(),
@@ -324,20 +322,20 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations:
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |v| closed_gates(v, "M7-W6", 6),
+        manifest,
+        |v| all_gates_closed(v, "M7-W6", 6),
         "M7 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |value| native_attestation(value, "official-atm11"),
+        manifest,
+        |value| has_native_attestation(value, "official-atm11"),
         "M7 closure requires a native Linux attestation for the recorded library run",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
         "M7 closes the selected workload library, and an empty finding set satisfies every rule \
          phrased as a refusal",
@@ -345,8 +343,9 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations:
     );
 
     verify_closure_records(root, "M7", "evidence/m7", M7_RECORDS, violations);
-    if let Ok(record) = read_json(&root.join("evidence/m7/library-summary.json"))
-        && record["protocol"] != manifest_path["benchmarks"]["protocolVersion"]
+    // The closure-record validator above owns read and parse diagnostics.
+    if read_json(&root.join("evidence/m7/library-summary.json"))
+        .is_ok_and(|record| record["protocol"] != manifest["benchmarks"]["protocolVersion"])
     {
         violations.push("M7 manifest and library summary must use the same protocol".to_owned());
     }
@@ -458,15 +457,10 @@ const M7_FIGURES: CarriedFigures = CarriedFigures {
     record: "evidence/m7/library-summary.json",
     subject: "library",
     figures: M7_CARRIED_FIGURES,
+    arithmetic: M7_ARITHMETIC,
 };
 
 pub(crate) fn verify_m7_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_record_arithmetic(
-        root,
-        "evidence/m7/library-summary.json",
-        M7_ARITHMETIC,
-        violations,
-    );
     verify_m7_verified_fixture_total(root, violations);
     verify_milestone_figures(root, manifest, &M7_FIGURES, violations);
 }

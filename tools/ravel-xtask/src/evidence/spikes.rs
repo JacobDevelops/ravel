@@ -1,10 +1,11 @@
 //! Saved architecture spike result validation.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::evidence::manifest::verify_redaction_value;
-use crate::json::{Rule, array, nonempty, number, read_json, schema_matches};
+use crate::evidence::rules::Rule;
+use crate::json::{array, nonempty, number, read_json, relative_label, schema_matches};
 
 pub(crate) const SPIKE_GATES: &[(&str, &str)] = &[
     ("adg-1", "ADG-1"),
@@ -19,35 +20,10 @@ pub(crate) const SPIKE_GATES: &[(&str, &str)] = &[
 pub fn verify_spikes(root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
     for (directory, gate) in SPIKE_GATES {
-        let gate_root = root.join("evidence/m1/spikes").join(directory);
-        if !gate_root.is_dir() {
+        if !root.join("evidence/m1/spikes").join(directory).exists() {
             continue;
         }
-        let entries = match fs::read_dir(&gate_root) {
-            Ok(entries) => entries,
-            Err(error) => {
-                violations.push(format!("cannot read spike gate {gate}: {error}"));
-                continue;
-            }
-        };
-        let mut results = Vec::new();
-        for entry in entries {
-            match entry {
-                Ok(entry)
-                    if entry
-                        .path()
-                        .extension()
-                        .is_some_and(|extension| extension == "json") =>
-                {
-                    results.push(entry.path());
-                }
-                Ok(_) => {}
-                Err(error) => {
-                    violations.push(format!("cannot read spike gate {gate} entry: {error}"));
-                }
-            }
-        }
-        results.sort();
+        let results = spike_result_paths(root, directory, gate, &mut violations);
         if results.is_empty() {
             violations.push(format!("spike gate {gate} has no recorded result"));
         }
@@ -58,12 +34,35 @@ pub fn verify_spikes(root: &Path) -> Vec<String> {
     violations
 }
 
+pub(crate) fn spike_result_paths(
+    root: &Path,
+    directory: &str,
+    gate: &str,
+    violations: &mut Vec<String>,
+) -> Vec<PathBuf> {
+    let entries = match fs::read_dir(root.join("evidence/m1/spikes").join(directory)) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!("cannot read spike gate {gate}: {error}"));
+            return Vec::new();
+        }
+    };
+    let mut results = Vec::new();
+    for entry in entries {
+        match entry {
+            Ok(entry) if entry.path().extension().is_some_and(|kind| kind == "json") => {
+                results.push(entry.path());
+            }
+            Ok(_) => {}
+            Err(error) => violations.push(format!("cannot read spike gate {gate} entry: {error}")),
+        }
+    }
+    results.sort();
+    results
+}
+
 fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
-    let label = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string();
+    let label = relative_label(root, path);
     let document = match read_json(path) {
         Ok(document) => document,
         Err(error) => {

@@ -9,9 +9,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::evidence::findings::relative_label;
 use crate::evidence::manifest::{milestone_manifests, verify_manifest_integrity};
-use crate::json::{Rule, array, number, read_json};
+use crate::evidence::rules::Rule;
+use crate::json::{array, number, read_json, relative_label};
 use crate::tracked::tracked_paths;
 
 mod binding;

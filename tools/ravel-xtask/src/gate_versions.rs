@@ -4,12 +4,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use ravel_minecraft_generate::Eligibility;
+use ravel_minecraft_generate::{Eligibility, adapter_facts};
 
-use crate::version_boundary::{
-    VersionEligibility, adapter_eligibility, missing_mapping_input, read_tracked_adapter,
-    tracked_versions,
-};
+use crate::version_boundary::{VersionEligibility, tracked_versions};
 
 struct Record {
     path: &'static str,
@@ -83,22 +80,20 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
     let mut eligibility = VersionEligibility::new();
     let mut unavailable = BTreeSet::new();
     for version in &versions {
-        let parsed = match read_tracked_adapter(root, version) {
-            Ok(parsed) => parsed,
+        let facts = match adapter_facts(root, version) {
+            Ok(facts) => facts,
             Err(error) => {
-                report.violations.push(error);
+                report.violations.push(error.to_string());
                 continue;
             }
         };
-        let value = match adapter_eligibility(&parsed, version) {
-            Ok(value) => value,
-            Err(error) => {
-                report.violations.push(error);
-                continue;
-            }
-        };
+        let value = facts.eligibility;
         eligibility.insert(version.clone(), value);
-        if missing_mapping_input(root, &parsed).is_some() {
+        if facts
+            .mapping_inputs
+            .iter()
+            .any(|path| !root.join(path).is_file())
+        {
             unavailable.insert(version.as_str());
         }
         let generation_only = value == Eligibility::GenerationOnly;

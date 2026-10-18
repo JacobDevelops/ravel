@@ -5,40 +5,35 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::evidence::manifest::verify_redaction_value;
-use crate::json::{Figure, Rule, read_json};
+use crate::evidence::rules::{Figure, Rule};
+use crate::json::read_json;
 
-pub(crate) fn verify_record_arithmetic(
-    root: &Path,
-    record_label: &str,
+pub(crate) fn verify_arithmetic(
+    record: &Value,
+    label: &str,
     rules: &[(Rule, &str)],
     violations: &mut Vec<String>,
 ) {
-    let path = root.join(record_label);
-    if !path.is_file() {
-        return;
-    }
-    match read_json(&path) {
-        Ok(record) => {
-            for (rule, description) in rules {
-                if !rule(&record) {
-                    violations.push(format!("{record_label}: {description}"));
-                }
-            }
+    for (rule, description) in rules {
+        if !rule(record) {
+            violations.push(format!("{label}: {description}"));
         }
-        Err(error) => violations.push(error),
     }
 }
 
-pub(crate) fn verify_carried_figures(
+fn verify_carried_figures(
     manifest: &Value,
-    manifest_label: &str,
     record: &Value,
-    record_label: &str,
-    subject: &str,
-    figures: &[(&str, Figure)],
+    carried: &CarriedFigures,
     violations: &mut Vec<String>,
 ) {
-    for (pointer, derive) in figures {
+    let CarriedFigures {
+        manifest: manifest_label,
+        record: record_label,
+        subject,
+        ..
+    } = carried;
+    for (pointer, derive) in carried.figures {
         let claimed = manifest.pointer(pointer).filter(|value| !value.is_null());
         let measured = derive(record).filter(|value| !value.is_null());
         let (Some(claimed), Some(measured)) = (claimed, measured) else {
@@ -102,6 +97,7 @@ pub(crate) struct CarriedFigures {
     pub(crate) record: &'static str,
     pub(crate) subject: &'static str,
     pub(crate) figures: &'static [(&'static str, Figure)],
+    pub(crate) arithmetic: &'static [(Rule, &'static str)],
 }
 
 pub(crate) fn verify_milestone_figures(
@@ -115,15 +111,10 @@ pub(crate) fn verify_milestone_figures(
         return;
     }
     match read_json(&path) {
-        Ok(record) => verify_carried_figures(
-            manifest,
-            carried.manifest,
-            &record,
-            carried.record,
-            carried.subject,
-            carried.figures,
-            violations,
-        ),
+        Ok(record) => {
+            verify_arithmetic(&record, carried.record, carried.arithmetic, violations);
+            verify_carried_figures(manifest, &record, carried, violations);
+        }
         Err(error) => violations.push(error),
     }
 }

@@ -1,9 +1,9 @@
 //! Cross-milestone review and documentation arithmetic.
 
-use std::fs;
 use std::path::Path;
 
 use crate::evidence::manifest::{Milestone, milestone_manifests};
+use crate::json::read_text;
 
 const ROUND_COUNT_EXEMPT: [Milestone; 2] = [Milestone::M0, Milestone::M1];
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
@@ -127,7 +127,7 @@ fn verify_review_round_counts_for(
             if !root.join(&relative).exists() {
                 continue;
             }
-            match fs::read_to_string(root.join(&relative)) {
+            match read_text(root, Path::new(&relative)) {
                 Ok(document) => {
                     for (count, noun) in round_count_restatements(&document) {
                         violations.push(format!(
@@ -136,12 +136,12 @@ fn verify_review_round_counts_for(
                         ));
                     }
                 }
-                Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+                Err(error) => violations.push(error),
             }
         }
     }
 
-    match fs::read_to_string(root.join(PLAN_DOCUMENT)) {
+    match read_text(root, Path::new(PLAN_DOCUMENT)) {
         Ok(document) => {
             for (count, noun) in round_count_restatements(&document) {
                 violations.push(format!(
@@ -151,7 +151,7 @@ fn verify_review_round_counts_for(
                 ));
             }
         }
-        Err(error) => violations.push(format!("cannot read {PLAN_DOCUMENT}: {error}")),
+        Err(error) => violations.push(error),
     }
 }
 
@@ -230,10 +230,10 @@ fn verify_review_blocking_counts_for(
             continue;
         }
 
-        let document = match fs::read_to_string(&path) {
+        let document = match read_text(root, &path) {
             Ok(document) => document,
             Err(error) => {
-                violations.push(format!("cannot read {record}: {error}"));
+                violations.push(error);
                 continue;
             }
         };
@@ -296,7 +296,7 @@ fn verify_manifest_percentages_for(
             continue;
         }
         let relative = relative.display().to_string();
-        match fs::read_to_string(root.join(&relative)) {
+        match read_text(root, Path::new(&relative)) {
             Ok(manifest) => {
                 for line in manifest.lines().filter(|line| line.contains('%')) {
                     let figure = line
@@ -322,7 +322,7 @@ fn verify_manifest_percentages_for(
                     ));
                 }
             }
-            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+            Err(error) => violations.push(error),
         }
     }
 }

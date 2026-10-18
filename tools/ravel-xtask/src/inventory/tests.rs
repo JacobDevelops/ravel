@@ -1,12 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 
+use crate::hooks::{HookCounts, hook_counts, hook_inventories};
 use crate::inventory::{
-    GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, NETWORK_SOURCE, documented_versions, hook_counts,
-    hook_document_violations, verify_guide_enumerations, verify_hook_inventory_document,
+    GUIDE_DIRECTORY, HOOK_DOCUMENT, NETWORK_SOURCE, documented_versions, hook_document_violations,
+    verify_guide_enumerations, verify_hook_inventory_document,
 };
 use crate::test_support::{temporary_root, version_directory};
-use crate::version_boundary::hook_inventories;
+use crate::version_boundary::tracked_versions;
 
 fn hook_entry(kind: &str, descriptor: &str) -> String {
     format!(
@@ -123,7 +124,14 @@ fn a_hook_document_naming_no_single_version_is_refused() {
         fs::write(&document, links).expect("document should be writable");
         let mut violations = Vec::new();
 
-        verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
+        verify_hook_inventory_document(
+            &root,
+            &hook_inventories(
+                &root,
+                &tracked_versions(&root).expect("tracked versions should be readable"),
+            ),
+            &mut violations,
+        );
 
         assert_eq!(violations.len(), 1, "{violations:?}");
         assert!(violations[0].contains(expected), "{violations:?}");
@@ -149,7 +157,14 @@ fn a_hook_document_naming_an_untracked_version_is_refused() {
     .expect("document should be writable");
     let mut violations = Vec::new();
 
-    verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
+    verify_hook_inventory_document(
+        &root,
+        &hook_inventories(
+            &root,
+            &tracked_versions(&root).expect("tracked versions should be readable"),
+        ),
+        &mut violations,
+    );
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -169,7 +184,14 @@ fn the_tracked_hook_document_agrees_with_the_tracked_inventory() {
         .join("../..");
     let mut violations = Vec::new();
 
-    verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
+    verify_hook_inventory_document(
+        &root,
+        &hook_inventories(
+            &root,
+            &tracked_versions(&root).expect("tracked versions should be readable"),
+        ),
+        &mut violations,
+    );
 
     assert_eq!(violations, Vec::<String>::new());
 }

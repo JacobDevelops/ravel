@@ -4,14 +4,13 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::json::{
-    Figure, Rule, array, benchmark_results, closed_gates, native_attestation, nonempty, number,
-    read_json, work_packages,
+use crate::evidence::rules::{
+    Figure, Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
+    has_native_attestation,
 };
+use crate::json::{array, nonempty, number, read_json};
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_milestone_figures, verify_record_arithmetic,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::manifest::require_manifest_rule;
 
 fn inventory_record(v: &Value) -> bool {
@@ -132,11 +131,11 @@ const M5_RECORDS: &[(&str, Rule, &str)] = &[(
      which of its claims rest on judgement",
 )];
 
-pub(crate) fn verify_m5_manifest(root: &Path, manifest_path: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m5_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| {
-            work_packages(
+            has_exact_work_packages(
                 v,
                 &[
                     "M5-W1", "M5-W2", "M5-W3", "M5-W4", "M5-W5", "M5-W6", "M5-W7", "M5-W8",
@@ -147,35 +146,38 @@ pub(crate) fn verify_m5_manifest(root: &Path, manifest_path: &Value, violations:
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |value| benchmark_results(value, "m5-inventory-v1", &["inventory-summary.json"]),
+        manifest,
+        |value| has_exact_benchmark_results(value, "m5-inventory-v1", &["inventory-summary.json"]),
         "M5 manifest must record its inventory summary under the m5-inventory-v1 protocol, so \
          that the record carrying every figure is covered by a recomputed digest",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |v| closed_gates(v, "M5-W8", 7),
+        manifest,
+        |v| all_gates_closed(v, "M5-W8", 7),
         "M5 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |value| native_attestation(value, "official-atm11"),
+        manifest,
+        |value| has_native_attestation(value, "official-atm11"),
         "M5 closure requires a native Linux attestation for the recorded inventory run",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
         "M5 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
          as a refusal, so closure requires them to still be there",
         violations,
     );
 
+    verify_closure_records(root, "M5", "evidence/m5", M5_RECORDS, violations);
+
     let record = root.join("evidence/m5/inventory-summary.json");
-    if record.is_file() && read_json(&record).is_ok_and(|value| value["result"] == "provisional") {
+    // The closure-record validator above owns read and parse diagnostics.
+    if read_json(&record).is_ok_and(|value| value["result"] == "provisional") {
         violations.push(
             "M5 closure requires final figures: evidence/m5/inventory-summary.json records itself \
              as provisional, which is a true statement about an inventory under repair and not \
@@ -183,8 +185,6 @@ pub(crate) fn verify_m5_manifest(root: &Path, manifest_path: &Value, violations:
                 .to_owned(),
         );
     }
-
-    verify_closure_records(root, "M5", "evidence/m5", M5_RECORDS, violations);
 }
 
 pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
@@ -362,15 +362,10 @@ pub(crate) const M5_FIGURES: CarriedFigures = CarriedFigures {
     record: "evidence/m5/inventory-summary.json",
     subject: "inventory",
     figures: M5_CARRIED_FIGURES,
+    arithmetic: M5_ARITHMETIC,
 };
 
 pub(crate) fn verify_m5_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_record_arithmetic(
-        root,
-        "evidence/m5/inventory-summary.json",
-        M5_ARITHMETIC,
-        violations,
-    );
     verify_milestone_figures(root, manifest, &M5_FIGURES, violations);
 }
 

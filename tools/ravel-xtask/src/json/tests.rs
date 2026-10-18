@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::json::{benchmark_results, native_attestation, read_json, redacted_path};
+use crate::json::{read_json, read_text, redacted_path, relative_label};
 use crate::test_support::temporary_root;
 
 #[test]
@@ -67,53 +67,60 @@ fn unreadable_json_reports_a_redacted_file_name() {
 }
 
 #[test]
-fn benchmark_results_require_the_exact_named_set_and_protocol() {
-    let mut manifest = serde_json::json!({
-        "benchmarks": {
-            "protocolVersion": "fixture-v1",
-            "results": [{"name": "b.json"}, {"name": "a.json"}]
-        }
-    });
-    let expected = ["a.json", "b.json"];
-    assert!(benchmark_results(&manifest, "fixture-v1", &expected));
-    assert!(!benchmark_results(&manifest, "other-v1", &expected));
-
-    for results in [
-        serde_json::json!([{"name": "a.json"}, {}]),
-        serde_json::json!([{"name": "a.json"}, {"name": 2}]),
-        serde_json::json!([{"name": "a.json"}, "b.json"]),
-        serde_json::json!([{"name": "a.json"}, {"name": "a.json"}]),
-        serde_json::json!([{"name": "a.json"}, {"name": "b.json"}, {"name": "c.json"}]),
-        serde_json::json!([{"name": "a.json"}]),
-        serde_json::Value::Null,
-    ] {
-        manifest["benchmarks"]["results"] = results;
-        assert!(
-            !benchmark_results(&manifest, "fixture-v1", &expected),
-            "{manifest}"
-        );
-    }
+fn text_loading_uses_the_supplied_root_and_keeps_relative_error_labels() {
+    let root = temporary_root("text-rooted");
+    let relative = Path::new("nested/record.txt");
+    fs::create_dir_all(root.join("nested")).expect("directory should be creatable");
+    fs::write(root.join(relative), "recorded").expect("record should be writable");
+    assert_eq!(
+        read_text(&root, relative).expect("record should read"),
+        "recorded"
+    );
+    assert_eq!(
+        read_text(&root, &root.join(relative)).expect("absolute record should read"),
+        "recorded"
+    );
+    assert_eq!(
+        relative_label(&root, &root.join(relative)),
+        "nested/record.txt"
+    );
+    let error =
+        read_text(&root, Path::new("nested/missing.txt")).expect_err("missing record must fail");
+    assert!(
+        error.starts_with("cannot read nested/missing.txt:"),
+        "{error}"
+    );
+    assert!(!error.contains(&root.display().to_string()), "{error}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
-fn native_attestation_requires_its_requested_workload_and_native_platform() {
-    let mut manifest = serde_json::json!({
-        "attestations": [{
-            "platform": "linux",
-            "architecture": "x86_64",
-            "workloads": ["ravel"]
-        }]
-    });
-    assert!(native_attestation(&manifest, "ravel"));
-    assert!(!native_attestation(&manifest, "official-atm11"));
-
-    manifest["attestations"][0]["workloads"] = serde_json::json!(["official-atm11", "vanilla"]);
-    assert!(native_attestation(&manifest, "official-atm11"));
-    assert!(!native_attestation(&manifest, "ravel"));
-
-    manifest["attestations"][0]["architecture"] = serde_json::json!("aarch64");
-    assert!(!native_attestation(&manifest, "official-atm11"));
-    manifest["attestations"][0]["architecture"] = serde_json::json!("x86_64");
-    manifest["attestations"][0]["platform"] = serde_json::json!("windows");
-    assert!(!native_attestation(&manifest, "official-atm11"));
+fn text_loading_accepts_paths_already_prefixed_by_a_relative_root() {
+    let root = std::path::PathBuf::from(format!(
+        "target/xtask-relative-text-root-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("relative root should be creatable");
+    let relative = Path::new("record.txt");
+    let prefixed = root.join(relative);
+    fs::write(&prefixed, "recorded").expect("record should be writable");
+    assert_eq!(
+        read_text(&root, relative).expect("relative record should read"),
+        "recorded"
+    );
+    assert_eq!(
+        read_text(&root, &prefixed).expect("prefixed record should read"),
+        "recorded"
+    );
+    assert_eq!(relative_label(&root, &prefixed), "record.txt");
+    let absolute = std::env::current_dir()
+        .expect("current directory")
+        .join(&prefixed);
+    assert_eq!(
+        read_text(&root, &absolute).expect("absolute record should read"),
+        "recorded"
+    );
+    let error = read_text(&root, &root.join("missing.txt")).expect_err("missing record must fail");
+    assert!(error.starts_with("cannot read missing.txt:"), "{error}");
+    fs::remove_dir_all(root).expect("relative root should be removable");
 }

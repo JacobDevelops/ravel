@@ -330,30 +330,153 @@ fn every_example_declares_only_the_one_dependency_an_author_declares() {
 }
 
 #[test]
-fn every_test_mod_uses_only_the_sdk_for_ravel_dependencies() {
-    let root = repository_root().join("test-mods");
-    let mut examined = 0;
-    for entry in fs::read_dir(&root).expect("the test-mod directory is readable") {
-        let entry = entry.expect("a readable directory entry");
-        if !entry.path().join("Cargo.toml").is_file() {
-            continue;
+fn every_mod_uses_only_the_sdk_for_ravel_internals() {
+    let workspace = document("Cargo.toml");
+    let shared = workspace["workspace"]["dependencies"]
+        .as_table()
+        .expect("workspace dependencies are declared");
+    let counterparts: BTreeSet<_> = fs::read_dir(repository_root().join("registry/mods"))
+        .expect("counterpart directory is readable")
+        .map(|entry| entry.expect("a readable counterpart entry").path())
+        .filter(|path| path.join("Cargo.toml").is_file())
+        .map(|path| {
+            let relative = path
+                .strip_prefix(repository_root())
+                .expect("counterparts are inside the repository")
+                .join("Cargo.toml");
+            document(&relative.to_string_lossy())["package"]["name"]
+                .as_str()
+                .expect("a counterpart package is named")
+                .to_owned()
+        })
+        .collect();
+    assert!(!counterparts.is_empty(), "the counterpart walk was vacuous");
+    let no_counterparts = BTreeSet::new();
+    for directory in ["test-mods", "registry/mods"] {
+        let mut examined = 0;
+        for entry in
+            fs::read_dir(repository_root().join(directory)).expect("the mod directory is readable")
+        {
+            let entry = entry.expect("a readable directory entry");
+            if !entry.path().join("Cargo.toml").is_file() {
+                continue;
+            }
+            let relative = format!(
+                "{directory}/{}/Cargo.toml",
+                entry.file_name().to_string_lossy()
+            );
+            let manifest = document(&relative);
+            let allowed = if directory == "registry/mods" {
+                &counterparts
+            } else {
+                &no_counterparts
+            };
+            assert_mod_dependencies(&manifest, shared, allowed, &relative);
+            examined += 1;
         }
-        let relative = format!(
-            "test-mods/{}/Cargo.toml",
-            entry.file_name().to_string_lossy()
-        );
-        let dependencies = every_declared_dependency(&document(&relative));
-        let internal: BTreeSet<_> = dependencies
-            .into_iter()
-            .filter(|name| name.starts_with("ravel-") || name == "jni")
-            .collect();
-        assert!(
-            internal.iter().all(|name| name == AUTHOR_DEPENDENCY),
-            "{relative} must reach Ravel only through the public SDK; found {internal:?}"
-        );
-        examined += 1;
+        assert!(examined > 0, "the {directory} dependency walk was vacuous");
     }
-    assert!(examined > 0, "the test-mod dependency walk was vacuous");
+}
+
+fn assert_mod_dependencies(
+    manifest: &Table,
+    shared: &Table,
+    counterparts: &BTreeSet<String>,
+    relative: &str,
+) {
+    for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(dependencies) = manifest.get(section).and_then(Value::as_table) {
+            for (alias, specification) in dependencies {
+                let inherited =
+                    specification.get("workspace").and_then(Value::as_bool) == Some(true);
+                let specification = if inherited {
+                    shared.get(alias).expect("workspace dependency exists")
+                } else {
+                    specification
+                };
+                let package = specification
+                    .get("package")
+                    .and_then(Value::as_str)
+                    .unwrap_or(alias);
+                assert!(
+                    mod_dependency_allowed(package, counterparts),
+                    "{relative} must reach Ravel internals only through the public SDK; found {package}"
+                );
+            }
+        }
+    }
+    if let Some(targets) = manifest.get("target").and_then(Value::as_table) {
+        for target in targets.values().filter_map(Value::as_table) {
+            assert_mod_dependencies(target, shared, counterparts, relative);
+        }
+    }
+}
+
+fn mod_dependency_allowed(package: &str, counterparts: &BTreeSet<String>) -> bool {
+    if package.starts_with("ravel-") || package == "jni" {
+        package == AUTHOR_DEPENDENCY
+    } else if package.starts_with("rvl-") && package.ends_with("-counterpart") {
+        counterparts.contains(package)
+    } else {
+        true
+    }
+}
+
+#[test]
+fn mod_dependency_boundary_checks_aliases_and_target_tables() {
+    let shared: Table = r#"[hidden]
+package = "ravel-loader"
+version = "0.0.0"
+"#
+    .parse()
+    .expect("workspace dependency parses");
+    let counterparts = BTreeSet::from(["rvl-real-counterpart".to_owned()]);
+    for source in [
+        r#"[dependencies.hidden]
+package = "ravel-loader"
+version = "0.0.0"
+"#,
+        r"[target.'cfg(unix)'.build-dependencies.hidden]
+workspace = true
+",
+        r#"[dev-dependencies.hidden]
+package = "jni"
+version = "0.0.0"
+"#,
+    ] {
+        let manifest = source.parse().expect("test manifest parses");
+        assert!(
+            std::panic::catch_unwind(|| {
+                assert_mod_dependencies(&manifest, &shared, &counterparts, "synthetic");
+            })
+            .is_err()
+        );
+    }
+    assert!(mod_dependency_allowed("ravel-sdk", &counterparts));
+    assert!(mod_dependency_allowed("serde", &counterparts));
+    assert!(mod_dependency_allowed(
+        "rvl-real-counterpart",
+        &counterparts
+    ));
+    assert!(!mod_dependency_allowed(
+        "rvl-fake-counterpart",
+        &counterparts
+    ));
+    assert!(!mod_dependency_allowed("ravel-core", &counterparts));
+    assert!(!mod_dependency_allowed(
+        "rvl-real-counterpart",
+        &BTreeSet::new()
+    ));
+    let valid: Table = r#"[dependencies.sdk]
+package = "ravel-sdk"
+version = "0.0.0"
+[target.'cfg(unix)'.dependencies.peer]
+package = "rvl-real-counterpart"
+version = "0.0.0"
+"#
+    .parse()
+    .expect("valid author manifest parses");
+    assert_mod_dependencies(&valid, &shared, &counterparts, "synthetic");
 }
 
 #[test]

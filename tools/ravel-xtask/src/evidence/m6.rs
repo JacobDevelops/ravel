@@ -4,13 +4,12 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::json::{
-    Figure, Rule, array, closed_gates, native_attestation, nonempty, number, work_packages,
+use crate::evidence::rules::{
+    Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
+use crate::json::{array, nonempty, number};
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_milestone_figures, verify_record_arithmetic,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::manifest::require_manifest_rule;
 
 fn counterpart_record(v: &Value) -> bool {
@@ -388,15 +387,15 @@ const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
     ),
 ];
 
-pub(crate) fn verify_m6_manifest(root: &Path, manifest_path: &Value, violations: &mut Vec<String>) {
+pub(crate) fn verify_m6_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
     require_manifest_rule(
-        manifest_path,
-        |v| work_packages(v, &["M6-W1", "M6-W2", "M6-W3", "M6-W4", "M6-W5", "M6-W6"]),
+        manifest,
+        |v| has_exact_work_packages(v, &["M6-W1", "M6-W2", "M6-W3", "M6-W4", "M6-W5", "M6-W6"]),
         "M6 manifest must include every work package from M6-W1 through M6-W6 exactly once",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| {
             v["benchmarks"]["protocolVersion"] == "m6-counterpart-v1"
                 && array(v, "/benchmarks/results")
@@ -408,14 +407,14 @@ pub(crate) fn verify_m6_manifest(root: &Path, manifest_path: &Value, violations:
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |v| closed_gates(v, "M6-W6", 5),
+        manifest,
+        |v| all_gates_closed(v, "M6-W6", 5),
         "M6 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| {
             v["environment"]["settings"]["rewriteIntegrity"]["enforcing"] == true
                 && [
@@ -431,13 +430,13 @@ pub(crate) fn verify_m6_manifest(root: &Path, manifest_path: &Value, violations:
         violations,
     );
     require_manifest_rule(
-        manifest_path,
-        |value| native_attestation(value, "official-atm11"),
+        manifest,
+        |value| has_native_attestation(value, "official-atm11"),
         "M6 closure requires a native Linux attestation for the recorded counterpart run",
         violations,
     );
     require_manifest_rule(
-        manifest_path,
+        manifest,
         |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
         "M6 counts the observable areas nothing runs, and a milestone disclosing that and \
          recording no deviation or risk deleted the finding rather than the defect",
@@ -452,15 +451,10 @@ const M6_FIGURES: CarriedFigures = CarriedFigures {
     record: "evidence/m6/counterpart-summary.json",
     subject: "counterpart set",
     figures: M6_CARRIED_FIGURES,
+    arithmetic: M6_ARITHMETIC,
 };
 
 pub(crate) fn verify_m6_integrity(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    verify_record_arithmetic(
-        root,
-        "evidence/m6/counterpart-summary.json",
-        M6_ARITHMETIC,
-        violations,
-    );
     verify_milestone_figures(root, manifest, &M6_FIGURES, violations);
 }
 

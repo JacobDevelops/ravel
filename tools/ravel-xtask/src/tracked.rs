@@ -19,7 +19,7 @@ pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec
         .collect()
 }
 
-/// Rejects private keys and credential assignments in tracked text.
+/// Rejects private keys, credential assignments and credential-shaped values in tracked text.
 /// Home-directory paths and public upstream identifiers are deliberately not refused.
 #[must_use]
 pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
@@ -47,7 +47,12 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
         .iter()
         .any(|suffix| source.contains(&format!("{}{}", "-----BEGIN ", suffix)));
         let credential = source.lines().any(has_credential_assignment);
-        if private_key || credential {
+        // Rust sources contain deliberate redaction test vectors; assignment and key checks still apply.
+        let rust_source = Path::new(relative)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"));
+        let credential_value = !rust_source && ravel_observability::contains_credential(&source);
+        if private_key || credential || credential_value {
             violations.push(format!(
                 "tracked file contains credential material: {relative}"
             ));

@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::evidence::closure::verify_record_arithmetic;
+use crate::evidence::closure::verify_arithmetic;
 use std::path::PathBuf;
 
 use crate::json::read_json;
@@ -82,8 +82,8 @@ fn a_balanced_library_summary_closes_its_own_arithmetic() {
     );
     let mut violations = Vec::new();
 
-    verify_record_arithmetic(
-        &root,
+    verify_arithmetic(
+        &read_json(&root.join("evidence/m7/library-summary.json")).expect("summary should parse"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
@@ -243,8 +243,9 @@ fn every_m7_arithmetic_clause_refuses_a_record_that_breaks_it() {
         );
         let mut violations = Vec::new();
 
-        verify_record_arithmetic(
-            &root,
+        verify_arithmetic(
+            &read_json(&root.join("evidence/m7/library-summary.json"))
+                .expect("summary should parse"),
             "evidence/m7/library-summary.json",
             M7_ARITHMETIC,
             &mut violations,
@@ -319,8 +320,8 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     )
     .expect("inventory should be writable");
     let mut violations = Vec::new();
-    verify_record_arithmetic(
-        &root,
+    verify_arithmetic(
+        &read_json(&root.join("evidence/m7/library-summary.json")).expect("summary should parse"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
@@ -648,4 +649,25 @@ fn library_schema_refuses_nonnumeric_wave_dependencies() {
     assert!(super::library_record(&record));
     record["waves"][1]["dependsOn"] = serde_json::json!(["0"]);
     assert!(!super::library_record(&record));
+}
+
+#[test]
+fn a_malformed_library_summary_reports_the_parse_failure() {
+    let root = temporary_root("m7-malformed-summary");
+    fs::create_dir_all(root.join("evidence/m7")).expect("evidence directory should be creatable");
+    fs::write(root.join("evidence/m7/library-summary.json"), "not JSON")
+        .expect("record should be writable");
+    let mut violations = Vec::new();
+    verify_m7_manifest(&root, &serde_json::json!({}), &mut violations);
+    assert!(
+        violations
+            .iter()
+            .filter(|message| {
+                message.starts_with("cannot parse JSON") && message.contains("library-summary.json")
+            })
+            .count()
+            == 1,
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }

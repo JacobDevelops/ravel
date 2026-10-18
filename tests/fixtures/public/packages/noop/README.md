@@ -12,7 +12,7 @@ path.
 | `provenance.json` | The provenance record required by `SPEC.md` §3.4. |
 
 The runnable test body remains [`test-mods/noop`](../../../../../test-mods/noop),
-a plain Rust value implementing `ravel_sdk::Mod`, exported with `export_mod!`. Ravel uses source
+a plain Rust value implementing `ravel_sdk::Mod` with `#[declare_mod]`, exported with `export_mod!`. Ravel uses source
 distribution; compilation and binding turn these portable sources into the value
 the pipeline drives.
 

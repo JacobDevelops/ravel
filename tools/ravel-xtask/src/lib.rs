@@ -6,6 +6,7 @@ mod error;
 mod evidence;
 pub mod fixture;
 mod gate_versions;
+mod hooks;
 pub mod host;
 mod instance_scan;
 mod inventory;
@@ -67,10 +68,7 @@ const TEST_MOD_NAMES: &[&str] = &[
     "client-only",
     "commands",
     "configuration",
-    "dependency-base",
-    "dependency-consumer",
     "events",
-    "failure-cases",
     "inter-mod-service",
     "interception",
     "networking",

@@ -4,10 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_minecraft_generate::Eligibility;
+use ravel_minecraft_generate::{Eligibility, adapter_facts};
 
-use crate::inventory::hook_counts;
-use crate::java_shape::REFLECTION_FILE;
+use crate::hooks::hook_counts;
+use crate::json::{read_text, relative_label};
 use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
@@ -50,54 +50,10 @@ pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub(crate) fn adapter_eligibility(
-    parsed: &toml::Table,
-    version: &str,
-) -> Result<Eligibility, String> {
-    let eligibility = parsed
-        .get("eligibility")
-        .map(|value| value.clone().try_into::<Eligibility>())
-        .transpose()
-        .map_err(|error| format!("Minecraft {version} has invalid eligibility: {error}"))?
-        .unwrap_or_default();
-    if eligibility == Eligibility::GenerationOnly && version != "1.12.2" {
-        return Err(format!(
-            "Minecraft {version} must retain live eligibility; generation-only is reserved \
-             for the unproven 1.12.2 port"
-        ));
-    }
-    Ok(eligibility)
-}
-
 pub(crate) type VersionEligibility = BTreeMap<String, Eligibility>;
 
-/// Reads each tracked adapter once, retaining diagnostics for invalid declarations.
-#[cfg(test)]
-pub(crate) fn version_eligibility(root: &Path, violations: &mut Vec<String>) -> VersionEligibility {
-    let versions = match tracked_versions(root) {
-        Ok(versions) => versions,
-        Err(error) => {
-            violations.push(error);
-            return BTreeMap::new();
-        }
-    };
-    versions
-        .into_iter()
-        .filter_map(|version| {
-            match read_tracked_adapter(root, &version)
-                .and_then(|parsed| adapter_eligibility(&parsed, &version))
-            {
-                Ok(eligibility) => Some((version, eligibility)),
-                Err(error) => {
-                    violations.push(error);
-                    None
-                }
-            }
-        })
-        .collect()
-}
-
-pub(crate) fn read_adapter(root: &Path, version: &str) -> Result<toml::Table, String> {
+/// Reports matrix eligibility from typed manifest data and its actual mapping input.
+pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
     if !tracked_versions(root)?
         .iter()
         .any(|tracked| tracked == version)
@@ -106,46 +62,19 @@ pub(crate) fn read_adapter(root: &Path, version: &str) -> Result<toml::Table, St
             "Minecraft {version} has no tracked version directory"
         ));
     }
-    read_tracked_adapter(root, version)
-}
-
-pub(crate) fn read_tracked_adapter(root: &Path, version: &str) -> Result<toml::Table, String> {
-    let path = format!("{VERSION_DATA}/{version}/adapter.toml");
-    let text = fs::read_to_string(root.join(&path))
-        .map_err(|error| format!("cannot read {path}: {error}"))?;
-    let parsed: toml::Table =
-        toml::from_str(&text).map_err(|error| format!("cannot parse {path}: {error}"))?;
-    if parsed.get("minecraft").and_then(toml::Value::as_str) != Some(version) {
-        return Err(format!("{path} does not declare Minecraft {version}"));
-    }
-    Ok(parsed)
-}
-
-/// Reports matrix eligibility from typed manifest data and its actual mapping input.
-pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
-    let parsed = read_adapter(root, version)?;
-    let eligibility = adapter_eligibility(&parsed, version)?;
-    if let Some(path) = missing_mapping_input(root, &parsed) {
+    let facts = adapter_facts(root, version).map_err(|error| error.to_string())?;
+    if let Some(path) = facts
+        .mapping_inputs
+        .iter()
+        .find(|path| !root.join(path).is_file())
+    {
         return Ok(format!("unavailable: {path} is absent"));
     }
-    Ok(match eligibility {
+    Ok(match facts.eligibility {
         Eligibility::Live => "live",
         Eligibility::GenerationOnly => "generation-only",
     }
     .to_owned())
-}
-
-pub(crate) fn missing_mapping_input<'a>(root: &Path, parsed: &'a toml::Table) -> Option<&'a str> {
-    ["clientMappings", "mappingIoJar"]
-        .into_iter()
-        .find_map(|input| {
-            parsed
-                .get("inputs")
-                .and_then(|inputs| inputs.get(input))
-                .and_then(|input| input.get("path"))
-                .and_then(toml::Value::as_str)
-                .filter(|path| !root.join(path).is_file())
-        })
 }
 
 /// Validates version files and returns eligibility from their already-parsed adapters.
@@ -171,123 +100,64 @@ pub(crate) fn verify_version_directories(
 
     for version in &versions {
         for file in VERSION_FILES {
-            let relative = format!("{VERSION_DATA}/{version}/{file}");
-            if !root.join(&relative).is_file() {
-                violations.push(format!("missing required file: {relative}"));
-                continue;
-            }
-            if file == VERSION_PROSE_FILE {
-                continue;
-            }
-            let text = match fs::read_to_string(root.join(&relative)) {
-                Ok(text) => text,
-                Err(error) => {
-                    violations.push(format!("cannot read {relative}: {error}"));
-                    continue;
-                }
-            };
-            let parsed = match toml::from_str::<toml::Table>(&text) {
-                Ok(parsed) => parsed,
-                Err(error) => {
-                    violations.push(format!("cannot parse {relative} as TOML: {error}"));
-                    continue;
-                }
-            };
-            match parsed.get("minecraft").and_then(toml::Value::as_str) {
-                Some(declared) if declared == version => {}
-                Some(declared) => violations.push(format!(
-                    "{relative} declares Minecraft {declared} while its directory is named \
-                     {version}; a directory copied from another version and never re-pinned \
-                     serves one version's data under another version's name"
-                )),
-                None => violations.push(format!(
-                    "{relative} declares no `minecraft` version, so nothing holds it to the \
-                     version {VERSION_DATA}/{version} is named for"
-                )),
-            }
-            if file == "hooks.toml"
-                && let Err(error) = hook_counts(&text)
-            {
-                violations.push(format!("cannot count {relative}: {error}"));
-            }
-            if file == "adapter.toml" {
-                verify_version_directories_adapter(&parsed, &relative, violations);
-                if parsed.get("minecraft").and_then(toml::Value::as_str) == Some(version) {
-                    match adapter_eligibility(&parsed, version) {
-                        Ok(value) => {
-                            eligibility.insert(version.clone(), value);
-                        }
-                        Err(error) => violations.push(format!("{relative}: {error}")),
-                    }
-                }
-            }
+            verify_version_file(root, version, file, &mut eligibility, violations);
         }
     }
     eligibility
 }
 
-const RETIRED_HARNESS_TABLE: &str = "harness.notRun";
-
-const RETIRED_HARNESS_ROOT: &str = "harness";
-
-fn missing_pack_format(parsed: &toml::Table) -> Option<String> {
-    let Some(scope) = parsed.get("packFormat").and_then(toml::Value::as_table) else {
-        return Some(
-            "declares no `[packFormat]`, so nothing says which pack formats this version reads \
-             and a pack written for it would carry a number from another version"
-                .to_owned(),
-        );
+fn verify_version_file(
+    root: &Path,
+    version: &str,
+    file: &str,
+    eligibility: &mut VersionEligibility,
+    violations: &mut Vec<String>,
+) {
+    let relative = format!("{VERSION_DATA}/{version}/{file}");
+    if !root.join(&relative).is_file() {
+        violations.push(format!("missing required file: {relative}"));
+        return;
+    }
+    if file == VERSION_PROSE_FILE {
+        return;
+    }
+    if file == "adapter.toml" {
+        match adapter_facts(root, version) {
+            Ok(facts) => {
+                eligibility.insert(version.to_owned(), facts.eligibility);
+            }
+            Err(error) => violations.push(error.to_string()),
+        }
+        return;
+    }
+    let text = match read_text(root, Path::new(&relative)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
     };
-
-    let mut absent: Vec<&str> = ["resource", "resourceMinor", "data", "dataMinor"]
-        .into_iter()
-        .filter(|key| {
-            scope
-                .get(*key)
-                .and_then(toml::Value::as_integer)
-                .and_then(|value| u32::try_from(value).ok())
-                .is_none()
-        })
-        .collect();
-    if scope
-        .get("spelling")
-        .and_then(toml::Value::as_str)
-        .is_none_or(str::is_empty)
+    let parsed = match toml::from_str::<toml::Table>(&text) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            violations.push(format!("cannot parse {relative} as TOML: {error}"));
+            return;
+        }
+    };
+    match parsed.get("minecraft").and_then(toml::Value::as_str) {
+        Some(declared) if declared == version => {}
+        Some(declared) => violations.push(format!(
+            "{relative} declares Minecraft {declared} while its directory is named {version}"
+        )),
+        None => violations.push(format!(
+            "{relative} declares no `minecraft` version for {VERSION_DATA}/{version}"
+        )),
+    }
+    if file == "hooks.toml"
+        && let Err(error) = hook_counts(&text)
     {
-        absent.push("spelling");
+        violations.push(format!("cannot count {relative}: {error}"));
     }
-    if absent.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "declares `[packFormat]` without {}, and a pack format is every one of them because a \
-         version states them separately",
-        absent.join(" or ")
-    ))
-}
-
-pub(crate) struct HookInventory {
-    pub(crate) version: String,
-    pub(crate) path: String,
-    pub(crate) text: String,
-}
-
-pub(crate) fn hook_inventories(root: &Path) -> Vec<HookInventory> {
-    let Ok(versions) = tracked_versions(root) else {
-        return Vec::new();
-    };
-    versions
-        .into_iter()
-        .filter_map(|version| {
-            let path = format!("{VERSION_DATA}/{version}/hooks.toml");
-            let text = fs::read_to_string(root.join(&path)).ok()?;
-            Some(HookInventory {
-                version,
-                path,
-                text,
-            })
-        })
-        .collect()
 }
 
 const SWEPT_SCOPE: &str =
@@ -334,7 +204,7 @@ pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>)
     let Some((paths, versions)) = swept_versions(root, violations) else {
         return;
     };
-    let classes = version_class_names(&paths, violations);
+    let classes = version_class_names(root, &paths, violations);
     let excuses = VERSION_CLASS_EXCUSES
         .iter()
         .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
@@ -350,14 +220,14 @@ pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>)
         ) {
             continue;
         }
-        let Ok(source) = fs::read_to_string(&path) else {
-            continue;
+        let source = match read_text(root, &path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = relative_label(root, &path);
 
         if versions.iter().any(|version| source.contains(version)) {
             violations.push(format!(
@@ -416,23 +286,35 @@ fn swept_versions(
     Some((paths, versions))
 }
 
-fn version_class_names(directories: &[PathBuf], violations: &mut Vec<String>) -> Vec<String> {
+fn version_class_names(
+    root: &Path,
+    directories: &[PathBuf],
+    violations: &mut Vec<String>,
+) -> Vec<String> {
     let mut classes = BTreeSet::new();
     let mut references = Vec::new();
     for directory in directories {
-        for file in ["hooks.toml", "stubs.toml", "mappings.lock", REFLECTION_FILE] {
+        for file in [
+            "hooks.toml",
+            "stubs.toml",
+            "mappings.lock",
+            "reflection.toml",
+        ] {
             let path = directory.join(file);
-            let text = match fs::read_to_string(&path) {
+            let text = match read_text(root, &path) {
                 Ok(text) => text,
                 Err(error) => {
-                    violations.push(format!("cannot read {}: {error}", path.display()));
+                    violations.push(error);
                     continue;
                 }
             };
             match toml::from_str::<toml::Value>(&text) {
                 Ok(value) => collect_version_classes(&value, &mut classes, &mut references),
                 Err(error) => {
-                    violations.push(format!("cannot parse {} as TOML: {error}", path.display()));
+                    violations.push(format!(
+                        "cannot parse {} as TOML: {error}",
+                        relative_label(root, &path)
+                    ));
                 }
             }
         }
@@ -502,26 +384,6 @@ fn descriptor_classes(text: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests;
-
-fn verify_version_directories_adapter(
-    parsed: &toml::Table,
-    relative: &str,
-    violations: &mut Vec<String>,
-) {
-    if let Some(missing) = missing_pack_format(parsed) {
-        violations.push(format!("{relative} {missing}"));
-    }
-    if parsed.contains_key(RETIRED_HARNESS_ROOT) {
-        violations.push(format!(
-            "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
-             `[{RETIRED_HARNESS_TABLE}]` is retired: every live-eligible version runs \
-             every harness section, so an absent one is a break rather than \
-             something a version may write its way out of. A section a version \
-             genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \
-             where somebody owns closing it"
-        ));
-    }
-}
 
 fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>) {
     let crates = root.join("crates");

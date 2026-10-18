@@ -5,11 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use ravel_observability::redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS};
+use ravel_observability::contains_credential;
+use ravel_observability::redaction::CREDENTIAL_WORDS;
 use serde_json::Value;
 
+use crate::evidence::rules::{Rule, evidence_schema_matches};
 use crate::evidence::{findings, m0, m1, m2, m3, m4, m5, m6, m7, records};
-use crate::json::{Rule, array, evidence_schema_matches, number, read_json};
+use crate::json::{array, number, read_json};
 use crate::tracked::tracked_paths;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -233,7 +235,7 @@ pub(crate) fn verify_manifest_integrity(
     }
     findings::verify_finding_anchors_value(root, path, milestone, document, violations);
     match milestone {
-        Milestone::M2 => m2::verify_void_limits(root, violations),
+        Milestone::M2 => m2::verify_m2_integrity(root, document, violations),
         Milestone::M3 => m3::verify_m3_integrity(root, document, violations),
         Milestone::M4 => m4::verify_m4_integrity(root, document, violations),
         Milestone::M5 => m5::verify_m5_integrity(root, document, violations),
@@ -395,39 +397,18 @@ pub(crate) fn verify_redaction_value(
         [
             "/home/",
             "/users/",
-            r"c:\\users\\",
+            ":\\users\\",
             "/.minecraft",
             "tests/fixtures/local/",
             "evidence/private/",
         ]
         .iter()
         .any(|pattern| lower.contains(pattern))
-            || states_a_credential(text)
+            || contains_credential(text)
     }) || credential_field(document, false);
     if sensitive {
         violations.push(format!("{subject} contains sensitive or local data"));
     }
-}
-
-fn states_a_credential(text: &str) -> bool {
-    let mut authorization = false;
-    for word in text.split_whitespace() {
-        let word = word.trim_matches(['`', '\'', '"', '(', ')', '[', ']', ',', ';']);
-        let lower = word.to_ascii_lowercase();
-        let labelled = lower
-            .split_once('=')
-            .is_some_and(|(name, _)| CREDENTIAL_WORDS.iter().any(|label| name.contains(label)));
-        if labelled
-            || (authorization && lower == "bearer")
-            || CREDENTIAL_PREFIXES
-                .iter()
-                .any(|prefix| word.starts_with(prefix))
-        {
-            return true;
-        }
-        authorization = lower.trim_end_matches([':', '=']) == "authorization";
-    }
-    false
 }
 
 fn credential_field(value: &Value, sensitive_path: bool) -> bool {

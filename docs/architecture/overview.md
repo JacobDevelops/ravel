@@ -116,8 +116,13 @@ Ravel into a Java mod host.
 - **Evidence classes.** Material digests freeze findings, while machinery
   digests describe the measured tree and can be rebound with an amendment trail;
   later dispositions belong to later records rather than frozen findings.
-  Closed inventories retain the names they measured without claiming to
-  enumerate later additions.
+  Closed M4 inventories resolve their names against the latest ancestor revision
+  modifying the inventory record itself, including recorded amendments, rather
+  than the manifest's input-baseline revision or today's workspace. Later layout
+  changes do not rewrite that inventory. Both jj and Git checkouts resolve this
+  provenance. Verification requires complete repository history: shallow Git
+  clones and source archives without repository metadata fail explicitly rather
+  than substituting the current tree for unreachable inventory history.
   Historical evidence stays frozen under its recorded workload: M1–M4 retain
   their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 is open.
   Replay uses the recorded fixture, never a blanket ATM10 substitution.

@@ -1,13 +1,13 @@
 //! Finding anchors against repository sources.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::manifest::Milestone;
+use crate::json::{read_text, relative_label};
 use crate::tracked::tracked_paths;
 
 const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
@@ -155,7 +155,7 @@ fn verify_finding_anchors_rows(
 pub(crate) fn defined_rust_symbols(root: &Path, sources: &[String]) -> BTreeSet<String> {
     let mut defined = BTreeSet::new();
     for relative in sources {
-        let Ok(source) = fs::read_to_string(root.join(relative)) else {
+        let Ok(source) = read_text(root, Path::new(relative)) else {
             continue;
         };
         for line in source.lines() {
@@ -194,7 +194,7 @@ pub(crate) fn sources_naming(root: &Path, sources: &[String], symbol: &str) -> V
     sources
         .iter()
         .filter(|relative| {
-            fs::read_to_string(root.join(relative)).is_ok_and(|source| {
+            read_text(root, Path::new(relative)).is_ok_and(|source| {
                 source
                     .split(|character: char| !is_identifier_character(character))
                     .any(|word| word == symbol)
@@ -216,11 +216,4 @@ pub(crate) fn distinguishable_symbol(name: &str) -> bool {
                 .chars()
                 .skip(1)
                 .any(|character| character.is_ascii_uppercase()))
-}
-
-pub(crate) fn relative_label(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
 }

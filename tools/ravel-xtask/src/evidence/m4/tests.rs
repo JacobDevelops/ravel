@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::evidence::m4::{verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface};
+use crate::evidence::closure::verify_milestone_figures;
+use crate::evidence::m4::{M4_FIGURES, verify_m4_process_matrix, verify_m4_surface};
 use crate::json::read_json;
 use crate::test_support::temporary_root;
 use crate::{CRATE_NAMES, EXAMPLE_NAMES, TEST_MOD_NAMES};
@@ -21,7 +22,40 @@ fn surface_root(label: &str, guide: &[&str], suites: &[&str], record: &str) -> P
     let milestone = root.join("evidence/m4");
     fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
     fs::write(milestone.join("sdk-surface.json"), record).expect("record should be writable");
+    pin_surface_tree(&root);
     root
+}
+
+fn pin_surface_tree(root: &std::path::Path) {
+    for (directory, names) in [
+        ("crates", CRATE_NAMES),
+        ("test-mods", TEST_MOD_NAMES),
+        ("examples", EXAMPLE_NAMES),
+    ] {
+        for name in names {
+            let package = root.join(directory).join(name);
+            fs::create_dir_all(&package).expect("package directory should be creatable");
+            fs::write(package.join("Cargo.toml"), "").expect("manifest should be writable");
+        }
+    }
+    for arguments in [
+        &["git", "init"][..],
+        &["new", "-m", "pin historical SDK surface"][..],
+    ] {
+        let output = std::process::Command::new("jj")
+            .args(arguments)
+            .current_dir(root)
+            .output()
+            .expect("jj should be available");
+        assert!(output.status.success(), "{output:?}");
+    }
+    let revision = crate::evidence::records::visible_commit(root, "@-")
+        .expect("historical tree should resolve");
+    fs::write(
+        root.join("evidence/m4/manifest.json"),
+        serde_json::json!({"revision": {"id": revision}}).to_string(),
+    )
+    .expect("manifest should be writable");
 }
 
 fn surface_record(guide: &[&str], suites: &[&str]) -> String {
@@ -75,9 +109,9 @@ fn a_surface_inventory_naming_what_the_repository_lost_is_reported() {
         violations,
         [
             "evidence/m4/sdk-surface.json names removed.md under inventory.guideDocuments, \
-             which the repository does not hold",
+             which the inventory revision does not hold",
             "evidence/m4/sdk-surface.json names deleted.rs under inventory.conformanceSuites, \
-             which the repository does not hold",
+             which the inventory revision does not hold",
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -95,6 +129,27 @@ fn a_surface_inventory_omitting_what_a_later_milestone_added_is_accepted() {
     let mut violations = Vec::new();
     verify_m4_surface(&root, &mut violations);
 
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn later_removals_do_not_rewrite_the_pinned_surface_inventory() {
+    let root = surface_root(
+        "surface-later-removal",
+        &["README.md"],
+        &["one.rs"],
+        &surface_record(&["README.md"], &["one.rs"]),
+    );
+    for path in [
+        "docs/guide/README.md",
+        "tests/conformance/tests/integration/one.rs",
+    ] {
+        fs::remove_file(root.join(path)).expect("historical file should be removable");
+    }
+    fs::remove_dir_all(root.join("test-mods")).expect("historical mods should be removable");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -120,9 +175,10 @@ fn a_manifest_and_a_matrix_reporting_the_same_run_are_accepted() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_gate_figures(
+    verify_milestone_figures(
         &root,
         &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
+        &M4_FIGURES,
         &mut violations,
     );
 
@@ -141,9 +197,10 @@ fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_m4_gate_figures(
+    verify_milestone_figures(
         &root,
         &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
+        &M4_FIGURES,
         &mut violations,
     );
 
@@ -287,7 +344,7 @@ fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
             read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse");
         let mut violations = Vec::new();
 
-        verify_m4_gate_figures(&root, &manifest, &mut violations);
+        verify_milestone_figures(&root, &manifest, &M4_FIGURES, &mut violations);
 
         assert_eq!(violations.len(), 5, "{violations:?}");
         for field in [
@@ -308,4 +365,247 @@ fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
         }
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
+}
+
+#[test]
+fn blank_missing_and_non_string_commands_preserve_both_failures() {
+    for command in [
+        serde_json::json!(""),
+        serde_json::json!("  "),
+        serde_json::Value::Null,
+        serde_json::json!(42),
+    ] {
+        let root = process_matrix_root(
+            "matrix-no-command",
+            &serde_json::json!({
+                "result": "pass", "processes": [{"command": command, "exitStatus": 1}]
+            })
+            .to_string(),
+        );
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(violations[0].contains("with no command"), "{violations:?}");
+        assert!(violations[1].contains("`<no command>`"), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+}
+
+#[test]
+fn an_amended_inventory_uses_its_amendment_tree_not_the_manifest_input_baseline() {
+    let root = surface_root(
+        "surface-amended",
+        &["README.md"],
+        &[],
+        &surface_record(&["README.md"], &[]),
+    );
+    fs::write(root.join("docs/guide/amended.md"), "").expect("guide should be writable");
+    fs::write(
+        root.join("evidence/m4/sdk-surface.json"),
+        surface_record(&["README.md", "amended.md"], &[]),
+    )
+    .expect("amendment should be writable");
+    let output = std::process::Command::new("jj")
+        .args(["new", "-m", "record inventory amendment"])
+        .current_dir(&root)
+        .output()
+        .expect("jj should be available");
+    assert!(output.status.success(), "{output:?}");
+    fs::remove_file(root.join("docs/guide/amended.md")).expect("later removal should work");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn git_surface_root(label: &str, guide: &str, suite: &str) -> PathBuf {
+    let root = temporary_root(label);
+    for directory in [
+        "evidence/m4",
+        "docs/guide",
+        "tests/conformance/tests/integration",
+    ] {
+        fs::create_dir_all(root.join(directory)).expect("directory should be creatable");
+    }
+    fs::write(root.join("docs/guide").join(guide), "").expect("guide should be writable");
+    fs::write(
+        root.join("tests/conformance/tests/integration").join(suite),
+        "",
+    )
+    .expect("suite should be writable");
+    fs::write(
+        root.join("evidence/m4/sdk-surface.json"),
+        serde_json::json!({
+            "inventory": {"guideDocuments": [guide], "conformanceSuites": [suite]}
+        })
+        .to_string(),
+    )
+    .expect("record should be writable");
+    for arguments in [
+        &["init"][..],
+        &["add", "."][..],
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "record SDK inventory",
+        ][..],
+    ] {
+        let output = std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(&root)
+            .output()
+            .expect("git should be available");
+        assert!(output.status.success(), "{output:?}");
+    }
+    root
+}
+
+#[test]
+fn git_only_inventory_resolution_survives_later_removals() {
+    let root = git_surface_root("surface-git-only", "README.md", "suite.rs");
+    fs::remove_dir_all(root.join("docs")).expect("later guide removal should work");
+    fs::remove_dir_all(root.join("tests")).expect("later suite removal should work");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn inventory_assets_do_not_count_as_guide_documents_or_conformance_suites() {
+    let root = git_surface_root("surface-git-assets", "image.png", "fixture.json");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn an_inventory_amendment_can_name_direct_suites_under_the_historical_test_root() {
+    let root = surface_root(
+        "surface-amended-old-suite-root",
+        &["README.md"],
+        &["one.rs"],
+        &surface_record(&["README.md"], &["one.rs"]),
+    );
+    let historical = root.join("tests/conformance/tests/historical.rs");
+    fs::write(&historical, "").expect("historical suite should be writable");
+    fs::write(
+        root.join("evidence/m4/sdk-surface.json"),
+        surface_record(&["README.md"], &["one.rs", "historical.rs"]),
+    )
+    .expect("inventory amendment should be writable");
+    let output = std::process::Command::new("jj")
+        .args(["new", "-m", "record historical suite inventory amendment"])
+        .current_dir(&root)
+        .output()
+        .expect("jj should be available");
+    assert!(output.status.success(), "{output:?}");
+    fs::remove_file(historical).expect("later suite removal should work");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn historical_suite_root_requires_direct_rust_source_children() {
+    let root = git_surface_root("surface-historical-suite-assets", "README.md", "suite.rs");
+    let directory = root.join("tests/conformance/tests");
+    fs::create_dir_all(directory.join("nested")).expect("nested directory should be creatable");
+    fs::write(directory.join("nested/hidden.rs"), "").expect("nested suite should be writable");
+    fs::write(directory.join("fixture.json"), "").expect("fixture should be writable");
+    fs::write(
+        root.join("evidence/m4/sdk-surface.json"),
+        serde_json::json!({
+            "inventory": {"conformanceSuites": ["hidden.rs", "fixture.json"]}
+        })
+        .to_string(),
+    )
+    .expect("inventory amendment should be writable");
+    for arguments in [
+        &["add", "."][..],
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "record non-suite inventory entries",
+        ][..],
+    ] {
+        let output = std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(&root)
+            .output()
+            .expect("git should be available");
+        assert!(output.status.success(), "{output:?}");
+    }
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn shallow_git_inventory_requires_complete_amendment_history() {
+    let source = git_surface_root("surface-shallow-source", "README.md", "suite.rs");
+    fs::remove_file(source.join("tests/conformance/tests/integration/suite.rs"))
+        .expect("later suite removal should work");
+    for arguments in [
+        &["add", "."][..],
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "remove suite after inventory record",
+        ][..],
+    ] {
+        let output = std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(&source)
+            .output()
+            .expect("git should be available");
+        assert!(output.status.success(), "{output:?}");
+    }
+    let shallow = temporary_root("surface-shallow-clone");
+    let output = std::process::Command::new("git")
+        .args(["clone", "--depth", "1"])
+        .arg(format!("file://{}", source.display()))
+        .arg(&shallow)
+        .output()
+        .expect("git should be available");
+    assert!(output.status.success(), "{output:?}");
+    let mut violations = Vec::new();
+    verify_m4_surface(&shallow, &mut violations);
+    assert_eq!(
+        violations,
+        ["historical M4 inventory requires complete Git history; \
+        missing amendment history in shallow repository"]
+    );
+    fs::remove_dir_all(shallow).expect("shallow root should be removable");
+    fs::remove_dir_all(source).expect("source root should be removable");
+}
+
+#[test]
+fn archive_inventory_without_repository_history_is_not_verifiable() {
+    let root = temporary_root("surface-missing-history");
+    fs::create_dir_all(root.join("evidence/m4")).expect("directory should be creatable");
+    fs::write(root.join("evidence/m4/sdk-surface.json"), "{}").expect("record should be writable");
+    let mut violations = Vec::new();
+    verify_m4_surface(&root, &mut violations);
+    assert_eq!(
+        violations,
+        ["cannot verify historical M4 inventory: \
+        missing repository history (.jj or .git)"]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }

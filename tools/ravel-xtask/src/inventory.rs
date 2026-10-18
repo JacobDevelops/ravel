@@ -5,30 +5,23 @@ use std::fs;
 use std::path::Path;
 
 use crate::evidence::accounting::{Side, stated_counts};
-use crate::evidence::findings::relative_label;
-use crate::java_shape::{descriptor_handles, parse_hook_inventory};
+use crate::hooks::{HookCounts, HookInventory, hook_counts};
+use crate::json::read_text;
 use crate::tracked::collect_files;
-use crate::version_boundary::{HookInventory, VERSION_DATA};
+use crate::version_boundary::VERSION_DATA;
 use crate::{EXAMPLE_NAMES, TEST_MOD_NAMES};
 
 const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";
-
-pub(crate) struct HookCounts {
-    pub(crate) entries: usize,
-    methods: usize,
-    fields: usize,
-    handles: usize,
-}
 
 pub(crate) fn verify_hook_inventory_document(
     root: &Path,
     inventories: &[HookInventory],
     violations: &mut Vec<String>,
 ) {
-    let document = match fs::read_to_string(root.join(HOOK_DOCUMENT)) {
+    let document = match read_text(root, Path::new(HOOK_DOCUMENT)) {
         Ok(text) => text,
         Err(error) => {
-            violations.push(format!("cannot read {HOOK_DOCUMENT}: {error}"));
+            violations.push(error);
             return;
         }
     };
@@ -87,36 +80,6 @@ fn documented_versions(document: &str) -> BTreeSet<String> {
     named
 }
 
-pub(crate) fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
-    let mut counts = HookCounts {
-        entries: 0,
-        methods: 0,
-        fields: 0,
-        handles: 0,
-    };
-    for hook in parse_hook_inventory(inventory)?.hooks {
-        let (Some(kind), Some(descriptor)) = (hook.kind.as_deref(), hook.descriptor.as_deref())
-        else {
-            return Err("a `[[hook]]` entry declares no kind or no descriptor".to_owned());
-        };
-
-        counts.entries += 1;
-        if kind.ends_with("-field") {
-            counts.fields += 1;
-        } else {
-            counts.methods += 1;
-            counts.handles += descriptor_handles(descriptor)
-                .ok_or_else(|| format!("`{descriptor}` is not a method descriptor"))?;
-        }
-    }
-
-    if counts.entries == 0 {
-        return Err("the inventory declares no `[[hook]]` entry".to_owned());
-    }
-
-    Ok(counts)
-}
-
 fn hook_document_violations(document: &str, inventory: &str, counts: &HookCounts) -> Vec<String> {
     let mut violations = Vec::new();
     for (phrase, side, expected, subject) in [
@@ -168,10 +131,10 @@ const ENUMERATING_DOCUMENT: &str = "docs/guide/running.md";
 const COMPLETENESS_CLAIM: &str = "is the whole of those refusals";
 
 pub(crate) fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String>) {
-    let source = match fs::read_to_string(root.join(NETWORK_SOURCE)) {
+    let source = match read_text(root, Path::new(NETWORK_SOURCE)) {
         Ok(source) => source,
         Err(error) => {
-            violations.push(format!("cannot read {NETWORK_SOURCE}: {error}"));
+            violations.push(error);
             return;
         }
     };
@@ -180,19 +143,16 @@ pub(crate) fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String
     collect_files(&root.join(GUIDE_DIRECTORY), &mut documents);
     documents.sort();
     for path in &documents {
-        match fs::read_to_string(path) {
+        match read_text(root, path) {
             Ok(document) => guide.push_str(&document),
-            Err(error) => violations.push(format!(
-                "cannot read {}: {error}",
-                relative_label(root, path)
-            )),
+            Err(error) => violations.push(error),
         }
     }
 
-    let passage = match fs::read_to_string(root.join(ENUMERATING_DOCUMENT)) {
+    let passage = match read_text(root, Path::new(ENUMERATING_DOCUMENT)) {
         Ok(document) => enumerating_passage(&document).map(str::to_owned),
         Err(error) => {
-            violations.push(format!("cannot read {ENUMERATING_DOCUMENT}: {error}"));
+            violations.push(error);
             return;
         }
     };

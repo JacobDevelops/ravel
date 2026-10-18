@@ -66,27 +66,48 @@ fn scaffold_contract_covers_every_planned_crate() {
 }
 
 #[test]
-fn scaffold_contract_covers_every_original_test_mod() {
+fn scaffold_contract_covers_every_maintained_test_mod() {
     let required = required_scaffold_paths();
 
     for test_mod in [
+        "audio",
+        "client-only",
         "commands",
         "configuration",
-        "dependency-base",
-        "dependency-consumer",
         "events",
-        "failure-cases",
         "inter-mod-service",
+        "interception",
         "networking",
         "noop",
+        "optional-service",
+        "provision",
         "registries",
+        "render-stages",
         "resources",
         "saved-data",
+        "server-data",
+        "server-only",
+        "waystone-ledger",
+        "world-shaping",
     ] {
         let manifest = format!("test-mods/{test_mod}/Cargo.toml");
         assert!(
             required.contains(&manifest),
             "missing contract for {manifest}"
+        );
+    }
+    // M4 reads the historical amendment tree, not placeholder crates in the current tree.
+    for retired in ["dependency-base", "dependency-consumer", "failure-cases"] {
+        let manifest = format!("test-mods/{retired}/Cargo.toml");
+        assert!(
+            !required.contains(&manifest),
+            "retired contract: {manifest}"
+        );
+        assert!(
+            !Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(manifest)
+                .exists()
         );
     }
 }

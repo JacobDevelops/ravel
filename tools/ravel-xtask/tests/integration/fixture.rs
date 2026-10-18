@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -7,6 +8,8 @@ use ravel_xtask::FixtureError;
 use ravel_xtask::fixture::{
     load_fixture_descriptor, reconstruct_fixture, sha256_file, verify_fixture_archive,
 };
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipWriter};
 
 #[test]
 fn pinned_atm10_tts_descriptor_records_the_exact_reference_contract() {
@@ -50,25 +53,23 @@ fn sevtech_archive_accounts_for_references_and_bundled_jars_separately() {
         serde_json::to_vec(&manifest).expect("manifest should serialize"),
     )
     .expect("manifest should be writable");
-    let mods = root.join("overrides/mods");
-    fs::create_dir_all(mods.join("nested")).expect("override directories should be creatable");
-    for id in 0..5 {
-        fs::write(
-            mods.join(format!("bundled-{id}.jar")),
-            b"synthetic jar input",
-        )
-        .expect("jar input should be writable");
-    }
-    fs::write(mods.join("nested/not-top-level.jar"), b"nested")
-        .expect("nested file should be writable");
-    fs::write(mods.join("notes.txt"), b"not a jar").expect("notes should be writable");
-    let status = Command::new("zip")
-        .args(["-qr", "fixture.zip", "manifest.json", "overrides"])
-        .current_dir(&root)
-        .status()
-        .expect("zip should execute");
-    assert!(status.success());
     let archive = root.join("fixture.zip");
+    write_archive(
+        &archive,
+        &[
+            (
+                "manifest.json",
+                &fs::read(&manifest_path).expect("manifest is readable"),
+            ),
+            ("overrides/mods/bundled-0.jar", b"jar"),
+            ("overrides/mods/bundled-1.jar", b"jar"),
+            ("overrides/mods/bundled-2.jar", b"jar"),
+            ("overrides/mods/bundled-3.jar", b"jar"),
+            ("overrides/mods/bundled-4.JAR", b"jar"),
+            ("overrides/mods/nested/not-top-level.jar", b"nested"),
+            ("overrides/mods/notes.txt", b"not a jar"),
+        ],
+    );
     let mut value: serde_json::Value =
         serde_json::from_slice(&fs::read(pinned).expect("descriptor should be readable"))
             .expect("descriptor should parse");
@@ -128,12 +129,13 @@ fn manifest_reference_drift_is_rejected() {
     )
     .expect("test manifest should be writable");
     let archive = root.join("fixture.zip");
-    let status = Command::new("zip")
-        .args(["-q", "fixture.zip", "manifest.json"])
-        .current_dir(&root)
-        .status()
-        .expect("zip should be available in the development shell");
-    assert!(status.success());
+    write_archive(
+        &archive,
+        &[(
+            "manifest.json",
+            &fs::read(&manifest).expect("manifest is readable"),
+        )],
+    );
     let actual_hash = sha256_file(&archive).expect("test archive should be hashable");
     let altered_descriptor = root.join("descriptor.json");
     let source = fs::read_to_string(descriptor()).expect("descriptor should be readable");
@@ -185,13 +187,14 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
         }"#,
     )
     .expect("test manifest should be writable");
-    let status = Command::new("zip")
-        .args(["-q", "fixture.zip", "manifest.json"])
-        .current_dir(&source_root)
-        .status()
-        .expect("zip should be available in the development shell");
-    assert!(status.success());
     let archive = source_root.join("fixture.zip");
+    write_archive(
+        &archive,
+        &[(
+            "manifest.json",
+            &fs::read(&manifest).expect("manifest is readable"),
+        )],
+    );
     let synthetic_descriptor = root.join("descriptor.json");
     let source = fs::read_to_string(descriptor()).expect("descriptor should be readable");
     let mut value: serde_json::Value =
@@ -332,13 +335,8 @@ fn malformed_descriptor_and_archive_inputs_fail_closed() {
 
     let manifest = root.join("manifest.json");
     fs::write(&manifest, b"not JSON").expect("invalid manifest should be writable");
-    let status = Command::new("zip")
-        .args(["-q", "parse-error.zip", "manifest.json"])
-        .current_dir(&root)
-        .status()
-        .expect("zip should execute");
-    assert!(status.success());
     let archive = root.join("parse-error.zip");
+    write_archive(&archive, &[("manifest.json", b"not JSON")]);
     value["source"]["sha256"] = sha256_file(&archive)
         .expect("archive should be hashable")
         .into();
@@ -355,6 +353,180 @@ fn malformed_descriptor_and_archive_inputs_fail_closed() {
     assert!(matches!(parse_error, FixtureError::Json(_)));
 
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn write_archive(path: &Path, entries: &[(&str, &[u8])]) {
+    let file = fs::File::create(path).expect("archive is writable");
+    let mut writer = ZipWriter::new(file);
+    for &(name, content) in entries {
+        writer
+            .start_file(
+                name,
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .expect("archive entry is writable");
+        writer
+            .write_all(content)
+            .expect("archive content is writable");
+    }
+    writer.finish().expect("archive is complete");
+}
+
+fn synthetic_archive(root: &Path, jars: &[(&str, &[u8])]) -> (PathBuf, PathBuf) {
+    let manifest = serde_json::to_vec(&serde_json::json!({
+        "minecraft": {"version": "1.21.1",
+            "modLoaders": [{"id": "neoforge-21.1.221", "primary": true}]},
+        "manifestType": "minecraftModpack", "manifestVersion": 1,
+        "name": "ATM10 To the Sky", "version": "2.0.2", "author": "ATMTeam",
+        "files": [{"projectID": 1, "fileID": 2, "required": true}], "overrides": "overrides"
+    }))
+    .expect("manifest serializes");
+    let manifest_path = root.join("manifest.json");
+    fs::write(&manifest_path, &manifest).expect("manifest is writable");
+    let archive = root.join("fixture.zip");
+    let mut entries = vec![("manifest.json", manifest.as_slice())];
+    entries.extend_from_slice(jars);
+    write_archive(&archive, &entries);
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(descriptor()).expect("descriptor is readable"))
+            .expect("descriptor parses");
+    value["source"]["sha256"] = sha256_file(&archive).expect("archive hashes").into();
+    value["manifest"]["sha256"] = sha256_file(&manifest_path).expect("manifest hashes").into();
+    value["manifest"]["expectedReferenceCount"] = 1.into();
+    let descriptor = root.join("descriptor.json");
+    fs::write(
+        &descriptor,
+        serde_json::to_vec(&value).expect("descriptor serializes"),
+    )
+    .expect("descriptor is writable");
+    (descriptor, archive)
+}
+
+#[test]
+fn fixture_verification_needs_no_system_unzip() {
+    let root = temporary_root("no-unzip");
+    let (descriptor, archive) = synthetic_archive(&root, &[("overrides/mods/bundled.jar", b"jar")]);
+    let output = xtask_command()
+        .env("PATH", &root)
+        .args(["fixture", "verify"])
+        .arg(&descriptor)
+        .arg(&archive)
+        .output()
+        .expect("xtask executes");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fs::remove_dir_all(root).expect("temporary root is removable");
+}
+
+#[test]
+fn duplicate_override_central_entries_are_not_collapsed() {
+    let root = temporary_root("duplicate-override");
+    let (descriptor, archive) = synthetic_archive(
+        &root,
+        &[
+            ("overrides/mods/first.jar", b"first"),
+            ("overrides/mods/other.jar", b"other"),
+        ],
+    );
+    let mut bytes = fs::read(&archive).expect("archive is readable");
+    let old = b"overrides/mods/other.jar";
+    let positions: Vec<_> = bytes
+        .windows(old.len())
+        .enumerate()
+        .filter_map(|(index, name)| (name == old).then_some(index))
+        .collect();
+    assert_eq!(
+        positions.len(),
+        2,
+        "local and central names must both change"
+    );
+    for index in positions {
+        bytes[index..index + old.len()].copy_from_slice(b"overrides/mods/first.jar");
+    }
+    fs::write(&archive, bytes).expect("duplicate archive is writable");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&descriptor).expect("descriptor is readable"))
+            .expect("descriptor parses");
+    value["source"]["sha256"] = sha256_file(&archive).expect("archive hashes").into();
+    fs::write(
+        &descriptor,
+        serde_json::to_vec(&value).expect("descriptor serializes"),
+    )
+    .expect("descriptor is writable");
+    let error = verify_fixture_archive(&descriptor, &archive).expect_err("duplicates must fail");
+    assert!(matches!(&error, FixtureError::Archive(detail)
+        if detail.contains("duplicate bundled override jar overrides/mods/first.jar")));
+    fs::remove_dir_all(root).expect("temporary root is removable");
+}
+
+#[test]
+fn duplicate_manifests_are_rejected_even_when_one_matches_the_pinned_digest() {
+    for conflicting in [false, true] {
+        let root = temporary_root("duplicate-manifest");
+        let (descriptor, archive) = synthetic_archive(&root, &[]);
+        let manifest = fs::read(root.join("manifest.json")).expect("manifest is readable");
+        let mut other = manifest.clone();
+        if conflicting {
+            other.push(b'\n');
+        }
+        write_archive(
+            &archive,
+            &[("manifest.json", &manifest), ("otherone.json", &other)],
+        );
+        rename_archive_entry(&archive, b"otherone.json", b"manifest.json");
+        // Bind the digest to whichever duplicate ZipArchive retains. Verification must
+        // still reject the raw duplicate central records, identical or conflicting.
+        let mut selected = Vec::new();
+        zip::ZipArchive::new(fs::File::open(&archive).expect("archive opens"))
+            .expect("archive parses")
+            .by_name("manifest.json")
+            .expect("manifest is present")
+            .read_to_end(&mut selected)
+            .expect("selected manifest is readable");
+        let selected_path = root.join("selected.json");
+        fs::write(&selected_path, selected).expect("selected manifest is writable");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&descriptor).expect("descriptor is readable"))
+                .expect("descriptor parses");
+        value["source"]["sha256"] = sha256_file(&archive).expect("archive hashes").into();
+        value["manifest"]["sha256"] = sha256_file(&selected_path).expect("manifest hashes").into();
+        fs::write(
+            &descriptor,
+            serde_json::to_vec(&value).expect("descriptor serializes"),
+        )
+        .expect("descriptor is writable");
+        let error = verify_fixture_archive(&descriptor, &archive)
+            .expect_err("duplicate manifests must fail");
+        assert!(matches!(&error, FixtureError::Archive(detail)
+            if detail.contains("duplicate fixture manifest manifest.json")));
+        fs::remove_dir_all(root).expect("temporary root is removable");
+    }
+}
+
+fn rename_archive_entry(archive: &Path, old: &[u8], new: &[u8]) {
+    assert_eq!(
+        old.len(),
+        new.len(),
+        "ZIP header lengths must remain unchanged"
+    );
+    let mut bytes = fs::read(archive).expect("archive is readable");
+    let positions: Vec<_> = bytes
+        .windows(old.len())
+        .enumerate()
+        .filter_map(|(index, name)| (name == old).then_some(index))
+        .collect();
+    assert_eq!(
+        positions.len(),
+        2,
+        "local and central names must both change"
+    );
+    for index in positions {
+        bytes[index..index + old.len()].copy_from_slice(new);
+    }
+    fs::write(archive, bytes).expect("archive is writable");
 }
 
 fn descriptor() -> PathBuf {

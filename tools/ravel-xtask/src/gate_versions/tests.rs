@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::gate_versions::verify_gate_versions;
-use crate::test_support::temporary_root;
+use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::VERSION_DATA;
 
 const EVERY_SECTION: &str = "cluster,content,hierarchy,initialization,load,members,outward,\
@@ -12,13 +12,7 @@ const EVERY_SECTION: &str = "cluster,content,hierarchy,initialization,load,membe
 fn gate_versions_root(label: &str, versions: &[&str], harness: &str) -> PathBuf {
     let root = temporary_root(label);
     for version in versions {
-        let directory = root.join(format!("{VERSION_DATA}/{version}"));
-        fs::create_dir_all(&directory).expect("version directory should be creatable");
-        fs::write(
-            directory.join("adapter.toml"),
-            format!("minecraft = '{version}'\n"),
-        )
-        .expect("adapter should be writable");
+        version_directory(&root, version, &[]);
     }
     let lines = |verb: &str| {
         let mut record = String::new();
@@ -66,9 +60,7 @@ fn a_skip_line_is_an_honest_outcome_not_a_violation() {
     for version in ["1.21.1", "1.21.2"] {
         fs::write(
             root.join(format!("{VERSION_DATA}/{version}/adapter.toml")),
-            format!(
-                "minecraft = '{version}'\n[inputs.clientMappings]\npath = '{version}.mapping'\n"
-            ),
+            adapter_document(version, "live", Some(&format!("{version}.mapping"))),
         )
         .expect("adapter should be writable");
     }
@@ -188,7 +180,7 @@ fn generation_only_cannot_claim_adapter_or_harness_coverage() {
     );
     fs::write(
         root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
-        "minecraft = '1.12.2'\neligibility = 'generation-only'\n",
+        adapter_document("1.12.2", "generation-only", None),
     )
     .expect("adapter should be writable");
     let violations = verify_gate_versions(&root).violations;
@@ -277,7 +269,7 @@ fn a_generation_only_tree_does_not_claim_live_coverage() {
     let root = gate_versions_root("no-live-versions", &["1.12.2"], "");
     fs::write(
         root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
-        "minecraft = '1.12.2'\neligibility = 'generation-only'\n",
+        adapter_document("1.12.2", "generation-only", None),
     )
     .expect("adapter should be writable");
     fs::write(
@@ -308,13 +300,12 @@ fn skips_for_every_version_and_record_do_not_claim_live_coverage() {
     let root = gate_versions_root("gate-all-skipped", &["1.12.2", "26.1.2"], "");
     fs::write(
         root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
-        "minecraft = '1.12.2'\neligibility = 'generation-only'\n\
-         [inputs.clientMappings]\npath = 'legacy.mapping'\n",
+        adapter_document("1.12.2", "generation-only", Some("legacy.mapping")),
     )
     .expect("adapter should be writable");
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml")),
-        "minecraft = '26.1.2'\n[inputs.clientMappings]\npath = 'modern.mapping'\n",
+        adapter_document("26.1.2", "live", Some("modern.mapping")),
     )
     .expect("adapter should be writable");
     let skipped = "SKIPPED: Minecraft 1.12.2; mapping input is absent\n\

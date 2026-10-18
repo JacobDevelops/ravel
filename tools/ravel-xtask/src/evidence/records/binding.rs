@@ -7,7 +7,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use super::Review;
-use crate::evidence::findings::relative_label;
+use crate::json::{read_text, relative_label};
 
 pub(super) fn verify_review(
     root: &Path,
@@ -31,6 +31,7 @@ pub(super) fn verify_review(
         ));
         return;
     }
+    let prior_violations = violations.len();
     verify_tracked_digest(
         &TrackedDigest {
             label: &label,
@@ -44,7 +45,11 @@ pub(super) fn verify_review(
         },
         violations,
     );
+    if violations.len() != prior_violations {
+        return;
+    }
     verify_recorded_verdict(
+        root,
         &label,
         review.result,
         &directory.join(artifact.name),
@@ -53,6 +58,7 @@ pub(super) fn verify_review(
 }
 
 fn verify_recorded_verdict(
+    root: &Path,
     label: &str,
     claimed: Option<&str>,
     record: &Path,
@@ -64,8 +70,12 @@ fn verify_recorded_verdict(
         ));
         return;
     };
-    let Ok(text) = fs::read_to_string(record) else {
-        return;
+    let text = match read_text(root, record) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
     };
     match text.lines().find_map(stated_verdict) {
         Some(stated) if stated == claimed => {}

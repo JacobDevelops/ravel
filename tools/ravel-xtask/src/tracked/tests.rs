@@ -68,6 +68,25 @@ fn tracked_credential_material_is_rejected() {
 }
 
 #[test]
+fn tracked_lowercase_and_json_credential_prefixes_are_rejected() {
+    let root = temporary_root("credential-prefixes");
+    for (name, text) in [
+        ("notes.txt", format!("value = {}{}suffix", "gh", "p_")),
+        (
+            "fixture.json",
+            format!("{{\"value\":\"{}{}suffix\"}}", "sk", "-"),
+        ),
+    ] {
+        fs::write(root.join(name), text).expect("credential canary should be writable");
+        assert_eq!(
+            verify_tracked_contents(&root, &[name.to_owned()]),
+            [format!("tracked file contains credential material: {name}")]
+        );
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn contents_scan_discloses_what_it_does_not_refuse() {
     let root = temporary_root("disclosure");
     fs::write(

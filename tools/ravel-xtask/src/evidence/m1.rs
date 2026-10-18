@@ -1,12 +1,11 @@
 //! M1 closure rules.
 
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use crate::evidence::manifest::require_manifest_rule;
-use crate::evidence::spikes::SPIKE_GATES;
+use crate::evidence::spikes::{SPIKE_GATES, spike_result_paths};
 use crate::json::{array, nonempty, read_json};
 
 pub(crate) fn verify_m1_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
@@ -45,7 +44,6 @@ pub(crate) fn verify_m1_manifest(root: &Path, manifest: &Value, violations: &mut
     );
 
     verify_m1_spike_results(root, violations);
-    verify_m1_manifest_repeated(root, violations);
 
     require_manifest_rule(
         manifest,
@@ -60,59 +58,37 @@ pub(crate) fn verify_m1_manifest(root: &Path, manifest: &Value, violations: &mut
          tracked record can recompute",
         violations,
     );
-
-    let launched = fs::read_dir(root.join("evidence/m1/spikes/adg-5"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
-        .any(|path| {
-            read_json(&path).is_ok_and(|record| record["prismIntegration"]["stockLaunch"] == true)
-        });
-    if !launched {
-        violations.push(
-            "M1 closure requires an ADG-5 result recording an observed stock-Prism launch"
-                .to_owned(),
-        );
-    }
 }
 
 fn verify_m1_spike_results(root: &Path, violations: &mut Vec<String>) {
     for (directory, gate) in SPIKE_GATES {
-        let results = root.join("evidence/m1/spikes").join(directory);
-        let recorded = fs::read_dir(&results)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .is_some_and(|extension| extension == "json")
-            })
-            .count();
-        if recorded == 0 {
+        let paths = spike_result_paths(root, directory, gate, violations);
+        if paths.is_empty() {
             violations.push(format!("M1 closure requires a recorded result for {gate}"));
+        }
+        if *directory == "adg-3" {
+            verify_m1_manifest_repeated(&paths, violations);
+        }
+        if *directory == "adg-5"
+            && !spike_records_match(&paths, violations, |record| {
+                record["prismIntegration"]["stockLaunch"] == true
+            })
+        {
+            violations.push(
+                "M1 closure requires an ADG-5 result recording an observed stock-Prism launch"
+                    .to_owned(),
+            );
         }
     }
 }
 
-fn verify_m1_manifest_repeated(root: &Path, violations: &mut Vec<String>) {
-    let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
-        .any(|path| {
-            read_json(&path).is_ok_and(|record| {
-                let binding = &record["bindingGeneration"];
-                nonempty(binding, "/outputSha256")
-                    && binding["repeatedOutputSha256"] == binding["outputSha256"]
-                    && binding["repeatedRunIsIdentical"] == true
-            })
-        });
+fn verify_m1_manifest_repeated(paths: &[PathBuf], violations: &mut Vec<String>) {
+    let repeated = spike_records_match(paths, violations, |record| {
+        let binding = &record["bindingGeneration"];
+        nonempty(binding, "/outputSha256")
+            && binding["repeatedOutputSha256"] == binding["outputSha256"]
+            && binding["repeatedRunIsIdentical"] == true
+    });
     if !repeated {
         violations.push(
             "M1 closure requires an ADG-3 result recording bindingGeneration outputSha256 and \
@@ -121,6 +97,21 @@ fn verify_m1_manifest_repeated(root: &Path, violations: &mut Vec<String>) {
                 .to_owned(),
         );
     }
+}
+
+fn spike_records_match(
+    paths: &[PathBuf],
+    violations: &mut Vec<String>,
+    predicate: fn(&Value) -> bool,
+) -> bool {
+    let mut matched = false;
+    for path in paths {
+        match read_json(path) {
+            Ok(record) => matched |= predicate(&record),
+            Err(error) => violations.push(error),
+        }
+    }
+    matched
 }
 
 #[cfg(test)]

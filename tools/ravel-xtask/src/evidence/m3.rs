@@ -1,7 +1,6 @@
 //! M3 closure rules.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
 use serde_json::Value;
@@ -9,10 +8,11 @@ use serde_json::Value;
 use crate::evidence::accounting::{Side, numbers_before, stated_counts};
 use crate::evidence::closure::verify_closure_records;
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{
-    Rule, array, benchmark_results, closed_gates, native_attestation, number, read_json,
-    work_packages,
+use crate::evidence::rules::{
+    Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
+    has_native_attestation,
 };
+use crate::json::{array, number, read_json, read_text};
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
@@ -27,7 +27,7 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            work_packages(
+            has_exact_work_packages(
                 value,
                 &[
                     "M3-W0", "M3-W1", "M3-W2", "M3-W3", "M3-W4", "M3-W5", "M3-W6", "M3-W7", "M3-W8",
@@ -40,7 +40,7 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            benchmark_results(
+            has_exact_benchmark_results(
                 value,
                 "m3-prototype-v1",
                 &[
@@ -56,13 +56,13 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
     );
     require_manifest_rule(
         manifest,
-        |value| closed_gates(value, "M3-W8", 8),
+        |value| all_gates_closed(value, "M3-W8", 8),
         "M3 closure requires a gateStatus row for every work package, each implementation row closed and naming its evidence",
         violations,
     );
     require_manifest_rule(
         manifest,
-        |value| native_attestation(value, "ravel"),
+        |value| has_native_attestation(value, "ravel"),
         "M3 closure requires a native Linux attestation for the operator-run Ravel launch",
         violations,
     );
@@ -205,9 +205,9 @@ pub(crate) fn verify_campaign_inventory(root: &Path, violations: &mut Vec<String
         }
     }
 
-    match fs::read_to_string(root.join(CAMPAIGN_DOCUMENT)) {
+    match read_text(root, Path::new(CAMPAIGN_DOCUMENT)) {
         Ok(document) => violations.extend(campaign_document_violations(&document, &derived)),
-        Err(error) => violations.push(format!("cannot read {CAMPAIGN_DOCUMENT}: {error}")),
+        Err(error) => violations.push(error),
     }
 }
 
@@ -344,10 +344,10 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
     violations
 }
 pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String>) {
-    let harness = match fs::read_to_string(root.join(PERSISTENCE_HARNESS)) {
+    let harness = match read_text(root, Path::new(PERSISTENCE_HARNESS)) {
         Ok(harness) => harness,
         Err(error) => {
-            violations.push(format!("cannot read {PERSISTENCE_HARNESS}: {error}"));
+            violations.push(error);
             return;
         }
     };
@@ -365,7 +365,7 @@ pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String
     };
 
     for relative in [CAMPAIGN_DOCUMENT, CAMPAIGN_MATRIX] {
-        match fs::read_to_string(root.join(relative)) {
+        match read_text(root, Path::new(relative)) {
             Ok(document) => {
                 let stated = numbers_before(&document, &["world", "lifecycles"]);
                 if stated.is_empty() {
@@ -383,7 +383,7 @@ pub(crate) fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String
                     }
                 }
             }
-            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+            Err(error) => violations.push(error),
         }
     }
 }

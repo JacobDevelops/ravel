@@ -4,12 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_minecraft_generate::Eligibility;
-use serde::Deserialize;
 
-use crate::inventory::hook_counts;
+use crate::hooks::{DeclaredHooks, HookInventory, hook_counts, parse_hook_inventory};
+use crate::json::{read_text, relative_label};
 use crate::tracked::collect_files;
 use crate::version_boundary::{
-    HookInventory, VERSION_DATA, VERSION_PROSE_FILE, VersionEligibility, tracked_versions,
+    VERSION_DATA, VERSION_PROSE_FILE, VersionEligibility, tracked_versions,
 };
 
 pub(crate) mod reflection;
@@ -19,25 +19,6 @@ use reflection::GAME_PACKAGES;
 const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 
 pub(crate) const REFLECTION_FILE: &str = "reflection.toml";
-
-#[derive(Deserialize)]
-pub(crate) struct DeclaredHooks {
-    #[serde(default, rename = "hook")]
-    pub(crate) hooks: Vec<HookEntry>,
-    #[serde(default, rename = "nonGoal")]
-    pub(crate) non_goals: Vec<toml::Value>,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct HookEntry {
-    pub(crate) id: String,
-    pub(crate) kind: Option<String>,
-    pub(crate) descriptor: Option<String>,
-}
-
-pub(crate) fn parse_hook_inventory(text: &str) -> Result<DeclaredHooks, String> {
-    toml::from_str(text).map_err(|error| format!("cannot parse hook inventory as TOML: {error}"))
-}
 
 fn java_sources(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
@@ -76,14 +57,13 @@ pub(crate) fn verify_hook_name_literals(
         .collect::<Vec<_>>();
 
     for path in java_sources(&root.join(AGENT_JAR_SOURCES)) {
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        let Ok(source) = fs::read_to_string(&path) else {
-            continue;
+        let relative = relative_label(root, &path);
+        let source = match read_text(root, &path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         let mut rest = source.as_str();
         while let Some(at) = rest.find(HOOK_NAME_MATCH) {
@@ -186,12 +166,12 @@ pub(crate) fn verify_menu_row_placement(root: &Path, violations: &mut Vec<String
     let path = root
         .join(AGENT_JAR_SOURCES)
         .join("dev/ravel/jvm/Transformer.java");
-    let Ok(source) = fs::read_to_string(&path) else {
-        violations.push(format!(
-            "{AGENT_JAR_SOURCES}/dev/ravel/jvm/Transformer.java cannot be read, so nothing holds \
-             the title-menu bridge to the row its version declares"
-        ));
-        return;
+    let source = match read_text(root, &path) {
+        Ok(source) => source,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
     };
     let Some(at) = source.find(MENU_COLUMN_BRIDGE) else {
         violations.push(format!(
@@ -357,14 +337,13 @@ pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>)
     }
 
     for path in templates {
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let Ok(source) = fs::read_to_string(&path) else {
-            violations.push(format!("cannot read {relative}"));
-            continue;
+        let relative = relative_label(root, &path);
+        let source = match read_text(root, &path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         for (index, line) in source.lines().enumerate() {
             for spelled in game_names_outside_placeholders(line) {
@@ -387,8 +366,12 @@ pub(crate) fn verify_version_readmes(root: &Path, violations: &mut Vec<String>) 
     };
     for version in versions {
         let directory = root.join(VERSION_DATA).join(&version);
-        let Ok(inventory) = fs::read_to_string(directory.join("hooks.toml")) else {
-            continue;
+        let inventory = match read_text(root, &directory.join("hooks.toml")) {
+            Ok(text) => text,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         let Ok(counts) = hook_counts(&inventory) else {
             continue;
@@ -402,9 +385,12 @@ pub(crate) fn verify_version_readmes(root: &Path, violations: &mut Vec<String>) 
             counts.entries
         );
         let readme = format!("{VERSION_DATA}/{version}/README.md");
-        let Ok(prose) = fs::read_to_string(directory.join(VERSION_PROSE_FILE)) else {
-            violations.push(format!("cannot read {readme}"));
-            continue;
+        let prose = match read_text(root, &directory.join(VERSION_PROSE_FILE)) {
+            Ok(text) => text,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         if !prose.contains(&expected) {
             violations.push(format!(
@@ -461,11 +447,13 @@ pub(crate) fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>)
                 ));
                 continue;
             }
-            let (Ok(left), Ok(right)) =
-                (fs::read_to_string(&shared), fs::read_to_string(over.path()))
-            else {
-                violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}/{file}"));
-                continue;
+            let (left, right) = match (read_text(root, &shared), read_text(root, &over.path())) {
+                (Ok(left), Ok(right)) => (left, right),
+                (left, right) => {
+                    violations.extend(left.err());
+                    violations.extend(right.err());
+                    continue;
+                }
             };
             if outside_placeholders(&left) == outside_placeholders(&right) {
                 violations.push(format!(
@@ -535,10 +523,6 @@ fn game_names_outside_placeholders(line: &str) -> Vec<String> {
         rest = remainder;
     }
     spelled
-}
-
-pub(crate) fn descriptor_handles(descriptor: &str) -> Option<usize> {
-    ravel_minecraft_generate::descriptor_handle_count(descriptor).ok()
 }
 
 impl Shape {

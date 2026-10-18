@@ -1,13 +1,18 @@
 //! Fixture descriptor validation, archive verification, and reconstruction.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zip::ZipArchive;
+use zip::read::{ZipFile, ZipFileEntry};
+use zip::result::{ZipError, ZipResult};
+use zip::unstable::stream::{ZipStreamReader, ZipStreamVisitor};
 
 use crate::error::FixtureError;
 use crate::hex_digest;
@@ -149,70 +154,89 @@ pub fn verify_fixture_archive(
     let archive_hash = sha256_file(archive_path)?;
     require_hash("fixture archive", &descriptor.source.sha256, &archive_hash)?;
 
-    let output = Command::new("unzip")
-        .arg("-p")
-        .arg(archive_path)
-        .arg(&descriptor.manifest.entry)
-        .output()
-        .map_err(|error| FixtureError::Archive(format!("cannot execute unzip: {error}")))?;
-    if !output.status.success() {
-        return Err(FixtureError::Archive(format!(
-            "cannot read {} from {}",
-            descriptor.manifest.entry,
-            archive_path.display()
-        )));
-    }
+    let file = File::open(archive_path)
+        .map_err(|error| FixtureError::Archive(format!("cannot open archive: {error}")))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| FixtureError::Archive(format!("cannot read archive: {error}")))?;
+    let mut manifest_bytes = Vec::new();
+    archive
+        .by_name(&descriptor.manifest.entry)
+        .map_err(|error| FixtureError::Archive(format!("cannot open manifest: {error}")))?
+        .read_to_end(&mut manifest_bytes)
+        .map_err(|error| FixtureError::Archive(format!("cannot read manifest: {error}")))?;
 
-    let manifest_hash = sha256_bytes(&output.stdout);
+    let manifest_hash = sha256_bytes(&manifest_bytes);
     require_hash(
         "fixture manifest",
         &descriptor.manifest.sha256,
         &manifest_hash,
     )?;
-    let manifest: CurseForgeManifest = serde_json::from_slice(&output.stdout).map_err(|error| {
-        FixtureError::Json(format!(
-            "cannot parse {} from {}: {error}",
-            descriptor.manifest.entry,
-            archive_path.display()
-        ))
-    })?;
+    let manifest: CurseForgeManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(|error| {
+            FixtureError::Json(format!(
+                "cannot parse {} from {}: {error}",
+                descriptor.manifest.entry,
+                archive_path.display()
+            ))
+        })?;
 
     let mut verified = verify_manifest(&descriptor.manifest, &manifest)?;
-    verified.override_jar_count = count_override_jars(archive_path)?;
+    verified.override_jar_count = count_override_jars(archive, &descriptor.manifest.entry)?;
     Ok(verified)
 }
 
-fn count_override_jars(archive: &Path) -> Result<usize, FixtureError> {
-    let output = Command::new("unzip")
-        .arg("-Z1")
-        .arg(archive)
-        .output()
-        .map_err(|error| FixtureError::Archive(format!("cannot execute unzip: {error}")))?;
-    if !output.status.success() {
-        return Err(FixtureError::Archive(format!(
-            "cannot list entries in {}",
-            archive.display()
-        )));
+fn count_override_jars(archive: ZipArchive<File>, manifest: &str) -> Result<usize, FixtureError> {
+    let central_start = archive.central_directory_start();
+    let mut file = archive.into_inner();
+    file.seek(SeekFrom::Start(central_start))
+        .map_err(|error| FixtureError::Archive(format!("cannot seek archive: {error}")))?;
+    let mut visitor = OverrideJars {
+        jars: HashSet::new(),
+        manifest,
+        manifest_seen: false,
+    };
+    // Visit central metadata, not file_names(): ZipArchive collapses duplicate names.
+    ZipStreamReader::new(file)
+        .visit(&mut visitor)
+        .map_err(|error| FixtureError::Archive(format!("cannot list archive entries: {error}")))?;
+    Ok(visitor.jars.len())
+}
+
+struct OverrideJars<'a> {
+    jars: HashSet<String>,
+    manifest: &'a str,
+    manifest_seen: bool,
+}
+
+impl ZipStreamVisitor for OverrideJars<'_> {
+    fn visit_file<R: Read>(&mut self, _file: &mut ZipFile<'_, R>) -> ZipResult<()> {
+        Err(ZipError::InvalidArchive(Cow::Borrowed(
+            "local entry found in the central directory",
+        )))
     }
-    let entries = std::str::from_utf8(&output.stdout)
-        .map_err(|error| FixtureError::Archive(format!("non-UTF-8 archive entries: {error}")))?;
-    let mut jars = HashSet::new();
-    for entry in entries.lines() {
+
+    fn visit_additional_metadata(&mut self, metadata: &ZipFileEntry<'_>) -> ZipResult<()> {
+        let entry = metadata.name()?;
+        if entry == self.manifest && std::mem::replace(&mut self.manifest_seen, true) {
+            return Err(ZipError::InvalidArchive(Cow::Owned(format!(
+                "duplicate fixture manifest {entry}"
+            ))));
+        }
         let Some(name) = entry.strip_prefix("overrides/mods/") else {
-            continue;
+            return Ok(());
         };
         if is_safe_component(name)
             && Path::new(name)
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
-            && !jars.insert(name)
+            && !self.jars.insert(name.to_owned())
         {
-            return Err(FixtureError::Archive(format!(
+            return Err(ZipError::InvalidArchive(Cow::Owned(format!(
                 "duplicate bundled override jar {entry}"
-            )));
+            ))));
         }
+        Ok(())
     }
-    Ok(jars.len())
 }
 
 /// Downloads and verifies the pinned archive under the ignored fixture root.

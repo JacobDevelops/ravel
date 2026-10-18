@@ -177,6 +177,9 @@ fn redaction_rejects_sensitive_values_nested_in_objects_and_arrays() {
     for value in [
         serde_json::json!({"outer": [{"inner": "/home/operator/instance"}]}),
         serde_json::json!({"outer": [{"inner": "tests/fixtures/local/private.json"}]}),
+        serde_json::json!({"outer": [{"inner": r"C:\Users\operator\instance"}]}),
+        serde_json::json!({"outer": [{"inner": r"D:\Users\operator\instance"}]}),
+        serde_json::json!({"outer": [{"inner": "D:/Users/operator/instance"}]}),
         serde_json::json!({"outer": [{"inner": "evidence/private/capture.log"}]}),
         serde_json::json!({"outer": [{"inner": {"password": "secret"}}]}),
         serde_json::json!({"outer": {"accessToken": [{"nested": "secret"}]}}),
@@ -192,11 +195,34 @@ fn redaction_rejects_sensitive_values_nested_in_objects_and_arrays() {
 }
 
 #[test]
+fn redaction_uses_the_shared_credential_detector_for_ordinary_strings() {
+    for text in [
+        [
+            "eyJhbGciOiJIUzI1NiJ9",
+            "eyJzdWIiOiJmaXh0dXJlIn0",
+            "signature",
+        ]
+        .join("."),
+        ["ghp", "fixture-value"].join("_"),
+    ] {
+        assert!(ravel_observability::contains_credential(&text));
+        let mut violations = Vec::new();
+        verify_redaction_value(
+            &serde_json::json!({"outer": [{"inner": text}]}),
+            "record",
+            &mut violations,
+        );
+        assert_eq!(violations, ["record contains sensitive or local data"]);
+    }
+}
+
+#[test]
 fn redaction_preserves_safe_nested_values_and_empty_credential_fields() {
     let value = serde_json::json!({
         "outer": [{"inner": "evidence/m4/manifest.json"}, null, false, 42],
         "password": {"empty": ["", null, false, 0]},
-        "escaped\"key": {"line\nbreak": "public evidence"}
+        "escaped\"key": {"line\nbreak": "public evidence"},
+        "description": "The token and password fields are empty; access_token is an identifier.",
     });
     let original = value.clone();
     let mut violations = Vec::new();

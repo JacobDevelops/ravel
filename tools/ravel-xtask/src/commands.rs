@@ -28,7 +28,7 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
             return matrix_eligibility(root, version);
         }
         [host, build, instance, cache, minecraft] if host == "host" && build == "build" => {
-            return operation(build_host(
+            return report_outcome(build_host(
                 Path::new(instance),
                 root,
                 Path::new(cache),
@@ -36,21 +36,21 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
             ));
         }
         [fixture, reconstruct] if fixture == "fixture" && reconstruct == "reconstruct" => {
-            return operation(reconstruct_fixture(root, &root.join(DEFAULT_DESCRIPTOR)));
+            return report_outcome(reconstruct_fixture(root, &root.join(DEFAULT_DESCRIPTOR)));
         }
         [fixture, reconstruct, descriptor]
             if fixture == "fixture" && reconstruct == "reconstruct" =>
         {
-            return operation(reconstruct_fixture(root, Path::new(descriptor)));
+            return report_outcome(reconstruct_fixture(root, Path::new(descriptor)));
         }
         [fixture, verify] if fixture == "fixture" && verify == "verify" => {
-            return operation(verify_archive(
+            return report_outcome(verify_archive(
                 &root.join(DEFAULT_DESCRIPTOR),
                 &root.join(DEFAULT_ARCHIVE),
             ));
         }
         [fixture, verify, descriptor, archive] if fixture == "fixture" && verify == "verify" => {
-            return operation(verify_archive(Path::new(descriptor), Path::new(archive)));
+            return report_outcome(verify_archive(Path::new(descriptor), Path::new(archive)));
         }
         [generate, java] if generate == "generate" && java == "java" => {
             return generate_sources(root, false);
@@ -90,7 +90,7 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    verification(subject, violations)
+    report_violations(subject, violations)
 }
 
 fn matrix_eligibility(root: &Path, version: &str) -> ExitCode {
@@ -106,7 +106,7 @@ fn matrix_eligibility(root: &Path, version: &str) -> ExitCode {
     }
 }
 
-fn verification(subject: &str, violations: Vec<String>) -> ExitCode {
+fn report_violations(subject: &str, violations: Vec<String>) -> ExitCode {
     if violations.is_empty() {
         println!("Ravel {subject} verification passed.");
         ExitCode::SUCCESS
@@ -119,7 +119,7 @@ fn verification(subject: &str, violations: Vec<String>) -> ExitCode {
     }
 }
 
-fn operation(result: Result<(), Box<dyn Error>>) -> ExitCode {
+fn report_outcome(result: Result<(), Box<dyn Error>>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

@@ -6,14 +6,31 @@ use std::process::Command;
 
 use serde_json::Value;
 
-pub(crate) type Rule = fn(&Value) -> bool;
-pub(crate) type Figure = fn(&Value) -> Option<Value>;
-
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("cannot read JSON {}: {error}", redacted_path(path)))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("cannot parse JSON {}: {error}", redacted_path(path)))
+}
+
+pub(crate) fn read_text(root: &Path, path: &Path) -> Result<String, String> {
+    let rooted;
+    let resolved = if path.is_absolute() || path.starts_with(root) {
+        path
+    } else {
+        rooted = root.join(path);
+        &rooted
+    };
+    fs::read_to_string(resolved)
+        .map_err(|error| format!("cannot read {}: {error}", relative_label(root, path)))
+}
+
+pub(crate) fn relative_label(root: &Path, path: &Path) -> String {
+    let label = path.strip_prefix(root).map_or_else(
+        |_| redacted_path(path),
+        |relative| relative.display().to_string(),
+    );
+    label.replace('\\', "/")
 }
 
 pub(crate) fn array<'a>(value: &'a Value, pointer: &str) -> &'a [Value] {
@@ -32,60 +49,6 @@ pub(crate) fn nonempty(value: &Value, pointer: &str) -> bool {
         .pointer(pointer)
         .and_then(Value::as_str)
         .is_some_and(|text| !text.is_empty())
-}
-
-pub(crate) fn work_packages(value: &Value, expected: &[&str]) -> bool {
-    let mut packages = array(value, "/workPackages")
-        .iter()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    packages.sort_unstable();
-    array(value, "/workPackages").len() == expected.len() && packages == expected
-}
-
-/// Matches the complete result-name set under its recorded protocol.
-/// Expected names must be sorted, just like work-package identifiers.
-pub(crate) fn benchmark_results(value: &Value, protocol: &str, expected: &[&str]) -> bool {
-    let results = array(value, "/benchmarks/results");
-    let mut names = results
-        .iter()
-        .filter_map(|row| row["name"].as_str())
-        .collect::<Vec<_>>();
-    names.sort_unstable();
-    value["benchmarks"]["protocolVersion"] == protocol
-        && results.len() == expected.len()
-        && names == expected
-}
-
-pub(crate) fn closed_gates(value: &Value, closure_row: &str, count: usize) -> bool {
-    let Some(gates) = value
-        .pointer("/environment/settings/gateStatus")
-        .and_then(Value::as_object)
-    else {
-        return false;
-    };
-    array(value, "/workPackages")
-        .iter()
-        .all(|package| package.as_str().is_some_and(|id| gates.contains_key(id)))
-        && gates
-            .iter()
-            .filter(|(id, _)| id.as_str() != closure_row)
-            .count()
-            == count
-        && gates
-            .iter()
-            .filter(|(id, _)| id.as_str() != closure_row)
-            .all(|(_, gate)| gate["status"] == "closed" && nonempty(gate, "/evidence"))
-}
-
-pub(crate) fn native_attestation(value: &Value, workload: &str) -> bool {
-    array(value, "/attestations").iter().any(|attestation| {
-        attestation["platform"] == "linux"
-            && attestation["architecture"] == "x86_64"
-            && array(attestation, "/workloads")
-                .iter()
-                .any(|recorded| recorded == workload)
-    })
 }
 
 pub(crate) fn redacted_path(path: &Path) -> String {
@@ -122,10 +85,6 @@ pub(crate) fn schema_matches(root: &Path, schema: &str, document: &Path) -> Resu
             String::from_utf8_lossy(&output.stderr).trim()
         )),
     }
-}
-
-pub(crate) fn evidence_schema_matches(root: &Path, manifest: &Path) -> Result<bool, String> {
-    schema_matches(root, "schemas/evidence.schema.json", manifest)
 }
 
 #[cfg(test)]

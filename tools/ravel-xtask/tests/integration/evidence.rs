@@ -134,11 +134,19 @@ fn a_milestone_cannot_close_over_a_record_stating_another_verdict() {
         root.join("schemas/evidence.schema.json"),
     )
     .expect("evidence schema should be copied");
-    fs::copy(
-        fixture("complete-m0.json"),
-        root.join("evidence/m0/manifest.json"),
-    )
-    .expect("manifest should be copied");
+    // The manifest must bind the failing record's exact bytes, or the digest check refuses the
+    // record before its verdict is ever read.
+    let manifest =
+        fs::read_to_string(fixture("complete-m0.json")).expect("complete fixture must be readable");
+    let bound = manifest.replace(
+        "7ff53aa056ac677eb13144601ef020f76372948979a51c7b2edd2edc1e6a0a53",
+        "5fcc61bd66ab279caaa7ec4d95d65cc532deee32d8a74ce93a04cb0cdd4ded44",
+    );
+    assert_ne!(
+        manifest, bound,
+        "fixture must bind the synthetic review record"
+    );
+    fs::write(root.join("evidence/m0/manifest.json"), bound).expect("manifest should be writable");
     fs::write(
         root.join("evidence/m0/synthetic-review.md"),
         "Result: FAIL\n",

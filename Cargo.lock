@@ -649,23 +649,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "ravel-test-mod-dependency-base"
-version = "0.0.0"
-
-[[package]]
-name = "ravel-test-mod-dependency-consumer"
-version = "0.0.0"
-
-[[package]]
 name = "ravel-test-mod-events"
 version = "0.0.0"
 dependencies = [
  "ravel-sdk",
 ]
-
-[[package]]
-name = "ravel-test-mod-failure-cases"
-version = "0.0.0"
 
 [[package]]
 name = "ravel-test-mod-inter-mod-service"
@@ -786,6 +774,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "zip",
 ]
 
 [[package]]

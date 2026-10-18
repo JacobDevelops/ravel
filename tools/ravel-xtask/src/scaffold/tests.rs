@@ -5,11 +5,12 @@ use crate::scaffold::{
     declares_unsafe_prohibition, maintained_rust_roots, required_scaffold_paths,
     verify_ignored_boundaries, verify_production_fences, verify_scaffold, verify_testkit_fence,
 };
-use crate::test_support::{temporary_root, version_directory};
+use crate::test_support::{adapter_document, temporary_root, version_directory};
 
 #[test]
 fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
     let root = temporary_root("fence-unsafe");
+    seed_production_manifests(&root);
     let crate_root = root.join("crates/ravel-bootstrap/src");
     fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
     fs::write(
@@ -48,18 +49,18 @@ fn invalid_adapters_are_reported_once_by_the_overall_scaffold_check() {
     for (label, adapter, diagnostic) in [
         (
             "scaffold-invalid-toml",
-            "not valid TOML",
-            "cannot parse minecraft/versions/26.1.2/adapter.toml",
+            "not valid TOML".to_owned(),
+            "cannot parse adapter.toml",
         ),
         (
             "scaffold-invalid-eligibility",
-            "minecraft = '26.1.2'\neligibility = 'unsupported'\n",
-            "Minecraft 26.1.2 has invalid eligibility",
+            adapter_document("26.1.2", "live", None).replace("'live'", "'unsupported'"),
+            "unknown variant `unsupported`, expected `live` or `generation-only`",
         ),
         (
             "scaffold-reserved-eligibility",
-            "minecraft = '26.1.2'\neligibility = 'generation-only'\n",
-            "Minecraft 26.1.2 must retain live eligibility",
+            adapter_document("26.1.2", "live", None).replace("'live'", "'generation-only'"),
+            "generation-only eligibility requires legacy-1-12",
         ),
     ] {
         let root = temporary_root(label);
@@ -79,6 +80,30 @@ fn invalid_adapters_are_reported_once_by_the_overall_scaffold_check() {
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
+}
+
+#[test]
+fn unreadable_production_text_reports_the_read_failure() {
+    let root = temporary_root("fence-unreadable");
+    let directory = root.join("crates/ravel-bootstrap/src");
+    fs::create_dir_all(&directory).expect("crate directory should be creatable");
+    for path in [
+        directory.join("lib.rs"),
+        directory.parent().expect("crate root").join("Cargo.toml"),
+    ] {
+        fs::write(&path, [0xff]).expect("invalid UTF-8 fixture should be writable");
+        let mut violations = Vec::new();
+        verify_production_fences(&root, &mut violations);
+        let relative = crate::json::relative_label(&root, &path);
+        assert!(
+            violations
+                .iter()
+                .any(|error| error.starts_with(&format!("cannot read {relative}:"))),
+            "{violations:?}"
+        );
+        fs::remove_file(path).expect("fixture should be removable");
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
@@ -132,6 +157,7 @@ fn the_unsafe_prohibition_must_be_the_attribute_and_not_a_doc_comment() {
 #[test]
 fn production_crates_cannot_depend_on_the_test_harness() {
     let root = temporary_root("fence-testkit");
+    seed_production_manifests(&root);
     let crate_root = root.join("crates/ravel-loader");
     fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
     fs::write(
@@ -171,6 +197,7 @@ fn every_registry_mod_obeys_production_fences() {
     let root = temporary_root("registry-fences");
 
     for name in REGISTRY_MOD_NAMES {
+        seed_production_manifests(&root);
         let directory = format!("registry/mods/{name}");
         let manifest = format!("{directory}/Cargo.toml");
         let source = format!("{directory}/src/lib.rs");
@@ -229,4 +256,21 @@ fn unlisted_crates_and_registry_mods_cannot_escape_inventory_checks() {
         );
     }
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn seed_production_manifests(root: &std::path::Path) {
+    for relative in required_scaffold_paths() {
+        if !relative.ends_with("/Cargo.toml") {
+            continue;
+        }
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().expect("manifest directory"))
+            .expect("manifest directory should be creatable");
+        fs::write(
+            path,
+            "[package]\nname = 'fence-fixture'\nversion = '0.0.0'\nedition = '2024'\n\
+             [lints.rust]\nunsafe_code = 'forbid'\n",
+        )
+        .expect("production manifest should be writable");
+    }
 }

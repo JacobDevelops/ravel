@@ -1,13 +1,13 @@
 //! M2 closure rules.
 
-use std::fs;
 use std::path::Path;
 
 use serde_json::Value;
 
 use crate::evidence::closure::verify_closure_records;
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{Rule, array, benchmark_results, nonempty, number, read_json, work_packages};
+use crate::evidence::rules::{Rule, has_exact_benchmark_results, has_exact_work_packages};
+use crate::json::{array, nonempty, number, read_json, read_text};
 
 const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
 
@@ -33,7 +33,7 @@ pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            work_packages(
+            has_exact_work_packages(
                 value,
                 &[
                     "M2-W1", "M2-W2", "M2-W3", "M2-W4", "M2-W5", "M2-W6", "M2-W7", "M2-W8",
@@ -46,7 +46,7 @@ pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            benchmark_results(
+            has_exact_benchmark_results(
                 value,
                 "m2-loader-budget-v1",
                 &[
@@ -147,6 +147,10 @@ fn m2_prism_launch(value: &Value) -> bool {
         && value["instance"]["withoutAnotherLoader"] == true
 }
 
+pub(crate) fn verify_m2_integrity(root: &Path, _: &Value, violations: &mut Vec<String>) {
+    verify_void_limits(root, violations);
+}
+
 pub(crate) fn verify_void_limits(root: &Path, violations: &mut Vec<String>) {
     let record = match read_json(&root.join(BUDGET_RECORD)) {
         Ok(record) => record,
@@ -156,10 +160,10 @@ pub(crate) fn verify_void_limits(root: &Path, violations: &mut Vec<String>) {
         }
     };
     let recorded = array(&record, "/budget/limits");
-    let roadmap = match fs::read_to_string(root.join("ROADMAP.md")) {
+    let roadmap = match read_text(root, Path::new("ROADMAP.md")) {
         Ok(roadmap) => roadmap,
         Err(error) => {
-            violations.push(format!("cannot read ROADMAP.md: {error}"));
+            violations.push(error);
             return;
         }
     };

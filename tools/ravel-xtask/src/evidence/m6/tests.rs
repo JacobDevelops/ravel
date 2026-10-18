@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::evidence::closure::verify_record_arithmetic;
+use crate::evidence::closure::verify_arithmetic;
 use std::path::PathBuf;
 
 use crate::json::read_json;
@@ -97,8 +97,9 @@ fn a_balanced_counterpart_summary_closes_its_own_arithmetic() {
     );
     let mut violations = Vec::new();
 
-    verify_record_arithmetic(
-        &root,
+    verify_arithmetic(
+        &read_json(&root.join("evidence/m6/counterpart-summary.json"))
+            .expect("summary should parse"),
         "evidence/m6/counterpart-summary.json",
         M6_ARITHMETIC,
         &mut violations,
@@ -333,8 +334,9 @@ fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
         );
         let mut violations = Vec::new();
 
-        verify_record_arithmetic(
-            &root,
+        verify_arithmetic(
+            &read_json(&root.join("evidence/m6/counterpart-summary.json"))
+                .expect("summary should parse"),
             "evidence/m6/counterpart-summary.json",
             M6_ARITHMETIC,
             &mut violations,

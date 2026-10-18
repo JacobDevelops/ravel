@@ -32,15 +32,46 @@ pub(crate) fn version_directory(root: &Path, version: &str, without: &[&str]) {
                  \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
                  \"net.minecraft.client.One\"\n"
             ),
-            "adapter.toml" => format!(
-                "schemaVersion = 1\nminecraft = \"{version}\"\n\n[packFormat]\n\
-                 resource = 1\nresourceMinor = 0\ndata = 2\ndataMinor = 0\n\
-                 spelling = \"pack-format\"\n"
-            ),
+            "adapter.toml" => adapter_document(version, "live", None),
             _ => format!("schemaVersion = 1\nminecraft = \"{version}\"\n"),
         };
         fs::write(directory.join(file), text).expect("version data should be writable");
     }
+}
+
+pub(crate) fn adapter_document(version: &str, eligibility: &str, mapping: Option<&str>) -> String {
+    let (legacy, data_fixer, resource, data) = if eligibility == "generation-only" {
+        (
+            "capabilities = ['legacy-1-12']\nsourceJavaRelease = 8\n",
+            "",
+            3,
+            0,
+        )
+    } else {
+        ("", "[inputs.dataFixerJar]\npath = 'data-fixer.jar'\n", 1, 2)
+    };
+    let (source, mappings) = mapping.map_or_else(
+        || ("unobfuscated-class-files", String::new()),
+        |path| {
+            (
+                "official-proguard-mappings",
+                format!("[inputs.clientMappings]\npath = '{path}'\n"),
+            )
+        },
+    );
+    format!(
+        "schemaVersion = 1\nminecraft = '{version}'\neligibility = '{eligibility}'\n\
+         javaRelease = 27\nmappingSource = '{source}'\n{legacy}\
+         [packFormat]\nresource = {resource}\nresourceMinor = 0\ndata = {data}\ndataMinor = 0\n\
+         spelling = 'pack-format'\n{mappings}{data_fixer}\
+         [inputs.clientJar]\npath = 'client.jar'\n\
+         [inputs.versionManifest]\npath = 'version.json'\n\
+         [inputs.hookInventory]\npath = 'minecraft/versions/{version}/hooks.toml'\n\
+         [inputs.stubSeeds]\npath = 'minecraft/versions/{version}/stubs.toml'\n\
+         [inputs.reflectiveSurface]\npath = 'minecraft/versions/{version}/reflection.toml'\n\
+         [inputs.mappingsLock]\npath = 'minecraft/versions/{version}/mappings.lock'\n\
+         [inputs.stubsLock]\npath = 'minecraft/versions/{version}/stubs.lock'\n"
+    )
 }
 
 pub(crate) fn balanced_summary() -> String {

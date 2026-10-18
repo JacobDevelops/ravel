@@ -7,6 +7,7 @@ use crate::evidence::accounting::{
     verify_manifest_percentages, verify_review_blocking_counts, verify_review_round_counts,
 };
 use crate::evidence::records::verify_evidence_records;
+use crate::hooks::hook_inventories;
 use crate::inventory::{
     verify_example_inventory, verify_game_type_claims, verify_guide_enumerations,
     verify_hook_inventory_document, verify_inventory, verify_test_mod_inventory,
@@ -16,10 +17,10 @@ use crate::java_shape::{
     verify_hook_name_literals, verify_menu_row_placement, verify_screen_overrides,
     verify_screen_templates, verify_transformer_shape, verify_version_readmes,
 };
-use crate::json::read_json;
+use crate::json::{read_json, read_text, relative_label};
 use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
-    hook_inventories, verify_version_boundary, verify_version_directories,
+    tracked_versions, verify_version_boundary, verify_version_directories,
 };
 use crate::{CRATE_NAMES, EXAMPLE_NAMES, REGISTRY_MOD_NAMES, TEST_MOD_NAMES};
 
@@ -122,16 +123,17 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     for relative in maintained_rust_roots(root) {
-        match fs::read_to_string(root.join(&relative)) {
+        match read_text(root, Path::new(&relative)) {
             Ok(source) if declares_unsafe_prohibition(&source) => {}
             Ok(_) => violations.push(format!("missing unsafe prohibition: {relative}")),
-            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+            Err(error) => violations.push(error),
         }
     }
 
     verify_ignored_boundaries(root, &mut violations);
     let eligibility = verify_version_directories(root, &mut violations);
-    let inventories = hook_inventories(root);
+    let versions = tracked_versions(root).unwrap_or_default();
+    let inventories = hook_inventories(root, &versions);
     verify_hook_inventory_document(root, &inventories, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_review_blocking_counts(root, &mut violations);
@@ -203,8 +205,12 @@ fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
         ]);
 
     for relative in production_manifests {
-        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
-            continue;
+        let manifest = match read_text(root, Path::new(&relative)) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         if manifest.contains(r#"unsafe_code = "allow""#) {
             violations.push(format!(
@@ -224,18 +230,22 @@ fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
             continue;
         }
 
-        if fs::read_to_string(&path).is_ok_and(|source| {
-            source.lines().map(str::trim_start).any(|line| {
-                line.starts_with("#![allow(unsafe_code)")
-                    || line.starts_with("#[allow(unsafe_code)")
-                    || line.starts_with("#![expect(unsafe_code)")
-                    || line.starts_with("#[expect(unsafe_code)")
-            })
+        let source = match read_text(root, &path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
+        };
+        if source.lines().map(str::trim_start).any(|line| {
+            line.starts_with("#![allow(unsafe_code)")
+                || line.starts_with("#[allow(unsafe_code)")
+                || line.starts_with("#![expect(unsafe_code)")
+                || line.starts_with("#[expect(unsafe_code)")
         }) {
-            let relative = path.strip_prefix(root).unwrap_or(&path);
+            let relative = relative_label(root, &path);
             violations.push(format!(
-                "unsafe code is permitted in a maintained crate: {}",
-                relative.display()
+                "unsafe code is permitted in a maintained crate: {relative}"
             ));
         }
     }
@@ -263,8 +273,12 @@ fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
         );
 
     for relative in fenced {
-        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
-            continue;
+        let manifest = match read_text(root, Path::new(&relative)) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
         };
         if manifest.contains("ravel-testkit") {
             violations.push(format!(
@@ -323,9 +337,12 @@ fn crate_example_roots(root: &Path) -> Vec<String> {
 
 fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {
     let gitignore_path = root.join(".gitignore");
-    let Ok(gitignore) = fs::read_to_string(&gitignore_path) else {
-        violations.push("cannot read .gitignore".to_owned());
-        return;
+    let gitignore = match read_text(root, &gitignore_path) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
     };
 
     if !gitignore.lines().any(|line| line.trim() == ".env") {

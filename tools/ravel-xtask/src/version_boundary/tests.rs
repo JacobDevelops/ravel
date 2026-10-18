@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::java_shape::REFLECTION_FILE;
-use crate::test_support::{temporary_root, version_directory};
+use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{
     SWEPT_SCOPE, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
     verify_version_boundary, verify_version_directories, version_class_names, version_directories,
@@ -15,9 +15,12 @@ fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
     let adapter = root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml"));
     fs::write(
         &adapter,
-        "minecraft = '1.12.2'\neligibility = 'generation-only'\n\
-         [inputs.clientMappings]\npath = 'mapping.tiny'\n\
-         [inputs.mappingIoJar]\npath = 'mapping-io.jar'\n",
+        format!(
+            "{}\n[mappingNamespaces]\nruntime = 'official'\nreviewed = 'named'\n\
+             [inputs.mappingIoJar]\npath = 'mapping-io.jar'\nsha256 = '0'\n",
+            adapter_document("1.12.2", "generation-only", Some("mapping.tiny"))
+                .replace("official-proguard-mappings", "feather-tiny-mappings")
+        ),
     )
     .expect("adapter should be writable");
     assert_eq!(
@@ -41,15 +44,25 @@ fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
 
 #[test]
 fn modern_versions_cannot_downgrade_or_misspell_eligibility() {
+    let root = temporary_root("modern-eligibility");
+    version_directory(&root, "26.1.2", &[]);
+    let adapter = root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml"));
+    let valid = adapter_document("26.1.2", "live", None);
     for eligibility in ["generation-only", "not-run", ""] {
-        let parsed = toml::from_str::<toml::Table>(&format!("eligibility = '{eligibility}'"))
-            .expect("valid TOML");
-        assert!(super::adapter_eligibility(&parsed, "26.1.2").is_err());
+        fs::write(
+            &adapter,
+            valid.replace("'live'", &format!("'{eligibility}'")),
+        )
+        .expect("adapter should be writable");
+        assert!(super::version_matrix(&root, "26.1.2").is_err());
     }
+    fs::write(&adapter, valid.replace("eligibility = 'live'\n", ""))
+        .expect("adapter should be writable");
     assert_eq!(
-        super::adapter_eligibility(&toml::Table::new(), "26.1.2").expect("default eligibility"),
-        ravel_minecraft_generate::Eligibility::Live
+        super::version_matrix(&root, "26.1.2").expect("default eligibility"),
+        "live"
     );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
@@ -58,7 +71,7 @@ fn a_scaffolded_modern_manifest_cannot_opt_out_of_live_coverage() {
     version_directory(&root, "26.1.2", &[]);
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml")),
-        "minecraft = '26.1.2'\neligibility = 'generation-only'\n",
+        adapter_document("26.1.2", "live", None).replace("'live'", "'generation-only'"),
     )
     .expect("adapter should be writable");
     assert!(super::version_matrix(&root, "26.1.2").is_err());
@@ -216,7 +229,7 @@ fn a_version_directory_declaring_another_versions_data_is_reported() {
     assert_eq!(violations.len(), VERSION_FILES.len() - 1, "{violations:?}");
     for violation in &violations {
         assert!(
-            violation.contains("declares Minecraft 26.1.2 while its directory is named 1.21.1"),
+            violation.contains("26.1.2") && violation.contains("1.21.1"),
             "{violations:?}"
         );
     }
@@ -229,67 +242,42 @@ fn a_version_declaring_no_pack_format_is_reported() {
     version_directory(&root, "26.1.2", &[]);
     let adapter = root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml"));
 
-    let full = "resource = 34 # resource format\nresourceMinor = 0\ndata = 48\ndataMinor = 0\n\
-                spelling = \"pack-format\" # spelling\n";
-    let without = |key: &str| -> String {
-        let mut kept = full
-            .lines()
-            .filter(|line| !line.starts_with(key))
-            .collect::<Vec<_>>()
-            .join("\n");
-        kept.push('\n');
-        kept
-    };
-    let mut cases: Vec<(String, String)> = vec![(
-        "schemaVersion = 1\nminecraft = \"26.1.2\"\n".to_owned(),
-        "declares no `[packFormat]`".to_owned(),
-    )];
+    let valid: toml::Table =
+        toml::from_str(&adapter_document("26.1.2", "live", None)).expect("valid typed adapter");
     for key in [
-        "resource = ",
+        "packFormat",
+        "resource",
         "resourceMinor",
-        "data = ",
+        "data",
         "dataMinor",
         "spelling",
     ] {
-        let named = key.trim_end_matches(" = ");
-        cases.push((
-            format!(
-                "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\n{}",
-                without(key)
-            ),
-            format!("without {named}"),
-        ));
-    }
-    for (written, expected) in &cases {
-        fs::write(&adapter, written).expect("version data should be writable");
+        let mut document = valid.clone();
+        if key == "packFormat" {
+            document.remove(key);
+        } else {
+            document
+                .get_mut("packFormat")
+                .expect("format table")
+                .as_table_mut()
+                .expect("format table")
+                .remove(key);
+        }
+        fs::write(
+            &adapter,
+            toml::to_string(&document).expect("serializable adapter"),
+        )
+        .expect("version data should be writable");
         let mut violations = Vec::new();
-
         verify_version_directories(&root, &mut violations);
-
-        assert_eq!(violations.len(), 1, "{written}: {violations:?}");
-        assert!(
-            violations[0].contains(expected),
-            "{written}: {violations:?}"
-        );
+        assert_eq!(violations.len(), 1, "{key}: {violations:?}");
+        assert!(violations[0].contains(key), "{key}: {violations:?}");
     }
-
-    fs::write(
-        &adapter,
-        format!("minecraft = '26.1.2' # version\n[packFormat] # formats\n{full}"),
-    )
-    .expect("version data should be writable");
-    let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
-    assert!(
-        violations.is_empty(),
-        "a table on the first line: {violations:?}"
-    );
-
-    version_directory(&root, "26.1.2", &[]);
+    fs::write(&adapter, adapter_document("26.1.2", "live", None))
+        .expect("version data should be writable");
     let mut violations = Vec::new();
     verify_version_directories(&root, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
-
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -309,8 +297,8 @@ fn a_version_file_declaring_no_version_is_reported() {
     assert_eq!(
         violations,
         [
-            "minecraft/versions/26.1.2/stubs.toml declares no `minecraft` version, so nothing \
-             holds it to the version minecraft/versions/26.1.2 is named for"
+            "minecraft/versions/26.1.2/stubs.toml declares no `minecraft` version for \
+             minecraft/versions/26.1.2"
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -376,7 +364,7 @@ fn unreadable_and_malformed_class_inventory_files_are_reported() {
     fs::create_dir(directory.join("hooks.toml")).expect("unreadable hook path should be creatable");
     fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
     let mut violations = Vec::new();
-    version_class_names(&[directory], &mut violations);
+    version_class_names(&root, &[directory], &mut violations);
     assert_eq!(violations.len(), 2, "{violations:?}");
     assert!(violations[0].contains("cannot read") && violations[0].contains("hooks.toml"));
     assert!(violations[1].contains("cannot parse") && violations[1].contains("stubs.toml"));
@@ -398,7 +386,7 @@ fn a_reflected_class_name_is_version_data_the_boundary_sweep_reads() {
     let directories = version_directories(&root, &[VERSION_DATA])
         .expect("version directories should be readable");
     let mut violations = Vec::new();
-    let classes = version_class_names(&directories, &mut violations);
+    let classes = version_class_names(&root, &directories, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
 
     assert!(
@@ -437,7 +425,7 @@ fn a_retired_declaration_is_a_violation_in_every_spelling() {
         assert!(
             violations
                 .iter()
-                .any(|violation| violation.contains("is retired")),
+                .any(|violation| violation.contains("unknown field `harness`")),
             "{label} raised no refusal; violations:\n{}",
             violations.join("\n")
         );
@@ -478,7 +466,16 @@ fn an_adapter_without_the_retired_table_is_accepted() {
         let mut violations = Vec::new();
         verify_version_directories(&root, &mut violations);
 
-        assert_eq!(violations, Vec::<String>::new(), "{label}");
+        if declaration.is_empty() {
+            assert!(violations.is_empty(), "{label}: {violations:?}");
+        } else {
+            assert!(
+                violations
+                    .iter()
+                    .any(|error| error.contains("unknown field `stubs`")),
+                "{label}: {violations:?}"
+            );
+        }
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 }

@@ -3,13 +3,14 @@
 use serde_json::Value;
 
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{array, work_packages};
+use crate::evidence::rules::has_exact_work_packages;
+use crate::json::array;
 
 pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>) {
     require_manifest_rule(
         manifest,
         |value| {
-            work_packages(
+            has_exact_work_packages(
                 value,
                 &[
                     "M0-W1", "M0-W2", "M0-W3", "M0-W4", "M0-W5", "M0-W6", "M0-W7", "M0-W8", "M0-W9",

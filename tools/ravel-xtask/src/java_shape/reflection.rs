@@ -1,13 +1,13 @@
 //! Declared reflective roles and their reachability from shared Java sources.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
 use ravel_minecraft_generate::Eligibility;
 use serde::Deserialize;
 
 use super::{AGENT_JAR_SOURCES, REFLECTION_FILE, java_sources};
+use crate::json::{read_text, relative_label};
 use crate::version_boundary::{VERSION_DATA, VersionEligibility};
 
 pub(super) const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
@@ -33,7 +33,7 @@ pub(super) fn reflective_surfaces(
     let mut surfaces = Vec::with_capacity(eligibility.len());
     for (version, &eligibility) in eligibility {
         let path = format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}");
-        match fs::read_to_string(root.join(&path)) {
+        match read_text(root, Path::new(&path)) {
             Ok(text) => match declared_roles(&text, &path) {
                 Ok(roles) => surfaces.push(ReflectiveSurface {
                     path,
@@ -42,7 +42,7 @@ pub(super) fn reflective_surfaces(
                 }),
                 Err(violation) => violations.push(violation),
             },
-            Err(error) => violations.push(format!("cannot read {path}: {error}")),
+            Err(error) => violations.push(error),
         }
     }
     surfaces
@@ -255,12 +255,8 @@ pub(crate) fn verify_persistence_reflection(
     let mut spelled: Vec<(String, String)> = Vec::new();
     let mut reached: Vec<(String, String)> = Vec::new();
     for path in &sources {
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        match fs::read_to_string(path) {
+        let relative = relative_label(root, path);
+        match read_text(root, path) {
             Ok(source) => {
                 for name in game_class_literals(&source) {
                     violations.push(format!(
@@ -282,7 +278,7 @@ pub(crate) fn verify_persistence_reflection(
                         .map(|member| (relative.clone(), member)),
                 );
             }
-            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+            Err(error) => violations.push(error),
         }
     }
 

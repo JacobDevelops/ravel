@@ -133,11 +133,29 @@ public final class Hook {
                 false),
     };
 
+    /** This fixture provides the modern Hook surface. */
+    public static final boolean LEGACY_ADAPTER = false;
+
     private static long invocations;
     private static long openCrossings;
     private static String openAggregate = "absent";
 
     private Hook() {
+    }
+
+    /** Modern inventories do not expand the legacy global palette. */
+    public static int legacyPaletteSize(int count) {
+        return count;
+    }
+
+    /** Modern inventories have no legacy palette-size call. */
+    public static boolean legacyPaletteSizeCall(String owner, String name, String descriptor) {
+        return false;
+    }
+
+    /** Modern inventories have no legacy palette field. */
+    public static boolean legacyPaletteField(String owner, String name, String descriptor) {
+        return false;
     }
 
     // Keep pack and staging coverage when only the save seam is intentionally missing.

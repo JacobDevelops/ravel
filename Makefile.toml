@@ -352,18 +352,23 @@ for version_directory in minecraft/versions/*/; do
   RAVEL_MINECRAFT_VERSION="$version" \
     cargo run --locked -p ravel-xtask -- generate java
   if [ "$eligibility" = "generation-only" ]; then
+    # The agent owns every source in generated/, including Hook and its
+    # bootstrap-runtime dependencies. build-screen compiles that source set
+    # through build-agent.sh, then compiles only generated screen sources
+    # against the game stubs; placing generated/ on the stub path would make
+    # Hook's real dependencies look like missing game stubs.
     ./jvm/build/build-screen.sh >/dev/null
-    generated="target/ravel-jvm/generated/dev/ravel/jvm"
-    release="$(cat "$generated/java-release.txt")"
-    mapfile -d '' generated_sources < <(find target/ravel-jvm/generated -name '*.java' -print0 | sort -z)
-    javac --release "$release" -Xlint:all -Werror \
-      -cp target/ravel-jvm/screen-stubs -d target/ravel-jvm/screen-stubs \
-      "${generated_sources[@]}"
     echo "compiled: Minecraft $version; generation-only, no harness run" | tee -a "$compiled"
     continue
   fi
   ./jvm/build/build-agent.sh >/dev/null
   ./jvm/build/build-screen.sh >/dev/null
+  if grep -q 'LEGACY_ADAPTER = true' target/ravel-jvm/generated/dev/ravel/jvm/Hook.java; then
+    # Legacy screen names resolve against their version-local stubs; modern signer
+    # and screen-loader obligations run in the legacy-specific harness instead.
+    echo "compiled: Minecraft $version" | tee -a "$compiled"
+    continue
+  fi
 
   # Every name the agent jar would open, opened, through the loader the
   # agent jar itself builds. Under an obfuscated version these have no
@@ -466,7 +471,13 @@ for version_directory in minecraft/versions/*/; do
   RAVEL_MINECRAFT_VERSION="$version" \
     cargo build --locked -p ravel-composed-host --release
   ./jvm/build/build-agent.sh
-  RAVEL_MINECRAFT_VERSION="$version" ./jvm/harness/run-harness.sh
+  if grep -q 'LEGACY_ADAPTER = true' target/ravel-jvm/generated/dev/ravel/jvm/Hook.java; then
+    ./jvm/build/build-screen.sh
+    RAVEL_MINECRAFT_VERSION="$version" bash jvm/harness/run-legacy-harness.sh
+    cp target/ravel-jvm/legacy-harness-sections.txt target/ravel-jvm/harness-sections.txt
+  else
+    RAVEL_MINECRAFT_VERSION="$version" ./jvm/harness/run-harness.sh
+  fi
 
   # The harness names the sections it reached, and it names them as it
   # reaches them, so a run that died halfway records what it proved rather
@@ -497,6 +508,56 @@ script_runner = "bash"
 script = '''
 set -euo pipefail
 bash jvm/legacy-platform/launch.sh server
+'''
+
+[tasks."ravel:legacy-agent-build"]
+description = "Generate and package the 1.12.2 premain/JNI artifacts; no live acceptance claim."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+export RAVEL_MINECRAFT_VERSION=1.12.2
+cargo run --locked -p ravel-xtask -- generate java
+cargo build --locked -p ravel-composed-host --release
+bash jvm/build/build-agent.sh
+bash jvm/build/build-screen.sh
+bash jvm/legacy-platform/launch.sh build
+'''
+
+[tasks."ravel:legacy-agent-client"]
+description = "Launch the official 1.12.2 client with the generated premain agent and native host."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+bash jvm/legacy-platform/launch.sh client-agent xvfb
+'''
+
+[tasks."ravel:legacy-agent-server"]
+description = "Launch the official 1.12.2 dedicated server with premain/JNI and no client natives."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+bash jvm/legacy-platform/launch.sh server-agent
+'''
+
+[tasks."ravel:legacy-agent-harness"]
+description = "Exercise legacy-specific JVM assertions without launching a display game."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+bash jvm/harness/run-legacy-harness.sh
+'''
+
+[tasks."ravel:legacy-agent-live"]
+description = "Run official client/server premain launches and require all reviewed hooks and harness obligations."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+python3 jvm/legacy-platform/tools/live.py
 '''
 
 [tasks."ravel:verify-stack"]

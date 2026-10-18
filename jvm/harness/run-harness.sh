@@ -141,8 +141,12 @@ remap "$ui"
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
 mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
-# Sweep bootstrap sources, replacing only Hook so this agent cannot load native code.
-mapfile -d '' agent_sources < <(find "$root/jvm/bootstrap" -name '*.java' -print0 | sort -z)
+# This fixture substitutes Hook, so compile the modern adapter closure rather
+# than sweeping legacy sources that require a legacy generated Hook surface.
+agent_sources=()
+for source in Boot Agent Transformer HookTarget Members Content Datapack Outward Persistence Screens; do
+	agent_sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java")
+done
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameMembers.java" \

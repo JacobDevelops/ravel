@@ -10,6 +10,36 @@ javac=(mise exec -- javac)
 parent_cp="$work/classes"
 module_path=""
 modules=org.lwjgl,org.lwjgl.glfw,org.lwjgl.opengl,org.lwjgl.openal
+action="${1:-}"
+agent_options=()
+suffix=""
+client_native_modules="$modules"
+server_native_options=()
+if [[ "$action" == client-agent || "$action" == server-agent ]]; then
+    action="${action%-agent}"
+    suffix="-agent"
+    agent="${RAVEL_LEGACY_AGENT:-$root/target/ravel-jvm/ravel-agent.jar}"
+    host="${RAVEL_LEGACY_HOST:-$root/target/release/libravel_bootstrap.so}"
+    [[ -f "$agent" && -f "$host" ]] || { echo 'Build the generated 1.12.2 agent and composed host first' >&2; exit 1; }
+    python3 "$module/tools/agent.py" "$agent"
+    module_path="$agent"
+    client_native_modules="$modules,dev.ravel.agent"
+    server_native_options=(--module-path "$agent" --enable-native-access=dev.ravel.agent)
+    agent_options=(--add-modules dev.ravel.agent "-javaagent:$agent"
+        "-Dravel.host=$host" -Dravel.report.targets=true -Dravel.report.loader=true
+        -Dravel.legacy.acceptance=true -Dravel.legacy.proof=true)
+    if [[ -n "${RAVEL_LEGACY_PROBES:-}" ]]; then
+        agent_options+=(--patch-module "dev.ravel.agent=$RAVEL_LEGACY_PROBES"
+            -Dravel.legacy.serverProbe=dev.ravel.jvm.LegacyServerLive
+            -Dravel.legacy.clientProbe=dev.ravel.jvm.LegacyClientLive)
+    fi
+    if [[ -n "${RAVEL_LEGACY_SERVER:-}" ]]; then
+        agent_options+=("-Dravel.legacy.server=$RAVEL_LEGACY_SERVER")
+    fi
+    if [[ -n "${RAVEL_PACKET_LIVE:-}" ]]; then
+        agent_options+=("-Dravel.packet.live=$RAVEL_PACKET_LIVE")
+    fi
+fi
 api_jars=()
 while read -r digest filename; do
     [[ -z "$digest" || "$digest" == \#* ]] && continue
@@ -63,17 +93,17 @@ if [[ ! -f "$work/classes/dev/ravel/legacy/launch/LegacyLauncher.class" ]]; then
     echo 'Run jvm/legacy-platform/launch.sh build first' >&2
     exit 1
 fi
-jvm=("${modular[@]}" "--enable-native-access=$modules" -Xmx2G
+jvm=("${modular[@]}" "--enable-native-access=$client_native_modules" "${agent_options[@]}" -Xmx2G
     -XX:ErrorFile="$work/hs_err_pid%p.log"
     -Djava.library.path="$work/natives" -Dlog4j2.formatMsgNoLookups=true -cp "$parent_cp"
     dev.ravel.legacy.launch.LegacyLauncher)
-case "${1:-}" in
+case "$action" in
     client)
         mode="${2:-xvfb}"
         [[ "$mode" == xvfb || "$mode" == display ]] || { echo 'client mode must be xvfb or display' >&2; exit 1; }
         python3 "$module/tools/acquire.py" --assets
-        game="$work/client-$mode"
-        evidence="$work/evidence-$mode"
+        game="$work/client-$mode$suffix"
+        evidence="$work/evidence-$mode$suffix${RAVEL_LEGACY_EVIDENCE_SUFFIX:-}"
         mkdir -p "$game" "$evidence"
         rm -f "$evidence/automation.complete"
         : > "$evidence/player-states.txt"
@@ -83,13 +113,16 @@ case "${1:-}" in
             --version 1.12.2 --gameDir "$game" --assetsDir "$work/assets" --assetIndex 1.12
             --username RavelLegacy --uuid 00000000000000000000000000000001 --accessToken 0
             --userType legacy --versionType release --width 854 --height 480)
-        if [[ "$mode" == xvfb ]]; then
-            export LIBGL_ALWAYS_SOFTWARE=1
-            timeout --kill-after=10s 300s xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX' \
-                "${command[@]}" 2>&1 | tee "$evidence/client.log"
-        else
-            timeout --kill-after=10s 300s "${command[@]}" 2>&1 | tee "$evidence/client.log"
-        fi
+        (
+            if [[ -n "$suffix" ]]; then cd "$game"; fi
+            if [[ "$mode" == xvfb ]]; then
+                export LIBGL_ALWAYS_SOFTWARE=1
+                timeout --kill-after=10s 300s xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX' \
+                    "${command[@]}"
+            else
+                timeout --kill-after=10s 300s "${command[@]}"
+            fi
+        ) 2>&1 | tee "$evidence/client.log"
         test -f "$evidence/automation.complete"
         if grep -Eq '/(ERROR|FATAL)\]|\[STDERR\]:' "$evidence/client.log"; then
             echo 'Client reported a runtime error' >&2
@@ -116,15 +149,16 @@ case "${1:-}" in
             2>&1 | tee "$evidence/audio.log"
         ;;
     server)
-        game="$work/dedicated"
+        game="$work/dedicated$suffix"
+        evidence="$work/evidence-server$suffix${RAVEL_LEGACY_EVIDENCE_SUFFIX:-}"
         mkdir -p "$game"
         printf 'eula=true\n' > "$game/eula.txt"
         printf 'level-seed=8675309\nlevel-name=ravel-legacy\nonline-mode=false\nserver-ip=127.0.0.1\nserver-port=25586\nview-distance=2\nmax-tick-time=120000\n' > "$game/server.properties"
-        python3 "$module/tools/server.py" "$game" "${java[@]}" \
-            --illegal-native-access=deny -Xmx2G -Dlog4j2.formatMsgNoLookups=true \
-            "-Xlog:library=info:file=$work/evidence-server/libraries.log" \
+        RAVEL_LEGACY_EVIDENCE="$evidence" python3 "$module/tools/server.py" "$game" "${java[@]}" \
+            --illegal-native-access=deny "${server_native_options[@]}" "${agent_options[@]}" -Xmx2G -Dlog4j2.formatMsgNoLookups=true \
+            "-Xlog:library=info:file=$evidence/libraries.log" \
             -cp "$work/classes" dev.ravel.legacy.launch.LegacyLauncher \
-            server "$work/server-classpath.txt" "$work/evidence-server" nogui
+            server "$work/server-classpath.txt" "$evidence" nogui
         ;;
-    *) echo 'usage: launch.sh build | client xvfb | client display | native-audit | server' >&2; exit 1 ;;
+    *) echo 'usage: launch.sh build | client xvfb|display | client-agent xvfb|display | native-audit | server | server-agent' >&2; exit 1 ;;
 esac

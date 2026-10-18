@@ -74,9 +74,84 @@ the scanned surface. The explicit `ravel:legacy-client` and
 `ravel:legacy-server` tasks perform the live workload; compilation alone is not
 live acceptance.
 
+### Explicit premain/JNI launches
+
+The vanilla commands above remain the baseline and do not load the agent.
+Generate and package the legacy artifacts immediately before agent launches:
+the shared `target/ravel-jvm` output is overwritten by generation for another version.
+
+```console
+mise exec -- cargo make ravel:legacy-agent-build
+mise exec -- cargo make ravel:legacy-agent-client
+mise exec -- cargo make ravel:legacy-agent-server
+```
+
+For complete agent acceptance, run the two commands below serially in the same
+exclusive live-test session. Do not run display or server tasks concurrently;
+the live task owns its server and connected-client lifecycle and port `25586`.
+It uses Xvfb, not the user's `:0` desktop.
+
+```console
+mise exec -- cargo make ravel:legacy-agent-harness
+mise exec -- cargo make ravel:legacy-agent-live
+```
+
+The harness is display-free. Its thirteen sections are `cluster`, `content`,
+`hierarchy`, `initialization`, `load`, `members`, `outward`, `persistence`,
+`refusal`, `screens`, `settings`, `side`, and `transformation`. Generic
+transformation/refusal/loader/side fixtures retain the actual generated hook
+and JNI boundary. Legacy-specific fixtures use the pinned official classes,
+real admitted content and numeric IDs, metadata arguments/results, actual NBT
+storage plus native migration/reopen/refusal, and generated settings/menu
+screens. Settings includes a separate noneditable dedicated-authority row.
+Offline `outward` proves JNI queue encoding, exactly-once drain, source
+registration and refusal; it does **not** claim sound playback or rendering.
+Sections are recorded only after their assertions pass, never from a requested
+section list.
+
+The live task reruns those fixtures, then drives an integrated world with actual
+client/server ticks, paused simulation checks, resource/atlas reload, metadata,
+fire-resistant item behavior, real sound-manager submission, actual settings
+and mod-menu frames, exactly one title-menu entry after each of two real
+resize-driven reinitializations, command permission/wrong-thread denial and
+authorized execution, and two-way packet connections with accepted/negative
+payload assertions. Integrated save/reopen must checkpoint exactly one additional
+native fixture visit. A second official client connects to the actual dedicated
+server; the controller waits for that client before issuing vanilla seed/save/stop
+commands. Finally the same dedicated world restarts, saves, and must checkpoint
+exactly one more native fixture visit. Each scenario records its measured duration
+and exit status. All 22 original reviewed hooks and seven supplemental lifecycle,
+command, title-init, palette-size and fire-policy bridges (29 total) must appear in fresh
+successful process logs.
+Presence of a hook alone is not a replacement for its semantic assertions.
+
+The complete verdict is ignored local
+`tests/fixtures/local/legacy-platform/evidence-agent-acceptance/result.json`.
+Additional local records include `evidence-harness-agent/`,
+`evidence-xvfb-agent-dedicated/`, `evidence-server-agent-restart/` and unique
+`packets-*` directories. The JSON distinguishes original/supplemental hooks,
+missing obligations, actual process exits, persistence visit counts and errors.
+No tracked acceptance evidence is rewritten by these tasks.
+
+The agent commands add `-javaagent:target/ravel-jvm/ravel-agent.jar` and
+`-Dravel.host=target/release/libravel_bootstrap.so` as absolute paths. To use
+an independently retained pair, set `RAVEL_LEGACY_AGENT` and
+`RAVEL_LEGACY_HOST`; both files must exist. The matching `ravel-screen.jar` must
+remain beside the agent jar for the settings/screens fixtures. The agent must
+have been generated for `1.12.2`, not merely renamed from a modern build.
+Client worlds and logs use separate `client-xvfb-agent/` and
+`evidence-xvfb-agent/` directories; dedicated output uses `dedicated-agent/`
+and `evidence-server-agent/`. All remain under the ignored local fixture root.
+Dedicated startup still checks the actual seed, vanilla save, successful exit,
+and absence of LWJGL/GLFW/OpenAL/JInput native libraries.
+
+Agent acceptance results are **pending lead integration execution**. No agent
+launch duration, exit status, hook count, or harness section is inferred from the
+recorded vanilla runs below. Packaging is not hook, semantic, or live acceptance.
+
 ## JVM permissions
 
-The four LWJGL3 Java modules receive exactly
+In the vanilla baseline, the four LWJGL3 Java modules receive exactly
 `--enable-native-access=org.lwjgl,org.lwjgl.glfw,org.lwjgl.opengl,org.lwjgl.openal`
 with `--illegal-native-access=deny`. Ravel, vanilla, JNA and text-to-speech stay
 unnamed and receive no native-access grant. There are no module opens or
@@ -90,6 +165,19 @@ allocation to fail without its module grant, then succeeds with the grant.
 LWJGL wraps the denied load as `UnsatisfiedLinkError`; Ravel's unnamed module
 must remain ungranted in both processes. The audit also exercises cross-thread
 OpenAL calls and repeated device cleanup.
+
+The explicit agent launches resolve the same agent jar on the module path as
+the automatic module `dev.ravel.agent`, then pass it to `-javaagent`.
+In this mode `Boot` does not append the jar to the bootstrap search: the legacy
+game loader delegates Ravel classes to the system loader's named agent module.
+JNI's `Hook` consequently receives only `--enable-native-access=dev.ravel.agent`.
+The client additionally grants the four named LWJGL modules above; the dedicated
+server has no LWJGL module or client native. `--illegal-native-access=deny`
+remains enabled. Neither process grants `ALL-UNNAMED`, opens/exports modules,
+uses Java 8 or Forge, or suppresses warnings. The agent launch checks the actual
+`Hook` module identity/native access and the platform unnamed module's denied
+access; the client additionally checks JNA and narrator remain ungranted.
+The vanilla `native-audit` remains an independent narrower baseline.
 
 ## Recorded vanilla acceptance
 

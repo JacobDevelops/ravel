@@ -14,6 +14,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -51,6 +52,11 @@ final class ClientAutomation implements Runnable {
                 return game != null && field(game, "m") != null;
             });
             snapshot("01-menu");
+            String server = System.getProperty("ravel.legacy.server");
+            if (server != null) {
+                connectDedicated(server);
+                return;
+            }
             button(1);
             await(() -> onGame(() -> screenIs("bok")));
             button(3);
@@ -60,7 +66,9 @@ final class ClientAutomation implements Runnable {
             button(0);
             await(() -> onGame(() -> field(game, "f") != null && field(game, "h") != null));
             waitTicks(100);
+            requireLiveProbes();
             requireSeed();
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) reloadResources();
             AudioAcceptance.play(evidence);
             snapshot("03-world");
             walkAndLook();
@@ -76,11 +84,14 @@ final class ClientAutomation implements Runnable {
             snapshot("05b-windowed");
             key(KeyEvent.VK_ESCAPE);
             await(() -> onGame(() -> field(game, "m") != null));
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) requirePausedHooks();
             snapshot("06-pause");
             button(1);
             await(() -> onGame(() -> field(game, "f") == null));
             snapshot("07-saved-menu");
+            checkpoint("integrated-first.dat");
             reopen();
+            checkpoint("integrated-reopened.dat");
             Files.writeString(evidence.resolve("automation.complete"),
                     "seed=8675309\nactions=click-menu,type-worldname,type-seed,create,audio-playing,ticks,walk,look,wheel,resize,fullscreen,save-quit,reopen\n"
                     + "durationMillis=" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + "\n");
@@ -89,6 +100,38 @@ final class ClientAutomation implements Runnable {
             failure.printStackTrace();
             System.exit(2);
         }
+    }
+
+    private void requireLiveProbes() throws Exception {
+        String probe = System.getProperty("ravel.legacy.clientProbe");
+        if (probe != null) {
+            Method complete = Class.forName(probe).getMethod("isComplete");
+            await(() -> Boolean.TRUE.equals(complete.invoke(null)));
+        }
+    }
+
+    private void connectDedicated(String address) throws Exception {
+        String[] endpoint = address.split(":", 2);
+        int port = endpoint.length == 2 ? Integer.parseInt(endpoint[1]) : 25565;
+        onGame(() -> {
+            // Pinned official ConnectScreen constructor; the ordinary game connection path.
+            Object screen = type("bkr").getConstructor(type("blk"), type("bib"), String.class, int.class)
+                    .newInstance(field(game, "m"), game, endpoint[0], port);
+            invoke(game, "a", new Class<?>[] {type("blk")}, screen);
+            return null;
+        });
+        await(() -> onGame(() -> field(game, "f") != null && field(game, "h") != null));
+        waitTicks(100);
+        requireLiveProbes();
+        snapshot("dedicated-world");
+        key(KeyEvent.VK_ESCAPE);
+        await(() -> onGame(() -> field(game, "m") != null));
+        button(1);
+        await(() -> onGame(() -> field(game, "f") == null));
+        Files.writeString(evidence.resolve("automation.complete"),
+                "server=" + address + "\nactions=connect,real-payloads,live-probes,disconnect\n"
+                + "durationMillis=" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + "\n");
+        onGame(() -> invoke(game, "n", new Class<?>[0]));
     }
     private boolean screenIs(String name) throws ReflectiveOperationException {
         Object screen = field(game, "m");
@@ -102,6 +145,54 @@ final class ClientAutomation implements Runnable {
         });
         require(seed == 8675309L, "Integrated server did not use the fixed seed");
         Files.writeString(evidence.resolve("seed.txt"), "seed=" + seed + "\n");
+    }
+
+    private long hookCount(String id) throws ReflectiveOperationException {
+        return (long) Class.forName("dev.ravel.jvm.LegacyRuntime")
+                .getMethod("hookCount", String.class).invoke(null, id);
+    }
+
+    private long resourceMetric(String method) throws ReflectiveOperationException {
+        return (long) Class.forName("dev.ravel.jvm.LegacyRuntime").getMethod(method).invoke(null);
+    }
+
+    private void reloadResources() throws Exception {
+        long reloads = hookCount("legacy.resource-reload");
+        long atlases = hookCount("legacy.atlas-reload");
+        long completed = resourceMetric("completedResourceGeneration");
+        robot.keyPress(KeyEvent.VK_F3);
+        try {
+            await(() -> onGame(() -> Keyboard.isKeyDown(61)));
+            key(KeyEvent.VK_T);
+            await(() -> hookCount("legacy.resource-reload") > reloads
+                    && hookCount("legacy.atlas-reload") > atlases
+                    && resourceMetric("completedResourceGeneration") > completed
+                    && resourceMetric("atlasResourceGeneration") == resourceMetric("completedResourceGeneration"));
+        } finally {
+            robot.keyRelease(KeyEvent.VK_F3);
+        }
+        Files.writeString(evidence.resolve("resource-generations.txt"),
+                "reloads=" + hookCount("legacy.resource-reload")
+                + " atlases=" + hookCount("legacy.atlas-reload")
+                + " completedGeneration=" + resourceMetric("completedResourceGeneration")
+                + " atlasGeneration=" + resourceMetric("atlasResourceGeneration") + "\n");
+    }
+
+    private void requirePausedHooks() throws Exception {
+        long initial = hookCount("legacy.integrated-server-tick");
+        await(() -> hookCount("legacy.integrated-server-tick") >= initial + 10);
+        long base = hookCount("legacy.server-tick");
+        long client = hookCount("legacy.client-tick");
+        long overrides = hookCount("legacy.integrated-server-tick");
+        long next = overrides + 10;
+        await(() -> hookCount("legacy.integrated-server-tick") >= next
+                && hookCount("legacy.client-tick") > client);
+        require(hookCount("legacy.server-tick") == base,
+                "paused integrated server dispatched a simulation tick");
+        Files.writeString(evidence.resolve("paused-hooks.txt"),
+                "baseBefore=" + base + " baseAfter=" + hookCount("legacy.server-tick")
+                + " integratedBefore=" + overrides
+                + " integratedAfter=" + hookCount("legacy.integrated-server-tick") + "\n");
     }
 
 
@@ -308,6 +399,12 @@ final class ClientAutomation implements Runnable {
         await(() -> onGame(() -> field(game, "m") != null));
         button(1);
         await(() -> onGame(() -> field(game, "f") == null));
+    }
+
+    private void checkpoint(String name) throws Exception {
+        if (!Boolean.getBoolean("ravel.legacy.acceptance")) return;
+        Path source = Path.of("saves", saveName, "data", "ravel_mods.dat");
+        Files.copy(source, evidence.resolve(name), StandardCopyOption.REPLACE_EXISTING);
     }
 
     private boolean displayFlag(boolean expected) throws Exception {

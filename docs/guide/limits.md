@@ -70,11 +70,12 @@ game's first statement. So a client launch is a client and a dedicated server la
 dedicated server, and the `sides` list your package ships decides which of the two
 your mod runs on.
 
-Two things that follow are worth planning around. **An integrated server is never
-answered.** It is a server inside a client process rather than a distribution, so
-no entry point can name it: a single-player launch is composed as `Side::Client`,
-and a mod that declares `integrated-server` and not `client` is parked there.
-Declare both if your mod should run in single-player.
+**Minecraft 1.12.2 also composes an independent integrated server.** Before its
+world opens, the server thread initializes its own `Side::IntegratedServer` mod
+set, world data and settings. Client callbacks stay with the client composition;
+server callbacks select the server composition only on its owning thread.
+Declaring `integrated-server` does not admit a mod to `Side::Client`. The modern
+adapters retain the distribution-only composition described above.
 
 **And a process that enters neither entry point installs nothing.** That is not a
 refusal — a launcher, a bundler that has not yet extracted the server it ships,
@@ -95,21 +96,21 @@ the system one. The JVM harness enters each distribution's own entry point, and
 one case enters it under a loader of the bundler's shape; that is not a launched
 server.
 
-**A mod cannot send a packet.** You can declare a `PacketContract`, implement
-`Packet`, encode a value, decode it back, and prove every refusal in your own
-tests — all of that is real and all of it is checked. The receiving half is
-further along than "declared": `ravel_loader::deliver_packet` is written and
-tested, and it is what refuses a delivery claiming the wrong side, a direction
-that may not be received here, and an owner that is absent or not reacting,
-before handing the rest to `Mod::receive_packet`. What does not exist is
-transport. No wire adapter is written and no launch path moves a byte between a
-client and a server, so `encode_from` hands you bytes with nothing to hand them
-to, and nothing in a running game ever builds the `PacketDelivery` that delivery
-path is waiting for. `ROADMAP.md` puts the wire adapters after the abstractions,
-and this is what "after" currently means: a declared packet is a specification of
-what your mod will send, tested today and carried later — with the loader-side
-half of the arrival already built. Design against it if you like; do not plan a
-feature whose value arrives when the packet does.
+**The SDK has no outbound packet-send operation.** You can declare a
+`PacketContract`, implement `Packet`, and encode or decode its versioned bytes.
+For Minecraft 1.12.2, an inbound vanilla custom payload now reaches the loader's
+existing `PacketDelivery` path after Java's owning-thread check. The adapter uses
+the validated `namespace:path` channel directly, with a 20-byte UTF-8 channel limit
+and a 32,767-byte payload limit, and copies only payloads belonging to an active
+native owner. It preserves the vanilla buffer's reader index.
+
+The loader checks owner, lifecycle, receiving side and direction before calling
+`Mod::receive_packet`. Mods should convert `DeliveryRefused` with `ModError::from`:
+malformed bytes and foreign contract identities remain typed `InvalidPacket`
+refusals, not lifecycle failures. Trusted callback failures still receive normal
+owner attribution. A rejected network payload does not throw through vanilla's
+dispatch loop. Other version adapters do not yet provide this inbound transport,
+and `encode_from` does not itself send anything on any version.
 
 **One more surface is declared and will not be carried, one is carried end to end
 and unheard, and a third is partly carried.** A drawing stage is a declaration you

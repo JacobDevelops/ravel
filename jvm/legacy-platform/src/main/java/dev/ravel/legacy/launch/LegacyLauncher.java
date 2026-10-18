@@ -20,6 +20,7 @@ public final class LegacyLauncher {
         Thread.currentThread().setContextClassLoader(loader);
         boolean client = args[0].equals("client");
         if (!client && !args[0].equals("server")) throw new IllegalArgumentException("Unknown side " + args[0]);
+        if (Boolean.getBoolean("ravel.legacy.acceptance")) auditNativeAccess(loader, client);
         if (client) {
             Thread automation = new Thread(new ClientAutomation(loader, Path.of(args[2])), "ravel-legacy-automation");
             automation.setDaemon(true);
@@ -28,5 +29,26 @@ public final class LegacyLauncher {
         String entry = client ? "net.minecraft.client.main.Main" : "net.minecraft.server.MinecraftServer";
         loader.loadClass(entry).getMethod("main", String[].class)
                 .invoke(null, (Object) Arrays.copyOfRange(args, 3, args.length));
+    }
+
+    private static void auditNativeAccess(ClassLoader game, boolean client) throws ClassNotFoundException {
+        Module hook = Class.forName("dev.ravel.jvm.Hook", false,
+                LegacyLauncher.class.getClassLoader()).getModule();
+        Module platform = LegacyLauncher.class.getModule();
+        if (!"dev.ravel.agent".equals(hook.getName()) || !hook.isNativeAccessEnabled()
+                || platform.isNativeAccessEnabled()) {
+            throw new IllegalStateException("legacy JNI access is not isolated to the named agent");
+        }
+        if (client) {
+            Module jna = Class.forName("com.sun.jna.Native", false, game).getModule();
+            Module narrator = Class.forName("com.mojang.text2speech.Narrator", false, game).getModule();
+            if (jna.isNativeAccessEnabled() || narrator.isNativeAccessEnabled()) {
+                throw new IllegalStateException("unsupported narrator/JNA native access was granted");
+            }
+            System.out.println("[ravel-legacy] nativeAccess agent=dev.ravel.agent:true"
+                    + " platform=false jna=false narrator=false");
+        } else {
+            System.out.println("[ravel-legacy] nativeAccess agent=dev.ravel.agent:true platform=false");
+        }
     }
 }

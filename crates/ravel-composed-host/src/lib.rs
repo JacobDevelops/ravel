@@ -1,34 +1,52 @@
 #![forbid(unsafe_code)]
 
-//! JVM harness fixture composing the tracked test-mod member list.
-//! Admission and startup use [`ravel_host_runtime`].
+//! JVM native host using [`ravel_host_runtime`] for admission and startup.
+//! The default `fixture-mods` feature composes the tracked test-mod member list;
+//! `--no-default-features` builds an empty composition with the same runtime and hooks.
 
 use jni::EnvUnowned;
 use jni::objects::JClass;
 use ravel_bootstrap_runtime::Composition;
 use ravel_core::Side;
 use ravel_host_runtime::Member;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_audio::AudioMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_commands::CommandsMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_configuration::ConfigurationMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_networking::NetworkingMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_registries::RegistriesMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_saved_data::SavedDataMod;
+#[cfg(feature = "fixture-mods")]
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
 pub use ravel_host_runtime::LaunchError;
 
 // Admit the same manifests the members ship.
+#[cfg(feature = "fixture-mods")]
 const CONFIGURATION_PACKAGE: &str = include_str!("../../../test-mods/configuration/package.json");
+#[cfg(feature = "fixture-mods")]
 const SAVED_DATA_PACKAGE: &str = include_str!("../../../test-mods/saved-data/package.json");
+#[cfg(feature = "fixture-mods")]
 const CLIENT_ONLY_PACKAGE: &str = include_str!("../../../test-mods/client-only/package.json");
+#[cfg(feature = "fixture-mods")]
 const SERVER_ONLY_PACKAGE: &str = include_str!("../../../test-mods/server-only/package.json");
+#[cfg(feature = "fixture-mods")]
 const REGISTRIES_PACKAGE: &str = include_str!("../../../test-mods/registries/package.json");
+#[cfg(feature = "fixture-mods")]
 const COMMANDS_PACKAGE: &str = include_str!("../../../test-mods/commands/package.json");
+#[cfg(feature = "fixture-mods")]
 const NETWORKING_PACKAGE: &str = include_str!("../../../test-mods/networking/package.json");
+#[cfg(feature = "fixture-mods")]
 const AUDIO_PACKAGE: &str = include_str!("../../../test-mods/audio/package.json");
 
+#[cfg(feature = "fixture-mods")]
 fn members(side: Side) -> Vec<Member> {
     let mut members = vec![
         Member {
@@ -69,7 +87,12 @@ fn members(side: Side) -> Vec<Member> {
     members
 }
 
-/// Constructs and drives this source-composed mod set for one launch.
+#[cfg(not(feature = "fixture-mods"))]
+fn members(_side: Side) -> Vec<Member> {
+    Vec::new()
+}
+
+/// Constructs and drives the composition selected by the `fixture-mods` build feature.
 ///
 /// # Errors
 ///
@@ -78,7 +101,7 @@ pub fn compose(game_directory: &std::path::Path, side: Side) -> Result<Compositi
     ravel_host_runtime::compose(game_directory, side, members(side))
 }
 
-/// Starts the tracked JVM harness fixture before game methods run.
+/// Starts the selected native host composition before game methods run.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
 pub fn ravel_initialize<'local>(
     env: EnvUnowned<'local>,
@@ -96,6 +119,7 @@ pub fn ravel_initialize_integrated_server<'local>(env: EnvUnowned<'local>, _clas
 }
 
 /// Exposes original fixture receipts only to the composed host's live packet test.
+#[cfg(feature = "fixture-mods")]
 #[jni::jni_mangle("dev.ravel.jvm.LegacyPacketLive", "receipts")]
 pub fn legacy_packet_receipts<'local>(
     _env: EnvUnowned<'local>,
@@ -110,7 +134,39 @@ pub fn legacy_packet_receipts<'local>(
     count.try_into().unwrap_or(jni::sys::jlong::MAX)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "fixture-mods")))]
+mod empty_tests {
+    use ravel_core::Side;
+
+    #[test]
+    fn the_selected_factory_and_real_composition_are_empty_on_every_side() {
+        for side in Side::ALL {
+            assert!(super::members(side).is_empty());
+            let game = std::env::temp_dir().join(format!(
+                "ravel-empty-host-{}-{}",
+                std::process::id(),
+                side.as_str()
+            ));
+            if game.exists() {
+                std::fs::remove_dir_all(&game).expect("remove stale temporary directory");
+            }
+            std::fs::create_dir_all(&game).expect("a writable temporary directory");
+
+            let composition = super::compose(&game, side).expect("the empty host should start");
+            let machine = composition.loaded.machine();
+            assert_eq!(machine.side(), side);
+            assert_eq!(machine.order().count(), 0);
+            assert_eq!(machine.claimed_keys().count(), 0);
+            assert!(composition.configurations.is_empty());
+            assert!(composition.installed_packages.is_empty());
+            assert!(composition.resources.generated().is_empty());
+
+            std::fs::remove_dir_all(&game).expect("remove temporary directory");
+        }
+    }
+}
+
+#[cfg(all(test, feature = "fixture-mods"))]
 mod tests {
     use ravel_bootstrap_runtime::Composition;
     use ravel_config::{LayeredConfiguration, ValueDocument, file};

@@ -20,7 +20,8 @@ PREP_SPEC.loader.exec_module(prepare)
 class SummaryTests(unittest.TestCase):
     def protocol(self):
         return {"agentSha256": "a" * 64, "fixture": "sevtech-ages-3.2.3",
-                "artifactCount": 259, "options": {"renderDistance": "12", "fullscreen": "false"}}
+                "artifactCount": 259, "rendererProbes": False,
+                "options": {"renderDistance": "12", "fullscreen": "false"}}
 
     def cohort(self):
         return {"javaVersion": "fixture Java 8", "candidateSha256": None,
@@ -112,6 +113,17 @@ class SummaryTests(unittest.TestCase):
             self.assertEqual(result["sample_counts"]["gc_pauses"], 0)
             self.assertIsNone(result["metrics"]["gc_pause.p50_ms"])
 
+    def test_rss_high_water_excludes_shutdown_save(self) -> None:
+        measurements = [
+            {"monotonic_ns": str(second * 1_000_000_000), "pid": "1",
+             "rss_kib": "1024", "peak_rss_kib": "2048", "cpu_ticks": str(second * 100)}
+            for second in (1, 31, 32)
+        ]
+        measurements.append(dict(measurements[-1], monotonic_ns="33000000000",
+                                 peak_rss_kib="4096"))
+        metrics = summary.process_metrics(measurements, 32_000_000_000, 100)
+        self.assertEqual(metrics["rss_mib.peak"], 2)
+
     def test_startup_anchors_are_ordered_without_inventing_phases(self):
         source = ("[23:59:58] [main/INFO]: Forge Mod Loader version 14.23.5.2860 for Minecraft 1.12.2 loading\n"
                   "[23:59:59] [Client thread/INFO]: Injecting itemstacks\n"
@@ -160,6 +172,8 @@ class SummaryTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 summary.summarize_trial(root)
             for field in self.protocol():
+                if field == "rendererProbes":
+                    continue
                 with self.subTest(field=field):
                     protocol = self.protocol()
                     del protocol[field]
@@ -209,6 +223,253 @@ class SummaryTests(unittest.TestCase):
             self.write_csv(root, "events.csv", events[0], events[1:])
             self.assertEqual(summary.summarize_trial(root)["metrics"]["cpu_percent.steady_last30s_mean"], 100)
 
+    def test_vanilla_zero_artifacts_and_grouping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            settings = {**self.protocol(), "fixture": "vanilla-1.12.2", "artifactCount": 0}
+            (root / "settings.json").write_text(json.dumps(settings))
+            result = json.loads((root / "result.json").read_text())
+            result["instance"] = "vanilla"
+            (root / "result.json").write_text(json.dumps(result))
+            trial = summary.summarize_trial(root)
+            self.assertEqual(trial["instance"], "vanilla")
+            self.assertEqual(trial["measurement"], "physical")
+            groups = summary.aggregate([{**trial, "trial": str(i)} for i in range(3)])
+            self.assertEqual(groups[0]["instance"], "vanilla")
+        for fixture, count in (("sevtech-ages-3.2.3", 0), ("vanilla-1.12.2", -1),
+                               ("vanilla-1.12.2", False)):
+            with self.subTest(fixture=fixture, count=count), self.assertRaises(ValueError):
+                summary.workload_protocol({**self.protocol(), "fixture": fixture, "artifactCount": count})
+
+    def test_frame_stalls_use_scene_start_not_first_sample(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            frames = [[scene, (10 + i * 10 + offset) * 10**9, duration * 10**6]
+                      for i, scene in enumerate(summary.SCENES)
+                      for offset, duration in ((1, 10), (5, 40), (6, 80), (9, 20))]
+            self.write_csv(root, "frames.csv", ["scene", "monotonic_ns", "frame_ns"], frames)
+            trial = summary.summarize_trial(root)
+            for scene in summary.SCENES:
+                self.assertEqual(trial["metrics"][f"frames.{scene}.first5s_max_ms"], 40)
+                self.assertEqual(trial["metrics"][f"frames.{scene}.max_ms"], 80)
+                self.assertEqual(trial["metrics"][f"frames.{scene}.p50_ms"], 20)
+            self.assertIn("scene_start", trial["frame_stall_scope"]["window"])
+            self.assertIn("first 5 seconds", summary.markdown([trial], []))
+
+    def test_chunks_are_observational_and_never_synthesized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            trial = summary.summarize_trial(root)
+            self.assertFalse(any(key.startswith("chunks.") for key in trial["metrics"]))
+            settings = {**self.protocol(), "rendererProbes": True}
+            (root / "settings.json").write_text(json.dumps(settings))
+            with self.assertRaises((ValueError, FileNotFoundError)):
+                summary.summarize_trial(root)
+            samples = [[scene, (11 + i * 10) * 10**9, kind, duration * 10**6]
+                       for i, scene in enumerate(summary.SCENES)
+                       for kind in ("compile", "upload") for duration in (1, 9, 3)]
+            self.write_csv(root, "chunks.csv", ["scene", "monotonic_ns", "kind", "duration_ns"], samples)
+            with self.assertRaises(ValueError):
+                summary.summarize_trial(root)
+            with (root / "events.csv").open(newline="") as stream:
+                events = list(csv.reader(stream))
+            events += [["renderer_probe_hook", 1, kind] for kind in ("compile", "upload")]
+            self.write_csv(root, "events.csv", events[0], events[1:])
+            trial = summary.summarize_trial(root)
+            self.assertEqual(trial["metrics"]["chunks.compile.spawn_idle.p50_ms"], 3)
+            self.assertEqual(trial["metrics"]["chunks.upload.spawn_idle.p99_ms"], 9)
+            self.assertEqual(trial["sample_counts"]["chunks.compile.spawn_idle"], 3)
+            self.assertEqual(trial["metrics"]["chunks.compile.spawn_idle.total_ms"], 13)
+            self.assertEqual(trial["metrics"]["chunks.upload.spawn_idle.total_ms"], 13)
+            self.assertIn("observational", trial["chunk_scope"]["meaning"])
+            self.write_csv(root, "chunks.csv", ["scene", "monotonic_ns", "kind", "duration_ns"],
+                           [sample for sample in samples if sample[2] == "compile"])
+            with self.assertRaises(ValueError):
+                summary.summarize_trial(root)
+
+    def test_sparse_chunk_scenes_have_no_fabricated_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            self.write_csv(root, "chunks.csv", ["scene", "monotonic_ns", "kind", "duration_ns"],
+                           [["spawn_idle", 11_000_000_000, "compile", 2_000_000]])
+            trial = summary.summarize_trial(root)
+            self.assertEqual(trial["metrics"]["chunks.compile.spawn_idle.p95_ms"], 2)
+            self.assertIsNone(trial["metrics"]["chunks.upload.spawn_idle.p95_ms"])
+            self.assertEqual(trial["sample_counts"]["chunks.upload.spawn_idle"], 0)
+            self.assertEqual(trial["metrics"]["chunks.compile.spawn_idle.total_ms"], 2)
+            self.assertIsNone(trial["metrics"]["chunks.upload.spawn_idle.total_ms"])
+
+    def test_functional_only_trials_never_enter_physical_comparisons(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            result = json.loads((root / "result.json").read_text())
+            result["measurement"] = "functional-only"
+            (root / "result.json").write_text(json.dumps(result))
+            functional = summary.summarize_trial(root)
+            self.assertEqual(functional["measurement"], "functional-only")
+            self.assertEqual(summary.aggregate([functional]), [])
+            physical = [{**functional, "measurement": "physical", "trial": str(i)}
+                        for i in range(3)]
+            functional["workload_protocol"] = {**self.protocol(), "fixture": "different"}
+            groups = summary.aggregate(physical + [functional])
+            self.assertEqual(groups[0]["trial_count"], 3)
+            self.assertIn("Functional-only evidence (not compared): fixture",
+                          summary.markdown([functional], []))
+            result["measurement"] = "unknown"
+            (root / "result.json").write_text(json.dumps(result))
+            with self.assertRaises(ValueError):
+                summary.summarize_trial(root)
+
+    def test_legacy_renderer_probes_default_false(self):
+        settings = self.protocol()
+        del settings["rendererProbes"]
+        self.assertFalse(summary.workload_protocol(settings)["rendererProbes"])
+        with self.assertRaises(ValueError):
+            summary.workload_protocol({**settings, "rendererProbes": "true"})
+
+    def test_missing_early_frame_window_is_not_reported_as_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            frames = [[scene, (16 + i * 10) * 10**9, 10_000_000]
+                      for i, scene in enumerate(summary.SCENES)]
+            self.write_csv(root, "frames.csv", ["scene", "monotonic_ns", "frame_ns"], frames)
+            with self.assertRaises(ValueError):
+                summary.summarize_trial(root)
+
+    def test_invalid_observed_chunk_samples_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            for sample in (["spawn_idle", 11_000_000_000, "compile", 0],
+                           ["spawn_idle", 11_000_000_000, "other", 1],
+                           ["other", 11_000_000_000, "upload", 1]):
+                with self.subTest(sample=sample):
+                    self.write_csv(root, "chunks.csv",
+                                   ["scene", "monotonic_ns", "kind", "duration_ns"], [sample])
+                    with self.assertRaises(ValueError):
+                        summary.summarize_trial(root)
+
+    def test_known_unmeasured_chunk_phases_are_validated_but_not_reduced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            header = ["scene", "monotonic_ns", "kind", "duration_ns"]
+            hooks = [{"event": "renderer_probe_hook", "detail": kind}
+                     for kind in ("compile", "upload")]
+            unmeasured = [[scene, 1_000_000_000, kind, 999_000_000]
+                          for scene in ("startup", "menu_wait", "world_creation", "settle", "complete")
+                          for kind in ("compile", "upload")]
+            measured = [["spawn_idle", 11_000_000_000, "compile", 2_000_000],
+                        ["spawn_idle", 11_000_000_000, "upload", 3_000_000]]
+            self.write_csv(root, "chunks.csv", header, unmeasured + measured)
+            metrics, counts = summary.chunk_metrics(root, hooks, True)
+            self.assertEqual(metrics["chunks.compile.spawn_idle.total_ms"], 2)
+            self.assertEqual(metrics["chunks.upload.spawn_idle.total_ms"], 3)
+            self.assertEqual(counts["chunks.compile.spawn_idle"], 1)
+            self.assertFalse(any("settle" in key or "world_creation" in key for key in metrics))
+            self.write_csv(root, "chunks.csv", header, unmeasured)
+            with self.assertRaises(ValueError):
+                summary.chunk_metrics(root, hooks, True)
+            self.write_csv(root, "chunks.csv", header, [["settle", 1, "compile", -1]] + measured)
+            with self.assertRaises(ValueError):
+                summary.chunk_metrics(root, hooks, True)
+
+    def test_jvm_nonheap_and_buffers_are_independently_labelled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            self.write_csv(root, "jvm.csv",
+                           ["monotonic_ns", "heap_used_bytes", "heap_committed_bytes", "loaded_classes",
+                            "nonheap_used_bytes", "direct_used_bytes", "mapped_used_bytes"],
+                           [[second * 10**9, 1048576, 2097152, 300, 3145728, 4194304, -1]
+                            for second in range(101)])
+            trial = summary.summarize_trial(root)
+            self.assertEqual(trial["metrics"]["nonheap_used_mib.peak"], 3)
+            self.assertEqual(trial["metrics"]["direct_used_mib.steady_last30s_mean"], 4)
+            self.assertIsNone(trial["metrics"]["mapped_used_mib.peak"])
+            self.assertFalse(any("native_estimate" in key for key in trial["metrics"]))
+
+    def test_runtime_inputs_are_validated_and_retained_in_cohort(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            path = root / "command.json"
+            command = json.loads(path.read_text())
+            records = [{"path": "/java", "sha256": "b" * 64},
+                       {"path": str(root / "runtime.jar"), "sha256": "c" * 64}]
+            command["provenance"]["runtimeInputs"] = records
+            path.write_text(json.dumps(command))
+            cohort = summary.runtime_cohort(root)
+            self.assertEqual(cohort["runtimeInputs"],
+                             [{"path": "/java", "sha256": "b" * 64},
+                              {"path": "<trial>/runtime.jar", "sha256": "c" * 64}])
+            for invalid in ([], [{"path": "/java", "sha256": "invalid"}],
+                            [{"sha256": "b" * 64}], "invalid"):
+                with self.subTest(invalid=invalid):
+                    command["provenance"]["runtimeInputs"] = invalid
+                    path.write_text(json.dumps(command))
+                    with self.assertRaises(ValueError):
+                        summary.runtime_cohort(root)
+
+    def ravel_report(self):
+        return ("[ravel] rewrote 12 classes and 34 methods; 567 hook invocations reached native code\n"
+                "[ravel] rewrittenBy=dev.ravel.legacy.launch.LegacyLoader@abc "
+                "system=jdk.internal.loader.ClassLoaders$AppClassLoader@123 sameObject=false "
+                "parentChain=dev.ravel.legacy.launch.LegacyLoader@abc -> bootstrap\n"
+                "[ravel] rewritten targets: net.minecraft.client.Minecraft=3,bxr=2\n")
+
+    def test_ravel_runtime_requires_positive_rewrites_hooks_targets_and_loader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "launcher.log"
+            report = self.ravel_report()
+            path.write_text(report)
+            summary.validate_ravel_runtime(root)
+            invalid = [
+                report.replace("12 classes", "0 classes"),
+                report.replace("34 methods", "0 methods"),
+                report.replace("567 hook", "0 hook"),
+                report.replace("sameObject=false", "sameObject=true"),
+                report.replace("dev.ravel.legacy.launch.LegacyLoader@", "other.Loader@"),
+                report.replace("net.minecraft.client.Minecraft=3,bxr=2", ""),
+                report + "[ravel] unknown diagnostic\n",
+                report + "[ravel] failed to transform 1 classes\n",
+                report + "failed target: bxr=bad\n",
+                report + "no distribution entry point loaded\n",
+                report + "Ravel's prologue did not run\n",
+                "",
+            ]
+            for text in invalid:
+                with self.subTest(text=text):
+                    path.write_text(text)
+                    with self.assertRaises(ValueError):
+                        summary.validate_ravel_runtime(root)
+
+    def test_ravel_runtime_gate_applies_only_to_vanilla_fixture_ravel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_trial(root)
+            result_path = root / "result.json"
+            result = json.loads(result_path.read_text())
+            result["instance"] = "ravel"
+            result_path.write_text(json.dumps(result))
+            summary.summarize_trial(root)
+            (root / "settings.json").write_text(json.dumps(
+                {**self.protocol(), "fixture": "vanilla-1.12.2", "artifactCount": 0}))
+            with self.assertRaises((ValueError, FileNotFoundError)):
+                summary.summarize_trial(root)
+            (root / "launcher.log").write_text(self.ravel_report())
+            self.assertEqual(summary.summarize_trial(root)["instance"], "ravel")
+            result["instance"] = "vanilla"
+            result_path.write_text(json.dumps(result))
+            (root / "launcher.log").unlink()
+            self.assertEqual(summary.summarize_trial(root)["instance"], "vanilla")
+
     def make_trial(self, root: Path) -> None:
         (root / "complete").touch()
         (root / "gc.log").write_text("")
@@ -231,7 +492,8 @@ class SummaryTests(unittest.TestCase):
         events.append(["benchmark_complete", 100_000_000_000, "done"])
         self.write_csv(root, "events.csv", ["event", "monotonic_ns", "detail"], events)
         for filename, field in (("frames.csv", "frame_ns"), ("ticks.csv", "tick_ns")):
-            samples = [[scene, 15_000_000_000, duration] for scene in summary.SCENES
+            samples = [[scene, (11 + index * 10) * 10**9, duration]
+                       for index, scene in enumerate(summary.SCENES)
                        for duration in (10_000_000, 20_000_000)]
             self.write_csv(root, filename, ["scene", "monotonic_ns", field], samples)
         samples = [[second * 10**9, 42, 2048, 4096, second * 100] for second in range(101)]

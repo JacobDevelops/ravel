@@ -21,7 +21,7 @@ public final class LegacyLauncher {
         boolean client = args[0].equals("client");
         if (!client && !args[0].equals("server")) throw new IllegalArgumentException("Unknown side " + args[0]);
         if (Boolean.getBoolean("ravel.legacy.acceptance")) auditNativeAccess(loader, client);
-        if (client) {
+        if (client && !Boolean.getBoolean("ravel.legacy.benchmark")) {
             Thread automation = new Thread(new ClientAutomation(loader, Path.of(args[2])), "ravel-legacy-automation");
             automation.setDaemon(true);
             automation.start();

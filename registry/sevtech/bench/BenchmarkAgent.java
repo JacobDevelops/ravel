@@ -29,7 +29,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-/** Java 8 observer for the original Forge client; all measurements remain local. */
+/** Java 8 observer shared by Forge and official 1.12.2 clients; measurements remain local. */
 public final class BenchmarkAgent {
     private static final long SECOND = 1_000_000_000L;
     private static final long SEED = 8675309L;
@@ -39,6 +39,10 @@ public final class BenchmarkAgent {
     private static final Set<String> MEASURED = new java.util.HashSet<>(java.util.Arrays.asList(
         "spawn_idle", "square_exploration", "loaded_chunk_stress"));
     private static final ThreadLocal<Timing> TICK = ThreadLocal.withInitial(Timing::new);
+    private static final ThreadLocal<Timing> COMPILE = ThreadLocal.withInitial(Timing::new);
+    private static final ThreadLocal<Timing> UPLOAD = ThreadLocal.withInitial(Timing::new);
+    private static final Set<String> rendererObserved = ConcurrentHashMap.newKeySet();
+    private static BufferedWriter chunks;
     private static BufferedWriter frames;
     private static BufferedWriter ticks;
     private static BufferedWriter memory;
@@ -79,8 +83,9 @@ public final class BenchmarkAgent {
             frames = csv(directory, "frames.csv", "scene,monotonic_ns,frame_ns");
             ticks = csv(directory, "ticks.csv", "scene,monotonic_ns,tick_ns");
             memory = csv(directory, "jvm.csv",
-                "scene,monotonic_ns,heap_used_bytes,heap_committed_bytes,heap_max_bytes,loaded_classes,total_loaded_classes,unloaded_classes");
+                "scene,monotonic_ns,heap_used_bytes,heap_committed_bytes,heap_max_bytes,loaded_classes,total_loaded_classes,unloaded_classes,nonheap_used_bytes,direct_used_bytes,mapped_used_bytes");
             trajectory = csv(directory, "trajectory.csv", "scene,monotonic_ns,scene_ns,x,y,z,yaw,pitch");
+            chunks = csv(directory, "chunks.csv", "scene,monotonic_ns,kind,duration_ns");
             marker("agent_started", started, "seed=" + SEED);
             instrumentation.addTransformer(new ObserverTransformer());
             Runtime.getRuntime().addShutdownHook(new Thread(BenchmarkAgent::onShutdown, "benchmark-shutdown"));
@@ -118,7 +123,7 @@ public final class BenchmarkAgent {
         }
     }
 
-    public static void frameExit(Object minecraft) {
+    public static void frameExit() {
         long now = System.nanoTime();
         try {
             Timing timing = FRAME.get();
@@ -132,7 +137,7 @@ public final class BenchmarkAgent {
                 }
             }
             previousFrameExit = now;
-            advance(minecraft, now);
+            advance(client, now);
             previousFrameScene = scene;
         } catch (Throwable failure) {
             fail(failure);
@@ -154,7 +159,7 @@ public final class BenchmarkAgent {
         }
     }
 
-    public static void tickExit(Object server) {
+    public static void tickExit() {
         long now = System.nanoTime();
         try {
             Timing timing = TICK.get();
@@ -162,6 +167,39 @@ public final class BenchmarkAgent {
                 synchronized (ticks) {
                     ticks.write(scene + "," + now + "," + (now - timing.start));
                     ticks.newLine();
+                }
+            }
+        } catch (Throwable failure) {
+            fail(failure);
+        }
+    }
+    public static void compileEnter(Object chunk) { rendererEnter(COMPILE, "compile"); }
+    public static void compileExit() { rendererExit(COMPILE, "compile"); }
+    public static void uploadEnter(Object dispatcher) { rendererEnter(UPLOAD, "upload"); }
+    public static void uploadExit() { rendererExit(UPLOAD, "upload"); }
+
+    private static void rendererEnter(ThreadLocal<Timing> local, String kind) {
+        try {
+            Timing timing = local.get();
+            if (timing.depth++ == 0) {
+                timing.start = System.nanoTime();
+                if (rendererObserved.add(kind)) {
+                    marker("renderer_probe_hook", timing.start, kind);
+                }
+            }
+        } catch (Throwable failure) {
+            fail(failure);
+        }
+    }
+
+    private static void rendererExit(ThreadLocal<Timing> local, String kind) {
+        long now = System.nanoTime();
+        try {
+            Timing timing = local.get();
+            if (--timing.depth == 0 && !finished) {
+                synchronized (chunks) {
+                    chunks.write(scene + "," + now + "," + kind + "," + (now - timing.start));
+                    chunks.newLine();
                 }
             }
         } catch (Throwable failure) {
@@ -225,9 +263,9 @@ public final class BenchmarkAgent {
 
     private static void createWorld(Object minecraft) throws ReflectiveOperationException {
         ClassLoader loader = minecraft.getClass().getClassLoader();
-        Class<?> settingsClass = Class.forName("net.minecraft.world.WorldSettings", true, loader);
-        Class<?> gameTypeClass = Class.forName("net.minecraft.world.GameType", true, loader);
-        Class<?> worldTypeClass = Class.forName("net.minecraft.world.WorldType", true, loader);
+        Class<?> settingsClass = gameClass(loader, "net.minecraft.world.WorldSettings", "amx");
+        Class<?> gameTypeClass = gameClass(loader, "net.minecraft.world.GameType", "ams");
+        Class<?> worldTypeClass = gameClass(loader, "net.minecraft.world.WorldType", "amz");
         Object creative = method(gameTypeClass, "getByID", "func_77146_a", int.class).invoke(null, 1);
         Object defaultType = field(worldTypeClass, "DEFAULT", "field_77137_b").get(null);
         Constructor<?> constructor = settingsClass.getConstructor(long.class, gameTypeClass,
@@ -335,9 +373,20 @@ public final class BenchmarkAgent {
         ClassLoadingMXBean classes = ManagementFactory.getClassLoadingMXBean();
         memory.write(scene + "," + now + "," + heap.getUsed() + "," + heap.getCommitted() + "," + heap.getMax()
             + "," + classes.getLoadedClassCount() + "," + classes.getTotalLoadedClassCount()
-            + "," + classes.getUnloadedClassCount());
+            + "," + classes.getUnloadedClassCount()
+            + "," + ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed()
+            + "," + bufferMemory("direct") + "," + bufferMemory("mapped"));
         memory.newLine();
         flushOutputs();
+    }
+    private static long bufferMemory(String name) {
+        for (java.lang.management.BufferPoolMXBean pool
+                : ManagementFactory.getPlatformMXBeans(java.lang.management.BufferPoolMXBean.class)) {
+            if (name.equals(pool.getName())) {
+                return pool.getMemoryUsed();
+            }
+        }
+        return -1L;
     }
 
     private static void marker(String event, long now, String detail) throws IOException {
@@ -355,6 +404,9 @@ public final class BenchmarkAgent {
         memory.flush();
         trajectory.flush();
         events.flush();
+        synchronized (chunks) {
+            chunks.flush();
+        }
     }
 
     public static synchronized void fail(Throwable failure) {
@@ -390,10 +442,42 @@ public final class BenchmarkAgent {
         }
     }
 
+    // MCP joined.srg from the pinned 1.12.2 SRG archive. Owner-qualified aliases
+    // avoid matching an unrelated short obfuscated name on a subclass.
+    private static final String[][] OFFICIAL = {
+        {"field_71462_r", "bib", "m"}, {"field_71441_e", "bib", "f"},
+        {"field_71439_g", "bib", "h"}, {"field_71445_n", "bib", "ag"},
+        {"field_71474_y", "bib", "t"}, {"field_82881_y", "bid", "A"},
+        {"field_75101_c", "aeb", "c"}, {"field_75100_b", "aeb", "b"},
+        {"field_71075_bZ", "aed", "bO"}, {"field_77137_b", "amz", "b"},
+        {"func_71401_C", "bib", "F"}, {"func_71218_a", "net.minecraft.server.MinecraftServer", "a"},
+        {"func_175694_M", "amu", "T"}, {"func_177958_n", "fq", "p"},
+        {"func_177952_p", "fq", "r"}, {"func_77146_a", "ams", "a"},
+        {"func_77166_b", "amx", "b"}, {"func_71371_a", "bib", "a"},
+        {"func_71016_p", "bud", "w"}, {"func_71165_d", "bud", "g"},
+        {"func_70080_a", "vg", "a"}, {"func_147108_a", "bib", "a"},
+        {"func_71400_g", "bib", "n"}
+    };
+
+    private static boolean officialMember(Class<?> owner, String srg, String name) {
+        for (String[] mapping : OFFICIAL) {
+            if (mapping[0].equals(srg) && mapping[1].equals(owner.getName())
+                    && mapping[2].equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Class<?> gameClass(ClassLoader loader, String named, String official)
+            throws ClassNotFoundException {
+        return Class.forName("bib".equals(client.getClass().getName()) ? official : named, false, loader);
+    }
     private static Field field(Class<?> type, String mcp, String srg) throws NoSuchFieldException {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             for (Field candidate : current.getDeclaredFields()) {
-                if (candidate.getName().equals(mcp) || candidate.getName().equals(srg)) {
+                if (candidate.getName().equals(mcp) || candidate.getName().equals(srg)
+                        || officialMember(current, srg, candidate.getName())) {
                     candidate.setAccessible(true);
                     return candidate;
                 }
@@ -406,7 +490,8 @@ public final class BenchmarkAgent {
             throws NoSuchMethodException {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             for (Method candidate : current.getDeclaredMethods()) {
-                if ((candidate.getName().equals(mcp) || candidate.getName().equals(srg))
+                if ((candidate.getName().equals(mcp) || candidate.getName().equals(srg)
+                        || officialMember(current, srg, candidate.getName()))
                         && java.util.Arrays.equals(candidate.getParameterTypes(), arguments)) {
                     candidate.setAccessible(true);
                     return candidate;
@@ -434,10 +519,10 @@ public final class BenchmarkAgent {
             screen = field(type, "currentScreen", "field_71462_r");
             world = field(type, "world", "field_71441_e");
             player = field(type, "player", "field_71439_g");
-            mainMenu = Class.forName("net.minecraft.client.gui.GuiMainMenu", false, type.getClassLoader());
+            mainMenu = gameClass(type.getClassLoader(), "net.minecraft.client.gui.GuiMainMenu", "blr");
             paused = field(type, "isGamePaused", "field_71445_n");
             display = method(type, "displayGuiScreen", "func_147108_a",
-                Class.forName("net.minecraft.client.gui.GuiScreen", false, type.getClassLoader()));
+                gameClass(type.getClassLoader(), "net.minecraft.client.gui.GuiScreen", "blk"));
             shutdown = method(type, "shutdown", "func_71400_g");
         }
     }
@@ -468,14 +553,15 @@ public final class BenchmarkAgent {
         public byte[] transform(ClassLoader loader, String name, Class<?> redefining,
                 ProtectionDomain domain, byte[] bytes) {
             if (name == null || !(name.equals("net/minecraft/client/Minecraft")
-                    || name.startsWith("net/minecraft/server/") || name.equals("bib") || name.equals("chd"))) {
+                    || name.startsWith("net/minecraft/server/") || name.equals("bib") || name.equals("chd")
+                    || rendererType(name))) {
                 return null;
             }
             try {
                 ClassReader reader = new ClassReader(bytes);
                 boolean clientType = "net/minecraft/client/Minecraft".equals(name) || "bib".equals(name);
                 boolean serverType = serverTypes.contains(name) || serverTypes.contains(reader.getSuperName());
-                if (!clientType && !serverType) {
+                if (!clientType && !serverType && !rendererType(name)) {
                     return null;
                 }
                 ensureObserverVisible(loader);
@@ -488,7 +574,8 @@ public final class BenchmarkAgent {
                 ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
                 HookVisitor visitor = new HookVisitor(writer, name, clientType);
                 reader.accept(visitor, ClassReader.EXPAND_FRAMES);
-                if (visitor.hooks == 0 && (clientType || "net/minecraft/server/MinecraftServer".equals(name))) {
+                if (visitor.hooks == 0 && (clientType || rendererType(name)
+                        || "net/minecraft/server/MinecraftServer".equals(name))) {
                     throw new IllegalStateException("No benchmark target method in " + name);
                 }
                 if (visitor.hooks == 0) {
@@ -500,6 +587,11 @@ public final class BenchmarkAgent {
                 fail(failure);
                 return null;
             }
+        }
+        private static boolean rendererType(String name) {
+            return name.equals("bxr") || name.equals("bxm")
+                || name.equals("net/minecraft/client/renderer/chunk/RenderChunk")
+                || name.equals("net/minecraft/client/renderer/chunk/ChunkRenderDispatcher");
         }
 
         private static void ensureObserverVisible(ClassLoader loader) throws ReflectiveOperationException {
@@ -543,25 +635,48 @@ public final class BenchmarkAgent {
             boolean target = clientType
                 ? name.equals("runGameLoop") || name.equals("func_71411_J") || obfuscatedFrame
                 : name.equals("tick") || name.equals("func_71217_p") || obfuscatedTick;
-            if (!target || !"()V".equals(descriptor)
+            String rendererHook = rendererHook(type, name, descriptor);
+            if ((!target || !"()V".equals(descriptor)) && rendererHook == null
                     || Modifier.isStatic(accessFlags) || Modifier.isAbstract(accessFlags)) {
                 return delegate;
             }
             hooks++;
-            return new HookMethod(delegate, type, clientType ? "frame" : "tick");
+            return new HookMethod(delegate,
+                rendererHook != null ? rendererHook : clientType ? "frame" : "tick");
+        }
+
+        // Feather 1.12.2 build 31 mergedv2 mappings/mappings.tiny:
+        // RenderChunk.compile(FFFLChunkCompileTask;)V = bxr.b(FFFLbxl;)V.
+        // Dispatcher.uploadBuffer = bxm.a(Lbuk;Lcdz;)V; uploadGlList = bxm.a(Lbuk;ILbxr;)V.
+        // Time actual synchronous uploads, not upload(...), which can only enqueue a Future.
+        private static String rendererHook(String type, String name, String descriptor) {
+            if (type.equals("bxr") && name.equals("b") && descriptor.equals("(FFFLbxl;)V")
+                    || type.equals("net/minecraft/client/renderer/chunk/RenderChunk")
+                        && name.equals("func_178581_b")
+                        && descriptor.equals("(FFFLnet/minecraft/client/renderer/chunk/ChunkCompileTaskGenerator;)V")) {
+                return "compile";
+            }
+            if (type.equals("bxm") && name.equals("a")
+                    && (descriptor.equals("(Lbuk;Lcdz;)V") || descriptor.equals("(Lbuk;ILbxr;)V"))
+                    || type.equals("net/minecraft/client/renderer/chunk/ChunkRenderDispatcher")
+                        && (name.equals("func_178506_a")
+                            && descriptor.equals("(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/client/renderer/vertex/VertexBuffer;)V")
+                        || name.equals("func_178510_a")
+                            && descriptor.equals("(Lnet/minecraft/client/renderer/BufferBuilder;ILnet/minecraft/client/renderer/chunk/RenderChunk;)V"))) {
+                return "upload";
+            }
+            return null;
         }
     }
 
     private static final class HookMethod extends MethodVisitor {
-        private final String type;
         private final String hook;
         private final Label start = new Label();
         private final Label end = new Label();
         private final Label handler = new Label();
 
-        private HookMethod(MethodVisitor delegate, String type, String hook) {
+        private HookMethod(MethodVisitor delegate, String hook) {
             super(Opcodes.ASM9, delegate);
-            this.type = type;
             this.hook = hook;
         }
 
@@ -576,8 +691,9 @@ public final class BenchmarkAgent {
         @Override
         public void visitInsn(int opcode) {
             if (opcode == Opcodes.RETURN) {
-                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, OWNER, hook + "Exit", "(Ljava/lang/Object;)V", false);
+                // Original return frames can legally discard every local. The
+                // entry hook already captured client identity and thread timing.
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, OWNER, hook + "Exit", "()V", false);
             }
             super.visitInsn(opcode);
         }
@@ -587,7 +703,9 @@ public final class BenchmarkAgent {
             mv.visitLabel(end);
             mv.visitTryCatchBlock(start, end, handler, "java/lang/Throwable");
             mv.visitLabel(handler);
-            mv.visitFrame(Opcodes.F_NEW, 1, new Object[] { type }, 1, new Object[] { "java/lang/Throwable" });
+            // Existing monitor-cleanup handlers may merge local 0 to TOP. This
+            // handler only consumes the exception, so require no preserved locals.
+            mv.visitFrame(Opcodes.F_NEW, 0, new Object[0], 1, new Object[] { "java/lang/Throwable" });
             mv.visitInsn(Opcodes.DUP);
             mv.visitMethodInsn(Opcodes.INVOKESTATIC, OWNER, "fail", "(Ljava/lang/Throwable;)V", false);
             mv.visitInsn(Opcodes.ATHROW);

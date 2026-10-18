@@ -2,7 +2,9 @@
 import hashlib
 import io
 from pathlib import Path
+import shutil
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,6 +15,18 @@ import launch
 
 
 class LaunchTests(unittest.TestCase):
+    def _host_library(self, path: Path, *, fixture_mods: bool = False,
+                      composed: bool = True, legacy: bool = True) -> None:
+        symbols = ['Java_dev_ravel_jvm_Hook_ravelInitialize',
+                   'Java_dev_ravel_jvm_Hook_ravelInitializeIntegratedServer'] if composed else ['unrelated']
+        if composed and legacy:
+            symbols.append('Java_dev_ravel_jvm_Hook_legacyBootstrap')
+        if fixture_mods:
+            symbols.append('Java_dev_ravel_jvm_LegacyPacketLive_receipts')
+        source = '\n'.join('void ' + symbol + '(void) {}' for symbol in symbols)
+        subprocess.run(['cc', '-shared', '-fPIC', '-x', 'c', '-', '-o', str(path)],
+                       input=source, text=True, capture_output=True, check=True, timeout=30)
+
     def test_java_version_requires_the_actual_profile_major(self):
         for major, version in ((8, '1.8.0_504'), (27, '27-ea')):
             result = launch.subprocess.CompletedProcess(
@@ -175,6 +189,180 @@ class LaunchTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'SHA256'):
                 launch.candidate_command(candidate, root / 'game', root / 'assets',
                                          root / 'natives', root / 'observer.jar', root / 'trial')
+
+    def test_vanilla_dispatch_is_explicit_and_preserves_sevtech_default(self):
+        import vanilla
+        with patch.object(vanilla, 'prepare_command', return_value=(['java'], Path('/game'))) as prepare:
+            self.assertEqual(launch.prepare_command('vanilla', '/trial'), (['java'], Path('/game')))
+            prepare.assert_called_once_with(Path('/trial'), 'vanilla', None)
+            prepare.reset_mock()
+            launch.prepare_command('ravel', '/trial', '/candidate', workload='vanilla')
+            prepare.assert_called_once_with(Path('/trial'), 'ravel', '/candidate')
+
+    def test_vanilla_candidate_rejects_unpinned_runtime_and_extras(self):
+        import vanilla
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            paths = {}
+            for name in ('platform', 'agent', 'host', 'screen', 'lwjgl'):
+                path = root / (name + '.jar')
+                path.write_bytes(name.encode())
+                paths[name] = str(path)
+            self._host_library(Path(paths['host']))
+            data = {'javaPath': '/jdk27/bin/java', 'platform': paths['platform'],
+                    'agent': paths['agent'], 'host': paths['host'], 'screen': paths['screen'],
+                    'lwjgl': [paths['lwjgl']],
+                    'sha256': {value: launch.digest(Path(value)) for value in paths.values()}}
+            vanilla.validate_candidate(data)
+            data['jvmArgs'] = ['-javaagent:/untracked.jar']
+            with self.assertRaisesRegex(ValueError, 'fields'):
+                vanilla.validate_candidate(data)
+            del data['jvmArgs']
+            data['sha256'][paths['host']] = 'wrong'
+            with self.assertRaisesRegex(ValueError, 'SHA256'):
+                vanilla.validate_candidate(data)
+
+    def test_vanilla_snapshot_retains_original_bytes(self):
+        import vanilla
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / 'platform.jar'
+            source.write_bytes(b'first')
+            with patch.object(launch, 'LOCAL', root):
+                retained = vanilla.snapshot(source)
+                source.write_bytes(b'second')
+                self.assertEqual(retained.read_bytes(), b'first')
+                self.assertNotEqual(retained, vanilla.snapshot(source))
+
+    def _vanilla_candidate(self, root: Path, java: Path) -> Path:
+        import json
+        candidate = root / 'candidate.json'
+        paths = {}
+        for name in ('platform.jar', 'agent.jar', 'host.so', 'screen.jar', 'lwjgl-3.3.6.jar',
+                     'lwjgl-3.3.6-natives-linux.jar'):
+            path = root / name
+            path.write_bytes(name.encode())
+            if name == 'host.so':
+                self._host_library(path)
+            paths[name] = path
+        lwjgl = [paths[name] for name in ('lwjgl-3.3.6.jar', 'lwjgl-3.3.6-natives-linux.jar')]
+        dependency = root / 'jvm/legacy-platform/dependencies.sha256'
+        dependency.parent.mkdir(parents=True)
+        dependency.write_text(''.join(launch.digest(path) + ' ' + path.name + '\n' for path in lwjgl))
+        data = {'javaPath': str(java), 'platform': str(paths['platform.jar']),
+                'agent': str(paths['agent.jar']), 'host': str(paths['host.so']),
+                'screen': str(paths['screen.jar']), 'lwjgl': list(map(str, lwjgl)),
+                'sha256': {str(path): launch.digest(path) for path in paths.values()}}
+        candidate.write_text(json.dumps(data))
+        return candidate
+
+    def test_vanilla_candidate_attests_actual_retained_host_exports(self) -> None:
+        import json
+        import vanilla
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            data = json.loads(self._vanilla_candidate(root, root / 'java').read_text())
+            host = Path(data['host'])
+            with patch.object(launch, 'LOCAL', root):
+                retained = vanilla.snapshot(host)
+            data['host'] = str(retained)
+            data['sha256'][str(retained)] = data['sha256'].pop(str(host))
+            host.write_bytes(b'rebuilt source no longer matters')
+            self.assertIn(retained, vanilla.validate_candidate(data))
+            for content, message in (('fixture', 'fixture-mods'),
+                                     ('unrelated', 'composed-host JNI'),
+                                     ('modern', 'legacy composed-host JNI'),
+                                     ('text', 'ELF')):
+                with self.subTest(content=content):
+                    if content == 'text':
+                        retained.write_bytes(b'not a native host')
+                    else:
+                        self._host_library(retained, fixture_mods=content == 'fixture',
+                                           composed=content != 'unrelated', legacy=content != 'modern')
+                    data['sha256'][str(retained)] = launch.digest(retained)
+                    with self.assertRaisesRegex(ValueError, message):
+                        vanilla.validate_candidate(data)
+
+    def test_vanilla_candidate_creation_attests_host_exports(self) -> None:
+        import json
+        import vanilla
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            data = json.loads(self._vanilla_candidate(root, root / 'java').read_text())
+            work = root / 'tests/fixtures/local/legacy-platform'
+            work.mkdir(parents=True)
+            for source in [Path(data['platform']), *map(Path, data['lwjgl'])]:
+                shutil.copyfile(source, work / source.name)
+            agents = root / 'target/ravel-jvm'
+            agents.mkdir(parents=True)
+            for key, name in (('agent', 'ravel-agent.jar'), ('screen', 'ravel-screen.jar')):
+                shutil.copyfile(data[key], agents / name)
+            host = Path(data['host'])
+            with patch.object(launch, 'LOCAL', root), patch.object(launch, 'ROOT', root), \
+                 patch.object(launch, 'validate_java'), patch.object(vanilla, 'validate_agent'):
+                candidate = root / 'accepted.json'
+                vanilla.write_candidate(candidate, root / 'java', host)
+                vanilla.validate_candidate(json.loads(candidate.read_text()))
+                self._host_library(host, fixture_mods=True)
+                rejected = root / 'rejected.json'
+                with self.assertRaisesRegex(ValueError, 'fixture-mods'):
+                    vanilla.write_candidate(rejected, root / 'java', host)
+                self.assertFalse(rejected.exists())
+
+    def test_matched_vanilla_commands_use_official_main_or_real_agent(self):
+        import json
+        import vanilla
+        for instance in ('vanilla', 'ravel'):
+            with self.subTest(instance=instance), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                out = root / 'trial'
+                out.mkdir()
+                name = 'vanilla-java8' if instance == 'vanilla' else 'vanilla-ravel'
+                directory = root / 'prism/instances' / name
+                game = directory / '.minecraft'
+                game.mkdir(parents=True)
+                natives = directory / 'natives-direct'
+                natives.mkdir()
+                (natives / 'liblwjgl64.so').write_bytes(b'native')
+                observer = root / 'observer.jar'
+                observer.write_bytes(b'observer')
+                java = root / 'java'
+                java.write_bytes(b'java')
+                client = root / 'client.jar'
+                client.write_bytes(b'client')
+                library = root / 'authlib.jar'
+                library.write_bytes(b'library')
+                settings = {'fixture': 'vanilla-1.12.2', 'instance': instance,
+                            'javaPath': str(java), 'jvmArgs': ['-javaagent:' + str(observer) + '=' + str(out)],
+                            'minMemoryMiB': 4096, 'maxMemoryMiB': 8192,
+                            'agentSha256': launch.digest(observer)}
+                (out / 'settings.json').write_text(json.dumps(settings))
+                official = {'mainClass': 'net.minecraft.client.main.Main',
+                            'minecraftArguments': '--gameDir ${game_directory} --username ${auth_player_name}',
+                            'assetIndex': {'id': '1.12'}, 'libraries': []}
+                candidate = self._vanilla_candidate(root, java) if instance == 'ravel' else None
+                with patch.object(launch, 'LOCAL', root), patch.object(launch, 'ROOT', root), \
+                     patch.object(launch, 'official_metadata', return_value=(official, client)), \
+                     patch.object(launch, 'resolve_libraries', return_value=([library], natives)), \
+                     patch.object(launch, 'resolve_assets', return_value=root / 'assets'), \
+                     patch.object(launch, 'validate_java', return_value='actual version'), \
+                     patch.object(vanilla, 'validate_agent'):
+                    command, cwd = vanilla.prepare_command(out, instance, candidate)
+                self.assertEqual(cwd, game)
+                self.assertIn('-Xmx8192M', command)
+                self.assertNotIn('--tweakClass', command)
+                record = json.loads((out / 'command.json').read_text())
+                self.assertTrue(all(len(row['sha256']) == 64 for row in record['provenance']['runtimeInputs']))
+                if instance == 'vanilla':
+                    self.assertIn('net.minecraft.client.main.Main', command)
+                    self.assertNotIn('--module-path', command)
+                else:
+                    self.assertIn('dev.ravel.legacy.launch.LegacyLauncher', command)
+                    self.assertIn('-Dravel.legacy.benchmark=true', command)
+                    self.assertEqual(len([arg for arg in command if arg.startswith('-javaagent:')]), 2)
+                    self.assertTrue(any(arg.startswith('-Dravel.host=') for arg in command))
+                    child = directory / 'benchmark-child-classpath.txt'
+                    self.assertIn(str(library), child.read_text())
 
 
 if __name__ == '__main__':

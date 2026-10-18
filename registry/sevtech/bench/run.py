@@ -18,7 +18,8 @@ import shutil
 import urllib.request
 import zipfile
 from shade import relocate_class
-from launch import prepare_command
+from launch import prepare_command, validate_java
+from summarize import validate_ravel_runtime
 
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = ROOT / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline'
@@ -40,6 +41,23 @@ def pinned_asm(version: str, checksum: str) -> Path:
         raise ValueError('observer dependency changed')
     pin.write_text(json.dumps(record, indent=2) + '\n')
     return asm
+
+
+def verify_observer(classes: Path, asm: Path, java_home: str, agent: Path) -> None:
+    tests = LOCAL / 'observer-test-classes'
+    tests.mkdir(exist_ok=True)
+    classpath = os.pathsep.join(map(str, [classes, asm]))
+    subprocess.run([str(Path(java_home) / 'bin/javac'), '-Xlint:all', '-Werror',
+                    '-cp', classpath, '-d', str(tests),
+                    str(Path(__file__).with_name('BenchmarkAgentTest.java'))],
+                   check=True, timeout=300)
+    current = subprocess.check_output(['mise', 'where', 'java'], text=True, timeout=60).strip()
+    java27 = str(Path(current) / 'bin/java')
+    validate_java(java27, 27)
+    classpath = os.pathsep.join(map(str, [tests, agent, asm]))
+    for java in (str(Path(java_home) / 'bin/java'), java27):
+        subprocess.run([java, '-Xverify:all', '-cp', classpath,
+                        'dev.ravel.metrics.BenchmarkAgentTest'], check=True, timeout=60)
 
 
 def build() -> Path:
@@ -66,6 +84,7 @@ def build() -> Path:
                 if name.startswith('org/') and name.endswith('.class'):
                     out.writestr(zipfile.ZipInfo(name.replace('org/objectweb/asm', 'ravel/metrics/asm')),
                                  relocate_class(source.read(name)))
+    verify_observer(classes, asm, java_home, agent)
     return agent
 
 
@@ -90,12 +109,21 @@ def sample(proc: Path) -> list[int | str]:
             int(status['VmHWM'].split()[0]), int(stat[11]) + int(stat[12])]
 
 
-def hardware(out: Path) -> None:
+def validate_renderer(identity: str, functional_only: bool) -> None:
+    if not functional_only and any(name in identity.lower() for name in
+                                   ('llvmpipe', 'softpipe', 'software rasterizer')):
+        raise ValueError('software renderer is functional-only')
+
+
+def hardware(out: Path, functional_only: bool = False) -> None:
     commands = {'gpu': ['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv'],
-                'gl': ['glxinfo', '-B'], 'cpu': ['lscpu'], 'kernel': ['uname', '-srmo']}
+                'gl': ['glxinfo', '-B'], 'display': ['xrandr', '--current'],
+                'cpu': ['lscpu'], 'kernel': ['uname', '-srmo']}
     for name, command in commands.items():
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         (out / (name + '.txt')).write_text(result.stdout)
+        if name == 'gl':
+            validate_renderer(result.stdout, functional_only)
 
 
 def evict_inputs(instance: Path, out: Path) -> None:
@@ -113,27 +141,39 @@ def evict_inputs(instance: Path, out: Path) -> None:
     (out / 'cache-advice.json').write_text(json.dumps(evicted, indent=2) + '\n')
 
 
+def validate_display(functional_only: bool) -> None:
+    if not os.environ.get('DISPLAY'):
+        raise ValueError('benchmark requires DISPLAY')
+    if not functional_only:
+        if os.environ['DISPLAY'] != ':0':
+            raise ValueError('native measurement requires DISPLAY=:0')
+        if os.environ.get('LIBGL_ALWAYS_SOFTWARE', '').lower() in ('1', 'true', 'yes'):
+            raise ValueError('software rendering is functional-only')
+
+
 def run(args: argparse.Namespace) -> None:
-    if os.environ.get('DISPLAY') != ':0':
-        raise ValueError('native measurement requires DISPLAY=:0')
+    validate_display(args.functional_only)
     out = LOCAL / 'runs' / args.trial
     out.mkdir(parents=True, mode=0o700)
-    if args.instance == 'ravel':
+    if args.workload == 'vanilla':
+        from vanilla import prepare_vanilla
+        prepare_vanilla(out, args.instance, args.candidate)
+    elif args.instance == 'ravel':
         prepare_candidate(out)
     else:
         prepare = 'prepare.py' if args.instance == 'original' else 'cleanroom.py'
         subprocess.run(['python3', str(Path(__file__).with_name(prepare)),
                         '--agent', str(LOCAL / 'observer.jar'), '--output', str(out)], check=True)
-    command, cwd = prepare_command(args.instance, out, args.candidate)
-    instance = LOCAL / 'prism/instances' / args.instance
-    game_log = instance / '.minecraft/logs/latest.log'
+    command, cwd = prepare_command(args.instance, out, args.candidate, workload=args.workload)
+    instance = cwd.parent
+    game_log = cwd / 'logs/latest.log'
     game_log.unlink(missing_ok=True)
-    world = instance / '.minecraft/saves/RavelBenchmark'
+    world = cwd / 'saves/RavelBenchmark'
     if world.exists():
         shutil.rmtree(world)
     if args.cache == 'cold-data-cache':
         evict_inputs(instance, out)
-    hardware(out)
+    hardware(out, args.functional_only)
     start = time.monotonic_ns()
     with (out / 'launcher.log').open('w') as log, (out / 'process.csv').open('w') as raw:
         process = subprocess.Popen(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
@@ -160,10 +200,14 @@ def run(args: argparse.Namespace) -> None:
     result = {'trial': args.trial, 'instance': args.instance, 'cache': args.cache,
               'start_monotonic_ns': start, 'wall_seconds': (time.monotonic_ns()-start)/1e9,
               'launcher_exit': process.returncode, 'complete': (out / 'complete').exists(),
-              'monitor_error': failure}
+              'monitor_error': failure,
+              'measurement': 'functional-only' if args.functional_only else 'physical',
+              'display': os.environ['DISPLAY']}
     (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-    if not result['complete'] or (out / 'error.txt').exists():
-        raise RuntimeError('trial did not complete; inspect private trial logs')
+    if not result['complete'] or process.returncode != 0 or (out / 'error.txt').exists():
+        raise RuntimeError('trial did not complete successfully; inspect private trial logs')
+    if args.instance == 'ravel' and args.workload == 'vanilla':
+        validate_ravel_runtime(out)
 
 
 def monitor(process: subprocess.Popen, writer: Any, out: Path, timeout: float) -> None:
@@ -227,12 +271,13 @@ def prepare_candidate(out: Path) -> None:
 def matrix(args: argparse.Namespace) -> None:
     if '/' in args.matrix or args.matrix in ('.', '..'):
         raise ValueError('matrix prefix must be a simple identifier')
+    caches = ('warm-filesystem',) if args.workload == 'vanilla' else ('cold-data-cache', 'warm-filesystem')
     for repetition in range(1, 4):
-        for cache in ('cold-data-cache', 'warm-filesystem'):
+        for cache in caches:
             trial = f'{args.matrix}-{cache}-{repetition}'
             command = ['mise', 'exec', '--', 'numen', 'run', '--', 'python3', str(Path(__file__)),
                        trial, '--cache', cache, '--instance', args.instance,
-                       '--timeout', str(args.timeout)]
+                       '--timeout', str(args.timeout), '--workload', args.workload]
             if args.candidate:
                 command += ['--candidate', str(args.candidate.resolve())]
             subprocess.run(command, check=True)
@@ -243,11 +288,20 @@ def main() -> None:
     parser.add_argument('trial', nargs='?')
     parser.add_argument('--build', action='store_true')
     parser.add_argument('--cache', choices=['cold-data-cache', 'warm-filesystem'], default='warm-filesystem')
-    parser.add_argument('--instance', choices=['original', 'cleanroom', 'ravel'], default='original')
+    parser.add_argument('--instance', choices=['original', 'cleanroom', 'ravel', 'vanilla'], default='original')
+    parser.add_argument('--workload', choices=['sevtech', 'vanilla'], default='sevtech')
+    parser.add_argument('--functional-only', action='store_true',
+                        help='allow a nonphysical display; never include in performance comparisons')
     parser.add_argument('--candidate', type=Path, help='private Ravel direct launch specification JSON')
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--matrix', metavar='PREFIX', help='run three separately locked cold/warm pairs')
     args = parser.parse_args()
+    if args.instance == 'vanilla':
+        args.workload = 'vanilla'
+    if args.workload == 'vanilla' and args.instance not in ('vanilla', 'ravel'):
+        parser.error('vanilla workload requires --instance vanilla or ravel')
+    if args.functional_only and args.matrix:
+        parser.error('functional-only runs are individual trials, not a performance matrix')
     if (args.instance == 'ravel') != bool(args.candidate):
         parser.error('--candidate is required exactly for --instance ravel')
     if args.build:

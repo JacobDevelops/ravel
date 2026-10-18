@@ -1,6 +1,6 @@
 [package]
 name = "ravel-composed-host"
-description = "JVM harness host composing the tracked test-mod set"
+description = "JVM native host with optional tracked test-mod fixtures"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
@@ -11,19 +11,32 @@ rust-version.workspace = true
 name = "ravel_bootstrap"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["fixture-mods"]
+fixture-mods = [
+  "dep:ravel-test-mod-audio",
+  "dep:ravel-test-mod-client-only",
+  "dep:ravel-test-mod-commands",
+  "dep:ravel-test-mod-configuration",
+  "dep:ravel-test-mod-networking",
+  "dep:ravel-test-mod-registries",
+  "dep:ravel-test-mod-saved-data",
+  "dep:ravel-test-mod-server-only",
+]
+
 [dependencies]
 jni.workspace = true
 ravel-bootstrap-runtime.workspace = true
 ravel-core.workspace = true
 ravel-host-runtime.workspace = true
-ravel-test-mod-audio.workspace = true
-ravel-test-mod-client-only.workspace = true
-ravel-test-mod-commands.workspace = true
-ravel-test-mod-configuration.workspace = true
-ravel-test-mod-networking.workspace = true
-ravel-test-mod-registries.workspace = true
-ravel-test-mod-saved-data.workspace = true
-ravel-test-mod-server-only.workspace = true
+ravel-test-mod-audio = { workspace = true, optional = true }
+ravel-test-mod-client-only = { workspace = true, optional = true }
+ravel-test-mod-commands = { workspace = true, optional = true }
+ravel-test-mod-configuration = { workspace = true, optional = true }
+ravel-test-mod-networking = { workspace = true, optional = true }
+ravel-test-mod-registries = { workspace = true, optional = true }
+ravel-test-mod-saved-data = { workspace = true, optional = true }
+ravel-test-mod-server-only = { workspace = true, optional = true }
 
 [dev-dependencies]
 ravel-loader.workspace = true

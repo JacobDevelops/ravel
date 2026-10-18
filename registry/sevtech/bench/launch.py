@@ -266,8 +266,9 @@ def resolve_libraries(profile: dict[str, Any], instance: Path,
     return classpath, natives
 
 
-def resolve_assets(index: dict[str, Any], game: Path, records: dict[str, Any]) -> Path:
-    assets = LOCAL / 'prism/assets'
+def resolve_assets(index: dict[str, Any], game: Path, records: dict[str, Any],
+                   assets_root: Path | None = None) -> Path:
+    assets = assets_root if assets_root is not None else LOCAL / 'prism/assets'
     path = private_path(assets, 'indexes/' + index['id'] + '.json')
     fetch(path, index, LOCAL, records)
     contents = json.loads(path.read_text())
@@ -417,8 +418,13 @@ def prepare_candidate(candidate: Path | str | None, instance: Path, output: Path
 
 
 def prepare_command(instance: str, output: Path | str,
-                    candidate: Path | str | None = None) -> tuple[list[str], Path]:
+                    candidate: Path | str | None = None,
+                    workload: str = 'sevtech') -> tuple[list[str], Path]:
     """Finish all resolver I/O, then return (Java argv, .minecraft cwd)."""
+    require(workload in ('sevtech', 'vanilla'), 'unknown workload: ' + workload)
+    if instance == 'vanilla' or workload == 'vanilla':
+        from vanilla import prepare_command as vanilla_command
+        return vanilla_command(Path(output), instance, candidate)
     require(instance in ('original', 'cleanroom', 'ravel'), 'unknown instance: ' + instance)
     require(platform.system() == 'Linux' and platform.machine() in ('x86_64', 'amd64'),
             'direct benchmark resolver requires Linux x86_64')
@@ -466,12 +472,13 @@ def prepare_command(instance: str, output: Path | str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--instance', choices=('original', 'cleanroom', 'ravel'), default='original')
+    parser.add_argument('--instance', choices=('original', 'cleanroom', 'ravel', 'vanilla'), default='original')
+    parser.add_argument('--workload', choices=('sevtech', 'vanilla'), default='sevtech')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--candidate', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='explicit; this tool never launches')
     args = parser.parse_args()
-    command, game = prepare_command(args.instance, args.output, args.candidate)
+    command, game = prepare_command(args.instance, args.output, args.candidate, args.workload)
     print(json.dumps({'command': command, 'cwd': str(game)}, indent=2))
 
 

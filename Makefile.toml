@@ -136,6 +136,8 @@ for version_directory in minecraft/versions/*/; do
   echo "testing Minecraft $version"
   RAVEL_MINECRAFT_VERSION="$version" \
     cargo nextest run --workspace --all-features
+  RAVEL_MINECRAFT_VERSION="$version" \
+    cargo nextest run --locked -p ravel-composed-host --no-default-features
   # Recorded after the suite passes, never before. A line written on the
   # way in says "started", and this file is read as "covered": a run
   # still on its first version, or one that died on it, would leave a

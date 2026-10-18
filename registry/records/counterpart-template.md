@@ -56,7 +56,7 @@ sorted by path.
 ```json
 {
   "schemaVersion": 1,
-  "id": "rvl_NNN_counterpart",
+  "id": "rvl_nnn_counterpart",
   "version": "0.1.0",
   "displayName": "RVL-NNN Counterpart",
   "description": "Ravel counterpart for RVL-NNN: what the entry does, in the words of the specification.",
@@ -89,11 +89,12 @@ sorted by path.
 crate name with underscores, and it is the same string `MOD_ID` carries in `src/lib.rs`; the entry's
 own test asserts they agree.
 
-The digests are written last, after every other file is final. Refresh them with the same command
-the check uses:
+The digests are written last, after every other file is final. From the repository root, refresh
+the manifest and then check it with the package producer:
 
 ```console
-sha256sum mods/rvl-NNN-counterpart/src/lib.rs
+mise exec -- cargo run -q -p ravel-xtask -- package digests registry/mods/rvl-NNN-counterpart
+mise exec -- cargo run -q -p ravel-xtask -- package digests registry/mods/rvl-NNN-counterpart --check
 ```
 
 ## `provenance.json`
@@ -116,7 +117,7 @@ digest-bearing source belongs and this one names what the implementer actually h
   "schemaVersion": 1,
   "subject": {
     "kind": "ravel-package",
-    "id": "rvl_NNN_counterpart",
+    "id": "rvl_nnn_counterpart",
     "version": "0.1.0"
   },
   "implementationMethod": "specification-implemented",
@@ -261,57 +262,46 @@ bounds against hostile input, host blockers.
 //! carried here and which are left declarable only because Ravel publishes no
 //! seam for them.
 
-pub mod area;
-
-use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentDeclaration;
-use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 
 /// The identity this package is declared and validated under.
-pub const MOD_ID: &str = "rvl_NNN_counterpart";
+pub const MOD_ID: &str = "rvl_nnn_counterpart";
 
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
 }
 
 impl Entry {
     #[must_use]
     pub fn new() -> Self {
-        Self { declaration: None }
+        Self {
+            declaration: Ok(ContentDeclaration::new(Self::declared_id().clone())),
+        }
     }
 }
 
+impl Default for Entry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[declare_mod(id = "rvl_nnn_counterpart")]
 impl Mod for Entry {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        let _ = state;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
     fn content_declaration(
         &self,
     ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
-        let declaration = self
-            .declaration
+        self.declaration
             .as_ref()
-            .ok_or_else(|| Self::packaging("the packaged content declaration is not well formed"))?;
-        Ok(Some(std::borrow::Cow::Borrowed(declaration)))
-    }
-
-    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
-        Ok(None)
-    }
-
-    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let _ = resolved;
-        Ok(())
-    }
-
-    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
-        let _ = event;
-        Ok(())
+            .map(|declaration| Some(std::borrow::Cow::Borrowed(declaration)))
+            .map_err(Clone::clone)
     }
 }
 
@@ -319,7 +309,7 @@ export_mod!(Entry::new());
 
 #[cfg(test)]
 mod tests {
-    use super::{Entry, MOD_ID, __ravel_entry};
+    use super::{MOD_ID, __ravel_entry};
     use ravel_sdk::prelude::*;
 
     #[test]

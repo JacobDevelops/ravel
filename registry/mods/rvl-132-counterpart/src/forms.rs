@@ -21,6 +21,7 @@
 use core::fmt;
 use std::collections::BTreeMap;
 
+use ravel_sdk::content::ContentIdError;
 use ravel_sdk::{JsonValue, json};
 use rvl_210_counterpart::quantity::{Amount, KindError};
 
@@ -91,6 +92,13 @@ pub enum TagError {
     },
     /// The data map the form carries was refused.
     Data(data::Refused),
+    /// A textual item or fluid identity violates Ravel's identifier grammar.
+    Identifier {
+        /// The rejected spelling.
+        value: String,
+        /// The SDK's precise identifier refusal.
+        error: ContentIdError,
+    },
 }
 
 impl TagError {
@@ -126,6 +134,9 @@ impl fmt::Display for TagError {
                 "no build supplied {input}, so the escape field has no compatible spelling"
             ),
             Self::Data(refused) => refused.fmt(formatter),
+            Self::Identifier { value, error } => {
+                write!(formatter, "invalid content identity {value:?}: {error}")
+            }
         }
     }
 }
@@ -497,7 +508,7 @@ pub fn stack_tag_with(value: &Stack, escape: &EscapeField) -> Result<Tag, TagErr
     let true_count = i32::try_from(value.count).map_err(|_| TagError::Range {
         field: "count".to_owned(),
     })?;
-    fields.insert("id".to_owned(), Tag::Text(value.identity.clone()));
+    fields.insert("id".to_owned(), Tag::Text(value.identity.to_string()));
     let clamped = value.count.min(COUNT_CAP);
     let written = i32::try_from(clamped).map_err(|_| TagError::Range {
         field: "count".to_owned(),
@@ -567,7 +578,10 @@ pub fn stack_from_with(tag: &Tag, escape: &EscapeField) -> Result<Stack, TagErro
         None => Components::new(),
     };
     Ok(Stack {
-        identity: identity.clone(),
+        identity: identity.parse().map_err(|error| TagError::Identifier {
+            value: identity.clone(),
+            error,
+        })?,
         count,
         data,
     })
@@ -598,7 +612,7 @@ pub fn portion_tag(value: &Portion) -> Result<Tag, TagError> {
     let volume = i32::try_from(value.volume).map_err(|_| TagError::Range {
         field: "amount".to_owned(),
     })?;
-    fields.insert("fluid".to_owned(), Tag::Text(value.fluid.clone()));
+    fields.insert("fluid".to_owned(), Tag::Text(value.fluid.to_string()));
     fields.insert("amount".to_owned(), Tag::Int(volume));
     if !value.data.is_empty() {
         fields.insert("components".to_owned(), data_tag(&value.data));
@@ -633,7 +647,10 @@ pub fn portion_from(tag: &Tag) -> Result<Portion, TagError> {
         None => Components::new(),
     };
     Ok(Portion {
-        fluid: fluid.clone(),
+        fluid: fluid.parse().map_err(|error| TagError::Identifier {
+            value: fluid.clone(),
+            error,
+        })?,
         volume,
         data,
     })
@@ -1104,7 +1121,10 @@ mod tests {
 
     #[test]
     fn a_stack_under_the_cap_round_trips_without_the_escape_field() {
-        let stack = Stack::of("minecraft:stone", 12);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            12,
+        );
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert!(!fields.contains_key(EscapeField::placeholder().name()));
@@ -1113,7 +1133,10 @@ mod tests {
 
     #[test]
     fn a_stack_above_the_cap_writes_a_clamped_count_and_the_true_one() {
-        let stack = Stack::of("minecraft:stone", 5_000);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            5_000,
+        );
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert_eq!(fields.get("count"), Some(&Tag::Int(99)));
@@ -1126,7 +1149,10 @@ mod tests {
 
     #[test]
     fn a_stack_of_exactly_the_cap_still_carries_the_escape_field() {
-        let stack = Stack::of("minecraft:stone", COUNT_CAP);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            COUNT_CAP,
+        );
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert_eq!(fields.get("count"), Some(&Tag::Int(99)));
@@ -1157,7 +1183,10 @@ mod tests {
     #[test]
     fn an_escape_field_of_another_spelling_is_not_read() {
         let written = stack_tag_with(
-            &Stack::of("minecraft:stone", 500),
+            &Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                500,
+            ),
             &EscapeField::supplied(Some("other_count")).expect("a spelling"),
         )
         .expect("a stack inside the kind's range");
@@ -1207,13 +1236,19 @@ mod tests {
         // writing side. `Stack` has public fields and no invariant, so the
         // instance exists.
         assert_eq!(
-            stack_tag(&Stack::of("minecraft:stone", 5_000_000_000)),
+            stack_tag(&Stack::of(
+                "minecraft:stone".parse().expect("a valid item"),
+                5_000_000_000
+            )),
             Err(TagError::Range {
                 field: "count".to_owned()
             })
         );
         assert_eq!(
-            portion_tag(&Portion::of("minecraft:water", 5_000_000_000)),
+            portion_tag(&Portion::of(
+                "minecraft:water".parse().expect("a valid fluid"),
+                5_000_000_000
+            )),
             Err(TagError::Range {
                 field: "amount".to_owned()
             })
@@ -1260,7 +1295,11 @@ mod tests {
                 Value::Sequence(vec![Value::Whole(1), Value::Whole(2)]),
             ),
         ]);
-        let stack = Stack::of("minecraft:axe", 1).carrying(data);
+        let stack = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(data);
         assert_eq!(
             stack_from(&stack_tag(&stack).expect("a stack inside the kind's range")),
             Ok(stack)
@@ -1290,13 +1329,19 @@ mod tests {
 
     #[test]
     fn a_portion_round_trips_with_and_without_data() {
-        let plain = Portion::of("minecraft:water", 1_000);
+        let plain = Portion::of(
+            "minecraft:water".parse().expect("a valid fluid identity"),
+            1_000,
+        );
         assert_eq!(
             portion_from(&portion_tag(&plain).expect("a portion inside the kind's range")),
             Ok(plain)
         );
-        let detailed = Portion::of("minecraft:water", 1_000)
-            .carrying(Components::from([("tint".to_owned(), Value::Whole(4))]));
+        let detailed = Portion::of(
+            "minecraft:water".parse().expect("a valid fluid identity"),
+            1_000,
+        )
+        .carrying(Components::from([("tint".to_owned(), Value::Whole(4))]));
         assert_eq!(
             portion_from(&portion_tag(&detailed).expect("a portion inside the kind's range")),
             Ok(detailed)
@@ -1381,7 +1426,10 @@ mod tests {
     #[test]
     fn the_kinds_write_and_read_through_the_vocabularys_own_methods() {
         let items = Stackable::default();
-        let stack = Stack::of("minecraft:stone", 200);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            200,
+        );
         assert_eq!(items.read(&items.write(&stack)), Ok(stack));
         assert_eq!(
             Scalar.read(&Scalar.write(&Charge::of(9))),
@@ -1394,7 +1442,10 @@ mod tests {
     #[test]
     fn a_candidate_round_trips_with_its_flags() {
         let candidate = Candidate {
-            value: Stack::of("minecraft:stone", 3),
+            value: Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                3,
+            ),
             under: Flags::slot(Stack::IDENTITY),
         };
         let tag = candidate_tag(&candidate, stack_tag).expect("a candidate in range");
@@ -1420,7 +1471,10 @@ mod tests {
         let mut set = CandidateSet::new();
         for count in 1..4 {
             set.add(Candidate {
-                value: Stack::of("minecraft:stone", count),
+                value: Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    count,
+                ),
                 under: Flags::slot(Stack::COUNT),
             })
             .expect("inside the ceiling");
@@ -1502,7 +1556,10 @@ mod tests {
         let mut set = CandidateSet::new();
         for count in 1..3 {
             set.add(Candidate {
-                value: Stack::of("minecraft:stone", count),
+                value: Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    count,
+                ),
                 under: Flags::slot(Stack::COUNT),
             })
             .expect("inside the ceiling");
@@ -1614,10 +1671,44 @@ mod tests {
             ("rate".to_owned(), Value::Decimal(0.5)),
             ("absent".to_owned(), Value::Decimal(f64::NAN)),
         ]);
-        let stack = Stack::of("minecraft:axe", 1).carrying(data.clone());
+        let stack = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(data.clone());
         let read = stack_from(&stack_tag(&stack).expect("a stack inside the kind's range"))
             .expect("a stack this module wrote");
         assert_eq!(read.data, data);
+    }
+
+    #[test]
+    fn malformed_item_and_fluid_identities_are_refused_even_at_zero_quantity() {
+        for name in [
+            "",
+            "stone",
+            "Minecraft:stone",
+            "minecraft:",
+            "minecraft:bad name",
+        ] {
+            for quantity in [0, 1] {
+                let expected = TagError::Identifier {
+                    value: name.to_owned(),
+                    error: name
+                        .parse::<ravel_sdk::content::ContentId>()
+                        .expect_err("an invalid identity"),
+                };
+                let stack = Tag::Compound(BTreeMap::from([
+                    ("id".to_owned(), Tag::Text(name.to_owned())),
+                    ("count".to_owned(), Tag::Int(quantity)),
+                ]));
+                assert_eq!(stack_from(&stack), Err(expected.clone()));
+                let portion = Tag::Compound(BTreeMap::from([
+                    ("fluid".to_owned(), Tag::Text(name.to_owned())),
+                    ("amount".to_owned(), Tag::Int(quantity)),
+                ]));
+                assert_eq!(portion_from(&portion), Err(expected));
+            }
+        }
     }
 
     #[test]

@@ -236,7 +236,7 @@ impl Entry {
     pub fn new(side: Side) -> Self {
         Self {
             side,
-            collection: Collection::new(Self::owner()),
+            collection: Collection::new(Self::declared_id().clone()),
             sends: Sends::idle(),
             spellings: Spellings::default(),
             memories: BTreeMap::new(),
@@ -259,18 +259,6 @@ impl Entry {
             return Err(AlreadyConstructed);
         }
         Ok(Self::new(side))
-    }
-
-    /// Returns the identity this package is declared under.
-    ///
-    /// # Panics
-    ///
-    /// Never: [`MOD_ID`] is a legal mod id.
-    #[must_use]
-    pub fn owner() -> ModId {
-        MOD_ID
-            .parse()
-            .expect("the declared identity is a legal mod id")
     }
 
     /// Returns the side this was built on.
@@ -452,7 +440,7 @@ impl Mod for Entry {
         &self,
     ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
         Ok(Some(std::borrow::Cow::Owned(
-            self.collection.run().into_declaration(),
+            self.collection.registered().into_declaration(),
         )))
     }
 
@@ -469,7 +457,7 @@ impl Mod for Entry {
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
-        Memory::declaration(Self::owner())
+        Memory::declaration(Self::declared_id().clone())
             .map(Some)
             .map_err(ModError::from_display)
     }
@@ -481,8 +469,13 @@ impl Mod for Entry {
                  so writing this world would delete them"
             )));
         }
+        if !self.recovered.is_empty() {
+            return Err(ModError::refused(
+                "saved memories were unreadable, so writing this world would delete them",
+            ));
+        }
         Ok(Some(SavedDataEnvelope::current(
-            Self::owner(),
+            Self::declared_id().clone(),
             Memory::version(),
             self.payload(),
         )))
@@ -494,14 +487,18 @@ impl Mod for Entry {
         plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let _ = plan;
-        self.memories.clear();
-        self.recovered.clear();
         let Some(envelope) = envelope else {
+            self.memories.clear();
+            self.recovered.clear();
             return Ok(());
         };
         let Some(entries) = envelope.payload().as_object() else {
-            return Ok(());
+            return Err(ModError::refused(
+                "the stored payload holds no memory table",
+            ));
         };
+        self.memories.clear();
+        self.recovered.clear();
         for (owner, document) in entries {
             if !self.memories.contains_key(owner) && self.memories.len() >= MAX_MEMORIES {
                 self.recovered.push(ReadFailure::Dropped {
@@ -565,7 +562,7 @@ mod tests {
     }
 
     fn recipe(path: &str) -> ContentId {
-        ContentId::new(Entry::owner(), path).expect("a legal content path")
+        ContentId::new(Entry::declared_id().clone(), path).expect("a legal content path")
     }
 
     fn key(x: i32) -> Key {
@@ -775,8 +772,11 @@ mod tests {
         memory[spellings.document()] = inner;
         let mut payload = ravel_sdk::json!({});
         payload["the crusher"] = memory;
-        let envelope =
-            ravel_sdk::save::SavedDataEnvelope::current(Entry::owner(), Memory::version(), payload);
+        let envelope = ravel_sdk::save::SavedDataEnvelope::current(
+            Entry::declared_id().clone(),
+            Memory::version(),
+            payload,
+        );
 
         let mut shared = Entry::new(Side::IntegratedServer);
         let declaration = shared
@@ -789,6 +789,33 @@ mod tests {
             .expect("a malformed entry does not cost a world");
         assert_eq!(shared.memories(), 0);
         assert_eq!(shared.recovered().len(), 1);
+        assert!(shared.save_saved_data().is_err());
+    }
+
+    #[test]
+    fn a_malformed_memory_table_is_refused_instead_of_reset() {
+        let mut shared = Entry::new(Side::IntegratedServer);
+        let memory = Memory {
+            current: Some(recipe("smelting")),
+            remembered: Some(recipe("blasting")),
+        };
+        shared
+            .remember("retained", memory.clone())
+            .expect("a valid memory owner");
+        let declaration = shared
+            .saved_data_declaration()
+            .expect("valid saved data")
+            .expect("declared");
+        let plan = SavedDataPlan::open(&declaration, Some(Memory::version())).expect("a plan");
+        for payload in [ravel_sdk::json!(null), ravel_sdk::json!([])] {
+            let envelope = ravel_sdk::save::SavedDataEnvelope::current(
+                Entry::declared_id().clone(),
+                Memory::version(),
+                payload,
+            );
+            assert!(shared.open_saved_data(Some(&envelope), &plan).is_err());
+            assert_eq!(shared.memory("retained"), Some(&memory));
+        }
     }
 
     #[test]
@@ -910,8 +937,11 @@ mod tests {
         for index in 0..MAX_MEMORIES + 10 {
             payload[format!("the crusher {index:05}")] = held.write(&spellings);
         }
-        let envelope =
-            ravel_sdk::save::SavedDataEnvelope::current(Entry::owner(), Memory::version(), payload);
+        let envelope = ravel_sdk::save::SavedDataEnvelope::current(
+            Entry::declared_id().clone(),
+            Memory::version(),
+            payload,
+        );
 
         let mut opened = Entry::new(Side::IntegratedServer);
         let declaration = opened

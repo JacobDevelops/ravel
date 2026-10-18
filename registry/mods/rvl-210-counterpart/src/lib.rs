@@ -73,8 +73,8 @@ pub use crate::query::{ParseError, Query, Segment};
 pub use crate::settings::{Framework, Scope, Settings};
 pub use crate::shapes::{Constraint, Failure, Reason, Region};
 pub use crate::storage::{
-    Attempt, Cell, Difference, Inconsistent, Slotted, SlottedStore, Store as QuantityStore, Tank,
-    difference, move_quantity,
+    Attempt, Difference, Inconsistent, Slotted, SlottedStore, Store as QuantityStore, Tank,
+    ValueBox, difference, move_quantity,
 };
 pub use crate::transport::{Codecs, Level, Shape, Target, TransportError};
 
@@ -314,13 +314,24 @@ impl Entry {
     /// A written value is read as a truth value or a whole number when it is
     /// one and as text otherwise, so a value of the wrong kind reaches
     /// [`Framework::write`] and is refused there rather than coerced.
-    fn run_settings(&mut self, arguments: &[String]) -> Result<(), ModError> {
+    fn run_settings(&mut self, arguments: &[String], side: Side) -> Result<(), ModError> {
         let mut arguments = arguments.iter();
         let Some(property) = arguments.next() else {
             return Ok(());
         };
         match arguments.next() {
             Some(written) => {
+                if self
+                    .framework
+                    .declared()
+                    .iter()
+                    .find(|held| held.property() == property)
+                    .is_some_and(|declared| !declared.scope().resolved_by(side))
+                {
+                    return Err(ModError::refused(
+                        "settings write is on the wrong side for its scope",
+                    ));
+                }
                 let value = match written.as_str() {
                     "true" => settings::Value::Truth(true),
                     "false" => settings::Value::Truth(false),
@@ -411,7 +422,7 @@ impl Mod for Entry {
         let resolved =
             commands::resolve(name, &invocation.arguments).map_err(ModError::from_display)?;
         match resolved {
-            commands::SETTINGS => self.run_settings(&invocation.arguments)?,
+            commands::SETTINGS => self.run_settings(&invocation.arguments, invocation.side)?,
             // The same emptying section seven's reload causes, because this is
             // the subcommand that causes it.
             commands::RELOAD => self.channel = Channel::new(),
@@ -780,11 +791,7 @@ mod tests {
             ContentId::new(Entry::declared_id().clone(), name).expect("a legal path"),
         );
         let arguments = arguments.iter().map(|held| (*held).to_owned()).collect();
-        entry.run_command(&CommandInvocation::new(
-            key,
-            Side::DedicatedServer,
-            arguments,
-        ))
+        entry.run_command(&CommandInvocation::new(key, Side::Client, arguments))
     }
 
     #[test]
@@ -805,6 +812,44 @@ mod tests {
             Ok(&settings::Value::Truth(true)),
             "the tree resolved the name and then wrote through it"
         );
+    }
+
+    #[test]
+    fn settings_writes_follow_each_property_scope_while_reads_remain_available() {
+        let key = RegistryKey::new(
+            ContentKind::Command,
+            ContentId::new(Entry::declared_id().clone(), commands::SETTINGS)
+                .expect("a legal command path"),
+        );
+        for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
+            for (property, scope) in [
+                (settings::DEVELOPMENT_SHORTCUT, Scope::Client),
+                ("dependent.server", Scope::Server),
+            ] {
+                let mut entry = Entry::new();
+                entry.framework_mut().declare(settings::Declared::new(
+                    "dependent.server",
+                    "dependent",
+                    "A server setting",
+                    Scope::Server,
+                    true,
+                    settings::Value::Truth(false),
+                ));
+                let write = CommandInvocation::new(
+                    key.clone(),
+                    side,
+                    vec![property.to_owned(), "true".to_owned()],
+                );
+                let allowed = scope.resolved_by(side);
+                assert_eq!(entry.run_command(&write).is_ok(), allowed);
+                assert_eq!(
+                    entry.framework().read(property),
+                    Ok(&settings::Value::Truth(allowed))
+                );
+                let read = CommandInvocation::new(key.clone(), side, vec![property.to_owned()]);
+                assert!(entry.run_command(&read).is_ok());
+            }
+        }
     }
 
     #[test]
@@ -926,7 +971,7 @@ mod tests {
         assert_eq!(kind(&Conditions::NONE), Conditions::NONE.bits());
         let _list = List::new(TokenKind);
         let _chain = Chain::new(TokenKind);
-        let _cell = Cell::new(0u32);
+        let _value = ValueBox::new(0u32);
         let _tank: Tank<String> = Tank::new(10);
         let _query = Query::parse("$").expect("the parse error type is public too");
         let _registry = Registry::new();

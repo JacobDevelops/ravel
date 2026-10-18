@@ -277,43 +277,35 @@ impl Entry {
         let Some(id) = id else {
             return json!({"registered": false, "refused": "a contribution names no identifier"});
         };
+        let Ok(id) = id.parse::<ContentId>() else {
+            return json!({"registered": false, "refused": "a contribution names an invalid identifier"});
+        };
         let value = arguments
             .get("value")
             .and_then(JsonValue::as_u64)
             .and_then(|value| u32::try_from(value).ok())
             .unwrap_or(0);
-        let strings = |key: &str| -> Vec<String> {
+        let strings = |key: &str| -> Vec<&str> {
             arguments
                 .get(key)
                 .and_then(JsonValue::as_array)
                 .map_or_else(Vec::new, |held| {
-                    held.iter()
-                        .filter_map(|entry| entry.as_str().map(str::to_owned))
-                        .collect()
+                    held.iter().filter_map(JsonValue::as_str).collect()
                 })
         };
         let registered = match arguments.get("kind").and_then(JsonValue::as_str) {
-            Some("tier") => {
-                let Ok(id) = id.parse::<ContentId>() else {
-                    return json!({"registered": false, "refused": "a tier names an invalid identifier"});
-                };
-                self.registries.register_tier(Tier::new(id, value))
-            }
+            Some("tier") => self.registries.register_tier(Tier::new(id, value)),
             Some("crop_kind") => {
                 let stem = arguments
                     .get("stem")
                     .and_then(JsonValue::as_str)
-                    .unwrap_or(id);
-                let Ok(id) = id.parse::<ContentId>() else {
-                    return json!({"registered": false, "refused": "a crop kind names an invalid identifier"});
-                };
+                    .map_or_else(|| id.to_string(), str::to_owned);
                 self.registries.register_kind(CropKind::new(id, stem))
             }
             Some("modifier") => {
                 let kinds = strings("kinds");
-                let borrowed: Vec<&str> = kinds.iter().map(String::as_str).collect();
                 self.registries
-                    .register_modifier(registries::Modifier::new(id, value, &borrowed))
+                    .register_modifier(registries::Modifier::new(id, value, &kinds))
             }
             Some("charge_type") => {
                 let requirement = arguments
@@ -322,7 +314,10 @@ impl Entry {
                     .unwrap_or(0.0);
                 let mut charge = ChargeType::new(id, requirement, 255, 255, 255);
                 for creature in strings("creatures") {
-                    charge.claim(&creature);
+                    let Ok(creature) = creature.parse::<ContentId>() else {
+                        return json!({"registered": false, "refused": "a charge type names an invalid creature identifier"});
+                    };
+                    charge.claim(creature);
                 }
                 self.registries.register_charge(charge)
             }
@@ -384,7 +379,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
         Ok(())
     }
@@ -449,14 +444,21 @@ impl Mod for Entry {
                 "the world stored a version this build does not read",
             ));
         }
-        self.machines.clear();
         let Some(held) = envelope
             .payload()
             .get("machines")
             .and_then(JsonValue::as_object)
         else {
-            return Ok(());
+            return Err(ModError::refused(
+                "the stored payload holds no machine table",
+            ));
         };
+        if let Some((name, _)) = held.iter().find(|(_, payload)| !payload.is_object()) {
+            return Err(ModError::refused(format!(
+                "the stored machine `{name}` holds no machine object"
+            )));
+        }
+        self.machines.clear();
         for (name, payload) in held {
             self.machines
                 .insert(name.clone(), machines::Persisted::load(payload));
@@ -513,6 +515,51 @@ mod tests {
                 .expect("valid configuration")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn a_missing_or_malformed_machine_table_is_refused_without_erasing_state() {
+        let mut entry = Entry::new();
+        entry.hold_machine("retained", machines::Persisted::default());
+        let declaration = entry
+            .saved_data_declaration()
+            .expect("valid saved data")
+            .expect("declared");
+        let plan = SavedDataPlan::open(&declaration, Some(machines::DATA_VERSION)).expect("a plan");
+        for payload in [json!({}), json!({"machines": []}), json!(null)] {
+            let envelope = SavedDataEnvelope::current(
+                Entry::declared_id().clone(),
+                machines::DATA_VERSION,
+                payload,
+            );
+            assert!(entry.open_saved_data(Some(&envelope), &plan).is_err());
+            assert!(entry.machine("retained").is_some());
+        }
+    }
+
+    #[test]
+    fn a_malformed_machine_refuses_the_whole_table_without_replacing_state() {
+        let mut entry = Entry::new();
+        entry.hold_machine("retained", machines::Persisted::default());
+        let declaration = entry
+            .saved_data_declaration()
+            .expect("valid saved data")
+            .expect("declared");
+        let plan = SavedDataPlan::open(&declaration, Some(machines::DATA_VERSION)).expect("a plan");
+        for invalid in [json!(null), json!(42), json!([])] {
+            let envelope = SavedDataEnvelope::current(
+                Entry::declared_id().clone(),
+                machines::DATA_VERSION,
+                json!({"machines": {"a_valid": {}, "z_broken": invalid}}),
+            );
+            let error = entry
+                .open_saved_data(Some(&envelope), &plan)
+                .expect_err("a machine must be an object");
+            assert!(error.to_string().contains("z_broken"));
+            assert!(entry.machine("retained").is_some());
+            assert!(entry.machine("a_valid").is_none());
+            assert!(entry.machine("z_broken").is_none());
+        }
     }
 
     #[test]
@@ -646,15 +693,12 @@ mod tests {
     }
 
     #[test]
-    fn a_tier_or_crop_kind_with_an_invalid_identifier_is_refused_and_not_registered() {
+    fn contributions_with_invalid_identifiers_are_refused_and_not_registered() {
         let mut entry = Entry::new();
         let tiers = entry.registries().tiers().to_vec();
         let kinds = entry.registries().kinds().to_vec();
         let service = Entry::contribution_service().expect("the service identity is valid");
-        for (kind, refused) in [
-            ("tier", "a tier names an invalid identifier"),
-            ("crop_kind", "a crop kind names an invalid identifier"),
-        ] {
+        for kind in ["tier", "crop_kind", "modifier", "charge_type"] {
             let answer = entry
                 .answer_service(&ServiceRequest::new(
                     service.clone(),
@@ -663,12 +707,28 @@ mod tests {
                 .expect("the entry answers its own service");
             assert_eq!(
                 answer.value(),
-                &json!({"registered": false, "refused": refused})
+                &json!({"registered": false, "refused": "a contribution names an invalid identifier"})
             );
         }
         assert_eq!(entry.registries().tiers(), tiers);
         assert_eq!(entry.registries().kinds(), kinds);
         assert_eq!(entry.registries().refused(), []);
+    }
+
+    #[test]
+    fn a_charge_type_with_an_invalid_creature_identifier_is_refused() {
+        let mut entry = Entry::new();
+        let service = Entry::contribution_service().expect("the service identity is valid");
+        let answer = entry
+            .answer_service(&ServiceRequest::new(
+                service,
+                json!({"kind": "charge_type", "id": "test:charge", "creatures": ["Not Legal"]}),
+            ))
+            .expect("the entry answers its own service");
+        assert_eq!(
+            answer.value(),
+            &json!({"registered": false, "refused": "a charge type names an invalid creature identifier"})
+        );
     }
 
     #[test]
@@ -678,7 +738,7 @@ mod tests {
             "test:tier".parse().expect("a legal tier identity"),
             "test:kind".parse().expect("a legal kind identity"),
             Crafted::Entry {
-                id: "other:material".to_owned(),
+                id: "other:material".parse().expect("a legal content identity"),
                 data: None,
             },
         );
@@ -703,7 +763,7 @@ mod tests {
             "test:crop".parse().expect("a legal crop identity"),
             "test:tier".parse().expect("a legal tier identity"),
             "test:kind".parse().expect("a legal kind identity"),
-            Crafted::Tag("test:empty".to_owned()),
+            Crafted::Tag("test:empty".parse().expect("a legal content identity")),
         );
         assert_eq!(
             availability(&crop, 0, false, false, &|_| 0),

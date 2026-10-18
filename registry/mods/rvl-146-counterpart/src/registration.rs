@@ -18,7 +18,7 @@
 //! - **Capability registration needs no wiring.** The original exposes a routine
 //!   that walks the declarations and attaches capabilities, subscribes it to
 //!   nothing, and gives a dependent that forgets to wire it no capabilities and
-//!   no diagnostic. [`Collection::run`] attaches them, so there is nothing to
+//!   no diagnostic. [`Collection::registered`] attaches them, so there is nothing to
 //!   forget. Attaching walks every capability against every declaration, so both
 //!   capability lists are bounded at [`MAX_CAPABILITIES`] and refuse a name
 //!   twice: a dependent declaring in a loop cannot grow either the memory or the
@@ -482,21 +482,20 @@ impl Collection {
             .map(|held| held.class)
     }
 
-    /// Runs the collection: registers what Ravel registers, names what it does
-    /// not, and attaches every capability whose marker a declaration carries.
+    /// Builds the registered representation without contacting a host registry,
+    /// naming its entries and the capabilities each declaration carries.
     ///
     /// It walks blocks, then items — a block's item form among them, in its
     /// block's order — then block-entity types, then data components. That order
-    /// is this package's own, chosen so a run is one stated sequence rather than
+    /// is this package's own, chosen so the representation has one stated sequence rather than
     /// an arbitrary one; §4 asks a counterpart for the declarable kinds and the
     /// identifier composition, and for whatever order the host requires.
     ///
-    /// This cannot refuse. Every refusal a run could raise is raised where the
-    /// declaration is made instead: an illegal path, a duplicate, a ceiling, and
-    /// a block item form colliding with a declared item are all answered by the
-    /// declaring call, so a collection that was built is a collection that runs.
-    /// That is what lets [`ravel_sdk::Mod::content_declaration`] report what this
-    /// mod declares rather than swallowing a refusal to answer nothing.
+    /// This cannot refuse. Every refusal is raised where the declaration is made:
+    /// an illegal path, a duplicate, a ceiling, and a block item form colliding
+    /// with a declared item are all answered by the declaring call.
+    /// [`ravel_sdk::Mod::content_declaration`] publishes the resulting declaration;
+    /// the host registration barrier performs the actual registration.
     ///
     /// # Panics
     ///
@@ -504,7 +503,7 @@ impl Collection {
     /// carrying the identifier it was accepted under, and no two of them are the
     /// same kind and path.
     #[must_use]
-    pub fn run(&self) -> Registered {
+    pub fn registered(&self) -> Registered {
         let mut declaration = ContentDeclaration::new(self.namespace.clone());
         let mut entry = |kind: ContentKind, path: &str| {
             declaration
@@ -686,7 +685,7 @@ mod tests {
         collection
             .block("cable", ItemForm::None, &[])
             .expect("a legal path");
-        let registered = collection.run();
+        let registered = collection.registered();
         let keys: Vec<String> = registered
             .entries()
             .iter()
@@ -715,7 +714,7 @@ mod tests {
             .expect("a legal path");
         collection.component("charge").expect("a legal path");
 
-        let registered = collection.run();
+        let registered = collection.registered();
         assert_eq!(
             registered
                 .entries()
@@ -747,7 +746,7 @@ mod tests {
         collection
             .block("crusher", ItemForm::Default, &[])
             .expect("a legal path");
-        let registered = collection.run();
+        let registered = collection.registered();
         let mut registrar = Accepting::default();
         claim_all(registered.declaration(), &mut registrar).expect("an accepting registrar");
         assert_eq!(registrar.claimed(), registered.entries());
@@ -776,7 +775,7 @@ mod tests {
             .item_capability("charge", HOLDS_POWER, "the cell's charge")
             .expect("a capability declared once");
 
-        let registered = collection.run();
+        let registered = collection.registered();
         let attached: Vec<(String, String, Kind)> = registered
             .attached()
             .iter()
@@ -814,7 +813,7 @@ mod tests {
         collection
             .item_capability("charge", HOLDS_POWER, "the charge")
             .expect("a capability declared once");
-        let registered = collection.run();
+        let registered = collection.registered();
         assert_eq!(
             registered
                 .attached()
@@ -921,7 +920,7 @@ mod tests {
             .block("crusher", ItemForm::None, &[])
             .expect("a legal path");
         collection.item("crusher", &[]).expect("two registries");
-        let registered = collection.run();
+        let registered = collection.registered();
         assert_eq!(registered.entries().len(), 2);
     }
 

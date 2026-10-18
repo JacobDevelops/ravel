@@ -297,7 +297,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved, HOST_NAMESPACE);
+        self.settings = Settings::read(resolved, HOST_NAMESPACE).map_err(ModError::from_display)?;
         self.rebuild()
     }
 
@@ -423,13 +423,9 @@ mod tests {
         assert_eq!(listed, census::BLOCKS + census::ITEMS);
         assert_eq!(entry.grouping().shown(entry.flags()).len(), listed);
 
-        for (flag, key) in settings::FLAG_BINDINGS {
-            let slot = settings::SWITCH_KEYS
-                .iter()
-                .position(|switch| *switch == key)
-                .expect("every bound flag names a switch");
+        for (flag, feature) in settings::FLAG_BINDINGS {
             let mut off = Settings::default();
-            off.switches[slot] = false;
+            off.switches[feature.index()] = false;
             let mut entry = Entry::new();
             entry
                 .adopt(&off.decisive())

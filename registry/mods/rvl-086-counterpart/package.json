@@ -63,27 +63,27 @@
       },
       {
         "path": "src/attractor.rs",
-        "sha256": "3d464e3d986f15e3461b579233043c1b0e8d6533a68b109d01403fea4b7c7ddb"
+        "sha256": "46421aa14bdc8a45868f59145b9c15e64dd0191c11178824314e488d92934fe1"
       },
       {
         "path": "src/census.rs",
-        "sha256": "8376d8e52fa37ff8cc8700cb3a7d4820057307c91131a1ca5c616c6a90f5888f"
+        "sha256": "8cf335704062685c13bcdf07311b383b04b32908078659e2eb4cfc2723328236"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "2cbeed042feceba240268f6c4dbf16a166cedf80ed9190652b47d67fe2346cff"
+        "sha256": "67fc15c940b8174fcf1fa56f7ed27585b560b123bd96aa7b69c633a123b5159a"
       },
       {
         "path": "src/effects.rs",
-        "sha256": "dd71b57a2fe69da0bb6ae697eaa73b9ecdfa65cd9f675bb3b622234ac5bf0da9"
+        "sha256": "e209eccba1f255502184b02f1c47c6ccbd74f9a4383707e961ce26ed58122e95"
       },
       {
         "path": "src/harvest.rs",
-        "sha256": "eea9cf659f7ef7caae5d60f9b4a46728455cebb37df80991d3e076b335ddee52"
+        "sha256": "43953513e098893df092081326acd44ca4d6ddaf1bdb53c1181d7ce696fb9fca"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "da71c8f738d486445e53e7b6f9fc835141f748bde7a8d089673c35e3507ba20f"
+        "sha256": "69375591195ab44ec5a88cc082af41fb461ff238b52fa2a8ffe09fa3d8e0408c"
       },
       {
         "path": "src/matching.rs",
@@ -103,7 +103,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "9c1206b212ea58e2fe9252ab507f8b5f868519247a16752f10dbc9b0604e5c58"
+        "sha256": "90d8b566299b6045cde44183e3823c439595b08f185103b05ea5ec486971b6db"
       },
       {
         "path": "src/tooltip.rs",

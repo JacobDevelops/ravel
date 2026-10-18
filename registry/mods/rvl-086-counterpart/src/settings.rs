@@ -19,14 +19,14 @@
 //! original binds one flag to a switch belonging to an unrelated feature.
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
     Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
 use ravel_sdk::{Declared, Side};
-use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::matching::Matcher;
 use crate::overrides::Table;
@@ -94,23 +94,98 @@ pub const TWEAK_INEFFECTIVE: &str = "tweak.ineffective";
 /// The two settings a client resolves and keeps.
 pub const CLIENT_KEYS: [&str; 2] = [TOOLTIP_ENABLED, TOOLTIP_EXCLUDED];
 
-/// The fourteen feature switches, in declaration order.
-pub const SWITCH_KEYS: [&str; 14] = [
-    FEATURE_TINTED_STONE,
-    FEATURE_LIGHT_BLOCK,
-    FEATURE_FUEL_FRAGMENTS,
-    FEATURE_RESTORATIVE_FOODS,
-    FEATURE_WATERING_TOOLS,
-    FEATURE_SIEVE_MESHES,
-    FEATURE_ATTRACTOR,
-    FEATURE_HEADPIECES,
-    FEATURE_COMBINED_TOOLS,
-    FEATURE_FIRST_TIER,
-    FEATURE_SECOND_TIER,
-    FEATURE_CROP_HARVEST,
-    FEATURE_SWEEPING_WIDE,
-    FEATURE_SWEEPING_TALL,
-];
+/// A declared feature switch.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Feature {
+    /// Tinted stone variants.
+    TintedStone,
+    /// The light-emitting block.
+    LightBlock,
+    /// Fuel fragments.
+    FuelFragments,
+    /// Restorative foods.
+    RestorativeFoods,
+    /// Watering tools.
+    WateringTools,
+    /// Sieve meshes.
+    SieveMeshes,
+    /// The attractor.
+    Attractor,
+    /// Head-worn pieces.
+    Headpieces,
+    /// Combined mining tools.
+    CombinedTools,
+    /// The first material tier.
+    FirstTier,
+    /// The second material tier.
+    SecondTier,
+    /// Right-click crop harvesting.
+    CropHarvest,
+    /// Wide sweeping harvest.
+    SweepingWide,
+    /// Tall sweeping harvest.
+    SweepingTall,
+}
+
+impl Feature {
+    /// All feature switches, in declaration and wire order.
+    pub const ALL: [Self; 14] = [
+        Self::TintedStone,
+        Self::LightBlock,
+        Self::FuelFragments,
+        Self::RestorativeFoods,
+        Self::WateringTools,
+        Self::SieveMeshes,
+        Self::Attractor,
+        Self::Headpieces,
+        Self::CombinedTools,
+        Self::FirstTier,
+        Self::SecondTier,
+        Self::CropHarvest,
+        Self::SweepingWide,
+        Self::SweepingTall,
+    ];
+
+    /// The configuration key for this feature.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::TintedStone => FEATURE_TINTED_STONE,
+            Self::LightBlock => FEATURE_LIGHT_BLOCK,
+            Self::FuelFragments => FEATURE_FUEL_FRAGMENTS,
+            Self::RestorativeFoods => FEATURE_RESTORATIVE_FOODS,
+            Self::WateringTools => FEATURE_WATERING_TOOLS,
+            Self::SieveMeshes => FEATURE_SIEVE_MESHES,
+            Self::Attractor => FEATURE_ATTRACTOR,
+            Self::Headpieces => FEATURE_HEADPIECES,
+            Self::CombinedTools => FEATURE_COMBINED_TOOLS,
+            Self::FirstTier => FEATURE_FIRST_TIER,
+            Self::SecondTier => FEATURE_SECOND_TIER,
+            Self::CropHarvest => FEATURE_CROP_HARVEST,
+            Self::SweepingWide => FEATURE_SWEEPING_WIDE,
+            Self::SweepingTall => FEATURE_SWEEPING_TALL,
+        }
+    }
+
+    /// The slot for this feature in declaration and wire order.
+    pub const fn index(self) -> usize {
+        match self {
+            Self::TintedStone => 0,
+            Self::LightBlock => 1,
+            Self::FuelFragments => 2,
+            Self::RestorativeFoods => 3,
+            Self::WateringTools => 4,
+            Self::SieveMeshes => 5,
+            Self::Attractor => 6,
+            Self::Headpieces => 7,
+            Self::CombinedTools => 8,
+            Self::FirstTier => 9,
+            Self::SecondTier => 10,
+            Self::CropHarvest => 11,
+            Self::SweepingWide => 12,
+            Self::SweepingTall => 13,
+        }
+    }
+}
 
 /// The twenty-six settings the server decides and a client is told.
 pub const DECIDING_KEYS: [&str; 26] = [
@@ -157,24 +232,24 @@ pub const ENCHANTMENT_COST_RANGE: (u32, u32) = (0, 8);
 ///
 /// Which four switches carry a second flag is **inferred**: the specification
 /// states the counts and the mis-binding but not the whole table.
-pub const FLAG_BINDINGS: [(&str, &str); 17] = [
-    ("tinted_stone", FEATURE_TINTED_STONE),
-    ("light_block", FEATURE_LIGHT_BLOCK),
-    ("fuel_fragments", FEATURE_FUEL_FRAGMENTS),
-    ("watering_tools", FEATURE_WATERING_TOOLS),
-    ("sieve_meshes", FEATURE_SIEVE_MESHES),
-    ("headpieces", FEATURE_HEADPIECES),
-    ("combined_tools", FEATURE_COMBINED_TOOLS),
-    ("first_tier", FEATURE_FIRST_TIER),
-    ("first_tier_armour", FEATURE_FIRST_TIER),
-    ("first_tier_shearing", FEATURE_FIRST_TIER),
-    ("second_tier", FEATURE_SECOND_TIER),
-    ("second_tier_armour", FEATURE_SECOND_TIER),
-    ("second_tier_shearing", FEATURE_SECOND_TIER),
-    ("sweeping_wide", FEATURE_SWEEPING_WIDE),
-    ("sweeping_wide_upper", FEATURE_SWEEPING_WIDE),
-    ("sweeping_tall", FEATURE_SWEEPING_TALL),
-    ("sweeping_tall_upper", FEATURE_SWEEPING_TALL),
+pub const FLAG_BINDINGS: [(&str, Feature); 17] = [
+    ("tinted_stone", Feature::TintedStone),
+    ("light_block", Feature::LightBlock),
+    ("fuel_fragments", Feature::FuelFragments),
+    ("watering_tools", Feature::WateringTools),
+    ("sieve_meshes", Feature::SieveMeshes),
+    ("headpieces", Feature::Headpieces),
+    ("combined_tools", Feature::CombinedTools),
+    ("first_tier", Feature::FirstTier),
+    ("first_tier_armour", Feature::FirstTier),
+    ("first_tier_shearing", Feature::FirstTier),
+    ("second_tier", Feature::SecondTier),
+    ("second_tier_armour", Feature::SecondTier),
+    ("second_tier_shearing", Feature::SecondTier),
+    ("sweeping_wide", Feature::SweepingWide),
+    ("sweeping_wide_upper", Feature::SweepingWide),
+    ("sweeping_tall", Feature::SweepingTall),
+    ("sweeping_tall_upper", Feature::SweepingTall),
 ];
 
 /// The declaration this counterpart packages.
@@ -491,24 +566,15 @@ pub struct RepairMaterials {
     pub override_mode: bool,
 }
 impl RepairMaterials {
-    fn read(resolved: &LayeredConfiguration, shipped: Self) -> Self {
-        Self {
-            strip_enchantments: REPAIR_STRIP_ENCHANTMENTS
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.strip_enchantments),
-            disable_defaults: REPAIR_DISABLE_DEFAULTS
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.disable_defaults),
-            override_mode: REPAIR_OVERRIDE_MODE
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.override_mode),
-        }
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        Ok(Self {
+            strip_enchantments: resolved
+                .boolean(&REPAIR_STRIP_ENCHANTMENTS.parse().expect("a declared key"))?,
+            disable_defaults: resolved
+                .boolean(&REPAIR_DISABLE_DEFAULTS.parse().expect("a declared key"))?,
+            override_mode: resolved
+                .boolean(&REPAIR_OVERRIDE_MODE.parse().expect("a declared key"))?,
+        })
     }
 }
 
@@ -521,19 +587,12 @@ pub struct RepairDiscounts {
     pub shearing: bool,
 }
 impl RepairDiscounts {
-    fn read(resolved: &LayeredConfiguration, shipped: Self) -> Self {
-        Self {
-            digging: REPAIR_CHEAPER_DIGGING
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.digging),
-            shearing: REPAIR_CHEAPER_SHEARING
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.shearing),
-        }
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        Ok(Self {
+            digging: resolved.boolean(&REPAIR_CHEAPER_DIGGING.parse().expect("a declared key"))?,
+            shearing: resolved
+                .boolean(&REPAIR_CHEAPER_SHEARING.parse().expect("a declared key"))?,
+        })
     }
 }
 
@@ -544,7 +603,7 @@ pub struct Settings {
     pub tooltip_enabled: bool,
     /// Tools the mining-speed tooltip is left off.
     pub tooltip_excluded: Matcher,
-    /// The fourteen feature switches, in the order of [`SWITCH_KEYS`].
+    /// The fourteen feature switches, in the order of [`Feature::ALL`].
     pub switches: [bool; 14],
     /// Whether a crafting grid mends a tool at all.
     pub repair_enabled: bool,
@@ -598,124 +657,63 @@ impl std::fmt::Debug for Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            tooltip_enabled: true,
-            tooltip_excluded: Matcher::default(),
-            switches: [true; 14],
-            repair_enabled: true,
-            repair_cost: 3,
-            repair_enchantment_cost: 1,
-            repair_materials: RepairMaterials::default(),
-            repair_discounts: RepairDiscounts {
-                digging: true,
-                shearing: true,
-            },
-            repair_blacklist: Matcher::default(),
-            repair_overrides: Table::default(),
-            tweak_nearly_destroyed: true,
-            tweak_ineffective: Matcher::default(),
-        }
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the shipped defaults resolve");
+        Self::read(&resolved, crate::HOST_NAMESPACE).expect("declared settings have matching types")
     }
 }
 
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// A key the resolution does not carry keeps its shipped default, and a
-    /// number outside its declared range is clamped rather than refused, so a
-    /// hand-edited file still yields a usable set. `host_namespace` completes an
-    /// override selector written without one.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Self {
-        let shipped = Self::default();
-        let (repair_cost, repair_enchantment_cost) = shipped.read_repair_costs(resolved);
-        let mut switches = shipped.switches;
-        for (slot, key) in SWITCH_KEYS.iter().enumerate() {
-            if let Some(value) = key.parse().ok().and_then(|key| resolved.boolean(&key).ok()) {
-                switches[slot] = value;
-            }
+    /// Returns typed access errors; repair costs retain their declared clamping.
+    /// `host_namespace` completes an override selector written without one.
+    pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Result<Self, ValueError> {
+        let mut switches = [false; 14];
+        for feature in Feature::ALL {
+            switches[feature.index()] =
+                resolved.boolean(&feature.key().parse().expect("a declared key"))?;
         }
-        Self {
-            tooltip_enabled: TOOLTIP_ENABLED
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.tooltip_enabled),
-            tooltip_excluded: TOOLTIP_EXCLUDED
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-                .map_or_else(Matcher::default, Matcher::parse),
+        Ok(Self {
+            tooltip_enabled: resolved.boolean(&TOOLTIP_ENABLED.parse().expect("a declared key"))?,
+            tooltip_excluded: Matcher::parse(
+                resolved.text(&TOOLTIP_EXCLUDED.parse().expect("a declared key"))?,
+            ),
             switches,
-            repair_enabled: REPAIR_ENABLED
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.repair_enabled),
-            repair_cost,
-            repair_enchantment_cost,
-            repair_materials: RepairMaterials::read(resolved, shipped.repair_materials),
-            repair_discounts: RepairDiscounts::read(resolved, shipped.repair_discounts),
-            repair_blacklist: REPAIR_BLACKLIST
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-                .map_or_else(Matcher::default, Matcher::parse),
-            repair_overrides: REPAIR_OVERRIDES
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-                .map_or_else(Table::default, |written| {
-                    Table::parse(written, host_namespace)
-                }),
-            tweak_nearly_destroyed: TWEAK_NEARLY_DESTROYED
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.tweak_nearly_destroyed),
-            tweak_ineffective: TWEAK_INEFFECTIVE
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-                .map_or_else(Matcher::default, Matcher::parse),
-        }
+            repair_enabled: resolved.boolean(&REPAIR_ENABLED.parse().expect("a declared key"))?,
+            repair_cost: clamp_cost(
+                resolved.integer(&REPAIR_COST.parse().expect("a declared key"))?,
+                COST_RANGE,
+            ),
+            repair_enchantment_cost: clamp_cost(
+                resolved.integer(&REPAIR_ENCHANTMENT_COST.parse().expect("a declared key"))?,
+                ENCHANTMENT_COST_RANGE,
+            ),
+            repair_materials: RepairMaterials::read(resolved)?,
+            repair_discounts: RepairDiscounts::read(resolved)?,
+            repair_blacklist: Matcher::parse(
+                resolved.text(&REPAIR_BLACKLIST.parse().expect("a declared key"))?,
+            ),
+            repair_overrides: Table::parse(
+                resolved.text(&REPAIR_OVERRIDES.parse().expect("a declared key"))?,
+                host_namespace,
+            ),
+            tweak_nearly_destroyed: resolved
+                .boolean(&TWEAK_NEARLY_DESTROYED.parse().expect("a declared key"))?,
+            tweak_ineffective: Matcher::parse(
+                resolved.text(&TWEAK_INEFFECTIVE.parse().expect("a declared key"))?,
+            ),
+        })
     }
 
-    fn read_repair_costs(&self, resolved: &LayeredConfiguration) -> (u32, u32) {
-        let cost = REPAIR_COST
-            .parse()
-            .ok()
-            .and_then(|key| resolved.integer(&key).ok())
-            .and_then(|value| {
-                u32::try_from(value.clamp(i64::from(COST_RANGE.0), i64::from(COST_RANGE.1))).ok()
-            })
-            .unwrap_or(self.repair_cost);
-        let enchantment_cost = REPAIR_ENCHANTMENT_COST
-            .parse()
-            .ok()
-            .and_then(|key| resolved.integer(&key).ok())
-            .and_then(|value| {
-                u32::try_from(value.clamp(
-                    i64::from(ENCHANTMENT_COST_RANGE.0),
-                    i64::from(ENCHANTMENT_COST_RANGE.1),
-                ))
-                .ok()
-            })
-            .unwrap_or(self.repair_enchantment_cost);
-        (cost, enchantment_cost)
-    }
-
-    /// Whether one feature switch is on, by its key.
-    ///
-    /// A key that is not one of the fourteen answers false rather than panicking,
-    /// because a flag binding is data and a mistyped one should disable a feature
-    /// rather than end a launch.
+    /// Whether a declared feature switch is on.
     #[must_use]
-    pub fn switch(&self, key: &str) -> bool {
-        SWITCH_KEYS
-            .iter()
-            .position(|declared| *declared == key)
-            .is_some_and(|slot| self.switches[slot])
+    pub const fn switch(&self, feature: Feature) -> bool {
+        self.switches[feature.index()]
     }
 
     /// The values the server decides and a joining client is told.
@@ -761,10 +759,17 @@ impl Settings {
     }
 }
 
+fn clamp_cost(value: i64, (minimum, maximum): (u32, u32)) -> u32 {
+    u32::try_from(value).map_or_else(
+        |_| if value < 0 { minimum } else { maximum },
+        |value| value.clamp(minimum, maximum),
+    )
+}
+
 /// The twenty-six deciding settings, as they travel to a joining client.
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct Decisive {
-    /// The fourteen feature switches, in the order of [`SWITCH_KEYS`].
+    /// The fourteen feature switches, in the order of [`Feature::ALL`].
     pub switches: [bool; 14],
     /// Whether a crafting grid mends a tool at all.
     pub repair_enabled: bool,
@@ -913,12 +918,12 @@ pub fn to_bytes(write: &dyn Fn(&mut PacketWriter)) -> Vec<u8> {
 ///
 /// # Errors
 ///
-/// Returns [`FlagIdError`] when the namespace or a declared flag name is invalid.
+/// Returns [`ContentIdError`] when the namespace or a declared flag name is invalid.
 pub fn publish(
     table: &mut FlagTable,
     settings: &Settings,
     namespace: &str,
-) -> Result<(), FlagIdError> {
+) -> Result<(), ContentIdError> {
     for (flag, key) in FLAG_BINDINGS {
         let id = FlagId::new(namespace, flag)?;
         table.publish_constant(id, settings.switch(key));
@@ -969,6 +974,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        let changed = DOCUMENT.replace(TOOLTIP_ENABLED, "tooltip.renamed");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed declaration resolves");
+        assert!(Settings::read(&resolved, "example").is_err());
+    }
+
+    #[test]
+    fn repair_costs_saturate_before_clamping_to_their_declared_range() {
+        assert_eq!(clamp_cost(i64::MIN, COST_RANGE), COST_RANGE.0);
+        assert_eq!(clamp_cost(i64::MAX, COST_RANGE), COST_RANGE.1);
+        assert_eq!(clamp_cost(4, COST_RANGE), 4);
+        assert_eq!(clamp_cost(-1, ENCHANTMENT_COST_RANGE), 0);
+    }
+
+    #[test]
     fn typed_reads_apply_repair_boundaries_and_text_matchers() {
         let document = ravel_sdk::config::ValueDocument::parse(
             &ravel_sdk::json!({
@@ -991,7 +1013,8 @@ mod tests {
             None,
         )
         .expect("the override values resolve");
-        let settings = Settings::read(&resolved, "example");
+        let settings =
+            Settings::read(&resolved, "example").expect("declared settings have matching types");
         assert_eq!(settings.repair_cost, COST_RANGE.1);
         assert_eq!(settings.repair_enchantment_cost, ENCHANTMENT_COST_RANGE.0);
         assert!(settings.repair_materials.strip_enchantments);
@@ -1076,16 +1099,17 @@ mod tests {
     #[test]
     fn seventeen_flags_are_bound_over_fourteen_switches_and_three_switches_carry_none() {
         assert_eq!(FLAG_BINDINGS.len(), 17);
-        let mut carried: Vec<&str> = FLAG_BINDINGS.iter().map(|(_, key)| *key).collect();
+        let mut carried: Vec<Feature> = FLAG_BINDINGS.iter().map(|(_, feature)| *feature).collect();
         carried.sort_unstable();
         carried.dedup();
         assert_eq!(carried.len(), 11);
-        assert_eq!(SWITCH_KEYS.len() - carried.len(), 3);
+        assert_eq!(Feature::ALL.len() - carried.len(), 3);
     }
 
     #[test]
     fn a_flag_reads_the_switch_it_is_named_for() {
-        for (flag, key) in FLAG_BINDINGS {
+        for (flag, feature) in FLAG_BINDINGS {
+            let key = feature.key();
             let leaf = key.split_once('.').map_or(key, |(_, leaf)| leaf);
             assert!(
                 flag.starts_with(leaf),
@@ -1097,11 +1121,7 @@ mod tests {
     #[test]
     fn switching_one_feature_off_disables_only_the_flags_named_for_it() {
         let mut settings = Settings::default();
-        let light = SWITCH_KEYS
-            .iter()
-            .position(|key| *key == FEATURE_LIGHT_BLOCK)
-            .expect("the light block has a switch");
-        settings.switches[light] = false;
+        settings.switches[Feature::LightBlock.index()] = false;
 
         let mut table = FlagTable::default();
         publish(&mut table, &settings, "rvl_086_counterpart").expect("legal flag bindings");
@@ -1123,11 +1143,7 @@ mod tests {
     #[test]
     fn switching_the_watering_tools_off_leaves_the_light_block_listed() {
         let mut settings = Settings::default();
-        let watering = SWITCH_KEYS
-            .iter()
-            .position(|key| *key == FEATURE_WATERING_TOOLS)
-            .expect("the watering tools have a switch");
-        settings.switches[watering] = false;
+        settings.switches[Feature::WateringTools.index()] = false;
 
         let mut table = FlagTable::default();
         publish(&mut table, &settings, "rvl_086_counterpart").expect("legal flag bindings");
@@ -1136,9 +1152,11 @@ mod tests {
     }
 
     #[test]
-    fn a_switch_key_that_is_not_one_of_the_fourteen_answers_false() {
-        assert!(!Settings::default().switch("feature.nothing_named_this"));
-        assert!(Settings::default().switch(FEATURE_ATTRACTOR));
+    fn every_declared_feature_has_a_distinct_slot_and_ships_enabled() {
+        for (index, feature) in Feature::ALL.into_iter().enumerate() {
+            assert_eq!(feature.index(), index);
+            assert!(Settings::default().switch(feature));
+        }
     }
 
     #[test]
@@ -1173,7 +1191,7 @@ mod tests {
             tweak_ineffective: Matcher::parse("example:*"),
             ..Settings::default()
         };
-        settings.switches[0] = false;
+        settings.switches[Feature::TintedStone.index()] = false;
 
         let sent = settings.decisive();
         assert_eq!(round_trip(&sent), sent);

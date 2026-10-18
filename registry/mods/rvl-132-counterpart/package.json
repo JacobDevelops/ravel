@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "ff154212a9a7216e3e5e9213b1c7c1c79c4190902eb97d41fa548463a178e6fb"
+        "sha256": "4891b7e8219d65291c6baf89f44405d4e96b1117f9b952a536bb1fb1f1efaaac"
       },
       {
         "path": "aliases.json",
@@ -67,11 +67,11 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "23dc8bf1fc575e4a43c1d2285b58f23819de87b65ac890007237121ab73ff79b"
+        "sha256": "54a4b6a4010409fd3c3f990115c2dbc9e11aba7f1b5b3742d48ac34b244c9520"
       },
       {
         "path": "src/census.rs",
-        "sha256": "d4004f0223982f2f8d5289391f8c92b0301a4e5fddd4790b948b00076bad9180"
+        "sha256": "24c7c6b170b03ae3b46f018808305b763ef63a0236afe8ab709158080d655c6b"
       },
       {
         "path": "src/data.rs",
@@ -83,15 +83,15 @@
       },
       {
         "path": "src/forms.rs",
-        "sha256": "145b11f83b154fe4554573eb901fc8a0a67ba198b223f302f21d4b662d0afec2"
+        "sha256": "d0c260ca07aeda23cb55536cb9e0dffa5ec6d07cdffbac6ea8be87842cdf1b8c"
       },
       {
         "path": "src/holdings.rs",
-        "sha256": "eae047729bf352576033ae9c1ce17b45f1da97b97916ecdab38556600ae4e28d"
+        "sha256": "f214805fd174ed02c0efade4e07f24bae3c0c6118af85ccea94e6c9921ad3207"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "4bd476e7e160c8fd97ec7fcca987cb1045852e0987f2c7ca5b20ecba21ede33a"
+        "sha256": "4b78ac231491f2e97e34f4e3a0f56891f05bb8a6a0b89d265e526d4394e67300"
       },
       {
         "path": "src/lib.rs",
@@ -99,11 +99,11 @@
       },
       {
         "path": "src/readings.rs",
-        "sha256": "495908abaa5a45158068026d76ec65db613ebb2c2a18d2b973a625a5ab786071"
+        "sha256": "8859b516f8bb319eb177a030561602fdd2d658d7f3e2f92acef1282f1e42a4bc"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "5cd21a76beb15f4e042d82c32a4489e5672b0cf9f1f476d1a9823a03eef2a2c0"
+        "sha256": "19196f0e3e74a1a715300c78c90ce9975ab00bedf5b43b130d5bb907ea1c48d2"
       },
       {
         "path": "src/recipes/selection.rs",
@@ -115,7 +115,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "046dfa73e1ddafb44a636bad84dc4da45ba6730efd05fff3e46ec38d8d964996"
+        "sha256": "a740e89b03333c07efc4b41b795d1fbbcc5b1a2336886fbe37c4d29272945e35"
       }
     ]
   },

@@ -39,9 +39,9 @@ pub const AURA_PROBABILITY: f64 = 0.5;
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Surroundings {
     /// The block directly below the crop.
-    pub below: Option<String>,
+    pub below: Option<ravel_sdk::content::ContentId>,
     /// The block two below the crop.
-    pub two_below: Option<String>,
+    pub two_below: Option<ravel_sdk::content::ContentId>,
     /// The biome at the crop's own position.
     pub biome: Option<String>,
 }
@@ -69,14 +69,20 @@ pub fn may_grow(
     around: &Surroundings,
     require_effective_ground: bool,
 ) -> Result<(), Blocked> {
-    if let Some(foundation) = crop.foundation.as_deref()
-        && around.two_below.as_deref() != Some(foundation)
+    static EXEMPT: std::sync::LazyLock<ravel_sdk::content::ContentId> =
+        std::sync::LazyLock::new(|| {
+            EXEMPT_CROP
+                .parse()
+                .expect("the exempt crop has a legal identity")
+        });
+    if let Some(foundation) = crop.foundation.as_ref()
+        && around.two_below.as_ref() != Some(foundation)
     {
         return Err(Blocked::Foundation);
     }
     if require_effective_ground
-        && EXEMPT_CROP.split_once(':') != Some((crop.id.namespace().as_str(), crop.id.path()))
-        && !tier.is_effective_ground(around.below.as_deref())
+        && crop.id != *EXEMPT
+        && !tier.is_effective_ground(around.below.as_ref())
     {
         return Err(Blocked::Ground);
     }
@@ -206,7 +212,10 @@ mod tests {
 
     fn tiered() -> Tier {
         let mut tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 1);
-        tier.adjust("test:ground", "test:material");
+        tier.adjust(
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
+        );
         tier
     }
 
@@ -228,23 +237,23 @@ mod tests {
     #[test]
     fn a_declared_foundation_is_read_two_blocks_below_and_not_one() {
         let mut crop = crop();
-        crop.foundation = Some("test:foundation".to_owned());
+        crop.foundation = Some("test:foundation".parse().expect("a legal block identity"));
         let mut around = Surroundings {
-            below: Some("test:foundation".to_owned()),
+            below: Some("test:foundation".parse().expect("a legal block identity")),
             ..Surroundings::default()
         };
         assert_eq!(
             may_grow(&crop, &tiered(), &around, false),
             Err(Blocked::Foundation)
         );
-        around.two_below = Some("test:foundation".to_owned());
+        around.two_below = Some("test:foundation".parse().expect("a legal block identity"));
         assert_eq!(may_grow(&crop, &tiered(), &around, false), Ok(()));
     }
 
     #[test]
     fn the_ground_gate_only_applies_when_the_setting_is_on() {
         let around = Surroundings {
-            below: Some("test:dirt".to_owned()),
+            below: Some("test:dirt".parse().expect("a legal block identity")),
             ..Surroundings::default()
         };
         assert_eq!(may_grow(&crop(), &tiered(), &around, false), Ok(()));
@@ -254,7 +263,7 @@ mod tests {
         );
 
         let on_own = Surroundings {
-            below: Some("test:ground".to_owned()),
+            below: Some("test:ground".parse().expect("a legal block identity")),
             ..Surroundings::default()
         };
         assert_eq!(may_grow(&crop(), &tiered(), &on_own, true), Ok(()));
@@ -263,7 +272,7 @@ mod tests {
     #[test]
     fn the_exempt_crop_is_exempt_by_identity_and_nothing_else_is() {
         let around = Surroundings {
-            below: Some("test:dirt".to_owned()),
+            below: Some("test:dirt".parse().expect("a legal block identity")),
             ..Surroundings::default()
         };
         let mut exempt = crop();

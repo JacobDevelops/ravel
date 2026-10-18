@@ -71,11 +71,11 @@ pub const MAX_HELD_READOUTS: usize = 16;
 /// remember. On a server side this is never built rather than being built and
 /// hidden.
 #[derive(Clone, Debug, Default)]
-pub struct ClientView {
+pub struct ClientState {
     received: Vec<Readout>,
 }
 
-impl ClientView {
+impl ClientState {
     /// Returns the readouts held, oldest first.
     #[must_use]
     pub fn received(&self) -> &[Readout] {
@@ -105,7 +105,7 @@ pub struct Entry {
     aggregation: Aggregation,
     console: Console,
     outbox: Outbox,
-    client: ClientOnly<ClientView>,
+    client: ClientOnly<ClientState>,
     entered: Vec<LifecycleState>,
     observed: Vec<GameEvent>,
 }
@@ -132,7 +132,7 @@ impl Entry {
             aggregation,
             console: Console::new(),
             outbox: Outbox::new(),
-            client: ClientOnly::built_on(side, ClientView::default),
+            client: ClientOnly::built_on(side, ClientState::default),
             entered: Vec::new(),
             observed: Vec::new(),
         }
@@ -183,7 +183,7 @@ impl Entry {
     ///
     /// Returns [`ravel_sdk::sides::WrongSide`] on a server side, where there is
     /// no client view because nothing built one.
-    pub fn client_view(&self) -> Result<&ClientView, ravel_sdk::sides::WrongSide> {
+    pub fn client_view(&self) -> Result<&ClientState, ravel_sdk::sides::WrongSide> {
         self.client.get(self.side)
     }
 
@@ -342,7 +342,7 @@ export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
-    use super::{__ravel_entry, ClientView, Entry, MAX_HELD_READOUTS, MOD_ID};
+    use super::{__ravel_entry, ClientState, Entry, MAX_HELD_READOUTS, MOD_ID};
     use crate::colour::Dye;
     use crate::commands::{Command, Report};
     use crate::grouping::{self, TAG_COUNT};
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn what_a_client_holds_is_a_window_rather_than_a_log() {
-        let mut view = ClientView::default();
+        let mut view = ClientState::default();
         for stored in 0..u32::try_from(MAX_HELD_READOUTS * 4).expect("a small count") {
             view.hold(Readout::energy(1_000_000, stored));
         }

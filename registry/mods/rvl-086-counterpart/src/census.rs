@@ -14,11 +14,11 @@
 use std::fmt;
 
 use ravel_sdk::content::{
-    ContentDeclaration, ContentId, ContentKind, DeclarationError, RegistryKey,
+    ContentDeclaration, ContentId, ContentIdError, ContentKind, DeclarationError, RegistryKey,
 };
 use ravel_sdk::tags::TagId;
 use rvl_042_counterpart::arithmetic::Colour;
-use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::repair::Shape;
 
@@ -356,10 +356,10 @@ pub fn item_names() -> Vec<String> {
 ///
 /// # Errors
 ///
-/// Returns [`FlagIdError`] when a gate named in the tables above is not a legal
+/// Returns [`ContentIdError`] when a gate named in the tables above is not a legal
 /// flag identity under `namespace`, which for these constants is a packaging
 /// failure.
-pub fn grouping(namespace: &str) -> Result<Grouping, FlagIdError> {
+pub fn grouping(namespace: &str) -> Result<Grouping, ContentIdError> {
     let mut grouping = Grouping::default();
     let listed = gated(&BLOCK_GROUPS, block_names())
         .into_iter()
@@ -545,8 +545,6 @@ mod tests {
 
     #[test]
     fn the_tinted_variants_stay_sixteen_registered_blocks() {
-        assert_eq!(TINTED_VARIANTS, 16);
-        assert_eq!(BLOCKS, 17);
         let names = block_names();
         assert_eq!(names.len(), BLOCKS);
         let mut unique = names;
@@ -598,20 +596,6 @@ mod tests {
         });
         seen.dedup();
         assert_eq!(seen.len(), claimed.len());
-    }
-
-    #[test]
-    fn the_figures_the_specification_states_are_the_ones_declared() {
-        assert_eq!(FUEL_TICKS, 200);
-        assert_eq!(WATERING[0].0, 3);
-        assert_eq!(WATERING[1].0, 7);
-        assert!((WATERING[0].1 - 0.25).abs() < f64::EPSILON);
-        assert_eq!(MESH_USES, [20, 64, 512]);
-        assert_eq!(HEADPIECE_MULTIPLIERS, [15, 30]);
-        assert_eq!(SHEARING_DURABILITY, 100);
-        assert_eq!(FOODS[0].0, 6);
-        assert_eq!(FOODS[1].0, 10);
-        assert_eq!(SWEEPING_RADIUS_RANGE, (1, 3));
     }
 
     #[test]

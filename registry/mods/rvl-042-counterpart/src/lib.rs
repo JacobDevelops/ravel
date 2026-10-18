@@ -243,7 +243,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         self.selection = Some(Selection::new(
             self.settings.preference.clone(),
             self.settings.self_heal,
@@ -319,7 +319,9 @@ mod tests {
     #[test]
     fn a_dependent_publishes_its_flags_into_the_one_table() {
         let mut shared = Entry::new();
-        let id = FlagId::parse("dependent:optional").expect("a legal identity");
+        let id = "dependent:optional"
+            .parse::<FlagId>()
+            .expect("a legal identity");
         shared.flags_mut().publish_constant(id.clone(), true);
         assert!(shared.flags().enabled(&id));
     }

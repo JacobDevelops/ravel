@@ -999,7 +999,10 @@ mod tests {
         // past its maximum, so a capacity above that range must not answer a
         // quantity the pool then does not hold.
         let mut pool = pool(Amount::MAX);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         let accepted = pool.insert(&stone, 3_000_000_000, Attempt::Real);
         assert_eq!(accepted, crate::kinds::NARROW_MAXIMUM);
         assert_eq!(pool.held(), accepted);
@@ -1009,7 +1012,10 @@ mod tests {
     #[test]
     fn a_shelf_never_reports_more_than_the_kind_can_hold() {
         let mut shelf = shelf(1, Amount::MAX);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         let placed = shelf.insert_slotted(&stone, 3_000_000_000, Attempt::Real);
         assert_eq!(placed, Slotted::at(0, crate::kinds::NARROW_MAXIMUM));
         assert_eq!(
@@ -1021,7 +1027,10 @@ mod tests {
     #[test]
     fn a_shelf_merging_into_a_full_slot_reports_nothing_rather_than_the_room() {
         let mut shelf = shelf(1, Amount::MAX);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(
             shelf.insert(&stone, crate::kinds::NARROW_MAXIMUM, Attempt::Real),
             crate::kinds::NARROW_MAXIMUM
@@ -1037,10 +1046,20 @@ mod tests {
     fn a_full_pool_refuses_a_new_entry_the_same_way_simulated_and_real() {
         let mut pool = pool(Amount::MAX);
         for index in 0..MAX_SLOTS {
-            let entry = Stack::of(&format!("minecraft:k{index}"), 1);
+            let entry = Stack::of(
+                format!("minecraft:k{index}")
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            );
             assert_eq!(pool.insert(&entry, 1, Attempt::Real), 1);
         }
-        let extra = Stack::of("minecraft:one_too_many", 1);
+        let extra = Stack::of(
+            "minecraft:one_too_many"
+                .parse()
+                .expect("a valid content identity"),
+            1,
+        );
         assert_eq!(pool.insert(&extra, 5, Attempt::Simulated), 0);
         assert_eq!(pool.insert(&extra, 5, Attempt::Real), 0);
     }
@@ -1100,7 +1119,13 @@ mod tests {
     #[test]
     fn an_adapter_over_the_shape_its_object_publishes_hands_back_that_store() {
         let mut shelf = shelf(2, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 3)));
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                3,
+            )),
+        );
         let adapted = Adapter {
             shape: Shape::SlottedItem,
             class: Class::Block,
@@ -1119,7 +1144,14 @@ mod tests {
     #[test]
     fn an_item_adapter_over_both_halves_builds_the_combined_store() {
         let mut pool = pool(1_000);
-        pool.insert(&Stack::of("minecraft:dirt", 1), 20, Attempt::Real);
+        pool.insert(
+            &Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                1,
+            ),
+            20,
+            Attempt::Real,
+        );
         let published = Published::Items {
             slotted: Some(shelf(2, 64)),
             slotless: Some(pool),
@@ -1202,7 +1234,10 @@ mod tests {
     #[test]
     fn a_missing_capability_yields_an_empty_store_rather_than_an_error() {
         let mut empty = Empty::of(Stackable::default());
-        let stack = Stack::of("minecraft:stone", 4);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            4,
+        );
         assert_eq!(empty.insert(&stack, 4, Attempt::Real), 0);
         assert_eq!(empty.extract(&stack, 4, Attempt::Real), 0);
         assert_eq!(empty.slots(), 0);
@@ -1233,7 +1268,10 @@ mod tests {
     #[test]
     fn an_insertion_fills_a_matching_slot_before_an_empty_one() {
         let mut shelf = shelf(3, 64);
-        let stone = Stack::of("minecraft:stone", 10);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            10,
+        );
         assert_eq!(
             shelf.insert_slotted(&stone, 10, Attempt::Real),
             Slotted::at(0, 10)
@@ -1249,7 +1287,10 @@ mod tests {
     #[test]
     fn an_insertion_is_capped_by_the_per_slot_capacity() {
         let mut shelf = shelf(2, 64);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(shelf.insert(&stone, 100, Attempt::Real), 64);
         assert_eq!(shelf.at(0).map(|held| held.count), Some(64));
         assert_eq!(shelf.insert(&stone, 100, Attempt::Real), 64);
@@ -1259,7 +1300,10 @@ mod tests {
     #[test]
     fn a_simulated_insertion_answers_the_same_number_and_changes_nothing() {
         let mut shelf = shelf(2, 64);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(shelf.insert(&stone, 30, Attempt::Simulated), 30);
         assert_eq!(shelf.at(0), None);
         assert_eq!(shelf.insert(&stone, 30, Attempt::Real), 30);
@@ -1268,10 +1312,31 @@ mod tests {
     #[test]
     fn extraction_by_prototype_accumulates_across_slots() {
         let mut shelf = shelf(3, 64);
-        let stone = Stack::of("minecraft:stone", 1);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 5)));
-        shelf.place(1, Some(Stack::of("minecraft:dirt", 50)));
-        shelf.place(2, Some(Stack::of("minecraft:stone", 7)));
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            1,
+            Some(Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                50,
+            )),
+        );
+        shelf.place(
+            2,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                7,
+            )),
+        );
         assert_eq!(shelf.extract_under(&stone, 12, under(), Attempt::Real), 12);
         assert_eq!(shelf.at(0), None);
         assert_eq!(shelf.at(2), None);
@@ -1281,9 +1346,24 @@ mod tests {
     #[test]
     fn a_partial_match_is_not_committed() {
         let mut shelf = shelf(3, 64);
-        let stone = Stack::of("minecraft:stone", 1);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 5)));
-        shelf.place(2, Some(Stack::of("minecraft:stone", 4)));
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            2,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                4,
+            )),
+        );
         assert_eq!(shelf.extract_under(&stone, 12, under(), Attempt::Real), 0);
         assert_eq!(shelf.at(0).map(|held| held.count), Some(5));
         assert_eq!(shelf.at(2).map(|held| held.count), Some(4));
@@ -1292,8 +1372,17 @@ mod tests {
     #[test]
     fn a_partial_extraction_is_available_for_a_caller_that_wants_one() {
         let mut shelf = shelf(3, 64);
-        let stone = Stack::of("minecraft:stone", 1);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 5)));
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
         assert_eq!(
             shelf.drain_available(&stone, 12, under(), Attempt::Simulated),
             5
@@ -1306,8 +1395,17 @@ mod tests {
     #[test]
     fn extraction_leaves_a_remainder_where_one_slot_holds_more_than_asked() {
         let mut shelf = shelf(2, 64);
-        let stone = Stack::of("minecraft:stone", 1);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 20)));
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                20,
+            )),
+        );
         assert_eq!(shelf.extract_under(&stone, 8, under(), Attempt::Real), 8);
         assert_eq!(shelf.at(0).map(|held| held.count), Some(12));
     }
@@ -1315,8 +1413,17 @@ mod tests {
     #[test]
     fn a_simulated_extraction_commits_nothing() {
         let mut shelf = shelf(2, 64);
-        let stone = Stack::of("minecraft:stone", 1);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 20)));
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                20,
+            )),
+        );
         assert_eq!(
             shelf.extract_under(&stone, 8, under(), Attempt::Simulated),
             8
@@ -1327,9 +1434,23 @@ mod tests {
     #[test]
     fn extraction_of_nothing_takes_nothing() {
         let mut shelf = shelf(2, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 20)));
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                20,
+            )),
+        );
         assert_eq!(
-            shelf.extract_under(&Stack::of("minecraft:stone", 1), 0, under(), Attempt::Real),
+            shelf.extract_under(
+                &Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    1
+                ),
+                0,
+                under(),
+                Attempt::Real
+            ),
             0
         );
         assert_eq!(shelf.at(0).map(|held| held.count), Some(20));
@@ -1338,10 +1459,31 @@ mod tests {
     #[test]
     fn the_filtered_walk_yields_only_what_matches_the_prototype() {
         let mut shelf = shelf(3, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 5)));
-        shelf.place(1, Some(Stack::of("minecraft:dirt", 5)));
-        shelf.place(2, Some(Stack::of("minecraft:stone", 9)));
-        let stone = Stack::of("minecraft:stone", 1);
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            1,
+            Some(Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            2,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                9,
+            )),
+        );
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         let kind = Stackable::default();
         let matched: Vec<Amount> = shelf
             .contents()
@@ -1354,29 +1496,65 @@ mod tests {
     #[test]
     fn the_shelfs_filtered_walk_wraps_its_contents_with_the_matcher() {
         let mut shelf = shelf(3, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 5)));
-        shelf.place(1, Some(Stack::of("minecraft:dirt", 5)));
-        shelf.place(2, Some(Stack::of("minecraft:stone", 9)));
-        let stone = Stack::of("minecraft:stone", 1);
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            1,
+            Some(Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                5,
+            )),
+        );
+        shelf.place(
+            2,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                9,
+            )),
+        );
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         let matched: Vec<Amount> = shelf
             .filtered(&stone, under())
             .map(|held| held.count)
             .collect();
         assert_eq!(matched, vec![5, 9]);
-        let dirt = Stack::of("minecraft:gold_ingot", 1);
+        let dirt = Stack::of(
+            "minecraft:gold_ingot"
+                .parse()
+                .expect("a valid content identity"),
+            1,
+        );
         assert_eq!(shelf.filtered(&dirt, under()).count(), 0);
     }
 
     #[test]
     fn a_pool_holds_one_entry_per_distinct_instance_and_reports_its_total() {
         let mut pool = pool(1_000);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(pool.insert(&stone, 40, Attempt::Real), 40);
         assert_eq!(pool.insert(&stone, 40, Attempt::Real), 40);
         assert_eq!(pool.len(), 1);
         assert_eq!(pool.held(), 80);
         assert_eq!(
-            pool.insert(&Stack::of("minecraft:dirt", 1), 5, Attempt::Real),
+            pool.insert(
+                &Stack::of(
+                    "minecraft:dirt".parse().expect("a valid content identity"),
+                    1
+                ),
+                5,
+                Attempt::Real
+            ),
             5
         );
         assert_eq!(pool.len(), 2);
@@ -1385,7 +1563,10 @@ mod tests {
     #[test]
     fn a_pool_insertion_is_capped_by_the_whole_stores_capacity() {
         let mut pool = pool(50);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(pool.insert(&stone, 80, Attempt::Real), 50);
         assert_eq!(pool.insert(&stone, 1, Attempt::Real), 0);
         assert_eq!(pool.capacity(), 50);
@@ -1394,7 +1575,10 @@ mod tests {
     #[test]
     fn a_pool_extraction_is_all_or_nothing_too() {
         let mut pool = pool(1_000);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         pool.insert(&stone, 10, Attempt::Real);
         assert_eq!(pool.extract(&stone, 40, Attempt::Real), 0);
         assert_eq!(pool.held(), 10);
@@ -1405,14 +1589,30 @@ mod tests {
     #[test]
     fn the_combined_store_reads_the_slotless_half_and_indexes_the_slotted_one() {
         let mut shelf = shelf(2, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 3)));
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                3,
+            )),
+        );
         let mut pool = pool(1_000);
-        pool.insert(&Stack::of("minecraft:dirt", 1), 20, Attempt::Real);
+        pool.insert(
+            &Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                1,
+            ),
+            20,
+            Attempt::Real,
+        );
         let combined = Combined::new(Stackable::default(), Some(shelf), Some(pool));
         assert!(combined.iterates_slotless());
         assert_eq!(combined.capacity(), 1_000);
         assert_eq!(combined.contents().len(), 1);
-        assert_eq!(combined.contents()[0].identity, "minecraft:dirt");
+        assert_eq!(
+            combined.contents()[0].identity.to_string(),
+            "minecraft:dirt"
+        );
         assert_eq!(combined.slots(), 2);
         assert_eq!(combined.at(0).map(|held| held.count), Some(3));
     }
@@ -1420,20 +1620,38 @@ mod tests {
     #[test]
     fn the_combined_store_falls_back_to_the_slotted_half_when_there_is_no_other() {
         let mut shelf = shelf(2, 64);
-        shelf.place(0, Some(Stack::of("minecraft:stone", 3)));
+        shelf.place(
+            0,
+            Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                3,
+            )),
+        );
         let combined = Combined::new(Stackable::default(), Some(shelf), None);
         assert!(!combined.iterates_slotless());
         assert_eq!(combined.capacity(), 128);
         assert_eq!(combined.contents().len(), 1);
         assert_eq!(
             combined
-                .filtered(&Stack::of("minecraft:stone", 1), under())
+                .filtered(
+                    &Stack::of(
+                        "minecraft:stone".parse().expect("a valid content identity"),
+                        1
+                    ),
+                    under()
+                )
                 .len(),
             1
         );
         assert_eq!(
             combined
-                .filtered(&Stack::of("minecraft:dirt", 1), under())
+                .filtered(
+                    &Stack::of(
+                        "minecraft:dirt".parse().expect("a valid content identity"),
+                        1
+                    ),
+                    under()
+                )
                 .len(),
             0
         );
@@ -1447,7 +1665,10 @@ mod tests {
         assert_eq!(combined.slots(), 0);
         assert_eq!(combined.contents().len(), 0);
         assert_eq!(combined.at(0), None);
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(combined.insert(&stone, 5, Attempt::Real), 0);
         assert_eq!(combined.extract(&stone, 5, Attempt::Real), 0);
     }
@@ -1455,8 +1676,22 @@ mod tests {
     #[test]
     fn a_slotless_source_wrapped_as_a_host_store_reports_no_phantom_slot() {
         let mut pool = pool(1_000);
-        pool.insert(&Stack::of("minecraft:stone", 1), 5, Attempt::Real);
-        pool.insert(&Stack::of("minecraft:dirt", 1), 5, Attempt::Real);
+        pool.insert(
+            &Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            ),
+            5,
+            Attempt::Real,
+        );
+        pool.insert(
+            &Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                1,
+            ),
+            5,
+            Attempt::Real,
+        );
         let wrapped = AsHost::wrapping(pool);
         assert_eq!(wrapped.slots(), 2);
         assert!(wrapped.at(2).is_none());
@@ -1473,7 +1708,10 @@ mod tests {
     #[test]
     fn a_wrapped_slotless_source_still_takes_an_insertion() {
         let mut wrapped = AsHost::wrapping(pool(1_000));
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(wrapped.source_mut().insert(&stone, 7, Attempt::Real), 7);
         assert_eq!(wrapped.slots(), 1);
     }
@@ -1523,7 +1761,10 @@ mod tests {
     #[test]
     fn a_fluid_shelf_carries_the_fluid_kind_through_the_same_adapters() {
         let mut shelf = Shelf::new(Fluid::default(), 2, 1_000).expect("inside the ceiling");
-        let water = Portion::of("minecraft:water", 1);
+        let water = Portion::of(
+            "minecraft:water".parse().expect("a valid fluid identity"),
+            1,
+        );
         assert_eq!(shelf.insert(&water, 600, Attempt::Real), 600);
         assert_eq!(shelf.insert(&water, 600, Attempt::Real), 400);
         assert_eq!(shelf.capacity(), 2_000);

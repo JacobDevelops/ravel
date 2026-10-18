@@ -50,7 +50,7 @@ ownership, networking contracts — is expressed through Ravel rather than rebui
 | §6.1 the value read from the outer document | fixed, read where it was written | `src/persistence.rs` |
 | §6.1 the load that returns when there is no level | fixed, a level is not consulted | `src/persistence.rs` |
 | §6.1 the catch of every throwable | fixed, one narrow failure | `src/persistence.rs` |
-| §6.1 the saved memory as this package's world data | implemented through Ravel's envelope | `src/lib.rs` |
+| §6.1 the saved memory as this package's world data | implemented through Ravel's envelope; malformed tables and unreadable memories refuse open or save, preserving prior data | `src/lib.rs` |
 | §7 the declared form, its two spellings and its count default | implemented, spellings from a build input | `src/quantity.rs` |
 | §7 the matcher and count, in two flavours | implemented as a sum type | `src/quantity.rs` |
 | §7 the min-of-available-and-outstanding rule | implemented exactly | `src/quantity.rs` |
@@ -136,7 +136,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
   could not express it.
 - **Capabilities need no wiring (§4).** The original's capability routine is exposed and subscribed
   to nothing, so a dependent that forgets it gets no capabilities and no diagnostic.
-  `Collection::run` attaches them.
+  `Collection::registered` attaches them while building its registered representation.
 - **A block-entity type is keyed by type identity (§4).** Two classes with one name loaded by
   different loaders collide in the original and the second silently resolves to the first. `ClassId`
   is an identity; the name it carries is for a report. A declaration is looked up by path, and there

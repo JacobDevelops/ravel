@@ -45,7 +45,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "4cc7dc1acb54bbfeaa81dee6892daa80f546a6eec934cc6fdf2a2a248d582509"
+        "sha256": "d1f71a4a6aa05f89509daab0c75da739e716316d0534ecf41a8651c0361d83e7"
       },
       {
         "path": "aliases.json",
@@ -69,15 +69,15 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "a629de5e6b4be324a4f362630ac2d7ff067dddec2ccf39ac7b7f27af99789f77"
+        "sha256": "d59475904f0ad608b9eee78136ad9cc15f7fc03538e0f011710c855a1e4b7da0"
       },
       {
         "path": "src/crops.rs",
-        "sha256": "5c45311f94b48a7290f07f589947afcfb825f4105d58325c8991b86de10cc804"
+        "sha256": "30622038e03e916558ea82c4a9a55333ab4ad9049f24eee94374e3a20eee8d26"
       },
       {
         "path": "src/data.rs",
-        "sha256": "173b882d56e0f65b98880c2d0c44a82b1b6d577d34cf10c10576de25a87339a1"
+        "sha256": "0c9ca5c24b90dc8255b3aa963be362ea6f67b11a2797f428cf4d1cdc4513add4"
       },
       {
         "path": "src/drops.rs",
@@ -97,23 +97,23 @@
       },
       {
         "path": "src/ground.rs",
-        "sha256": "5c875447c5d1cf17f010b0621dc5f92cf675411eb125255a26965a2b445902a1"
+        "sha256": "882adede8bc67f6b45f9d5e409adae72b26453751ca1b09df1c3c82d71c79e68"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "dd41c72032ee9ed308820737ec0b8272d2e381c918c9530b90b12ae9c7e35069"
+        "sha256": "22c5a8dd1d06009f875c50ea540c642d3c729bd6bd2e16c759ab5e211f5dcf45"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "2acab058f2a98c48492c2ff671ce3b36872bed72c1ba46044f5ac3877a01a25d"
+        "sha256": "fd9bf8d39cc7df0ac20cc0f1dbc9e0e2075b5415fabd8742ab22714c9882eb1f"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "6caf87e140bc07e58a2fc8457dd19e40224b08f3e04a50c18c54980184268474"
+        "sha256": "8969df29c9957e0726138d5a0ee521484444c7facfc6ea793dde5ae43d6f7327"
       },
       {
         "path": "src/tier.rs",
-        "sha256": "0ef49adb0260bc30a2e5f44996a769813d2283ee05182a51fde29735da8220fd"
+        "sha256": "8d0dddbd2dd318ce69d0271f15ce01937610a8a98712101cc2e166820914efeb"
       },
       {
         "path": "src/tools.rs",
@@ -121,7 +121,7 @@
       },
       {
         "path": "src/world.rs",
-        "sha256": "05e195cdc9b188b01a8fb8d5644070c84d7e456af7ba136c62074b140fc34955"
+        "sha256": "5f9fd7583294aebc369333f2a41f43fc8cc3605a7c84dddb0bf4ac4cda138778"
       }
     ]
   },

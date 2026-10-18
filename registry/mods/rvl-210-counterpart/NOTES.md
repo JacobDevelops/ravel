@@ -64,14 +64,20 @@ root's public surface.
 | §14 the manual engine | not carried; §14 itself says a counterpart draws it in Ravel if at all | — |
 | §15 the seven subcommands, the two that act | implemented | `src/commands.rs`, `src/lib.rs` |
 | §15 the seven subcommands, the five that are declarable only | declarable only | `src/commands.rs`, `src/lib.rs` |
-| §15 the permission levels | not carried; the specification records them as unread | — |
+| §15 the permission levels | not carried; the specification records them as unread; writes require the side resolving each property's declared scope before mutation (client settings on clients, server settings on servers), while reads remain available on either side | `src/lib.rs` |
 | §16 the access widening and the one bytecode patch | declarable only | — |
 | §17 the capability-attachment registry | implemented | `src/capabilities.rs` |
 | §17 block-entity lookup, stores, fluids and the side questions | answered by `menus::insert_first`, `Store::count_of`, `storage::fill` and `Tank::drain`; block lookup calls the supplied closure directly and side questions use SDK `Side` matching/predicates, with no package lookup or side API | `src/menus.rs`, `src/storage.rs`, `ravel_sdk::Side` |
-| §17 the single-use tank and the mutable box | implemented | `src/storage.rs` |
+| §17 the single-use tank and the mutable box | implemented as `Tank` and `ValueBox`; `ValueBox::replace` returns the previous value | `src/storage.rs` |
 | §17 the game-test harness | not carried; it is not in the shipped artifact's path | — |
 
 ## Behaviour changes, each declared rather than incidental
+
+- **Menu stacks always carry valid identities (§12, §17).** `menus::Stack::of` accepts SDK
+  `ContentId`, and zero count alone denotes absence. Default empty slots retain the valid
+  `minecraft:air` identity. Store indexes and their lookup methods use `ContentId`; zero-count
+  slots are never indexed, even when they carry an otherwise valid prototype. This boundary
+  enforces Ravel's identifier grammar, which is stricter than the game's namespace grammar.
 
 - **The entry allocates from its own counter table once per world opening (§13).** The specification
   gives the entry a table of named counters that hand out monotonically increasing integers unique

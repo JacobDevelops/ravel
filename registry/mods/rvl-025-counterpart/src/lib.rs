@@ -122,6 +122,7 @@ pub struct Holding {
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
+    side: Side,
     declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     surface: Surface,
@@ -149,6 +150,7 @@ impl Entry {
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
+            side,
             declaration: Self::content(),
             settings: Settings::default(),
             surface: Surface::new(),
@@ -298,7 +300,7 @@ impl Entry {
     /// Returns [`ravel_sdk::sides::WrongSide`] on every server side, where the
     /// state was never built.
     pub fn client(&self) -> Result<&ClientState, ravel_sdk::sides::WrongSide> {
-        self.client.get(Side::Client)
+        self.client.get(self.side)
     }
 
     /// Returns the client-only state for writing, on a client.
@@ -307,7 +309,7 @@ impl Entry {
     ///
     /// Returns [`ravel_sdk::sides::WrongSide`] on every server side.
     pub fn client_mut(&mut self) -> Result<&mut ClientState, ravel_sdk::sides::WrongSide> {
-        self.client.get_mut(Side::Client)
+        self.client.get_mut(self.side)
     }
 
     /// Returns the lifecycle steps this entry has taken.
@@ -399,7 +401,10 @@ impl Entry {
             {
                 let readout = Readout::new();
                 let readings = readout.collect(None);
-                self.answered = Some(network::readout_answer(payload.at, &readings));
+                self.answered = Some(
+                    network::readout_answer(payload.at, &readings)
+                        .map_err(ModError::from_display)?,
+                );
             } else {
                 self.answered = None;
             }
@@ -421,7 +426,7 @@ impl Entry {
 
     fn accept_readout(&mut self, payload: &network::ReadoutAnswer) -> Result<(), ModError> {
         let mut readings = Readings::new();
-        for (name, reading) in &payload.values {
+        for (name, reading) in payload.values() {
             readings.declare(name, reading.clone());
         }
         let stamp = self.ordering.stamp();
@@ -823,10 +828,11 @@ mod tests {
         );
 
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
-            let server = Entry::new(side);
-            assert!(
-                server.client().is_err(),
-                "a server side never builds the state rather than building and hiding it"
+            let mut server = Entry::new(side);
+            assert_eq!(server.client().expect_err("no server state").side(), side);
+            assert_eq!(
+                server.client_mut().expect_err("no server state").side(),
+                side
             );
         }
     }
@@ -1218,10 +1224,11 @@ mod tests {
     #[test]
     fn a_client_bound_answer_reaches_the_client_only_memory() {
         let mut entry = Entry::new(Side::Client);
-        let answer = network::ReadoutAnswer {
-            at: (1, 2, 3),
-            values: vec![("stored".to_owned(), values::Reading::Amount(9))],
-        };
+        let answer = network::ReadoutAnswer::new(
+            (1, 2, 3),
+            &[("stored".to_owned(), values::Reading::Amount(9))],
+        )
+        .expect("bounded values");
         entry
             .receive_packet(&delivery_of(&answer, Side::Client))
             .expect("a client may receive it");

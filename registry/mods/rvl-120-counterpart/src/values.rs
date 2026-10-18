@@ -46,7 +46,7 @@ impl Value {
     /// the subscription below would report dirty on every check for the life of
     /// the screen instead of once per change.
     #[must_use]
-    pub fn is(&self, other: &Self) -> bool {
+    pub fn same_bits_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Float(left), Self::Float(right)) => left.to_bits() == right.to_bits(),
             _ => self == other,
@@ -163,16 +163,16 @@ impl Subscription {
 
     /// Compares the map against what is remembered and re-copies if it differs.
     ///
-    /// The first difference makes the whole set dirty and the answer is one
-    /// verdict for the map, not one per value.
-    pub fn check(&mut self, map: &ValueMap) -> bool {
+    /// Returns `true` when the whole set was re-copied, including the first
+    /// refresh. An unchanged map returns `false` without replacing the snapshot.
+    pub fn refresh_if_changed(&mut self, map: &ValueMap) -> bool {
         let current: Vec<Value> = map.values().into_iter().cloned().collect();
         let dirty = self.remembered.as_ref().is_none_or(|remembered| {
             remembered.len() != current.len()
                 || !remembered
                     .iter()
                     .zip(&current)
-                    .all(|(held, now)| held.is(now))
+                    .all(|(held, now)| held.same_bits_as(now))
         });
         if dirty {
             self.remembered = Some(current);
@@ -414,13 +414,19 @@ mod tests {
     fn the_first_difference_makes_the_whole_set_dirty_and_reports_once() {
         let mut map = sample();
         let mut subscription = Subscription::new();
-        assert!(subscription.check(&map), "the first check always copies");
-        assert!(!subscription.check(&map), "an unchanged map is not dirty");
+        assert!(
+            subscription.refresh_if_changed(&map),
+            "the first refresh always copies"
+        );
+        assert!(
+            !subscription.refresh_if_changed(&map),
+            "an unchanged map is not dirty"
+        );
 
         map.declare("count", Value::Integer(4));
-        assert!(subscription.check(&map));
+        assert!(subscription.refresh_if_changed(&map));
         assert!(
-            !subscription.check(&map),
+            !subscription.refresh_if_changed(&map),
             "the copy is taken when the difference is found, so one change reports once"
         );
         assert_eq!(subscription.remembered().map(<[Value]>::len), Some(6));
@@ -430,9 +436,9 @@ mod tests {
     fn a_change_to_a_later_value_is_still_one_verdict_for_the_whole_map() {
         let mut map = sample();
         let mut subscription = Subscription::new();
-        assert!(subscription.check(&map));
+        assert!(subscription.refresh_if_changed(&map));
         map.declare("label", Value::Text("elsewhere".to_owned()));
-        assert!(subscription.check(&map));
+        assert!(subscription.refresh_if_changed(&map));
         assert_eq!(
             subscription.remembered().map(<[Value]>::to_vec),
             Some(map.values().into_iter().cloned().collect::<Vec<_>>())
@@ -536,23 +542,29 @@ mod tests {
         let mut map = ValueMap::new();
         map.declare("share", Value::Float(f32::NAN));
         let mut subscription = Subscription::new();
-        assert!(subscription.check(&map), "the first check always copies");
         assert!(
-            !subscription.check(&map),
+            subscription.refresh_if_changed(&map),
+            "the first refresh always copies"
+        );
+        assert!(
+            !subscription.refresh_if_changed(&map),
             "a value that never equals itself would otherwise re-send the whole set every tick"
         );
 
         map.declare("share", Value::Float(0.5));
-        assert!(subscription.check(&map), "a real change is still a change");
-        assert!(!subscription.check(&map));
+        assert!(
+            subscription.refresh_if_changed(&map),
+            "a real change is still a change"
+        );
+        assert!(!subscription.refresh_if_changed(&map));
     }
 
     #[test]
     fn two_floats_that_differ_only_in_their_bit_pattern_are_not_the_same_value() {
-        assert!(Value::Float(0.0).is(&Value::Float(0.0)));
-        assert!(!Value::Float(0.0).is(&Value::Float(-0.0)));
-        assert!(Value::Integer(1).is(&Value::Integer(1)));
-        assert!(!Value::Integer(1).is(&Value::Short(1)));
+        assert!(Value::Float(0.0).same_bits_as(&Value::Float(0.0)));
+        assert!(!Value::Float(0.0).same_bits_as(&Value::Float(-0.0)));
+        assert!(Value::Integer(1).same_bits_as(&Value::Integer(1)));
+        assert!(!Value::Integer(1).same_bits_as(&Value::Short(1)));
     }
 
     #[test]

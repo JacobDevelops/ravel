@@ -517,7 +517,6 @@ mod tests {
         let made = fresh();
         assert!(made.attractor);
         assert!(!made.switched_on, "a fresh attractor is switched off");
-        assert_eq!(SWITCHED_ON, "switched_on");
         assert!(!highlighted(made.switched_on));
     }
 

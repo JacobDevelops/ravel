@@ -128,6 +128,12 @@ conversion semantics, and signed packet fields retain their original bit pattern
   a root of a client's numbers and no pair of coordinates wraps back into range.
 - **The components payload copies one named record (§13).** The original copies the whole component
   map of an attacker-chosen stack onto the held item.
+- **Wire refusals retain their cause (§13).** Oversized fields report `WireError::TooLarge`,
+  while unknown readout tags and shared-library value failures report `InvalidValue` with the
+  original reason. `ReadoutAnswer::new` validates and encodes the shared values before an answer
+  can be sent; its values are read-only, so an overlong text cannot become an empty body in transit.
+  Sender and receiver expose the same canonical values: duplicate names retain their first
+  position and final value, and energy amounts take the shared map's clamp before publication.
 - **The tooltip expansion is bounded (§8.1).** The original expands every stored tag to its members
   on the client for every hover, unbounded. The expansion stops at a declared ceiling and reports how
   many lines it left out. That is a number to raise, or a tooltip that pages; it is not a rule to

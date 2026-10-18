@@ -12,6 +12,10 @@ declaration, side isolation — is expressed through Ravel. Everything the share
 — the persistence envelope, the flag table, the withheld-seed rule — is consumed from
 `rvl-042-counterpart` rather than rewritten.
 
+The catalyst-use count and growth-pulse interval declare an upper bound of `u32::MAX`, matching
+their runtime representation. Configuration resolution refuses larger values before typed reading;
+the maximum representable value remains valid.
+
 Flag publication and `settings::flag_id` return the shared library's typed identity error instead
 of silently omitting an invalid binding; configuration propagates publication failures. World
 shaping and machine envelopes reuse the entry's already-declared identity, so neither operation
@@ -104,6 +108,14 @@ reparses the package constant or reports an impossible identity failure.
   `machines::Persisted::load` and `machines::Energy::load` keep the shipped capacity rather than
   refusing, which matches the partial-load tolerance the shared library's envelope already applies to
   the inventory beside them.
+- **A missing or malformed machine table refuses world opening (§12.3).** Field defaults apply only
+  inside recognized machine objects. A missing `machines` member, a non-object table or a non-object
+  machine entry refuses the entire table before replacing in-memory state. An invalid entry's refusal
+  names its machine, so malformed input cannot silently become defaults and overwrite the prior envelope.
+- **Content references are validated identities.** Crafted entries and tags, charge creatures and
+  modifier identities carry `ContentId`; contributions refuse malformed identifiers before registration.
+  Machine recipe ticks use named `RecipeStep` inputs and a `Redstone` mode rather than positional
+  timing and gating flags.
 
 ## Declarable only, and why
 

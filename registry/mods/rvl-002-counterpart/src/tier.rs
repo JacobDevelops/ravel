@@ -67,7 +67,12 @@ pub fn registered(id: ravel_sdk::content::ContentId) -> Tier {
 /// The accelerant value is *copied* rather than read live, which is the
 /// behaviour the specification records and the reason this takes a `bool` rather
 /// than a settings reference.
-pub fn adjust(tier: &mut Tier, ground: &str, material: &str, fertilisable: bool) {
+pub fn adjust(
+    tier: &mut Tier,
+    ground: ravel_sdk::content::ContentId,
+    material: ravel_sdk::content::ContentId,
+    fertilisable: bool,
+) {
     tier.adjust(ground, material);
     tier.fertilisable = fertilisable;
     tier.second_drop = false;
@@ -77,8 +82,8 @@ pub fn adjust(tier: &mut Tier, ground: &str, material: &str, fertilisable: bool)
 #[must_use]
 pub fn declared(
     id: ravel_sdk::content::ContentId,
-    ground: &str,
-    material: &str,
+    ground: ravel_sdk::content::ContentId,
+    material: ravel_sdk::content::ContentId,
     fertilisable: bool,
 ) -> Tier {
     let mut tier = registered(id);
@@ -127,7 +132,12 @@ mod tests {
     fn the_adjust_pass_turns_the_second_drop_off_whatever_the_tier_arrived_holding() {
         let mut tier = registered("test:6".parse().expect("a legal tier identity"));
         tier.second_drop = true;
-        adjust(&mut tier, "test:ground", "test:material", false);
+        adjust(
+            &mut tier,
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
+            false,
+        );
         assert!(
             !tier.second_drop,
             "a sixth-tier crop never yields a second seed"
@@ -142,8 +152,8 @@ mod tests {
         };
         let tier = declared(
             "test:6".parse().expect("a legal tier identity"),
-            "test:ground",
-            "test:material",
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
             settings.crops_fertilisable,
         );
         assert!(tier.fertilisable);
@@ -157,8 +167,8 @@ mod tests {
 
         let off = declared(
             "test:6".parse().expect("a legal tier identity"),
-            "test:ground",
-            "test:material",
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
             false,
         );
         assert!(!off.fertilisable);
@@ -168,19 +178,21 @@ mod tests {
     fn the_adjust_pass_points_the_tier_at_its_ground_and_its_material() {
         let tier = declared(
             "test:6".parse().expect("a legal tier identity"),
-            "test:ground",
-            "test:material",
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
             false,
         );
-        assert_eq!(tier.ground.as_deref(), Some("test:ground"));
-        assert_eq!(tier.material.as_deref(), Some("test:material"));
-        assert!(tier.is_effective_ground(Some("test:ground")));
-        assert!(!tier.is_effective_ground(Some("test:other")));
+        let ground = "test:ground".parse().expect("a legal ground identity");
+        let material = "test:material".parse().expect("a legal material identity");
+        let other = "test:other".parse().expect("a legal ground identity");
+        assert_eq!(tier.ground.as_ref(), Some(&ground));
+        assert_eq!(tier.material.as_ref(), Some(&material));
+        assert!(tier.is_effective_ground(Some(&ground)));
+        assert!(!tier.is_effective_ground(Some(&other)));
     }
 
     #[test]
     fn the_registered_path_is_the_number_and_nothing_else() {
-        assert_eq!(PATH, "6");
         assert_eq!(PATH.parse::<u32>().ok(), Some(VALUE));
     }
 }

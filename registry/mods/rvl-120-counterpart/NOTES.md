@@ -156,7 +156,7 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   `reassign` and `remove` compute every walk and issue every id before writing a stamp. The original
   stamps as it goes, so a walk that gives up part way leaves a block stamped with an id nothing
   merged, or leaves whole regions reading as belonging to no group with no path back.
-- **A float never makes a subscription dirty forever (§8).** `Subscription::check` compares floats by
+- **A float never makes a subscription dirty forever (§8).** `Subscription::refresh_if_changed` compares floats by
   their bit pattern. Comparing them by equality would make a map holding a value that is not a number
   report dirty on every check, re-sending the whole value set every tick for the life of the screen.
 - **Neither the lifecycle nor the observed signals are kept as a log (§2).** The loader broadcasts an

@@ -79,17 +79,17 @@ pub const fn next_moisture(moisture: u8, near_water: bool, raining: bool) -> u8 
 /// tool takes the second branch.
 #[must_use]
 pub fn drops(tier: &Tier, silk_touch: bool, dirt: &str, draw: u32) -> Vec<Stack> {
-    let Some(ground) = tier.ground.as_deref() else {
+    let Some(ground) = tier.ground.as_ref() else {
         return Vec::new();
     };
     if silk_touch {
-        return vec![Stack::new(ground, 1)];
+        return vec![Stack::new(ground.to_string(), 1)];
     }
     let mut dropped = vec![Stack::new(dirt, 1)];
     if draw % 100 < MATERIAL_DROP_PERCENT
-        && let Some(material) = tier.material.as_deref()
+        && let Some(material) = tier.material.as_ref()
     {
-        dropped.push(Stack::new(material, 1));
+        dropped.push(Stack::new(material.to_string(), 1));
     }
     dropped
 }
@@ -137,22 +137,27 @@ pub fn convert(
     if !enabled {
         return Converted::default();
     }
-    let Some(ground) = held.ground.as_deref() else {
+    let Some(ground) = held.ground.as_ref() else {
         return Converted::default();
     };
     match current {
         None if plain_tilled => Converted {
-            ground: Some(ground.to_owned()),
+            ground: Some(ground.to_string()),
             moisture,
             consumed: 1,
             refund: None,
         },
-        Some(outgoing) if outgoing.ground.as_deref() != Some(ground) => {
+        Some(outgoing) if outgoing.ground.as_ref() != Some(ground) => {
             let refund = (draw % 100 < MATERIAL_DROP_PERCENT)
-                .then(|| outgoing.material.as_deref().map(|item| Stack::new(item, 1)))
+                .then(|| {
+                    outgoing
+                        .material
+                        .as_ref()
+                        .map(|item| Stack::new(item.to_string(), 1))
+                })
                 .flatten();
             Converted {
-                ground: Some(ground.to_owned()),
+                ground: Some(ground.to_string()),
                 moisture,
                 consumed: 1,
                 refund,
@@ -174,8 +179,12 @@ pub(crate) mod tests {
             value,
         );
         tier.adjust(
-            &format!("test:ground_{value}"),
-            &format!("test:material_{value}"),
+            format!("test:ground_{value}")
+                .parse()
+                .expect("a legal ground identity"),
+            format!("test:material_{value}")
+                .parse()
+                .expect("a legal material identity"),
         );
         tier
     }
@@ -247,7 +256,12 @@ pub(crate) mod tests {
             ("test:tier_side").parse().expect("a legal tier identity"),
             1,
         );
-        side.adjust("test:ground_1", "test:material_side");
+        side.adjust(
+            "test:ground_1".parse().expect("a legal ground identity"),
+            "test:material_side"
+                .parse()
+                .expect("a legal material identity"),
+        );
         let held = tier(1);
         assert_ne!(side.id, held.id);
         assert!(

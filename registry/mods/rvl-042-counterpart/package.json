@@ -63,15 +63,15 @@
       },
       {
         "path": "src/flags.rs",
-        "sha256": "1157b041fef8497350a80394d81433ddd4b2d4c745ecf12be6c45a9ef6699ca1"
+        "sha256": "7575d89f1f17018e3effa37fcae9e3f6fa386c36b59e8434d9cbd5f0ce1be400"
       },
       {
         "path": "src/inventory.rs",
-        "sha256": "94f1afbd5e8f4e345b5dd1b488d0ef752b791cabebec28479762dbcb83a614be"
+        "sha256": "95f7a60847e5da1ef82b230d030b0911093e5125fc4e12fc1bc0dd4fe8322a30"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "a3aed091b278b048b4205bcc864370e84d5ddbe8d38b3fc74dfb16846232216c"
+        "sha256": "bbfb5c3dca249abe97bb995f57da69adc3648a583d744e4ae0ca4c5b9830bb6b"
       },
       {
         "path": "src/reusable.rs",
@@ -83,7 +83,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "08bcb9978ff9220da31a83edf9b5e0562876be0ef6cf26a1ad17022a65c8c943"
+        "sha256": "705aaaa57732b2ce4ad7dfe867cd0c0d05fcebb293b26973fba711ca4faefbd5"
       }
     ]
   },

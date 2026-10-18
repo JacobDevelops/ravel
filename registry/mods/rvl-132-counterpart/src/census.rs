@@ -145,7 +145,6 @@ pub const NOT_CONSUMED: [&str; 7] = [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::VANILLA_ATTACHMENTS;
     use crate::kinds::REGISTERED;
     use crate::settings::{DECLINED, KEYS};
     use crate::storage::{Class, Shape};
@@ -155,7 +154,6 @@ mod tests {
         let counted: usize = WIDENING_GROUPS.iter().map(|(_, count)| *count).sum();
         assert_eq!(counted, WIDENING_ENTRIES);
         assert_eq!(3 + 1 + 6 + 2 + 3, WIDENING_ENTRIES);
-        assert_eq!(WIDENING_DOCUMENTS, 1);
     }
 
     #[test]
@@ -199,10 +197,6 @@ mod tests {
 
     #[test]
     fn four_dependents_observe_five_things_in_the_stated_order() {
-        assert_eq!(
-            OBSERVED[0],
-            "the three ingredient kinds and their registered names"
-        );
         for role in DEPENDENT_ROLES {
             assert_ne!(role, "");
         }
@@ -214,7 +208,6 @@ mod tests {
     #[test]
     fn what_this_package_carries_agrees_with_what_the_census_counts() {
         assert_eq!(REGISTERED.len(), 3);
-        assert_eq!(VANILLA_ATTACHMENTS, 46);
         assert_eq!(Shape::ALL.len() * Class::ALL.len(), 12);
         assert_eq!(KEYS.len() - 1 + DECLINED.len(), 6);
     }

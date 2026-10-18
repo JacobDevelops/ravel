@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "2f385f01c5613f8762987ad4e6f1bf3a7b3222b1977d13e9370f6c173baf5fef"
+        "sha256": "482a5d280b0c8b65dd32486b44000117c2153487425c43aa19cfba387eac9d25"
       },
       {
         "path": "aliases.json",
@@ -74,7 +74,7 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "8ebfa80c63f9a06aa9323e8a33e98b3beb397ea1b92a451256e83fc18cb5ddb5"
+        "sha256": "c25b450dcd265a50222258f096deb8f735f20df5aeb0fe1fd0d8297a108b5d1d"
       },
       {
         "path": "src/commands.rs",
@@ -82,7 +82,7 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "1236282b2112fcf21ed71e879a85d57da603c9254791cec546b134ac3bcd3b56"
+        "sha256": "544c7902e7c26a0853d5d303574f88d2f2d4255b22177c1dca946c02e29bdb9a"
       },
       {
         "path": "src/dumps.rs",
@@ -90,7 +90,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "54e543e6dce2089aaf251ebfb21e0d048758eef7b9f0e84efce9f5aaa4eb14c2"
+        "sha256": "9d5119a331ae4fd8379f9c8db891f83c2760b135bf24538d20807f3960a5b576"
       },
       {
         "path": "src/machines.rs",
@@ -102,7 +102,7 @@
       },
       {
         "path": "src/network.rs",
-        "sha256": "e4c2e8735a3db7af13e206bab6a3dd48b4d5bb11990e1741b8398d4f55bd8005"
+        "sha256": "6a72925575799c0884c412437c5bada455927ba97a85ec3b104d1c585fd03399"
       },
       {
         "path": "src/ordering.rs",
@@ -118,7 +118,7 @@
       },
       {
         "path": "src/shapes.rs",
-        "sha256": "2c5ea760d6a1d3b1d397d4635480d3f179ea9c9cd0612965937c518f674b44ed"
+        "sha256": "542ba0ce1fa47aabeeca893089b226018769c41224fcc774c12ff8cf60abd83e"
       },
       {
         "path": "src/storage.rs",
@@ -134,7 +134,7 @@
       },
       {
         "path": "src/world.rs",
-        "sha256": "70bbe5a4693866a2689a80284ea3b7d979138ce30cbde23c3be19d3d75c26460"
+        "sha256": "22d2721840c04007be02cd9bbd7b6d1bc6e17039d2343188db50fd41ce76d7c0"
       }
     ]
   },

@@ -17,10 +17,11 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
+use ravel_sdk::content::ContentIdError;
 use ravel_sdk::{JsonValue, Side};
-use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagTable};
 use rvl_321_counterpart::settings as depended;
 
 pub const DROPS_SOUL_CHANCE: &str = "drops.soul_chance";
@@ -46,9 +47,6 @@ pub const KEYS: [&str; 8] = [
 
 /// The upper bound the duration setting declares.
 pub const MAXIMUM_EFFECT_SECONDS: u32 = 2_147_483_647;
-
-/// The upper bound the scale count declares.
-pub const MAXIMUM_SCALE_COUNT: u32 = 64;
 
 /// The declaration this counterpart packages.
 pub const DOCUMENT: &str = r#"{
@@ -188,84 +186,47 @@ impl std::fmt::Debug for Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            drops_soul_chance: 0.35,
-            drops_scale_count: 8,
-            crops_fertilisable: false,
-            foods_effect_seconds: 180,
-            world_lower: Deposits {
-                shard: true,
-                essence: true,
-            },
-            world_outer: Deposits {
-                shard: true,
-                essence: true,
-            },
-        }
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the shipped defaults resolve");
+        Self::read(&resolved).expect("declared settings have matching types")
     }
 }
 
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// A key the resolution does not carry keeps its shipped default, and a
-    /// value outside the declared bounds is refused rather than clamped, because
-    /// a resolution is not a trusted input: the document states the bounds and a
-    /// value that breaks them is not a reading of this setting at all.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration) -> Self {
-        let shipped = Self::default();
-        Self {
-            drops_soul_chance: DROPS_SOUL_CHANCE
-                .parse()
-                .ok()
-                .and_then(|key| resolved.number(&key).ok())
-                .filter(|held| (0.0..=1.0).contains(held))
-                .unwrap_or(shipped.drops_soul_chance),
-            drops_scale_count: DROPS_SCALE_COUNT
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| u32::try_from(value).ok())
-                .filter(|held| *held <= MAXIMUM_SCALE_COUNT)
-                .unwrap_or(shipped.drops_scale_count),
-            crops_fertilisable: CROPS_FERTILISABLE
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.crops_fertilisable),
-            foods_effect_seconds: FOODS_EFFECT_SECONDS
-                .parse()
-                .ok()
-                .and_then(|key| resolved.integer(&key).ok())
-                .and_then(|value| u32::try_from(value).ok())
-                .filter(|held| *held >= 1 && *held <= MAXIMUM_EFFECT_SECONDS)
-                .unwrap_or(shipped.foods_effect_seconds),
+    /// Returns a typed access error if a key is missing or has the wrong kind.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        Ok(Self {
+            drops_soul_chance: resolved
+                .number(&DROPS_SOUL_CHANCE.parse().expect("a declared key"))?,
+            drops_scale_count: u32::try_from(
+                resolved.integer(&DROPS_SCALE_COUNT.parse().expect("a declared key"))?,
+            )
+            .expect("the declared range fits u32"),
+            crops_fertilisable: resolved
+                .boolean(&CROPS_FERTILISABLE.parse().expect("a declared key"))?,
+            foods_effect_seconds: u32::try_from(
+                resolved.integer(&FOODS_EFFECT_SECONDS.parse().expect("a declared key"))?,
+            )
+            .expect("the declared range fits u32"),
             world_lower: Deposits {
-                shard: WORLD_LOWER_SHARD_DEPOSIT
-                    .parse()
-                    .ok()
-                    .and_then(|key| resolved.boolean(&key).ok())
-                    .unwrap_or(shipped.world_lower.shard),
-                essence: WORLD_LOWER_ESSENCE_DEPOSIT
-                    .parse()
-                    .ok()
-                    .and_then(|key| resolved.boolean(&key).ok())
-                    .unwrap_or(shipped.world_lower.essence),
+                shard: resolved
+                    .boolean(&WORLD_LOWER_SHARD_DEPOSIT.parse().expect("a declared key"))?,
+                essence: resolved
+                    .boolean(&WORLD_LOWER_ESSENCE_DEPOSIT.parse().expect("a declared key"))?,
             },
             world_outer: Deposits {
-                shard: WORLD_OUTER_SHARD_DEPOSIT
-                    .parse()
-                    .ok()
-                    .and_then(|key| resolved.boolean(&key).ok())
-                    .unwrap_or(shipped.world_outer.shard),
-                essence: WORLD_OUTER_ESSENCE_DEPOSIT
-                    .parse()
-                    .ok()
-                    .and_then(|key| resolved.boolean(&key).ok())
-                    .unwrap_or(shipped.world_outer.essence),
+                shard: resolved
+                    .boolean(&WORLD_OUTER_SHARD_DEPOSIT.parse().expect("a declared key"))?,
+                essence: resolved
+                    .boolean(&WORLD_OUTER_ESSENCE_DEPOSIT.parse().expect("a declared key"))?,
             },
-        }
+        })
     }
 
     /// Whether a value is a legal reading of the named key.
@@ -282,30 +243,38 @@ impl Settings {
     }
 }
 
+type FlagBinding = (&'static str, fn(&Settings) -> bool);
+
+const PUBLISHED: [FlagBinding; 5] = [
+    (CROPS_FERTILISABLE, |settings| settings.crops_fertilisable),
+    (WORLD_LOWER_SHARD_DEPOSIT, |settings| {
+        settings.world_lower.shard
+    }),
+    (WORLD_LOWER_ESSENCE_DEPOSIT, |settings| {
+        settings.world_lower.essence
+    }),
+    (WORLD_OUTER_SHARD_DEPOSIT, |settings| {
+        settings.world_outer.shard
+    }),
+    (WORLD_OUTER_ESSENCE_DEPOSIT, |settings| {
+        settings.world_outer.essence
+    }),
+];
+
 /// The five settings this entry republishes as named flags.
-///
-/// A flag carries a boolean, so the chance and the two counts cannot be flags at
-/// all; that leaves the accelerant switch and the four deposit switches.
-#[must_use]
-pub fn published_flags() -> Vec<&'static str> {
-    vec![
-        CROPS_FERTILISABLE,
-        WORLD_LOWER_SHARD_DEPOSIT,
-        WORLD_LOWER_ESSENCE_DEPOSIT,
-        WORLD_OUTER_SHARD_DEPOSIT,
-        WORLD_OUTER_ESSENCE_DEPOSIT,
-    ]
+pub fn published_flags() -> [&'static str; 5] {
+    PUBLISHED.map(|(key, _)| key)
 }
 
 /// Publishes those flags into the shared table under this entry's namespace.
 ///
 /// # Errors
 ///
-/// Returns [`FlagIdError`] when a declared flag binding has an invalid identity.
-pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), FlagIdError> {
-    for key in published_flags() {
+/// Returns [`ContentIdError`] when a declared flag binding has an invalid identity.
+pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), ContentIdError> {
+    for (key, value) in PUBLISHED {
         let id = flag_id(key)?;
-        table.publish_constant(id, flag_value(settings, key));
+        table.publish_constant(id, value(settings));
     }
     Ok(())
 }
@@ -314,8 +283,8 @@ pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), FlagIdE
 ///
 /// # Errors
 ///
-/// Returns [`FlagIdError`] when the setting key cannot form a legal flag identity.
-pub fn flag_id(key: &str) -> Result<FlagId, FlagIdError> {
+/// Returns [`ContentIdError`] when the setting key cannot form a legal flag identity.
+pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
     FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
@@ -326,26 +295,14 @@ pub fn flag_id(key: &str) -> Result<FlagId, FlagIdError> {
 /// [`crate::ground`] short-circuits on. Naming them through that package's own
 /// [`depended::flag_id`] is what keeps the direction honest — this entry cannot
 /// mint a flag in a namespace it does not own.
-#[must_use]
-pub fn consumed_flags() -> Vec<FlagId> {
+pub fn consumed_flags() -> Result<Vec<FlagId>, ContentIdError> {
     [
         depended::GEAR_TOP_TOOLS_ENCHANTABLE,
         depended::GROUND_CONVERT_BY_MATERIAL,
     ]
     .into_iter()
-    .filter_map(|key| depended::flag_id(key).ok())
+    .map(depended::flag_id)
     .collect()
-}
-
-fn flag_value(settings: &Settings, key: &str) -> bool {
-    match key {
-        CROPS_FERTILISABLE => settings.crops_fertilisable,
-        WORLD_LOWER_SHARD_DEPOSIT => settings.world_lower.shard,
-        WORLD_LOWER_ESSENCE_DEPOSIT => settings.world_lower.essence,
-        WORLD_OUTER_SHARD_DEPOSIT => settings.world_outer.shard,
-        WORLD_OUTER_ESSENCE_DEPOSIT => settings.world_outer.essence,
-        _ => false,
-    }
 }
 
 /// Whether any shipped setting would have to travel to a joining client.
@@ -379,6 +336,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        let changed = DOCUMENT.replace(DROPS_SOUL_CHANCE, "drops.renamed");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed declaration resolves");
+        assert!(Settings::read(&resolved).is_err());
+    }
+
+    #[test]
     fn typed_reads_apply_numbers_integers_and_boolean_overrides() {
         let document = ravel_sdk::config::ValueDocument::parse(
             &ravel_sdk::json!({
@@ -401,7 +367,7 @@ mod tests {
             None,
         )
         .expect("the override values resolve");
-        let settings = Settings::read(&resolved);
+        let settings = Settings::read(&resolved).expect("declared settings have matching types");
         assert_eq!(settings.drops_soul_chance, 0.75);
         assert_eq!(settings.drops_scale_count, 0);
         assert_eq!(settings.foods_effect_seconds, 1);
@@ -470,7 +436,7 @@ mod tests {
             assert_eq!(id.namespace().as_str(), crate::MOD_ID);
         }
 
-        let consumed = consumed_flags();
+        let consumed = consumed_flags().expect("legal consumed flag bindings");
         assert_eq!(consumed.len(), 2);
         for id in &consumed {
             assert_ne!(

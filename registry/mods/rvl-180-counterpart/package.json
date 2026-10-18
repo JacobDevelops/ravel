@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "d094b9d06123f5e2f48209958738b015bd5f9cbf20916beadcf089bdf54d32f9"
+        "sha256": "e2169344d447ffa5b9090c81d1c6441f6108d02464dc39aaf807eefda69f29ac"
       },
       {
         "path": "aliases.json",
@@ -71,15 +71,15 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "80b065f649aa92c0c255d789725e27320c532c37bcfd4c27321d8e77d92cbc3b"
+        "sha256": "9a30225ef9a951713d87172d355f0801cd06a6fe1addc17157d074e162cd17aa"
       },
       {
         "path": "src/presentation.rs",
-        "sha256": "fbde77817c2be67b13680aedb1c10ec6c487793f6635b94b60959a66cc366da0"
+        "sha256": "eaf25c6e5f5de66a6ca62afaf76f3bae3f4e8cdc2e67bd6dc463362a4215810b"
       },
       {
         "path": "src/sprites.rs",
-        "sha256": "317de133b0d94844924255472548809c5be0a409faf91bc14ac2d2f48c0d84f9"
+        "sha256": "f25e4bfe120dded4db39f061329276d5dc83d31cf9027aa59cd2e75a97c1a761"
       },
       {
         "path": "src/transport.rs",

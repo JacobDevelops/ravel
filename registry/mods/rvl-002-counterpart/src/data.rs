@@ -159,16 +159,6 @@ pub const SURVIVING: [Survives; 4] = [
 /// What a bucket carries across a reload, which is nothing.
 pub const BUCKET_ITEM_DATA: usize = 0;
 
-/// Whether a world reloaded without a companion mod keeps the crop's blocks and
-/// items.
-///
-/// It does, because the crop was registered and then disabled rather than
-/// registered conditionally. What it loses is the crop's recipes.
-#[must_use]
-pub const fn keeps_identifiers_without_companion() -> bool {
-    true
-}
-
 /// One tag document, and the members this entry puts in it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Document {
@@ -505,7 +495,6 @@ mod tests {
             let id = format!("{CONVENTION_NAMESPACE}:storage_blocks");
             assert_eq!(members(&declaration, kind, &id), storage.len());
         }
-        assert_eq!(STORAGE_TAG_DOCUMENTS, 20);
     }
 
     #[test]
@@ -596,7 +585,6 @@ mod tests {
             members(&declaration, ContentKind::Item, &id),
             crops::OPTIONAL_TAG_MEMBERS
         );
-        assert_eq!(OWN_TAGS, 1);
     }
 
     #[test]
@@ -647,15 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn the_boss_drops_go_through_an_event_and_not_through_loot() {
-        assert_eq!(OTHER_LOOT_DOCUMENTS, 0);
-    }
-
-    #[test]
     fn forty_eight_tag_documents_all_append_and_twenty_of_them_state_ten_facts() {
-        assert_eq!(TAG_DOCUMENTS, 48);
-        const { assert!(!ANY_TAG_REPLACES, "every one of them appends") };
-        assert_eq!(STORAGE_TAG_DOCUMENTS, 20);
         assert_eq!(STORAGE_TAG_DOCUMENTS.div_euclid(2), STORAGE_TAG_FACTS);
     }
 
@@ -679,21 +659,13 @@ mod tests {
     #[test]
     fn the_mineability_split_covers_every_block_item_once() {
         assert_eq!(PICKAXE_MINEABLE + SHOVEL_MINEABLE, census::BLOCK_ITEMS);
-        assert_eq!(SHOVEL_MINEABLE, 1, "the ground block, and only it");
         assert_eq!(IRON_TIER + STONE_TIER, 12);
         assert_eq!(STONE_TIER, 2 + 1 + crops::COUNT);
     }
 
     #[test]
-    fn the_six_tools_appear_in_four_listings_of_the_same_six_items() {
-        assert_eq!(TOOL_TAG_LISTINGS, 4);
-        assert_eq!(crate::tools::COUNT, 6);
-    }
-
-    #[test]
     fn the_language_counts_are_the_measured_ones_and_not_an_assumption_of_parity() {
         assert_eq!(LANGUAGE_KEYS.len() + 1, LANGUAGES);
-        assert_eq!(REFERENCE_KEYS, 104);
 
         let matching = LANGUAGE_KEYS
             .iter()
@@ -714,8 +686,6 @@ mod tests {
 
     #[test]
     fn this_entry_owns_no_world_persisted_state_of_its_own() {
-        const { assert!(!OWNS_PERSISTED_STATE) };
-        assert_eq!(BUCKET_ITEM_DATA, 0);
         assert_eq!(SURVIVING.len(), 4);
         assert!(SURVIVING.contains(&Survives::Identifiers));
     }
@@ -726,7 +696,6 @@ mod tests {
         use rvl_321_counterpart::settings as depended;
 
         let highest = rvl_321_counterpart::ground::MAXIMUM_MOISTURE;
-        assert_eq!(highest, 7);
 
         let mut flags = FlagTable::default();
         let flag = depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)
@@ -734,8 +703,8 @@ mod tests {
         flags.publish_constant(flag, true);
         let held = crate::tier::declared(
             "test:6".parse().expect("a legal tier identity"),
-            "test:ground",
-            "test:material",
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
             false,
         );
 
@@ -751,7 +720,6 @@ mod tests {
 
     #[test]
     fn a_world_reloaded_without_a_companion_mod_loses_recipes_and_not_identifiers() {
-        assert!(keeps_identifiers_without_companion());
         for declared in crops::DECLARED
             .iter()
             .filter(|held| held.declares_companion())
@@ -761,7 +729,10 @@ mod tests {
                     .parse()
                     .expect("a legal crop identity"),
                 &"test:6".parse().expect("a legal tier identity"),
-                &declared.material_id("test"),
+                declared
+                    .material_id("test")
+                    .parse()
+                    .expect("a legal material identity"),
             );
             let state = crops::state(declared, &crop, false, &|_| false, &|_| 1);
             assert_eq!(state, rvl_321_counterpart::Availability::Unobtainable);

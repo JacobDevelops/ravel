@@ -36,9 +36,9 @@ pub struct Tier {
     /// The chance a crop of this tier drops a second produce.
     pub second_drop_chance: f64,
     /// The ground block that belongs to this tier, filled in on adjust.
-    pub ground: Option<String>,
+    pub ground: Option<ContentId>,
     /// The material item that belongs to this tier, filled in on adjust.
-    pub material: Option<String>,
+    pub material: Option<ContentId>,
 }
 
 impl Tier {
@@ -62,9 +62,9 @@ impl Tier {
     ///
     /// This is the adjust pass. A tier that never reaches it has no ground, and
     /// [`Self::is_effective_ground`] then answers false for every block.
-    pub fn adjust(&mut self, ground: &str, material: &str) {
-        self.ground = Some(ground.to_owned());
-        self.material = Some(material.to_owned());
+    pub fn adjust(&mut self, ground: ContentId, material: ContentId) {
+        self.ground = Some(ground);
+        self.material = Some(material);
     }
 
     /// Whether a block is exactly this tier's own ground.
@@ -73,8 +73,8 @@ impl Tier {
     /// counts-as-any-ground escape at this revision, and adding one would make
     /// every crop drop-eligible everywhere.
     #[must_use]
-    pub fn is_effective_ground(&self, block: Option<&str>) -> bool {
-        match (self.ground.as_deref(), block) {
+    pub fn is_effective_ground(&self, block: Option<&ContentId>) -> bool {
+        match (self.ground.as_ref(), block) {
             (Some(ground), Some(block)) => ground == block,
             _ => false,
         }
@@ -89,23 +89,23 @@ pub struct CropKind {
     /// The stem model this kind's crops are drawn with.
     pub stem: String,
     /// The item crafting a seed of this kind consumes, filled in on adjust.
-    pub base_seed: Option<String>,
+    pub base_seed: Option<ContentId>,
 }
 
 impl CropKind {
     /// Declares a kind holding no base seed yet.
     #[must_use]
-    pub fn new(id: ContentId, stem: &str) -> Self {
+    pub fn new(id: ContentId, stem: impl Into<String>) -> Self {
         Self {
             id,
-            stem: stem.to_owned(),
+            stem: stem.into(),
             base_seed: None,
         }
     }
 
     /// Points the kind at the seed its crops are crafted from.
-    pub fn adjust(&mut self, base_seed: &str) {
-        self.base_seed = Some(base_seed.to_owned());
+    pub fn adjust(&mut self, base_seed: ContentId) {
+        self.base_seed = Some(base_seed);
     }
 }
 
@@ -115,12 +115,12 @@ pub enum Crafted {
     /// A single entry, with optional item-level data narrowing it.
     Entry {
         /// The entry identifier.
-        id: String,
+        id: ContentId,
         /// The item-level data the entry has to carry, if any.
         data: Option<String>,
     },
     /// Any member of a tag, resolved lazily.
-    Tag(String),
+    Tag(ContentId),
     /// Nothing: the third state of section fifteen.
     Nothing,
 }
@@ -134,7 +134,7 @@ impl Crafted {
     pub fn resolves(&self, members: &dyn Fn(&str) -> usize) -> bool {
         match self {
             Self::Entry { .. } => true,
-            Self::Tag(tag) => members(tag) > 0,
+            Self::Tag(tag) => members(&tag.to_string()) > 0,
             Self::Nothing => false,
         }
     }
@@ -189,7 +189,7 @@ pub struct Registration {
 }
 
 /// A crop, with the defaults it is declared holding.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Crop {
     /// The full identifier. Its path is the crop's name in the global space.
     pub id: ContentId,
@@ -214,48 +214,19 @@ pub struct Crop {
     /// The biomes this crop grows in, empty meaning every biome.
     pub biomes: Vec<String>,
     /// The block that must sit two below the crop, if any.
-    pub foundation: Option<String>,
+    pub foundation: Option<ContentId>,
     /// The block supplied for this crop instead of a registered one.
-    pub block: Option<String>,
+    pub block: Option<ContentId>,
     /// The material item supplied instead of a registered one.
-    pub material: Option<String>,
+    pub material: Option<ContentId>,
     /// The seed item supplied instead of a registered one.
-    pub seed: Option<String>,
+    pub seed: Option<ContentId>,
     /// The colour packed into the flower.
     pub flower_colour: Colour,
     /// The colour packed into the material.
     pub material_colour: Colour,
     /// The colour packed into the seed.
     pub seed_colour: Colour,
-}
-
-// Keep diagnostic fields flat and in their established order.
-impl std::fmt::Debug for Crop {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Crop")
-            .field("id", &self.id)
-            .field("tier", &self.tier)
-            .field("kind", &self.kind)
-            .field("crafted", &self.crafted)
-            .field("second_drop_chance", &self.second_drop_chance)
-            .field("respects_effective_ground", &self.respects_effective_ground)
-            .field("enabled", &self.enabled)
-            .field("register_block", &self.registration.block)
-            .field("register_material", &self.registration.material)
-            .field("register_seed", &self.registration.seed)
-            .field("glint", &self.glint)
-            .field("derived", &self.derived)
-            .field("biomes", &self.biomes)
-            .field("foundation", &self.foundation)
-            .field("block", &self.block)
-            .field("material", &self.material)
-            .field("seed", &self.seed)
-            .field("flower_colour", &self.flower_colour)
-            .field("material_colour", &self.material_colour)
-            .field("seed_colour", &self.seed_colour)
-            .finish()
-    }
 }
 
 impl Crop {
@@ -315,20 +286,20 @@ impl Crop {
     ///
     /// `also_register` is the caller's escape: a dependent that wants both its
     /// own block and a registration asks for it explicitly.
-    pub fn supply_block(&mut self, block: &str, also_register: bool) {
-        self.block = Some(block.to_owned());
+    pub fn supply_block(&mut self, block: ContentId, also_register: bool) {
+        self.block = Some(block);
         self.registration.block = also_register;
     }
 
     /// Supplies a material item, which stops this entry registering one.
-    pub fn supply_material(&mut self, material: &str, also_register: bool) {
-        self.material = Some(material.to_owned());
+    pub fn supply_material(&mut self, material: ContentId, also_register: bool) {
+        self.material = Some(material);
         self.registration.material = also_register;
     }
 
     /// Supplies a seed item, which stops this entry registering one.
-    pub fn supply_seed(&mut self, seed: &str, also_register: bool) {
-        self.seed = Some(seed.to_owned());
+    pub fn supply_seed(&mut self, seed: ContentId, also_register: bool) {
+        self.seed = Some(seed);
         self.registration.seed = also_register;
     }
 
@@ -343,9 +314,9 @@ impl Crop {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChargeType {
     /// The full identifier.
-    pub id: String,
+    pub id: ContentId,
     /// The creatures this type claims.
-    pub creatures: Vec<String>,
+    pub creatures: Vec<ContentId>,
     /// How much charge a full container of this type holds.
     pub requirement: f64,
     /// The type's colour, packed at the charge opacity.
@@ -355,9 +326,9 @@ pub struct ChargeType {
 impl ChargeType {
     /// Declares a charge type, packing its colour at the charge opacity.
     #[must_use]
-    pub fn new(id: &str, requirement: f64, red: u8, green: u8, blue: u8) -> Self {
+    pub fn new(id: ContentId, requirement: f64, red: u8, green: u8, blue: u8) -> Self {
         Self {
-            id: id.to_owned(),
+            id,
             creatures: Vec::new(),
             requirement,
             colour: Colour::new(CHARGE_OPACITY, red, green, blue),
@@ -365,8 +336,8 @@ impl ChargeType {
     }
 
     /// Claims a creature for this type.
-    pub fn claim(&mut self, creature: &str) {
-        self.creatures.push(creature.to_owned());
+    pub fn claim(&mut self, creature: ContentId) {
+        self.creatures.push(creature);
     }
 }
 
@@ -442,10 +413,17 @@ mod tests {
     #[test]
     fn effective_ground_is_exact_identity_and_an_unfilled_tier_answers_false() {
         let mut tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 1);
-        assert!(!tier.is_effective_ground(Some("test:ground")));
-        tier.adjust("test:ground", "test:material");
-        assert!(tier.is_effective_ground(Some("test:ground")));
-        assert!(!tier.is_effective_ground(Some("test:other_ground")));
+        let ground = "test:ground".parse().expect("a legal ground identity");
+        assert!(!tier.is_effective_ground(Some(&ground)));
+        tier.adjust(
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
+        );
+        assert!(tier.is_effective_ground(Some(&ground)));
+        let other = "test:other_ground"
+            .parse()
+            .expect("a legal ground identity");
+        assert!(!tier.is_effective_ground(Some(&other)));
         assert!(!tier.is_effective_ground(None));
     }
 
@@ -502,7 +480,13 @@ mod tests {
 
     #[test]
     fn a_charge_type_packs_its_colour_at_the_other_opacity() {
-        let charge = ChargeType::new("test:charge", 100.0, 10, 20, 30);
+        let charge = ChargeType::new(
+            "test:charge".parse().expect("a legal charge identity"),
+            100.0,
+            10,
+            20,
+            30,
+        );
         assert_eq!(charge.colour.opacity, CHARGE_OPACITY);
         assert_ne!(CHARGE_OPACITY, CROP_OPACITY);
     }
@@ -515,11 +499,22 @@ mod tests {
             ("test:kind").parse().expect("a legal crop kind identity"),
             Crafted::Nothing,
         );
-        crop.supply_block("test:own_block", false);
+        crop.supply_block(
+            "test:own_block".parse().expect("a legal block identity"),
+            false,
+        );
         assert!(!crop.registration.block);
-        crop.supply_material("test:own_material", true);
+        crop.supply_material(
+            "test:own_material"
+                .parse()
+                .expect("a legal material identity"),
+            true,
+        );
         assert!(crop.registration.material);
-        crop.supply_seed("test:own_seed", false);
+        crop.supply_seed(
+            "test:own_seed".parse().expect("a legal seed identity"),
+            false,
+        );
         assert!(!crop.registration.seed);
     }
 
@@ -541,11 +536,11 @@ mod tests {
     fn a_tag_with_no_members_resolves_empty_and_an_entry_always_resolves() {
         let none = |_: &str| 0;
         let some = |_: &str| 3;
-        assert!(!Crafted::Tag("test:tag".to_owned()).resolves(&none));
-        assert!(Crafted::Tag("test:tag".to_owned()).resolves(&some));
+        assert!(!Crafted::Tag("test:tag".parse().expect("a legal tag identity")).resolves(&none));
+        assert!(Crafted::Tag("test:tag".parse().expect("a legal tag identity")).resolves(&some));
         assert!(
             Crafted::Entry {
-                id: "test:entry".to_owned(),
+                id: "test:entry".parse().expect("a legal entry identity"),
                 data: None
             }
             .resolves(&none)

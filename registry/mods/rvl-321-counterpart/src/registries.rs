@@ -30,9 +30,9 @@ pub enum Refusal {
     /// A crop whose path collides with a registered crop's, in any namespace.
     CropPath(String),
     /// A tier, kind, modifier or charge type colliding on its full identifier.
-    Identifier(String),
+    Identifier(ravel_sdk::content::ContentId),
     /// A charge type claiming a creature another type already claims.
-    Creature(String),
+    Creature(ravel_sdk::content::ContentId),
     /// A crop registered outside the window crops may be registered in.
     Closed(String),
 }
@@ -92,7 +92,7 @@ pub fn registered_id(crop: &Crop, role: Role) -> String {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Modifier {
     /// The full identifier.
-    pub id: String,
+    pub id: ravel_sdk::content::ContentId,
     /// The kinds of target this modifier may be applied to.
     pub kinds: Vec<String>,
     /// The modifier's own tier value.
@@ -102,9 +102,9 @@ pub struct Modifier {
 impl Modifier {
     /// Declares a modifier.
     #[must_use]
-    pub fn new(id: &str, tier: u32, kinds: &[&str]) -> Self {
+    pub fn new(id: ravel_sdk::content::ContentId, tier: u32, kinds: &[&str]) -> Self {
         Self {
-            id: id.to_owned(),
+            id,
             kinds: kinds.iter().map(|kind| (*kind).to_owned()).collect(),
             tier,
         }
@@ -119,7 +119,7 @@ pub struct Registries {
     kinds: Vec<CropKind>,
     modifiers: Vec<Modifier>,
     charges: Vec<ChargeType>,
-    claimed: BTreeMap<String, String>,
+    claimed: BTreeMap<ravel_sdk::content::ContentId, ravel_sdk::content::ContentId>,
     open: bool,
     refused: Vec<Refusal>,
 }
@@ -172,7 +172,7 @@ impl Registries {
     /// Registers a tier, refused on full identifier collision only.
     pub fn register_tier(&mut self, tier: Tier) -> bool {
         if self.tiers.iter().any(|held| held.id == tier.id) {
-            self.refused.push(Refusal::Identifier(tier.id.to_string()));
+            self.refused.push(Refusal::Identifier(tier.id));
             return false;
         }
         self.tiers.push(tier);
@@ -182,7 +182,7 @@ impl Registries {
     /// Registers a crop kind, refused on full identifier collision only.
     pub fn register_kind(&mut self, kind: CropKind) -> bool {
         if self.kinds.iter().any(|held| held.id == kind.id) {
-            self.refused.push(Refusal::Identifier(kind.id.to_string()));
+            self.refused.push(Refusal::Identifier(kind.id));
             return false;
         }
         self.kinds.push(kind);
@@ -409,7 +409,11 @@ pub fn register_blocks(
     }
     for crop in registries.crops_mut() {
         if crop.registration.block && crop.block.is_none() {
-            crop.block = Some(registered_id(crop, Role::Block));
+            crop.block = Some(
+                registered_id(crop, Role::Block)
+                    .parse()
+                    .expect("a legal crop block identity"),
+            );
         }
     }
     taken.push(Step::DefaultBlocks);
@@ -551,32 +555,64 @@ mod tests {
     #[test]
     fn a_charge_type_claiming_a_taken_creature_is_dropped_whole() {
         let mut registries = Registries::new();
-        let mut first = ChargeType::new("a:one", 100.0, 0, 0, 0);
-        first.claim("test:creature");
+        let mut first = ChargeType::new(
+            "a:one".parse().expect("a legal charge identity"),
+            100.0,
+            0,
+            0,
+            0,
+        );
+        first.claim("test:creature".parse().expect("a legal creature identity"));
         assert!(registries.register_charge(first));
 
-        let mut second = ChargeType::new("b:two", 100.0, 0, 0, 0);
-        second.claim("test:other");
-        second.claim("test:creature");
+        let mut second = ChargeType::new(
+            "b:two".parse().expect("a legal charge identity"),
+            100.0,
+            0,
+            0,
+            0,
+        );
+        second.claim("test:other".parse().expect("a legal creature identity"));
+        second.claim("test:creature".parse().expect("a legal creature identity"));
         assert!(!registries.register_charge(second));
         assert_eq!(registries.charges().len(), 1);
         assert_eq!(
             registries.refused().last(),
-            Some(&Refusal::Creature("test:creature".to_owned())),
+            Some(&Refusal::Creature(
+                "test:creature".parse().expect("a legal creature identity")
+            )),
             "claiming is global and first wins"
         );
 
-        let mut third = ChargeType::new("c:three", 100.0, 0, 0, 0);
-        third.claim("test:other");
+        let mut third = ChargeType::new(
+            "c:three".parse().expect("a legal charge identity"),
+            100.0,
+            0,
+            0,
+            0,
+        );
+        third.claim("test:other".parse().expect("a legal creature identity"));
         assert!(third.creatures.len() == 1 && registries.register_charge(third));
     }
 
     #[test]
     fn a_modifier_and_a_kind_collide_on_the_full_identifier_only() {
         let mut registries = Registries::new();
-        assert!(registries.register_modifier(Modifier::new("a:m", 1, &["tool"])));
-        assert!(registries.register_modifier(Modifier::new("b:m", 1, &["tool"])));
-        assert!(!registries.register_modifier(Modifier::new("a:m", 2, &["tool"])));
+        assert!(registries.register_modifier(Modifier::new(
+            "a:m".parse().expect("a legal modifier identity"),
+            1,
+            &["tool"]
+        )));
+        assert!(registries.register_modifier(Modifier::new(
+            "b:m".parse().expect("a legal modifier identity"),
+            1,
+            &["tool"]
+        )));
+        assert!(!registries.register_modifier(Modifier::new(
+            "a:m".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"]
+        )));
         assert!(registries.register_kind(CropKind::new(
             "a:k".parse().expect("a legal identity"),
             "stem"
@@ -707,8 +743,12 @@ mod tests {
         );
         assert!(!registries.is_open());
         assert_eq!(
-            registries.crops()[0].block.as_deref(),
-            Some("rvl_321_counterpart:only_crop"),
+            registries.crops()[0].block,
+            Some(
+                "rvl_321_counterpart:only_crop"
+                    .parse()
+                    .expect("a legal block identity")
+            ),
             "a crop that wanted a block and brought none is given one"
         );
     }

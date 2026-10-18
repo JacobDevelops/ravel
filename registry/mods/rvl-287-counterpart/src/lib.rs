@@ -45,7 +45,7 @@ pub mod slots;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
-use ravel_sdk::sides::ClientOnly;
+use ravel_sdk::sides::{ClientOnly, WrongSide};
 use ravel_sdk::{JsonValue, ModId};
 
 pub use crate::conditions::{BlockState, Condition, Groups, Vocabulary};
@@ -114,7 +114,7 @@ impl Resolved {
 
 /// What this library holds on a client, and holds nowhere else.
 #[derive(Clone, Debug, Default)]
-pub struct Client {
+pub struct ClientState {
     registry: Registry,
     vocabulary: Vocabulary,
     pending: Vec<(String, JsonValue)>,
@@ -122,7 +122,7 @@ pub struct Client {
     refused: usize,
 }
 
-impl Client {
+impl ClientState {
     /// Returns the kind table.
     #[must_use]
     pub const fn registry(&self) -> &Registry {
@@ -168,7 +168,7 @@ impl Client {
 #[derive(Debug)]
 pub struct Entry {
     side: Side,
-    client: ClientOnly<Client>,
+    client: ClientOnly<ClientState>,
     fault: Option<KindError>,
     entered: Vec<LifecycleState>,
     observed: usize,
@@ -196,9 +196,9 @@ impl Entry {
                     Registry::default()
                 }
             };
-            Client {
+            ClientState {
                 registry,
-                ..Client::default()
+                ..ClientState::default()
             }
         });
         Self {
@@ -221,10 +221,10 @@ impl Entry {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] on every server side, where there is no
+    /// Returns [`WrongSide`] on every server side, where there is no
     /// client-side state to return.
-    pub fn client(&self) -> Result<&Client, ModError> {
-        self.client.get(self.side).map_err(ModError::from_display)
+    pub fn client(&self) -> Result<&ClientState, WrongSide> {
+        self.client.get(self.side)
     }
 
     /// Returns the client-side state for writing, on the side that has one.
@@ -232,9 +232,8 @@ impl Entry {
     /// # Errors
     ///
     /// The same as [`Entry::client`].
-    pub fn client_mut(&mut self) -> Result<&mut Client, ModError> {
-        let side = self.side;
-        self.client.get_mut(side).map_err(ModError::from_display)
+    pub fn client_mut(&mut self) -> Result<&mut ClientState, WrongSide> {
+        self.client.get_mut(self.side)
     }
 
     /// Returns whether this library holds any client-side state at all.
@@ -256,7 +255,7 @@ impl Entry {
     ///
     /// Returns [`ModError::Refused`] on every server side.
     pub fn supply(&mut self, identifier: &str, document: JsonValue) -> Result<bool, ModError> {
-        let client = self.client_mut()?;
+        let client = self.client_mut().map_err(ModError::from_display)?;
         if client.pending.len() >= MAX_PENDING {
             client.refused += 1;
             return Ok(false);
@@ -274,7 +273,7 @@ impl Entry {
     ///
     /// Returns [`ModError::Refused`] on every server side.
     pub fn reload(&mut self) -> Result<usize, ModError> {
-        let client = self.client_mut()?;
+        let client = self.client_mut().map_err(ModError::from_display)?;
         let supplied = std::mem::take(&mut client.pending);
         let routed = client.registry.reload(supplied);
         client.reloads += 1;
@@ -299,7 +298,7 @@ impl Entry {
     ///
     /// Returns [`ModError::Refused`] on every server side.
     pub fn model(&self, identifier: &str) -> Result<Resolved, ModError> {
-        let client = self.client()?;
+        let client = self.client().map_err(ModError::from_display)?;
         let Some(claim) = client.registry.claim(identifier) else {
             return Ok(Resolved::Unclaimed);
         };
@@ -351,9 +350,9 @@ impl Entry {
 impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if let Some(fault) = &self.fault {
-            return Err(ModError::Refused {
-                detail: format!("the built-in kind table was refused: {fault:?}"),
-            });
+            return Err(ModError::refused(format!(
+                "the built-in kind table was refused: {fault}"
+            )));
         }
         self.entered.push(state);
         Ok(())
@@ -637,5 +636,38 @@ mod tests {
             ),
             "the block the host declared is a name the parser knows"
         );
+    }
+
+    #[test]
+    fn public_refusals_are_readable_errors_and_preserve_their_cause() {
+        use std::error::Error;
+
+        let kind = crate::kinds::KindError::AlreadyRegistered("connected".to_owned());
+        assert_eq!(
+            kind.to_string(),
+            "the kind `connected` is already registered"
+        );
+        let slot = crate::slots::SlotError::MissingCell(3);
+        let model = ModelError::Textures(slot);
+        assert_eq!(
+            model.to_string(),
+            "the texture set was refused: the texture grid declares no texture for cell 3"
+        );
+        assert_eq!(
+            model.source().map(ToString::to_string),
+            Some("the texture grid declares no texture for cell 3".to_owned())
+        );
+    }
+
+    #[test]
+    fn client_accessors_report_the_actual_server_side() {
+        for side in [Side::DedicatedServer, Side::IntegratedServer] {
+            let mut entry = Entry::new(side);
+            assert_eq!(entry.client().expect_err("no client state").side(), side);
+            assert_eq!(
+                entry.client_mut().expect_err("no client state").side(),
+                side
+            );
+        }
     }
 }

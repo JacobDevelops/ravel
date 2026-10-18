@@ -128,7 +128,10 @@ impl Entry {
                     ContentId::new(Self::declared_id().clone(), declared.path)
                         .expect("the declared crop has a legal path"),
                     &tier.id,
-                    &declared.material_id(MOD_ID),
+                    declared
+                        .material_id(MOD_ID)
+                        .parse()
+                        .expect("a legal material identity"),
                 )
             })
             .collect();
@@ -196,12 +199,15 @@ impl Entry {
     pub fn adjust(&mut self) {
         tier::adjust(
             &mut self.tier,
-            &format!("{MOD_ID}:ground"),
-            &format!("{MOD_ID}:material"),
+            ContentId::new(Self::declared_id().clone(), "ground").expect("a legal ground path"),
+            ContentId::new(Self::declared_id().clone(), "material").expect("a legal material path"),
             self.settings.crops_fertilisable,
         );
         for (crop, declared) in self.crops.iter_mut().zip(crops::DECLARED) {
-            crop.foundation = Some(format!("{MOD_ID}:{}", declared.anchor));
+            crop.foundation = Some(
+                ContentId::new(Self::declared_id().clone(), declared.anchor)
+                    .expect("a legal foundation path"),
+            );
         }
         self.adjusted = true;
     }
@@ -280,7 +286,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
         Ok(())
     }
@@ -295,65 +301,6 @@ impl Mod for Entry {
 }
 
 export_mod!(Entry::new());
-
-/// What this entry needs from the shared library.
-///
-/// Precisely: the non-mirrored shaped recipe kind for eight documents, the
-/// feature-flag mechanism for the five it publishes and the flag-aware creative
-/// listing generator, and the crafting-remainder behaviour for the six buckets.
-///
-/// That package's own section fourteen records this entry as needing its
-/// persistence as well. It does not, and [`needs_shared_persistence`] is that
-/// correction: this entry persists nothing of its own and touches none of that
-/// package's persistence envelope directly.
-#[must_use]
-pub fn needs_from_shared() -> Vec<&'static str> {
-    vec!["shaped_unmirrored", "feature_flags", "crafting_remainder"]
-}
-
-/// Whether this entry needs the shared library's persistence. It does not.
-#[must_use]
-pub const fn needs_shared_persistence() -> bool {
-    false
-}
-
-/// What this entry needs from the tiered-crop entry.
-///
-/// Precisely: the registration windows and their two-pass shape, the tier and
-/// crop model with its exact defaults, the second-drop rule this tier disables,
-/// the ground behaviour this entry extends by one member, the tilling, awakening
-/// and seed recipe kinds and their conditions, the dynamic derivation this entry
-/// switches *off*, and the slotted-modifier format the tools carry.
-///
-/// It does not need that entry's machines, rituals, charge model, networking or
-/// world generation.
-#[must_use]
-pub fn needs_from_tiered() -> Vec<&'static str> {
-    vec![
-        "registration_windows",
-        "tier_and_crop_model",
-        "second_drop_rule",
-        "ground_behaviour",
-        "recipe_kinds_and_conditions",
-        "dynamic_derivation",
-        "slotted_modifiers",
-    ]
-}
-
-/// What the sibling entry in the same cluster needs from this one, and this one
-/// from it: nothing, in both directions.
-#[must_use]
-pub const fn needs_from_sibling() -> usize {
-    0
-}
-
-/// Whether anything in the wave lists this entry as a dependency.
-///
-/// Nothing does. It is a leaf, so the traffic is one-way.
-#[must_use]
-pub const fn is_leaf() -> bool {
-    true
-}
 
 #[cfg(test)]
 mod tests {
@@ -419,8 +366,12 @@ mod tests {
         assert!(!entry.tier().second_drop);
         for (crop, declared) in entry.crops().iter().zip(crops::DECLARED) {
             assert_eq!(
-                crop.foundation.as_deref(),
-                Some(format!("{MOD_ID}:{}", declared.anchor).as_str())
+                crop.foundation,
+                Some(
+                    format!("{MOD_ID}:{}", declared.anchor)
+                        .parse()
+                        .expect("the declared anchor is an identifier")
+                )
             );
         }
     }
@@ -471,7 +422,7 @@ mod tests {
             .crops()
             .iter()
             .map(|crop| match &crop.crafted {
-                Crafted::Entry { id, .. } | Crafted::Tag(id) => id.clone(),
+                Crafted::Entry { id, .. } | Crafted::Tag(id) => id.to_string(),
                 Crafted::Nothing => String::new(),
             })
             .collect();
@@ -499,10 +450,10 @@ mod tests {
                 continue;
             };
             shaped += 1;
-            if id.starts_with(&format!("{MOD_ID}:")) {
+            if id.namespace() == Entry::declared_id() {
                 let tag = declaration
                     .tags()
-                    .find(|tag| tag.id().to_string() == *id)
+                    .find(|tag| tag.id() == id)
                     .expect("a tag this entry declares itself");
                 assert_eq!(
                     declaration.tag_members(tag).len(),
@@ -511,7 +462,7 @@ mod tests {
                 );
             } else {
                 assert!(
-                    id.starts_with(&format!("{CONVENTION_NAMESPACE}:")),
+                    id.namespace().as_str() == CONVENTION_NAMESPACE,
                     "a cross-mod tag is named where no mod owns the name"
                 );
             }
@@ -624,15 +575,6 @@ mod tests {
                 .expect("an entry that owns nothing writes nothing")
                 .is_none()
         );
-    }
-
-    #[test]
-    fn what_this_entry_needs_is_narrower_than_the_shared_library_assumed() {
-        assert_eq!(needs_from_shared().len(), 3);
-        assert!(!needs_shared_persistence());
-        assert_eq!(needs_from_tiered().len(), 7);
-        assert_eq!(needs_from_sibling(), 0);
-        assert!(is_leaf());
     }
 
     #[test]

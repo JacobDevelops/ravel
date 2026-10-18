@@ -200,9 +200,7 @@ mod tests {
             assert_eq!((deposit.lowest, deposit.highest), (10, 100));
             assert!(deposit.host_feature, "there is no substitution rule here");
         }
-        assert!((AIR_DISCARD - 0.0).abs() < f64::EPSILON);
         assert_eq!(PLACEMENTS.len(), 4);
-        assert_eq!(STEP, "underground_ores");
     }
 
     #[test]

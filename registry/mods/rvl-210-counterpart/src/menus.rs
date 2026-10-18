@@ -9,29 +9,39 @@
 
 use std::collections::BTreeMap;
 
+use ravel_sdk::content::ContentId;
+
 /// One stack in a store: what it is and how many.
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Stack {
-    /// What it is. Empty means the slot holds nothing.
-    pub prototype: String,
-    /// How many.
+    /// What it is; always a valid namespaced identity.
+    pub prototype: ContentId,
+    /// How many. Zero alone denotes an empty slot.
     pub count: u32,
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        Self::of(
+            "minecraft:air"
+                .parse()
+                .expect("a valid static item identity"),
+            0,
+        )
+    }
 }
 
 impl Stack {
     /// A stack of something.
     #[must_use]
-    pub fn of(prototype: &str, count: u32) -> Self {
-        Self {
-            prototype: prototype.to_owned(),
-            count,
-        }
+    pub fn of(prototype: ContentId, count: u32) -> Self {
+        Self { prototype, count }
     }
 
     /// Whether this slot holds nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.prototype.is_empty() || self.count == 0
+        self.count == 0
     }
 }
 
@@ -162,7 +172,7 @@ pub struct Store {
     slots: Vec<Stack>,
     changes: u64,
     dirty: bool,
-    index: BTreeMap<String, Vec<usize>>,
+    index: BTreeMap<ContentId, Vec<usize>>,
 }
 
 impl Store {
@@ -220,26 +230,20 @@ impl Store {
         if slot >= self.slots.len() {
             return false;
         }
-        let now = if stack.is_empty() {
-            String::new()
-        } else {
-            stack.prototype.clone()
-        };
+        let now = (!stack.is_empty()).then(|| stack.prototype.clone());
         let Some(held) = self.slots.get_mut(slot) else {
             return false;
         };
         let was = core::mem::replace(held, stack);
         self.changes = self.changes.saturating_add(1);
         self.dirty = true;
-        let before = if was.is_empty() {
-            String::new()
-        } else {
-            was.prototype
-        };
-        if before != now {
-            self.unindex(slot, &before);
+        let before = (!was.is_empty()).then_some(was.prototype);
+        if before != now
+            && let Some(before) = &before
+        {
+            self.unindex(slot, before);
         }
-        if !now.is_empty() {
+        if let Some(now) = now {
             let slots = self.index.entry(now).or_default();
             if !slots.contains(&slot) {
                 slots.push(slot);
@@ -259,13 +263,13 @@ impl Store {
     /// Answered from the index maintained on write, so the cost does not grow
     /// with the size of the store. The slots come back in ascending order.
     #[must_use]
-    pub fn slots_holding(&self, prototype: &str) -> &[usize] {
+    pub fn slots_holding(&self, prototype: &ContentId) -> &[usize] {
         self.index.get(prototype).map_or(&[], Vec::as_slice)
     }
 
     /// How much of a prototype the store holds in total.
     #[must_use]
-    pub fn count_of(&self, prototype: &str) -> u64 {
+    pub fn count_of(&self, prototype: &ContentId) -> u64 {
         self.slots_holding(prototype)
             .iter()
             .filter_map(|slot| self.slots.get(*slot))
@@ -274,10 +278,7 @@ impl Store {
             })
     }
 
-    fn unindex(&mut self, slot: usize, prototype: &str) {
-        if prototype.is_empty() {
-            return;
-        }
+    fn unindex(&mut self, slot: usize, prototype: &ContentId) {
         if let Some(slots) = self.index.get_mut(prototype) {
             slots.retain(|held| *held != slot);
             if slots.is_empty() {
@@ -313,7 +314,7 @@ pub fn insert_first(store: &mut Store, stack: &Stack) -> Option<usize> {
     } else {
         held.count.checked_add(stack.count)?
     };
-    store.put(slot, Stack::of(&stack.prototype, count));
+    store.put(slot, Stack::of(stack.prototype.clone(), count));
     Some(slot)
 }
 
@@ -324,12 +325,48 @@ mod tests {
     #[test]
     fn an_insertion_stacks_onto_a_matching_slot_and_takes_an_empty_one_otherwise() {
         let mut store = Store::new(2);
-        assert_eq!(insert_first(&mut store, &Stack::of("one", 2)), Some(0));
-        assert_eq!(insert_first(&mut store, &Stack::of("one", 3)), Some(0));
-        assert_eq!(store.count_of("one"), 5);
-        assert_eq!(insert_first(&mut store, &Stack::of("two", 1)), Some(1));
         assert_eq!(
-            insert_first(&mut store, &Stack::of("three", 1)),
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    2
+                )
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    3
+                )
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            store.count_of(&"minecraft:one".parse().expect("a valid item identity")),
+            5
+        );
+        assert_eq!(
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:two".parse().expect("a valid content identity"),
+                    1
+                )
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:three".parse().expect("a valid content identity"),
+                    1
+                )
+            ),
             None,
             "no slot admits a third prototype"
         );
@@ -346,16 +383,31 @@ mod tests {
     fn an_insertion_that_would_overflow_a_slot_is_refused_rather_than_losing_the_overflow() {
         let mut store = Store::new(1);
         assert_eq!(
-            insert_first(&mut store, &Stack::of("one", u32::MAX)),
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    u32::MAX
+                )
+            ),
             Some(0)
         );
         let changes = store.changes();
         assert_eq!(
-            insert_first(&mut store, &Stack::of("one", 9)),
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    9
+                )
+            ),
             None,
             "answering the slot here would report nine accepted that never were"
         );
-        assert_eq!(store.count_of("one"), u64::from(u32::MAX));
+        assert_eq!(
+            store.count_of(&"minecraft:one".parse().expect("a valid item identity")),
+            u64::from(u32::MAX)
+        );
         assert_eq!(
             store.changes(),
             changes,
@@ -367,11 +419,23 @@ mod tests {
     fn a_second_slot_takes_what_the_first_cannot() {
         let mut store = Store::new(2);
         assert_eq!(
-            insert_first(&mut store, &Stack::of("one", u32::MAX)),
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    u32::MAX
+                )
+            ),
             Some(0)
         );
         assert_eq!(
-            insert_first(&mut store, &Stack::of("one", 9)),
+            insert_first(
+                &mut store,
+                &Stack::of(
+                    "minecraft:one".parse().expect("a valid content identity"),
+                    9
+                )
+            ),
             Some(1),
             "the first slot does not admit it, so the empty one does"
         );
@@ -441,7 +505,13 @@ mod tests {
         let mut store = Store::new(4);
         assert_eq!(store.changes(), 0);
         assert!(!store.dirty());
-        store.put(0, Stack::of("one", 3));
+        store.put(
+            0,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                3,
+            ),
+        );
         assert_eq!(store.changes(), 1);
         assert!(store.dirty());
         store.cleared();
@@ -454,7 +524,13 @@ mod tests {
     #[test]
     fn a_write_past_the_end_changes_nothing_and_does_not_count_as_a_change() {
         let mut store = Store::new(2);
-        assert!(!store.put(9, Stack::of("one", 1)));
+        assert!(!store.put(
+            9,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                1
+            )
+        ));
         assert_eq!(store.changes(), 0);
         assert!(!store.dirty());
     }
@@ -462,44 +538,140 @@ mod tests {
     #[test]
     fn the_index_answers_which_slots_hold_a_prototype_and_follows_every_write() {
         let mut store = Store::new(6);
-        store.put(4, Stack::of("one", 1));
-        store.put(1, Stack::of("one", 2));
-        store.put(2, Stack::of("two", 3));
-        assert_eq!(store.slots_holding("one"), &[1, 4]);
-        assert_eq!(store.slots_holding("two"), &[2]);
-        assert_eq!(store.count_of("one"), 3);
-        store.clear(1);
-        assert_eq!(store.slots_holding("one"), &[4]);
-        assert_eq!(store.count_of("one"), 1);
-        store.put(4, Stack::of("two", 1));
+        store.put(
+            4,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                1,
+            ),
+        );
+        store.put(
+            1,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                2,
+            ),
+        );
+        store.put(
+            2,
+            Stack::of(
+                "minecraft:two".parse().expect("a valid content identity"),
+                3,
+            ),
+        );
         assert_eq!(
-            store.slots_holding("one").len(),
+            store.slots_holding(&"minecraft:one".parse().expect("a valid item identity")),
+            &[1, 4]
+        );
+        assert_eq!(
+            store.slots_holding(&"minecraft:two".parse().expect("a valid item identity")),
+            &[2]
+        );
+        assert_eq!(
+            store.count_of(&"minecraft:one".parse().expect("a valid item identity")),
+            3
+        );
+        store.clear(1);
+        assert_eq!(
+            store.slots_holding(&"minecraft:one".parse().expect("a valid item identity")),
+            &[4]
+        );
+        assert_eq!(
+            store.count_of(&"minecraft:one".parse().expect("a valid item identity")),
+            1
+        );
+        store.put(
+            4,
+            Stack::of(
+                "minecraft:two".parse().expect("a valid content identity"),
+                1,
+            ),
+        );
+        assert_eq!(
+            store
+                .slots_holding(&"minecraft:one".parse().expect("a valid item identity"))
+                .len(),
             0,
             "an emptied prototype leaves no entry behind"
         );
-        assert_eq!(store.slots_holding("two"), &[2, 4]);
+        assert_eq!(
+            store.slots_holding(&"minecraft:two".parse().expect("a valid item identity")),
+            &[2, 4]
+        );
     }
 
     #[test]
     fn a_prototype_nothing_holds_answers_an_empty_run_rather_than_scanning() {
         let store = Store::new(6);
-        assert_eq!(store.slots_holding("never").len(), 0);
-        assert_eq!(store.count_of("never"), 0);
+        assert_eq!(
+            store
+                .slots_holding(&"minecraft:never".parse().expect("a valid item identity"))
+                .len(),
+            0
+        );
+        assert_eq!(
+            store.count_of(&"minecraft:never".parse().expect("a valid item identity")),
+            0
+        );
     }
 
     #[test]
     fn a_total_that_would_overflow_saturates() {
         let mut store = Store::new(2);
-        store.put(0, Stack::of("one", u32::MAX));
-        store.put(1, Stack::of("one", u32::MAX));
-        assert_eq!(store.count_of("one"), u64::from(u32::MAX) * 2);
+        store.put(
+            0,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                u32::MAX,
+            ),
+        );
+        store.put(
+            1,
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                u32::MAX,
+            ),
+        );
+        assert_eq!(
+            store.count_of(&"minecraft:one".parse().expect("a valid item identity")),
+            u64::from(u32::MAX) * 2
+        );
+    }
+
+    #[test]
+    fn zero_count_slots_remove_the_previous_index_without_indexing_the_new_identity() {
+        let mut store = Store::new(1);
+        let before = "minecraft:stone"
+            .parse::<ContentId>()
+            .expect("a valid item");
+        let after = "minecraft:air".parse::<ContentId>().expect("a valid item");
+        assert!(store.put(0, Stack::of(before.clone(), 3)));
+        assert!(store.put(0, Stack::of(after.clone(), 0)));
+        let empty: &[usize] = &[];
+        assert_eq!(store.slots_holding(&before), empty);
+        assert_eq!(store.slots_holding(&after), empty);
+        assert_eq!(store.count_of(&before), 0);
+        assert_eq!(store.count_of(&after), 0);
+        assert_eq!(insert_first(&mut store, &Stack::of(after, 1)), Some(0));
     }
 
     #[test]
     fn an_empty_stack_is_empty_however_it_was_written() {
         assert!(Stack::default().is_empty());
-        assert!(Stack::of("one", 0).is_empty());
-        assert!(Stack::of("", 5).is_empty());
-        assert!(!Stack::of("one", 1).is_empty());
+        assert!(
+            Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                0
+            )
+            .is_empty()
+        );
+        assert!("".parse::<ContentId>().is_err());
+        assert!(
+            !Stack::of(
+                "minecraft:one".parse().expect("a valid content identity"),
+                1
+            )
+            .is_empty()
+        );
     }
 }

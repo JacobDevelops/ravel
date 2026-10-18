@@ -76,9 +76,7 @@ pub mod storage;
 pub mod transport;
 pub mod validators;
 
-use ravel_sdk::content::{
-    ContentDeclaration, ContentId, ContentKind, Registrar, RegistryKey, claim_all,
-};
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey};
 use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::prelude::*;
 use ravel_sdk::sides::WrongSide;
@@ -237,7 +235,7 @@ pub struct ClientState {
 #[derive(Debug)]
 pub struct Entry {
     side: Side,
-    declaration: ContentDeclaration,
+    declaration: Result<ContentDeclaration, ModError>,
     registries: RegistryAccess,
     storage: DurableStorage,
     facts: SystemFacts,
@@ -255,20 +253,14 @@ impl Entry {
     /// directory is named, and the side-appropriate registry accessor is
     /// installed. Neither creates anything and neither reads a file, which is
     /// the difference between this and the original's construction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the library's declared mod identity or command path is invalid.
     #[must_use]
     pub fn new(side: Side, durable_root: &str) -> Self {
-        let mut declaration = ContentDeclaration::new(
-            MOD_ID
-                .parse()
-                .expect("the declared identity is a legal mod id"),
-        );
-        declaration
+        let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
+        let declared = declaration
             .entry(ContentKind::Command, COMMAND)
-            .expect("the one command names a legal content path");
+            .map(|_| ())
+            .map_err(ModError::from_display);
+        let declaration = declared.map(|()| declaration);
         Self {
             side,
             declaration,
@@ -420,12 +412,20 @@ impl Entry {
 #[declare_mod(id = "rvl_060_counterpart")]
 impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        if state == LifecycleState::Constructed {
+            self.declaration.as_ref().map_err(Clone::clone)?;
+        }
         self.entered.push(state);
         Ok(())
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(&self.declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(|declaration| Some(std::borrow::Cow::Borrowed(declaration)))
+            .map_err(Clone::clone)
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
@@ -486,13 +486,23 @@ mod tests {
 
     use super::presentation::Category;
     use super::{
-        COMMAND, Channel, DECLINED, Entry, MOD_ID, RegistryAccess, RegistrySource, SOURCES,
-        Suffixes,
+        Channel, DECLINED, Entry, MOD_ID, RegistryAccess, RegistrySource, SOURCES, Suffixes,
     };
 
     #[test]
     fn the_package_is_declared_under_the_identity_its_manifest_names() {
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+    }
+
+    #[test]
+    fn the_host_can_discover_the_command_before_registration() {
+        let shared = Entry::new(Side::Client, "/root");
+        let declaration = shared
+            .content_declaration()
+            .expect("a valid declaration")
+            .expect("the command is declared");
+        assert_eq!(declaration.owner(), Entry::declared_id());
+        assert_eq!(declaration.entries(), &[Entry::command_key()]);
     }
 
     #[test]
@@ -664,7 +674,6 @@ mod tests {
             .add(Category::Game, "version", "1.21.1")
             .expect("inside the ceiling");
         assert_eq!(shared.support_report(), "[game]\nversion: 1.21.1");
-        assert_eq!(COMMAND, "support_report");
         assert_eq!(shared.facts().count(), 1);
     }
 

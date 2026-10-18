@@ -12,6 +12,11 @@ Everything Ravel already owns — content declaration, tag identity, configurati
 isolation, world shaping — is expressed through Ravel. Everything the two dependencies already own —
 the tier and crop model, the three absence states, the ground drops and conversion, the flag table,
 the recipe kinds — is consumed from them rather than rewritten.
+This entry owns no shared persistence and has no dependency traffic with its sibling in the same
+cluster. Those dependency facts live here rather than as callable functions returning fixed prose.
+Companion absence disables recipes without unregistering the crop's block and item identities.
+Crop construction and tier adjustment accept validated `ContentId` values for materials, ground
+and foundation blocks, matching the dependency's typed model rather than passing unchecked strings.
 
 ## Root workspace lint migration
 
@@ -94,9 +99,10 @@ package constant again.
   saturates, because a wrapped sum would come back as a *shorter* effect than the one already running,
   which inverts the rule the section exists to state. Nothing reachable in normal play differs: the
   configured maximum is one second short of the type's own.
-- **A setting outside its declared bounds keeps the shipped default (§3).** `Settings::read` refuses a
-  resolved value that breaks the document's bounds rather than clamping it, so a chance above one or a
-  scale count above sixty-four cannot reach the drop rule. A resolution is not a trusted input.
+- **Declared defaults and typed setting errors have separate paths (§3).** Configuration resolution
+  supplies shipped defaults and rejects values outside the document's bounds before typed reading,
+  so a chance above one or a scale count above sixty-four cannot reach the drop rule.
+  `Settings::read` propagates missing-key and wrong-kind errors instead of replacing them with defaults.
 - **An ore drop count is bounded against its declared span (§15, §16.1).** `Deposit::dropped` clamps
   the roll it is handed, so a source answering anything at all still yields a count inside the two-to-
   five or three-to-five range the loot document declares.

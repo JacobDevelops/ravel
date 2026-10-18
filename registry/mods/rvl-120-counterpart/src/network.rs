@@ -43,15 +43,6 @@ pub const CHANNEL_VERSION: &str = "1.0";
 /// The contract version every payload here is declared under.
 pub const PAYLOAD_VERSION: u32 = 1;
 
-/// Returns whether a client without this package may still connect.
-///
-/// The channel is declared optional, so a client that does not have this
-/// package installed is not turned away at the handshake.
-#[must_use]
-pub const fn is_optional() -> bool {
-    true
-}
-
 /// The thirteen contracts carrying the twelve payload kinds this package ships.
 ///
 /// The opaque screen payload is one kind travelling both ways, so it is two
@@ -721,15 +712,6 @@ mod tests {
 
     /// The one kind of the census this package deliberately does not ship.
     const NOT_SHIPPED: &str = "login_finalised";
-
-    #[test]
-    fn the_channel_is_optional_and_declares_its_own_version() {
-        assert!(
-            is_optional(),
-            "a client without this package may still connect"
-        );
-        assert_eq!(CHANNEL_VERSION, "1.0");
-    }
 
     #[test]
     fn the_census_of_thirteen_kinds_is_shipped_as_twelve_kinds_and_thirteen_contracts() {

@@ -339,7 +339,10 @@ mod tests {
         assert_eq!(cached, 0);
         listing.insert(
             0,
-            &Stack::of("minecraft:stone", 1),
+            &Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            ),
             10,
             PER_SLOT,
             Attempt::Real,
@@ -353,7 +356,14 @@ mod tests {
 
     #[test]
     fn a_list_past_the_entry_ceiling_is_refused_before_it_is_walked() {
-        let entries = (0..=MAX_ENTRIES).map(|index| Stack::of(&format!("minecraft:k{index}"), 1));
+        let entries = (0..=MAX_ENTRIES).map(|index| {
+            Stack::of(
+                format!("minecraft:k{index}")
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )
+        });
         assert_eq!(
             Listing::of(entries),
             Err(Refused::TooManyEntries {
@@ -361,7 +371,14 @@ mod tests {
                 limit: MAX_ENTRIES
             })
         );
-        let entries = (0..MAX_ENTRIES).map(|index| Stack::of(&format!("minecraft:k{index}"), 1));
+        let entries = (0..MAX_ENTRIES).map(|index| {
+            Stack::of(
+                format!("minecraft:k{index}")
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )
+        });
         assert_eq!(
             Listing::of(entries).map(|held| held.slots()),
             Ok(MAX_ENTRIES)
@@ -370,12 +387,19 @@ mod tests {
 
     #[test]
     fn an_insertion_past_the_entry_ceiling_appends_nothing() {
-        let entries = (0..MAX_ENTRIES).map(|index| Stack::of(&format!("minecraft:k{index}"), 1));
+        let entries = (0..MAX_ENTRIES).map(|index| {
+            Stack::of(
+                format!("minecraft:k{index}")
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )
+        });
         let mut listing = Listing::of(entries).expect("at the ceiling");
         assert_eq!(
             listing.insert(
                 MAX_ENTRIES,
-                &Stack::of("minecraft:one_too_many", 1),
+                &Stack::of("minecraft:one_too_many".parse().expect("a valid item"), 1),
                 1,
                 PER_SLOT,
                 Attempt::Real,
@@ -389,7 +413,10 @@ mod tests {
     #[test]
     fn an_insertion_into_the_slot_past_the_end_appends() {
         let mut listing = Listing::empty();
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(
             listing.insert(0, &stone, 10, PER_SLOT, Attempt::Real, &kind()),
             10
@@ -404,8 +431,15 @@ mod tests {
 
     #[test]
     fn a_merge_into_a_matching_slot_is_capped_by_the_per_slot_limit() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 60)]).expect("one entry");
-        let stone = Stack::of("minecraft:stone", 1);
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            60,
+        )])
+        .expect("one entry");
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(
             listing.insert(0, &stone, 20, PER_SLOT, Attempt::Real, &kind()),
             4
@@ -419,11 +453,15 @@ mod tests {
 
     #[test]
     fn the_whole_input_comes_back_when_the_occupied_slot_holds_another_item() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 1)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        )])
+        .expect("one entry");
         assert_eq!(
             listing.insert(
                 0,
-                &Stack::of("minecraft:dirt", 1),
+                &Stack::of("minecraft:dirt".parse().expect("a valid item"), 1),
                 10,
                 PER_SLOT,
                 Attempt::Real,
@@ -436,10 +474,16 @@ mod tests {
 
     #[test]
     fn the_whole_input_comes_back_when_the_data_differs() {
-        let sharp = Stack::of("minecraft:axe", 1)
-            .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
-        let blunt = Stack::of("minecraft:axe", 1)
-            .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
+        let sharp = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
+        let blunt = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
         let mut listing = Listing::of([sharp]).expect("one entry");
         assert_eq!(
             listing.insert(0, &blunt, 1, PER_SLOT, Attempt::Real, &kind()),
@@ -450,7 +494,10 @@ mod tests {
     #[test]
     fn a_simulated_insertion_answers_the_same_number_and_writes_nothing_back() {
         let mut listing = Listing::empty();
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(
             listing.insert(0, &stone, 10, PER_SLOT, Attempt::Simulated, &kind()),
             10
@@ -460,7 +507,11 @@ mod tests {
 
     #[test]
     fn an_extraction_splits_the_entry_and_writes_the_remainder_back() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 30)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            30,
+        )])
+        .expect("one entry");
         let out = listing
             .extract(0, 12, Attempt::Real, &kind())
             .expect("something to take");
@@ -470,7 +521,11 @@ mod tests {
 
     #[test]
     fn an_extraction_that_empties_the_slot_removes_it() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 30)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            30,
+        )])
+        .expect("one entry");
         assert_eq!(
             listing
                 .extract(0, 30, Attempt::Real, &kind())
@@ -482,7 +537,11 @@ mod tests {
 
     #[test]
     fn a_simulated_extraction_leaves_the_list_exactly_as_it_was() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 30)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            30,
+        )])
+        .expect("one entry");
         let before = listing.clone();
         assert_eq!(
             listing
@@ -495,7 +554,11 @@ mod tests {
 
     #[test]
     fn an_extraction_takes_no_more_than_the_slot_holds() {
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 5)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            5,
+        )])
+        .expect("one entry");
         assert_eq!(
             listing
                 .extract(0, 50, Attempt::Real, &kind())
@@ -509,31 +572,52 @@ mod tests {
     fn an_extraction_from_a_slot_that_is_not_there_takes_nothing() {
         let mut listing = Listing::empty();
         assert_eq!(listing.extract(0, 5, Attempt::Real, &kind()), None);
-        let mut listing = Listing::of([Stack::of("minecraft:stone", 5)]).expect("one entry");
+        let mut listing = Listing::of([Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            5,
+        )])
+        .expect("one entry");
         assert_eq!(listing.extract(0, 0, Attempt::Real, &kind()), None);
     }
 
     #[test]
     fn the_whole_list_reads_back_in_list_order() {
         let listing = Listing::of([
-            Stack::of("minecraft:stone", 5),
-            Stack::of("minecraft:dirt", 7),
+            Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                5,
+            ),
+            Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                7,
+            ),
         ])
         .expect("two entries");
-        let held: Vec<(&str, Amount)> = listing
+        let held: Vec<(String, Amount)> = listing
             .entries()
-            .map(|entry| (entry.identity.as_str(), entry.count))
+            .map(|entry| (entry.identity.to_string(), entry.count))
             .collect();
-        assert_eq!(held, vec![("minecraft:stone", 5), ("minecraft:dirt", 7)]);
+        assert_eq!(
+            held,
+            vec![
+                ("minecraft:stone".to_owned(), 5),
+                ("minecraft:dirt".to_owned(), 7)
+            ]
+        );
         assert_eq!(Listing::empty().entries().count(), 0);
     }
 
     #[test]
     fn the_container_takes_anything_at_a_ceiling_of_sixty_four() {
         assert_eq!(Container.ceiling(), 64);
-        assert_eq!(PER_SLOT, 64);
-        assert!(Container.admits(&Stack::of("minecraft:stone", 1)));
-        assert!(Container.admits(&Stack::of("minecraft:diamond_sword", 1)));
+        assert!(Container.admits(&Stack::of(
+            "minecraft:stone".parse().expect("a valid item"),
+            1
+        )));
+        assert!(Container.admits(&Stack::of(
+            "minecraft:diamond_sword".parse().expect("a valid item"),
+            1
+        )));
     }
 
     #[test]
@@ -575,7 +659,10 @@ mod tests {
         });
         assert_eq!(pouch.ceiling(), Some(5));
         let mut listing = Listing::empty();
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         let ceiling = pouch.ceiling().expect("a supplied weight");
         assert_eq!(
             listing.insert(0, &stone, 64, ceiling, Attempt::Real, &kind()),

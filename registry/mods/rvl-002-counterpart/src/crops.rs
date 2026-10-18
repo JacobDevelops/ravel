@@ -105,14 +105,14 @@ impl Declared {
         &self,
         id: ravel_sdk::content::ContentId,
         tier: &ravel_sdk::content::ContentId,
-        material_id: &str,
+        material_id: ravel_sdk::content::ContentId,
     ) -> Crop {
         let crafted = match self.material {
             Material::HostEntry | Material::OwnEntry | Material::CompanionEntry => Crafted::Entry {
-                id: material_id.to_owned(),
+                id: material_id,
                 data: None,
             },
-            Material::ConventionTag | Material::OwnTag => Crafted::Tag(material_id.to_owned()),
+            Material::ConventionTag | Material::OwnTag => Crafted::Tag(material_id),
         };
         let mut crop = Crop::new(
             id,
@@ -247,7 +247,10 @@ mod tests {
                 .parse()
                 .expect("a legal crop identity"),
             &TIER.parse().expect("a legal tier identity"),
-            &declared.material_id(NAMESPACE),
+            declared
+                .material_id(NAMESPACE)
+                .parse()
+                .expect("a legal material identity"),
         )
     }
 
@@ -440,7 +443,11 @@ mod tests {
     fn every_crop_is_pointed_at_an_anchor_whatever_state_it_is_in() {
         for declared in &DECLARED {
             let mut crop = crop_of(declared);
-            crop.foundation = Some(format!("{NAMESPACE}:{}", declared.anchor));
+            crop.foundation = Some(
+                format!("{NAMESPACE}:{}", declared.anchor)
+                    .parse()
+                    .expect("the declared anchor is an identifier"),
+            );
             let held = state(declared, &crop, false, &|_| false, &|_| 0);
             assert!(
                 crop.foundation.is_some(),

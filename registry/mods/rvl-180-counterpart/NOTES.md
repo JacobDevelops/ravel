@@ -105,7 +105,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
 - **The outbox drops the newest and the client view drops the oldest (§10, §5).** Both are bounded
   because nothing in Ravel drains a mod's queue for it at the reviewed revision. A queue that has
   stopped being drained has a stale backlog, so `transport::Outbox` keeps the oldest and counts what
-  it dropped; a display shows only the newest reading, so `ClientView` keeps a short window and drops
+  it dropped; a display shows only the newest reading, so `ClientState` keeps a short window and drops
   the oldest. `commands::Console` follows the outbox's rule for the notes it retains: a note past the
   bound is dropped and the drop is counted in `Console::dropped`, because a bound that discards
   without a count is a bound nobody can see was reached.

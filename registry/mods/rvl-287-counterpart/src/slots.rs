@@ -18,6 +18,7 @@
 //! allocated.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use ravel_sdk::JsonValue;
 
@@ -230,6 +231,37 @@ pub enum SlotError {
     /// The grid declares no texture for one of its cells.
     MissingCell(u32),
 }
+
+impl fmt::Display for SlotError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Malformed => {
+                formatter.write_str("the texture declaration is not a readable object")
+            }
+            Self::UnknownSlot(slot) => write!(
+                formatter,
+                "the texture declaration names an unknown slot `{slot}`"
+            ),
+            Self::UnreadableTexture(slot) => {
+                write!(formatter, "slot `{slot}` holds no readable texture name")
+            }
+            Self::TooManySlots(count) => write!(
+                formatter,
+                "the texture declaration holds {count} slots, exceeding {MAX_SLOTS}"
+            ),
+            Self::UnusableGrid(count) => write!(
+                formatter,
+                "a texture grid with {count} cells must hold between 1 and {MAX_CELLS}"
+            ),
+            Self::MissingCell(cell) => write!(
+                formatter,
+                "the texture grid declares no texture for cell {cell}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SlotError {}
 
 /// One flat texture set: slot number to texture, handed straight to the atlas.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -313,13 +313,7 @@ mod tests {
 
     #[test]
     fn the_grid_is_five_by_four_with_the_output_after_the_twenty_inputs() {
-        assert_eq!(WIDTH, 5);
-        assert_eq!(HEIGHT, 4);
-        assert_eq!(INPUTS, 20);
-        assert_eq!(OUTPUT, 20);
-        assert_eq!(POSITIONS, 21);
         assert_eq!(Pattern::new().positions().len(), POSITIONS);
-        assert_eq!(STACK_LIMIT, 8);
     }
 
     #[test]

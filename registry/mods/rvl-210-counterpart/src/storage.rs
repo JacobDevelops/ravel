@@ -354,11 +354,11 @@ impl<I: Clone> Tank<I> {
 /// It exists so a value can be handed to something that keeps it and changed
 /// afterwards, which is what the original uses it for.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Cell<T> {
+pub struct ValueBox<T> {
     value: T,
 }
 
-impl<T> Cell<T> {
+impl<T> ValueBox<T> {
     /// Builds a box around one value.
     pub const fn new(value: T) -> Self {
         Self { value }
@@ -370,7 +370,7 @@ impl<T> Cell<T> {
     }
 
     /// Replaces what is held and hands back what was there.
-    pub fn set(&mut self, value: T) -> T {
+    pub fn replace(&mut self, value: T) -> T {
         core::mem::replace(&mut self.value, value)
     }
 
@@ -740,10 +740,10 @@ mod tests {
 
     #[test]
     fn a_box_hands_back_what_it_held_when_it_is_replaced() {
-        let mut cell = Cell::new(3u32);
-        assert_eq!(cell.set(7), 3);
-        assert_eq!(*cell.get(), 7);
-        cell.change(|value| *value += 1);
-        assert_eq!(*cell.get(), 8);
+        let mut value = ValueBox::new(3u32);
+        assert_eq!(value.replace(7), 3);
+        assert_eq!(*value.get(), 7);
+        value.change(|value| *value += 1);
+        assert_eq!(*value.get(), 8);
     }
 }

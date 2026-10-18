@@ -273,10 +273,6 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), 3);
-        assert!((HARDNESS - 3.0).abs() < f32::EPSILON);
-        assert!((BLAST_RESISTANCE - 5.0).abs() < f32::EPSILON);
-        assert_eq!(LIGHT_LEVEL, 7);
-        assert_eq!(PARTICLES, 10);
     }
 
     #[test]

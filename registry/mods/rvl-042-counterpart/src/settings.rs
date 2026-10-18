@@ -12,7 +12,7 @@
 
 use ravel_sdk::Side;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
 
 use crate::selection::Preference;
@@ -106,45 +106,29 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            tag_tooltip: true,
-            data_tooltip: false,
-            preference: Preference::default(),
-            self_heal: true,
-        }
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration is valid"),
+            None,
+            None,
+        )
+        .expect("the shipped defaults resolve");
+        Self::read(&resolved).expect("declared settings have matching types")
     }
 }
 
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// A key the resolution does not carry keeps its shipped default, so a
-    /// partial resolution still yields a usable set rather than refusing.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration) -> Self {
-        let shipped = Self::default();
-        Self {
-            tag_tooltip: TAG_TOOLTIP
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.tag_tooltip),
-            data_tooltip: DATA_TOOLTIP
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.data_tooltip),
-            preference: PREFERENCE
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-                .map_or_else(Preference::default, Preference::parse),
-            self_heal: SELF_HEAL
-                .parse()
-                .ok()
-                .and_then(|key| resolved.boolean(&key).ok())
-                .unwrap_or(shipped.self_heal),
-        }
+    /// Returns a typed access error if a key is missing or has the wrong kind.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        Ok(Self {
+            tag_tooltip: resolved.boolean(&TAG_TOOLTIP.parse().expect("a declared key"))?,
+            data_tooltip: resolved.boolean(&DATA_TOOLTIP.parse().expect("a declared key"))?,
+            preference: Preference::parse(
+                resolved.text(&PREFERENCE.parse().expect("a declared key"))?,
+            ),
+            self_heal: resolved.boolean(&SELF_HEAL.parse().expect("a declared key"))?,
+        })
     }
 }
 
@@ -193,6 +177,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        let changed = DOCUMENT.replace(TAG_TOOLTIP, "tooltip.renamed");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed declaration resolves");
+        assert!(Settings::read(&resolved).is_err());
+    }
+
+    #[test]
     fn typed_reads_apply_tooltip_switches_and_borrowed_preference_text() {
         let document = ravel_sdk::config::ValueDocument::parse(
             &ravel_sdk::json!({
@@ -214,7 +207,7 @@ mod tests {
             None,
         )
         .expect("the override values resolve");
-        let settings = Settings::read(&resolved);
+        let settings = Settings::read(&resolved).expect("declared settings have matching types");
         assert!(!settings.tag_tooltip);
         assert!(settings.data_tooltip);
         assert!(!settings.self_heal);

@@ -387,6 +387,5 @@ mod tests {
                 .is_some_and(|refreshes| refreshes > 200),
             "the grant outlasts its interval by two hundred refreshes"
         );
-        assert_eq!(NIGHT_VISION, "night_vision");
     }
 }

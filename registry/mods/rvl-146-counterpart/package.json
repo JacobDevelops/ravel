@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "539bdd38a522657a6bcb5ccac9c52744bc2422e43d273a1f94a66abccbcbce83"
+        "sha256": "ed8c691234f2ab73717b36f783bbd2af6f52429188f8612891a031f069f458a7"
       },
       {
         "path": "aliases.json",
@@ -70,7 +70,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "6f4ba681b977663ef02fd149363dca89641f053a449857284d13b8b50cff78bb"
+        "sha256": "eb2bb58dce2e7f258c480699ac58566696299b2e5f04a1bd6004b4df4f05106e"
       },
       {
         "path": "src/menus.rs",
@@ -90,7 +90,7 @@
       },
       {
         "path": "src/registration.rs",
-        "sha256": "7889d29d06f5f83480e020a7d45875f1e11b15c538aa735bd21ca299ccd0d6dd"
+        "sha256": "814845bda89913588c9c0d1abd50ff4beb1a5ce12a8b44e99533e99e33d94a9f"
       },
       {
         "path": "src/shapes.rs",

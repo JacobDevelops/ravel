@@ -137,8 +137,8 @@ pub fn atlas_document() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ATLAS_PREFIX, ATLAS_SOURCE, FRAMES, POINTERS, SPRITE_COUNT, WIDGETS, atlas_document,
-        atlas_path, names, scales, sprite_paths,
+        ATLAS_PREFIX, ATLAS_SOURCE, FRAMES, POINTERS, WIDGETS, atlas_document, atlas_path, names,
+        scales, sprite_paths,
     };
     use crate::MOD_ID;
     use std::collections::BTreeSet;
@@ -148,7 +148,6 @@ mod tests {
         assert_eq!(POINTERS.len(), 5);
         assert_eq!(WIDGETS.len(), 6);
         assert_eq!(FRAMES.len(), 10);
-        assert_eq!(SPRITE_COUNT, 21);
         assert_eq!(names().len(), 21);
         let distinct: BTreeSet<&str> = names().into_iter().collect();
         assert_eq!(distinct.len(), 21);

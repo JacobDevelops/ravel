@@ -30,7 +30,11 @@ pub struct Below {
 impl Below {
     /// Reads the block below against the tier table.
     #[must_use]
-    pub fn read(block: Option<&str>, tier: &Tier, tiers: &[Tier]) -> Self {
+    pub fn read(
+        block: Option<&ravel_sdk::content::ContentId>,
+        tier: &Tier,
+        tiers: &[Tier],
+    ) -> Self {
         let tiered = tiers
             .iter()
             .find(|held| held.is_effective_ground(block))
@@ -222,9 +226,21 @@ mod tests {
     fn the_shipped_defaults_give_a_fifth_on_own_ground_and_a_tenth_elsewhere() {
         let tiers = tiers();
         let crop = crop();
-        let own = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
-        let other = Below::read(Some("test:ground_3"), &tiers[0], &tiers);
-        let plain = Below::read(Some("test:dirt"), &tiers[0], &tiers);
+        let own = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
+        let other = Below::read(
+            Some(&"test:ground_3".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
+        let plain = Below::read(
+            Some(&"test:dirt".parse().expect("a legal block identity")),
+            &tiers[0],
+            &tiers,
+        );
 
         assert!((second_drop_chance(&crop, &tiers[0], Some(own)) - 0.2).abs() < 1e-9);
         assert!((second_drop_chance(&crop, &tiers[0], Some(other)) - 0.1).abs() < 1e-9);
@@ -236,12 +252,20 @@ mod tests {
         let tiers = tiers();
         let mut tier = tiers[0].clone();
         tier.second_drop = false;
-        let own = Below::read(Some("test:ground_1"), &tier, &tiers);
+        let own = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tier,
+            &tiers,
+        );
         assert!(second_drop_chance(&crop(), &tier, Some(own)).abs() < 1e-9);
 
         let mut generous = tiers[0].clone();
         generous.second_drop_chance = 5.0;
-        let own = Below::read(Some("test:ground_1"), &generous, &tiers);
+        let own = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &generous,
+            &tiers,
+        );
         assert!((second_drop_chance(&crop(), &generous, Some(own)) - 1.0).abs() < 1e-9);
     }
 
@@ -250,7 +274,11 @@ mod tests {
         let tiers = tiers();
         let mut crop = crop();
         crop.respects_effective_ground = false;
-        let own = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
+        let own = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         assert!((second_drop_chance(&crop, &tiers[0], Some(own)) - 0.1).abs() < 1e-9);
     }
 
@@ -259,7 +287,11 @@ mod tests {
         let tiers = tiers();
         let mut crop = crop();
         crop.second_drop_chance = Some(0.5);
-        let other = Below::read(Some("test:ground_3"), &tiers[0], &tiers);
+        let other = Below::read(
+            Some(&"test:ground_3".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         assert!((second_drop_chance(&crop, &tiers[0], Some(other)) - 0.5).abs() < 1e-9);
         crop.second_drop_chance = Some(0.0);
         assert!(second_drop_chance(&crop, &tiers[0], Some(other)).abs() < 1e-9);
@@ -270,7 +302,11 @@ mod tests {
     #[test]
     fn an_immature_crop_yields_one_seed_and_nothing_else() {
         let tiers = tiers();
-        let below = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
+        let below = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         let answer = general(
             &crop(),
             &tiers[0],
@@ -314,7 +350,11 @@ mod tests {
     #[test]
     fn the_produce_and_seed_draws_are_separate_against_the_same_chance() {
         let tiers = tiers();
-        let below = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
+        let below = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         let split = Draws {
             produce: 0.05,
             seed: 0.5,
@@ -330,7 +370,11 @@ mod tests {
     #[test]
     fn the_second_seed_setting_switches_off_the_seed_draw_alone() {
         let tiers = tiers();
-        let below = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
+        let below = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         let certain = Draws::default();
         let with = general(&crop(), &tiers[0], Some(below), true, true, 0.1, certain);
         let without = general(&crop(), &tiers[0], Some(below), true, false, 0.1, certain);
@@ -342,7 +386,11 @@ mod tests {
     #[test]
     fn the_fertiliser_draw_reads_its_own_chance_and_is_strictly_less_than() {
         let tiers = tiers();
-        let below = Below::read(Some("test:ground_1"), &tiers[0], &tiers);
+        let below = Below::read(
+            Some(&"test:ground_1".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         let boundary = Draws {
             produce: 1.0,
             seed: 1.0,
@@ -384,12 +432,20 @@ mod tests {
     fn the_first_tiers_crop_drops_no_fertiliser_and_leaves_untiered_ground_at_one() {
         let tiers = tiers();
         let certain = Draws::default();
-        let plain = Below::read(Some("test:dirt"), &tiers[0], &tiers);
+        let plain = Below::read(
+            Some(&"test:dirt".parse().expect("a legal block identity")),
+            &tiers[0],
+            &tiers,
+        );
         let answer = tier_one(&crop(), &tiers[0], Some(plain), true, true, certain);
         assert_eq!(answer.produce, 1);
         assert_eq!(answer.fertiliser, 0);
 
-        let high = Below::read(Some("test:ground_5"), &tiers[0], &tiers);
+        let high = Below::read(
+            Some(&"test:ground_5".parse().expect("a legal ground identity")),
+            &tiers[0],
+            &tiers,
+        );
         let answer = tier_one(&crop(), &tiers[0], Some(high), true, true, certain);
         assert_eq!(answer.produce, 3);
         assert_eq!(answer.fertiliser, 0);

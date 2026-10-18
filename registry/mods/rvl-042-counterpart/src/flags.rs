@@ -6,10 +6,11 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use ravel_sdk::content::{ContentId, ContentIdError};
-use ravel_sdk::{JsonValue, ModId, ModIdError, json};
+use ravel_sdk::{JsonValue, ModId, json};
 
 /// What a flag answers with, asked afresh on every ask.
 pub type Predicate = Arc<dyn Fn() -> bool + Send + Sync>;
@@ -23,27 +24,12 @@ impl FlagId {
     ///
     /// # Errors
     ///
-    /// Returns [`FlagIdError`] when the namespace is not a legal mod id or the
-    /// name is not a legal content path.
-    pub fn new(namespace: &str, name: &str) -> Result<Self, FlagIdError> {
-        let namespace: ModId = namespace.parse().map_err(FlagIdError::Namespace)?;
-        let id = ContentId::new(namespace, name).map_err(FlagIdError::Name)?;
-        Ok(Self(id))
-    }
-
-    /// Reads an identity written as `namespace:name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FlagIdError::Shape`] when the text does not carry exactly one
-    /// separator, and otherwise whatever the two halves refuse.
-    pub fn parse(text: &str) -> Result<Self, FlagIdError> {
-        let mut halves = text.split(':');
-        let (Some(namespace), Some(name), None) = (halves.next(), halves.next(), halves.next())
-        else {
-            return Err(FlagIdError::Shape);
-        };
-        Self::new(namespace, name)
+    /// Returns [`ContentIdError`] when the namespace or name is invalid.
+    pub fn new(namespace: &str, name: &str) -> Result<Self, ContentIdError> {
+        let namespace: ModId = namespace
+            .parse()
+            .map_err(|source| ContentIdError::Namespace { source })?;
+        ContentId::new(namespace, name).map(Self)
     }
 
     /// Returns the namespace that owns this flag.
@@ -61,32 +47,17 @@ impl FlagId {
 
 impl fmt::Display for FlagId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}:{}", self.0.namespace(), self.0.path())
+        self.0.fmt(formatter)
     }
 }
 
-/// Why an identity was refused.
-#[derive(Debug)]
-pub enum FlagIdError {
-    /// The text was not one namespace and one name separated by a colon.
-    Shape,
-    /// The namespace is not a legal mod id.
-    Namespace(ModIdError),
-    /// The name is not a legal content path.
-    Name(ContentIdError),
-}
+impl FromStr for FlagId {
+    type Err = ContentIdError;
 
-impl fmt::Display for FlagIdError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Shape => write!(formatter, "a flag identity is written `namespace:name`"),
-            Self::Namespace(error) => write!(formatter, "the namespace is refused: {error}"),
-            Self::Name(error) => write!(formatter, "the name is refused: {error}"),
-        }
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.parse::<ContentId>().map(Self)
     }
 }
-
-impl std::error::Error for FlagIdError {}
 
 /// The one table a flag is published into.
 #[derive(Clone, Default)]
@@ -190,15 +161,13 @@ impl FlagReference {
     /// first ask binds a constant-false predicate, which is the case
     /// [`Self::permanently_disabled`] reports.
     pub fn enabled(&mut self, table: &FlagTable) -> bool {
-        if self.bound.is_none() {
-            if let Some(predicate) = table.published.get(&self.id) {
-                self.bound = Some(Arc::clone(predicate));
-            } else {
+        let predicate = self.bound.get_or_insert_with(|| {
+            table.published.get(&self.id).cloned().unwrap_or_else(|| {
                 self.missing_at_bind = true;
-                self.bound = Some(Arc::new(|| false));
-            }
-        }
-        self.bound.as_ref().is_some_and(|predicate| predicate())
+                Arc::new(|| false)
+            })
+        });
+        predicate()
     }
 
     /// Returns whether this reference bound to nothing and can never answer true.
@@ -227,7 +196,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     fn id(name: &str) -> FlagId {
-        FlagId::parse(name).expect("the test identities are legal")
+        name.parse().expect("the test identities are legal")
     }
 
     #[test]
@@ -240,10 +209,10 @@ mod tests {
 
     #[test]
     fn a_malformed_identity_is_refused_rather_than_accepted() {
-        assert!(FlagId::parse("no_separator").is_err());
-        assert!(FlagId::parse("too:many:parts").is_err());
-        assert!(FlagId::parse("Upper:name").is_err());
-        assert!(FlagId::parse("owner:").is_err());
+        assert!("no_separator".parse::<FlagId>().is_err());
+        assert!("too:many:parts".parse::<FlagId>().is_err());
+        assert!("Upper:name".parse::<FlagId>().is_err());
+        assert!("owner:".parse::<FlagId>().is_err());
     }
 
     #[test]

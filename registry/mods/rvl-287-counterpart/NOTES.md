@@ -100,6 +100,8 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
   read it, or a kind claimed it and §10 rejected it. The third carries the claiming kind and the
   `ModelError`, so a pack whose declaration names an unknown layer, an unreadable texture or a slot
   the kind does not have is diagnosable rather than silently untextured.
+  Public kind, model and texture-slot errors implement `Display` and `Error`; lifecycle refusals
+  retain those readable diagnostics rather than exposing Rust debug representations.
 - **The neighbourhood is read through the model that draws from it.** `Model::context` is where §8's
   probe and §9.3's flag rule part. A pane kind reads no condition, so its neighbours can only come
   from `geometry::pane_sample` — same block *and* both perpendicular flags set — and a host is never
@@ -177,7 +179,7 @@ shape is declarable the package declares it and carries no pretend implementatio
   without the walk.
 - **The block and group registries the condition language resolves names against.**
   `conditions::Vocabulary` and `conditions::Groups` are values handed in. Parsing and evaluation are
-  pure functions of whatever they answer, and `Client::vocabulary_mut` is where a host fills them.
+  pure functions of whatever they answer, and `ClientState::vocabulary_mut` is where a host fills them.
 - **Pack compatibility with the original.** §14 lists five spellings a pack author writes by hand
   and the rights record leaves the names surface unresolved, so none is transcribed. Every name here
   is coined: the reload directory (`lookup::DIRECTORY`), the kind key (`lookup::KIND_KEY`), the

@@ -24,6 +24,7 @@
 //! surface Ravel does not publish. `NOTES.md` records them.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use ravel_sdk::JsonValue;
 
@@ -177,6 +178,20 @@ pub enum KindError {
     Full(usize),
 }
 
+impl fmt::Display for KindError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AlreadyRegistered(id) => {
+                write!(formatter, "the kind `{id}` is already registered")
+            }
+            Self::Unreadable(id) => write!(formatter, "`{id}` is not a legal kind name"),
+            Self::Full(limit) => write!(formatter, "the kind table already holds {limit} entries"),
+        }
+    }
+}
+
+impl std::error::Error for KindError {}
+
 /// Why a declaration could not be read into a model.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelError {
@@ -186,6 +201,27 @@ pub enum ModelError {
     Textures(SlotError),
     /// The declaration names a layer the vocabulary does not have.
     UnknownLayer(String),
+}
+
+impl fmt::Display for ModelError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoTextures => formatter.write_str("the model declares no texture set"),
+            Self::Textures(error) => write!(formatter, "the texture set was refused: {error}"),
+            Self::UnknownLayer(layer) => {
+                write!(formatter, "the model names an unknown layer `{layer}`")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ModelError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Textures(error) => Some(error),
+            Self::NoTextures | Self::UnknownLayer(_) => None,
+        }
+    }
 }
 
 /// Everything one face's geometry may need to be decided.

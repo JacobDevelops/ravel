@@ -10,6 +10,8 @@ and validator semantics of §7, the payload shapes of §8, the split integer tra
 colour arithmetic of §11, plus the nesting and grouping of §4 and the identifier derivations of §5.
 Everything Ravel already owns — content declaration and the registration barrier, side isolation,
 saved-data ownership, networking channels — is expressed through Ravel rather than rebuilt.
+The support command is exposed through `Mod::content_declaration` before the default registration
+barrier claims it. Invalid declaration constants are lifecycle refusals, not constructor panics.
 
 ## What each section became
 

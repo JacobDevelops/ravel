@@ -50,13 +50,21 @@ fn subjects() -> Vec<(Crop, Tier, CropKind)> {
         let mut tier = tier;
         let tier_path = tier.id.path().to_owned();
         tier.adjust(
-            &format!("{}:{tier_path}_ground", crate::MOD_ID),
-            &format!("{}:{tier_path}_material", crate::MOD_ID),
+            format!("{}:{tier_path}_ground", crate::MOD_ID)
+                .parse()
+                .expect("a legal ground identity"),
+            format!("{}:{tier_path}_material", crate::MOD_ID)
+                .parse()
+                .expect("a legal material identity"),
         );
         for kind in crate::model::shipped_kinds() {
             let mut kind = kind;
             let kind_path = kind.id.path().to_owned();
-            kind.adjust(&format!("{}:{kind_path}_seed", crate::MOD_ID));
+            kind.adjust(
+                format!("{}:{kind_path}_seed", crate::MOD_ID)
+                    .parse()
+                    .expect("a legal seed identity"),
+            );
             let crop = Crop::new(
                 format!("{}:{tier_path}_{kind_path}", crate::MOD_ID)
                     .parse()
@@ -64,7 +72,9 @@ fn subjects() -> Vec<(Crop, Tier, CropKind)> {
                 tier.id.clone(),
                 kind.id.clone(),
                 Crafted::Entry {
-                    id: format!("{}:{tier_path}_crafted", crate::MOD_ID),
+                    id: format!("{}:{tier_path}_crafted", crate::MOD_ID)
+                        .parse()
+                        .expect("a legal material identity"),
                     data: None,
                 },
             );

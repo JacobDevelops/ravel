@@ -118,7 +118,7 @@ pub fn settings() -> Result<String, ModError> {
         };
         let bound: Vec<&str> = settings::FLAG_BINDINGS
             .iter()
-            .filter(|(_, switch)| *switch == key)
+            .filter(|(_, feature)| feature.key() == key)
             .map(|(flag, _)| *flag)
             .collect();
         let bound = if bound.is_empty() {

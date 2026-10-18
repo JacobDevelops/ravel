@@ -614,7 +614,10 @@ mod tests {
             store: Some(Pool::new(Stackable::default(), 1_000)),
         });
         assert!(carrier.publishes());
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(carrier.insert(&stone, 30, Attempt::Real), 30);
         assert_eq!(carrier.contents().len(), 1);
         assert_eq!(carrier.extract(&stone, 10, Attempt::Real), 10);
@@ -624,7 +627,10 @@ mod tests {
     #[test]
     fn an_operation_on_an_entity_publishing_nothing_answers_the_empty_answer() {
         let mut carrier: Carrier<Stackable> = Carrier::empty();
-        let stone = Stack::of("minecraft:stone", 1);
+        let stone = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
         assert_eq!(carrier.insert(&stone, 30, Attempt::Real), 0);
         assert_eq!(carrier.extract(&stone, 30, Attempt::Real), 0);
     }
@@ -649,14 +655,31 @@ mod tests {
     #[test]
     fn a_caller_reading_across_a_change_sees_the_new_item_rather_than_a_stale_one() {
         let mut first = Pool::new(Stackable::default(), 1_000);
-        first.insert(&Stack::of("minecraft:stone", 1), 10, Attempt::Real);
+        first.insert(
+            &Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            ),
+            10,
+            Attempt::Real,
+        );
         let mut second = Pool::new(Stackable::default(), 1_000);
-        second.insert(&Stack::of("minecraft:dirt", 1), 5, Attempt::Real);
+        second.insert(
+            &Stack::of(
+                "minecraft:dirt".parse().expect("a valid content identity"),
+                1,
+            ),
+            5,
+            Attempt::Real,
+        );
         let mut carrier = Carrier::holding(Holding {
             identity: "minecraft:shulker_box".to_owned(),
             store: Some(first),
         });
-        assert_eq!(carrier.contents()[0].identity, "minecraft:stone");
+        assert_eq!(
+            carrier.contents()[0].identity.to_string(),
+            "minecraft:stone"
+        );
         let was = carrier.put(Some(Holding {
             identity: "minecraft:white_shulker_box".to_owned(),
             store: Some(second),
@@ -665,7 +688,7 @@ mod tests {
             was.map(|held| held.identity),
             Some("minecraft:shulker_box".to_owned())
         );
-        assert_eq!(carrier.contents()[0].identity, "minecraft:dirt");
+        assert_eq!(carrier.contents()[0].identity.to_string(), "minecraft:dirt");
         assert_eq!(carrier.contents()[0].count, 5);
     }
 

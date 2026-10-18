@@ -19,7 +19,7 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
-use ravel_sdk::JsonValue;
+use ravel_sdk::{JsonValue, content::ContentId};
 use rvl_210_counterpart::quantity::{Amount, Conditions, KindError, QuantityKind};
 
 use crate::data::{Comparator, Components};
@@ -206,14 +206,25 @@ impl ConditionSet for Truth {
 }
 
 /// A stackable item: an identity, a count and its data.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stack {
-    /// What item it is. Empty names the empty stack.
-    pub identity: String,
-    /// How many.
+    /// What item it is; always a valid namespaced identity.
+    pub identity: ContentId,
+    /// How many. Zero alone denotes absence.
     pub count: Amount,
     /// The typed data it carries.
     pub data: Components,
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        Self::of(
+            "minecraft:air"
+                .parse()
+                .expect("a valid static item identity"),
+            0,
+        )
+    }
 }
 
 impl Stack {
@@ -248,9 +259,9 @@ impl Stack {
 
     /// A stack of one named item.
     #[must_use]
-    pub fn of(identity: &str, count: Amount) -> Self {
+    pub fn of(identity: ContentId, count: Amount) -> Self {
         Self {
-            identity: identity.to_owned(),
+            identity,
             count,
             data: Components::new(),
         }
@@ -265,7 +276,7 @@ impl Stack {
     /// Whether this is the empty stack.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.identity.is_empty() || self.count == 0
+        self.count == 0
     }
 
     /// The same stack carrying the given data.
@@ -277,14 +288,25 @@ impl Stack {
 }
 
 /// A fluid portion: a fluid, a volume and its data.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Portion {
-    /// What fluid it is. Empty names the empty portion.
-    pub fluid: String,
-    /// How much.
+    /// What fluid it is; always a valid namespaced identity.
+    pub fluid: ContentId,
+    /// How much. Zero alone denotes absence.
     pub volume: Amount,
     /// The typed data it carries.
     pub data: Components,
+}
+
+impl Default for Portion {
+    fn default() -> Self {
+        Self::of(
+            "minecraft:empty"
+                .parse()
+                .expect("a valid static fluid identity"),
+            0,
+        )
+    }
 }
 
 impl Portion {
@@ -319,9 +341,9 @@ impl Portion {
 
     /// A portion of one named fluid.
     #[must_use]
-    pub fn of(fluid: &str, volume: Amount) -> Self {
+    pub fn of(fluid: ContentId, volume: Amount) -> Self {
         Self {
-            fluid: fluid.to_owned(),
+            fluid,
             volume,
             data: Components::new(),
         }
@@ -336,7 +358,7 @@ impl Portion {
     /// Whether this is the empty portion.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.fluid.is_empty() || self.volume == 0
+        self.volume == 0
     }
 
     /// The same portion carrying the given data.
@@ -529,6 +551,23 @@ impl QuantityKind for Stackable {
     }
 }
 
+/// Compares the serialized namespace:path spelling without allocating it.
+fn compare_identity(left: &ContentId, right: &ContentId) -> Ordering {
+    left.namespace()
+        .as_str()
+        .bytes()
+        .chain(core::iter::once(b':'))
+        .chain(left.path().bytes())
+        .cmp(
+            right
+                .namespace()
+                .as_str()
+                .bytes()
+                .chain(core::iter::once(b':'))
+                .chain(right.path().bytes()),
+        )
+}
+
 impl Ingredient for Stackable {
     type Conditions = Flags;
 
@@ -550,6 +589,11 @@ impl Ingredient for Stackable {
 
     fn with_quantity(&self, value: &Stack, quantity: Amount) -> Result<Stack, KindError> {
         checked(quantity, NARROW_MAXIMUM, "count")?;
+        if value.is_empty() && quantity != 0 {
+            return Err(KindError::new(
+                "a zero-count stack cannot be rebuilt at a non-zero count",
+            ));
+        }
         if quantity == value.count {
             return Ok(value.clone());
         }
@@ -572,13 +616,12 @@ impl Ingredient for Stackable {
             // for a zero count with an identity set, and calling those equal
             // would collapse two stacks `matches` calls different into one key
             // of a map built on this order.
-            (true, true) => return left.identity.cmp(&right.identity),
+            (true, true) => return compare_identity(&left.identity, &right.identity),
             (true, false) => return Ordering::Less,
             (false, true) => return Ordering::Greater,
             (false, false) => {}
         }
-        left.identity
-            .cmp(&right.identity)
+        compare_identity(&left.identity, &right.identity)
             .then_with(|| left.count.cmp(&right.count))
             .then_with(|| self.comparator.compare(&left.data, &right.data))
     }
@@ -601,7 +644,7 @@ impl Ingredient for Stackable {
 
     fn project(&self, value: &Stack, category: &Category) -> Option<Projection> {
         match category.name {
-            "identity" => Some(Projection::Named(value.identity.clone())),
+            "identity" => Some(Projection::Named(value.identity.to_string())),
             "count" => Some(Projection::Counted(value.count)),
             "data" => Some(Projection::Detailed(value.data.clone())),
             _ => None,
@@ -710,7 +753,7 @@ impl Ingredient for Fluid {
         }
         if value.is_empty() {
             return Err(KindError::new(
-                "an empty portion names no fluid, so it cannot be rebuilt carrying one",
+                "a zero-volume portion cannot be rebuilt at a non-zero volume",
             ));
         }
         if quantity == value.volume {
@@ -725,13 +768,12 @@ impl Ingredient for Fluid {
         match (left.is_empty(), right.is_empty()) {
             // The same fall-through the stackable order needs: a zero volume
             // with a fluid named is empty, and two of those are not one key.
-            (true, true) => return left.fluid.cmp(&right.fluid),
+            (true, true) => return compare_identity(&left.fluid, &right.fluid),
             (true, false) => return Ordering::Less,
             (false, true) => return Ordering::Greater,
             (false, false) => {}
         }
-        left.fluid
-            .cmp(&right.fluid)
+        compare_identity(&left.fluid, &right.fluid)
             .then_with(|| left.volume.cmp(&right.volume))
             .then_with(|| self.comparator.compare(&left.data, &right.data))
     }
@@ -754,7 +796,7 @@ impl Ingredient for Fluid {
 
     fn project(&self, value: &Portion, category: &Category) -> Option<Projection> {
         match category.name {
-            "fluid" => Some(Projection::Named(value.fluid.clone())),
+            "fluid" => Some(Projection::Named(value.fluid.to_string())),
             "volume" => Some(Projection::Counted(value.volume)),
             "data" => Some(Projection::Detailed(value.data.clone())),
             _ => None,
@@ -1081,9 +1123,59 @@ mod tests {
     }
 
     #[test]
+    fn empty_stacks_cannot_be_rebuilt_into_nonempty_defaults() {
+        assert!(stackable().with_quantity(&Stack::empty(), 30).is_err());
+        assert_eq!(
+            stackable().with_quantity(&Stack::empty(), 0),
+            Ok(Stack::empty())
+        );
+    }
+
+    #[test]
+    fn identity_order_keeps_the_serialized_namespace_separator() {
+        let left = "a-b:x".parse::<ContentId>().expect("a valid identity");
+        let right = "a:x".parse::<ContentId>().expect("a valid identity");
+        for quantity in [0, 1] {
+            assert_eq!(
+                stackable().compare(
+                    &Stack::of(left.clone(), quantity),
+                    &Stack::of(right.clone(), quantity)
+                ),
+                Ordering::Less,
+            );
+            assert_eq!(
+                fluid().compare(
+                    &Portion::of(left.clone(), quantity),
+                    &Portion::of(right.clone(), quantity)
+                ),
+                Ordering::Less,
+            );
+        }
+    }
+
+    #[test]
+    fn quantity_alone_controls_absence_while_identities_remain_valid() {
+        let item = "minecraft:air"
+            .parse::<ContentId>()
+            .expect("a valid item identity");
+        assert!(Stack::of(item.clone(), 0).is_empty());
+        assert!(!Stack::of(item, 1).is_empty());
+        let fluid = "minecraft:empty"
+            .parse::<ContentId>()
+            .expect("a valid fluid identity");
+        assert!(Portion::of(fluid.clone(), 0).is_empty());
+        assert!(!Portion::of(fluid, 1).is_empty());
+        assert_eq!(Stack::empty().count, 0);
+        assert_eq!(Portion::empty().volume, 0);
+    }
+
+    #[test]
     fn an_instance_projects_onto_each_of_its_categories_and_onto_nothing_else() {
         let kind = stackable();
-        let stack = Stack::of("minecraft:stone", 4);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            4,
+        );
         assert_eq!(
             kind.project(&stack, &Stack::CATEGORIES[0]),
             Some(Projection::Named("minecraft:stone".to_owned()))
@@ -1098,7 +1190,13 @@ mod tests {
         );
         assert_eq!(kind.project(&stack, &Charge::CATEGORIES[0]), None);
         assert_eq!(
-            fluid().project(&Portion::of("minecraft:water", 9), &Portion::CATEGORIES[1]),
+            fluid().project(
+                &Portion::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    9
+                ),
+                &Portion::CATEGORIES[1]
+            ),
             Some(Projection::Counted(9))
         );
         assert_eq!(
@@ -1158,8 +1256,14 @@ mod tests {
         // every empty stack equal would collapse two the matcher calls
         // different into one key.
         let kind = Stackable::default();
-        let left = Stack::of("minecraft:stone", 0);
-        let right = Stack::of("minecraft:dirt", 0);
+        let left = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            0,
+        );
+        let right = Stack::of(
+            "minecraft:dirt".parse().expect("a valid content identity"),
+            0,
+        );
         assert_ne!(kind.compare(&left, &right), Ordering::Equal);
         assert!(!kind.matches(&left, &right, kind.exact_conditions()));
         assert_eq!(
@@ -1171,8 +1275,11 @@ mod tests {
     #[test]
     fn two_zero_volume_portions_of_different_fluids_are_not_one_key() {
         let kind = Fluid::default();
-        let left = Portion::of("minecraft:water", 0);
-        let right = Portion::of("minecraft:lava", 0);
+        let left = Portion::of(
+            "minecraft:water".parse().expect("a valid fluid identity"),
+            0,
+        );
+        let right = Portion::of("minecraft:lava".parse().expect("a valid fluid identity"), 0);
         assert_ne!(kind.compare(&left, &right), Ordering::Equal);
         assert!(!kind.matches(&left, &right, kind.exact_conditions()));
     }
@@ -1190,8 +1297,14 @@ mod tests {
     #[test]
     fn two_stacks_alike_but_for_count_match_when_quantity_is_ignored() {
         let kind = stackable();
-        let one = Stack::of("minecraft:stone", 1);
-        let many = Stack::of("minecraft:stone", 40);
+        let one = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        let many = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            40,
+        );
         assert!(kind.matches(&one, &many, kind.ignoring_quantity().conditions()));
         assert!(!kind.matches(&one, &many, kind.exactly().conditions()));
         assert!(kind.matches(&one, &many, kind.anything().conditions()));
@@ -1201,8 +1314,16 @@ mod tests {
     fn matching_instances_digest_alike_under_the_same_set() {
         let kind = stackable();
         let data = Components::from([("wear".to_owned(), Value::Whole(3))]);
-        let one = Stack::of("minecraft:axe", 1).carrying(data.clone());
-        let other = Stack::of("minecraft:axe", 1).carrying(data);
+        let one = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(data.clone());
+        let other = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(data);
         let under = kind.exactly().conditions();
         assert!(kind.matches(&one, &other, under));
         assert_eq!(kind.digest(&one, under), kind.digest(&other, under));
@@ -1212,10 +1333,16 @@ mod tests {
     fn an_ignored_component_kind_makes_two_stacks_match_and_digest_alike() {
         let comparator = Comparator::new(["wear".to_owned()]).expect("a small list");
         let kind = Stackable::with(comparator);
-        let sharp = Stack::of("minecraft:axe", 1)
-            .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
-        let blunt = Stack::of("minecraft:axe", 1)
-            .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
+        let sharp = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
+        let blunt = Stack::of(
+            "minecraft:axe".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
         let under = kind.exactly().conditions();
         assert!(kind.matches(&sharp, &blunt, under));
         assert_eq!(kind.digest(&sharp, under), kind.digest(&blunt, under));
@@ -1225,7 +1352,13 @@ mod tests {
     fn a_stack_orders_empty_first_then_by_name_then_count_then_data() {
         let kind = stackable();
         assert_eq!(
-            kind.compare(&Stack::empty(), &Stack::of("minecraft:stone", 1)),
+            kind.compare(
+                &Stack::empty(),
+                &Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    1
+                )
+            ),
             Ordering::Less
         );
         assert_eq!(
@@ -1234,21 +1367,39 @@ mod tests {
         );
         assert_eq!(
             kind.compare(
-                &Stack::of("minecraft:apple", 9),
-                &Stack::of("minecraft:stone", 1)
+                &Stack::of(
+                    "minecraft:apple".parse().expect("a valid content identity"),
+                    9
+                ),
+                &Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    1
+                )
             ),
             Ordering::Less
         );
         assert_eq!(
             kind.compare(
-                &Stack::of("minecraft:stone", 1),
-                &Stack::of("minecraft:stone", 2)
+                &Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    1
+                ),
+                &Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    2
+                )
             ),
             Ordering::Less
         );
-        let plain = Stack::of("minecraft:stone", 1);
-        let detailed = Stack::of("minecraft:stone", 1)
-            .carrying(Components::from([("a".to_owned(), Value::Whole(1))]));
+        let plain = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        );
+        let detailed = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        )
+        .carrying(Components::from([("a".to_owned(), Value::Whole(1))]));
         assert_eq!(kind.compare(&plain, &detailed), Ordering::Less);
     }
 
@@ -1259,11 +1410,17 @@ mod tests {
         let items = stackable();
         let fluids = fluid();
         assert_eq!(
-            items.compare(&Stack::of("b", 1), &Stack::of("a", 99)),
+            items.compare(
+                &Stack::of("minecraft:b".parse().expect("a valid content identity"), 1),
+                &Stack::of("minecraft:a".parse().expect("a valid content identity"), 99)
+            ),
             Ordering::Greater
         );
         assert_eq!(
-            fluids.compare(&Portion::of("b", 1), &Portion::of("a", 99)),
+            fluids.compare(
+                &Portion::of("minecraft:b".parse().expect("a valid content identity"), 1),
+                &Portion::of("minecraft:a".parse().expect("a valid content identity"), 99)
+            ),
             Ordering::Greater
         );
     }
@@ -1272,13 +1429,25 @@ mod tests {
     fn a_portion_orders_empty_first_then_by_fluid_then_volume() {
         let kind = fluid();
         assert_eq!(
-            kind.compare(&Portion::empty(), &Portion::of("minecraft:water", 1)),
+            kind.compare(
+                &Portion::empty(),
+                &Portion::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    1
+                )
+            ),
             Ordering::Less
         );
         assert_eq!(
             kind.compare(
-                &Portion::of("minecraft:water", 5),
-                &Portion::of("minecraft:water", 6)
+                &Portion::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    5
+                ),
+                &Portion::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    6
+                )
             ),
             Ordering::Less
         );
@@ -1315,12 +1484,18 @@ mod tests {
     fn rebuilding_past_the_maximum_is_refused_for_every_kind() {
         assert!(
             stackable()
-                .with_quantity(&Stack::of("a", 1), NARROW_MAXIMUM + 1)
+                .with_quantity(
+                    &Stack::of("minecraft:a".parse().expect("a valid content identity"), 1),
+                    NARROW_MAXIMUM + 1
+                )
                 .is_err()
         );
         assert!(
             fluid()
-                .with_quantity(&Portion::of("a", 1), NARROW_MAXIMUM + 1)
+                .with_quantity(
+                    &Portion::of("minecraft:a".parse().expect("a valid content identity"), 1),
+                    NARROW_MAXIMUM + 1
+                )
                 .is_err()
         );
         assert!(
@@ -1330,7 +1505,10 @@ mod tests {
         );
         assert!(
             stackable()
-                .with_quantity(&Stack::of("a", 1), NARROW_MAXIMUM)
+                .with_quantity(
+                    &Stack::of("minecraft:a".parse().expect("a valid content identity"), 1),
+                    NARROW_MAXIMUM
+                )
                 .is_ok()
         );
         assert!(Scalar.with_quantity(&Charge::of(1), WIDE_MAXIMUM).is_ok());
@@ -1339,7 +1517,10 @@ mod tests {
     #[test]
     fn rebuilding_an_unchanged_quantity_answers_an_equal_value() {
         let kind = stackable();
-        let stack = Stack::of("minecraft:stone", 3);
+        let stack = Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            3,
+        );
         assert_eq!(kind.with_quantity(&stack, 3), Ok(stack.clone()));
         assert_eq!(kind.with_quantity(&stack, 4).map(|s| s.count), Ok(4));
         assert_eq!(stack.count, 3);
@@ -1349,7 +1530,13 @@ mod tests {
     fn rebuilding_a_portion_at_zero_yields_the_empty_portion() {
         let kind = fluid();
         assert_eq!(
-            kind.with_quantity(&Portion::of("minecraft:water", 50), 0),
+            kind.with_quantity(
+                &Portion::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    50
+                ),
+                0
+            ),
             Ok(Portion::empty())
         );
     }
@@ -1361,8 +1548,11 @@ mod tests {
         let kind = fluid();
         let refusal = kind
             .with_quantity(&Portion::empty(), 100)
-            .expect_err("an empty portion names no fluid");
-        assert!(refusal.detail().contains("names no fluid"));
+            .expect_err("an empty portion has zero volume");
+        assert_eq!(
+            refusal.detail(),
+            "a zero-volume portion cannot be rebuilt at a non-zero volume"
+        );
     }
 
     #[test]

@@ -12,6 +12,8 @@
 //! nothing fills them today and the reading answers absent rather than a made-up
 //! number. `NOTES.md` lists them.
 
+use ravel_sdk::content::ContentId;
+
 use rvl_210_counterpart::quantity::Amount;
 
 use crate::kinds::{Portion, Stack};
@@ -237,7 +239,7 @@ impl Campfire {
 /// The temperature the contained fluid declares, and the freezing point when
 /// empty, with no maximum.
 #[must_use]
-pub fn bucket_heat(held: Option<&Portion>, declared: impl Fn(&str) -> Option<i64>) -> Heat {
+pub fn bucket_heat(held: Option<&Portion>, declared: impl Fn(&ContentId) -> Option<i64>) -> Heat {
     let current = held
         .filter(|portion| !portion.is_empty())
         .and_then(|portion| declared(&portion.fluid))
@@ -255,8 +257,13 @@ mod tests {
     use super::*;
 
     fn smelts(input: &Stack) -> Option<Stack> {
-        if input.identity == "minecraft:iron_ore" {
-            Some(Stack::of("minecraft:iron_ingot", 1))
+        if input.identity.to_string() == "minecraft:iron_ore" {
+            Some(Stack::of(
+                "minecraft:iron_ingot"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            ))
         } else {
             None
         }
@@ -265,12 +272,20 @@ mod tests {
     #[test]
     fn a_smelting_station_has_work_only_when_a_recipe_yields_something() {
         let station = Smelting {
-            input: Some(Stack::of("minecraft:iron_ore", 1)),
+            input: Some(Stack::of(
+                "minecraft:iron_ore"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
             ..Smelting::default()
         };
         assert!(station.work(smelts).exists);
         let station = Smelting {
-            input: Some(Stack::of("minecraft:stone", 1)),
+            input: Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            )),
             ..Smelting::default()
         };
         assert!(!station.work(smelts).exists);
@@ -284,13 +299,19 @@ mod tests {
         };
         assert!(
             !station
-                .work(|_| Some(Stack::of("minecraft:iron_ingot", 1)))
+                .work(|_| Some(Stack::of(
+                    "minecraft:iron_ingot".parse().expect("a valid item"),
+                    1
+                )))
                 .exists
         );
         let station = Smelting::default();
         assert!(
             !station
-                .work(|_| Some(Stack::of("minecraft:iron_ingot", 1)))
+                .work(|_| Some(Stack::of(
+                    "minecraft:iron_ingot".parse().expect("a valid item"),
+                    1
+                )))
                 .exists
         );
     }
@@ -298,7 +319,12 @@ mod tests {
     #[test]
     fn a_recipe_assembling_to_nothing_is_no_work() {
         let station = Smelting {
-            input: Some(Stack::of("minecraft:iron_ore", 1)),
+            input: Some(Stack::of(
+                "minecraft:iron_ore"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
             ..Smelting::default()
         };
         assert!(!station.work(|_| Some(Stack::empty())).exists);
@@ -312,13 +338,19 @@ mod tests {
         };
         assert!(burning.work(smelts).can_proceed);
         let fuelled = Smelting {
-            fuel: Some(Stack::of("minecraft:coal", 1)),
+            fuel: Some(Stack::of(
+                "minecraft:coal".parse().expect("a valid content identity"),
+                1,
+            )),
             fuel_burns: true,
             ..Smelting::default()
         };
         assert!(fuelled.work(smelts).can_proceed);
         let unfuelled = Smelting {
-            fuel: Some(Stack::of("minecraft:stone", 1)),
+            fuel: Some(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            )),
             fuel_burns: false,
             ..Smelting::default()
         };
@@ -334,7 +366,12 @@ mod tests {
     #[test]
     fn a_station_runs_only_when_there_is_work_and_it_can_proceed() {
         let station = Smelting {
-            input: Some(Stack::of("minecraft:iron_ore", 1)),
+            input: Some(Stack::of(
+                "minecraft:iron_ore"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
             burning: true,
             ..Smelting::default()
         };
@@ -409,7 +446,16 @@ mod tests {
     fn a_campfire_has_work_when_any_slot_is_non_empty() {
         let empty = Campfire::new([None, None], false);
         assert!(!empty.work().exists);
-        let held = Campfire::new([None, Some(Stack::of("minecraft:beef", 1))], false);
+        let held = Campfire::new(
+            [
+                None,
+                Some(Stack::of(
+                    "minecraft:beef".parse().expect("a valid content identity"),
+                    1,
+                )),
+            ],
+            false,
+        );
         assert!(held.work().exists);
         let blank = Campfire::new([Some(Stack::empty())], false);
         assert!(!blank.work().exists);
@@ -435,7 +481,12 @@ mod tests {
     #[test]
     fn a_campfire_snapshot_is_bounded_at_the_published_slot_ceiling() {
         let held = Campfire::new(
-            (0..MAX_STATION_SLOTS + 10).map(|_| Some(Stack::of("minecraft:beef", 1))),
+            (0..MAX_STATION_SLOTS + 10).map(|_| {
+                Some(Stack::of(
+                    "minecraft:beef".parse().expect("a valid content identity"),
+                    1,
+                ))
+            }),
             true,
         );
         assert_eq!(held.slots().count(), MAX_STATION_SLOTS);
@@ -443,9 +494,13 @@ mod tests {
 
     #[test]
     fn a_bucket_reads_the_temperature_its_fluid_declares() {
-        let lava = Portion::of("minecraft:lava", 1_000);
+        let lava = Portion::of(
+            "minecraft:lava".parse().expect("a valid fluid identity"),
+            1_000,
+        );
         let heat = bucket_heat(Some(&lava), |fluid| {
-            (fluid == "minecraft:lava").then_some(FREEZING + 1_300)
+            (fluid.namespace().as_str() == "minecraft" && fluid.path() == "lava")
+                .then_some(FREEZING + 1_300)
         });
         assert_eq!(heat.current, FREEZING + 1_300);
         assert_eq!(heat.maximum, None);
@@ -462,7 +517,10 @@ mod tests {
 
     #[test]
     fn a_fluid_declaring_no_temperature_reads_the_freezing_point() {
-        let water = Portion::of("minecraft:water", 1_000);
+        let water = Portion::of(
+            "minecraft:water".parse().expect("a valid fluid identity"),
+            1_000,
+        );
         assert_eq!(bucket_heat(Some(&water), |_| None), Heat::COLD);
     }
 }

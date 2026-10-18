@@ -114,6 +114,16 @@ other direction: a Ravel package declares its own names and never the host's.
 
 ## Behaviour changes, each declared rather than incidental
 
+- **Item and fluid identities are validated content identifiers (§6–7).** `Stack::of` and
+  `Portion::of` take SDK `ContentId` values. A zero count or volume alone denotes absence;
+  default empty values still carry valid `minecraft:air` and `minecraft:empty` identities.
+  Serialised identities remain text, but the package boundary enforces Ravel's `ContentId`
+  grammar, which is stricter than the game's namespace grammar. Decoders retain the rejected
+  spelling and typed `ContentIdError`, including for empty strings at zero quantity, rather than
+  interpreting them as empty slots. Rebuilding an empty stack or portion at a positive quantity
+  is refused. Ordering retains the lexical serialized `namespace:path` spelling without allocation.
+  Bucket temperature callbacks receive the validated fluid identity directly.
+
 - **The charge kind compares and orders at full width (§6.2, defects three and four).** The original
   narrows both 64-bit values to 32 bits before comparing, so two charges differing only above the low
   32 bits compare equal, and its ordering returns the 32-bit difference of two 64-bit values, which

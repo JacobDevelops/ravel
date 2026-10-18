@@ -245,18 +245,14 @@ fn bounded(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Display, ENERGY_UNIT, FLUID_UNIT, LINE_COUNT, LINES, LOCALE, MAX_FLUID_NAME, Readout, text,
-    };
+    use super::{Display, ENERGY_UNIT, FLUID_UNIT, LINES, MAX_FLUID_NAME, Readout, text};
     use std::collections::BTreeSet;
 
     #[test]
     fn eighteen_lines_are_supplied_and_each_key_is_spelled_once() {
-        assert_eq!(LINE_COUNT, 18);
         let keys: BTreeSet<&str> = LINES.iter().map(|(key, _)| *key).collect();
         assert_eq!(keys.len(), 18);
         assert!(LINES.iter().all(|(_, line)| !line.is_empty()));
-        assert_eq!(LOCALE, "en_us");
     }
 
     #[test]

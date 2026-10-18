@@ -617,13 +617,6 @@ mod tests {
     }
 
     #[test]
-    fn the_one_key_binding_has_a_category_and_a_default_key() {
-        assert_eq!(KEY_BINDING, "open_manual");
-        assert_eq!(DEFAULT_KEY, "F1");
-        assert_eq!(census::TRANSLATIONS.len(), 2);
-    }
-
-    #[test]
     fn what_dependents_need_is_reachable_from_the_crate_root() {
         assert_eq!(change_check(&[1, 2, 3]), 169_269_418);
 

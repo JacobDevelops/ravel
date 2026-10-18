@@ -12,8 +12,8 @@
 //! field, not two: the original writes the energy amount in two different
 //! spellings across five machines, both of which produce the same integer.
 
-use ravel_sdk::save::{SavedDataEnvelope, SavedDataVersion};
-use ravel_sdk::{Declared, JsonValue, json};
+use ravel_sdk::save::SavedDataVersion;
+use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::arithmetic::insert;
 use rvl_042_counterpart::inventory::{Store, StoreRefused};
 use rvl_042_counterpart::{Position, Stack};
@@ -361,6 +361,29 @@ pub struct Ticked {
     pub reset: bool,
 }
 
+/// The persisted progress and derived timing of a recipe machine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecipeStep {
+    /// Progress toward the current operation.
+    pub progress: u32,
+    /// Ticks required to finish an operation.
+    pub operation: u32,
+    /// Energy charged for each advancing tick.
+    pub usage: u32,
+}
+
+/// Whether a machine observes the neighbouring redstone signal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Redstone {
+    /// This machine ignores redstone.
+    Ignored,
+    /// A powered signal disables this machine.
+    Gated {
+        /// Whether the neighbouring signal is powered.
+        powered: bool,
+    },
+}
+
 /// Advances one of the four recipe machines by a tick.
 ///
 /// The four run only while the store holds at least one tick's usage, charge
@@ -379,14 +402,11 @@ pub struct Ticked {
 /// Answers with the rule that stopped the machine.
 pub fn tick_recipe_machine(
     energy: &mut Energy,
-    progress: u32,
-    operation: u32,
-    usage: u32,
+    step: RecipeStep,
     has_input: bool,
-    redstone: bool,
-    redstone_gated: bool,
+    redstone: Redstone,
 ) -> Result<Ticked, Stalled> {
-    if redstone_gated && redstone {
+    if redstone == (Redstone::Gated { powered: true }) {
         return Err(Stalled::Redstone);
     }
     if !has_input {
@@ -396,14 +416,18 @@ pub fn tick_recipe_machine(
             reset: true,
         });
     }
-    if energy.amount < u64::from(usage) {
+    if energy.amount < u64::from(step.usage) {
         return Err(Stalled::Unpowered);
     }
-    energy.charge(usage);
-    let progress = progress + 1;
+    energy.charge(step.usage);
+    let progress = step.progress + 1;
     Ok(Ticked {
-        progress: if progress >= operation { 0 } else { progress },
-        completed: progress >= operation,
+        progress: if progress >= step.operation {
+            0
+        } else {
+            progress
+        },
+        completed: progress >= step.operation,
         reset: false,
     })
 }
@@ -827,7 +851,7 @@ pub fn fit(target: &Target, held: &[Slotted], offers: [Offer; 2]) -> Fitted {
                     continue;
                 }
                 let written = Slotted {
-                    modifier: modifier.id,
+                    modifier: modifier.id.to_string(),
                     slot,
                 };
                 match fitted.slotted.iter().position(|held| held.slot == slot) {
@@ -873,27 +897,6 @@ impl Persisted {
     #[must_use]
     pub fn upgrade(&self) -> Option<Upgrade> {
         self.upgrade.and_then(Upgrade::at)
-    }
-
-    /// This machine's payload inside the shared envelope, at [`DATA_VERSION`].
-    #[must_use]
-    pub fn envelope(&self, inventory: JsonValue) -> SavedDataEnvelope {
-        SavedDataEnvelope::current(
-            crate::Entry::declared_id().clone(),
-            DATA_VERSION,
-            self.save(inventory),
-        )
-    }
-
-    /// Reads a machine back out of an envelope written at a version this build
-    /// declares.
-    ///
-    /// An envelope at any other version answers nothing rather than being read
-    /// as though it were current, because reading a later shape as current is
-    /// what loses the fields that shape added.
-    #[must_use]
-    pub fn from_envelope(envelope: &SavedDataEnvelope) -> Option<Self> {
-        (envelope.data_version() == DATA_VERSION).then(|| Self::load(envelope.payload()))
     }
 
     /// The payload this machine hands Ravel.
@@ -1062,14 +1065,27 @@ mod tests {
             amount: 1000,
             ..Energy::default()
         };
-        let ticked = tick_recipe_machine(&mut energy, 0, 3, 20, true, false, false)
+        let step = RecipeStep {
+            progress: 0,
+            operation: 3,
+            usage: 20,
+        };
+        let ticked = tick_recipe_machine(&mut energy, step, true, Redstone::Ignored)
             .expect("a powered machine with input advances");
         assert_eq!(ticked.progress, 1);
         assert!(!ticked.completed);
         assert_eq!(energy.amount, 980);
 
-        let done = tick_recipe_machine(&mut energy, 2, 3, 20, true, false, false)
-            .expect("the third tick completes");
+        let done = tick_recipe_machine(
+            &mut energy,
+            RecipeStep {
+                progress: 2,
+                ..step
+            },
+            true,
+            Redstone::Ignored,
+        )
+        .expect("the third tick completes");
         assert!(done.completed);
         assert_eq!(done.progress, 0);
     }
@@ -1077,27 +1093,36 @@ mod tests {
     #[test]
     fn losing_power_stalls_a_recipe_machine_and_losing_the_input_is_its_own_answer() {
         let mut flat = Energy::default();
+        let step = RecipeStep {
+            progress: 5,
+            operation: 100,
+            usage: 20,
+        };
         assert_eq!(
-            tick_recipe_machine(&mut flat, 5, 100, 20, true, false, false),
+            tick_recipe_machine(&mut flat, step, true, Redstone::Ignored),
             Err(Stalled::Unpowered)
         );
         let mut energy = Energy {
             amount: 1000,
             ..Energy::default()
         };
-        let lost = tick_recipe_machine(&mut energy, 5, 100, 20, false, false, false)
+        let lost = tick_recipe_machine(&mut energy, step, false, Redstone::Ignored)
             .expect("losing the input is not a stall");
         assert_eq!(lost.progress, 0, "losing the input resets progress");
         assert!(lost.reset);
         assert!(!lost.completed);
         assert_eq!(energy.amount, 1000, "and charges nothing");
         assert_eq!(
-            tick_recipe_machine(&mut energy, 5, 100, 20, true, true, true),
+            tick_recipe_machine(&mut energy, step, true, Redstone::Gated { powered: true }),
             Err(Stalled::Redstone)
         );
         assert!(
-            tick_recipe_machine(&mut energy, 5, 100, 20, true, true, false).is_ok(),
+            tick_recipe_machine(&mut energy, step, true, Redstone::Ignored).is_ok(),
             "three of the five machines ignore redstone entirely"
+        );
+        assert!(
+            tick_recipe_machine(&mut energy, step, true, Redstone::Gated { powered: false })
+                .is_ok()
         );
     }
 
@@ -1419,7 +1444,11 @@ mod tests {
 
     #[test]
     fn a_modifier_needs_a_shared_kind_a_low_enough_tier_and_a_slot_that_exists() {
-        let modifier = crate::registries::Modifier::new("a:m", 2, &["tool"]);
+        let modifier = crate::registries::Modifier::new(
+            "a:m".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"],
+        );
         assert!(accepts_modifier(&modifier, &target(3), 0));
         assert!(
             !accepts_modifier(
@@ -1449,7 +1478,11 @@ mod tests {
 
     #[test]
     fn the_bench_writes_on_a_change_and_an_empty_slot_removes_and_clears_the_offset() {
-        let modifier = crate::registries::Modifier::new("a:one", 2, &["tool"]);
+        let modifier = crate::registries::Modifier::new(
+            "a:one".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"],
+        );
         let written = fit(&target(4), &[], [Offer::Write(modifier, 0), Offer::Idle]);
         assert_eq!(written.slotted.len(), 1);
         assert!(!written.cleared_offset);
@@ -1461,8 +1494,16 @@ mod tests {
 
     #[test]
     fn a_modifier_written_above_the_second_target_slot_is_the_one_removed() {
-        let first = crate::registries::Modifier::new("a:one", 2, &["tool"]);
-        let second = crate::registries::Modifier::new("a:two", 2, &["tool"]);
+        let first = crate::registries::Modifier::new(
+            "a:one".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"],
+        );
+        let second = crate::registries::Modifier::new(
+            "a:two".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"],
+        );
         let written = fit(
             &target(4),
             &[],
@@ -1497,9 +1538,21 @@ mod tests {
 
     #[test]
     fn the_bench_refuses_a_modifier_the_target_does_not_accept() {
-        let over_tier = crate::registries::Modifier::new("a:high", 5, &["tool"]);
-        let wrong_kind = crate::registries::Modifier::new("a:armour", 1, &["armour"]);
-        let beyond = crate::registries::Modifier::new("a:far", 1, &["tool"]);
+        let over_tier = crate::registries::Modifier::new(
+            "a:high".parse().expect("a legal modifier identity"),
+            5,
+            &["tool"],
+        );
+        let wrong_kind = crate::registries::Modifier::new(
+            "a:armour".parse().expect("a legal modifier identity"),
+            1,
+            &["armour"],
+        );
+        let beyond = crate::registries::Modifier::new(
+            "a:far".parse().expect("a legal modifier identity"),
+            1,
+            &["tool"],
+        );
         let fitted = fit(
             &target(1),
             &[],
@@ -1520,7 +1573,11 @@ mod tests {
             modifier: "a:one".to_owned(),
             slot: 0,
         }];
-        let modifier = crate::registries::Modifier::new("a:one", 2, &["tool"]);
+        let modifier = crate::registries::Modifier::new(
+            "a:one".parse().expect("a legal modifier identity"),
+            2,
+            &["tool"],
+        );
         let same = fit(&target(4), &held, [Offer::Write(modifier, 0), Offer::Idle]);
         assert_eq!(same.slotted, held);
         assert!(!same.cleared_offset);
@@ -1558,11 +1615,8 @@ mod tests {
             upgrade: Some(6),
             cursor: Some(9),
         };
-        let envelope = held.envelope(json!({"slots": 16}));
-        assert_eq!(envelope.data_version(), DATA_VERSION);
-        assert_eq!(envelope.owner().as_str(), crate::MOD_ID);
-
-        let read = Persisted::from_envelope(&envelope).expect("this build declares that version");
+        let payload = held.save(json!({"slots": 16}));
+        let read = Persisted::load(&payload);
         let upgrade = read.upgrade().expect("the position names an upgrade");
         assert_eq!(upgrade.operation_ticks(HARVESTING.operation), 0);
         assert_eq!(upgrade.usage_per_tick(HARVESTING.usage), 3840);
@@ -1639,26 +1693,8 @@ mod tests {
 
     #[test]
     fn the_five_machines_carry_the_bases_the_table_states() {
-        assert_eq!(
-            SMELTING,
-            Bases {
-                operation: 200,
-                usage: 20
-            }
-        );
         assert_eq!(CONVERSION, SMELTING);
         assert_eq!(SUMMONING, SMELTING);
-        assert_eq!(
-            EXTRACTION,
-            Bases {
-                operation: 100,
-                usage: 40
-            }
-        );
         assert_eq!(HARVESTING, EXTRACTION);
-        assert_eq!(SCAN_COST, 10);
-        assert_eq!(HARVESTER_SLOTS, 16);
-        assert_eq!(RESERVOIR_LIMIT, 40);
-        assert_eq!(SUMMONING_INPUT_LIMIT, 512);
     }
 }

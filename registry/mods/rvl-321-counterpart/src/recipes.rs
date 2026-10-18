@@ -320,9 +320,10 @@ impl Enchanting {
         let level = first
             .count
             .div_euclid(self.first.1.max(1))
-            .min(second.count.div_euclid(self.second.1.max(1)))
-            .min(u64::from(self.maximum));
-        let level = u32::try_from(level).unwrap_or(self.maximum);
+            .min(second.count.div_euclid(self.second.1.max(1)));
+        let level = u32::try_from(level)
+            .unwrap_or(self.maximum)
+            .min(self.maximum);
         if level == 0 {
             return Err(Refused::NoLevel);
         }
@@ -552,8 +553,8 @@ pub fn derive(
         && seedable
         && let (Some(crafted), Some(material), Some(base)) = (
             crafted.clone(),
-            tier.material.as_deref(),
-            kind.base_seed.as_deref(),
+            tier.material.as_ref(),
+            kind.base_seed.as_ref(),
         )
     {
         let mut ring = Vec::new();
@@ -561,12 +562,12 @@ pub fn derive(
             ring.push(if index % 2 == 0 {
                 crafted.clone()
             } else {
-                Ingredient::Entry(material.to_owned())
+                Ingredient::Entry(material.to_string())
             });
         }
         derived.push(DerivedRecipe::RitualSeed(FourStation {
             id: format!("{}:{path}{RITUAL_SUFFIX}", crate::MOD_ID),
-            altar: Ingredient::Entry(base.to_owned()),
+            altar: Ingredient::Entry(base.to_string()),
             ring,
             result: Stack::new(&seed, 1),
             copies_data: false,
@@ -577,15 +578,15 @@ pub fn derive(
         && grid_seeds_enabled
         && seedable
         && let (Some(crafted), Some(material), Some(base)) =
-            (crafted, tier.material.as_deref(), kind.base_seed.as_deref())
+            (crafted, tier.material.as_ref(), kind.base_seed.as_ref())
     {
-        let edge = Ingredient::Entry(material.to_owned());
+        let edge = Ingredient::Entry(material.to_string());
         let grid = vec![
             Some(crafted.clone()),
             Some(edge.clone()),
             Some(crafted.clone()),
             Some(edge.clone()),
-            Some(Ingredient::Entry(base.to_owned())),
+            Some(Ingredient::Entry(base.to_string())),
             Some(edge.clone()),
             Some(crafted.clone()),
             Some(edge),
@@ -602,7 +603,7 @@ pub fn derive(
         derived.push(DerivedRecipe::Conversion {
             id: format!("{}:{path}{CONVERSION_SUFFIX}", crate::MOD_ID),
             input: Ingredient::Entry(seed),
-            result: Stack::new(&produce, 2),
+            result: Stack::new(produce, 2),
         });
     }
     derived
@@ -610,9 +611,12 @@ pub fn derive(
 
 fn crafted_ingredient(crafted: &Crafted, resolves: &dyn Fn(&str) -> usize) -> Option<Ingredient> {
     match crafted {
-        Crafted::Entry { id, .. } => Some(Ingredient::Entry(id.clone())),
-        Crafted::Tag(tag) if resolves(tag) > 0 => Some(Ingredient::Tag(tag.clone())),
-        Crafted::Tag(_) | Crafted::Nothing => None,
+        Crafted::Entry { id, .. } => Some(Ingredient::Entry(id.to_string())),
+        Crafted::Tag(tag) => {
+            let tag = tag.to_string();
+            (resolves(&tag) > 0).then_some(Ingredient::Tag(tag))
+        }
+        Crafted::Nothing => None,
     }
 }
 
@@ -650,7 +654,10 @@ mod tests {
 
     fn tiers() -> Tier {
         let mut tier = Tier::new(("test:tier_1").parse().expect("a legal tier identity"), 1);
-        tier.adjust("test:ground", "test:material");
+        tier.adjust(
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
+        );
         tier
     }
 
@@ -659,7 +666,7 @@ mod tests {
             ("test:kind").parse().expect("a legal crop kind identity"),
             "stem",
         );
-        kind.adjust("test:base_seed");
+        kind.adjust("test:base_seed".parse().expect("a legal seed identity"));
         kind
     }
 
@@ -669,7 +676,7 @@ mod tests {
             ("test:tier_1").parse().expect("a legal tier identity"),
             ("test:kind").parse().expect("a legal crop kind identity"),
             Crafted::Entry {
-                id: "test:crafted".to_owned(),
+                id: "test:crafted".parse().expect("a legal material identity"),
                 data: None,
             },
         )
@@ -811,14 +818,14 @@ mod tests {
 
         let capped = recipe
             .apply(
-                &Stack::new("a:one", 400),
-                &Stack::new("a:two", 400),
+                &Stack::new("a:one", 40_000_000_000),
+                &Stack::new("a:two", 40_000_000_000),
                 &Stack::new("a:sword", 1),
                 &held,
                 &always,
                 &table,
             )
-            .expect("a level exists");
+            .expect("levels above u32::MAX still cap at the declared maximum");
         assert_eq!(capped.level, 5);
     }
 
@@ -1090,7 +1097,7 @@ mod tests {
     #[test]
     fn a_crafting_material_that_resolves_to_nothing_keeps_only_the_conversion() {
         let mut crop = crop();
-        crop.crafted = Crafted::Tag("test:empty_tag".to_owned());
+        crop.crafted = Crafted::Tag("test:empty_tag".parse().expect("a legal tag identity"));
         let derived = derive(&crop, &tiers(), &kind(), true, &|_| 0);
         assert_eq!(derived.len(), 1);
         assert_eq!(

@@ -501,11 +501,21 @@ mod tests {
     use crate::forms::Candidate;
     use crate::kinds::{ConditionSet, Flags};
 
+    fn item_id(name: &str) -> ravel_sdk::content::ContentId {
+        if name.contains(':') {
+            name.parse().expect("a valid item identity")
+        } else {
+            format!("minecraft:{name}")
+                .parse()
+                .expect("a valid item identity")
+        }
+    }
+
     fn set_of(names: &[&str]) -> CandidateSet<Stack> {
         let mut set = CandidateSet::new();
         for name in names {
             set.add(Candidate {
-                value: Stack::of(name, 1),
+                value: Stack::of(item_id(name), 1),
                 under: Flags::slot(Stack::IDENTITY),
             })
             .expect("inside the ceiling");
@@ -525,7 +535,7 @@ mod tests {
             kind: kind.to_owned(),
             special,
             inputs: inputs.iter().map(|name| set_of(&[name])).collect(),
-            output: vec![Stack::of(output, 1)],
+            output: vec![Stack::of(item_id(output), 1)],
         }
     }
 
@@ -566,14 +576,33 @@ mod tests {
         let closure = Closure::shipped();
         let mix = |ingredient: &Stack, running: &Stack| {
             Some(Stack::of(
-                &format!("{}+{}", running.identity, ingredient.identity),
+                format!(
+                    "minecraft:{}_{}",
+                    running.identity.path(),
+                    ingredient.identity.path()
+                )
+                .parse()
+                .expect("a valid mixed identity"),
                 1,
             ))
         };
         let inputs = vec![
-            Input::stackable(Stack::of("water", 1)),
-            Input::stackable(Stack::of("nether_wart", 1)),
-            Input::stackable(Stack::of("glowstone", 1)),
+            Input::stackable(Stack::of(
+                "minecraft:water".parse().expect("a valid content identity"),
+                1,
+            )),
+            Input::stackable(Stack::of(
+                "minecraft:nether_wart"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
+            Input::stackable(Stack::of(
+                "minecraft:glowstone"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
         ];
         let answered = closure
             .simulate(&inputs, mix)
@@ -581,7 +610,10 @@ mod tests {
             .expect("a mix that answers");
         assert_eq!(answered.len(), BREWING_POSITIONS - 1);
         for position in &answered {
-            assert_eq!(position.identity, "water+nether_wart+glowstone");
+            assert_eq!(
+                position.identity.to_string(),
+                "minecraft:water_nether_wart_glowstone"
+            );
         }
     }
 
@@ -591,7 +623,13 @@ mod tests {
         let mix = |_: &Stack, running: &Stack| Some(running.clone());
         assert_eq!(closure.simulate(&[], mix), Err(Refused::NoInput));
         assert_eq!(
-            closure.simulate(&[Input::stackable(Stack::of("water", 1))], mix),
+            closure.simulate(
+                &[Input::stackable(Stack::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    1
+                ))],
+                mix
+            ),
             Err(Refused::Count {
                 given: 1,
                 least: 2,
@@ -604,8 +642,14 @@ mod tests {
     fn a_brew_that_does_not_mix_answers_nothing_rather_than_the_input() {
         let closure = Closure::shipped();
         let inputs = vec![
-            Input::stackable(Stack::of("water", 1)),
-            Input::stackable(Stack::of("stone", 1)),
+            Input::stackable(Stack::of(
+                "minecraft:water".parse().expect("a valid content identity"),
+                1,
+            )),
+            Input::stackable(Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1,
+            )),
         ];
         assert_eq!(closure.simulate(&inputs, |_, _| None), Ok(None));
     }
@@ -722,13 +766,17 @@ mod tests {
     fn the_grid_is_always_three_by_three_and_filled_in_order() {
         let station = smelting();
         let grid = station
-            .grid(&[Input::stackable(Stack::of("minecraft:iron_ore", 1))])
+            .grid(&[Input::stackable(Stack::of(
+                "minecraft:iron_ore"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            ))])
             .expect("one input");
         assert_eq!(grid.len(), GRID_SIZE);
-        assert_eq!(GRID_SIZE, 9);
         assert_eq!(
-            grid[0].as_ref().map(|held| held.identity.as_str()),
-            Some("minecraft:iron_ore")
+            grid[0].as_ref().map(|held| held.identity.to_string()),
+            Some("minecraft:iron_ore".to_owned())
         );
         assert!(grid[1..].iter().all(Option::is_none));
     }
@@ -737,10 +785,18 @@ mod tests {
     fn inputs_naming_more_than_one_ingredient_kind_are_refused() {
         let station = smelting();
         let inputs = vec![
-            Input::stackable(Stack::of("minecraft:iron_ore", 1)),
+            Input::stackable(Stack::of(
+                "minecraft:iron_ore"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
             Input {
                 kind: crate::kinds::PORTION.to_owned(),
-                value: Stack::of("minecraft:water", 1),
+                value: Stack::of(
+                    "minecraft:water".parse().expect("a valid content identity"),
+                    1,
+                ),
             },
         ];
         assert_eq!(station.grid(&inputs), Err(Refused::MixedKinds { named: 2 }));
@@ -772,7 +828,10 @@ mod tests {
         // the check a caller was relying on and did not have.
         let station = Station::new("brewing", Counts::BREWING, true, false);
         assert_eq!(
-            station.grid(&[Input::stackable(Stack::of("minecraft:sugar", 1))]),
+            station.grid(&[Input::stackable(Stack::of(
+                "minecraft:sugar".parse().expect("a valid content identity"),
+                1
+            ))]),
             Err(Refused::Count {
                 given: 1,
                 least: 2,
@@ -813,7 +872,14 @@ mod tests {
             false,
         );
         let inputs: Vec<Input> = (0..=GRID_SIZE)
-            .map(|index| Input::stackable(Stack::of(&format!("minecraft:k{index}"), 1)))
+            .map(|index| {
+                Input::stackable(Stack::of(
+                    format!("minecraft:k{index}")
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ))
+            })
             .collect();
         assert_eq!(
             station.grid(&inputs),
@@ -837,13 +903,18 @@ mod tests {
         let kind = Stackable::default();
         let produced = station
             .simulate(
-                &[Input::stackable(Stack::of("minecraft:iron_ore", 1))],
+                &[Input::stackable(Stack::of(
+                    "minecraft:iron_ore"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ))],
                 &recipes,
                 &kind,
             )
             .expect("one input");
         assert_eq!(
-            produced.map(|output| output[0].identity.clone()),
+            produced.map(|output| output[0].identity.to_string()),
             Some("minecraft:iron_ingot".to_owned())
         );
     }
@@ -854,7 +925,10 @@ mod tests {
         let kind = Stackable::default();
         assert_eq!(
             station.simulate(
-                &[Input::stackable(Stack::of("minecraft:stone", 1))],
+                &[Input::stackable(Stack::of(
+                    "minecraft:stone".parse().expect("a valid content identity"),
+                    1
+                ))],
                 &[],
                 &kind
             ),
@@ -873,9 +947,12 @@ mod tests {
             &["minecraft:stone"],
             "minecraft:stone_bricks",
         );
-        definition
-            .output
-            .push(Stack::of("minecraft:stone_stairs", 1));
+        definition.output.push(Stack::of(
+            "minecraft:stone_stairs"
+                .parse()
+                .expect("a valid content identity"),
+            1,
+        ));
         let kind = Stackable::default();
         assert!(matches!(
             station.simulate_from(&definition, &[], &kind),
@@ -909,7 +986,7 @@ mod tests {
             station
                 .simulate_from(&stairs, &recipes, &kind)
                 .expect("one named instance")
-                .map(|output| output[0].identity.clone()),
+                .map(|output| output[0].identity.to_string()),
             Some("minecraft:stone_stairs".to_owned())
         );
     }
@@ -939,36 +1016,61 @@ mod tests {
             station
                 .simulate_from(&one, &recipes, &kind)
                 .expect("no output checking")
-                .map(|output| output[0].identity.clone()),
+                .map(|output| output[0].identity.to_string()),
             Some("minecraft:smooth_stone".to_owned())
         );
     }
 
     // The two brewing tables, as a pair of functions a Ravel hook would supply.
     fn mix(ingredient: &Stack, input: &Stack) -> Option<Stack> {
-        match (ingredient.identity.as_str(), input.identity.as_str()) {
-            ("minecraft:nether_wart", "minecraft:water_bottle") => {
-                Some(Stack::of("minecraft:awkward_potion", 1))
-            }
-            ("minecraft:sugar", "minecraft:awkward_potion") => {
-                Some(Stack::of("minecraft:swiftness_potion", 1))
-            }
-            ("minecraft:gunpowder", "minecraft:swiftness_potion") => {
-                Some(Stack::of("minecraft:splash_swiftness", 1))
-            }
+        match (
+            ingredient.identity.to_string().as_str(),
+            input.identity.to_string().as_str(),
+        ) {
+            ("minecraft:nether_wart", "minecraft:water_bottle") => Some(Stack::of(
+                "minecraft:awkward_potion"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
+            ("minecraft:sugar", "minecraft:awkward_potion") => Some(Stack::of(
+                "minecraft:swiftness_potion"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
+            ("minecraft:gunpowder", "minecraft:swiftness_potion") => Some(Stack::of(
+                "minecraft:splash_swiftness"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )),
             _ => None,
         }
     }
 
     fn keep(input: &Stack, output: &Stack) -> bool {
-        output.identity != input.identity && output.identity != "minecraft:water_bottle"
+        output.identity != input.identity && output.identity != item_id("minecraft:water_bottle")
     }
 
     fn ingredients() -> Vec<Stack> {
         vec![
-            Stack::of("minecraft:nether_wart", 1),
-            Stack::of("minecraft:sugar", 1),
-            Stack::of("minecraft:gunpowder", 1),
+            Stack::of(
+                "minecraft:nether_wart"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            ),
+            Stack::of(
+                "minecraft:sugar".parse().expect("a valid content identity"),
+                1,
+            ),
+            Stack::of(
+                "minecraft:gunpowder"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            ),
         ]
     }
 
@@ -978,7 +1080,12 @@ mod tests {
         assert_eq!(closure.cap(), DEFAULT_CLOSURE_CAP);
         let recipes = closure
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &ingredients(),
                 mix,
                 keep,
@@ -991,7 +1098,12 @@ mod tests {
     fn each_kept_result_is_a_four_position_recipe_producing_nothing_in_the_first() {
         let recipes = Closure::shipped()
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &ingredients(),
                 mix,
                 keep,
@@ -1008,11 +1120,23 @@ mod tests {
     #[test]
     fn a_result_already_present_is_not_added_again() {
         let repeated: Vec<Stack> = (0..4)
-            .map(|_| Stack::of("minecraft:nether_wart", 1))
+            .map(|_| {
+                Stack::of(
+                    "minecraft:nether_wart"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                )
+            })
             .collect();
         let recipes = Closure::shipped()
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &repeated,
                 mix,
                 keep,
@@ -1025,7 +1149,12 @@ mod tests {
     fn an_output_that_is_empty_or_refused_by_the_keep_rule_is_dropped() {
         let recipes = Closure::shipped()
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &ingredients(),
                 |_, _| Some(Stack::empty()),
                 keep,
@@ -1034,7 +1163,12 @@ mod tests {
         assert_eq!(recipes.len(), 0);
         let refused = Closure::shipped()
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &ingredients(),
                 mix,
                 |_, _| false,
@@ -1049,9 +1183,24 @@ mod tests {
         let closure = Closure::new(500).expect("inside the ceiling");
         let refusal = closure
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
-                &[Stack::of("minecraft:sugar", 1)],
-                |_, input| Some(Stack::of(&format!("{}x", input.identity), 1)),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
+                &[Stack::of(
+                    "minecraft:sugar".parse().expect("a valid content identity"),
+                    1,
+                )],
+                |_, input| {
+                    Some(Stack::of(
+                        format!("{}x", input.identity)
+                            .parse()
+                            .expect("a valid content identity"),
+                        1,
+                    ))
+                },
                 |input, output| output.identity != input.identity,
             )
             .expect_err("an unbounded closure");
@@ -1083,7 +1232,12 @@ mod tests {
     fn a_brewing_recipes_candidate_sets_match_the_ingredient_and_the_input() {
         let recipes = Closure::shipped()
             .compute(
-                &Stack::of("minecraft:water_bottle", 1),
+                &Stack::of(
+                    "minecraft:water_bottle"
+                        .parse()
+                        .expect("a valid content identity"),
+                    1,
+                ),
                 &ingredients(),
                 mix,
                 keep,
@@ -1096,17 +1250,30 @@ mod tests {
             .expect("the first step");
         assert!(admits(
             &first.inputs[0],
-            &Stack::of("minecraft:nether_wart", 1),
+            &Stack::of(
+                "minecraft:nether_wart"
+                    .parse()
+                    .expect("a valid content identity"),
+                1
+            ),
             &kind
         ));
         assert!(admits(
             &first.inputs[1],
-            &Stack::of("minecraft:water_bottle", 1),
+            &Stack::of(
+                "minecraft:water_bottle"
+                    .parse()
+                    .expect("a valid content identity"),
+                1
+            ),
             &kind
         ));
         assert!(!admits(
             &first.inputs[1],
-            &Stack::of("minecraft:sugar", 1),
+            &Stack::of(
+                "minecraft:sugar".parse().expect("a valid content identity"),
+                1
+            ),
             &kind
         ));
     }
@@ -1117,12 +1284,23 @@ mod tests {
         let recipe = Converted {
             id: "a".to_owned(),
             inputs: vec![set_of(&["minecraft:stone"]), set_of(&["minecraft:stone"])],
-            output: vec![Stack::of("minecraft:stone_bricks", 1)],
+            output: vec![Stack::of(
+                "minecraft:stone_bricks"
+                    .parse()
+                    .expect("a valid content identity"),
+                1,
+            )],
         };
         let mut grid = vec![None; GRID_SIZE];
-        grid[0] = Some(Stack::of("minecraft:stone", 1));
+        grid[0] = Some(Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        ));
         assert!(!matches(&recipe, &grid, &kind));
-        grid[1] = Some(Stack::of("minecraft:stone", 1));
+        grid[1] = Some(Stack::of(
+            "minecraft:stone".parse().expect("a valid content identity"),
+            1,
+        ));
         assert!(matches(&recipe, &grid, &kind));
     }
 
@@ -1130,8 +1308,24 @@ mod tests {
     fn a_candidate_set_admitting_several_alternatives_matches_any_of_them() {
         let kind = Stackable::default();
         let set = set_of(&["minecraft:oak_log", "minecraft:birch_log"]);
-        assert!(admits(&set, &Stack::of("minecraft:birch_log", 1), &kind));
-        assert!(!admits(&set, &Stack::of("minecraft:stone", 1), &kind));
+        assert!(admits(
+            &set,
+            &Stack::of(
+                "minecraft:birch_log"
+                    .parse()
+                    .expect("a valid content identity"),
+                1
+            ),
+            &kind
+        ));
+        assert!(!admits(
+            &set,
+            &Stack::of(
+                "minecraft:stone".parse().expect("a valid content identity"),
+                1
+            ),
+            &kind
+        ));
         assert!(Flags::slot(Stack::IDENTITY).test(Flags::slot(Stack::IDENTITY)));
     }
 

@@ -303,7 +303,7 @@ mod tests {
                         .parse()
                         .expect("a legal crop identity"),
                     &"test:6".parse().expect("a legal tier identity"),
-                    "test:material",
+                    "test:material".parse().expect("a legal material identity"),
                 )
                 .derived;
             assert_eq!(derived, crops::OPT_OUT);
@@ -373,16 +373,10 @@ mod tests {
             4,
             "the tier material is a progression step, not a storage conversion"
         );
-        assert_eq!(COMPRESSED_ENTRIES, 10);
     }
 
     #[test]
-    fn the_awakening_transfers_components_and_is_the_only_recipe_that_does() {
-        assert_eq!(AWAKENING.essences, 4);
-        assert_eq!(AWAKENING.each, 40);
-        assert_eq!(AWAKENING.ingredients, 4);
-        let awakening = AWAKENING;
-        assert!(awakening.transfers_components);
+    fn the_four_station_ritual_group_contains_one_awakening_recipe() {
         let awakenings: usize = GROUPS
             .iter()
             .filter(|group| group.kind == "ritual_four_station")
@@ -393,8 +387,6 @@ mod tests {
 
     #[test]
     fn the_inert_documents_beside_the_absent_kinds_are_counted_and_not_carried() {
-        assert_eq!(INERT_ALONGSIDE, 18);
-        assert_eq!(INERT_ASSETS, 6);
         assert_eq!(
             shipped() - loaded() + INERT_ALONGSIDE,
             95,

@@ -405,22 +405,14 @@ impl Stack {
         };
         Ok(Self {
             identity,
-            count: u8::try_from(
-                object
-                    .get("count")
-                    .and_then(JsonValue::as_u64)
-                    .unwrap_or(1)
-                    .min(u64::from(u8::MAX)),
-            )
-            .unwrap_or(u8::MAX),
-            damage: i32::try_from(
-                object
-                    .get("damage")
-                    .and_then(JsonValue::as_i64)
-                    .unwrap_or_default()
-                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)),
-            )
-            .unwrap_or_default(),
+            count: u8::try_from(object.get("count").and_then(JsonValue::as_u64).unwrap_or(1))
+                .unwrap_or(u8::MAX),
+            damage: object
+                .get("damage")
+                .and_then(JsonValue::as_i64)
+                .map_or(0, |value| {
+                    i32::try_from(value).unwrap_or(if value < 0 { i32::MIN } else { i32::MAX })
+                }),
             components,
             carrier_ready: flag("carrier_ready"),
             cyclable: flag("cyclable"),
@@ -429,8 +421,7 @@ impl Stack {
                 object
                     .get("infusion")
                     .and_then(JsonValue::as_u64)
-                    .unwrap_or_default()
-                    .min(u64::from(u32::MAX)),
+                    .unwrap_or_default(),
             )
             .unwrap_or(u32::MAX),
         })
@@ -658,6 +649,23 @@ impl std::error::Error for RecordRefused {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_stack_numbers_saturate_at_the_destination_bounds() {
+        let mut document = Stack::of("counterpart:beam")
+            .expect("legal identity")
+            .to_saved();
+        document["count"] = ravel_sdk::json!(u64::MAX);
+        document["infusion"] = ravel_sdk::json!(u64::MAX);
+        document["damage"] = ravel_sdk::json!(i64::MAX);
+        let high = Stack::from_saved(&document).expect("numeric overflow saturates");
+        assert_eq!(high.count, u8::MAX);
+        assert_eq!(high.infusion, u32::MAX);
+        assert_eq!(high.damage, i32::MAX);
+        document["damage"] = ravel_sdk::json!(i64::MIN);
+        let low = Stack::from_saved(&document).expect("negative overflow saturates");
+        assert_eq!(low.damage, i32::MIN);
+    }
 
     #[test]
     fn breaking_a_block_forgets_every_record_except_the_one_registered_twice() {

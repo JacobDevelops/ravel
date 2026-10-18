@@ -83,7 +83,7 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
     let identity = identity
         .parse()
         .map_err(|_| WireError::ContentId { text: identity })?;
-    let count = u8::try_from(reader.u32()?.min(u32::from(u8::MAX))).unwrap_or(u8::MAX);
+    let count = u8::try_from(reader.u32()?).unwrap_or(u8::MAX);
     let damage = reader.u32()?.cast_signed();
     let carrier_ready = reader.bool()?;
     let cyclable = reader.bool()?;
@@ -93,9 +93,9 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
     let declared = reader.u32()?;
     let declared = usize::try_from(declared).unwrap_or(usize::MAX);
     if declared > MAX_COMPONENTS {
-        return Err(WireError::Truncated {
+        return Err(WireError::TooLarge {
             needed: declared,
-            available: MAX_COMPONENTS,
+            limit: MAX_COMPONENTS,
         });
     }
     let mut components = BTreeMap::new();
@@ -124,9 +124,9 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
 fn bounded_text(reader: &mut PacketReader<'_>) -> Result<String, WireError> {
     let text = reader.text()?;
     if text.len() > MAX_NAME {
-        return Err(WireError::Truncated {
+        return Err(WireError::TooLarge {
             needed: text.len(),
-            available: MAX_NAME,
+            limit: MAX_NAME,
         });
     }
     Ok(text.to_owned())
@@ -197,9 +197,9 @@ impl Packet for CardArguments {
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
         if declared > MAX_VALUES {
-            return Err(WireError::Truncated {
+            return Err(WireError::TooLarge {
                 needed: declared,
-                available: MAX_VALUES,
+                limit: MAX_VALUES,
             });
         }
         let mut named = Vec::with_capacity(declared);
@@ -235,9 +235,9 @@ impl Packet for BrowserPattern {
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
         if declared > BROWSER_SLOTS {
-            return Err(WireError::Truncated {
+            return Err(WireError::TooLarge {
                 needed: declared,
-                available: BROWSER_SLOTS,
+                limit: BROWSER_SLOTS,
             });
         }
         let mut slots = Vec::with_capacity(declared);
@@ -303,8 +303,61 @@ impl Packet for HeldItem {
 pub struct ReadoutAnswer {
     /// Which position was asked about.
     pub at: (i32, i32, i32),
-    /// What that position reported.
-    pub values: Vec<(String, Reading)>,
+    values: Vec<(String, Reading)>,
+    shape: Vec<(String, u8)>,
+    body: Vec<u8>,
+}
+
+impl ReadoutAnswer {
+    /// Builds an answer, refusing oversized names, sets, or text before sending.
+    ///
+    /// Duplicate names keep their first position and last value; exposed amounts
+    /// use the shared map's energy clamp, exactly as they do after decoding.
+    pub fn new(at: (i32, i32, i32), values: &[(String, Reading)]) -> Result<Self, WireError> {
+        if values.len() > MAX_VALUES {
+            return Err(WireError::TooLarge {
+                needed: values.len(),
+                limit: MAX_VALUES,
+            });
+        }
+        let mut readings = Readings::new();
+        for (name, reading) in values {
+            if name.len() > MAX_NAME {
+                return Err(WireError::TooLarge {
+                    needed: name.len(),
+                    limit: MAX_NAME,
+                });
+            }
+            readings.declare(name, reading.clone());
+        }
+        let map = readings.to_shared();
+        let body =
+            rvl_120_counterpart::values::write(&map).map_err(|error| WireError::InvalidValue {
+                message: error.to_string(),
+            })?;
+        let readings = Readings::from_shared(&map);
+        let values = readings
+            .names()
+            .into_iter()
+            .filter_map(|name| {
+                readings
+                    .value(name)
+                    .map(|reading| (name.to_owned(), reading.clone()))
+            })
+            .collect();
+        Ok(Self {
+            at,
+            values,
+            shape: map.shape(),
+            body,
+        })
+    }
+
+    /// Returns the reported values without permitting unvalidated mutation.
+    #[must_use]
+    pub fn values(&self) -> &[(String, Reading)] {
+        &self.values
+    }
 }
 
 impl Packet for ReadoutAnswer {
@@ -313,29 +366,22 @@ impl Packet for ReadoutAnswer {
     }
 
     fn write(&self, writer: &mut PacketWriter) {
-        let mut readings = Readings::new();
-        for (name, reading) in &self.values {
-            readings.declare(name, reading.clone());
-        }
-        let map = readings.to_shared();
-
         write_position(writer, self.at);
-        let shape = map.shape();
-        writer.u32(u32::try_from(shape.len()).unwrap_or(u32::MAX));
-        for (name, tag) in &shape {
+        writer.u32(u32::try_from(self.shape.len()).unwrap_or(u32::MAX));
+        for (name, tag) in &self.shape {
             writer.text(name);
             writer.u32(u32::from(*tag));
         }
-        writer.bytes_field(&rvl_120_counterpart::values::write(&map).unwrap_or_default());
+        writer.bytes_field(&self.body);
     }
 
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let at = read_position(reader)?;
         let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
         if declared > MAX_VALUES {
-            return Err(WireError::Truncated {
+            return Err(WireError::TooLarge {
                 needed: declared,
-                available: MAX_VALUES,
+                limit: MAX_VALUES,
             });
         }
 
@@ -346,14 +392,19 @@ impl Packet for ReadoutAnswer {
         for _ in 0..declared {
             let name = bounded_text(reader)?;
             let tag = reader.u32()?;
-            let tag = u8::try_from(tag).unwrap_or(u8::MAX);
-            let template = shared_from_tag(tag).ok_or(WireError::NotABool { byte: tag })?;
+            let template = u8::try_from(tag)
+                .ok()
+                .and_then(shared_from_tag)
+                .ok_or_else(|| WireError::InvalidValue {
+                    message: format!("unknown readout value tag {tag}"),
+                })?;
             map.declare(&name, template);
         }
         let body = reader.bytes_field()?;
-        rvl_120_counterpart::values::read(&mut map, body).map_err(|_| WireError::Truncated {
-            needed: body.len(),
-            available: 0,
+        rvl_120_counterpart::values::read(&mut map, body).map_err(|error| {
+            WireError::InvalidValue {
+                message: error.to_string(),
+            }
         })?;
 
         let readings = Readings::from_shared(&map);
@@ -366,7 +417,12 @@ impl Packet for ReadoutAnswer {
                     .map(|reading| (name.to_owned(), reading.clone()))
             })
             .collect();
-        Ok(Self { at, values })
+        Ok(Self {
+            at,
+            values,
+            shape: map.shape(),
+            body: body.to_vec(),
+        })
     }
 }
 
@@ -570,11 +626,13 @@ pub fn apply_held_item(held: Held, sent_kind: Held, payload: &HeldItem) -> Appli
 }
 
 /// Builds the answer a readout sends back to the one client that asked.
-#[must_use]
-pub fn readout_answer(at: (i32, i32, i32), readings: &Readings) -> ReadoutAnswer {
-    ReadoutAnswer {
+pub fn readout_answer(
+    at: (i32, i32, i32),
+    readings: &Readings,
+) -> Result<ReadoutAnswer, WireError> {
+    ReadoutAnswer::new(
         at,
-        values: readings
+        &readings
             .names()
             .into_iter()
             .filter_map(|name| {
@@ -582,8 +640,8 @@ pub fn readout_answer(at: (i32, i32, i32), readings: &Readings) -> ReadoutAnswer
                     .value(name)
                     .map(|reading| (name.to_owned(), reading.clone()))
             })
-            .collect(),
-    }
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// The dimension-qualified position a readout answer is about, where a caller
@@ -708,14 +766,15 @@ mod tests {
             held
         );
 
-        let answer = ReadoutAnswer {
-            at: (1, 2, 3),
-            values: vec![
+        let answer = ReadoutAnswer::new(
+            (1, 2, 3),
+            &[
                 ("stored".to_owned(), Reading::Amount(4_096)),
                 ("label".to_owned(), Reading::Text("first".to_owned())),
                 ("running".to_owned(), Reading::Flag(true)),
             ],
-        };
+        )
+        .expect("bounded values");
         assert_eq!(
             decode::<ReadoutAnswer>(&encode(&answer)).expect("it reads back"),
             answer
@@ -724,26 +783,100 @@ mod tests {
 
     #[test]
     fn an_answer_travels_in_the_shared_librarys_map_and_takes_its_energy_clamp() {
-        let answer = ReadoutAnswer {
-            at: (0, 0, 0),
-            values: vec![("stored".to_owned(), Reading::Amount(i64::MAX))],
-        };
+        let answer = ReadoutAnswer::new(
+            (0, 0, 0),
+            &[
+                ("stored".to_owned(), Reading::Amount(1)),
+                ("label".to_owned(), Reading::Text("first".to_owned())),
+                ("stored".to_owned(), Reading::Amount(i64::MAX)),
+            ],
+        )
+        .expect("bounded values");
         let read = decode::<ReadoutAnswer>(&encode(&answer)).expect("it reads back");
         assert_eq!(
-            read.values,
-            [(
-                "stored".to_owned(),
-                Reading::Amount(i64::from(rvl_120_counterpart::clamp_energy(i64::MAX)))
-            )],
+            read, answer,
+            "sender and receiver expose the same canonical answer"
+        );
+        assert_eq!(
+            read.values(),
+            [
+                (
+                    "stored".to_owned(),
+                    Reading::Amount(i64::from(rvl_120_counterpart::clamp_energy(i64::MAX)))
+                ),
+                ("label".to_owned(), Reading::Text("first".to_owned())),
+            ],
             "the map has no 64-bit member, so an amount crosses through the clamp the \
              shared library publishes for exactly that"
         );
     }
 
     #[test]
-    fn an_answer_claiming_a_shape_no_readout_produces_is_refused() {
-        let mut bytes = Vec::new();
+    fn an_answer_refuses_oversized_text_at_the_sender() {
+        let limit = rvl_120_counterpart::values::Value::MAX_TEXT;
+        let bounded = ReadoutAnswer::new(
+            (0, 0, 0),
+            &[("label".to_owned(), Reading::Text("x".repeat(limit)))],
+        )
+        .expect("text at the ceiling is valid");
+        assert_eq!(
+            decode::<ReadoutAnswer>(&encode(&bounded)).expect("the peer admits the ceiling"),
+            bounded
+        );
+        assert!(matches!(
+            ReadoutAnswer::new(
+                (0, 0, 0),
+                &[("label".to_owned(), Reading::Text("x".repeat(limit + 1)))],
+            ),
+            Err(WireError::InvalidValue { message }) if message.contains("text")
+        ));
+    }
+
+    #[test]
+    fn readout_value_failures_preserve_the_domain_reason() {
         let mut writer = PacketWriter::default();
+        let contract = ReadoutAnswer::contract();
+        writer.text(&contract.id().to_string());
+        writer.u32(contract.version());
+        write_position(&mut writer, (0, 0, 0));
+        writer.u32(1);
+        writer.text("running");
+        writer.u32(2);
+        writer.bytes_field(&[2]);
+        assert!(matches!(
+            decode::<ReadoutAnswer>(&writer.finish()),
+            Err(WireError::InvalidValue { message }) if message == "2 is neither zero nor one"
+        ));
+    }
+
+    #[test]
+    fn an_answer_bounds_its_shape_before_sending() {
+        let values = vec![("x".to_owned(), Reading::Flag(false)); MAX_VALUES + 1];
+        assert_eq!(
+            ReadoutAnswer::new((0, 0, 0), &values),
+            Err(WireError::TooLarge {
+                needed: MAX_VALUES + 1,
+                limit: MAX_VALUES
+            })
+        );
+        assert_eq!(
+            ReadoutAnswer::new(
+                (0, 0, 0),
+                &[("x".repeat(MAX_NAME + 1), Reading::Flag(false))],
+            ),
+            Err(WireError::TooLarge {
+                needed: MAX_NAME + 1,
+                limit: MAX_NAME
+            })
+        );
+    }
+
+    #[test]
+    fn an_answer_claiming_a_shape_no_readout_produces_is_refused() {
+        let mut writer = PacketWriter::default();
+        let contract = ReadoutAnswer::contract();
+        writer.text(&contract.id().to_string());
+        writer.u32(contract.version());
         write_position(&mut writer, (0, 0, 0));
         writer.u32(1);
         writer.text("stored");
@@ -752,9 +885,11 @@ mod tests {
             &rvl_120_counterpart::values::Value::Float(0.0),
         )));
         writer.bytes_field(&[0, 0, 0, 0]);
-        bytes.extend_from_slice(&writer.finish());
 
-        assert!(decode::<ReadoutAnswer>(&bytes).is_err());
+        assert!(matches!(
+            decode::<ReadoutAnswer>(&writer.finish()),
+            Err(WireError::InvalidValue { message }) if message.contains("tag")
+        ));
     }
 
     #[test]
@@ -766,12 +901,24 @@ mod tests {
                 .collect(),
         };
         bytes.extend_from_slice(&encode(&crowded));
-        assert!(decode::<CardArguments>(&bytes).is_err());
+        assert_eq!(
+            decode::<CardArguments>(&bytes),
+            Err(WireError::TooLarge {
+                needed: MAX_VALUES + 1,
+                limit: MAX_VALUES
+            })
+        );
 
         let overfull = BrowserPattern {
             slots: vec![None; BROWSER_SLOTS + 1],
         };
-        assert!(decode::<BrowserPattern>(&encode(&overfull)).is_err());
+        assert_eq!(
+            decode::<BrowserPattern>(&encode(&overfull)),
+            Err(WireError::TooLarge {
+                needed: BROWSER_SLOTS + 1,
+                limit: BROWSER_SLOTS
+            })
+        );
     }
 
     fn pattern_record() -> String {
@@ -971,7 +1118,7 @@ mod tests {
         readings.declare("stored", Reading::Amount(10));
         readings.declare("maximum", Reading::Amount(20));
 
-        let answer = readout_answer((1, 2, 3), &readings);
+        let answer = readout_answer((1, 2, 3), &readings).expect("bounded readings");
         assert_eq!(answer.at, (1, 2, 3));
         assert_eq!(
             answer.values,

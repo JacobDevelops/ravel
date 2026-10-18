@@ -19,7 +19,7 @@
 use rvl_042_counterpart::arithmetic::{Mature, sweep_harvest};
 use rvl_042_counterpart::inventory::Stack;
 
-use crate::settings::{FEATURE_CROP_HARVEST, Settings};
+use crate::settings::{Feature, Settings};
 
 /// The growth stage a harvested crop is set back to.
 pub const FIRST_STAGE: u32 = 0;
@@ -70,7 +70,7 @@ pub fn harvest(
     clicked: &Clicked,
     server_side: bool,
 ) -> Option<Harvested> {
-    if !server_side || hand != Hand::Main || !settings.switch(FEATURE_CROP_HARVEST) {
+    if !server_side || hand != Hand::Main || !settings.switch(Feature::CropHarvest) {
         return None;
     }
     if !clicked.mature {
@@ -191,11 +191,7 @@ mod tests {
     #[test]
     fn switching_the_feature_off_stops_the_harvest() {
         let mut settings = Settings::default();
-        let slot = crate::settings::SWITCH_KEYS
-            .iter()
-            .position(|key| *key == FEATURE_CROP_HARVEST)
-            .expect("the harvest has a switch");
-        settings.switches[slot] = false;
+        settings.switches[Feature::CropHarvest.index()] = false;
         let clicked = crop(vec![Stack::new("example:seed", 2)], Some("example:seed"));
         assert!(harvest(&settings, Hand::Main, &clicked, true).is_none());
     }

@@ -98,8 +98,8 @@ mod tests {
     fn sixth() -> Tier {
         crate::tier::declared(
             "test:6".parse().expect("a legal tier identity"),
-            "test:ground",
-            "test:material",
+            "test:ground".parse().expect("a legal ground identity"),
+            "test:material".parse().expect("a legal material identity"),
             false,
         )
     }

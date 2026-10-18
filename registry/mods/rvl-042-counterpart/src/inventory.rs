@@ -43,11 +43,11 @@ pub struct Stack {
 }
 
 impl Stack {
-    /// Builds a stack of one entry.
+    /// Builds a stack of one entry, taking ownership of an owned identifier.
     #[must_use]
-    pub fn new(entry: &str, count: u64) -> Self {
+    pub fn new(entry: impl Into<String>, count: u64) -> Self {
         Self {
-            entry: entry.to_owned(),
+            entry: entry.into(),
             count,
             data: JsonValue::Null,
         }

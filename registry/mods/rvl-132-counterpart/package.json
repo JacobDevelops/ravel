@@ -35,7 +35,7 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "3184de62df83b164800a7a0841b4b1e40c0e3152cd946b3168207c72ee2d0bbc"
+        "sha256": "475af182e0d96b24fa85246c83b1533f3c1264dee268090414c3d752700d653e"
       },
       {
         "path": "NOTES.md",
@@ -119,7 +119,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "3b0b2735193344c6d1ba9c5b9c721ee570985c8ca6038589fa2eea89c620407a"
+        "sha256": "143974975f6fa0181180322075e86785fd3606defe787602f1666108df030344"
       },
       {
         "path": "src/storage.rs",

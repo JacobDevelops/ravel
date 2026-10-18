@@ -2,8 +2,8 @@ use std::fmt;
 
 use ravel_core::{FailureKind, StructuredFailure, Version, VersionRange};
 
-use crate::NonEmptyText;
 use crate::manifest::Compatibility;
+use crate::values::NonEmptyText;
 use serde::{Deserialize, Serialize};
 
 /// One checked exact Minecraft release name or semantic-version range.

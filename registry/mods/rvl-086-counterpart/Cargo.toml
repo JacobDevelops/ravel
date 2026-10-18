@@ -1,8 +1,12 @@
 [package]
 name = "rvl-086-counterpart"
 version = "0.1.0"
+description = "Ravel counterpart for RVL-086: attractor settings, effects and repair behaviour."
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/JacobDevelops/ravel"
+keywords = ["minecraft", "ravel", "gameplay"]
+categories = ["games"]
 
 [dependencies]
 num-traits = { version = "0.2.19", default-features = false }

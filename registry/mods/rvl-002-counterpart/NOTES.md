@@ -38,21 +38,21 @@ package constant again.
 
 | Section | Here | Where |
 | --- | --- | --- |
-| §2 side, lifecycle and ordering | implemented | `src/lib.rs` |
+| §2 side, lifecycle and ordering | implemented | `src/registration.rs` |
 | §2 the two client integration shims | not carried, by the specification's own exclusion | — |
 | §3 the eight settings and their bounds | implemented | `src/settings.rs` |
 | §3 the five published flags | implemented, through the shared library | `src/settings.rs` |
 | §3 the two consumed flags | implemented as reads of the dependency's namespace | `src/settings.rs` |
-| §4 the extension's namespace declaration | implemented as this entry's own namespace | `src/lib.rs` |
+| §4 the extension's namespace declaration | implemented as this entry's own namespace | `src/registration.rs` |
 | §4 the opt-out of all three derivations | implemented | `src/crops.rs` |
 | §4 registering the callbacks with the dependency | declarable only | — |
 | §5 the sixth tier, four values and four adjustments | implemented | `src/tier.rs` |
 | §5 the second-drop flag this tier turns off | implemented | `src/tier.rs` |
 | §6 the six crops and their materials | implemented | `src/crops.rs` |
 | §6 the three states of absence | implemented, through the dependency | `src/crops.rs` |
-| §6 the anchor pointing, unconditional | implemented | `src/lib.rs` |
-| §7.1 twenty-six blocks and their properties | implemented, claimed at the barrier | `src/census.rs`, `src/lib.rs` |
-| §7.2 fifty-three items, block items first | implemented, claimed at the barrier | `src/census.rs`, `src/lib.rs` |
+| §6 the anchor pointing, unconditional | implemented | `src/registration.rs` |
+| §7.1 twenty-six blocks and their properties | implemented, claimed at the barrier | `src/census.rs`, `src/registration.rs` |
+| §7.2 fifty-three items, block items first | implemented, claimed at the barrier | `src/census.rs`, `src/registration.rs` |
 | §7.2 the percentage hover line | implemented, with the declared change | `src/census.rs` |
 | §7.3 the creative listing and its order | declarable only, with the order carried as data | `src/census.rs` |
 | §7.4 the six fluid families, thirty registrations | declarable only | `src/census.rs` |
@@ -77,8 +77,8 @@ package constant again.
 | §16.1 the loot shapes and the one code path | implemented as data plus the ground's own path | `src/data.rs`, `src/ground.rs` |
 | §16.2 the forty-eight tag documents | implemented, declared through Ravel's tags | `src/data.rs` |
 | §16.3 the twelve language key counts | implemented as data | `src/data.rs` |
-| §16.4 what survives a save and a reload | implemented | `src/data.rs`, `src/lib.rs` |
-| §17 what this entry needs, as public functions | implemented | `src/lib.rs` |
+| §16.4 what survives a save and a reload | implemented | `src/data.rs`, `src/registration.rs` |
+| §17 what this entry needs, as public functions | implemented | `src/registration.rs` |
 | §18 the catalogue, its names and its presentation | not carried, by the specification's own exclusion | — |
 
 ## Behaviour changes, each declared rather than incidental
@@ -189,6 +189,10 @@ Neither was worked around by copying logic; both are listed here as work for tho
   the distinction between a missing flag (refused) and a published false value (a boolean answer).
 
 ## Evidence
+
+The crate root exposes the public modules and re-exports `Entry`; `src/registration.rs` owns its
+loader callbacks, declaration, and dependency-flag resolution. The entry's private-state regressions
+live alongside that implementation in `src/registration/conditions.rs`.
 
 Every rule with a number, an ordering, a refusal or a format has an inline test: the eight settings
 and each of their bounds, the five published flags pinned by name and namespace, the two consumed

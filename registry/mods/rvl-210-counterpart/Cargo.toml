@@ -1,8 +1,12 @@
 [package]
 name = "rvl-210-counterpart"
 version = "0.1.0"
+description = "Ravel counterpart for RVL-210: storage semantics, queries and shape detection."
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/JacobDevelops/ravel"
+keywords = ["minecraft", "ravel", "storage"]
+categories = ["games"]
 
 [dependencies]
 ravel-sdk.workspace = true

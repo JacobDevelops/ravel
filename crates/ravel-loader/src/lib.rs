@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 
 //! Loader orchestration independent of any concrete Minecraft version.
+//!
+//! Configuration, interception setup, resources, saves, and services share lifecycle
+//! isolation: attribute failures before deciding whether optional owners may continue,
+//! and preserve subsystem refusals when required owners or world mutation force a stop.
+//! Services also retain callback errors for dependent-provider diagnostics. Interception
+//! admission attributes every claimant before deciding whether to stop. Saved-data
+//! snapshot (`produce_saved_data`) and open (`open_saved_data`) record terminal refusals
+//! without applying the setup continuation policy.
 
 mod admission;
 mod config;

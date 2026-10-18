@@ -92,6 +92,22 @@ impl DispatchRefused {
             Self::EventForeignSide { .. } => None,
         }
     }
+
+    fn lifecycle_error(&self) -> Option<&crate::LifecycleError> {
+        match self {
+            Self::Lifecycle(error) => Some(error),
+            Self::Halted { .. }
+            | Self::EventForeignSide { .. }
+            | Self::NotReacting { .. }
+            | Self::Unclaimed { .. }
+            | Self::NotACommand { .. }
+            | Self::OwnerNotReacting { .. }
+            | Self::OwnerWrongSide { .. }
+            | Self::PacketForeignSide { .. }
+            | Self::PacketWrongSide { .. }
+            | Self::Absent { .. } => None,
+        }
+    }
 }
 
 impl fmt::Display for DispatchRefused {
@@ -148,38 +164,16 @@ impl fmt::Display for DispatchRefused {
 
 impl std::error::Error for DispatchRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Lifecycle(error) => Some(error),
-            Self::Halted { .. }
-            | Self::EventForeignSide { .. }
-            | Self::NotReacting { .. }
-            | Self::Unclaimed { .. }
-            | Self::NotACommand { .. }
-            | Self::OwnerNotReacting { .. }
-            | Self::OwnerWrongSide { .. }
-            | Self::PacketForeignSide { .. }
-            | Self::PacketWrongSide { .. }
-            | Self::Absent { .. } => None,
-        }
+        self.lifecycle_error()
+            .map(|error| -> &(dyn std::error::Error + 'static) { error })
     }
 }
 
 impl StructuredFailure for DispatchRefused {
     /// Dispatch refusals are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
-        match self {
-            Self::Lifecycle(error) => error.failure_kind(),
-            Self::Halted { .. }
-            | Self::EventForeignSide { .. }
-            | Self::NotReacting { .. }
-            | Self::Unclaimed { .. }
-            | Self::NotACommand { .. }
-            | Self::OwnerNotReacting { .. }
-            | Self::OwnerWrongSide { .. }
-            | Self::PacketForeignSide { .. }
-            | Self::PacketWrongSide { .. }
-            | Self::Absent { .. } => None,
-        }
+        self.lifecycle_error()
+            .and_then(StructuredFailure::failure_kind)
     }
 
     fn lifecycle_state(&self) -> LifecycleState {

@@ -45,7 +45,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "d9e1850fb285e27fe4c6f7218be15def182c39c1be21ed4d36d512590c36db94"
+        "sha256": "a18275dffc32914a4fc5f28785dbeb4d7eedefdfe77d5f5b9e5bd6b730e27b95"
       },
       {
         "path": "aliases.json",
@@ -101,15 +101,23 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "08b3fef8f5301640b25859c22371757a4adf794b0279c29cc8afb23bbbc8710a"
+        "sha256": "858376d731e89b35c020d47aee4a7117074591dff7995cad6f77a1ffced73e13"
       },
       {
         "path": "src/recipes.rs",
         "sha256": "9c3db13b519fea8da79be2824cd06d5e763580d98471a60ca70c519bdde78dd9"
       },
       {
+        "path": "src/registration.rs",
+        "sha256": "9c0ba8ee75f8df89eb1523ac54482ee8880b031eb9d00dd76f4e1b5b96f99f43"
+      },
+      {
+        "path": "src/registration/conditions.rs",
+        "sha256": "72be413bd776d4631be0fdaa63d12f51980e17987d9b969d8e082a464ac2e4b5"
+      },
+      {
         "path": "src/settings.rs",
-        "sha256": "03a708eb33673b4a177058a4d8afa517ae6a77345f93ecf18d996fd8f1163c1f"
+        "sha256": "f72558c0d1082b957b02640f6381c2877ea5903ad0610339a632e0921f7d995a"
       },
       {
         "path": "src/tier.rs",

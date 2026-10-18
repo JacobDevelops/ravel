@@ -348,10 +348,7 @@ impl Settings {
     /// # Errors
     /// Returns a refusal when the packaged declaration or its defaults are invalid.
     pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
-        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
-        let resolved = LayeredConfiguration::resolve(declared, None, None)
-            .map_err(ravel_sdk::ModError::from_display)?;
-        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+        ravel_sdk::config::read_shipped(DOCUMENT, Self::read)
     }
 }
 impl DropSettings {
@@ -402,8 +399,8 @@ impl Settings {
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            ritual_catalyst_uses: unsigned(resolved, RITUAL_CATALYST_USES)?,
-            growth_pulse_seconds: unsigned(resolved, GROWTH_PULSE_SECONDS)?,
+            ritual_catalyst_uses: ravel_sdk::config::unsigned(resolved, RITUAL_CATALYST_USES)?,
+            growth_pulse_seconds: ravel_sdk::config::unsigned(resolved, GROWTH_PULSE_SECONDS)?,
             drops: DropSettings::read(resolved)?,
             growth_require_effective_ground: resolved.boolean(GROWTH_REQUIRE_EFFECTIVE_GROUND)?,
             ground_convert_by_material: resolved.boolean(GROUND_CONVERT_BY_MATERIAL)?,
@@ -412,19 +409,6 @@ impl Settings {
             deposits: DepositSettings::read(resolved)?,
         })
     }
-}
-
-fn unsigned(resolved: &LayeredConfiguration, key: &str) -> Result<u32, ValueError> {
-    let value = resolved.integer(key)?;
-    u32::try_from(value).map_err(|_| {
-        if value < 0 {
-            ValueError::Below { minimum: 0.0 }
-        } else {
-            ValueError::Above {
-                maximum: f64::from(u32::MAX),
-            }
-        }
-    })
 }
 
 type FlagBinding = (&'static str, fn(&Settings) -> bool);

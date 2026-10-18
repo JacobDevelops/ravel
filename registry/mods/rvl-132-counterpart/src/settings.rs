@@ -210,10 +210,7 @@ impl Settings {
     /// # Errors
     /// Returns the packaged declaration, resolution, or typed-value refusal.
     pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
-        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
-        let resolved = LayeredConfiguration::resolve(declared, None, None)
-            .map_err(ravel_sdk::ModError::from_display)?;
-        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+        ravel_sdk::config::read_shipped(DOCUMENT, Self::read)
     }
 
     /// Reads every declared setting from the resolved configuration.

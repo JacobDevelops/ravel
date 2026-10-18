@@ -1605,7 +1605,7 @@ if [ "$side_observed" != "$side_expected" ]; then
 fi
 
 # Only client-facing pack notice kinds are filtered; record-keeping faults apply to every side.
-no_settings='could not switch it on, because this instance has no `options.txt` yet'
+no_settings="could not switch it on, because this instance has no \`options.txt\` yet"
 if grep -qF "$no_settings" "$side/dedicated-stdout"; then
 	echo >&2
 	echo "a dedicated server was given advice about a screen it does not have:" >&2

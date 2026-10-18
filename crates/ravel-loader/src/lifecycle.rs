@@ -11,6 +11,7 @@ use ravel_core::{
 };
 use ravel_data::ContentBehaviour;
 
+/// Records attribution before projecting a stopping failure into its subsystem refusal.
 pub(crate) fn isolate<E>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
@@ -18,15 +19,29 @@ pub(crate) fn isolate<E>(
     lifecycle: fn(LifecycleError) -> E,
     stop: impl FnOnce(ravel_host_api::HostError) -> E,
 ) -> Result<(), E> {
-    if machine
+    isolate_recording(machine, environment, error, lifecycle, |_| {}, stop)
+}
+
+/// Runs supplemental recording after attribution succeeds and before applying the stop result.
+pub(crate) fn isolate_recording<E>(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    error: ravel_host_api::HostError,
+    lifecycle: fn(LifecycleError) -> E,
+    record: impl FnOnce(&ravel_host_api::HostError),
+    stop: impl FnOnce(ravel_host_api::HostError) -> E,
+) -> Result<(), E> {
+    let must_stop = machine
         .fail_callback_must_stop(&error, environment)
-        .map_err(lifecycle)?
-    {
+        .map_err(lifecycle)?;
+    record(&error);
+    if must_stop {
         return Err(stop(error));
     }
     Ok(())
 }
 
+/// Attributes an owner-contract refusal, preserving it when isolation must stop.
 pub(crate) fn isolate_foreign<E: std::fmt::Display>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
@@ -34,8 +49,20 @@ pub(crate) fn isolate_foreign<E: std::fmt::Display>(
     refused: E,
     lifecycle: fn(LifecycleError) -> E,
 ) -> Result<(), E> {
+    isolate_foreign_recording(machine, environment, owner, refused, lifecycle, |_| {})
+}
+
+/// Adds supplemental recording to the shared owner-contract attribution policy.
+pub(crate) fn isolate_foreign_recording<E: std::fmt::Display>(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    owner: &ModId,
+    refused: E,
+    lifecycle: fn(LifecycleError) -> E,
+    record: impl FnOnce(&ravel_host_api::HostError),
+) -> Result<(), E> {
     let source = crate::owner_refusal(machine, owner, &refused).map_err(lifecycle)?;
-    isolate(machine, environment, source, lifecycle, |_| refused)
+    isolate_recording(machine, environment, source, lifecycle, record, |_| refused)
 }
 
 pub(crate) const fn world_side(machine: &LifecycleMachine) -> Side {
@@ -716,6 +743,7 @@ mod tests {
     use ravel_host_api::{HostError, Mod, ModError};
 
     use super::{LifecycleError, LifecycleMachine, Requirement, executes_mod_code, has_registered};
+    use crate::resources::ResourceRefused;
     use crate::tests::entry;
 
     const SUCCESS_PATH: [LifecycleState; 8] = [
@@ -809,6 +837,140 @@ mod tests {
             target
         );
         machine
+    }
+
+    #[test]
+    fn isolation_preserves_context_and_honors_world_mutation() -> Result<(), LifecycleError> {
+        for (requirement, mutated, stops) in [
+            (Requirement::Required, false, true),
+            (Requirement::Optional, false, false),
+            (Requirement::Optional, true, true),
+        ] {
+            let owner = id("example_mod");
+            let mut machine = machine_at(LifecycleState::Running);
+            machine.tracked_mut(&owner)?.entry.requirement = requirement;
+            if mutated {
+                machine.record_world_mutation()?;
+            }
+            let source = HostError::Unsupported {
+                mod_id: owner.clone(),
+                state: LifecycleState::Running,
+            };
+            let environment = crate::tests::environment();
+            let result = super::isolate(
+                &mut machine,
+                &environment,
+                source.clone(),
+                ResourceRefused::Lifecycle,
+                |source| ResourceRefused::Mod {
+                    mod_id: owner.clone(),
+                    source,
+                },
+            );
+            let expected = ResourceRefused::Mod {
+                mod_id: owner.clone(),
+                source: source.clone(),
+            };
+            assert_eq!(result, if stops { Err(expected) } else { Ok(()) });
+            assert_eq!(machine.state(&owner), Ok(LifecycleState::Failed));
+            let failure = machine
+                .failure(&owner)?
+                .ok_or(LifecycleError::AttributionRequired)?;
+            assert_eq!(failure.environment, environment);
+            assert_eq!(failure.state, source.state());
+            assert_eq!(failure.message, DiagnosticMessage::raw(source.to_string()));
+            assert_eq!(machine.halted_by(), mutated.then_some(&owner));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn foreign_isolation_preserves_the_subsystem_refusal() -> Result<(), LifecycleError> {
+        for (requirement, mutated, stops) in [
+            (Requirement::Required, false, true),
+            (Requirement::Optional, false, false),
+            (Requirement::Optional, true, true),
+        ] {
+            let owner = id("example_mod");
+            let state = if mutated {
+                LifecycleState::Running
+            } else {
+                LifecycleState::Loaded
+            };
+            let mut machine = machine_at(state);
+            machine.tracked_mut(&owner)?.entry.requirement = requirement;
+            if mutated {
+                machine.record_world_mutation()?;
+            }
+            let refused = ResourceRefused::ForeignDeclaration {
+                mod_id: owner.clone(),
+                owner: id("other_mod"),
+            };
+            let expected_message = HostError::OperationRefused {
+                mod_id: owner.clone(),
+                state,
+                detail: refused.to_string(),
+            }
+            .to_string();
+            let environment = crate::tests::environment();
+            let result = super::isolate_foreign(
+                &mut machine,
+                &environment,
+                &owner,
+                refused.clone(),
+                ResourceRefused::Lifecycle,
+            );
+            assert_eq!(result, if stops { Err(refused) } else { Ok(()) });
+            assert_eq!(machine.state(&owner), Ok(LifecycleState::Failed));
+            let failure = machine
+                .failure(&owner)?
+                .ok_or(LifecycleError::AttributionRequired)?;
+            assert_eq!(failure.message, DiagnosticMessage::raw(expected_message));
+            assert_eq!(failure.state, state);
+            assert_eq!(failure.environment, environment);
+            assert_eq!(machine.halted_by(), mutated.then_some(&owner));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn isolation_projects_recording_errors_before_subsystem_refusals() {
+        let owner = id("outside_plan");
+        let environment = crate::tests::environment();
+        let mut machine = machine_at(LifecycleState::Running);
+        let source = HostError::Unsupported {
+            mod_id: owner.clone(),
+            state: LifecycleState::Running,
+        };
+        let expected = ResourceRefused::Lifecycle(LifecycleError::UnknownMod {
+            mod_id: owner.clone(),
+        });
+        let result = super::isolate(
+            &mut machine,
+            &environment,
+            source,
+            ResourceRefused::Lifecycle,
+            |source| ResourceRefused::Mod {
+                mod_id: owner.clone(),
+                source,
+            },
+        );
+        assert_eq!(result, Err(expected.clone()));
+        let refused = ResourceRefused::ForeignDeclaration {
+            mod_id: owner.clone(),
+            owner: id("other_mod"),
+        };
+        assert_eq!(
+            super::isolate_foreign(
+                &mut machine,
+                &environment,
+                &owner,
+                refused,
+                ResourceRefused::Lifecycle,
+            ),
+            Err(expected)
+        );
+        assert_eq!(machine.halted_by(), None);
     }
 
     #[test]

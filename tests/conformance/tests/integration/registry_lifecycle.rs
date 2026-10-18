@@ -284,6 +284,8 @@ fn configured_provider_flags_reach_the_leaf_through_real_loader_startup() {
                 .expect("the loader applies the provider's launch configuration");
                 drive_loaded(&mut loaded, &environment).expect("configured services start");
             }
+            let hosts: [&dyn Mod; 3] = [&leaf, &provider, &shared];
+            expectations::assert_running(&machine, hosts, side);
             assert_eq!(leaf.ground_conversion_enabled(), ground);
             assert_eq!(leaf.top_tools_enchantable(), tools);
         }

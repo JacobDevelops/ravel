@@ -7,13 +7,14 @@ import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
+from wp7_test_support import CHECK_TIMEOUT_SECONDS, ROOT
+
 SCRIPT = ROOT / "registry/sevtech/rights-static.py"
 FIXTURE = "sevtech-ages-3.2.3"
 
 
 class StaticRightsTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         paths = (
@@ -29,20 +30,21 @@ class StaticRightsTests(unittest.TestCase):
         self.rights_path = self.root / f"registry/inventory/{FIXTURE}/rights.json"
         self.rights = json.loads(self.rights_path.read_text())
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_static(self):
+    def run_static(self) -> subprocess.CompletedProcess[str]:
         self.rights_path.write_text(json.dumps(self.rights))
         return subprocess.run([sys.executable, "-B", str(SCRIPT), str(self.root), FIXTURE],
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True, check=False,
+                              timeout=CHECK_TIMEOUT_SECONDS)
 
-    def assert_refused(self, message):
+    def assert_refused(self, message: str) -> None:
         result = self.run_static()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(message, result.stderr)
 
-    def surface(self, row, name):
+    def surface(self, row: dict, name: str) -> dict:
         return next(r for r in row["rights"] if r["surface"] == name)
 
     def test_committed_rights_pass(self):

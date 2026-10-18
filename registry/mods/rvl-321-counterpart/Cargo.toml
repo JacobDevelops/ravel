@@ -1,8 +1,12 @@
 [package]
 name = "rvl-321-counterpart"
 version = "0.1.0"
+description = "Ravel counterpart for RVL-321: crop, machine, recipe and world-generation systems."
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/JacobDevelops/ravel"
+keywords = ["minecraft", "ravel", "crops"]
+categories = ["games"]
 
 [dependencies]
 num-traits = { version = "0.2.19", default-features = false }

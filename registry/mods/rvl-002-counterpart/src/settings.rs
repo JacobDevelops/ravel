@@ -172,10 +172,7 @@ impl Settings {
     /// # Errors
     /// Returns a refusal when the packaged declaration or its defaults are invalid.
     pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
-        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
-        let resolved = LayeredConfiguration::resolve(declared, None, None)
-            .map_err(ravel_sdk::ModError::from_display)?;
-        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+        ravel_sdk::config::read_shipped(DOCUMENT, Self::read)
     }
 }
 
@@ -186,9 +183,9 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             drops_soul_chance: resolved.number(DROPS_SOUL_CHANCE)?,
-            drops_scale_count: unsigned(resolved, DROPS_SCALE_COUNT)?,
+            drops_scale_count: ravel_sdk::config::unsigned(resolved, DROPS_SCALE_COUNT)?,
             crops_fertilisable: resolved.boolean(CROPS_FERTILISABLE)?,
-            foods_effect_seconds: unsigned(resolved, FOODS_EFFECT_SECONDS)?,
+            foods_effect_seconds: ravel_sdk::config::unsigned(resolved, FOODS_EFFECT_SECONDS)?,
             world_lower: Deposits {
                 shard: resolved.boolean(WORLD_LOWER_SHARD_DEPOSIT)?,
                 essence: resolved.boolean(WORLD_LOWER_ESSENCE_DEPOSIT)?,
@@ -199,19 +196,6 @@ impl Settings {
             },
         })
     }
-}
-
-fn unsigned(resolved: &LayeredConfiguration, key: &str) -> Result<u32, ValueError> {
-    let value = resolved.integer(key)?;
-    u32::try_from(value).map_err(|_| {
-        if value < 0 {
-            ValueError::Below { minimum: 0.0 }
-        } else {
-            ValueError::Above {
-                maximum: f64::from(u32::MAX),
-            }
-        }
-    })
 }
 
 type FlagBinding = (&'static str, fn(&Settings) -> bool);

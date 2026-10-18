@@ -9,6 +9,23 @@ use ravel_sdk::{LifecycleState, Mod, Side};
 
 use super::lifecycle_entry;
 
+pub(super) fn assert_running<'a>(
+    machine: &LifecycleMachine,
+    hosts: impl IntoIterator<Item = &'a dyn Mod>,
+    side: Side,
+) {
+    assert!(machine.registration_barrier_closed());
+    for host in hosts {
+        assert_eq!(
+            machine.state(host.id()),
+            Ok(LifecycleState::Running),
+            "{} on {side:?}",
+            host.id()
+        );
+        assert!(machine.loads(host.id()));
+    }
+}
+
 pub(super) fn assert_started(
     machine: &LifecycleMachine,
     hosts: &[Box<dyn Mod>],
@@ -16,7 +33,7 @@ pub(super) fn assert_started(
     side: Side,
 ) {
     assert_eq!(hosts.len(), manifests.len());
-    assert!(machine.registration_barrier_closed());
+    assert_running(machine, hosts.iter().map(Box::as_ref), side);
     machine
         .world_access(&ravel_observability::PreWorldReport::new(
             ravel_bootstrap_runtime::environment(),
@@ -32,13 +49,6 @@ pub(super) fn assert_started(
             &lifecycle_entry(manifest)
         );
         assert!(manifest.sides.loads_on(side));
-        assert_eq!(
-            machine.state(host.id()),
-            Ok(LifecycleState::Running),
-            "{} on {side:?}",
-            host.id()
-        );
-        assert!(machine.loads(host.id()));
         assert_saved_data(host.as_ref(), manifest);
         let expected = expected_claims(host.as_ref());
         for key in &expected {

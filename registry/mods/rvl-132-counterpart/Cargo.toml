@@ -1,8 +1,12 @@
 [package]
 name = "rvl-132-counterpart"
 version = "0.1.0"
+description = "Ravel counterpart for RVL-132: recipe ingredients, matching and storage adapters."
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/JacobDevelops/ravel"
+keywords = ["minecraft", "ravel", "recipes"]
+categories = ["games"]
 
 [dependencies]
 ravel-sdk.workspace = true

@@ -77,24 +77,42 @@ impl ServiceContext<'_> {
     }
 
     fn fail(&mut self, source: HostError) -> Result<(), ServiceRefused> {
-        let stop = self.record_failure(&source)?;
-        if stop {
-            return Err(ServiceRefused::Mod {
-                mod_id: source.mod_id().clone(),
-                source,
-            });
-        }
-        Ok(())
+        self.isolate(source, |source| ServiceRefused::Mod {
+            mod_id: source.mod_id().clone(),
+            source,
+        })
     }
 
-    fn record_failure(&mut self, source: &HostError) -> Result<bool, ServiceRefused> {
-        let stop = self
-            .machine
-            .fail_callback_must_stop(source, self.environment)
-            .map_err(ServiceRefused::Lifecycle)?;
-        self.failures
-            .insert(source.mod_id().clone(), source.clone());
-        Ok(stop)
+    fn isolate(
+        &mut self,
+        source: HostError,
+        refused: impl FnOnce(HostError) -> ServiceRefused,
+    ) -> Result<(), ServiceRefused> {
+        let failures = &mut self.failures;
+        crate::lifecycle::isolate_recording(
+            self.machine,
+            self.environment,
+            source,
+            ServiceRefused::Lifecycle,
+            |source| {
+                failures.insert(source.mod_id().clone(), source.clone());
+            },
+            refused,
+        )
+    }
+
+    fn refuse(&mut self, owner: &ModId, refused: ServiceRefused) -> Result<(), ServiceRefused> {
+        let failures = &mut self.failures;
+        crate::lifecycle::isolate_foreign_recording(
+            self.machine,
+            self.environment,
+            owner,
+            refused,
+            ServiceRefused::Lifecycle,
+            |source| {
+                failures.insert(source.mod_id().clone(), source.clone());
+            },
+        )
     }
 
     fn require_live(&mut self, declaration: &ServiceDeclaration) -> Result<bool, ServiceRefused> {
@@ -107,11 +125,7 @@ impl ServiceContext<'_> {
                 service: service.clone(),
                 source: Box::new(source),
             };
-            let error = crate::owner_refusal(self.machine, declaration.owner(), &refused)
-                .map_err(ServiceRefused::Lifecycle)?;
-            if self.record_failure(&error)? {
-                return Err(refused);
-            }
+            self.refuse(declaration.owner(), refused)?;
             return Ok(false);
         }
         Ok(true)
@@ -196,11 +210,7 @@ fn declared<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            let source = crate::owner_refusal(context.machine(), &mod_id, &refused)
-                .map_err(ServiceRefused::Lifecycle)?;
-            if context.record_failure(&source)? {
-                return Err(refused);
-            }
+            context.refuse(&mod_id, refused)?;
             continue;
         }
         declarations.insert(mod_id, declaration);
@@ -992,6 +1002,62 @@ mod tests {
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
+    }
+
+    #[test]
+    fn service_isolation_retains_errors_for_both_stop_results() {
+        for requirement in [Requirement::Required, Requirement::Optional] {
+            let mut owner = entry("provider", &[Side::DedicatedServer]);
+            owner.requirement = requirement;
+            let mut machine = machine(vec![owner]);
+            let environment = environment();
+            let mut context = super::ServiceContext {
+                machine: &mut machine,
+                environment: &environment,
+                failures: std::collections::BTreeMap::new(),
+            };
+            let source = HostError::Unsupported {
+                mod_id: id("provider"),
+                state: LifecycleState::Discovered,
+            };
+            let result = context.fail(source.clone());
+            let expected = if requirement == Requirement::Required {
+                Err(ServiceRefused::Mod {
+                    mod_id: id("provider"),
+                    source: source.clone(),
+                })
+            } else {
+                Ok(())
+            };
+            assert_eq!(result, expected);
+            assert_eq!(context.failures.get(&id("provider")), Some(&source));
+            assert_eq!(
+                context.machine.state(&id("provider")),
+                Ok(LifecycleState::Failed)
+            );
+        }
+    }
+
+    #[test]
+    fn service_isolation_does_not_retain_unattributable_errors() {
+        let mut machine = machine(Vec::new());
+        let environment = environment();
+        let mut context = super::ServiceContext {
+            machine: &mut machine,
+            environment: &environment,
+            failures: std::collections::BTreeMap::new(),
+        };
+        let owner = id("outside_plan");
+        assert_eq!(
+            context.fail(HostError::Unsupported {
+                mod_id: owner.clone(),
+                state: LifecycleState::Discovered,
+            }),
+            Err(ServiceRefused::Lifecycle(
+                crate::lifecycle::LifecycleError::UnknownMod { mod_id: owner }
+            ))
+        );
+        assert!(context.failures.is_empty());
     }
 
     #[test]

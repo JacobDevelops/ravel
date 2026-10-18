@@ -894,9 +894,34 @@ fn every_refusal_says_which_state_it_is_about() {
     for (refused, state) in cases {
         assert_eq!(refused.lifecycle_state(), state);
         assert_eq!(refused.failure_kind(), None);
+        assert!(std::error::Error::source(&refused).is_none());
         assert!(!refused.quotes_untrusted_text());
         assert_ne!(refused.to_string(), "");
     }
+}
+
+#[test]
+fn lifecycle_refusals_preserve_their_typed_source_and_failure_context() {
+    let source = crate::LifecycleError::SideMismatch {
+        mod_id: id("example_mod"),
+        from: LifecycleState::Stopped,
+        side: Side::Client,
+    };
+    let refused = DispatchRefused::Lifecycle(source.clone());
+    assert_eq!(
+        std::error::Error::source(&refused)
+            .and_then(|error| error.downcast_ref::<crate::LifecycleError>()),
+        Some(&source)
+    );
+    assert_eq!(
+        refused.failure_kind(),
+        Some(ravel_core::FailureKind::SideMismatch)
+    );
+    assert_eq!(refused.lifecycle_state(), source.lifecycle_state());
+    assert_eq!(
+        refused.quotes_untrusted_text(),
+        source.quotes_untrusted_text()
+    );
 }
 
 #[test]

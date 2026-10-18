@@ -109,13 +109,7 @@ pub struct Settings {
 impl Settings {
     /// Resolves the packaged defaults without panicking on a packaging failure.
     pub fn shipped() -> Result<Self, ModError> {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().map_err(ModError::from_display)?,
-            None,
-            None,
-        )
-        .map_err(ModError::from_display)?;
-        Self::read(&resolved).map_err(ModError::from_display)
+        ravel_sdk::config::read_shipped(DOCUMENT, Self::read)
     }
 
     /// Reads all four validated integer settings together for one launch.

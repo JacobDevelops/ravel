@@ -4,10 +4,12 @@ use std::path::PathBuf;
 use ravel_minecraft_generate::{Eligibility, Kind};
 
 use super::reflection::{declared_roles, game_class_literals, verify_persistence_reflection};
+use super::screens::SCREEN_JAR_SOURCES;
+use super::transformer::declared_hook;
 use crate::hooks::hook_inventory;
 use crate::scaffold::java_shape::{
-    AGENT_JAR_SOURCES, REFLECTION_FILE, SCREEN_JAR_SOURCES, TRANSFORMER_SHAPE_RECORD,
-    declared_hook, verify_hook_name_literals, verify_screen_templates, verify_transformer_shape,
+    AGENT_JAR_SOURCES, REFLECTION_FILE, TRANSFORMER_SHAPE_RECORD, verify_hook_name_literals,
+    verify_screen_templates, verify_transformer_shape,
 };
 use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{VERSION_DATA, verify_version_directories};

@@ -78,6 +78,15 @@ pub(super) fn descriptor_type(
     ))
 }
 
+/// Parses one complete non-void field descriptor, refusing trailing input.
+pub(super) fn field_type(descriptor: &str) -> Result<DescriptorType<'_>, String> {
+    let (kind, after) = descriptor_type(descriptor, false)?;
+    if !after.is_empty() {
+        return Err(format!("{descriptor} is not a field descriptor"));
+    }
+    Ok(kind)
+}
+
 /// Parses every parameter and exactly one return type with the same tokenizer.
 pub(super) fn method_types(
     descriptor: &str,

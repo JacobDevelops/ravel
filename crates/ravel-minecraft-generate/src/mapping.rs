@@ -886,10 +886,7 @@ fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
             }
         }
     } else {
-        let (kind, after) = classfile::descriptor_type(descriptor, false)?;
-        if !after.is_empty() {
-            return Err(format!("{descriptor} is not a field descriptor"));
-        }
+        let kind = classfile::field_type(descriptor)?;
         if let Some(name) = kind.class_name() {
             verify_internal_class_name(name)?;
         }
@@ -947,13 +944,7 @@ fn map_descriptor(
         mapped.push(')');
         map_type(&mut mapped, classes, returns);
     } else {
-        let (kind, after) =
-            classfile::descriptor_type(descriptor, false).map_err(GenerateError::Unsupported)?;
-        if !after.is_empty() {
-            return Err(GenerateError::Unsupported(format!(
-                "{descriptor} is not a field descriptor"
-            )));
-        }
+        let kind = classfile::field_type(descriptor).map_err(GenerateError::Unsupported)?;
         map_type(&mut mapped, classes, kind);
     }
     Ok(mapped)

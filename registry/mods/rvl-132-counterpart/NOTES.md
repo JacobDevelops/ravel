@@ -52,21 +52,21 @@ meet the vocabulary's own set, so a caller writing one filter for all three kind
 
 | Section | Here | Where |
 | --- | --- | --- |
-| §2 the lifecycle, and the two orderings that are load-bearing | implemented, as a refusal | `src/lib.rs` |
-| §2 the two alternative-set serialisers, at registry construction | implemented, and runnable from the table | `src/forms.rs`, `src/lib.rs` |
-| §2 the three kinds, at registry population | implemented | `src/kinds.rs`, `src/lib.rs` |
+| §2 the lifecycle, and the two orderings that are load-bearing | implemented, as a refusal | `src/registration.rs` |
+| §2 the two alternative-set serialisers, at registry construction | implemented, and runnable from the table | `src/forms.rs`, `src/registration.rs` |
+| §2 the three kinds, at registry population | implemented | `src/kinds.rs`, `src/registration.rs` |
 | §2 common setup asserting all three resolved and failing loudly | implemented | `src/kinds.rs` |
 | §2 subscribing **every** registered kind, a dependent's included | implemented, as a contract | `src/kinds.rs` |
-| §2 the adapter table at the cross-mod message point | implemented | `src/lib.rs`, `src/storage.rs` |
-| §2 the two compatibility bundles at the compatibility point | implemented | `src/capabilities.rs`, `src/lib.rs` |
-| §2 clearing the recipe caches when a server stops | implemented, and on reload too | `src/lib.rs`, `src/cache.rs` |
+| §2 the adapter table at the cross-mod message point | implemented | `src/registration.rs`, `src/storage.rs` |
+| §2 the two compatibility bundles at the compatibility point | implemented | `src/capabilities.rs`, `src/registration.rs` |
+| §2 clearing the recipe caches when a server stops | implemented, and on reload too | `src/registration.rs`, `src/cache.rs` |
 | §3 four of the six settings | implemented; three implemented, one carried-but-inert | `src/settings.rs` |
-| §3 the two abort settings changing what loading does | implemented | `src/lib.rs`, `src/recipes.rs` |
+| §3 the two abort settings changing what loading does | implemented | `src/registration.rs`, `src/recipes.rs` |
 | §3 the two outbound-network settings | not shipped, deliberately | `src/settings.rs` |
-| §3 the ignore list rebuilding the comparator on every load | implemented | `src/settings.rs`, `src/lib.rs` |
+| §3 the ignore list rebuilding the comparator on every load | implemented | `src/settings.rs`, `src/registration.rs` |
 | §4 the three ingredient kinds and their registered names | implemented, names coined | `src/kinds.rs` |
 | §4 the seven category types and their roles | implemented | `src/kinds.rs` |
-| §4 registering nothing else anywhere | implemented, as an empty claim | `src/lib.rs` |
+| §4 registering nothing else anywhere | implemented, as an empty claim | `src/registration.rs` |
 | §5 the vocabulary this entry compiles against | consumed from RVL-210 | — |
 | §6.1 the two condition flavours and their arithmetic | implemented, one declared change | `src/kinds.rs` |
 | §6.1 the three standard conditions per kind | implemented | `src/kinds.rs` |
@@ -91,7 +91,7 @@ meet the vocabulary's own set, so a caller writing one filter for all three kind
 | §10 obtaining the brewing fuel count and brewable test | host-blocked | — |
 | §11 the general station view, its grid and its two simulations | implemented, one declared change | `src/recipes.rs`, `src/recipes/selection.rs` |
 | §11 the brewing view's simulation | implemented, its starting value inferred | `src/recipes/selection.rs` |
-| §11 the eight recipe-view attachments bound to their views | implemented, two flag columns inferred | `src/recipes.rs`, `src/lib.rs` |
+| §11 the eight recipe-view attachments bound to their views | implemented, two flag columns inferred | `src/recipes.rs`, `src/registration.rs` |
 | §11 the third cache and the base it hangs off | not carried, by §14's own instruction | `src/cache.rs` |
 | §11.1 the brewing closure and its cap | implemented, cap as a setting | `src/recipes/selection.rs` |
 | §12 the list-valued read-modify-write cycle and its two rules | implemented | `src/holdings.rs` |

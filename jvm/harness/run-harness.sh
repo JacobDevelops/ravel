@@ -901,11 +901,15 @@ stderr="$work/stderr"
 observed="$(<"$stdout")"
 diagnostic="$(grep '^\[ravel\]' "$stderr")"
 
-expected='filtered=a
+expected="$(
+	cat <<'EXPECTED'
+filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods='"$settings_methods"'
+EXPECTED
+	printf 'transformed=1 methods=%s\n' "$settings_methods"
+	cat <<'EXPECTED'
 client=false:pack:false
 common=quiet:default:false
 saved=1:0
@@ -913,8 +917,10 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=quiet:default:true
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code
-[ravel] rewritten targets: '"$settings_target"'='"$settings_methods"''
+EXPECTED
+	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
+	printf '[ravel] rewritten targets: %s=%s\n' "$settings_target" "$settings_methods"
+)"
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
 
 printf '%s\n' "$observed"
@@ -1028,11 +1034,15 @@ relaunch_stderr="$work/relaunch-stderr"
 	-cp "$ui" "$client_entry" Main >"$relaunch_stdout" 2>"$relaunch_stderr")
 relaunch_observed="$(<"$relaunch_stdout")"
 relaunch_diagnostic="$(grep '^\[ravel\]' "$relaunch_stderr")"
-relaunch_expected='filtered=a
+relaunch_expected="$(
+	cat <<'EXPECTED'
+filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods='"$settings_methods"'
+EXPECTED
+	printf 'transformed=1 methods=%s\n' "$settings_methods"
+	cat <<'EXPECTED'
 client=false:player:false
 common=verbose:player:false
 saved=1:0
@@ -1040,7 +1050,9 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=verbose:player:false
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code'
+EXPECTED
+	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
+)"
 
 printf '%s\n' "$relaunch_observed"
 while IFS= read -r line; do
@@ -1177,11 +1189,15 @@ ui_relaunch_stderr="$work/ui-relaunch-stderr"
 	-Dravel.host="$host" \
 	-cp "$ui" "$client_entry" Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
 ui_relaunch_observed="$(<"$ui_relaunch_stdout")"
-ui_relaunch_expected='filtered=a
+ui_relaunch_expected="$(
+	cat <<'EXPECTED'
+filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods='"$settings_methods"'
+EXPECTED
+	printf 'transformed=1 methods=%s\n' "$settings_methods"
+	cat <<'EXPECTED'
 client=true:player:false
 common=quiet:player:false
 saved=1:0
@@ -1189,7 +1205,9 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=quiet:player:true
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code'
+EXPECTED
+	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
+)"
 
 printf '%s\n' "$ui_relaunch_observed"
 while IFS= read -r line; do
@@ -1302,7 +1320,8 @@ notice_stderr="$notice_work/notice-stderr"
 	-Dstdout.encoding=UTF-8 \
 	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
 notice_observed="$(grep -E '^(modWidgets|notices|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$notice_stdout")"
-notice_expected='modWidgets=11
+notice_expected="$(cat <<'EXPECTED'
+modWidgets=11
 notices=1
 within=true
 aligned=true
@@ -1344,7 +1363,9 @@ failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]
 failedRow=true a required registry claim was refused at registry
 failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
 failedRow=true was already held by another mod and this one asked
-failedRow=true for it again, so neither could be registered'
+failedRow=true for it again, so neither could be registered
+EXPECTED
+)"
 
 printf '%s\n' "$notice_observed"
 while IFS= read -r line; do
@@ -1367,7 +1388,8 @@ sized_stderr="$notice_work/sized-stderr"
 	-Dstdout.encoding=UTF-8 \
 	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
 sized_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$sized_stdout")"
-sized_expected='modWidgets=14
+sized_expected="$(cat <<'EXPECTED'
+modWidgets=14
 within=true
 aligned=true
 noticeRows=7
@@ -1408,7 +1430,9 @@ failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]
 failedRow=true a required registry claim was refused at registry
 failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
 failedRow=true was already held by another mod and this one asked
-failedRow=true for it again, so neither could be registered'
+failedRow=true for it again, so neither could be registered
+EXPECTED
+)"
 
 printf '%s\n' "$sized_observed"
 while IFS= read -r line; do
@@ -1546,8 +1570,11 @@ javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMa
 javac -Xlint:all -Werror -d "$side/no-entry-method" \
 	"$root/jvm/harness/no-entry-method/net/minecraft/server/Main.java"
 
-side_expected='client=mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
-dedicated=mods=1:316:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:01:0'
+side_expected="$(cat <<'EXPECTED'
+client=mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
+dedicated=mods=1:316:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:01:0
+EXPECTED
+)"
 side_observed=""
 for case in client dedicated; do
 	case_stdout="$side/$case-stdout"

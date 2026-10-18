@@ -302,13 +302,7 @@ pub fn descriptor_classes(descriptor: &str) -> Result<Vec<&str>, GenerateError> 
             .filter_map(classfile::DescriptorType::class_name)
             .collect()
     } else {
-        let (kind, after) =
-            classfile::descriptor_type(descriptor, false).map_err(GenerateError::Unsupported)?;
-        if !after.is_empty() {
-            return Err(GenerateError::Unsupported(format!(
-                "{descriptor} is not a field descriptor"
-            )));
-        }
+        let kind = classfile::field_type(descriptor).map_err(GenerateError::Unsupported)?;
         kind.class_name().into_iter().collect()
     };
     for name in &classes {

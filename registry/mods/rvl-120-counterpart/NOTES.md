@@ -73,6 +73,10 @@ disabled multi-part block are the four areas §17 excludes and none of them is h
 | §16 what dependents need, as crate-root public functions | implemented | `src/lib.rs` |
 | §17 the four excluded areas | not carried, by the specification's own exclusion | — |
 
+The colour-role records in `settings::COLOURS` expose their current fields for inspection.
+`settings::Role` is non-exhaustive so dependents read the shipped roles without fixing their future
+field set through external struct literals.
+
 ## Two compatibility-required values this package refuses to invent
 
 Both are serialised spellings or constants the specification marks obtainable only from the pinned

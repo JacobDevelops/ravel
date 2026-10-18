@@ -8,6 +8,7 @@ use super::Document;
 
 /// One colour role: a component, the part of it painted, and the state it is in.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Role {
     /// The widget the colour belongs to.
     pub component: &'static str,

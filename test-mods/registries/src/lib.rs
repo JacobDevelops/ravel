@@ -2,8 +2,12 @@
 
 //! Registry and content test mod.
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
 use ravel_sdk::content::{
-    BlockBehaviour, ContentBehaviour, ContentId, ContentKind, ItemBehaviour, Registrar, RegistryKey,
+    BlockBehaviour, ContentBehaviour, ContentDeclaration, ContentId, ContentKind, ItemBehaviour,
+    Registrar, RegistryKey,
 };
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
@@ -21,6 +25,25 @@ const CLAIMS: [(ContentKind, &str); 3] = [
     (ContentKind::Item, "copper"),
     (ContentKind::Recipe, "smelting/copper"),
 ];
+
+// At least one real admitted legacy block must reach ID 512: its packed state
+// ID is 8192, beyond the unmodified thirteen-bit global palette.
+const PALETTE_BLOCKS: usize = 257;
+
+static CONTENT: LazyLock<Result<ContentDeclaration, ModError>> = LazyLock::new(|| {
+    let mut declaration = ContentDeclaration::new(RegistriesMod::declared_id().clone());
+    let path = "assets/registries/recipes/probe.json"
+        .to_owned()
+        .try_into()
+        .map_err(ModError::from_display)?;
+    declaration
+        .resource(
+            path,
+            include_bytes!("../assets/registries/recipes/probe.json").to_vec(),
+        )
+        .map_err(ModError::from_display)?;
+    Ok(declaration)
+});
 
 /// How this mod's content behaves, or nothing for a kind with no value.
 ///
@@ -43,11 +66,11 @@ const fn behaviour(kind: ContentKind) -> Option<ContentBehaviour> {
     }
 }
 
-/// A mod that registers one block, one item, and one recipe.
+/// A mod that registers palette-proof blocks, one item, and one recipe.
 ///
 /// `ROADMAP.md`'s M3-W1 row asks for content registration to be shown on real
 /// test mods and for duplicate or conflicting claims to fail. This mod is the
-/// success half: it claims three identifiers in its own namespace and records
+/// success half: it claims identifiers in its own namespace and records
 /// what the loader accepted. Refusal coverage lives in this crate's
 /// `a_refused_claim_stops_registration_and_names_the_identifier` test and the
 /// registration-barrier tests in `ravel-loader`.
@@ -59,7 +82,7 @@ const fn behaviour(kind: ContentKind) -> Option<ContentBehaviour> {
 /// use ravel_test_mod_registries::RegistriesMod;
 ///
 /// let registries = RegistriesMod::new();
-/// assert_eq!(registries.claims().len(), 3);
+/// assert_eq!(registries.claims().len(), 260);
 ///
 /// // The block and the item share a name and are still two claims.
 /// let block = registries.key(ContentKind::Block, "copper");
@@ -87,6 +110,10 @@ impl RegistriesMod {
         CLAIMS
             .into_iter()
             .map(|(kind, path)| self.key(kind, path))
+            .chain(
+                (0..PALETTE_BLOCKS)
+                    .map(|index| self.key(ContentKind::Block, &format!("palette/{index:03}"))),
+            )
             .collect()
     }
 
@@ -94,8 +121,8 @@ impl RegistriesMod {
     ///
     /// # Panics
     ///
-    /// Panics if `path` is not a legal [`ContentId`] path. Every caller in this
-    /// crate passes a constant from `CLAIMS`, and a test asserts they parse.
+    /// Panics if `path` is not a legal [`ContentId`] path. Callers use `CLAIMS`
+    /// or generated palette paths, and a test asserts that every claim parses.
     #[must_use]
     pub fn key(&self, kind: ContentKind, path: &str) -> RegistryKey {
         RegistryKey::new(
@@ -119,6 +146,13 @@ impl Default for RegistriesMod {
 
 #[declare_mod(id = "registries")]
 impl Mod for RegistriesMod {
+    fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
+        CONTENT
+            .as_ref()
+            .map(|declaration| Some(Cow::Borrowed(declaration)))
+            .map_err(Clone::clone)
+    }
+
     /// Accepts every step and does nothing with it.
     ///
     /// # Errors
@@ -129,7 +163,7 @@ impl Mod for RegistriesMod {
         Ok(())
     }
 
-    /// Claims one block, one item, and one recipe.
+    /// Claims the base identifiers and the high-ID palette-proof blocks.
     ///
     /// A refusal ends registration rather than skipping the identifier. Content
     /// this mod could not claim is content it cannot then use, so carrying on
@@ -141,10 +175,7 @@ impl Mod for RegistriesMod {
     /// Returns a [`ModError`] naming the identifier the loader would
     /// not give it and why.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        for (kind, path) in CLAIMS {
-            let id = ContentId::new(Self::declared_id().clone(), path)
-                .map_err(ModError::from_display)?;
-            let key = RegistryKey::new(kind, id);
+        for key in self.claims() {
             // Described where there is something to describe, and claimed plainly
             // where there is not. A recipe names no value a registry builds, so
             // there is nothing about it to say.
@@ -164,7 +195,7 @@ mod tests {
     use ravel_sdk::content::{ContentKind, Registrar, RegistrationRefused, RegistryKey};
     use ravel_sdk::{Mod, ModId};
 
-    use super::{CLAIMS, MOD_ID, RegistriesMod};
+    use super::{CLAIMS, MOD_ID, PALETTE_BLOCKS, RegistriesMod};
 
     /// A registrar that accepts everything, so a test sees what was asked for.
     #[derive(Default)]
@@ -234,7 +265,7 @@ mod tests {
         let registries = RegistriesMod::new();
         let claims = registries.claims();
 
-        assert_eq!(claims.len(), CLAIMS.len());
+        assert_eq!(claims.len(), CLAIMS.len() + PALETTE_BLOCKS);
         for key in &claims {
             assert_eq!(key.id().namespace().as_str(), MOD_ID);
             // The canonical string form is what the barrier stores, so it has

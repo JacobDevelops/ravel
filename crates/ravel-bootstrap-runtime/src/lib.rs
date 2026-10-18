@@ -6,6 +6,7 @@ mod content;
 mod dispatch;
 mod game_directory;
 mod guard;
+mod legacy;
 mod mods;
 pub mod outward;
 mod packs;
@@ -20,9 +21,12 @@ mod wire;
 pub use guard::HookError;
 pub use packs::write_world_pack;
 pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
+/// Whether declared adapter capabilities select the legacy game surface.
+pub use ravel_minecraft_adapter::pinned::LEGACY_ADAPTER;
 pub use runtime::{
     Composition, InstallError, LaunchContext, LoaderRuntime, data_pack_metadata, environment,
-    install, install_panic_hook, is_installed, pre_world_report, resource_pack_metadata,
+    install, install_integrated, install_panic_hook, integrated_installed, is_installed,
+    pre_world_report, resource_pack_metadata,
 };
 pub use side::{SideError, side};
 
@@ -31,6 +35,10 @@ pub mod exports {
     pub use crate::content::ravel_admitted_content;
     #[cfg(test)]
     pub use crate::guard::tests::generated_export;
+    pub use crate::legacy::{
+        ravel_legacy_command, ravel_legacy_commands, ravel_legacy_event, ravel_legacy_packet,
+        ravel_legacy_packet_owner, ravel_legacy_resource, ravel_legacy_resource_paths,
+    };
     pub use crate::mods::ravel_mod_surface;
     pub use crate::persistence::crossings::{
         ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
@@ -47,7 +55,7 @@ pub mod exports {
 #[cfg(test)]
 mod tests {
     use ravel_minecraft::HookKind;
-    use ravel_minecraft_adapter::pinned::TARGETS;
+    use ravel_minecraft_adapter::pinned::{LEGACY_ADAPTER, TARGETS};
 
     /// Creates an empty per-process directory under the system temporary directory, clearing
     /// whatever an earlier run left behind.
@@ -75,11 +83,14 @@ mod tests {
             "one export per hook shape, and one only"
         );
 
-        assert!(
-            targets
-                .iter()
-                .any(|target| target.kind() == HookKind::InstanceField),
-            "the reviewed inventory carries a field, which is not a call target"
+        let fields = targets
+            .iter()
+            .filter(|target| target.kind() == HookKind::InstanceField)
+            .count();
+        assert_eq!(
+            fields > 0,
+            !LEGACY_ADAPTER,
+            "modern inventory includes a field to exclude from exports; legacy has no field hooks"
         );
 
         // Match dispatch constants, not member names that may also occur in prose.

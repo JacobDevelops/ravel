@@ -7,6 +7,7 @@
   "compatibility": {
     "ravel": ">=0.0.0, <1.0.0",
     "minecraft": [
+      "1.12.2",
       ">=1.21.0, <27.0.0"
     ]
   },
@@ -31,7 +32,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "117d67d8c8befa7da1f8cd4cc1b2f34c18a45a4d2776bc949e59e6a916ca82f6"
+        "sha256": "db36a72922efc95b32041a499292f9f9dcc2eae3ac2a55129343031332ec9283"
       },
       {
         "path": "configuration.json",

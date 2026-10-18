@@ -74,8 +74,8 @@ pub enum SaveOutcome {
     IdentityMismatch(String),
 }
 
-fn runtime() -> Result<&'static Arc<LoaderRuntime>, String> {
-    crate::runtime::installed().ok_or_else(|| "the loader runtime is not installed".to_owned())
+fn runtime() -> Result<Arc<LoaderRuntime>, String> {
+    crate::runtime::selected().ok_or_else(|| "the loader runtime is not installed".to_owned())
 }
 
 /// Lexically normalized world identity shared by open and save crossings.
@@ -113,7 +113,7 @@ impl fmt::Display for WorldIdentity {
 #[must_use]
 pub fn stage(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
     match runtime() {
-        Ok(runtime) => outcome(runtime, identity_raw, bytes, fresh_world),
+        Ok(runtime) => outcome(&runtime, identity_raw, bytes, fresh_world),
         Err(error) => OpenOutcome::Refused(error),
     }
 }

@@ -27,8 +27,8 @@ pub use discovery::{
 };
 pub use driver::{DriveError, drive, drive_loaded, stop_all};
 pub use events::{
-    Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route,
-    route_profiled, take_play_requests,
+    Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet,
+    deliver_packet_profiled, route, route_profiled, take_play_requests,
 };
 pub use game_pack::{
     GAME_PACK_DIRECTORY, GamePackError, Half, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id,

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "subject": { "kind": "ravel-package", "id": "commands", "version": "0.0.0" },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    { "surface": "code", "status": "cleared", "basis": "Original work written for this repository and licensed under MIT OR Apache-2.0." },
+    { "surface": "models", "status": "not-applicable" },
+    { "surface": "names", "status": "cleared", "basis": "Commands, warp and waypoint are ordinary descriptive words." },
+    { "surface": "textures", "status": "not-applicable" },
+    { "surface": "sounds", "status": "not-applicable" }
+  ],
+  "attribution": [],
+  "publication": { "status": "cleared", "reviewedBy": "Ravel", "notes": "Original tracked SDK command test mod; no third-party code or assets." }
+}

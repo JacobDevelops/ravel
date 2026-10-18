@@ -76,8 +76,11 @@
 //! # Sides
 //!
 //! [`PacketDelivery::decode`] validates the receiving side before parsing.
-//! [`encode_from`] validates the sending side. No production path transports
-//! these bytes or calls [`crate::Mod::receive_packet`]; see `docs/guide/limits.md`.
+//! [`encode_from`] validates the sending side. Adapters providing custom-payload
+//! transport receive packets on the owning game thread and route bounded bytes
+//! through the loader to [`crate::Mod::receive_packet`]. Transport availability
+//! is adapter-selected; no SDK outbound send operation is exposed.
+//! See `docs/guide/limits.md`.
 
 pub use ravel_network::{
     DeliveryRefused, Direction, Packet, PacketContract, PacketDelivery, PacketId, PacketReader,

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "subject": { "kind": "ravel-package", "id": "audio", "version": "0.0.0" },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    { "surface": "code", "status": "cleared", "basis": "Original work written for this repository and licensed under MIT OR Apache-2.0." },
+    { "surface": "models", "status": "not-applicable" },
+    { "surface": "names", "status": "cleared", "basis": "Audio and door_opens are ordinary descriptive names." },
+    { "surface": "textures", "status": "not-applicable" },
+    { "surface": "sounds", "status": "not-applicable", "basis": "No sound recordings are distributed. The original sound-event alias resolves an event from the user's installed game." }
+  ],
+  "attribution": [],
+  "publication": { "status": "cleared", "reviewedBy": "Ravel", "notes": "Original SDK audio fixture and sound-event alias; no third-party code or recordings bundled." }
+}

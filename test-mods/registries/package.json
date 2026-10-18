@@ -3,15 +3,17 @@
   "id": "registries",
   "version": "0.0.0",
   "displayName": "Registries",
-  "description": "Content registration test mod claiming one block, one item and one recipe.",
+  "description": "Content registration test mod claiming high-ID palette blocks, one item and one recipe.",
   "compatibility": {
     "ravel": ">=0.0.0, <1.0.0",
     "minecraft": [
+      "1.12.2",
       ">=1.21.0, <27.0.0"
     ]
   },
   "sides": [
     "client",
+    "integrated-server",
     "dedicated-server"
   ],
   "authors": [
@@ -29,7 +31,11 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "183e6315eb1cf90c3451295ae85f13e485f1d5bbc4ebb233f9deed9020f4a7a3"
+        "sha256": "399163898b67c895f26a238931c25b2d9073d16cee6ddedc503e6ac6d113938e"
+      },
+      {
+        "path": "assets/registries/recipes/probe.json",
+        "sha256": "5785c85422efd7ab01909bff8f5812e5fc84c5793d91cf009cc9a29fc0bf587c"
       }
     ]
   },

@@ -4,7 +4,11 @@
 //!
 //! Client ticks enqueue requests drained by [`ravel_sdk::Mod::take_play_requests`].
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, Side, declare_mod};
 
@@ -16,6 +20,30 @@ pub const ENTRY: &str = "door_opens";
 
 // Opaque fixture bytes, not a playable sound file.
 const BYTES: &[u8] = b"the supplied bytes";
+
+const SOUND_ALIAS: &[u8] = include_bytes!("../assets/audio/sounds.json");
+
+static CONTENT: LazyLock<Result<ContentDeclaration, ModError>> = LazyLock::new(|| {
+    let mut declaration = ContentDeclaration::new(AudioMod::declared_id().clone());
+    let path = "assets/audio/sounds.json"
+        .to_owned()
+        .try_into()
+        .map_err(ModError::from_display)?;
+    declaration
+        .resource(path, SOUND_ALIAS.to_vec())
+        .map_err(ModError::from_display)?;
+    let path = "data/audio/recipes/paper_echo.json"
+        .to_owned()
+        .try_into()
+        .map_err(ModError::from_display)?;
+    declaration
+        .resource(
+            path,
+            include_bytes!("../data/audio/recipes/paper_echo.json").to_vec(),
+        )
+        .map_err(ModError::from_display)?;
+    Ok(declaration)
+});
 
 /// A mod that owns a sound and plays it on the one side that can.
 ///
@@ -90,6 +118,13 @@ impl Mod for AudioMod {
         Ok(())
     }
 
+    fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
+        CONTENT
+            .as_ref()
+            .map(|declaration| Some(Cow::Borrowed(declaration)))
+            .map_err(Clone::clone)
+    }
+
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         if event == GameEvent::ClientTick {
             self.asked
@@ -107,9 +142,32 @@ impl Mod for AudioMod {
 mod tests {
     use ravel_sdk::audio::{AudioError, AudioEvent};
     use ravel_sdk::events::GameEvent;
-    use ravel_sdk::{Declared, Mod, Side};
+    use ravel_sdk::{Declared, Mod, ModError, Side};
 
     use super::{AudioMod, ENTRY, MOD_ID};
+
+    #[test]
+    fn the_supplied_sound_alias_reuses_vanilla_without_bundling_audio() -> Result<(), ModError> {
+        let audio = AudioMod::new();
+        let declaration = audio
+            .content_declaration()?
+            .ok_or_else(|| ModError::refused("missing assets"))?;
+        let data = declaration.generate();
+        assert_eq!(data.files().len(), 2);
+        assert_eq!(data.files()[0].path().as_str(), "assets/audio/sounds.json");
+        assert_eq!(data.files()[0].bytes(), super::SOUND_ALIAS);
+        assert_eq!(super::SOUND_ALIAS,
+            b"{\"door_opens\":{\"sounds\":[{\"name\":\"minecraft:ui.button.click\",\"type\":\"event\"}]}}\n");
+        assert_eq!(
+            data.files()[1].path().as_str(),
+            "data/audio/recipes/paper_echo.json"
+        );
+        assert_eq!(
+            data.files()[1].bytes(),
+            include_bytes!("../data/audio/recipes/paper_echo.json")
+        );
+        Ok(())
+    }
 
     #[test]
     fn the_declared_identity_is_the_one_this_mod_is_packaged_under() {

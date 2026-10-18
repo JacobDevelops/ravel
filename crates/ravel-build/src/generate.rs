@@ -165,21 +165,31 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
          \x20   ]\n\
          }}\n\
          \n\
-         /// Starts the installed mod set before game methods run.\n\
-         ///\n\
-         /// The side arrives as the code the agent named it by, because the agent\n\
-         /// is where the fact exists: it is the first distribution entry point the\n\
-         /// transformer sees.\n\
-         #[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitialize\")]\n\
-         pub fn ravel_initialize<'local>(\n\
-         \x20   env: EnvUnowned<'local>,\n\
-         \x20   _class: JClass<'local>,\n\
-         \x20   side: jni::sys::jint,\n\
-         \x20   profiling_requested: jni::sys::jboolean,\n\
-         ) {{\n\
-         \x20   ravel_host_runtime::enter(env, side, profiling_requested, members);\n\
-         }}\n"
+         {entry_points}",
+        entry_points = entry_points(),
     )
+}
+
+fn entry_points() -> &'static str {
+    "/// Starts the installed mod set before game methods run.\n\
+     #[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitialize\")]\n\
+     pub fn ravel_initialize<'local>(\n\
+     \x20   env: EnvUnowned<'local>,\n\
+     \x20   _class: JClass<'local>,\n\
+     \x20   side: jni::sys::jint,\n\
+     \x20   profiling_requested: jni::sys::jboolean,\n\
+     ) {\n\
+     \x20   ravel_host_runtime::enter(env, side, profiling_requested, members);\n\
+     }\n\
+     \n\
+     /// Starts the integrated server's independent side-specific mod set.\n\
+     #[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitializeIntegratedServer\")]\n\
+     pub fn ravel_initialize_integrated_server<'local>(\n\
+     \x20   env: EnvUnowned<'local>,\n\
+     \x20   _class: JClass<'local>,\n\
+     ) {\n\
+     \x20   ravel_host_runtime::enter_integrated(env, members);\n\
+     }\n"
 }
 
 pub(super) fn crate_ident(crate_name: &str) -> String {

@@ -1,4 +1,9 @@
 //! Launch-time profiling opt-in and reports encoded for the Java screen.
+//!
+//! Integrated-server measurements remain separate labelled rows. Client header
+//! fields retain their original meaning and wire version.
+
+use std::fmt::Write;
 
 use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
@@ -13,7 +18,11 @@ pub(crate) const SWITCH: &str = "-Dravel.profiling=true";
 
 /// Encodes the report, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    document_of(crate::runtime::installed().map(AsRef::as_ref))
+    let integrated = crate::runtime::integrated_runtime();
+    document_with_integrated(
+        crate::runtime::installed().map(AsRef::as_ref),
+        integrated.as_deref(),
+    )
 }
 
 /// The report a screen reads from one runtime, or nothing without one.
@@ -21,8 +30,31 @@ fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
     Some(render(&runtime?.profiling_report()))
 }
 
+/// Snapshots both runtimes only when a screen requests a report.
+fn document_with_integrated(
+    runtime: Option<&LoaderRuntime>,
+    integrated: Option<&LoaderRuntime>,
+) -> Option<String> {
+    let runtime = runtime?;
+    let Some(integrated) = integrated else {
+        return document_of(Some(runtime));
+    };
+    Some(render_with_integrated(
+        &runtime.profiling_report(),
+        Some(&integrated.profiling_report()),
+    ))
+}
+
 /// Encodes measurements alongside their attribution and support qualifications.
 fn render(report: &ProfilingReport) -> String {
+    render_with_integrated(report, None)
+}
+
+/// Adds server rows without merging their costs or changing client header semantics.
+fn render_with_integrated(
+    report: &ProfilingReport,
+    integrated: Option<&ProfilingReport>,
+) -> String {
     let mut out = String::new();
     field(&mut out, VERSION);
     flag(&mut out, report.is_on());
@@ -36,9 +68,24 @@ fn render(report: &ProfilingReport) -> String {
         usize::try_from(report.slow_callback().as_micros()).unwrap_or(usize::MAX),
     );
 
-    count(&mut out, report.mods().len());
-    for entry in report.mods() {
-        field(&mut out, entry.mod_id.as_str());
+    count(
+        &mut out,
+        report.mods().len() + integrated.map_or(0, |server| server.mods().len()),
+    );
+    let mut label = String::new();
+    for (entry, server) in report.mods().iter().map(|entry| (entry, false)).chain(
+        integrated
+            .into_iter()
+            .flat_map(|report| report.mods().iter().map(|entry| (entry, true))),
+    ) {
+        if server {
+            label.clear();
+            write!(label, "{} [integrated-server]", entry.mod_id)
+                .expect("writing into a String cannot fail");
+            field(&mut out, &label);
+        } else {
+            field(&mut out, entry.mod_id.as_str());
+        }
         // Totals may exceed the Java reader's int-sized count type.
         field(&mut out, &entry.cost.inclusive_nanos.to_string());
         field(&mut out, &entry.cost.hook_calls().to_string());
@@ -49,9 +96,20 @@ fn render(report: &ProfilingReport) -> String {
     }
 
     let accuracy = ProfilingReport::attribution_accuracy();
-    count(&mut out, accuracy.len());
+    count(&mut out, accuracy.len() + usize::from(integrated.is_some()));
     for sentence in accuracy {
         field(&mut out, sentence);
+    }
+    if let Some(server) = integrated {
+        label.clear();
+        write!(
+            label,
+            "[integrated-server] {} ticks; profiling {}. Header tick count and slow-callback threshold describe the client; server rows retain independent costs.",
+            server.ticks(),
+            if server.is_on() { "on" } else { "off" },
+        )
+        .expect("writing into a String cannot fail");
+        field(&mut out, &label);
     }
 
     count(&mut out, Metric::ALL.len());
@@ -125,14 +183,18 @@ mod tests {
     }
 
     fn running(profiler: Profiler) -> Arc<LoaderRuntime> {
+        running_on(profiler, Side::Client)
+    }
+
+    fn running_on(profiler: Profiler, side: Side) -> Arc<LoaderRuntime> {
         let entry = LifecycleEntry {
             mod_id: mod_id("example_mod"),
-            sides: SideSet::new([Side::Client]).expect("one side"),
+            sides: SideSet::new([side]).expect("one side"),
             requirement: Requirement::Required,
             saved_data_versions: std::collections::BTreeSet::new(),
         };
         let mut machine =
-            LifecycleMachine::new(Side::Client, vec![entry]).expect("a one-mod plan is valid");
+            LifecycleMachine::new(side, vec![entry]).expect("a one-mod plan is valid");
         advance_through(&mut machine, LifecycleState::Running);
         let mods: Vec<Box<dyn HostMod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
         Arc::new(LoaderRuntime::with_observers(
@@ -216,5 +278,48 @@ mod tests {
                 "the accuracy statement did not cross whole"
             );
         }
+    }
+
+    #[test]
+    fn integrated_costs_keep_side_identity_and_client_tick_header() {
+        let client = running(Profiler::on(Duration::from_secs(1)));
+        let server = running_on(Profiler::on(Duration::from_secs(1)), Side::IntegratedServer);
+        client.observe(&target("client.tick"), &[]);
+        server.observe(&target("server.tick-integrated"), &[]);
+        server.observe(&target("server.tick-integrated"), &[]);
+        let read = fields(
+            &super::document_with_integrated(Some(&client), Some(&server))
+                .expect("client installed"),
+        );
+
+        assert_eq!(read[0], "1", "the wire version is unchanged");
+        assert_eq!(
+            read[3],
+            client.profiling_report().ticks().to_string(),
+            "header retains client ticks rather than summing two runtimes",
+        );
+        assert_eq!(
+            read[5], "2",
+            "the same mod on two sides is not deduplicated"
+        );
+        assert_eq!(read[6], "example_mod");
+        assert_eq!(read[8], "1");
+        assert_eq!(read[13], "example_mod [integrated-server]");
+        assert_eq!(read[15], "2", "server hooks remain independent");
+        let server_summary = format!(
+            "[integrated-server] {} ticks; profiling on.",
+            server.profiling_report().ticks(),
+        );
+        assert!(read.iter().any(|field| field.starts_with(&server_summary)));
+    }
+
+    #[test]
+    fn absent_integrated_runtime_preserves_the_original_report() {
+        let client = running(Profiler::off());
+        assert_eq!(
+            super::document_with_integrated(Some(&client), None),
+            document_of(Some(&client)),
+        );
+        assert_eq!(super::document_with_integrated(None, Some(&client)), None,);
     }
 }

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use ravel_core::{LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
 use ravel_loader::{MANIFEST_FILE, PACKAGES_DIRECTORY, discover};
-use ravel_package::Sha256Digest;
+use ravel_package::{NonEmptyText, PackageManifest, Sha256Digest};
 use sha2::{Digest as _, Sha256};
 
 use super::generate::crate_ident;
@@ -131,6 +131,16 @@ fn install_example(instance: &Path, name: &str) {
     let from = ravel_root().join("examples").join(name);
     let into = instance.join(PACKAGES_DIRECTORY).join(name);
     copy_tree(&from, &into);
+    pin_fixture_to_selected_game(&into);
+}
+
+fn pin_fixture_to_selected_game(root: &Path) {
+    let path = root.join(MANIFEST_FILE);
+    let document = fs::read_to_string(&path).expect("example manifest is readable");
+    let mut manifest = PackageManifest::parse(&document).expect("example manifest is valid");
+    manifest.compatibility.minecraft =
+        vec![NonEmptyText::try_from(game()).expect("the selected game version is not empty")];
+    fs::write(path, manifest.to_json()).expect("example manifest is writable");
 }
 
 fn install_with(
@@ -828,6 +838,15 @@ fn generated_files_keep_odd_directory_and_crate_names_as_data() {
         source.contains(&format!("include_str!({literal})")),
         "{source}"
     );
+}
+
+#[test]
+fn generated_hosts_enter_integrated_composition_through_the_shared_runtime() {
+    let source = super::generate::host_source(&[]);
+    assert!(source.contains(
+        "#[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitializeIntegratedServer\")]"
+    ));
+    assert!(source.contains("ravel_host_runtime::enter_integrated(env, members);"));
 }
 
 #[test]

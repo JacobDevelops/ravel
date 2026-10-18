@@ -327,6 +327,19 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: HostMod>>(
     loaded: &mut LoadedMods<'_, H>,
     delivery: &PacketDelivery,
 ) -> Result<Delivery, DispatchRefused> {
+    deliver_packet_profiled(loaded, delivery, &mut Profiler::off())
+}
+
+/// Routes a packet, attributing its receive callback as event cost to `profiler`.
+///
+/// # Errors
+///
+/// The same as [`deliver_packet`].
+pub fn deliver_packet_profiled<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
+    delivery: &PacketDelivery,
+    profiler: &mut Profiler,
+) -> Result<Delivery, DispatchRefused> {
     let machine = loaded.machine();
     ensure_active(machine)?;
     if delivery.side != machine.side() {
@@ -345,7 +358,9 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: HostMod>>(
     }
 
     to_owner(loaded, delivery.id.owner().clone(), |owner, state, host| {
-        crate::callback(owner, state, || host.receive_packet(delivery))
+        profiler.measure(owner, CallKind::Event, || {
+            crate::callback(owner, state, || host.receive_packet(delivery))
+        })
     })
 }
 
@@ -1379,6 +1394,45 @@ mod tests {
         assert!(delivered.is_complete());
         assert_eq!(second.received, [packet_id("second_mod:ping")]);
         assert_eq!(first.received, Vec::<PacketId>::new());
+    }
+
+    #[test]
+    fn packet_profiling_charges_only_the_receiving_callback() {
+        let mut host = Networked::new("example_mod");
+        let mut machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::DedicatedServer,
+            &mut [&mut host],
+        );
+        let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
+        let packet = delivery(
+            "example_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        let delivered = super::deliver_packet_profiled(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("active host"),
+            &packet,
+            &mut profiler,
+        )
+        .expect("routable packet");
+        assert!(delivered.is_complete());
+        let wrong_side = delivery("example_mod:ping", Direction::ToServer, Side::Client);
+        assert!(matches!(
+            super::deliver_packet_profiled(
+                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                    .expect("active host"),
+                &wrong_side,
+                &mut profiler,
+            ),
+            Err(DispatchRefused::PacketForeignSide { .. })
+        ));
+        let report = profiler.report();
+        assert_eq!(report.mods().len(), 1);
+        assert_eq!(report.mods()[0].cost.event_calls, 1);
+        assert_eq!(report.mods()[0].cost.command_calls, 0);
+        assert_eq!(host.received, [packet_id("example_mod:ping")]);
     }
 
     #[test]

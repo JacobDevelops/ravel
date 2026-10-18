@@ -63,8 +63,7 @@ pub fn ravel_outward_actions<'local>(
 ) -> JString<'local> {
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let payload = crate::runtime::installed()
-                .map(|runtime| runtime.drain_outward())
+            let payload = crate::runtime::with_selected(|runtime| runtime.drain_outward())
                 .unwrap_or_default();
             Ok(env.new_string(payload)?)
         },

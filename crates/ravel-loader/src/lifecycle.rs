@@ -263,6 +263,11 @@ impl LifecycleMachine {
             .count()
     }
 
+    /// Returns every admitted registry key in deterministic registry-key order.
+    pub fn claimed_keys(&self) -> impl Iterator<Item = &RegistryKey> {
+        self.claims.keys()
+    }
+
     /// Returns admitted content in registry-key order when its kind has a behaviour.
     pub fn claimed_content(&self) -> impl Iterator<Item = (RegistryKey, &ModId, ContentBehaviour)> {
         self.claims.iter().filter_map(|(key, owner)| {
@@ -999,6 +1004,27 @@ mod tests {
             vec![ContentKind::Block, ContentKind::Item],
             "a claim carries which registry it belongs in, not just its name"
         );
+    }
+
+    #[test]
+    fn complete_claim_inventory_includes_keys_without_content_behaviour() {
+        let mut machine = machine_at(LifecycleState::Constructed);
+        let expected = [
+            "block:example_mod:copper",
+            "item:example_mod:ingot",
+            "command:example_mod:inspect",
+        ]
+        .map(|key| key.parse().expect("valid key"));
+        for key in expected.iter().rev() {
+            machine
+                .claim_registry_identifier_describing(&id("example_mod"), key, None)
+                .expect("accepted claim");
+        }
+        assert_eq!(
+            machine.claimed_keys().cloned().collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(machine.claimed_content().count(), 2);
     }
 
     #[test]

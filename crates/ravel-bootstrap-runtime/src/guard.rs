@@ -6,6 +6,7 @@ use std::fmt;
 
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::JString;
+#[cfg(ravel_has_refusable_hooks)]
 use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean};
 use jni::{Env, EnvUnowned};
 use ravel_minecraft::{HookTarget, HookValue};
@@ -78,6 +79,7 @@ pub(crate) fn enter<'local, 'handle, Collect>(
     let () = outcome.resolve::<ThrowRuntimeExAndDefault>();
 }
 
+#[cfg(ravel_has_refusable_hooks)]
 /// Delivers a refusable hook, returning true for vetoes and throwing other failures.
 ///
 /// Handle confinement follows the same constraints as [`enter`].
@@ -135,9 +137,17 @@ pub(crate) fn text(env: &Env<'_>, value: &JString<'_>) -> Result<String, HookErr
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use ravel_minecraft::{HookValue, JavaHandle};
+    use ravel_minecraft::{HookId, HookKind, HookTarget, HookValue, JavaHandle};
 
     use super::HookError;
+
+    static GENERATED_SHAPE_TARGET: HookTarget = HookTarget::new(
+        HookId::new("generated.shape-probe"),
+        "com/example/Generated",
+        "probe",
+        "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",
+        HookKind::StaticMethod,
+    );
 
     /// Compile-only witness for generated JNI exports with frame-borrowed handles.
     #[::jni::jni_mangle("dev.ravel.jvm.Hook", "ravelGeneratedShapeProbe")]
@@ -148,23 +158,19 @@ pub(crate) mod tests {
         argument1: ::jni::objects::JObject<'local>,
         argument2: ::jni::objects::JObject<'local>,
     ) {
-        crate::guard::enter(
-            env,
-            &::ravel_minecraft_adapter::pinned::REGISTRY_REGISTER,
-            |_env| {
-                Ok(::std::vec![
-                    HookValue::Handle(JavaHandle::new(
-                        "com/example/resources/ResourceKey",
-                        &argument0,
-                    )),
-                    HookValue::Handle(JavaHandle::new("java/lang/Object", &argument1)),
-                    HookValue::Handle(JavaHandle::new(
-                        "com/example/core/RegistrationInfo",
-                        &argument2,
-                    )),
-                ])
-            },
-        );
+        crate::guard::enter(env, &GENERATED_SHAPE_TARGET, |_env| {
+            Ok(::std::vec![
+                HookValue::Handle(JavaHandle::new(
+                    "com/example/resources/ResourceKey",
+                    &argument0,
+                )),
+                HookValue::Handle(JavaHandle::new("java/lang/Object", &argument1)),
+                HookValue::Handle(JavaHandle::new(
+                    "com/example/core/RegistrationInfo",
+                    &argument2,
+                )),
+            ])
+        });
     }
 
     #[test]

@@ -1,11 +1,11 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use ravel_core::{
     ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet, StructuredFailure,
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, Supplied};
 use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
 use super::{COMMAND, EVENTS, LoaderRuntime, advance_through, environment};
@@ -99,6 +99,18 @@ impl HostMod for Recording {
             .ran
             .push(invocation.clone());
         Ok(())
+    }
+
+    fn receive_packet(
+        &mut self,
+        _delivery: &ravel_network::PacketDelivery,
+    ) -> Result<(), ModError> {
+        match self.behaviour {
+            Behaviour::Fails => Err(ModError::refused("this mod declines every packet")),
+            Behaviour::Panics => panic!("this mod is broken"),
+            Behaviour::Records => Ok(()),
+            Behaviour::Unsupported => Err(ModError::Unsupported),
+        }
     }
 
     fn take_play_requests(&mut self) -> Vec<PlayRequest> {
@@ -563,8 +575,8 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
             machine,
             mods,
             configurations: Vec::new(),
-            resources: ravel_loader::Supplied::default(),
-            installed_packages: std::collections::BTreeMap::new(),
+            resources: Supplied::default(),
+            installed_packages: BTreeMap::new(),
         },
         super::pre_world_report(),
         std::env::temp_dir(),
@@ -586,8 +598,8 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
                 machine,
                 mods,
                 configurations: Vec::new(),
-                resources: ravel_loader::Supplied::default(),
-                installed_packages: std::collections::BTreeMap::new(),
+                resources: Supplied::default(),
+                installed_packages: BTreeMap::new(),
             },
             super::pre_world_report(),
             std::env::temp_dir(),
@@ -801,10 +813,17 @@ fn a_failed_mod_is_failed_once_however_many_ticks_follow() {
 }
 
 #[test]
-fn every_hook_the_runtime_projects_is_one_the_reviewed_inventory_decided_about() {
-    use ravel_minecraft_adapter::pinned::{MINECRAFT_VERSION, NON_GOALS, TARGETS};
+fn every_direct_hook_projection_is_reviewed_for_the_selected_version() {
+    use ravel_minecraft_adapter::pinned::{LEGACY_ADAPTER, MINECRAFT_VERSION, NON_GOALS, TARGETS};
 
     let reviewed: Vec<&str> = TARGETS.iter().map(|target| target.id().as_str()).collect();
+    if LEGACY_ADAPTER {
+        assert!(
+            EVENTS.iter().all(|(hook, _)| !reviewed.contains(hook)) && !reviewed.contains(&COMMAND),
+            "legacy semantic events and commands cross through the legacy adapter, not modern hooks"
+        );
+        return;
+    }
 
     for hook in EVENTS.iter().map(|(hook, _)| *hook).chain([COMMAND]) {
         assert!(
@@ -815,12 +834,13 @@ fn every_hook_the_runtime_projects_is_one_the_reviewed_inventory_decided_about()
 }
 
 #[test]
-fn the_command_seam_is_carried_by_every_version_that_could_decline_it() {
-    use ravel_minecraft_adapter::pinned::TARGETS;
+fn the_command_seam_uses_the_selected_version_contract() {
+    use ravel_minecraft_adapter::pinned::{LEGACY_ADAPTER, TARGETS};
 
-    assert!(
+    assert_eq!(
         TARGETS.iter().any(|target| target.id().as_str() == COMMAND),
-        "{COMMAND} is what makes a command reachable, so no version may decline it"
+        !LEGACY_ADAPTER,
+        "modern versions receive commands through their reviewed hook; legacy uses its explicit adapter"
     );
 }
 
@@ -850,4 +870,334 @@ fn a_host_failure_carries_the_state_the_mod_named_and_no_dependency_outcome() {
         failure.quotes_untrusted_text(),
         "the attribution carries a mod's own words and the report surface redacts them"
     );
+}
+
+#[test]
+fn legacy_observations_do_not_duplicate_checked_tick_and_reload_events() -> Result<(), String> {
+    let (runtime, log) = running(Side::Client, Vec::new(), Behaviour::Records);
+    for raw in [
+        "legacy.client-tick",
+        "legacy.server-tick",
+        "legacy.integrated-server-tick",
+        "legacy.server-world-tick",
+        "legacy.resource-reload",
+        "legacy.atlas-reload",
+    ] {
+        runtime.observe(&target(raw), &[]);
+    }
+    assert_eq!(
+        log.lock().map_err(|error| error.to_string())?.seen,
+        Vec::<GameEvent>::new()
+    );
+    runtime.legacy_event("client-tick")?;
+    runtime.legacy_event("resource-reloaded")?;
+    assert_eq!(
+        log.lock().map_err(|error| error.to_string())?.seen,
+        [GameEvent::ClientTick, GameEvent::ResourcesReloaded]
+    );
+    assert!(runtime.legacy_event("atlas-reloaded").is_err());
+    Ok(())
+}
+
+#[test]
+fn legacy_base_server_tick_is_the_only_simulation_event() -> Result<(), String> {
+    let (runtime, log) = running(Side::IntegratedServer, Vec::new(), Behaviour::Records);
+    runtime.observe(&target("legacy.integrated-server-tick"), &[]);
+    runtime.legacy_event("server-tick")?;
+    runtime.observe(&target("legacy.server-world-tick"), &[]);
+    runtime.observe(&target("legacy.integrated-server-tick"), &[]);
+    assert_eq!(
+        log.lock().map_err(|error| error.to_string())?.seen,
+        [GameEvent::ServerTick]
+    );
+    Ok(())
+}
+
+#[test]
+fn legacy_commands_preserve_arguments_and_refuse_unclaimed_roots() -> Result<(), String> {
+    let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
+    runtime.claim_command_thread()?;
+    runtime.legacy_command("example_mod:warp set home")?;
+    assert!(
+        runtime
+            .legacy_command("example_mod:missing set home")
+            .is_err()
+    );
+    let log = log.lock().map_err(|error| error.to_string())?;
+    assert_eq!(log.ran.len(), 1);
+    assert_eq!(log.ran[0].arguments, ["set", "home"]);
+    Ok(())
+}
+
+#[test]
+fn legacy_packets_reject_untrusted_input_without_poisoning_the_recipient() -> Result<(), String> {
+    let runtime = held(
+        Side::DedicatedServer,
+        Box::new(ravel_test_mod_networking::NetworkingMod::new()),
+    );
+    let ping = ravel_test_mod_networking::Ping::noted(71, "legacy", true);
+    let bytes =
+        ravel_network::encode_from(&ping, Side::Client).map_err(|error| error.to_string())?;
+    runtime.legacy_packet(ravel_test_mod_networking::ping_id(), bytes.clone(), true)?;
+    for payload in [vec![0], [bytes.clone(), vec![0]].concat()] {
+        assert!(
+            runtime
+                .legacy_packet(ravel_test_mod_networking::ping_id(), payload, true)
+                .is_err()
+        );
+    }
+    assert!(
+        runtime
+            .legacy_packet(
+                ravel_network::PacketId::new(
+                    "networking:unknown"
+                        .parse()
+                        .map_err(|error: ravel_core::ContentIdError| error.to_string())?
+                ),
+                bytes.clone(),
+                true,
+            )
+            .is_err()
+    );
+    {
+        let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+        assert_eq!(
+            inner
+                .machine
+                .state(&id("networking"))
+                .map_err(|error| error.to_string())?,
+            LifecycleState::Running
+        );
+        assert!(inner.machine.save_access().is_ok());
+        drop(inner);
+    }
+    runtime.legacy_packet(ravel_test_mod_networking::ping_id(), bytes, true)?;
+    Ok(())
+}
+
+#[test]
+fn peer_selected_packet_contract_direction_cannot_fail_the_owner() -> Result<(), String> {
+    let runtime = held(
+        Side::Client,
+        Box::new(ravel_test_mod_networking::NetworkingMod::new()),
+    );
+    let ping = ravel_test_mod_networking::Ping::noted(72, "misdirected", false);
+    let bytes =
+        ravel_network::encode_from(&ping, Side::Client).map_err(|error| error.to_string())?;
+    assert!(
+        runtime
+            .legacy_packet(ravel_test_mod_networking::ping_id(), bytes, false)
+            .is_err()
+    );
+    let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+    assert_eq!(
+        inner
+            .machine
+            .state(&id("networking"))
+            .map_err(|error| error.to_string())?,
+        LifecycleState::Running
+    );
+    assert!(inner.machine.save_access().is_ok());
+    drop(inner);
+    Ok(())
+}
+
+fn integrated_composition() -> (super::Composition, Arc<Mutex<Log>>) {
+    let (machine, mods, log) = parts(Side::IntegratedServer, Vec::new(), Behaviour::Records);
+    (
+        super::Composition {
+            machine,
+            mods,
+            configurations: Vec::new(),
+            resources: Supplied::default(),
+            installed_packages: BTreeMap::default(),
+        },
+        log,
+    )
+}
+
+#[test]
+fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Result<(), String> {
+    let client_thread_state = super::integrated_installed();
+    for _ in 0..2 {
+        let log = std::thread::spawn(|| -> Result<Arc<Mutex<Log>>, String> {
+            assert!(!super::integrated_installed());
+            let (composition, log) = integrated_composition();
+            super::install_integrated(composition, std::env::temp_dir())
+                .map_err(|error| error.to_string())?;
+            let runtime =
+                super::with_thread_selected(Arc::clone).ok_or("missing thread-owned runtime")?;
+            assert_eq!(
+                runtime
+                    .inner
+                    .lock()
+                    .map_err(|error| error.to_string())?
+                    .machine
+                    .side(),
+                Side::IntegratedServer
+            );
+            runtime.legacy_event("server-tick")?;
+            assert!(runtime.legacy_event("client-tick").is_err());
+            let (duplicate, _) = integrated_composition();
+            assert_eq!(
+                super::install_integrated(duplicate, std::env::temp_dir()),
+                Err(super::InstallError::AlreadyInstalled)
+            );
+            let (mut wrong_side, _) = integrated_composition();
+            let (machine, mods, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+            wrong_side.machine = machine;
+            wrong_side.mods = mods;
+            assert_eq!(
+                super::install_integrated(wrong_side, std::env::temp_dir()),
+                Err(super::InstallError::WrongSide)
+            );
+            Ok(log)
+        })
+        .join()
+        .map_err(|_| "integrated server thread panicked")??;
+        assert_eq!(
+            log.lock().map_err(|error| error.to_string())?.seen,
+            [GameEvent::ServerTick]
+        );
+        assert_eq!(super::integrated_installed(), client_thread_state);
+    }
+    Ok(())
+}
+
+#[test]
+fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), String> {
+    let (runtime, _) = running(Side::Client, Vec::new(), Behaviour::Fails);
+    assert!(runtime.legacy_event("server-tick").is_err());
+    assert!(runtime.legacy_event("client-tick").is_err());
+    assert_eq!(
+        runtime
+            .inner
+            .lock()
+            .map_err(|error| error.to_string())?
+            .machine
+            .state(&id(MOD))
+            .map_err(|error| error.to_string())?,
+        LifecycleState::Failed
+    );
+    assert!(runtime.legacy_event("resource-reloaded").is_ok());
+    Ok(())
+}
+
+#[test]
+fn checked_commands_and_packets_respect_pairing_refusal() -> Result<(), String> {
+    let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
+    runtime.claim_command_thread()?;
+    runtime
+        .inner
+        .lock()
+        .map_err(|error| error.to_string())?
+        .pairing_refused = true;
+    assert!(runtime.legacy_command("example_mod:warp home").is_err());
+    assert!(
+        runtime
+            .legacy_packet(ravel_test_mod_networking::ping_id(), Vec::new(), true)
+            .is_err()
+    );
+    assert_eq!(
+        log.lock().map_err(|error| error.to_string())?.ran,
+        Vec::<CommandInvocation>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn checked_commands_and_packets_charge_the_existing_profiler() -> Result<(), String> {
+    let (runtime, _) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
+    runtime
+        .inner
+        .lock()
+        .map_err(|error| error.to_string())?
+        .profiler = ravel_observability::Profiler::from_switch(true);
+    runtime.claim_command_thread()?;
+    runtime.legacy_command("example_mod:warp home")?;
+    assert_eq!(runtime.profiling_report().mods()[0].cost.command_calls, 1);
+    let packet_runtime = held(
+        Side::DedicatedServer,
+        Box::new(ravel_test_mod_networking::NetworkingMod::new()),
+    );
+    packet_runtime
+        .inner
+        .lock()
+        .map_err(|error| error.to_string())?
+        .profiler = ravel_observability::Profiler::from_switch(true);
+    packet_runtime.legacy_packet(
+        ravel_test_mod_networking::ping_id(),
+        ravel_network::encode(&ravel_test_mod_networking::Ping::new(1)),
+        true,
+    )?;
+    assert_eq!(
+        packet_runtime.profiling_report().mods()[0].cost.event_calls,
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn unsupported_packet_is_invalid_input_not_an_owner_failure() -> Result<(), String> {
+    let (runtime, _) = running(Side::DedicatedServer, Vec::new(), Behaviour::Unsupported);
+    let packet = ravel_network::PacketId::new(
+        format!("{MOD}:packet")
+            .parse()
+            .map_err(|error: ravel_core::ContentIdError| error.to_string())?,
+    );
+    assert!(runtime.legacy_packet(packet, Vec::new(), true).is_err());
+    let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+    assert_eq!(
+        inner
+            .machine
+            .state(&id(MOD))
+            .map_err(|error| error.to_string())?,
+        LifecycleState::Running
+    );
+    assert!(inner.machine.save_access().is_ok());
+    drop(inner);
+    Ok(())
+}
+
+#[test]
+fn packet_callback_failure_is_attributed() -> Result<(), String> {
+    let (runtime, _) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
+    let packet = ravel_network::PacketId::new(
+        format!("{MOD}:packet")
+            .parse()
+            .map_err(|error: ravel_core::ContentIdError| error.to_string())?,
+    );
+    assert!(runtime.legacy_packet(packet, Vec::new(), true).is_err());
+    assert_eq!(
+        runtime
+            .inner
+            .lock()
+            .map_err(|error| error.to_string())?
+            .machine
+            .state(&id(MOD))
+            .map_err(|error| error.to_string())?,
+        LifecycleState::Failed
+    );
+    Ok(())
+}
+
+#[test]
+fn native_command_inventory_binds_the_actual_server_thread() -> Result<(), String> {
+    let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
+    let runtime = Arc::new(runtime);
+    assert!(runtime.legacy_command("example_mod:warp home").is_err());
+    runtime.claim_command_thread()?;
+    runtime.claim_command_thread()?;
+    runtime.legacy_command("example_mod:warp home")?;
+    let remote = Arc::clone(&runtime);
+    std::thread::spawn(move || {
+        assert!(remote.claim_command_thread().is_err());
+        assert!(remote.legacy_command("example_mod:warp home").is_err());
+    })
+    .join()
+    .map_err(|_| "remote command test thread panicked")?;
+    assert_eq!(log.lock().map_err(|error| error.to_string())?.ran.len(), 1);
+    let (client, _) = running(Side::Client, Vec::new(), Behaviour::Records);
+    assert!(client.claim_command_thread().is_err());
+    Ok(())
 }

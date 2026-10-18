@@ -7,11 +7,13 @@
   "compatibility": {
     "ravel": ">=0.0.0, <1.0.0",
     "minecraft": [
+      "1.12.2",
       ">=1.21.0, <27.0.0"
     ]
   },
   "sides": [
     "client",
+    "integrated-server",
     "dedicated-server"
   ],
   "configurationSchemas": [

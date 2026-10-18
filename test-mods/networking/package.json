@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "networking",
+  "version": "0.0.0",
+  "displayName": "Networking",
+  "description": "Original SDK packet contract assertions for legacy live launches.",
+  "compatibility": { "ravel": ">=0.0.0, <1.0.0", "minecraft": ["1.12.2"] },
+  "sides": ["integrated-server", "dedicated-server"],
+  "authors": [{ "name": "Ravel" }],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      { "path": "Cargo.toml", "sha256": "4e615cfe4f909ae00f2a6951c104e912e369636334fc1245a7c3a3fd6aa25701" },
+      { "path": "src/lib.rs", "sha256": "45feeec1ce8b184482130de09aaa07bdfb811ac1fa0ace58621a0d029049a79d" }
+    ]
+  },
+  "provenance": { "record": "provenance.json", "sha256": "476ea486168925b80f1f7c66f622654dc46abbb11dbb15f7cff6145fdaf72e92" }
+}

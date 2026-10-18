@@ -93,13 +93,18 @@ impl CommandInvocation {
 
 /// A mod's refusal, before the host attributes it to the hook it called.
 ///
-/// Mods supply only their explanation. Identity and lifecycle phase are host-owned context.
+/// Mods supply a refusal or decoding error; identity and phase are host-owned context.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModError {
     /// The mod ran and declined, naming why.
     Refused {
         /// The mod's own words, not yet redacted.
         detail: String,
+    },
+    /// Untrusted packet bytes do not satisfy the receiving contract.
+    InvalidPacket {
+        /// The structured decoding refusal, not a failure of the receiving mod.
+        source: ravel_network::WireError,
     },
     /// The mod does not implement the hook.
     Unsupported,
@@ -127,10 +132,35 @@ impl ModError {
     }
 }
 
+impl From<ravel_network::DeliveryRefused> for ModError {
+    fn from(error: ravel_network::DeliveryRefused) -> Self {
+        match error {
+            ravel_network::DeliveryRefused::Malformed { source, .. } => {
+                Self::InvalidPacket { source }
+            }
+            ravel_network::DeliveryRefused::WrongContract { expected, found } => {
+                Self::InvalidPacket {
+                    source: ravel_network::WireError::Identity {
+                        expected: expected.to_string(),
+                        found: found.to_string(),
+                    },
+                }
+            }
+            error @ (ravel_network::DeliveryRefused::WrongSide { .. }
+            | ravel_network::DeliveryRefused::WrongDirection { .. }) => Self::InvalidPacket {
+                source: ravel_network::WireError::InvalidValue {
+                    message: error.to_string(),
+                },
+            },
+        }
+    }
+}
+
 impl fmt::Display for ModError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Refused { detail } => formatter.write_str(detail),
+            Self::InvalidPacket { source } => write!(formatter, "invalid packet: {source}"),
             Self::Unsupported => formatter.write_str("this hook is not implemented"),
         }
     }
@@ -149,6 +179,15 @@ pub enum HostError {
         state: LifecycleState,
         /// What the mod said, in the mod's own words and so not yet redacted.
         detail: String,
+    },
+    /// The receiving mod rejected malformed untrusted packet bytes.
+    InvalidPacket {
+        /// The mod whose packet contract rejected the bytes.
+        mod_id: ModId,
+        /// The owner's phase while decoding.
+        state: LifecycleState,
+        /// The structured decoding refusal.
+        source: ravel_network::WireError,
     },
     /// The mod does not implement the step at all.
     Unsupported {
@@ -176,6 +215,11 @@ impl HostError {
                 state,
                 detail,
             },
+            ModError::InvalidPacket { source } => Self::InvalidPacket {
+                mod_id,
+                state,
+                source,
+            },
             ModError::Unsupported => Self::Unsupported { mod_id, state },
         }
     }
@@ -185,6 +229,7 @@ impl HostError {
     pub const fn mod_id(&self) -> &ModId {
         match self {
             Self::Refused { mod_id, .. }
+            | Self::InvalidPacket { mod_id, .. }
             | Self::Unsupported { mod_id, .. }
             | Self::Panicked { mod_id, .. } => mod_id,
         }
@@ -195,6 +240,7 @@ impl HostError {
     pub const fn state(&self) -> LifecycleState {
         match self {
             Self::Refused { state, .. }
+            | Self::InvalidPacket { state, .. }
             | Self::Unsupported { state, .. }
             | Self::Panicked { state, .. } => *state,
         }
@@ -211,6 +257,15 @@ impl fmt::Display for HostError {
             } => write!(
                 formatter,
                 "`{mod_id}` refused to enter `{}`: {detail}",
+                state.as_str()
+            ),
+            Self::InvalidPacket {
+                mod_id,
+                state,
+                source,
+            } => write!(
+                formatter,
+                "`{mod_id}` rejected a packet while `{}`: {source}",
                 state.as_str()
             ),
             Self::Unsupported { mod_id, state } => write!(
@@ -237,9 +292,9 @@ impl StructuredFailure for HostError {
         self.state()
     }
 
-    /// Only a mod's refusal detail contains untrusted text.
+    /// Mod refusal details and decoded packet fields may contain untrusted text.
     fn quotes_untrusted_text(&self) -> bool {
-        matches!(self, Self::Refused { .. })
+        matches!(self, Self::Refused { .. } | Self::InvalidPacket { .. })
     }
 }
 
@@ -596,7 +651,8 @@ mod tests {
     use std::borrow::Cow;
 
     use ravel_core::{
-        ContentKind, FailureKind, LifecycleState, ModId, Redaction, RegistryKey, StructuredFailure,
+        ContentKind, FailureKind, LifecycleState, ModId, Redaction, RegistryKey, Side,
+        StructuredFailure,
     };
 
     use super::{HostError, HostMod, ModError, Registrar, RegistrationRefused};
@@ -671,6 +727,74 @@ mod tests {
         Registering {
             id,
             declaration: Ok(Some(declaration)),
+        }
+    }
+
+    #[test]
+    fn malformed_packets_retain_typed_source_and_host_attribution() {
+        let source = ravel_network::WireError::NotABool { byte: 3 };
+        let refusal = ModError::InvalidPacket {
+            source: source.clone(),
+        };
+        assert_eq!(refusal.to_string(), format!("invalid packet: {source}"));
+        let owner = "example_mod".parse().expect("valid owner");
+        let failure = refusal.with_context(owner, LifecycleState::Running);
+        assert!(failure.quotes_untrusted_text());
+        assert_eq!(failure.state(), LifecycleState::Running);
+        assert_eq!(failure.mod_id().as_str(), "example_mod");
+        assert!(matches!(
+            failure,
+            HostError::InvalidPacket { source: actual, .. } if actual == source
+        ));
+    }
+
+    #[test]
+    fn packet_conversion_keeps_every_peer_selected_contract_refusal_nonfatal() {
+        use ravel_network::{DeliveryRefused, Direction, PacketId, WireError};
+
+        let expected = PacketId::new("example_mod:ping".parse().expect("valid id"));
+        let found = PacketId::new("example_mod:other".parse().expect("valid id"));
+        assert_eq!(
+            ModError::from(DeliveryRefused::Malformed {
+                id: expected.clone(),
+                source: WireError::NotUtf8,
+            }),
+            ModError::InvalidPacket {
+                source: WireError::NotUtf8
+            }
+        );
+        assert_eq!(
+            ModError::from(DeliveryRefused::WrongContract {
+                expected: expected.clone(),
+                found: found.clone(),
+            }),
+            ModError::InvalidPacket {
+                source: WireError::Identity {
+                    expected: expected.to_string(),
+                    found: found.to_string(),
+                },
+            }
+        );
+        for error in [
+            DeliveryRefused::WrongSide {
+                id: expected.clone(),
+                direction: Direction::ToServer,
+                side: Side::Client,
+            },
+            DeliveryRefused::WrongDirection {
+                id: expected,
+                expected: Direction::ToServer,
+                found: Direction::ToClient,
+            },
+        ] {
+            assert_eq!(
+                ModError::from(error.clone()),
+                ModError::InvalidPacket {
+                    source: WireError::InvalidValue {
+                        message: error.to_string()
+                    },
+                }
+            );
         }
     }
 

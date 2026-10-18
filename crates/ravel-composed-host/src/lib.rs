@@ -7,8 +7,11 @@ use jni::EnvUnowned;
 use jni::objects::JClass;
 use ravel_core::Side;
 use ravel_host_runtime::Member;
+use ravel_test_mod_audio::AudioMod;
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
+use ravel_test_mod_commands::CommandsMod;
 use ravel_test_mod_configuration::ConfigurationMod;
+use ravel_test_mod_networking::NetworkingMod;
 use ravel_test_mod_registries::RegistriesMod;
 use ravel_test_mod_saved_data::SavedDataMod;
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
@@ -21,9 +24,12 @@ const SAVED_DATA_PACKAGE: &str = include_str!("../../../test-mods/saved-data/pac
 const CLIENT_ONLY_PACKAGE: &str = include_str!("../../../test-mods/client-only/package.json");
 const SERVER_ONLY_PACKAGE: &str = include_str!("../../../test-mods/server-only/package.json");
 const REGISTRIES_PACKAGE: &str = include_str!("../../../test-mods/registries/package.json");
+const COMMANDS_PACKAGE: &str = include_str!("../../../test-mods/commands/package.json");
+const NETWORKING_PACKAGE: &str = include_str!("../../../test-mods/networking/package.json");
+const AUDIO_PACKAGE: &str = include_str!("../../../test-mods/audio/package.json");
 
 fn members(side: Side) -> Vec<Member> {
-    vec![
+    let mut members = vec![
         Member {
             package: CONFIGURATION_PACKAGE.to_owned(),
             host: Box::new(ConfigurationMod::new()),
@@ -44,7 +50,22 @@ fn members(side: Side) -> Vec<Member> {
             package: SERVER_ONLY_PACKAGE.to_owned(),
             host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
         },
-    ]
+    ];
+    if ravel_host_runtime::LEGACY_ADAPTER {
+        members.push(Member {
+            package: COMMANDS_PACKAGE.to_owned(),
+            host: Box::new(CommandsMod::new()),
+        });
+        members.push(Member {
+            package: NETWORKING_PACKAGE.to_owned(),
+            host: Box::new(NetworkingMod::new()),
+        });
+        members.push(Member {
+            package: AUDIO_PACKAGE.to_owned(),
+            host: Box::new(AudioMod::new()),
+        });
+    }
+    members
 }
 
 /// Constructs and drives this source-composed mod set for one launch.
@@ -65,6 +86,27 @@ pub fn ravel_initialize<'local>(
     profiling_requested: jni::sys::jboolean,
 ) {
     ravel_host_runtime::enter(env, side, profiling_requested, members);
+}
+
+/// Starts a fresh composition for the integrated server's own thread and side.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitializeIntegratedServer")]
+pub fn ravel_initialize_integrated_server<'local>(env: EnvUnowned<'local>, _class: JClass<'local>) {
+    ravel_host_runtime::enter_integrated(env, members);
+}
+
+/// Exposes original fixture receipts only to the composed host's live packet test.
+#[jni::jni_mangle("dev.ravel.jvm.LegacyPacketLive", "receipts")]
+pub fn legacy_packet_receipts<'local>(
+    _env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    to_server: jni::sys::jboolean,
+) -> jni::sys::jlong {
+    let count = if to_server == jni::sys::JNI_FALSE {
+        ravel_test_mod_client_only::accepted_packets()
+    } else {
+        ravel_test_mod_networking::accepted_packets()
+    };
+    count.try_into().unwrap_or(jni::sys::jlong::MAX)
 }
 
 #[cfg(test)]
@@ -148,6 +190,37 @@ mod tests {
     }
 
     #[test]
+    fn integrated_composition_has_its_own_world_owners_and_legacy_contracts() -> Result<(), String>
+    {
+        let game = directory("integrated-world-owners");
+        let Composition { machine, .. } =
+            compose(&game, Side::IntegratedServer).map_err(|error| error.to_string())?;
+        for owner in [owner(), saved_owner(), server_owner(), registries_owner()] {
+            assert_eq!(
+                machine.state(&owner),
+                Ok(LifecycleState::Running),
+                "{owner}"
+            );
+        }
+        assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Resolved));
+        let commands: Vec<_> = machine
+            .claimed_keys()
+            .filter(|key| key.kind() == ravel_core::ContentKind::Command)
+            .map(|key| key.id().to_string())
+            .collect();
+        if ravel_host_runtime::LEGACY_ADAPTER {
+            assert_eq!(commands, ["commands:warp", "commands:waypoint"]);
+            let networking = "networking"
+                .parse::<ModId>()
+                .map_err(|error| error.to_string())?;
+            assert_eq!(machine.state(&networking), Ok(LifecycleState::Running));
+        } else {
+            assert_eq!(commands, Vec::<String>::new());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn the_server_only_member_is_admitted_and_parked_on_the_client() {
         let game = directory("client");
         let Composition { machine, mods, .. } =
@@ -208,7 +281,14 @@ mod tests {
         );
 
         let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
-        assert_eq!(driven.len(), 5);
+        assert_eq!(
+            driven.len(),
+            if ravel_host_runtime::LEGACY_ADAPTER {
+                8
+            } else {
+                5
+            }
+        );
         for id in [
             owner(),
             saved_owner(),
@@ -225,6 +305,64 @@ mod tests {
             .map(LayeredConfiguration::owner)
             .collect();
         assert_eq!(configured, [&client_owner(), &owner(), &saved_owner()]);
+    }
+
+    #[test]
+    fn legacy_audio_is_admitted_as_a_real_supplied_vanilla_event_alias() -> Result<(), String> {
+        let game = directory("audio-resources");
+        let composition = compose(&game, Side::Client).map_err(|error| error.to_string())?;
+        let path = "assets/audio/sounds.json"
+            .to_owned()
+            .try_into()
+            .map_err(|error: ravel_core::RelativePathError| error.to_string())?;
+        if ravel_host_runtime::LEGACY_ADAPTER {
+            assert_eq!(
+                composition.resources.bytes(&path),
+                Some(
+                    include_bytes!("../../../test-mods/audio/assets/audio/sounds.json").as_slice()
+                )
+            );
+            let audio = "audio"
+                .parse()
+                .map_err(|error: ravel_core::ModIdError| error.to_string())?;
+            assert_eq!(
+                composition.machine.state(&audio),
+                Ok(LifecycleState::Running)
+            );
+        } else {
+            assert!(composition.resources.bytes(&path).is_none());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn both_server_compositions_supply_the_recipe_for_their_real_claimed_item() -> Result<(), String>
+    {
+        let path = "assets/registries/recipes/probe.json"
+            .to_owned()
+            .try_into()
+            .map_err(|error: ravel_core::RelativePathError| error.to_string())?;
+        for side in [Side::DedicatedServer, Side::IntegratedServer] {
+            let composition =
+                compose(&directory(side.as_str()), side).map_err(|error| error.to_string())?;
+            assert_eq!(
+                composition.resources.bytes(&path),
+                Some(
+                    include_bytes!(
+                        "../../../test-mods/registries/assets/registries/recipes/probe.json"
+                    )
+                    .as_slice()
+                )
+            );
+            assert!(
+                composition
+                    .machine
+                    .claimed_keys()
+                    .any(|key| key.kind() == ravel_core::ContentKind::Item
+                        && key.id().to_string() == "registries:copper")
+            );
+        }
+        Ok(())
     }
 
     #[test]

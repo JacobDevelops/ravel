@@ -22,6 +22,7 @@ ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-minecraft.workspace = true
 ravel-minecraft-adapter.workspace = true
+ravel-network.workspace = true
 ravel-observability.workspace = true
 ravel-save.workspace = true
 semver.workspace = true
@@ -29,6 +30,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 ravel-test-mod-audio.workspace = true
+ravel-test-mod-networking.workspace = true
 ravel-test-mod-saved-data.workspace = true
 
 [lints]

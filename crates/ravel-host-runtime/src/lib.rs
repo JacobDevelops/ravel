@@ -32,6 +32,8 @@ use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
 use semver::Version;
 
+/// Whether declared adapter capabilities select the legacy game surface.
+pub use ravel_bootstrap_runtime::LEGACY_ADAPTER;
 /// Running versions and launch-report environment.
 pub use ravel_bootstrap_runtime::environment;
 
@@ -164,6 +166,30 @@ pub fn enter(
         });
         if let Err(error) = result {
             env.throw(error.redacted())?;
+        }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+}
+
+/// Enters an independent integrated-server composition on its owning game thread.
+pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
+    env.with_env(|env| -> Result<(), LaunchError> {
+        if !ravel_bootstrap_runtime::integrated_installed() {
+            let result = std::env::current_dir()
+                .map_err(LaunchError::CurrentDirectory)
+                .and_then(|directory| {
+                    let composition = compose(
+                        &directory,
+                        Side::IntegratedServer,
+                        members(Side::IntegratedServer),
+                    )?;
+                    ravel_bootstrap_runtime::install_integrated(composition, directory)
+                        .map_err(LaunchError::Install)
+                });
+            if let Err(error) = result {
+                env.throw(error.redacted())?;
+            }
         }
         Ok(())
     })

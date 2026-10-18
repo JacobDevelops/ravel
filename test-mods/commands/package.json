@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "commands",
+  "version": "0.0.0",
+  "displayName": "Commands",
+  "description": "Original SDK command routing assertions for legacy live launches.",
+  "compatibility": { "ravel": ">=0.0.0, <1.0.0", "minecraft": ["1.12.2"] },
+  "sides": ["client", "integrated-server", "dedicated-server"],
+  "authors": [{ "name": "Ravel" }],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      { "path": "Cargo.toml", "sha256": "27c98dd869028f42e604e496a992fea841921d6c8691f854b32050580d654958" },
+      { "path": "src/lib.rs", "sha256": "56faf681cfd527c21a2f86f6e6721fc6ad9ab84c68c4a697a8194a4fe7515a2c" }
+    ]
+  },
+  "provenance": { "record": "provenance.json", "sha256": "9d297f696b56e1e0f8f9c79c95c0213b7f2504c1179d47dca9e9032cfe85bd6b" }
+}

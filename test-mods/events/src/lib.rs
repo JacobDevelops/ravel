@@ -216,6 +216,28 @@ mod tests {
     }
 
     #[test]
+    fn successful_resource_generations_do_not_reset_tick_history() -> Result<(), ravel_sdk::ModError>
+    {
+        let mut events = EventsMod::new();
+        events.enter(LifecycleState::Running)?;
+        for event in [
+            GameEvent::ClientTick,
+            GameEvent::ResourcesReloaded,
+            GameEvent::ClientTick,
+            GameEvent::ResourcesReloaded,
+            GameEvent::ClientTick,
+        ] {
+            events.observe(event)?;
+        }
+        assert_eq!(events.count(GameEvent::ResourcesReloaded), 2);
+        assert_eq!(events.count(GameEvent::ClientTick), 3);
+        assert_eq!(events.count(GameEvent::ServerTick), 0);
+        assert_eq!(events.steps(), [LifecycleState::Running]);
+        assert_eq!(events.observed()[3], GameEvent::ResourcesReloaded);
+        Ok(())
+    }
+
+    #[test]
     fn a_refusing_instance_still_takes_every_lifecycle_step() {
         // A mod that could not reach `Running` could never refuse an event
         // there, so the refusal has to be on the event alone.

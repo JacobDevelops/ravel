@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 use ravel_config::LayeredConfiguration;
 
@@ -116,10 +116,114 @@ pub(crate) fn advance_through(machine: &mut LifecycleMachine, last: ravel_core::
     }
 }
 
-static RUNTIME: OnceLock<Arc<LoaderRuntime>> = OnceLock::new();
+static RUNTIME: OnceLock<(std::thread::ThreadId, ravel_core::Side, Arc<LoaderRuntime>)> =
+    OnceLock::new();
+static INTEGRATED_VIEW: Mutex<Option<Weak<LoaderRuntime>>> = Mutex::new(None);
 
 pub(crate) fn installed() -> Option<&'static Arc<LoaderRuntime>> {
-    RUNTIME.get()
+    RUNTIME.get().map(|(_, _, runtime)| runtime)
+}
+
+thread_local! {
+    static INTEGRATED: std::cell::RefCell<Option<Arc<LoaderRuntime>>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+/// Borrows the runtime selected by side and ownership without cloning its handle.
+pub(crate) fn with_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> Option<T> {
+    if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
+        return installed().map(body);
+    }
+    with_thread_selected(body)
+}
+
+fn with_thread_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> Option<T> {
+    INTEGRATED.with(|slot| {
+        let integrated = slot.borrow();
+        if let Some(runtime) = integrated.as_ref() {
+            return Some(body(runtime));
+        }
+        let (owner, side, runtime) = RUNTIME.get()?;
+        if *side == ravel_core::Side::Client && *owner != std::thread::current().id() {
+            return None;
+        }
+        Some(body(runtime))
+    })
+}
+
+/// Selects an owned handle only when a caller must retain it.
+pub(crate) fn selected() -> Option<Arc<LoaderRuntime>> {
+    with_selected(Arc::clone)
+}
+
+/// Shares integrated diagnostics without transferring server-thread ownership.
+pub(crate) fn integrated_runtime() -> Option<Arc<LoaderRuntime>> {
+    INTEGRATED_VIEW
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(Weak::upgrade)
+}
+
+/// Whether the calling thread already owns its integrated-server composition.
+#[must_use]
+pub fn integrated_installed() -> bool {
+    INTEGRATED.with(|runtime| runtime.borrow().is_some())
+}
+
+/// Installs a composition whose lifetime is the integrated server thread's lifetime.
+///
+/// # Errors
+///
+/// Refuses an already installed server thread or a non-integrated composition.
+pub fn install_integrated(
+    composition: Composition,
+    game_directory: PathBuf,
+) -> Result<(), InstallError> {
+    if composition.machine.side() != ravel_core::Side::IntegratedServer {
+        return Err(InstallError::WrongSide);
+    }
+    INTEGRATED.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_some() {
+            return Err(InstallError::AlreadyInstalled);
+        }
+        let Composition {
+            machine,
+            mods,
+            configurations,
+            resources,
+            installed_packages,
+        } = composition;
+        let launch = LaunchContext::new(
+            machine.side(),
+            game_directory,
+            resources,
+            configurations,
+            installed_packages,
+        );
+        let profiling = installed().is_some_and(|runtime| {
+            runtime
+                .inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .profiler
+                .is_on()
+        });
+        let runtime = Arc::new(LoaderRuntime::with_observers(
+            machine,
+            mods,
+            Profiler::from_switch(profiling),
+            pre_world_report(),
+            launch,
+        ));
+        *INTEGRATED_VIEW
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::downgrade(&runtime));
+        *slot = Some(runtime);
+        Ok(())
+    })
 }
 
 /// Reports whether the process-wide runtime has already been installed.
@@ -146,6 +250,7 @@ pub(crate) struct Inner {
     pub(crate) mods: Vec<Box<dyn HostMod>>,
     profiler: Profiler,
     pairing_refused: bool,
+    command_thread: Option<std::thread::ThreadId>,
     pub(crate) installed_packages: BTreeMap<ravel_core::ModId, Version>,
     pub(crate) persistence: crate::persistence::PersistenceState,
     /// Pre-world failures absent from the lifecycle machine's admitted set.
@@ -156,6 +261,125 @@ pub(crate) struct Inner {
 enum Work {
     Event(GameEvent),
     Command(CommandInvocation),
+}
+
+impl LoaderRuntime {
+    /// Delivers a semantic event only after the Java adapter's success/thread checks.
+    pub(crate) fn legacy_event(&self, kind: &str) -> Result<(), String> {
+        let event = match kind {
+            "client-tick" => GameEvent::ClientTick,
+            "server-tick" => GameEvent::ServerTick,
+            "resource-reloaded" => GameEvent::ResourcesReloaded,
+            _ => return Err("unknown legacy semantic event".to_owned()),
+        };
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        if !event.happens_on(inner.machine.side()) {
+            return Err(format!(
+                "event `{kind}` does not happen on {}",
+                inner.machine.side().as_str()
+            ));
+        }
+        inner.deliver_checked(&Work::Event(event))
+    }
+
+    /// Binds command installation after vanilla confirms its owning server thread.
+    pub(crate) fn claim_command_thread(&self) -> Result<(), String> {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        if !inner.machine.side().is_server() {
+            return Err("native commands require the owning server runtime".to_owned());
+        }
+        let thread = std::thread::current().id();
+        let result = match inner.command_thread {
+            Some(owner) if owner != thread => {
+                Err("native commands require the server thread".to_owned())
+            }
+            Some(_) => Ok(()),
+            None => {
+                inner.command_thread = Some(thread);
+                Ok(())
+            }
+        };
+        drop(inner);
+        result
+    }
+
+    /// Routes only commands claimed by the admitted native set.
+    pub(crate) fn legacy_command(&self, typed: &str) -> Result<(), String> {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        if !inner.machine.side().is_server() {
+            return Err("native commands require the owning server runtime".to_owned());
+        }
+        if inner.command_thread != Some(std::thread::current().id()) {
+            return Err("native commands require the initialized server thread".to_owned());
+        }
+        let Some(work) = inner.command(typed) else {
+            return Err("invalid native command".to_owned());
+        };
+        inner.deliver_checked(&work)
+    }
+
+    /// Routes a bounded packet using the SDK's existing owned delivery contract.
+    pub(crate) fn legacy_packet(
+        &self,
+        id: ravel_network::PacketId,
+        payload: Vec<u8>,
+        to_server: bool,
+    ) -> Result<(), String> {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        if inner.pairing_refused {
+            return Err("the installed host set is incomplete".to_owned());
+        }
+        let direction = if to_server {
+            ravel_network::Direction::ToServer
+        } else {
+            ravel_network::Direction::ToClient
+        };
+        let packet =
+            ravel_network::PacketDelivery::new(id, direction, inner.machine.side(), payload);
+        let Inner {
+            machine,
+            mods,
+            profiler,
+            pairing_refused,
+            report,
+            ..
+        } = &mut *inner;
+        let mut loaded = match LoadedMods::new(machine, mods) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                *pairing_refused = true;
+                report.refuse(
+                    &ravel_observability::Subject::of(error.mod_id().clone()),
+                    &error,
+                );
+                return Err(error.to_string());
+            }
+        };
+        let delivery = ravel_loader::deliver_packet_profiled(&mut loaded, &packet, profiler)
+            .map_err(|error| error.to_string())?;
+        if let Some((owner, failure)) = delivery.failed_by().zip(delivery.failure())
+            && !matches!(
+                failure,
+                ravel_host_api::HostError::InvalidPacket { .. }
+                    | ravel_host_api::HostError::Unsupported { .. }
+            )
+            && let Err(error) = inner.record_failure(
+                owner,
+                failure,
+                Some(FailureSurface::Packet(packet.id.to_string())),
+            )
+        {
+            inner
+                .report
+                .refuse(&ravel_observability::Subject::of(owner.clone()), &error);
+        }
+        inner.carry_outward();
+        let result = delivery
+            .failure()
+            .map_or(Ok(()), |error| Err(error.to_string()));
+        drop(inner);
+        result
+    }
 }
 
 impl LoaderRuntime {
@@ -191,6 +415,7 @@ impl LoaderRuntime {
                 mods,
                 profiler,
                 pairing_refused: false,
+                command_thread: None,
                 persistence: crate::persistence::PersistenceState::default(),
                 report,
                 outward: Vec::new(),
@@ -296,6 +521,8 @@ pub enum InstallError {
     AlreadyInstalled,
     /// The observer registry's write lock is poisoned.
     RegistryUnavailable,
+    /// A non-server composition was supplied for integrated installation.
+    WrongSide,
 }
 
 impl std::fmt::Display for InstallError {
@@ -303,6 +530,7 @@ impl std::fmt::Display for InstallError {
         formatter.write_str(match self {
             Self::AlreadyInstalled => "the loader runtime is already installed",
             Self::RegistryUnavailable => "the hook registry is unavailable",
+            Self::WrongSide => "integrated installation requires the integrated-server side",
         })
     }
 }
@@ -329,6 +557,7 @@ pub fn install(
         resources,
         installed_packages,
     } = composition;
+    let side = machine.side();
     let launch = LaunchContext::new(
         machine.side(),
         game_directory,
@@ -341,7 +570,7 @@ pub fn install(
     ));
     crate::dispatch::register_with(Box::new(Shared(Arc::clone(&runtime))), || {
         RUNTIME
-            .set(runtime)
+            .set((std::thread::current().id(), side, runtime))
             .map_err(|_| InstallError::AlreadyInstalled)
     })
 }
@@ -391,6 +620,40 @@ impl Inner {
             self.machine.side(),
             rest.split_whitespace().map(str::to_owned).collect(),
         )))
+    }
+
+    fn deliver_checked(&mut self, work: &Work) -> Result<(), String> {
+        if self.pairing_refused {
+            return Err("the installed host set is incomplete".to_owned());
+        }
+        let mut loaded = LoadedMods::new(&mut self.machine, &mut self.mods).map_err(|error| {
+            self.pairing_refused = true;
+            self.report.refuse(
+                &ravel_observability::Subject::of(error.mod_id().clone()),
+                &error,
+            );
+            error.to_string()
+        })?;
+        let delivered = match work {
+            Work::Event(event) => broadcast_profiled(&mut loaded, *event, &mut self.profiler),
+            Work::Command(invocation) => {
+                route_profiled(&mut loaded, invocation, &mut self.profiler)
+            }
+        };
+        let delivery = match delivered {
+            Ok(delivery) => delivery,
+            Err(ravel_loader::DispatchRefused::NotReacting { .. })
+                if matches!(work, Work::Event(_)) =>
+            {
+                return Ok(());
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        self.record(&delivery, work);
+        self.carry_outward();
+        delivery
+            .failure()
+            .map_or(Ok(()), |error| Err(error.to_string()))
     }
 
     fn deliver(&mut self, work: &Work) {

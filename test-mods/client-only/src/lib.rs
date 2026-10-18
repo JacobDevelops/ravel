@@ -24,6 +24,7 @@
 //! assert!(client.has_overlay());
 //! ```
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
@@ -51,6 +52,14 @@ pub const BUILT_THE_OVERLAY: &str = "built the overlay";
 
 /// What the log says when the overlay was redrawn from a packet.
 pub const REDREW_THE_OVERLAY: &str = "redrew the overlay";
+
+static ACCEPTED_PACKETS: AtomicU64 = AtomicU64::new(0);
+
+/// Counts completed packet callbacks for the original JVM test host's receipts.
+#[must_use]
+pub fn accepted_packets() -> u64 {
+    ACCEPTED_PACKETS.load(Ordering::Relaxed)
+}
 
 /// Shared work log retained by the caller after the host takes ownership.
 ///
@@ -272,12 +281,10 @@ impl Mod for ClientOnlyMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when the delivery is not one [`Overlay`], and
-    /// when this side holds no client-only resources to draw into.
+    /// Returns [`ModError::InvalidPacket`] for malformed, foreign or misdirected input,
+    /// and [`ModError::Refused`] for absent client resources.
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let overlay = delivery
-            .decode::<Overlay>()
-            .map_err(ModError::from_display)?;
+        let overlay = delivery.decode::<Overlay>().map_err(ModError::from)?;
 
         let side = self.side;
         let enabled = self.enabled != Some(false);
@@ -294,6 +301,7 @@ impl Mod for ClientOnlyMod {
         log.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(REDREW_THE_OVERLAY);
+        ACCEPTED_PACKETS.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 }
@@ -449,7 +457,12 @@ mod tests {
             let error = host
                 .receive_packet(&arriving(encode(&overlay()), side))
                 .expect_err("a server side is not an end of a client-bound link");
-            assert!(matches!(error, ModError::Refused { .. }));
+            assert!(matches!(
+                error,
+                ModError::InvalidPacket {
+                    source: WireError::InvalidValue { .. }
+                }
+            ));
             assert!(
                 host.work_done().is_empty(),
                 "`{}` did client-only work",

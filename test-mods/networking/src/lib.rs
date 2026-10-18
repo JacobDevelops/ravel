@@ -27,6 +27,8 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use ravel_sdk::network::{
     Direction, Packet, PacketContract, PacketDelivery, PacketId, PacketReader, PacketWriter,
     WireError,
@@ -38,6 +40,14 @@ pub const MOD_ID: &str = "networking";
 
 /// The version both ends of `networking:ping` speak.
 pub const PING_VERSION: u32 = 1;
+
+static ACCEPTED_PACKETS: AtomicU64 = AtomicU64::new(0);
+
+/// Counts successful decodes for the original JVM test host's receipt boundary.
+#[must_use]
+pub fn accepted_packets() -> u64 {
+    ACCEPTED_PACKETS.load(Ordering::Relaxed)
+}
 
 /// A client request carrying its nonce, player-supplied note, and urgency.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -164,12 +174,12 @@ impl Mod for NetworkingMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when the delivery is not one [`Ping`] — a
-    /// truncated body, bytes left over, another contract, another version, or a
-    /// side that is not an end of this link.
+    /// Returns [`ModError::InvalidPacket`] for malformed bytes, foreign contracts
+    /// or a contract whose side or direction does not match this delivery.
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let ping = delivery.decode::<Ping>().map_err(ModError::from_display)?;
+        let ping = delivery.decode::<Ping>().map_err(ModError::from)?;
         self.answered.push(ping);
+        ACCEPTED_PACKETS.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 }
@@ -266,7 +276,12 @@ mod tests {
         let error = host
             .receive_packet(&arriving(full[..full.len() - 1].to_vec()))
             .expect_err("the body ends early");
-        assert!(matches!(error, ModError::Refused { .. }));
+        assert!(matches!(
+            error,
+            ModError::InvalidPacket {
+                source: WireError::Truncated { .. }
+            }
+        ));
         assert_eq!(host.answered(), []);
 
         // And the whole payload is accepted, so the refusal is about the cut.
@@ -284,7 +299,12 @@ mod tests {
             .receive_packet(&arriving(trailing))
             .expect_err("a byte nothing accounts for");
         assert!(
-            matches!(&error, ModError::Refused { detail, .. } if detail.contains("accounts for")),
+            matches!(
+                &error,
+                ModError::InvalidPacket {
+                    source: WireError::TrailingBytes { unread: 1 }
+                }
+            ),
             "{error}"
         );
     }
@@ -337,7 +357,9 @@ mod tests {
 
         assert!(matches!(
             host.receive_packet(&on_client),
-            Err(ModError::Refused { .. })
+            Err(ModError::InvalidPacket {
+                source: WireError::InvalidValue { .. }
+            })
         ));
         assert_eq!(host.answered(), []);
     }

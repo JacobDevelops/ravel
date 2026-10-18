@@ -1,6 +1,8 @@
 //! Live mod-list and dependency diagnostics encoded for the Java screen.
 //!
 //! Failure details are redacted here; notices were already redacted by the report.
+//! Client screens append labelled integrated-server rows and notices without
+//! exposing that runtime's settings through the client store.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -17,8 +19,10 @@ use crate::wire::{MODS_VERSION, count, field, flag};
 /// Encodes the live mod list, or returns nothing before runtime installation.
 fn document() -> Option<String> {
     let configurable = crate::settings::configurable();
-    document_of(
+    let integrated = crate::runtime::integrated_runtime();
+    document_with_integrated(
         crate::runtime::installed().map(AsRef::as_ref),
+        integrated.as_deref(),
         &configurable,
     )
 }
@@ -26,6 +30,57 @@ fn document() -> Option<String> {
 /// The mod list a screen reads from one runtime, or nothing without one.
 fn document_of(runtime: Option<&LoaderRuntime>, configurable: &BTreeSet<ModId>) -> Option<String> {
     Some(runtime?.mod_document(configurable))
+}
+
+/// Keeps the client settings identity while adding independently attributed server rows.
+fn document_with_integrated(
+    runtime: Option<&LoaderRuntime>,
+    integrated: Option<&LoaderRuntime>,
+    configurable: &BTreeSet<ModId>,
+) -> Option<String> {
+    let runtime = runtime?;
+    let Some(integrated) = integrated else {
+        return document_of(Some(runtime), configurable);
+    };
+    let (client, client_notices) = runtime.mod_view();
+    let (server, server_notices) = integrated.mod_view();
+    let mut out = String::new();
+    field(&mut out, MODS_VERSION);
+    field(&mut out, client.side().as_str());
+    count(
+        &mut out,
+        client.actionable().count() + server.actionable().count(),
+    );
+    count(&mut out, client.entries().len() + server.entries().len());
+    for (index, entry) in client.entries().iter().enumerate() {
+        row(&mut out, index, entry, configurable.contains(&entry.mod_id));
+    }
+    let mut label = String::new();
+    for (index, entry) in server.entries().iter().enumerate() {
+        // The wire's id field is also the display label. Server rows never open
+        // client settings, and are not collapsed into an identically named client mod.
+        label.clear();
+        write!(label, "{} [integrated-server]", entry.mod_id)
+            .expect("writing into a String cannot fail");
+        labelled_row(
+            &mut out,
+            client.entries().len() + index,
+            entry,
+            false,
+            &label,
+        );
+    }
+    count(&mut out, client_notices.len() + server_notices.len());
+    for notice in &client_notices {
+        field(&mut out, notice.text());
+    }
+    for notice in &server_notices {
+        label.clear();
+        write!(label, "[integrated-server] {}", notice.text())
+            .expect("writing into a String cannot fail");
+        field(&mut out, &label);
+    }
+    Some(out)
 }
 
 impl LoaderRuntime {
@@ -52,8 +107,13 @@ impl LoaderRuntime {
 
 /// Writes one row with its one-based position in resolved load order.
 fn row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool) {
+    labelled_row(out, index, entry, configurable, entry.mod_id.as_str());
+}
+
+/// Encodes the unchanged row schema with an explicit display label.
+fn labelled_row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool, label: &str) {
     count(out, index + 1);
-    field(out, entry.mod_id.as_str());
+    field(out, label);
     field(out, entry.state.as_str());
     field(out, requirement_name(entry.requirement));
     flag(out, entry.loads_here);
@@ -428,5 +488,56 @@ mod tests {
 
         let after = fields(&runtime.mod_document(&configurable(&[])));
         assert_eq!(after[9], "true", "the second open sees the failure");
+    }
+
+    #[test]
+    fn integrated_failure_stays_distinct_and_cannot_open_client_settings() {
+        let client = running(machine(vec![entry("broken_mod", Requirement::Required)]));
+        let mut plan = LifecycleMachine::new(
+            Side::IntegratedServer,
+            vec![entry("broken_mod", Requirement::Required)],
+        )
+        .expect("an integrated plan");
+        let mut failure = attribution(LifecycleState::Running, None);
+        failure.surface = Some(FailureSurface::Hook("server.tick".to_owned()));
+        plan.fail(&mod_id("broken_mod"), failure)
+            .expect("tracked mod");
+        let server = noticed(plan, "server composition could not register its command");
+        let read = fields(
+            &super::document_with_integrated(
+                Some(&client),
+                Some(&server),
+                &configurable(&["broken_mod"]),
+            )
+            .expect("client installed"),
+        );
+
+        assert_eq!(&read[..4], &["3", "client", "1", "2"]);
+        assert_eq!(read[5], "broken_mod");
+        assert_eq!(read[9], "false", "client did not fail");
+        assert_eq!(read[10], "true", "client settings retain their identity");
+        assert_eq!(read[13], "broken_mod [integrated-server]");
+        assert_eq!(read[17], "true", "server failure is actionable");
+        assert_eq!(read[18], "false", "server must not open client settings");
+        assert_eq!(read[22], "server.tick");
+        assert_eq!(read[29], "1");
+        assert_eq!(
+            read[30],
+            "[integrated-server] server composition could not register its command",
+        );
+    }
+
+    #[test]
+    fn absent_integrated_runtime_leaves_mod_document_unchanged() {
+        let client = running(machine(vec![entry("base_mod", Requirement::Required)]));
+        let settings = configurable(&["base_mod"]);
+        assert_eq!(
+            super::document_with_integrated(Some(&client), None, &settings),
+            document_of(Some(&client), &settings),
+        );
+        assert_eq!(
+            super::document_with_integrated(None, Some(&client), &settings),
+            None,
+        );
     }
 }

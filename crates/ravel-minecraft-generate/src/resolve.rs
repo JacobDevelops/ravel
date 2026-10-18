@@ -4,9 +4,45 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use super::inputs::{Adapter, Inventory, MappingSource};
+use super::inputs::{Adapter, HookSide, Inventory, MappingSource};
 use super::mapping::Mapping;
 use super::{GenerateError, classfile, jar};
+
+/// Checks shared targets against the official server using the shared runtime namespace.
+pub(crate) fn verify_server_hooks(
+    archive: &jar::Archive,
+    inventory: &Inventory,
+    mapping: &Mapping,
+    client: &[Resolved],
+) -> Result<(), GenerateError> {
+    let shared = Inventory {
+        hooks: inventory
+            .hooks
+            .iter()
+            .filter(|hook| hook.side == HookSide::Shared)
+            .cloned()
+            .collect(),
+        schema_version: inventory.schema_version,
+        minecraft: inventory.minecraft.clone(),
+        non_goals: Vec::new(),
+    };
+    for target in from_jar(archive, &shared, mapping)? {
+        let matched = client.iter().any(|candidate| {
+            candidate.id == target.id
+                && candidate.runtime_class == target.runtime_class
+                && candidate.runtime_member == target.runtime_member
+                && candidate.runtime_descriptor == target.runtime_descriptor
+                && candidate.is_static == target.is_static
+        });
+        if !matched {
+            return Err(GenerateError::Drift(format!(
+                "server hook {} resolves to a different runtime target than the client",
+                target.id
+            )));
+        }
+    }
+    Ok(())
+}
 
 /// A resolved hook's reviewed names for documentation and linked names for target tables.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -651,5 +687,26 @@ mod tests {
             error.to_string().contains("a source that links none"),
             "{error}"
         );
+    }
+}
+
+#[cfg(test)]
+mod server_tests {
+    #[test]
+    fn only_explicit_client_only_hooks_can_be_absent_from_the_server() {
+        let text = "schemaVersion = 1\nminecraft = \"test\"\n\
+                    [[hook]]\nid = \"test\"\nclass = \"example.Client\"\n\
+                    member = \"tick\"\ndescriptor = \"()V\"\n\
+                    kind = \"instance-method\"\ncapability = \"test\"\n";
+        let mut inventory: super::Inventory = toml::from_str(text).expect("shared default");
+        let archive = super::jar::fixture::parse(super::jar::fixture::stored("unused", b""))
+            .expect("server with no client class");
+        let mapping = crate::mapping::Mapping::Identity;
+        super::verify_server_hooks(&archive, &inventory, &mapping, &[])
+            .expect_err("shared missing class is an error");
+        inventory.hooks[0].side = super::HookSide::ClientOnly;
+        super::verify_server_hooks(&archive, &inventory, &mapping, &[])
+            .expect("explicit client-only classification permits absence");
+        assert!(toml::from_str::<super::Inventory>(&format!("{text}side = \"client\"\n")).is_err());
     }
 }

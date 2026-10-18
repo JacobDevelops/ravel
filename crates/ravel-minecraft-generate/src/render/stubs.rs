@@ -2,15 +2,15 @@
 
 use std::fmt::Write as _;
 
-use super::GenerateError;
-use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
-use super::classfile::{java_type, signature, source_name, split};
-use super::inputs::Adapter;
-use super::mapping::Mapping;
-use super::stubs::{self, Member, Stub};
+use crate::GenerateError;
+use crate::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
+use crate::classfile::{java_type, signature, source_name, split};
+use crate::inputs::Adapter;
+use crate::mapping::Mapping;
+use crate::stubs::{self, Member, Stub};
 
 /// Renders a stub under the names the JVM links.
-pub(super) fn stub_java(
+pub(crate) fn stub_java(
     adapter: &Adapter,
     stub: &Stub,
     mapping: &Mapping,

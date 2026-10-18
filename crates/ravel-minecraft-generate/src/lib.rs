@@ -3,6 +3,9 @@
 //! Generates bindings and Java sources from pinned version data.
 //!
 //! Available jars must reproduce the tracked locks; jar-less builds verify their hashes.
+//! [`adapter_facts`] exposes the same typed admission policy to repository tooling,
+//! without loading generation documents or jars. Explicit generation renders once;
+//! repeatability of full composed outputs is covered by public-fixture tests.
 
 mod classfile;
 mod error;
@@ -12,9 +15,8 @@ mod mapping;
 mod render;
 mod resolve;
 mod roles;
-mod screen;
-mod stub_render;
 mod stubs;
+mod templates;
 mod tiny;
 
 #[cfg(test)]
@@ -26,7 +28,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use error::GenerateError;
-pub use inputs::Eligibility;
+pub use inputs::{AdapterFacts, Eligibility, adapter_facts};
 
 /// The reading of the jar this generator performs, as recorded in the lock.
 const EXTRACTOR: &str = "classfile";
@@ -90,7 +92,7 @@ impl OutputLock {
     fn take(root: &Path) -> Result<Self, GenerateError> {
         let path = root.join(OUTPUT_LOCK);
         if let Some(parent) = path.parent() {
-            create(parent)?;
+            create_directory(parent)?;
         }
         let waited = std::time::Instant::now();
         loop {
@@ -249,7 +251,7 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
             )));
         }
     }
-    let mapping = mapping(root, &pinned.adapter)?;
+    let mapping = load_mapping(root, &pinned.adapter)?;
     mapping::verify_reflection(&pinned.surface, &mapping)?;
     let (resolved, stubbed) = resolve_jars(root, &pinned, &mapping)?;
 
@@ -302,7 +304,7 @@ pub fn generate_rust(
 ) -> Result<RustGenerated, GenerateError> {
     let pinned = inputs::pinned(root, selected)?;
     let rendered = compose_checked(root, &pinned)?;
-    create(out)?;
+    create_directory(out)?;
     let bindings = out.join("bindings.rs");
     let exports = out.join("exports.rs");
     write_atomically(&bindings, &rendered.bindings)?;
@@ -336,17 +338,10 @@ fn generate_java_and_inspect<T>(
 }
 
 fn compose_checked(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, GenerateError> {
-    // Mapping selection is shared by both renders, including the Java normalizer
-    // when required. Lock-only builds must still validate their runtime names.
-    let mapping = mapping(root, &pinned.adapter)?;
+    // Lock-only builds must still validate their runtime names.
+    let mapping = load_mapping(root, &pinned.adapter)?;
     mapping::verify_reflection(&pinned.surface, &mapping)?;
-    let rendered = compose(root, pinned, &mapping)?;
-    if rendered != compose(root, pinned, &mapping)? {
-        return Err(GenerateError::Drift(
-            "generating twice produced different bytes".to_owned(),
-        ));
-    }
-    Ok(rendered)
+    compose(root, pinned, &mapping)
 }
 
 /// Resolves the pinned version and renders every artefact from it.
@@ -419,13 +414,13 @@ fn resolve_jars(
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
     let archive = jar::Archive::open(&root.join(&pinned.adapter.inputs.client_jar.path))?;
     if pinned.adapter.is_legacy() {
-        inputs::verify_legacy_class_release(&archive)?;
+        jar::verify_legacy_class_release(&archive)?;
     }
     let resolved = resolve::from_jar(&archive, &pinned.inventory, mapping)?;
     if let Some(input) = &pinned.adapter.inputs.server_jar {
         inputs::verify_input(root, input)?;
         let server = jar::Archive::open(&root.join(&input.path))?;
-        inputs::verify_server_hooks(&server, &pinned.inventory, mapping, &resolved)?;
+        resolve::verify_server_hooks(&server, &pinned.inventory, mapping, &resolved)?;
     }
     let library = pinned
         .adapter
@@ -435,7 +430,7 @@ fn resolve_jars(
         .map(|input| jar::Archive::open(&root.join(&input.path)))
         .transpose()?;
     mapping::verify_reflected_members(&pinned.surface, mapping, &archive)?;
-    inputs::verify_pack_format(&pinned.adapter, &archive)?;
+    jar::verify_pack_format(&pinned.adapter, &archive)?;
     // Hook targets are game members; only stubs may resolve against the library.
     let stubbed = if let Some(library) = &library {
         stubs::from_jar(&[&archive, library], &pinned.seeds, mapping)?
@@ -457,10 +452,10 @@ fn compose_render(
     let shapes = render::shape::shapes(&pinned.inventory, resolved)?;
     let stub_java = stubbed
         .iter()
-        .map(|stub| stub_render::stub_java(&pinned.adapter, stub, mapping))
+        .map(|stub| render::stubs::stub_java(&pinned.adapter, stub, mapping))
         .collect::<Result<Vec<_>, _>>()?;
     let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
-    screen::every_seeded_member_resolves(&roles, stubbed, mapping)?;
+    templates::every_seeded_member_resolves(&roles, stubbed, mapping)?;
     let [screens, stand_ins, drivers, siblings] = sources(root, pinned, &roles, stubbed, mapping)?;
     let harness = [
         ("game", stand_ins),
@@ -502,7 +497,7 @@ fn compose_render(
 }
 
 /// Records each harness source's origin so consumers need not infer it from generated text.
-fn harness_origins(trees: &[(&str, screen::Sources)]) -> String {
+fn harness_origins(trees: &[(&str, templates::Sources)]) -> String {
     let mut lines = BTreeSet::new();
     for (tree, sources) in trees {
         for (name, overridden) in &sources.origins {
@@ -514,7 +509,7 @@ fn harness_origins(trees: &[(&str, screen::Sources)]) -> String {
 }
 
 /// Records aliases, including an empty file when no names need restoring.
-fn harness_aliases(trees: &[(&str, screen::Sources)]) -> String {
+fn harness_aliases(trees: &[(&str, templates::Sources)]) -> String {
     let mut lines = BTreeSet::new();
     for (_, sources) in trees {
         for (written, linked) in &sources.aliases {
@@ -531,9 +526,9 @@ fn sources(
     roles: &roles::Roles,
     stubs: &[stubs::Stub],
     mapping: &mapping::Mapping,
-) -> Result<[screen::Sources; 4], GenerateError> {
-    let render = |tree: &screen::Tree<'_>, name_space| {
-        screen::render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
+) -> Result<[templates::Sources; 4], GenerateError> {
+    let render = |tree: &templates::Tree<'_>, name_space| {
+        templates::render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
     };
     let legacy = pinned.adapter.is_legacy();
     let screens = if legacy {
@@ -541,46 +536,46 @@ fn sources(
     } else {
         root.join(SCREEN_TEMPLATES)
     };
-    let screen_tree = screen::Tree {
+    let screen_tree = templates::Tree {
         shared: &screens,
         overrides: screens.join(&pinned.adapter.minecraft),
-        purpose: screen::Purpose::Screen,
+        purpose: templates::Purpose::Screen,
         stand_ins: false,
     };
     if legacy {
-        let name_space = screen::name_space(&screen_tree, roles, mapping)?;
+        let name_space = templates::name_space(&screen_tree, roles, mapping)?;
         let screens = render(&screen_tree, name_space)?;
         return Ok([
             screens,
-            screen::Sources::default(),
-            screen::Sources::default(),
-            screen::Sources::default(),
+            templates::Sources::default(),
+            templates::Sources::default(),
+            templates::Sources::default(),
         ]);
     }
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
     let game = root.join(HARNESS_STAND_IN_TEMPLATES);
     let driver = root.join(HARNESS_DRIVER_TEMPLATES);
     let sibling = root.join(HARNESS_SIBLING_TEMPLATES);
-    let stand_ins = screen::Tree {
+    let stand_ins = templates::Tree {
         shared: &game,
         overrides: harness.join("game"),
-        purpose: screen::Purpose::StandIn,
+        purpose: templates::Purpose::StandIn,
         stand_ins: true,
     };
-    let name_space = screen::name_space(&stand_ins, roles, mapping)?;
+    let name_space = templates::name_space(&stand_ins, roles, mapping)?;
     let trees = [
         screen_tree,
         stand_ins,
-        screen::Tree {
+        templates::Tree {
             shared: &driver,
             overrides: harness.join("driver"),
-            purpose: screen::Purpose::Driver,
+            purpose: templates::Purpose::Driver,
             stand_ins: true,
         },
-        screen::Tree {
+        templates::Tree {
             shared: &sibling,
             overrides: harness.join("sibling"),
-            purpose: screen::Purpose::Screen,
+            purpose: templates::Purpose::Screen,
             stand_ins: true,
         },
     ];
@@ -588,7 +583,7 @@ fn sources(
     for tree in &trees {
         rendered.push(render(tree, name_space)?);
     }
-    screen::every_added_template_is_reached(&rendered.iter().collect::<Vec<_>>())?;
+    templates::every_added_template_is_reached(&rendered.iter().collect::<Vec<_>>())?;
     rendered
         .try_into()
         .map_err(|_| GenerateError::Input("one source set per template tree".to_owned()))
@@ -616,7 +611,7 @@ fn write_java(
     let screen_directory = root.join(SCREEN_OUTPUT);
     let harness_directory = root.join(HARNESS_OUTPUT);
     let java_root = root.join(JAVA_ROOT);
-    empty(&[
+    remove_output_trees(&[
         java_root.as_path(),
         stub_directory.as_path(),
         screen_directory.as_path(),
@@ -628,7 +623,7 @@ fn write_java(
         screen_directory.as_path(),
         harness_directory.as_path(),
     ] {
-        create(directory)?;
+        create_directory(directory)?;
     }
 
     let java = java_directory.join("Hook.java");
@@ -680,7 +675,7 @@ fn write_sources(
     for (relative, content) in sources {
         let path = directory.join(relative);
         if let Some(parent) = path.parent() {
-            create(parent)?;
+            create_directory(parent)?;
         }
         place(&path, content, digest)?;
     }
@@ -719,7 +714,7 @@ fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendere
 }
 
 /// Removes every output tree named, so this build writes only its own bytes.
-fn empty(directories: &[&Path]) -> Result<(), GenerateError> {
+fn remove_output_trees(directories: &[&Path]) -> Result<(), GenerateError> {
     for directory in directories {
         if directory.is_dir() {
             fs::remove_dir_all(directory).map_err(|error| {
@@ -734,7 +729,7 @@ fn empty(directories: &[&Path]) -> Result<(), GenerateError> {
 }
 
 /// Checks the mapping hash before parsing names or opening archives.
-fn mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, GenerateError> {
+fn load_mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, GenerateError> {
     if adapter.mapping_source == inputs::MappingSource::FeatherTinyMappings {
         return tiny::read(root, adapter);
     }
@@ -748,7 +743,7 @@ fn mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, G
     mapping::Mapping::read(adapter.mapping_source, &text)
 }
 
-fn create(directory: &Path) -> Result<(), GenerateError> {
+fn create_directory(directory: &Path) -> Result<(), GenerateError> {
     fs::create_dir_all(directory).map_err(|error| {
         GenerateError::Input(format!("cannot create {}: {error}", directory.display()))
     })
@@ -781,8 +776,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        GenerateError, LIBRARY_PROPERTY, LOCK_STALE, OUTPUT_LOCK, OutputLock, SELECTION,
-        generate_java_and_inspect, generate_rust, inputs, selection,
+        GenerateError, LIBRARY_PROPERTY, LOCK_POLL_INTERVAL, LOCK_STALE, OUTPUT_LOCK, OutputLock,
+        SELECTION, generate_java_and_inspect, generate_rust, inputs, selection,
     };
 
     /// Test fixture combining the independently owned Rust and Java outputs.
@@ -951,6 +946,16 @@ mod tests {
             )
             .expect("the staged template should be writable");
         }
+    }
+
+    #[test]
+    fn public_fixture_composes_identical_full_outputs_twice() {
+        let (root, version) = staged_second_version("deterministic-composition");
+        let pinned = inputs::pinned(&root, Some(&version)).expect("public fixture version");
+        let first = super::compose_checked(&root, &pinned).expect("first composition");
+        let second = super::compose_checked(&root, &pinned).expect("second composition");
+        assert_eq!(first, second, "every composed output must be deterministic");
+        cleanup(&root);
     }
 
     #[test]
@@ -1191,6 +1196,60 @@ mod tests {
         assert!(!path.exists(), "nothing recreated the file");
 
         std::mem::forget(held);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn a_stale_regular_file_lock_is_reclaimed() {
+        let root = output("stale-file-lock");
+        let held = OutputLock::take(&root).expect("initial holder");
+        let path = root.join(OUTPUT_LOCK);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .and_then(|file| file.set_modified(std::time::SystemTime::now() - LOCK_STALE * 2))
+            .expect("age abandoned lock");
+        std::mem::forget(held);
+        let replacement = OutputLock::take(&root).expect("reclaim stale regular file");
+        let age = std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .expect("fresh lock timestamp")
+            .elapsed()
+            .expect("timestamp is not in the future");
+        assert!(age < LOCK_STALE, "{age:?}");
+        drop(replacement);
+        assert!(!path.exists());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn a_second_output_lock_waits_for_the_live_holder() {
+        let root = output("contended-lock");
+        let held = OutputLock::take(&root).expect("first holder");
+        std::thread::scope(|scope| {
+            let (started, starting) = std::sync::mpsc::sync_channel(0);
+            let (finished, finishing) = std::sync::mpsc::channel();
+            let root = &root;
+            let waiter = scope.spawn(move || {
+                started.send(()).expect("announce waiter");
+                let second = OutputLock::take(root);
+                finished.send(second).expect("return second holder");
+            });
+            starting.recv().expect("waiter started");
+            let early = finishing.recv_timeout(LOCK_POLL_INTERVAL * 4);
+            drop(held);
+            assert!(
+                matches!(early, Err(std::sync::mpsc::RecvTimeoutError::Timeout)),
+                "a live holder cannot be reclaimed"
+            );
+            let second = finishing
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("waiter completes after release")
+                .expect("second holder");
+            drop(second);
+            waiter.join().expect("waiter thread");
+        });
+        assert!(!root.join(OUTPUT_LOCK).exists());
         cleanup(&root);
     }
 
@@ -2418,7 +2477,8 @@ mod tests {
             upstream: None,
         });
 
-        let error = super::mapping(root, &adapter).expect_err("a drifted mapping must be refused");
+        let error =
+            super::load_mapping(root, &adapter).expect_err("a drifted mapping must be refused");
 
         assert!(matches!(error, GenerateError::Drift(_)), "{error}");
         assert!(error.to_string().contains("hooks.toml"), "{error}");

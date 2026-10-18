@@ -13,7 +13,7 @@ pub(crate) const TITLE_MENU_SEAM: &str = "screen.title-menu-options";
 /// # Errors
 ///
 /// Returns an error if a row is missing, redundant, or declared on another hook.
-pub(super) fn check_title_menu_row(inventory: &Inventory) -> Result<(), GenerateError> {
+pub(super) fn verify_title_menu_row(inventory: &Inventory) -> Result<(), GenerateError> {
     for hook in &inventory.hooks {
         if hook.title_menu_row.is_some() && hook.id != TITLE_MENU_SEAM {
             return Err(GenerateError::Drift(format!(
@@ -49,7 +49,7 @@ pub(super) fn check_title_menu_row(inventory: &Inventory) -> Result<(), Generate
 /// # Errors
 ///
 /// Returns an error if a non-goal is duplicated, has no reason, or is also a hook.
-pub(super) fn check_non_goals(inventory: &Inventory) -> Result<(), GenerateError> {
+pub(super) fn verify_non_goals(inventory: &Inventory) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
     for non_goal in &inventory.non_goals {
         if inventory.hooks.iter().any(|hook| hook.id == non_goal.id) {
@@ -81,7 +81,7 @@ pub(super) fn check_non_goals(inventory: &Inventory) -> Result<(), GenerateError
 /// # Errors
 ///
 /// Returns an error if a class, member, or role is invalid or duplicated.
-pub(super) fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
+pub(super) fn verify_roles(seeds: &Seeds) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
     let mut classes = BTreeSet::new();
     for seed in &seeds.stubs {

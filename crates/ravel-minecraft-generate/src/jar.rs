@@ -1,4 +1,4 @@
-//! Read-only JAR access with sorted names and bounded entry decompression.
+//! Read-only JAR access, bounded decompression, and pinned archive metadata contracts.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, btree_map::Entry};
@@ -12,7 +12,141 @@ use zip::read::{ArchiveOffset, Config, ZipFile, ZipFileEntry};
 use zip::result::{ZipError, ZipResult};
 use zip::unstable::stream::{ZipStreamReader, ZipStreamVisitor};
 
+use serde::Deserialize;
+
 use super::GenerateError;
+use super::inputs::{Adapter, Spelling};
+
+/// Legacy manifests omit Java metadata; the pinned bytecode must prove Java 8.
+pub(crate) fn verify_legacy_class_release(archive: &Archive) -> Result<(), GenerateError> {
+    let mut maximum = None;
+    for name in archive.names().filter(|name| {
+        Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext == "class")
+    }) {
+        let bytes = archive.entry_prefix::<8>(name)?;
+        if bytes[..4] != [0xca, 0xfe, 0xba, 0xbe] {
+            return Err(GenerateError::Extraction(format!(
+                "{name} has no valid class-file version header"
+            )));
+        }
+        let major = u16::from_be_bytes([bytes[6], bytes[7]]);
+        maximum = Some(maximum.map_or(major, |previous: u16| previous.max(major)));
+    }
+    if maximum != Some(52) {
+        return Err(GenerateError::Drift(format!(
+            "legacy-1-12 sourceJavaRelease 8 requires maximum class-file major 52; \
+             pinned client jar states {maximum:?}"
+        )));
+    }
+    Ok(())
+}
+/// Checks the declared pack formats against the pinned jar.
+///
+/// # Errors
+///
+/// Returns an error if the jar's pack formats are missing or inconsistent with the declaration.
+pub(crate) fn verify_pack_format(
+    adapter: &Adapter,
+    archive: &Archive,
+) -> Result<(), GenerateError> {
+    if adapter.is_legacy() {
+        return Ok(());
+    }
+    let text = jar_text(archive, JAR_VERSION)?;
+    let declared = adapter.pack_format;
+    let stated = pack_versions(&text).ok_or_else(|| {
+        GenerateError::Input(format!(
+            "{JAR_VERSION} in the pinned jar states no pack_version, so nothing says which pack \
+             formats this version reads"
+        ))
+    })?;
+    let expected = (
+        declared.resource,
+        declared.resource_minor,
+        declared.data,
+        declared.data_minor,
+    );
+    if stated != expected {
+        return Err(GenerateError::Drift(format!(
+            "the adapter inputs declare packFormat {expected:?} but {JAR_VERSION} in the pinned \
+             jar states {stated:?}, as resource major, resource minor, data major, data minor"
+        )));
+    }
+    verify_spelling(declared.spelling, archive)
+}
+
+/// Checks the declared metadata spelling against a pack in the pinned jar.
+///
+/// # Errors
+///
+/// Returns an error if the jar contains no pack or its metadata uses another spelling.
+fn verify_spelling(spelling: Spelling, archive: &Archive) -> Result<(), GenerateError> {
+    let Some(name) = archive.names().find(|name| name.ends_with(PACK_METADATA)) else {
+        return Err(GenerateError::Input(format!(
+            "the pinned jar ships no {PACK_METADATA} of its own, so nothing says which shape a \
+             pack this version reads is written in"
+        )));
+    };
+    let name = name.to_owned();
+    let text = jar_text(archive, &name)?;
+    if !text.contains(spelling.key()) {
+        return Err(GenerateError::Drift(format!(
+            "the adapter inputs declare packFormat spelling {} but {name} in the pinned jar \
+             carries no {}",
+            spelling.as_str(),
+            spelling.key()
+        )));
+    }
+    Ok(())
+}
+
+/// One named entry of the pinned jar, as text.
+fn jar_text(archive: &Archive, name: &str) -> Result<String, GenerateError> {
+    let bytes = archive.entry(name)?;
+    String::from_utf8(bytes).map_err(|error| {
+        GenerateError::Input(format!("{name} in the pinned jar is not UTF-8: {error}"))
+    })
+}
+
+/// The document every pack, Ravel's included, declares its format in.
+const PACK_METADATA: &str = "pack.mcmeta";
+
+/// The document inside a client jar that states what the build is.
+const JAR_VERSION: &str = "version.json";
+
+/// The resource and data pack formats one jar's `version.json` states.
+fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
+    #[derive(Deserialize)]
+    struct Version {
+        pack_version: PackVersion,
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum PackVersion {
+        Joined {
+            resource: u16,
+            data: u16,
+        },
+        Split {
+            resource_major: u16,
+            resource_minor: u16,
+            data_major: u16,
+            data_minor: u16,
+        },
+    }
+    let version: Version = serde_json::from_str(text).ok()?;
+    Some(match version.pack_version {
+        PackVersion::Joined { resource, data } => (resource, 0, data, 0),
+        PackVersion::Split {
+            resource_major,
+            resource_minor,
+            data_major,
+            data_minor,
+        } => (resource_major, resource_minor, data_major, data_minor),
+    })
+}
 
 /// A cheap-to-clone reader: archive bytes and parsed metadata are shared.
 type JarReader = ZipArchive<Cursor<Arc<[u8]>>>;
@@ -511,5 +645,69 @@ mod tests {
             .expect("Zip64 must not lift the output admission cap");
 
         assert!(error.contains("32-bit uncompressed size"), "{error}");
+    }
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use super as jar;
+    use super::Adapter;
+    use crate::test_fixtures::{document, legacy_adapter};
+
+    #[test]
+    fn both_spellings_of_a_jars_pack_version_are_read_and_neither_reads_the_other() {
+        let joined = r#"{"data": 9, "pack_version": {"resource": 34, "data": 48}}"#;
+        assert_eq!(super::pack_versions(joined), Some((34, 0, 48, 0)));
+
+        let split = r#"{"pack_version": {"resource_major": 84, "resource_minor": 0,
+          "data_major": 101, "data_minor": 1}, "world_version": 4790}"#;
+        assert_eq!(super::pack_versions(split), Some((84, 0, 101, 1)));
+
+        assert_eq!(super::pack_versions(r#"{"world_version": 4790}"#), None);
+        assert_eq!(
+            super::pack_versions(r#"{"pack_version": {"data": 48}}"#),
+            None
+        );
+    }
+    #[test]
+    fn only_explicit_legacy_capability_accepts_a_jar_without_pack_version_metadata() {
+        let archive = jar::fixture::parse(jar::fixture::stored("unused", b""))
+            .expect("an archive without version metadata");
+        super::verify_pack_format(&legacy_adapter(), &archive)
+            .expect("legacy pack constants do not pretend to come from jar metadata");
+        let modern: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("a modern adapter");
+        super::verify_pack_format(&modern, &archive)
+            .expect_err("modern jars must declare their pack formats");
+    }
+
+    #[test]
+    fn legacy_bytecode_must_have_java_eight_as_its_maximum_release() {
+        let path = std::env::temp_dir().join(format!(
+            "ravel-legacy-class-release-{}.jar",
+            std::process::id()
+        ));
+        for (major, accepted) in [(51_u16, false), (52, true), (53, false)] {
+            let mut header = vec![0xca, 0xfe, 0xba, 0xbe, 0, 0];
+            header.extend(major.to_be_bytes());
+            std::fs::write(&path, jar::fixture::stored("Game.class", &header))
+                .expect("class version fixture");
+            let archive = jar::Archive::open(&path).expect("class-version fixture");
+            assert_eq!(
+                super::verify_legacy_class_release(&archive).is_ok(),
+                accepted
+            );
+        }
+        std::fs::remove_file(path).expect("remove class-version fixture");
+    }
+
+    #[test]
+    fn pack_numbers_must_be_valid_json_at_the_declared_path() {
+        let nested = r#"{"pack_version":{"note":{"resource":1},"data":48,"resource":34}}"#;
+        assert_eq!(super::pack_versions(nested), Some((34, 0, 48, 0)));
+        for value in ["21.5", "-21", "65536", "\"21\"", "21garbage"] {
+            let packs = format!(r#"{{"pack_version":{{"resource":{value},"data":48}}}}"#);
+            assert_eq!(super::pack_versions(&packs), None, "{packs}");
+        }
     }
 }

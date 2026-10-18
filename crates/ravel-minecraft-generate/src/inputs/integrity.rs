@@ -116,10 +116,10 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::fixtures::repository_root;
     use super::super::{Adapter, Input};
     use super::super::{parse, tracked_versions};
     use super::{file_name, sha256, verify_input};
+    use crate::test_fixtures::repository_root;
     #[test]
     fn an_input_that_no_longer_hashes_to_its_pin_is_refused() {
         let root = repository_root();

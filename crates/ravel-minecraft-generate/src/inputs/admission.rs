@@ -135,9 +135,9 @@ fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::fixtures::{document, legacy_adapter};
     use super::super::{Capability, MappingNamespaces};
     use super::{Adapter, MappingSource};
+    use crate::test_fixtures::{document, legacy_adapter};
     #[test]
     fn source_release_defaults_to_modern_target_and_legacy_requires_explicit_eight() {
         let modern: Adapter =

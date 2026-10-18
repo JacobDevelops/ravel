@@ -1,5 +1,5 @@
 //! Selects a pinned version and loads its reviewed generator documents in validation order.
-//! Schema, declaration semantics, artifact contracts, and byte integrity live in child modules.
+//! Schema, declaration semantics, Java manifests, and byte integrity live in child modules.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use super::{GenerateError, SELECTION};
 
 mod admission;
 #[cfg(test)]
-mod fixtures;
+use crate::test_fixtures as fixtures;
 mod integrity;
 mod metadata;
 mod schema;
@@ -21,9 +21,8 @@ use admission::pinned_sources;
 pub(super) use integrity::replace_pin;
 pub(super) use integrity::{file_name, repin_locks, sha256, verify_input};
 use metadata::verify_java_release;
-pub(super) use metadata::{verify_legacy_class_release, verify_pack_format, verify_server_hooks};
 pub(super) use semantics::TITLE_MENU_SEAM;
-use semantics::{check_non_goals, check_roles, check_title_menu_row};
+use semantics::{verify_non_goals, verify_roles, verify_title_menu_row};
 
 pub use schema::Eligibility;
 
@@ -42,6 +41,60 @@ pub(super) struct PinnedVersion {
     pub(super) surface: Reflection,
 }
 
+/// Validated adapter facts available without opening jars or generation documents.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdapterFacts {
+    /// Runtime admission policy declared by this version.
+    pub eligibility: Eligibility,
+    /// Mapping documents followed by any required mapping normalizer tool JAR.
+    pub mapping_inputs: Vec<String>,
+}
+
+/// Reads the typed adapter and applies the generator's admission policy.
+///
+/// # Errors
+///
+/// Returns an error for malformed adapters, identity drift, or invalid admission.
+pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, GenerateError> {
+    let adapter = read_adapter(root, version)
+        .and_then(|adapter| {
+            pinned_sources(&adapter)?;
+            Ok(adapter)
+        })
+        .map_err(|error| {
+            let context = |detail| format!("{VERSIONS}/{version}/adapter.toml: {detail}");
+            match error {
+                GenerateError::Input(detail) => GenerateError::Input(context(detail)),
+                GenerateError::Drift(detail) => GenerateError::Drift(context(detail)),
+                GenerateError::Unresolved(detail) => GenerateError::Unresolved(context(detail)),
+                GenerateError::Extraction(detail) => GenerateError::Extraction(context(detail)),
+                GenerateError::Unsupported(detail) => GenerateError::Unsupported(context(detail)),
+            }
+        })?;
+    let mapping_inputs = adapter
+        .inputs
+        .client_mappings
+        .iter()
+        .chain(adapter.inputs.mapping_io_jar.iter())
+        .map(|input| input.path.clone())
+        .collect();
+    Ok(AdapterFacts {
+        eligibility: adapter.eligibility,
+        mapping_inputs,
+    })
+}
+
+fn read_adapter(root: &Path, version: &str) -> Result<Adapter, GenerateError> {
+    let adapter: Adapter = parse(&root.join(VERSIONS).join(version).join("adapter.toml"))?;
+    if adapter.minecraft != version {
+        return Err(GenerateError::Drift(format!(
+            "the version directory is named {version} but its adapter inputs pin {}",
+            adapter.minecraft
+        )));
+    }
+    Ok(adapter)
+}
+
 /// Reads the tracked data of the version this build generates against.
 pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersion, GenerateError> {
     let versions = root.join(VERSIONS);
@@ -57,13 +110,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 
     let name = choose(&names, selected)?;
     let directory = versions.join(name);
-    let adapter: Adapter = parse(&directory.join("adapter.toml"))?;
-    if adapter.minecraft != name {
-        return Err(GenerateError::Drift(format!(
-            "the version directory is named {name} but its adapter inputs pin {}",
-            adapter.minecraft
-        )));
-    }
+    let adapter = read_adapter(root, name)?;
     verify_input(root, &adapter.inputs.hook_inventory)?;
     let inventory: Inventory = parse(&root.join(&adapter.inputs.hook_inventory.path))?;
     if inventory.minecraft != adapter.minecraft {
@@ -78,8 +125,8 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             inventory.schema_version, adapter.schema_version
         )));
     }
-    check_non_goals(&inventory)?;
-    check_title_menu_row(&inventory)?;
+    verify_non_goals(&inventory)?;
+    verify_title_menu_row(&inventory)?;
 
     verify_input(root, &adapter.inputs.stub_seeds)?;
     let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
@@ -89,7 +136,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
         )));
     }
-    check_roles(&seeds)?;
+    verify_roles(&seeds)?;
 
     let surface = reflection(root, &adapter)?;
 
@@ -469,5 +516,64 @@ class = \"net/minecraft/Unreferenced\"
                 source.needs_mappings()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod adapter_fact_tests {
+    use super::{adapter_facts, fixtures};
+
+    #[test]
+    fn facts_read_tracked_adapters_without_loading_generation_inputs() {
+        let root = fixtures::repository_root();
+        for version in super::tracked_versions(root) {
+            let facts = adapter_facts(root, &version).expect("tracked typed adapter");
+            let adapter = super::read_adapter(root, &version).expect("tracked adapter");
+            assert_eq!(facts.eligibility, adapter.eligibility);
+            let mut expected = Vec::new();
+            if adapter.mapping_source.needs_mappings() {
+                expected.push(
+                    adapter
+                        .inputs
+                        .client_mappings
+                        .expect("required mapping")
+                        .path,
+                );
+            }
+            if adapter.mapping_source == super::MappingSource::FeatherTinyMappings {
+                expected.push(
+                    adapter
+                        .inputs
+                        .mapping_io_jar
+                        .expect("required normalizer")
+                        .path,
+                );
+            }
+            assert_eq!(facts.mapping_inputs, expected, "{version}");
+        }
+    }
+
+    #[test]
+    fn facts_reject_generation_only_without_the_reviewed_legacy_contract() {
+        let root = std::env::temp_dir().join(format!("ravel-adapter-facts-{}", std::process::id()));
+        let directory = root.join("minecraft/versions/0.0.0-test");
+        std::fs::create_dir_all(&directory).expect("adapter directory");
+        let text = fixtures::document("unobfuscated-class-files", "").replacen(
+            "schemaVersion = 1",
+            "schemaVersion = 1\neligibility = \"generation-only\"",
+            1,
+        );
+        let path = directory.join("adapter.toml");
+        std::fs::write(&path, text).expect("generation-only adapter");
+        let error = adapter_facts(&root, "0.0.0-test").expect_err("admission rejects shortcut");
+        let super::GenerateError::Input(detail) = error else {
+            panic!("admission failure must be an input error: {error}");
+        };
+        assert_eq!(
+            detail,
+            "minecraft/versions/0.0.0-test/adapter.toml: \
+             generation-only eligibility requires legacy-1-12"
+        );
+        std::fs::remove_dir_all(root).expect("remove adapter fixture");
     }
 }

@@ -399,7 +399,7 @@ pub(crate) enum Spelling {
 
 impl Spelling {
     /// The key a pack.mcmeta written in this spelling always carries.
-    pub(super) const fn key(self) -> &'static str {
+    pub(crate) const fn key(self) -> &'static str {
         match self {
             Self::PackFormat => "\"pack_format\"",
             Self::MinMaxFormat => "\"min_format\"",

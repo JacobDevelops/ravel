@@ -9,6 +9,7 @@ pub(super) mod hooks;
 pub(super) mod locks;
 pub(super) mod names;
 pub(super) mod shape;
+pub(super) mod stubs;
 
 #[cfg(test)]
 mod tests {
@@ -18,7 +19,6 @@ mod tests {
         Reflection, Spelling,
     };
     use super::super::resolve::Resolved;
-    use super::super::stub_render::stub_java;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::bindings::bindings;
     use super::exports::exports;
@@ -26,6 +26,7 @@ mod tests {
     use super::locks::stub_lock;
     use super::names::game_names;
     use super::shape::{JavaType, constant_name, java_name, parameters, rust_name, shapes};
+    use super::stubs::stub_java;
     use crate::mapping::Mapping;
 
     #[test]

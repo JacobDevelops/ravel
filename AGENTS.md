@@ -4,8 +4,10 @@ Ravel is a Minecraft: Java Edition mod loader and SDK for natively compiled Rust
 inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt. It supports more than
 one Minecraft version: a package declares the versions it runs on in `compatibility.minecraft` as an exact
 version or a semver range, and per-version hooks, mappings and stubs live under `minecraft/versions/<version>/`.
-The default target is `26.1.2`; the historical ATM10 To the Sky 2.0.2 proof workload remains pinned to
-`1.21.1`. Both versions have pinned version data.
+The build default is `26.1.2`, and `1.21.1` support remains. Forward proof targets immutable SevTech:
+Ages 3.2.3 on Minecraft `1.12.2` and pinned JDK 27; this is planned native behavioural parity through
+Rust counterparts, not hosted Forge jars or a claim of live support. Historical evidence retains its
+recorded workload and explicit replay; M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 remains open.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.
@@ -19,6 +21,9 @@ per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink
 - [`ROADMAP.md`](ROADMAP.md) is the dependency-ordered plan and defines the evidence gate for each milestone.
 - [`docs/architecture/`](docs/architecture/) records layering, safety, and the
   [single-workspace registry and local-material boundary](docs/architecture/public-private-boundary.md).
+- Before changing proof workloads, legacy mappings, runtime or renderer contracts, read
+  [`registry/notes/sevtech/sevtech-plan.md`](registry/notes/sevtech/sevtech-plan.md) and the forward WP1–WP9
+  gates in `ROADMAP.md`; distinguish planned capabilities from demonstrated results.
 - Before writing in a crate, read a sibling crate and match its patterns instead of inventing new ones.
 
 ## Environment

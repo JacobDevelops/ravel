@@ -141,10 +141,11 @@ Strict went **24.3 → 82.0**. Target is 85; Jacob wants much higher.
    Retarget SPEC/ROADMAP/AGENTS to SevTech and 1.12.2 alongside WP7. Keep ATM10 historical evidence intact.
 
 7. SevTech rights summary for counterpart planning:
-   - 91 permitted, 64 conditional, 22 prohibited and 82 unresolved source use.
-   - 72 inputs still have an `absent` licence, all because of CurseForge 403s.
-   - Three citations are weak: SpartanShields, SevTweaksNPC and Better With Mods.
-   - Three conflict between repo and Modrinth: ClientTweaks, Waddles and RecipeStages.
+   - After citation-byte, restrictive-grant and artifact/repository-link corrections: 31 permitted, 38 conditional,
+     18 prohibited and 172 unresolved (259 total) source use. These supersede WP0 triage counts, not
+     historical milestone evidence.
+   - Citation-strength and repository/host conflicts are input-specific; keep
+     their identities and dispositions in `registry/notes/sevtech/sevtech-rights-report.md`.
 
 ## Rejected or kept findings (don't redo)
 

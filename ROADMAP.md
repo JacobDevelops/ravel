@@ -2,20 +2,20 @@
 
 Status: implementation-ready plan  
 Authority: subordinate to [`SPEC.md`](SPEC.md)  
-Initial-completion gate: M10  
-Last updated: 2026-07-30
+Forward initial-completion gate: WP9; historical M10 replay remains separate
+Last updated: 2026-10-18
 
 ## Capability
 
 Ravel enables a player to run a complete, natively compiled Rust modpack inside
-official Minecraft: Java Edition, currently targeting Minecraft 1.21.1, without
-another Java mod loader. Initial completion means that the in-tree
-ATM10-To-the-Sky-equivalent pack passes its automated compatibility suites, meets the
-Linux performance contract, and completes the pinned progression path in a
-fresh Ravel world. Apple Silicon support is a separate phase after that complete
-Linux result. The reason to build it is resource cost: a complete Rust pack
-should cost significantly less RAM and CPU than the equivalent Java pack, and
-[`SPEC.md`](SPEC.md) §1 states that goal against §6's thresholds.
+official Minecraft: Java Edition without another Java mod loader. Forward proof
+targets immutable SevTech: Ages 3.2.3 on Minecraft 1.12.2 and pinned JDK 27.
+The build default remains 26.1.2 and 1.21.1 support remains. Initial completion
+requires the native pack's automated compatibility suites, Linux performance
+contract and complete pinned progression in a fresh Ravel world. This is a plan,
+not a demonstrated playable SevTech result. Apple Silicon remains later work.
+The Rust pack should cost significantly less RAM and CPU than the equivalent
+Java pack; [`SPEC.md`](SPEC.md) §1 states that goal against §6's thresholds.
 
 The `ravel` repository owns the reusable loader, SDK, package contracts,
 tooling, test mods, sanitized evidence, and `registry/` compatibility sources.
@@ -28,7 +28,7 @@ These rules apply to every work package and milestone:
 - Official Minecraft remains the initial host.
 - Ravel loads Rust mods only and never uses NeoForge, Fabric, Forge, Quilt, or
   another loader as its bootstrap.
-- No ATM10 To the Sky counterpart implementation begins before M3 passes.
+- Counterpart admission requires the loader's M3 semantics and workload-specific rights gates.
 - Maintained Rust and mod-author code uses `#![forbid(unsafe_code)]`. Audited
   dependencies may encapsulate unavoidable native/JVM boundaries.
 - No mod code runs before package validation and dependency resolution.
@@ -65,23 +65,23 @@ unit-testable state-machine rule and an integration-testable process outcome.
 
 ### Initial-completion boundary
 
-M0 through M10 are required for Linux initial completion. Apple Silicon
-platform expansion starts only after that gate. M11 is a later interoperability
-release, M12 requires a new capability amendment, and M13 is post-initial
-publication and registry work.
-
-This interpretation follows the spec's Linux-first, single-player ordering,
-pack completion evidence, M9 Linux performance gate, M10 progression
-acceptance, and explicit description of macOS and official ATM10 To the Sky multiplayer as
-later work.
+Forward Linux initial completion requires WP9 and its WP1–WP8 dependencies,
+including full native parity, performance and live progression evidence.
+Historical M0–M10 sections retain their original workload-bound criteria for
+replay, not a second mandatory ATM10 proof for forward SevTech completion.
+Apple Silicon platform expansion and official-server interoperability follow
+forward Linux completion. M12 still requires a new capability amendment; M13
+remains separately planned publication/registry work. No WP result retroactively
+closes or reinterprets an M milestone.
 
 ## Non-goals
 
 This roadmap does not authorize a native client, custom launcher, public
-registry service, Java mod execution, automatic KubeJS translation, world import
-from official ATM10 To the Sky, Windows support, Intel macOS support, Linux ARM
-support, hot-loading, or a wholly Rust server. The in-tree `registry/` is source
-and compatibility material, not authorization to deploy the M13 service.
+registry service, Java mod execution, automatic script translation, import of
+existing Forge pack worlds, arbitrary Forge-wire interoperability, Windows support,
+Intel macOS support, Linux ARM support, hot-loading, or a wholly Rust server.
+The in-tree `registry/` is source and compatibility material, not authorization
+to deploy the M13 service.
 
 ## Verification system
 
@@ -224,6 +224,60 @@ M10 └─> post-Linux-M10 Apple Silicon platform expansion
 M9 failure └─> host viability review; it does not relax M9 or authorize a native client
 M12 and M13 require separately approved post-initial scope
 ```
+
+## Forward SevTech work packages
+
+This sequence supersedes ATM10 as the forward workload, not as historical
+evidence. Preserve each record's actual inputs, results, counts, digests and
+verdicts: M1–M4 retain their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs),
+and M7 is still open. Explicit replay selects the record's fixture:
+`atm10-tts-2.0.2` remains available, but M5/M6 use `atm11-0.2.1`.
+Historical unclosed M7–M10 retain their original criteria and protocols for
+replay, separate from forward WP closure. WP9 is forward initial completion.
+WP IDs do not imply that `verify-milestone` implements WP closure commands.
+Fixture-bound v2 library evidence may support forward work; it neither closes
+historical M7 nor changes its v1 324-or-evidence-correction replay criteria.
+
+WP0 has pinned the release inventory and initial rights ledger; it has not
+resolved every right, runtime container or live baseline. The immutable archive,
+publisher file 3569915, is bound by the SevTech descriptor and provenance.
+Keep **254 references**, **5 bundled jars**, and **259 total jar inputs**
+separate; loaded containers remain unknown until observed. Baseline worlds,
+seeds, release overrides, scripts, scenes and hardware must be pinned before
+comparisons. Detailed design and risks live in
+[`registry/notes/sevtech/sevtech-plan.md`](registry/notes/sevtech/sevtech-plan.md).
+
+WP0 exit still requires **reproducible legacy graph derivation
+(mcmod.info / @Mod extraction)**. The recorded one-off extraction is not a
+replayable producer; phase checks report this obligation as not yet met rather
+than treating its structural evidence as a reproduced graph.
+
+| Package | Dependencies and output | Required evidence gate | Demonstrated status |
+| --- | --- | --- | --- |
+| WP1 — mapping generalization | WP0; tagged mapping formats/namespaces and capability-selected optional DFU | Resolve real pinned 1.12.2 class bytes; descriptor, overload, inheritance, namespace, ambiguity and wrong-hash cases; stable locks and unchanged existing-version semantics | Acceptance not demonstrated; mapping changes are proposed capability, not live support |
+| WP2 — complete 1.12.2 version data | WP1; adapters, hooks, reflection, stubs and version matrices | Authenticated client/server/mapping inputs; Java/lock generation, adapter and harness matrices for 1.12.2, 1.21.1 and 26.1.2; cross-version/hash rejection | Acceptance not demonstrated; generation alone is not play |
+| WP3 — JDK27/LWJGL3 boot | WP2; own minimal platform/runtime replacement, no hosted Forge jars or LWJGL2 | Exact pinned JDK27 client reaches menu, creates/reopens world, handles resize/fullscreen/input/audio and exits; dedicated server saves/stops without client natives; bounded module/native-access grants | Live acceptance not demonstrated |
+| WP4 — semantic hook ports | WP2; live closure depends on WP3 | Stable numeric IDs and metadata, explicit registration barrier, exactly-once ticks, bounded/main-thread networking, legacy resource/recipe reload and WorldSavedData save/reopen/migration/failure preservation on both sides | Live acceptance not demonstrated |
+| WP5 — renderer/model memory pipeline | WP3 and WP4 barriers; LWJGL3 with capability-selected GL, bounded native meshes and Java-owned submission | Golden opaque/translucent/animated/staged scenes; chunk/reload/unload correctness, frame-time tails, upload/compile time, RSS/native/VRAM and first-use stalls on disclosed GPUs | Replacement renderer and savings not demonstrated |
+| WP6 — measured optimization | Usable WP3–WP5 baseline, representative WP8 content | Cold/warm startup, exploration and machine/stage scenes; tick/frame distributions, GC, CPU, total memory and ablations; disclose cache eligibility and runtime differences | No resource/performance win demonstrated |
+| WP7 — workload/evidence cutover | WP0 ledger and WP2 runtime descriptor | Exact archive/hash and 254+5 extraction; tamper rejection; workload-aware denominators; correct schema/default/registry selection; explicit ATM10 replay, no inherited rights or denominator 324 | Cutover work is not closure; integrated acceptance evidence pending |
+| WP8 — rights-cleared native counterparts | WP0 rights/graph and WP4; WP5/WP6 where required | Wave A platform/dependency roles, B first playable progression, C stress anchors; per-package provenance, rights, behavioural and negative scenarios; then disposition every release input and prove complete progression | Starting waves and full parity not demonstrated |
+| WP9 — live proof and claim gate | WP3–WP8, every input dispositioned | Actual official 1.12.2 on exact JDK27 through premain/JNI; fresh-world complete progression, late-age scenes, save/reopen, reload, integrated/dedicated paths, all three version matrices and independent observations | Full proof, fastest-loader and lowest-resource claims not demonstrated |
+
+Feather (CC0) becomes canonical only after pinned-artifact coverage against
+official jars; Legacy Yarn is fallback, not a blended namespace. No MCP
+human-name CSV import. Study Cleanroom/LWJGLX, but own the minimal runtime rather
+than adopting them wholesale; any code reuse requires exact licence review.
+Rights are never waived. Conditional, prohibited or unresolved material must
+retain its restrictions; a critical unresolved implementation basis blocks full parity.
+
+WP9 compares the actual optimized original pack on a suitable supported JVM,
+a current-Java comparison where compatible, and Ravel on equal content,
+scenes/settings/hardware. Disclose unavoidable runtime differences and empty-loader
+cost separately. Broader repeated measurements and ablations belong to forward
+WP6/WP9 claims; historical M9 single-pair protocol text is not evidence of those
+measurements. No invented numeric improvement result or silently reduced content
+may satisfy this gate.
 
 ## Desired end-goal repository
 
@@ -829,6 +883,12 @@ pinned manifest entry has an accepted reusable Rust counterpart.
 Work proceeds in dependency-ordered waves. A wave cannot close with failing or
 unclassified entries.
 
+This is the retained historical open-M7 protocol, not SevTech WP8/WP9 closure.
+Its v1 final audit keeps the 324-or-evidence-corrected-total rule below.
+New `m7-library-v2` summaries require explicit fixture binding and use that
+fixture's artifact-set denominator (259 SevTech jar inputs); such records do not
+silently satisfy or rewrite historical v1 closure.
+
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M7-W0 | Ship the SDK capability the waves consume | M6 | SDK changes plus original test mods | M4-class gates pass before in-tree counterparts consume them |
@@ -1061,7 +1121,7 @@ moderation, distribution, and rollback.
 | JVM hook mechanism | M1 | discharged; refined before M3-W3 on what enters the game process |
 | Rust execution/package/ABI model | M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is closed as a breaking schema-v1-in-place migration |
 | Binding extraction and generation | ADG-3 / M1 | discharged, with one surface partly outside it: the agent jar's persistence adapter resolves game classes and members by name, and the pinned files cover some of the classes and none of the rest. `net.minecraft.client.Minecraft`, `net.minecraft.server.MinecraftServer` and `net.minecraft.world.level.storage.SavedDataStorage` are hook targets in `hooks.toml` and in `mappings.lock`, so a rename of one of those classes shows up in a re-pin diff. **An earlier wording of this row said none of them was pinned, which was wrong and understated the coverage; this is the correction.** What no pinned file holds is `LevelResource`, `DataFixers`, every member name and arity, the two `LevelResource` field constants, and the three-argument `SavedDataStorage` constructor — which is what `Persistence.java`'s comment at the lookup has said all along. `verify_persistence_reflection` pins the class set and cannot see a rename. Bringing the rest of the surface under `stubs.toml` and `mappings.lock` needs the stub-seed and lock re-pin ceremony against the pinned jar. **No work package owns that yet.** M3's packages are closed and none named it; M4-W1 to M4-W8 do not either. It belongs with the version-adapter re-pin work. An earlier reading of this row ruled that **M4-W6 is the first gate that cannot honestly pass without it**, because proving version isolation against a second version is exactly what an unpinned reflective surface defeats. **That ruling is retracted here, and the reason is that it was too broad.** The reflective surface it names lives in the agent jar, which is neither a general crate nor the shared adapter, so what it leaves in doubt is a drift claim over the agent jar — M4-W8's territory — rather than W6's claim that the shared adapter and the general crates carry no version. W6 proves that claim against a synthetic second version's data in `tests/fixtures/public/versions/`, and that fixture cannot reach the reflective surface at all: it declares no jar, so there is no class for a name to resolve against and nothing for a rename to break. No version of W6 could have discharged this row, which is what makes refusing W6 for not discharging it the wrong ruling rather than an unmet one. The re-pin ceremony is what closes this row, and no package has performed one. Until a package owns it and runs it, no milestone may claim drift coverage for the agent jar's persistence adapter |
-| Whether Ravel can run the 1.21.1 target it names | M8 | Ravel supports more than one Minecraft version and targets Minecraft 1.21.1, which runs All the Mods 10: To the Sky 2.0.2. **`minecraft/versions/1.21.1/` exists, generates, and the whole suite passes against it.** Its jar and published mapping are pinned by [`tests/fixtures/descriptors/runtime-inputs-1.21.1.json`](tests/fixtures/descriptors/runtime-inputs-1.21.1.json) through its version metadata and sit hash-verified under `tests/fixtures/local/tooling/minecraft-1.21.1/`. The directory carries twenty-nine of 26.1.2's thirty-seven reviewed hooks: twenty-seven unchanged, plus `world.open-persistence` and `screen.title-menu-options` re-reviewed at drifted descriptors because `jvm/bootstrap`'s `Transformer` names those seams. The other eight are explicit non-goals with reasons. Every build entry point exports a selection; screen templates name roles bound by each version's `stubs.toml`; genuinely different APIs override the shared template under `jvm/screen/template/<version>/`. `ravel:test` runs once per tracked version, catching the twelve failures first exposed by selecting 1.21.1; absent local mappings produce a loud skip. The agent jar's `Persistence` still spells 26.1.2's member names and arities, so 1.21.1's saved-data half compiles but is not driven. This is the unowned reflective-surface re-pin described above; the [architecture overview](docs/architecture/overview.md#mechanisms) describes the persistence mechanism. **Nothing here has ever started a 1.21.1 process with Ravel attached**, so no runtime claim follows until a launch exercises it |
+| Retained 1.21.1 support and live-proof limit | historical M8; forward regression matrix WP9 | Ravel retains Minecraft 1.21.1 support alongside build-default 26.1.2; forward proof is SevTech on 1.12.2, not ATM10 on 1.21.1. **`minecraft/versions/1.21.1/` exists, generates, and the whole suite passes against it.** Its jar and published mapping are pinned by [`tests/fixtures/descriptors/runtime-inputs-1.21.1.json`](tests/fixtures/descriptors/runtime-inputs-1.21.1.json) through its version metadata and sit hash-verified under `tests/fixtures/local/tooling/minecraft-1.21.1/`. The directory carries twenty-nine of 26.1.2's thirty-seven reviewed hooks: twenty-seven unchanged, plus `world.open-persistence` and `screen.title-menu-options` re-reviewed at drifted descriptors because `jvm/bootstrap`'s `Transformer` names those seams. The other eight are explicit non-goals with reasons. Every build entry point exports a selection; screen templates name roles bound by each version's `stubs.toml`; genuinely different APIs override the shared template under `jvm/screen/template/<version>/`. `ravel:test` runs once per tracked version, catching the twelve failures first exposed by selecting 1.21.1; absent local mappings produce a loud skip. The agent jar's `Persistence` still spells 26.1.2's member names and arities, so 1.21.1's saved-data half compiles but is not driven. This is the unowned reflective-surface re-pin described above; the [architecture overview](docs/architecture/overview.md#mechanisms) describes the persistence mechanism. **Nothing here has ever started a 1.21.1 process with Ravel attached**, so no runtime claim follows until a launch exercises it |
 | Java/Rust state ownership | M1 | discharged; opaque game-object handles added at M3-W0 |
 | Stock Prism versus minimal patch | M1 | discharged; the library-path argument does not work and the fix is `System.load` on a path given by a `-D` property. No work package owns building it, so the native half has no conformance claim until one does |
 | Configuration and UI schema | before M3-W3 | discharged; declared in data, drawn in Java |
@@ -1077,8 +1137,11 @@ moderation, distribution, and rollback.
 
 ## Immediate handoff
 
-The plan is ready for M0 implementation. The first local change sequence should
-be:
+Current work follows the forward WP1–WP9 dependency/evidence sequence above;
+WP9, not a relabelled historical M10, owns SevTech Linux completion.
+Preserve existing evidence and select its actual fixture for replay.
+
+The original M0 startup sequence below is historical context, not current work:
 
 1. M0-W1: initialize the Cargo workspace and mise environment without
    assuming JVM entry, execution, bindings, or state-ownership mechanisms.

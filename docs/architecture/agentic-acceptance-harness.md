@@ -12,6 +12,16 @@ is real and its model is tested; the driver that runs the model against a
 launched game is not, and this document says exactly where the line is so a later
 milestone cannot mistake the model for the run.
 
+The forward workload is immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on pinned
+JDK 27, implemented as native Rust behavioural counterparts, not hosted Forge
+jars. Historical evidence retains its recorded workload: M1–M4's ATM10 context,
+M5/M6's ATM11 0.2.1 (235 inputs), and the still-open M7's original criteria.
+Replay selects the recorded fixture; forward completion is WP9, not historical M10.
+Scenarios must bind the selected workload, release overrides and progression
+stage; neither a tested model nor fixture input counts prove live parity.
+The forward WP9 gate in `ROADMAP.md` requires real progression/save/render/network
+observations and every input disposition, including unresolved rights blockers.
+
 ## The problem M8-W4 and M10 actually pose
 
 M10 asks a player to "walk a progression through a running game", and M8-W4 asks
@@ -23,7 +33,7 @@ names that failure directly: "a green that measures the tests rather than the
 game."
 
 So the capability required is a piece of software that (1) reaches a running,
-authenticated, modded ATM10:TTS instance, (2) perceives the modded world well
+authenticated SevTech-native Ravel instance, (2) perceives the modded world well
 enough to decide whether a progression step happened, (3) acts on the world well
 enough to take the next step, and (4) records what it did into evidence a gate
 reads. Each of those four is a separate problem with a separate answer, and one
@@ -35,7 +45,7 @@ There are three ways to build (2) and (3), and the choice determines everything.
 
 - **A vanilla-protocol bot.** A headless client speaking the network protocol,
   no rendering. Truly headless and cheap, but it understands only what the
-  vanilla protocol carries. ATM10:TTS is a modded tech progression whose blocks,
+  vanilla protocol carries. SevTech is a staged modded progression whose blocks,
   machines, GUIs and quest state are not in the vanilla protocol, so such a bot
   cannot see or operate the very things a progression walk is about. Rejected for
   the pack this repository targets: it can smoke-test a vanilla launch and

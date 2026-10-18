@@ -24,6 +24,13 @@ Minecraft-specific hooks, mappings, and bindings live behind an explicit
 version adapter. General loader, package, SDK, and pack contracts must not
 encode any Minecraft version's internals.
 
+The build default stays 26.1.2 and 1.21.1 support remains. Forward proof targets
+immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on the exact JDK 27 pin in
+`mise.toml`. It means native behavioural parity through Rust counterparts,
+not hosting the release's Forge jars. A descriptor or mapping change does not
+prove live 1.12.2 support; the forward WP1–WP9 gates in
+[`ROADMAP.md`](../../ROADMAP.md#forward-sevtech-work-packages) separate these stages.
+
 Official-server interoperability is a later protocol layer; it does not turn
 Ravel into a Java mod host.
 
@@ -45,8 +52,12 @@ Ravel into a Java mod host.
   Compiled mod artifacts are not distribution inputs, so Ravel owes no stable mod ABI.
 - **Bindings.** Build-time generation resolves each reviewed hook exactly once
   against hash-pinned class files and records the result in `mappings.lock`.
-  Names come from unobfuscated class files or the version's official ProGuard
-  mappings; input drift or a mismatched shape prevents generation.
+  Existing targets use unobfuscated class files or official ProGuard mappings;
+  input drift or a mismatched shape prevents generation. The proposed legacy
+  path normalizes pinned Tiny namespaces into the same strict resolver:
+  Feather (CC0) is canonical only after official-jar coverage proof, with Legacy
+  Yarn fallback and no MCP human-name CSV import. Keep source bytecode level,
+  runtime JDK and optional DFU capability distinct; generation is not live support.
 - **State ownership.** Minecraft keeps its state; hooks receive values or
   call-scoped opaque `JavaHandle` references and return results without retaining
   a mirror. A mirror needs measured justification and a way to detect divergence;
@@ -66,6 +77,9 @@ Ravel into a Java mod host.
   Rust owns admission, migration and staged/live world identity; Java owns game
   calls and vanilla file handling, and a failed replacement preserves the prior
   aggregate without aborting vanilla saving.
+  The 1.12.2 port must use legacy WorldSavedData/MapStorage semantics rather than
+  claim modern SavedData factories/codecs exist; numeric IDs, metadata and
+  global/per-dimension identity require version-local evidence before live closure.
 - **Outward actions.** Rust answers an inbound crossing with data describing an
   action, and the receiver-aware Java adapter performs it against the game.
   Rust does not call game methods, and `JavaHandle` exposes no such capability.
@@ -80,6 +94,24 @@ Ravel into a Java mod host.
   later dispositions belong to later records rather than frozen findings.
   Closed inventories retain the names they measured without claiming to
   enumerate later additions.
+  Historical evidence stays frozen under its recorded workload: M1–M4 retain
+  their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 is open.
+  Replay uses the recorded fixture, never a blanket ATM10 substitution.
+  New workload findings belong to new records. SevTech's 254 manifest references,
+  5 bundled jars and 259 total jar inputs are distinct metrics; loaded containers
+  remain unknown until observed, never inferred from the input denominator.
+  M7 `library-summary` records using protocol `m7-library-v2` require
+  `fixture = { id, artifactSet: { count, sha256 } }`; that identity and artifact
+  set must match the selected `registry/inventory/<id>/graph.json` fixture.
+  SevTech's denominator is 259 jar inputs, not 254 manifest references or 273
+  declared identities. Historical `m7-library-v1` rejects the `fixture` field and
+  retains its original M5 inventory-summary binding and arithmetic unchanged.
+  Protocol choice is explicit: historical open-M7 replay retains v1's original
+  criteria; fixture-bound v2 can record new-workload library evidence, but does
+  not close historical M7 or forward WP9 by changing the denominator.
+  A graph node's `loader: ""` means the artifact declares no loader identifier;
+  it does not mean the reference pack is vanilla or authorize hosting its jars.
+  Legacy reference loader identity comes from the pinned pack descriptor.
 - **Counterpart identity.** Counterparts use their own Ravel-native identity;
   load-time identity mapping belongs to the host.
   A genuine compatibility alias lives only in
@@ -106,6 +138,20 @@ Ravel into a Java mod host.
   multiple versions require `RAVEL_MINECRAFT_VERSION` and unknown names fail closed.
   The distribution carries artifacts per supported version, and the scaffold
   gate independently sweeps every tracked version directory.
+- **Forward platform and renderer.** Own the minimal 1.12.2 runtime cutover:
+  pinned JDK27, LWJGL3 window/input/audio/context handling and capability-selected
+  GL. Remove the LWJGL2 production path rather than maintaining a general legacy
+  mod host. Study Cleanroom/LWJGLX, not wholesale adoption; review exact licences
+  before reuse. Java retains context/thread ownership and batched GL submission;
+  Rust may own bounded immutable snapshots, mesh jobs and deduplicated geometry,
+  not an unmeasured permanent mirror of authoritative game state.
+- **Forward parity and rights.** Legacy registration needs an explicit barrier,
+  stable numeric IDs/metadata, main-thread bounded packet dispatch and real
+  resource/recipe seams, not renamed modern hooks. Every release input requires
+  a lawful behavioural or non-behavioural disposition. Rights gates are never
+  waived; a critical unresolved input blocks full parity. Live progression,
+  saves, rendering and total-resource evidence remain required and undemonstrated
+  by this architecture plan.
 
 The original Linux measurements live in
 [`evidence/m1/spikes/`](../../evidence/m1/spikes/).

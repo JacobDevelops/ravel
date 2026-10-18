@@ -2,18 +2,19 @@
 
 Status: Draft product and capability contract  
 Current default: Minecraft: Java Edition 26.1.2; multiple versions are supported through declared ranges
-Proof workload: an ATM10-To-the-Sky-equivalent Rust modpack pinned to All the Mods 10: To the Sky 2.0.2  
-Last updated: 2026-08-29
+Proof workload: native behavioural parity with immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on pinned JDK 27  
+Last updated: 2026-10-18
 
 ## 1. Capability
 
 Ravel is a general-purpose Minecraft: Java Edition mod loader and SDK for
 building safe, natively compiled mods in Rust.
 
-Ravel initially hosts Rust mods inside the official Minecraft runtime. It does
-not load NeoForge, Fabric, or other Java mods. The first large-scale proof is a
-separate Rust modpack containing a Rust counterpart for every mod referenced by
-the pinned ATM10 To the Sky manifest.
+Ravel hosts Rust mods inside the official Minecraft runtime. It does not load
+Forge, NeoForge, Fabric, or other Java mods. The forward large-scale proof is a
+separate Rust modpack reproducing the pinned SevTech release's behaviour through
+rights-cleared Rust counterparts; it is not execution of the original Forge jars.
+This is the acceptance target, not demonstrated playable support.
 
 The immediate user outcome is a complete Linux Ravel loader, SDK, Rust
 counterpart library, and playable single-player pack that finishes the pinned
@@ -49,7 +50,7 @@ the two are not the same thing.
    of the committed scope. Failure to meet the performance target triggers a
    new architecture decision, not an automatic native-client project.
 5. **Build the loader before the pack.** Original test mods prove loader
-   semantics before any ATM10 To the Sky counterpart is admitted.
+   semantics before counterpart admission.
 6. **Prefer idiomatic Rust.** NeoForge's lifecycle, registries, networking, and
    sided-execution concerns inform Ravel, but do not dictate its authoring
    model.
@@ -80,7 +81,7 @@ the two are not the same thing.
 - A minimal generated Java/JVM bootstrap is permissible only when its resource
   cost is measured and accepted.
 - A Java bootstrap is loader plumbing, not a Java mod API or a NeoForge bridge.
-- Ravel must not execute existing NeoForge mod JARs.
+- Ravel must not execute existing Forge or NeoForge mod JARs.
 - Installed mods are trusted, matching the effective NeoForge trust model.
 - The mod set is fixed from process startup until exit. Runtime hot-loading and
   unloading are not required.
@@ -196,17 +197,19 @@ Ravel supports two pack-authoring layers:
    declaratively.
 
 There is no embedded JavaScript runtime or general scripting-language
-requirement. ATM10 To the Sky's KubeJS behaviour is manually reimplemented as declarative
-data or Rust modules.
+requirement. The pinned release's scripts and integrations are reimplemented as
+declarative data or Rust modules rather than hosted Java mods or a general script interpreter.
 
-Vanilla datapacks and resource packs must continue to work unchanged.
+Vanilla datapacks and resource packs must continue to work unchanged on versions
+that provide them, including retained 1.21.1 and 26.1.2. Preserve 1.12.2's legacy
+resource/recipe semantics without inventing modern datapack APIs for that version.
 
 ### 3.7 Version support
 
-- Ravel supports more than one Minecraft version. The default target is
-  Minecraft 26.1.2; the pinned historical proof workload runs on Minecraft 1.21.1.
-  Minecraft-specific hooks, mappings, and bindings must live behind explicit
-  version adapters.
+- The build default remains Minecraft 26.1.2 and 1.21.1 support remains.
+  Forward proof targets Minecraft 1.12.2 on the exact JDK 27 vendor/build pinned
+  in `mise.toml`; a workload selection must use matching version artifacts.
+  Minecraft-specific hooks, mappings, and bindings live behind explicit version adapters.
 - Core loader, package, and SDK code must not hardcode the assumptions of any
   one Minecraft version where a version boundary can reasonably isolate them.
 - A package declares the Minecraft versions it supports in
@@ -219,12 +222,11 @@ Vanilla datapacks and resource packs must continue to work unchanged.
   not declare. A range is evaluated only against a semver-shaped running
   version, so a non-semver release (a snapshot) is matched by exact string and
   never ordered.
-- Shipping the adapters and mappings for a second Minecraft version is staged
-  work rather than initial delivery scope, but the design makes adding one an
-  adapter task rather than a rewrite, and the package format already expresses
-  multi-version support.
+- Adding 1.12.2 requires independently pinned inputs, semantic hook ports,
+  generation/harness checks and live evidence. A fixture descriptor, mapping
+  resolver or generated stub does not establish runtime support.
 - The public mod API remains experimental and may break until the complete
-  ATM10-To-the-Sky-equivalent proof workload passes.
+  SevTech-native proof workload passes.
 
 ### 3.8 Intrusiveness
 
@@ -244,6 +246,14 @@ Vanilla datapacks and resource packs must continue to work unchanged.
   and the mechanisms in `docs/architecture/overview.md` bind exactly as they did before it was
   written. Intrusiveness governs how much of the game Ravel may touch. It does
   not govern what Ravel may be made of, and the two must not be confused.
+- The forward 1.12.2 runtime owns a minimal LWJGL3 platform cutover and a
+  replacement renderer with capability-selected GL. LWJGL2 is not retained.
+  Study Cleanroom and LWJGLX as references, not wholesale runtime dependencies;
+  exact licences and maintenance obligations govern any reuse.
+- Legacy canonical names use Feather (CC0) only after pinned-artifact coverage
+  against the official jars is proved; Legacy Yarn is the fallback. Do not
+  blend namespaces or import MCP human-name CSVs. These mapping/runtime changes
+  are planned contracts, not claims of live 1.12.2 support.
 - Where an intrusion would cross one of those boundaries, the boundary wins and
   §3.3's last rule applies: the project pauses for an explicit decision instead
   of weakening the rule quietly. A measurement showing the intrusion pays is
@@ -266,8 +276,8 @@ The player:
 - edits supported configuration through the in-game UI;
 - opens and saves Ravel single-player worlds;
 - can join a vanilla server when only protocol-safe client mods are installed;
-- eventually joins an official ATM10 To the Sky server through a later interoperability
-  layer.
+- may later join an official-pack server through a separately specified and
+  tested interoperability layer; arbitrary Forge-wire compatibility is not promised.
 
 ### 4.2 Mod author
 
@@ -385,7 +395,9 @@ about that, and who owes it.
 
 ### 6.1 Target workload
 
-Linux M9 must run the complete Ravel ATM10-To-the-Sky-equivalent pack:
+Forward WP9 performance acceptance must run the complete native SevTech proof pack;
+the historical M9 protocol remains bound to its original workload. Both retain
+the applicable constraints below:
 
 - in single-player with its integrated server;
 - at 3440 × 1440 output resolution;
@@ -465,9 +477,10 @@ pair §6.1 requires cannot be recorded until the Ravel pack exists to be the
 other half of it. A target chosen before the baseline would be a guess this
 document would then be stuck defending.
 
-**M9 sets it**, against that pair, and owns it. Recording both runs is M9-W4;
-turning them into the figure this section is missing is part of the same
-milestone and is not optional to it.
+**Forward WP9 sets and owns the SevTech improvement figure**, against measured,
+release-bound comparisons. It cannot close on threshold compliance alone.
+Historical M9-W4 retains its original separate obligation to record its pair
+and derive its figure; neither protocol's measurements substitute for the other's.
 
 Until then, judging "significantly less" is a human decision rather than a gate,
 and this document says so rather than letting the thresholds imply otherwise.
@@ -479,9 +492,52 @@ section exists to name:
 > what the official pack costs has met every requirement in this section and
 > missed the reason the project exists.
 
-That is why M9 owes a number and not only a pair of runs.
+That is why forward WP9 owes an improvement figure, not only passing thresholds;
+the historical M9 numerical obligation also remains intact for explicit replay.
 
-## 7. ATM10-To-the-Sky-equivalent proof workload
+## 7. Forward proof workload and preserved historical contract
+
+### Forward SevTech acceptance
+
+The immutable reference is SevTech: Ages 3.2.3, publisher file 3569915,
+Minecraft 1.12.2 / Forge 14.23.5.2860, archive SHA-256
+`f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8`.
+Forge identifies the comparison fixture, not Ravel's production loader.
+The release contains **254 manifest references + 5 bundled jars = 259 jar inputs**.
+Loaded runtime containers are unknown until separately observed; none of these
+counts is a loaded-mod count or proof of behavioural completeness.
+
+Every input needs an explicit disposition: lawful native implementation,
+proved equivalent replacement, justified non-behavioural role, or a blocker.
+Rust counterparts remain reusable packages with their own identities and
+provenance. Preserve the release's configuration, scripts, integrations, staged
+progression, resources and fresh-world save semantics. Existing Forge-world import
+and arbitrary Forge-wire interoperability are not implied.
+All versions retain the universal save contract in §7.5: versioned schemas and
+migrations, fail-closed admission for missing required mods or incompatible data,
+and no recovery mode that opens and saves a world with required owners disabled.
+The dependency/registry closure, converted configuration/scripts, repeated
+save/reload and performance obligations in §7.6 also apply to forward completion.
+WP9 supplies the new release-bound live progression evidence; historical M10's
+ATM10 playthrough and historical M9 closure are separate replay criteria.
+
+Rights gates are never waived: pack distribution rights do not grant rights to
+each jar, asset or source. A critical input without a lawful implementation basis
+blocks a full-parity claim. The forward WP1–WP9 gates in `ROADMAP.md` require
+live progression, save/reopen, networking and rendering evidence on pinned JDK 27,
+plus representative resource comparisons with the actual optimized reference pack.
+No full SevTech, fastest-loader or lowest-resource result is demonstrated by this plan.
+
+### Preserved historical workload contract
+
+The following ATM10-specific requirements retain their original scope, not the
+forward workload identity. Recorded evidence must keep its actual inputs,
+results, counts and digests: M1–M4 retain their ATM10 context, while M5/M6
+measured ATM11 0.2.1 with 235 inputs. M7 remains open, with no closed M7 evidence
+to relabel. Explicit fixture selection `atm10-tts-2.0.2` stays replayable, while
+M5/M6 replay selects their recorded `atm11-0.2.1` fixture. Neither workload's
+rights dispositions prove or authorize SevTech counterparts. General save,
+failure and completion obligations below remain applicable to the forward pack.
 
 ### 7.1 Pinned reference
 
@@ -574,8 +630,10 @@ vanilla servers.
 
 ### 8.3 Official ATM10 To the Sky multiplayer
 
-Official ATM10 To the Sky server interoperability is a later milestone. It requires
-behavioural emulation of:
+This is the retained ATM10 later-phase protocol scope, not a claim of SevTech
+Forge-wire compatibility or part of the forward single-player proof.
+Official ATM10 To the Sky server interoperability would require behavioural
+emulation of:
 
 - the NeoForge client/server handshake;
 - mod identity and version negotiation;
@@ -876,6 +934,14 @@ capability specification.
 
 ## 16. Milestone plan
 
+These M milestone descriptions retain their historical workload context,
+including earlier ATM11/ATM10 counts and requirements. They do not establish
+SevTech completion. Forward completion is WP9 after the WP1–WP8 dependencies
+and release-bound evidence gates in `ROADMAP.md`. Existing M evidence stays
+frozen under each record's actual workload; M7 remains open. Historical unclosed
+M7–M10 replay retains its original protocol and criteria, separate from forward
+WP acceptance: a new-workload record does not retroactively close those milestones.
+
 Milestones are dependency ordered. They have no promised calendar duration.
 
 ### M0 — Linux launch smoke proof
@@ -1114,12 +1180,12 @@ The initial scope does not include:
 - loading or translating Java mod binaries at runtime;
 - Fabric, NeoForge, Forge, or Quilt coexistence;
 - runtime hot-loading/unloading;
-- importing official ATM10 To the Sky worlds;
+- importing existing official-pack worlds, including Forge and historical ATM10 saves;
 - shaders as part of the performance target;
 - Windows, Intel macOS, or Linux ARM support;
 - a public mod registry service;
-- automatic KubeJS translation or JavaScript execution;
-- official ATM10 To the Sky multiplayer before single-player completion;
+- automatic pack-script translation or an embedded general scripting runtime;
+- official-pack multiplayer before single-player completion;
 - a wholly Rust dedicated server;
 - safe-mode world loading with required mods disabled.
 
@@ -1134,10 +1200,10 @@ These are intentionally unresolved:
 3. How much Minecraft state can remain authoritative in Java without expensive
    boundary traffic?
 4. Can stock Prism launch Ravel without modification?
-5. What are the single-pair official ATM10 To the Sky comparisons on Linux, and later on
-   the target Mac after Linux M10?
+5. What are the measured official-pack/Ravel resource comparisons for the pinned
+   SevTech release on Linux, and later on the target Mac after Linux completion?
 6. Can official Minecraft plus Ravel meet the constrained Mac target?
-7. What protocol surface is required for pinned ATM10 To the Sky server interoperability?
+7. What separately specified protocol surface would later official-pack interoperability require?
 8. What identity, signing, and moderation model should a future registry use?
 
 None of these questions blocks M0. Each has an explicit decision gate before it
@@ -1170,9 +1236,14 @@ Primary and project sources used to establish this scope:
 
 ## 20. Handoff
 
-The scope is ready for research and implementation beginning at M0.
+The current execution lane is the forward SevTech work-package sequence in
+`ROADMAP.md`, with the detailed design in
+[`registry/notes/sevtech/sevtech-plan.md`](registry/notes/sevtech/sevtech-plan.md).
+Keep 26.1.2 as build default, retain 1.21.1, and require real 1.12.2/JDK27
+behavioural and resource evidence before support or performance claims.
 
-The immediate execution lane is:
+The original M0/M1 bootstrap sequence below is retained as historical context,
+not a request to repeat or relabel its evidence:
 
 1. initialize the public-ready Ravel repository structure;
 2. write the pinned fixture manifest and reconstruction design;
@@ -1180,5 +1251,6 @@ The immediate execution lane is:
 4. turn ADG-1 through ADG-5 into isolated benchmark plans;
 5. review M1 evidence before selecting the loader architecture.
 
-No work on ATM10 To the Sky counterparts begins before the credible loader prototype exits
-M3.
+Counterpart admission requires the credible loader's M3 semantics and the
+selected workload's lawful provenance; neither historical closure nor the new
+proof target waives those gates.

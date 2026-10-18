@@ -104,9 +104,12 @@ supports. Each entry is either an exact version (`26.1.2`) or an explicit range
 exact pin for an older release. A range is your tested claim about a span of
 releases — the loader honours it and never infers support for a version you did
 not declare, and a range is only evaluated against a semver-shaped running
-version (a snapshot must be pinned exactly). Today the reference target is
-`26.1.2`. **`compatibility.ravel`** is a range; a mod outside it is refused at
-admission with both versions named.
+version (a snapshot must be pinned exactly). The build default remains `26.1.2`,
+with `1.21.1` support retained. The forward SevTech proof targets `1.12.2`, but
+its fixture or mappings do not establish tested compatibility for your package;
+declare that version only after its adapter and your behaviour are proved.
+**`compatibility.ravel`** is a range; a mod outside it is refused at admission
+with both versions named.
 
 **`sides`** is a non-empty subset of `client`, `integrated-server`,
 `dedicated-server`. A side is a role within a process, not a process kind:

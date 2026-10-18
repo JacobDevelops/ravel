@@ -4,6 +4,22 @@ The mod API is experimental and may break. Beyond that, the limits below change
 what you can plan today, and the guide states them because finding them by
 experiment costs a day each.
 
+**SevTech is the forward proof target, not demonstrated playable support.**
+The target is immutable SevTech: Ages 3.2.3 / Minecraft 1.12.2 on the exact pinned
+JDK 27. Ravel implements native behavioural counterparts in Rust; it does not
+host the original Forge jars. The build default remains 26.1.2 and 1.21.1 support
+remains. Mapping/descriptor work does not prove the legacy hook ports, LWJGL3
+platform, capability-selected GL renderer, complete progression or performance.
+Those require the live WP1–WP9 evidence gates in
+[`ROADMAP.md`](../../ROADMAP.md#forward-sevtech-work-packages).
+
+The release's 254 manifest references and 5 bundled jars make 259 jar inputs,
+not a measured loaded-container count. Rights restrictions remain binding and a
+critical unresolved implementation basis blocks full-parity acceptance.
+Historical records remain frozen under their actual workloads: M1–M4 retain
+their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 is still open.
+Explicit replay selects each record's fixture; it proves no SevTech support or savings.
+
 **A launched game finds your package and cannot run it.** The launch path shipped
 today composes a fixed set of mods in Rust source, and it will only ever run a mod
 this binary was compiled from. It reads the `package.json` of each of *those* — the

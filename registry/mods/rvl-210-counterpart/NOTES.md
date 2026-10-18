@@ -156,6 +156,10 @@ length, a negative element counts from the end and one past either end matches n
 the end of its range hands out nothing rather than repeating, and a non-finite delivery radius reaches
 nobody.
 
+The query step budget counts a union once, in its enclosing query, and includes every step in
+each branch. Exactly `MAX_STEPS` total steps are accepted, while one additional enclosing step
+is refused.
+
 ## Declarable only, and why
 
 Each of these needs a seam Ravel does not publish at the reviewed revision. None is stubbed.

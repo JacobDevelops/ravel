@@ -120,6 +120,7 @@ impl Spellings {
 
 /// One pack a dependent declares in its own descriptor.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Declaration {
     /// The declared name.
     pub name: String,
@@ -175,7 +176,8 @@ impl Declaration {
         Ok(declaration)
     }
 
-    fn named(name: &str) -> Result<Self, PackError> {
+    /// Declares a pack by its checked name, without a description or required flag.
+    pub fn named(name: &str) -> Result<Self, PackError> {
         if name.is_empty()
             || name.len() > 64
             || !name
@@ -237,6 +239,7 @@ pub enum PackKind {
 
 /// A pack that reached the game.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Contributed {
     /// The declaring dependent's namespace.
     pub namespace: String,
@@ -254,6 +257,7 @@ pub struct Contributed {
 
 /// A dependent whose contribution failed, and why.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Failure {
     /// Whose declaration failed.
     pub namespace: String,
@@ -263,6 +267,7 @@ pub struct Failure {
 
 /// What one scan produced.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Contribution {
     /// The packs that reached the game.
     pub packs: Vec<Contributed>,
@@ -272,6 +277,7 @@ pub struct Contribution {
 
 /// What one dependent declares and what its file actually holds.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Declaring {
     /// The dependent's namespace.
     pub namespace: String,
@@ -281,6 +287,19 @@ pub struct Declaring {
     pub present: BTreeMap<String, Vec<PackKind>>,
     /// The names whose own metadata reads.
     pub metadata: Vec<String>,
+}
+
+impl Declaring {
+    /// Starts a dependent's declaration with no packs or discovered resources.
+    #[must_use]
+    pub fn new(namespace: impl Into<String>) -> Self {
+        Self {
+            namespace: namespace.into(),
+            declarations: Vec::new(),
+            present: BTreeMap::new(),
+            metadata: Vec::new(),
+        }
+    }
 }
 
 /// Contributes every declared pack of one kind, on either side.
@@ -356,4 +375,93 @@ pub fn contribute(declaring: &[Declaring], kind: PackKind, side: Side) -> Contri
         }
     }
     contribution
+}
+
+#[cfg(test)]
+mod tests {
+    use ravel_sdk::{Side, json};
+
+    use super::{
+        Declaration, Declaring, PackError, PackKind, Spellings, SpellingsUnavailable, contribute,
+    };
+
+    #[test]
+    fn spellings_are_trimmed_before_storage_and_collision_checks() {
+        let spellings = Spellings::parse(" packs ", " outlines ", " segments ")
+            .expect("distinct nonempty spellings");
+        assert_eq!(spellings.descriptor_key(), "packs");
+        assert_eq!(spellings.directory(), "outlines");
+        assert_eq!(spellings.lines_key(), "segments");
+        assert_eq!(
+            Spellings::parse("packs", " outlines ", "outlines"),
+            Err(SpellingsUnavailable::NotDistinct)
+        );
+        assert_eq!(
+            Spellings::parse("packs", "  ", "segments"),
+            Err(SpellingsUnavailable::Empty)
+        );
+    }
+
+    #[test]
+    fn a_bad_record_does_not_discard_other_packs_from_the_same_dependent() {
+        let mut dependent = Declaring::new("example");
+        dependent.declarations = vec![
+            json!({"name": "first", "required": "yes"}),
+            json!("second"),
+            json!({"name": "third", "description": "Explicit", "required": true}),
+        ];
+        dependent.present = ["first", "second", "third"]
+            .map(|name| (name.to_owned(), vec![PackKind::ServerFacing]))
+            .into_iter()
+            .collect();
+        dependent.metadata.push("third".to_owned());
+        let result = contribute(&[dependent], PackKind::ServerFacing, Side::DedicatedServer);
+        assert_eq!(result.failures.len(), 1);
+        assert_eq!(result.failures[0].namespace, "example");
+        assert_eq!(result.failures[0].cause, "a required flag is not a boolean");
+        assert_eq!(result.packs.len(), 2);
+        assert_eq!(result.packs[0].name, "second");
+        assert_eq!(
+            result.packs[0].description,
+            "pack.example.second.description"
+        );
+        assert_eq!(result.packs[1].name, "third");
+        assert_eq!(result.packs[1].description, "Explicit");
+        assert!(result.packs[1].hidden);
+        assert!(result.packs[1].always_on);
+        assert!(!result.packs[1].own_metadata);
+    }
+
+    #[test]
+    fn named_declarations_check_names_and_supply_path_and_description_defaults() {
+        let declaration = Declaration::named("pack_01").expect("a checked pack name");
+        assert_eq!(declaration.path(), "resourcepacks/pack_01");
+        assert_eq!(
+            declaration.description_key("example"),
+            "pack.example.pack_01.description"
+        );
+        assert_eq!(declaration.description, None);
+        assert!(!declaration.required);
+        let longest = "a".repeat(64);
+        assert_eq!(
+            Declaration::named(&longest)
+                .expect("the maximum name length")
+                .name,
+            longest
+        );
+        for name in [
+            "",
+            "Upper",
+            "with-dash",
+            "../pack",
+            " pack",
+            "påck",
+            &"a".repeat(65),
+        ] {
+            assert_eq!(
+                Declaration::named(name),
+                Err(PackError::Malformed(format!("`{name}` is not a pack name")))
+            );
+        }
+    }
 }

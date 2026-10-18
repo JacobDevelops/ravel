@@ -256,3 +256,7 @@ operation time, fuel usage, capacity, reach, swept side and swept area every one
 machines runs at with no upgrade and with each of the six; and `generated/world.txt`, the three
 deposits' parameters and `world::place` read at both bound states against five draws. Setting
 `RAVEL_REGENERATE_GENERATED` makes the same test write them instead of comparing.
+
+`Crop` is non-exhaustive: dependents construct it through `Crop::new` and then configure its
+public fields. Crop-derived recipes live in `src/recipes/selection.rs`, separately from ingredient
+matching and crafting rules; the `recipes::derive` interface and recipe identities are unchanged.

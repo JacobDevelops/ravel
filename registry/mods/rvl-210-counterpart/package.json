@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "3bb94d34ea153cf895187543ab597117d796e5ead4e675f558e69543131cc9ef"
+        "sha256": "146703a34f656d6662d8906cf98de8bda583b56aac9d651c736aca653846eb3f"
       },
       {
         "path": "aliases.json",
@@ -98,7 +98,7 @@
       },
       {
         "path": "src/query/selection.rs",
-        "sha256": "bc59c496d6b2b423f8aa9dc2b1d944f62eadcd86495c1314e86051977d26d056"
+        "sha256": "701640719352e2fcb089fa009d7b150731583990e5cef25de9065dd099185dcc"
       },
       {
         "path": "src/settings.rs",

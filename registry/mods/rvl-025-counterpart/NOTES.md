@@ -297,3 +297,8 @@ What no test here reaches is what every counterpart's host-blocked list declares
 inside a game. The side claims come from Ravel's own side isolation and from the declared sides, and
 the parity claims are claims about what the specification states rather than measurements against a
 running original.
+
+Instruction declarations use `Instruction::new(name, output)` and
+`Parameter::new(kind, required)`; their public fields remain configurable. `Program::default()`
+starts an empty runtime state. These records are non-exhaustive so consumers need not name every
+field when the declaration vocabulary grows.

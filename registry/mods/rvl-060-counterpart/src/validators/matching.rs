@@ -271,3 +271,45 @@ fn walk(pieces: &[(Atom, Repeat)], candidate: &[char], budget: &mut u32) -> bool
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_PATTERN_ATOMS, Pattern, PatternError};
+
+    #[test]
+    fn greedy_repetitions_backtrack_to_leave_the_required_suffix() {
+        for (source, accepted, rejected) in [
+            ("a*ab", "aaab", "aaa"),
+            ("a+ab", "aab", "ab"),
+            ("a?ab", "ab", "aaab"),
+            ("é+.", "éé水", "é"),
+        ] {
+            let pattern = Pattern::parse(source).expect("supported repetition");
+            assert_eq!(pattern.source(), source);
+            assert!(pattern.matches_whole(accepted), "{source}: {accepted}");
+            assert!(!pattern.matches_whole(rejected), "{source}: {rejected}");
+        }
+    }
+
+    #[test]
+    fn both_atom_and_class_limits_accept_the_boundary_and_refuse_the_next() {
+        let atoms = "a".repeat(MAX_PATTERN_ATOMS);
+        let pattern = Pattern::parse(&atoms).expect("exactly the atom ceiling");
+        assert!(pattern.matches_whole(&atoms));
+        assert_eq!(
+            Pattern::parse(&(atoms + "a")),
+            Err(PatternError::TooLong(MAX_PATTERN_ATOMS + 1))
+        );
+        let class = format!("[{}]", "a".repeat(MAX_PATTERN_ATOMS));
+        assert!(
+            Pattern::parse(&class)
+                .expect("exactly the class ceiling")
+                .matches_whole("a")
+        );
+        let overlong = format!("[{}]", "a".repeat(MAX_PATTERN_ATOMS + 1));
+        assert_eq!(
+            Pattern::parse(&overlong),
+            Err(PatternError::TooLong(MAX_PATTERN_ATOMS + 1))
+        );
+    }
+}

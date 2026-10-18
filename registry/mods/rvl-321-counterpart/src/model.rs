@@ -190,6 +190,7 @@ pub struct Registration {
 
 /// A crop, with the defaults it is declared holding.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Crop {
     /// The full identifier. Its path is the crop's name in the global space.
     pub id: ContentId,

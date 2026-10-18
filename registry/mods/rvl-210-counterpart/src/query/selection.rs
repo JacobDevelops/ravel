@@ -199,7 +199,6 @@ impl<'written> Parser<'written> {
                 self.steps += inner.steps;
                 branches.push(query);
             }
-            self.count_step()?;
             self.at += end + 1;
             return Ok(Step::Union(branches));
         }
@@ -378,4 +377,59 @@ enum Operator {
     NotEqual,
     Equal,
     StringEqual,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Expression, Literal, MAX_STEPS, ParseError, Step, parse};
+
+    #[test]
+    fn conjunction_binds_inside_disjunction_and_negation_wraps_the_comparison() {
+        let query = parse("?(@.a == true || @.b <= 2 && !@.c eq '水')")
+            .expect("logical operators and a Unicode text literal");
+        let [Step::Filter(expression)] = query.steps() else {
+            panic!("the filter must remain a single step");
+        };
+        let Expression::Or(left, right) = expression.as_ref() else {
+            panic!("disjunction is the outer expression");
+        };
+        assert!(matches!(
+            left.as_ref(),
+            Expression::Equal(_, Literal::Truth(true))
+        ));
+        let Expression::And(left, right) = right.as_ref() else {
+            panic!("conjunction binds more tightly than disjunction");
+        };
+        let Expression::LessOrEqual(_, literal) = left.as_ref() else {
+            panic!("less-or-equal is a whole comparison token");
+        };
+        assert_eq!(literal, &Literal::Number(2.0));
+        let Expression::Not(inner) = right.as_ref() else {
+            panic!("negation wraps the complete comparison");
+        };
+        assert!(matches!(
+            inner.as_ref(),
+            Expression::StringEqual(_, Literal::Text(text)) if text == "水"
+        ));
+    }
+
+    #[test]
+    fn union_branches_share_the_step_budget_with_the_enclosing_query() {
+        let first_steps = 1;
+        let second_steps = MAX_STEPS - first_steps - 1;
+        let first = ".a".repeat(first_steps);
+        let second = ".a".repeat(second_steps);
+        let at_limit = format!("[{first}|{second}]");
+        let query = parse(&at_limit).expect("both branches and the union fit exactly");
+        let [Step::Union(branches)] = query.steps() else {
+            panic!("the two branches form one union");
+        };
+        assert_eq!(branches.len(), 2);
+        assert_eq!(branches[0].steps().len(), first_steps);
+        assert_eq!(branches[1].steps().len(), second_steps);
+        assert_eq!(
+            parse(&(at_limit + ".a")),
+            Err(ParseError::TooManySteps { limit: MAX_STEPS })
+        );
+    }
 }

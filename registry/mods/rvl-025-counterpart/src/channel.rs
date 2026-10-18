@@ -2,7 +2,9 @@
 
 use ravel_sdk::{JsonValue, json};
 
-use crate::{DEFAULT_DIMENSION, Ordering, Surface, capabilities};
+use crate::DEFAULT_DIMENSION;
+use crate::capabilities::{self, Surface};
+use crate::ordering::Ordering;
 
 /// Answers the surface service, which is how a dependent reaches §15.
 ///

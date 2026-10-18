@@ -389,3 +389,8 @@ and compares them against the bytes on disk, so the tree fails the moment it dis
 crate; setting `RAVEL_REGENERATE_GENERATED` writes them instead, and that is how they were produced.
 
 `checks/verify-counterpart-build.sh` runs the counterpart tests, including numeric conversion edge cases.
+
+Pack records are non-exhaustive. Dependents start with `Declaring::new(namespace)` and fill its
+declarations and discovered resources; `Declaration::named` checks a bare pack name and
+`Declaration::decode` reads descriptor data. Scan results come from `contribute`, with
+`Contribution::default()` available for an empty result.

@@ -19,6 +19,18 @@ modmeta = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(modmeta)
 
 
+class MissingFirstDeclarationArchive:
+    def read(self, name: str) -> bytes:
+        if name == modmeta.DECLARATION_NAMES[0]:
+            raise KeyError(name)
+        return b"declared"
+
+
+class BrokenArchive:
+    def read(self, name: str) -> bytes:
+        raise OSError("broken archive")
+
+
 class MetadataBoundaries(unittest.TestCase):
     def test_declaration_spellings_preserve_all_dependency_rows(self) -> None:
         header = b'[[mods]]\nmodId = "owner"\nversion = "1"\n'
@@ -63,18 +75,7 @@ class MetadataBoundaries(unittest.TestCase):
         self.assertEqual(out.rows[3], ("DEP", "owner", "target", "required", "", "CLIENT"))
 
     def test_optional_declaration_lookup_is_not_a_suppressed_archive_failure(self) -> None:
-        class Archive:
-            def read(self, name: str) -> bytes:
-                if name == modmeta.DECLARATION_NAMES[0]:
-                    raise KeyError(name)
-                return b"declared"
-
-        self.assertEqual(modmeta.declaration(Archive()), b"declared")
-
-        class BrokenArchive:
-            def read(self, name: str) -> bytes:
-                raise OSError("broken archive")
-
+        self.assertEqual(modmeta.declaration(MissingFirstDeclarationArchive()), b"declared")
         with self.assertRaisesRegex(OSError, "broken archive"):
             modmeta.declaration(BrokenArchive())
 

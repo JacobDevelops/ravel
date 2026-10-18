@@ -334,10 +334,7 @@ impl Station {
     /// optional empty-slot filter, [`Refused::Count`] outside the declared
     /// range and [`Refused::TooManyInputs`] past the grid's size.
     pub fn grid(&self, inputs: &[Input]) -> Result<Vec<Option<Stack>>, Refused> {
-        let kinds: BTreeSet<&str> = inputs.iter().map(|input| input.kind.as_str()).collect();
-        if kinds.len() > 1 {
-            return Err(Refused::MixedKinds { named: kinds.len() });
-        }
+        check_input_kinds(inputs)?;
         let filled: Vec<&Stack> = inputs
             .iter()
             .map(|input| &input.value)
@@ -412,6 +409,14 @@ impl Station {
             .find(|recipe| recipe.inputs == definition.inputs)
             .map(|recipe| recipe.output.clone()))
     }
+}
+
+fn check_input_kinds(inputs: &[Input]) -> Result<(), Refused> {
+    let kinds: BTreeSet<&str> = inputs.iter().map(|input| input.kind.as_str()).collect();
+    if kinds.len() > 1 {
+        return Err(Refused::MixedKinds { named: kinds.len() });
+    }
+    Ok(())
 }
 
 /// Which view one recipe-view attachment runs.

@@ -11,6 +11,9 @@ work and this package is that: the three ingredient kinds and their matching, or
 registration barrier, configuration declaration and resolution, the lifecycle, the side model — is
 expressed through Ravel rather than rebuilt.
 
+Station grids and brewing simulations share the ingredient-kind check in `src/recipes.rs`.
+Both reject mixed kinds before applying their distinct empty-input and count policies.
+
 ## The interface vocabulary is RVL-210's, and is consumed rather than rebuilt
 
 The wave decided that the interface vocabulary §5 lists is owned by RVL-210's counterpart, which

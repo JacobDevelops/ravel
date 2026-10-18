@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "482a5d280b0c8b65dd32486b44000117c2153487425c43aa19cfba387eac9d25"
+        "sha256": "a02aace5608e78472d62af120feb441c5039d009e0222e6e17a309c7246e23b9"
       },
       {
         "path": "aliases.json",
@@ -70,7 +70,7 @@
       },
       {
         "path": "src/capabilities/primitives.rs",
-        "sha256": "daada565af0858df7554077d6734da6954f6940a361d66a150f8752f6f1d6de4"
+        "sha256": "048719d71ab2d3dff49312b8de36d23faed0eba2a5d59d98d3e012c5bb6776bf"
       },
       {
         "path": "src/census.rs",
@@ -110,7 +110,7 @@
       },
       {
         "path": "src/channel.rs",
-        "sha256": "cc1a7d4a0d6447e29a502f457bdd9e31b808483d64d4b311dd5a45494d318792"
+        "sha256": "1ca545514eaba9539c8d962b3038182f0f1103cc1672103614a7dedfb65e2065"
       },
       {
         "path": "src/settings.rs",

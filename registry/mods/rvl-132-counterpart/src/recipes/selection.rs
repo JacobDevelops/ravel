@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{Converted, Counts, Input, Refused};
+use super::{Converted, Counts, Input, Refused, check_input_kinds};
 use crate::forms::{Candidate, CandidateSet};
 use crate::kinds::{ConditionSet, Flags, Stack};
 
@@ -133,10 +133,7 @@ impl Closure {
         inputs: &[Input],
         mix: impl Fn(&Stack, &Stack) -> Option<Stack>,
     ) -> Result<Option<Vec<Stack>>, Refused> {
-        let kinds: BTreeSet<&str> = inputs.iter().map(|input| input.kind.as_str()).collect();
-        if kinds.len() > 1 {
-            return Err(Refused::MixedKinds { named: kinds.len() });
-        }
+        check_input_kinds(inputs)?;
         let Some((first, rest)) = inputs.split_first() else {
             return Err(Refused::NoInput);
         };
@@ -198,4 +195,97 @@ fn one_of(value: &Stack) -> CandidateSet<Stack> {
     })
     .expect("a fresh candidate set has room for one value");
     set
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Closure, Input, Refused, Stack};
+
+    fn stack(name: &str) -> Stack {
+        Stack::of(name.parse().expect("a valid identity"), 1)
+    }
+
+    fn mix(ingredient: &Stack, running: &Stack) -> Option<Stack> {
+        match (
+            ingredient.identity.to_string().as_str(),
+            running.identity.to_string().as_str(),
+        ) {
+            ("test:wart", "test:water") => Some(stack("test:awkward")),
+            ("test:sugar", "test:awkward") => Some(stack("test:sweet")),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn simulation_mixes_in_order_and_returns_three_copies_without_the_ingredient_slot() {
+        let inputs =
+            ["test:water", "test:wart", "test:sugar"].map(|name| Input::stackable(stack(name)));
+        let result = Closure::shipped()
+            .simulate(&inputs, mix)
+            .expect("three stackable inputs");
+        assert_eq!(result, Some(vec![stack("test:sweet"); 3]));
+        let reversed = [inputs[0].clone(), inputs[2].clone(), inputs[1].clone()];
+        assert_eq!(Closure::shipped().simulate(&reversed, mix), Ok(None));
+    }
+
+    #[test]
+    fn simulation_refuses_distinct_kinds_before_count_or_mixing_empty_values() {
+        let closure = Closure::shipped();
+        let inputs = ["item", "fluid", "item", "fluid", "energy"].map(|kind| Input {
+            kind: kind.to_owned(),
+            value: Stack::empty(),
+        });
+        for (count, named) in [(2, 2), (4, 2), (5, 3)] {
+            assert_eq!(
+                closure.simulate(&inputs[..count], |_, _| panic!("mixed kinds must not mix")),
+                Err(Refused::MixedKinds { named })
+            );
+        }
+        assert_eq!(
+            closure.simulate(&[], |_, _| panic!("no inputs must not mix")),
+            Err(Refused::NoInput)
+        );
+        assert_eq!(
+            closure.simulate(&inputs[..1], |_, _| panic!("one input must not mix")),
+            Err(Refused::Count {
+                given: 1,
+                least: 2,
+                most: 4,
+            })
+        );
+        let same_kind = vec![inputs[0].clone(); 5];
+        assert_eq!(
+            closure.simulate(&same_kind, |_, _| panic!("too many inputs must not mix")),
+            Err(Refused::Count {
+                given: 5,
+                least: 2,
+                most: 4,
+            })
+        );
+    }
+
+    #[test]
+    fn revisiting_a_reached_stack_records_the_edge_without_reexpanding_it() {
+        let mixes = std::cell::Cell::new(0);
+        let recipes = Closure::new(2)
+            .expect("two recipes fit")
+            .compute(
+                &stack("test:water"),
+                &[stack("test:toggle")],
+                |_, input| {
+                    mixes.set(mixes.get() + 1);
+                    if input.identity == stack("test:water").identity {
+                        Some(stack("test:awkward"))
+                    } else {
+                        Some(stack("test:water"))
+                    }
+                },
+                |_, _| true,
+            )
+            .expect("a finite two-edge cycle terminates at the exact cap");
+        assert_eq!(recipes.len(), 2);
+        assert_eq!(mixes.get(), 2, "reached stacks are not expanded again");
+        assert_eq!(recipes[0].output[1..], vec![stack("test:awkward"); 3]);
+        assert_eq!(recipes[1].output[1..], vec![stack("test:water"); 3]);
+    }
 }

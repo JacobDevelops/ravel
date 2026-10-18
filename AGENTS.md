@@ -29,8 +29,9 @@ per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink
 ## Environment
 
 Everything runs with mise: run `mise install` once, then activate mise in your shell or use
-`mise exec -- <command>`. Rustup manages the undated nightly toolchain in `rust-toolchain.toml`,
-with edition 2024. The first build needs network access for the cargo registry.
+`mise exec -- <command>`. Rustup manages the dated nightly toolchain pinned in
+`rust-toolchain.toml`, with edition 2024 and nightly Cargo lint support.
+The first build needs network access for the cargo registry.
 
 ## Verify before claiming done
 

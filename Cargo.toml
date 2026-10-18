@@ -16,7 +16,7 @@ members = [
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-# This is the minimum supported compiler; rust-toolchain.toml selects nightly.
+# The nightly toolchain enables Cargo lints; this is the minimum supported Rust version.
 rust-version = "1.95"
 
 [workspace.dependencies]

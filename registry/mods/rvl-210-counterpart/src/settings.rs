@@ -521,9 +521,8 @@ mod tests {
     fn the_packaged_document_parses_and_declares_both_settings() {
         let declaration = declaration().expect("the packaged document is well formed");
         for key in OWN_KEYS {
-            let key = key.parse().expect("a legal setting key");
             assert!(
-                declaration.setting(&key).is_some(),
+                declaration.setting(key).is_some(),
                 "the document declares it"
             );
         }

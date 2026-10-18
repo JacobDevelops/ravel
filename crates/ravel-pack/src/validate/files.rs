@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
+use ravel_core::paths::{INSTANCE_DIRECTORY, PACK_CONFIG_DIRECTORY};
 use ravel_core::{ModId, RelativePath};
 use ravel_data::{ContentDeclaration, Override, TagSet};
 use ravel_package::PackageManifest;
 use serde_json::{Map, Value};
 
-use super::{PackFile, RESERVED_PREFIX};
+use super::PackFile;
 use crate::declare::PackDeclaration;
 use crate::error::ClosureError;
 
@@ -142,25 +143,26 @@ enum Writer {
 
 /// Refuses a path in the directory Ravel's own files live in.
 fn reserved(path: &RelativePath) -> Result<(), ClosureError> {
-    if path.as_str().starts_with(RESERVED_PREFIX) {
+    if path
+        .as_str()
+        .split('/')
+        .find(|part| !part.is_empty() && *part != ".")
+        == Some(INSTANCE_DIRECTORY)
+    {
         return Err(ClosureError::ReservedPath { path: path.clone() });
     }
     Ok(())
 }
 
-/// Returns a path under [`RESERVED_PREFIX`].
+/// Returns a path under the instance-private root.
 fn ravel_path(rest: &str) -> RelativePath {
-    RelativePath::try_from(format!("{RESERVED_PREFIX}{rest}"))
+    RelativePath::try_from(format!("{INSTANCE_DIRECTORY}/{rest}"))
         .expect("a mod id cannot spell an illegal path")
 }
 
 /// Uses the same pack-settings directory as the configuration reader.
 fn pack_settings_path(owner: &ModId) -> RelativePath {
-    RelativePath::try_from(format!(
-        "{}/{owner}.json",
-        ravel_core::paths::PACK_CONFIG_DIRECTORY
-    ))
-    .expect("a mod id cannot spell an illegal path")
+    ravel_path(&format!("{PACK_CONFIG_DIRECTORY}/{owner}.json"))
 }
 
 /// Appends a trailing newline if needed.
@@ -196,4 +198,25 @@ fn pack_manifest(pack: &PackDeclaration) -> Vec<u8> {
     let text = serde_json::to_string_pretty(&Value::Object(document))
         .expect("a map of strings always serializes");
     document_bytes(&text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClosureError, INSTANCE_DIRECTORY, RelativePath, reserved};
+
+    #[test]
+    fn the_reserved_directory_is_a_whole_path_segment() {
+        for text in [
+            INSTANCE_DIRECTORY.to_owned(),
+            format!("{INSTANCE_DIRECTORY}/pack.json"),
+            format!("./{INSTANCE_DIRECTORY}/config/member.json"),
+            format!("././{INSTANCE_DIRECTORY}"),
+        ] {
+            let path = RelativePath::try_from(text).expect("a relative path");
+            assert_eq!(reserved(&path), Err(ClosureError::ReservedPath { path }));
+        }
+        let sibling = RelativePath::try_from(format!("{INSTANCE_DIRECTORY}-mod/file.json"))
+            .expect("a relative path");
+        assert_eq!(reserved(&sibling), Ok(()));
+    }
 }

@@ -150,8 +150,8 @@ reverting a mutation in a file the working copy shows as added.
 
 ## 7. Run the four checks
 
-They answer four different questions and none stands in for the others. Run them from inside the
-public repository's devenv shell, where `cargo`, `jq` and `check-jsonschema` are on `PATH`.
+They answer four different questions and none stands in for the others. Run them through
+`mise exec --` from the public repository root, where `mise.toml` supplies `cargo`, `jq` and `check-jsonschema`.
 
 ```console
 checks/verify-notes-rows.sh

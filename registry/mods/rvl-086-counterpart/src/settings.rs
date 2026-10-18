@@ -909,12 +909,9 @@ mod tests {
     /// Whether a setting is one a given side resolves at all.
     #[must_use]
     fn resolved_on(key: &str, side: Side) -> bool {
-        let Ok(key) = key.parse() else {
-            return false;
-        };
         declaration().is_ok_and(|declaration| {
             declaration
-                .setting(&key)
+                .setting(key)
                 .is_some_and(|setting| setting.side.applies_to(side))
         })
     }
@@ -973,8 +970,7 @@ mod tests {
         let declaration = declaration().expect("the packaged document parses");
         assert_eq!(declaration.settings().len(), 28);
         for key in CLIENT_KEYS.iter().chain(DECIDING_KEYS.iter()) {
-            let parsed = key.parse().expect("every declared key is legal");
-            assert!(declaration.setting(&parsed).is_some(), "{key} is declared");
+            assert!(declaration.setting(key).is_some(), "{key} is declared");
         }
     }
 
@@ -1021,12 +1017,12 @@ mod tests {
     fn the_two_costs_declare_the_ranges_the_specification_constrains_them_to() {
         let declaration = declaration().expect("the packaged document parses");
         let cost = declaration
-            .setting(&REPAIR_COST.parse().expect("a legal key"))
+            .setting(REPAIR_COST)
             .expect("the cost is declared");
         assert_eq!(cost.value_schema.minimum, Some(1.0));
         assert_eq!(cost.value_schema.maximum, Some(8.0));
         let extra = declaration
-            .setting(&REPAIR_ENCHANTMENT_COST.parse().expect("a legal key"))
+            .setting(REPAIR_ENCHANTMENT_COST)
             .expect("the extra cost is declared");
         assert_eq!(extra.value_schema.minimum, Some(0.0));
         assert_eq!(extra.value_schema.maximum, Some(8.0));

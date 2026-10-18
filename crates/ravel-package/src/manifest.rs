@@ -2,13 +2,11 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::num::NonZeroU32;
 
-use ravel_core::{
-    DependencyRelationship, FailureKind, ModId, Side, SideSet, StructuredFailure, Version,
-    VersionRange,
-};
+use ravel_core::{FailureKind, ModId, Side, SideSet, StructuredFailure, Version, VersionRange};
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
+use crate::compatibility::MinecraftSupport;
 use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 
 /// A source package manifest conforming to `schemas/package.schema.json`.
@@ -119,8 +117,8 @@ pub struct Compatibility {
     /// The Ravel versions this package supports, as a range.
     pub ravel: VersionRange,
     /// Exact Minecraft version strings or explicit ranges for semver-shaped releases.
-    #[serde(deserialize_with = "deserialize_unique_non_empty")]
-    pub minecraft: Vec<NonEmptyText>,
+    #[serde(deserialize_with = "deserialize_minecraft")]
+    pub minecraft: Vec<MinecraftSupport>,
 }
 
 /// One declared relationship to another package.
@@ -145,6 +143,20 @@ pub struct Dependency {
     /// matter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order: Option<DependencyOrder>,
+}
+
+/// How a declared dependency constrains the load graph.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DependencyRelationship {
+    /// The dependant cannot load without it, and its absence fails closed.
+    Required,
+    /// The dependant loads with or without it, and orders after it when present.
+    Optional,
+    /// The two mods cannot load together.
+    Incompatible,
+    /// The two mods may load together, but the combination is reported.
+    Discouraged,
 }
 
 /// Where a dependant loads relative to its dependency.
@@ -197,6 +209,26 @@ pub struct Provenance {
     pub record: RelativePath,
     /// The digest [`crate::verify_provenance`] checks the record against.
     pub sha256: Sha256Digest,
+}
+
+fn deserialize_minecraft<'de, D>(deserializer: D) -> Result<Vec<MinecraftSupport>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let entries: Vec<NonEmptyText> = deserialize_unique_non_empty(deserializer)?;
+    let entries: Vec<MinecraftSupport> = entries
+        .into_iter()
+        .map(|entry| MinecraftSupport::try_from(String::from(entry)).map_err(de::Error::custom))
+        .collect::<Result<_, _>>()?;
+    let mut seen = std::collections::HashSet::with_capacity(entries.len());
+    for entry in &entries {
+        if !seen.insert(entry) {
+            return Err(de::Error::custom(format_args!(
+                "`{entry}` is declared more than once"
+            )));
+        }
+    }
+    Ok(entries)
 }
 
 /// Enforces a schema `minItems: 1` array.
@@ -314,15 +346,40 @@ impl StructuredFailure for ManifestError {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{
-        DependencyRelationship, FailureKind, LifecycleState, Redaction, Side, StructuredFailure,
-    };
+    use ravel_core::{FailureKind, LifecycleState, Redaction, Side, StructuredFailure};
     use serde_json::{Value, json};
 
-    use super::{DependencyOrder, ManifestError, PackageManifest};
+    use super::{DependencyOrder, DependencyRelationship, ManifestError, PackageManifest};
     use crate::test_support::DIGEST;
 
     const OTHER_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    #[test]
+    fn equivalent_minecraft_ranges_cannot_serialize_as_duplicate_entries() {
+        let mut document = minimal();
+        document["compatibility"]["minecraft"] = json!([">=26.1,<26.2", ">=26.1, <26.2"]);
+        assert!(rejection(&document).contains("is declared more than once"));
+    }
+
+    #[test]
+    fn every_schema_relationship_round_trips_as_a_kebab_case_name() {
+        for (relationship, name) in [
+            (DependencyRelationship::Required, "required"),
+            (DependencyRelationship::Optional, "optional"),
+            (DependencyRelationship::Incompatible, "incompatible"),
+            (DependencyRelationship::Discouraged, "discouraged"),
+        ] {
+            let encoded = format!("\"{name}\"");
+            assert_eq!(
+                serde_json::to_string(&relationship).expect("serializes"),
+                encoded
+            );
+            assert_eq!(
+                serde_json::from_str::<DependencyRelationship>(&encoded).expect("deserializes"),
+                relationship
+            );
+        }
+    }
 
     const REQUIRED_FIELDS: [&str; 9] = [
         "schemaVersion",

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_package::{IntegrityError, ManifestError, PackageManifest, verify_package};
 
-use ravel_core::paths::PACKAGES_DIRECTORY;
+use ravel_core::paths::{INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 
 /// The manifest filename within each installed package.
 pub const MANIFEST_FILE: &str = "package.json";
@@ -20,14 +20,17 @@ pub const MANIFEST_FILE: &str = "package.json";
 ///
 /// Returns a [`DiscoveryRefused`] for unreadable, invalid, escaping, or duplicate packages.
 pub fn discover(game_directory: &Path) -> Result<Discovered, DiscoveryRefused> {
-    let packages = game_directory.join(PACKAGES_DIRECTORY);
+    let packages = game_directory
+        .join(INSTANCE_DIRECTORY)
+        .join(PACKAGES_DIRECTORY);
     if !packages.exists() {
         return Ok(Discovered::default());
     }
 
-    let root = canonical(&packages, PACKAGES_DIRECTORY)?;
+    let label = format!("{INSTANCE_DIRECTORY}/{PACKAGES_DIRECTORY}");
+    let root = canonical(&packages, &label)?;
     let mut found = Vec::new();
-    for (name, path) in entries(&root)? {
+    for (name, path) in entries(&root, &label)? {
         let directory = name.to_string_lossy().into_owned();
         found.push(package(&root, &path, directory)?);
     }
@@ -47,11 +50,11 @@ pub fn discover(game_directory: &Path) -> Result<Discovered, DiscoveryRefused> {
 }
 
 // Sort names so the first refusal is independent of filesystem enumeration order.
-fn entries(root: &Path) -> Result<Vec<(OsString, PathBuf)>, DiscoveryRefused> {
-    let reader = fs::read_dir(root).map_err(|error| refuse_io(PACKAGES_DIRECTORY, error))?;
+fn entries(root: &Path, label: &str) -> Result<Vec<(OsString, PathBuf)>, DiscoveryRefused> {
+    let reader = fs::read_dir(root).map_err(|error| refuse_io(label, error))?;
     let mut entries = Vec::new();
     for entry in reader {
-        let entry = entry.map_err(|error| refuse_io(PACKAGES_DIRECTORY, error))?;
+        let entry = entry.map_err(|error| refuse_io(label, error))?;
         entries.push((entry.file_name(), entry.path()));
     }
     entries.sort_by(|left, right| left.0.cmp(&right.0));
@@ -320,6 +323,17 @@ mod tests {
 
     static NEXT: AtomicU32 = AtomicU32::new(0);
 
+    #[test]
+    fn a_packages_directory_error_names_the_instance_relative_root() {
+        let root = instance("packages-file");
+        let path = packages(&root);
+        fs::remove_dir(&path).expect("the empty packages directory is removable");
+        fs::write(&path, "not a directory").expect("a file replaces the directory");
+        let error = discover(&root).expect_err("a packages file cannot be listed");
+        let label = format!("{}/{}", super::INSTANCE_DIRECTORY, PACKAGES_DIRECTORY);
+        assert!(error.to_string().contains(&label), "{error}");
+    }
+
     fn instance(label: &str) -> PathBuf {
         let unique = NEXT.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
@@ -329,12 +343,18 @@ mod tests {
         if root.exists() {
             fs::remove_dir_all(&root).expect("a stale instance should be removable");
         }
-        fs::create_dir_all(root.join(PACKAGES_DIRECTORY)).expect("an instance is creatable");
+        fs::create_dir_all(
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(PACKAGES_DIRECTORY),
+        )
+        .expect("an instance is creatable");
         root
     }
 
     fn packages(instance: &Path) -> PathBuf {
-        instance.join(PACKAGES_DIRECTORY)
+        instance
+            .join(super::INSTANCE_DIRECTORY)
+            .join(PACKAGES_DIRECTORY)
     }
 
     fn manifest_document(id: &str, sides: &[&str], source_digest: &str) -> String {

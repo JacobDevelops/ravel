@@ -27,7 +27,7 @@ run. A mod that fails on an event ends that broadcast, and the mods after it
 never see it.
 
 Host integrations use one profiler-taking loader entry point per operation:
-`broadcast`, `route`, and `deliver_packet`. A halted set has a distinct
+`broadcast`, `deliver_command`, and `deliver_packet`. A halted set has a distinct
 `DispatchRefused::Halted` refusal rather than an inactive-recipient refusal.
 
 There is a second filter and it is the one that surprises people. An event that

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use ravel_core::paths::{HOST_LIBRARY, INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 use ravel_core::{LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
 use ravel_loader::{MANIFEST_FILE, discover};
-use ravel_package::{NonEmptyText, PackageManifest, Sha256Digest};
+use ravel_package::{MinecraftSupport, PackageManifest, Sha256Digest};
 use sha2::{Digest as _, Sha256};
 
 use super::generate::crate_ident;
@@ -105,7 +105,8 @@ fn instance(label: &str) -> PathBuf {
     if root.exists() {
         fs::remove_dir_all(&root).expect("a stale instance is removable");
     }
-    fs::create_dir_all(root.join(PACKAGES_DIRECTORY)).expect("an instance is creatable");
+    fs::create_dir_all(root.join(INSTANCE_DIRECTORY).join(PACKAGES_DIRECTORY))
+        .expect("an instance is creatable");
     root
 }
 
@@ -130,7 +131,10 @@ fn install(instance: &Path, directory: &str, id: &str, crate_name: &str, templat
 
 fn install_example(instance: &Path, name: &str) {
     let from = ravel_root().join("examples").join(name);
-    let into = instance.join(PACKAGES_DIRECTORY).join(name);
+    let into = instance
+        .join(INSTANCE_DIRECTORY)
+        .join(PACKAGES_DIRECTORY)
+        .join(name);
     copy_tree(&from, &into);
     pin_fixture_to_selected_game(&into);
 }
@@ -140,7 +144,7 @@ fn pin_fixture_to_selected_game(root: &Path) {
     let document = fs::read_to_string(&path).expect("example manifest is readable");
     let mut manifest = PackageManifest::parse(&document).expect("example manifest is valid");
     manifest.compatibility.minecraft =
-        vec![NonEmptyText::try_from(game()).expect("the selected game version is not empty")];
+        vec![MinecraftSupport::try_from(game()).expect("the selected game version is valid")];
     fs::write(path, manifest.to_json()).expect("example manifest is writable");
 }
 
@@ -152,7 +156,10 @@ fn install_with(
     template: &str,
     dependencies: &str,
 ) {
-    let root = instance.join(PACKAGES_DIRECTORY).join(directory);
+    let root = instance
+        .join(INSTANCE_DIRECTORY)
+        .join(PACKAGES_DIRECTORY)
+        .join(directory);
     fs::create_dir_all(root.join("src")).expect("a package directory is creatable");
     let source = source(template, id);
     let digest = digest_of(source.as_bytes());
@@ -287,6 +294,7 @@ fn a_package_carrying_no_cargo_manifest_refuses_the_build() {
     );
     fs::remove_file(
         instance
+            .join(INSTANCE_DIRECTORY)
             .join(PACKAGES_DIRECTORY)
             .join("installed-1.0.0/Cargo.toml"),
     )
@@ -316,6 +324,7 @@ fn a_cargo_manifest_that_names_no_crate_refuses_the_build() {
     );
     fs::write(
         instance
+            .join(INSTANCE_DIRECTORY)
             .join(PACKAGES_DIRECTORY)
             .join("installed-1.0.0/Cargo.toml"),
         "[dependencies]\nravel-sdk.workspace = true\n",
@@ -441,7 +450,13 @@ fn the_examples_this_repository_ships_install_and_compile(cache: &Path) {
             .and_then(std::ffi::OsStr::to_str)
             .expect("an example with a portable name")
             .to_owned();
-        copy_tree(source, &instance.join(PACKAGES_DIRECTORY).join(&name));
+        copy_tree(
+            source,
+            &instance
+                .join(INSTANCE_DIRECTORY)
+                .join(PACKAGES_DIRECTORY)
+                .join(&name),
+        );
         installed.push(name);
     }
     assert!(
@@ -975,6 +990,7 @@ fn malformed_cargo_toml_is_a_parser_refusal_without_an_io_source() {
     );
     fs::write(
         instance
+            .join(INSTANCE_DIRECTORY)
             .join(PACKAGES_DIRECTORY)
             .join("installed/Cargo.toml"),
         "[package",
@@ -1061,6 +1077,7 @@ fn an_unreadable_cargo_manifest_retains_the_directory_and_io_kind() {
         EXPORTING_SOURCE,
     );
     let manifest = instance
+        .join(INSTANCE_DIRECTORY)
         .join(PACKAGES_DIRECTORY)
         .join("installed/Cargo.toml");
     fs::remove_file(&manifest).expect("manifest removed");
@@ -1260,6 +1277,7 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
     copy_tree(
         &source,
         &instance
+            .join(INSTANCE_DIRECTORY)
             .join(PACKAGES_DIRECTORY)
             .join("rvl-120-counterpart"),
     );

@@ -8,12 +8,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ravel_core::paths::INSTANCE_DIRECTORY;
 use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath, Side, Version};
 use ravel_data::{ContentDeclaration, TagId};
 use ravel_example_content_mod::ContentMod;
 use ravel_pack::{
-    ClosureError, PackDeclaration, PackError, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE,
-    ValidatedPack, validate,
+    ClosureError, PackDeclaration, PackError, UnprovidedEntry, VANILLA_NAMESPACE, ValidatedPack,
+    validate,
 };
 use ravel_package::PackageManifest;
 use ravel_sdk::Declared;
@@ -669,13 +670,13 @@ fn every_written_path_is_either_the_games_layout_or_ravels_own() {
         assert!(
             written.starts_with("data/")
                 || written.starts_with("assets/")
-                || written.starts_with(RESERVED_PREFIX),
+                || file.path().first_segment() == INSTANCE_DIRECTORY,
             "`{written}` is in neither the game's layout nor Ravel's own"
         );
     }
     assert!(
         validated
-            .file(&path(&format!("{RESERVED_PREFIX}pack.json")))
+            .file(&path(&format!("{INSTANCE_DIRECTORY}/pack.json")))
             .is_some(),
         "the reproducible manifest `SPEC.md` §4.3 requires is one of the written files"
     );
@@ -687,7 +688,7 @@ fn the_reproducible_manifest_holds_every_pin_and_nothing_else_about_the_build() 
     let validated = validate(&pack, &manifests, &content, &[settings_declaration()])
         .expect("every closure holds");
     let written = validated
-        .file(&path(&format!("{RESERVED_PREFIX}pack.json")))
+        .file(&path(&format!("{INSTANCE_DIRECTORY}/pack.json")))
         .expect("the pack writes its manifest");
     let document: serde_json::Value =
         serde_json::from_slice(written.bytes()).expect("the manifest is JSON");

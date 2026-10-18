@@ -521,8 +521,18 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
 
 #[test]
 fn owners_failed_before_outward_delivery_are_never_drained() {
-    let (machine, _, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+    let (mut machine, _, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
     let drains = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    machine
+        .fail_callback(
+            &HostError::Panicked {
+                mod_id: id(MOD),
+                state: LifecycleState::Running,
+            },
+            &environment(),
+            None,
+        )
+        .expect("known owner can fail");
     let runtime = LoaderRuntime::new(
         machine,
         vec![Box::new(PanickingDrain {
@@ -531,20 +541,6 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
         })],
         crate::runtime::test_launch(),
     );
-    {
-        let mut inner = runtime.inner.lock().expect("healthy lock");
-        inner
-            .loaded
-            .fail_callback(
-                &HostError::Panicked {
-                    mod_id: id(MOD),
-                    state: LifecycleState::Running,
-                },
-                &environment(),
-                None,
-            )
-            .expect("known owner can fail");
-    }
     runtime.observe(&target("client.tick"), &[]);
     assert_eq!(drains.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
@@ -731,7 +727,7 @@ fn integrated_commands_refuse_a_client_only_owner() {
         Side::IntegratedServer,
         Vec::new(),
     );
-    let refused = ravel_loader::route(
+    let refused = ravel_loader::deliver_command(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
         &invocation,
         &mut ravel_observability::Profiler::off(),
@@ -1207,7 +1203,7 @@ fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), S
 
 #[test]
 fn checked_commands_and_packets_respect_real_halts_without_launch_refusals() -> Result<(), String> {
-    let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
+    let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Panics);
     runtime.claim_command_thread()?;
     {
         let mut inner = runtime.inner.lock().map_err(|error| error.to_string())?;
@@ -1215,18 +1211,8 @@ fn checked_commands_and_packets_respect_real_halts_without_launch_refusals() -> 
             .loaded
             .record_world_mutation()
             .map_err(|error| error.to_string())?;
-        inner
-            .loaded
-            .fail_callback(
-                &HostError::Panicked {
-                    mod_id: id(MOD),
-                    state: LifecycleState::Running,
-                },
-                &environment(),
-                None,
-            )
-            .map_err(|error| error.to_string())?;
     }
+    assert!(runtime.legacy_event(GameEvent::ServerTick).is_err());
     assert!(!runtime.accepts_packet_owner(&id(MOD)));
     for _ in 0..3 {
         assert!(runtime.legacy_command("example_mod:warp home").is_err());
@@ -1263,27 +1249,21 @@ fn packet_admission_rejects_required_failure_before_the_halt_latch() {
             Box::new(Recording {
                 id: id(name),
                 log: Arc::new(Mutex::new(Log::default())),
-                behaviour: Behaviour::Records,
+                behaviour: if name == MOD {
+                    Behaviour::Panics
+                } else {
+                    Behaviour::Records
+                },
                 claims: Vec::new(),
             })
         })
         .collect();
     let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
     assert!(runtime.accepts_packet_owner(&id("innocent")));
+    assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
     {
-        let mut inner = runtime.inner.lock().expect("healthy lock");
-        inner
-            .loaded
-            .fail_callback(
-                &HostError::Panicked {
-                    mod_id: id(MOD),
-                    state: LifecycleState::Running,
-                },
-                &environment(),
-                None,
-            )
-            .expect("failure is recorded before world mutation");
-        assert!(!inner.loaded.machine().is_halted());
+        let inner = runtime.inner.lock().expect("healthy lock");
+        assert!(inner.loaded.machine().save_access().is_ok());
         assert_eq!(
             inner.loaded.machine().state(&id(MOD)),
             Ok(LifecycleState::Failed)

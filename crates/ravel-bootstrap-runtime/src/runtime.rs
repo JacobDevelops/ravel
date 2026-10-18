@@ -15,8 +15,6 @@ use ravel_loader::{Loaded, ModSurface, Supplied};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::outward;
-#[cfg(test)]
-use ravel_core::FailureAttribution;
 use ravel_core::RegistryKey;
 #[cfg(test)]
 use ravel_loader::LifecycleMachine;
@@ -225,15 +223,17 @@ impl LoaderRuntime {
         installed_packages: BTreeMap<ravel_core::ModId, Version>,
     ) -> Self {
         let mut loaded = Loaded::new(machine, mods).expect("complete test composition");
-        let interceptions = if loaded.machine().save_access().is_err() {
-            // Halted fixtures cannot execute a declaration or a later interception.
-            ravel_host_api::Points::default()
-                .admit()
-                .expect("empty interceptions")
-        } else {
-            ravel_loader::open_interceptions(&mut loaded.borrow(), report.environment())
-                .expect("test interception declarations admit")
-        };
+        let interceptions =
+            match ravel_loader::open_interceptions(&mut loaded.borrow(), report.environment()) {
+                Ok(interceptions) => interceptions,
+                Err(ravel_loader::InterceptRefused::Halted { .. }) => {
+                    // Blocked fixtures cannot execute declarations or later interceptions.
+                    ravel_host_api::Points::default()
+                        .admit()
+                        .expect("empty interceptions")
+                }
+                Err(error) => panic!("test interception declarations must admit: {error}"),
+            };
         Self::from_parts(
             loaded,
             profiler,
@@ -334,47 +334,6 @@ impl LoaderRuntime {
             ModSurface::of(inner.loaded.machine()),
             inner.report.notices().iter().cloned().collect(),
         )
-    }
-}
-
-#[cfg(test)]
-impl LoaderRuntime {
-    pub(crate) fn fail_while_running(
-        &self,
-        mod_id: &ravel_core::ModId,
-        attribution: FailureAttribution,
-    ) {
-        self.inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .loaded
-            .fail(mod_id, attribution)
-            .expect("a mod the machine holds can fail");
-    }
-
-    pub(crate) fn claim(
-        &self,
-        mod_id: &ravel_core::ModId,
-        identifier: &RegistryKey,
-    ) -> Result<(), ravel_loader::LifecycleError> {
-        self.inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .loaded
-            .claim_registry_identifier(mod_id, identifier, None)
-    }
-
-    pub(crate) fn claim_describing(
-        &self,
-        mod_id: &ravel_core::ModId,
-        identifier: &RegistryKey,
-        behaviour: ravel_data::ContentBehaviour,
-    ) -> Result<(), ravel_loader::LifecycleError> {
-        self.inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .loaded
-            .claim_registry_identifier(mod_id, identifier, Some(behaviour))
     }
 }
 

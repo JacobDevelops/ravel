@@ -230,7 +230,7 @@ pub mod prelude {
         claim_all,
     };
     pub use crate::events::{CommandInvocation, GameEvent};
-    pub use crate::interception::{AdmittedPoints, Outcome, Point, Points};
+    pub use crate::interception::{Outcome, Point};
     pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
     pub use crate::render_stages::{RenderStage, StageDeclaration};
     pub use crate::save::{

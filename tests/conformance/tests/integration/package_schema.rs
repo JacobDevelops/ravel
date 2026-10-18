@@ -51,7 +51,7 @@ fn validates(schema: &Value, instance: &Value, label: &str) -> bool {
         .arg(&schema_file)
         .arg(&instance_file)
         .output()
-        .expect("check-jsonschema should be on PATH inside the devenv shell");
+        .expect("check-jsonschema should be on PATH via mise install and mise exec --");
     fs::remove_dir_all(&root).expect("cleanup");
     output.status.success()
 }
@@ -66,7 +66,7 @@ fn validates_against_package_schema(document: &str, label: &str) -> bool {
         .arg(schema_path())
         .arg(&path)
         .output()
-        .expect("check-jsonschema should be on PATH inside the devenv shell");
+        .expect("check-jsonschema should be on PATH via mise install and mise exec --");
     fs::remove_dir_all(&root).expect("cleanup");
     output.status.success()
 }

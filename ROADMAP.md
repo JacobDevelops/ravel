@@ -312,7 +312,7 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 
 | Crate | Owns |
 | --- | --- |
-| `ravel-core` | Canonical IDs, versions, side/capability descriptors, lifecycle and diagnostic value types |
+| `ravel-core` | Canonical IDs, content IDs, versions, paths, sides, lifecycle, precedence ordering, diagnostics and redaction |
 | `ravel-package` | Manifest parsing, compatibility ranges, source declarations, source-file hashes and provenance |
 | `ravel-resolve` | Dependency edges, cycles, side checks and deterministic load plans |
 | `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy and world-access gate |
@@ -330,7 +330,7 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-data` | Content and audio declarations, pack generation, tag/resource merging, server data and render-stage ordering |
 | `ravel-save` | Ownership, schema versioning, migrations and compatibility checks |
 | `ravel-network` | Ravel packet/channel abstractions and side rules |
-| `ravel-observability` | Structured reports, redaction, metric schemas and profiling coordinator |
+| `ravel-observability` | Structured reports, metric schemas and profiling coordinator |
 | `ravel-pack` | Pack pinning, declarative composition and closure validation |
 | `ravel-acceptance` | Declarative game acceptance scenarios, assertions and transcripts |
 | `ravel-testkit` | Deterministic fake hosts, fixture builders and process harness contracts |

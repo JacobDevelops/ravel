@@ -2,7 +2,94 @@ use std::fmt;
 
 use ravel_core::{FailureKind, StructuredFailure, Version, VersionRange};
 
+use crate::NonEmptyText;
 use crate::manifest::Compatibility;
+use serde::{Deserialize, Serialize};
+
+/// One checked exact Minecraft release name or semantic-version range.
+///
+/// ```
+/// use ravel_package::MinecraftSupport;
+/// let release = MinecraftSupport::try_from("24w45a".to_owned())?;
+/// assert_eq!(release.to_string(), "24w45a");
+/// # Ok::<(), ravel_package::MinecraftSupportError>(())
+/// ```
+///
+/// ```compile_fail
+/// use ravel_package::{MinecraftSupport, NonEmptyText};
+/// let invalid = MinecraftSupport::Exact(NonEmptyText::try_from(">=".to_owned()).unwrap());
+/// ```
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(into = "String", try_from = "String")]
+pub struct MinecraftSupport(MinecraftSupportKind);
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum MinecraftSupportKind {
+    Exact(NonEmptyText),
+    Range(VersionRange),
+}
+
+impl TryFrom<String> for MinecraftSupport {
+    type Error = MinecraftSupportError;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        if is_range(&text) {
+            return VersionRange::parse(&text)
+                .map(|range| Self(MinecraftSupportKind::Range(range)))
+                .map_err(|source| MinecraftSupportError {
+                    input: text,
+                    source: Box::new(source),
+                });
+        }
+        NonEmptyText::try_from(text)
+            .map(|exact| Self(MinecraftSupportKind::Exact(exact)))
+            .map_err(|source| MinecraftSupportError {
+                input: String::new(),
+                source: Box::new(source),
+            })
+    }
+}
+
+impl From<MinecraftSupport> for String {
+    fn from(support: MinecraftSupport) -> Self {
+        match support.0 {
+            MinecraftSupportKind::Exact(text) => text.into(),
+            MinecraftSupportKind::Range(range) => range.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for MinecraftSupport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            MinecraftSupportKind::Exact(text) => text.fmt(formatter),
+            MinecraftSupportKind::Range(range) => range.fmt(formatter),
+        }
+    }
+}
+
+/// A Minecraft support entry is empty or contains a malformed range.
+#[derive(Debug)]
+pub struct MinecraftSupportError {
+    input: String,
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl fmt::Display for MinecraftSupportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "invalid Minecraft support entry `{}`: {}",
+            self.input, self.source
+        )
+    }
+}
+
+impl std::error::Error for MinecraftSupportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
 
 impl Compatibility {
     /// Checks the declared Ravel range against the running Ravel version.
@@ -28,24 +115,18 @@ impl Compatibility {
     pub fn check_minecraft(&self, running: &str) -> Result<(), CompatibilityError> {
         let running_version: Option<Version> = running.parse().ok();
         for declared in &self.minecraft {
-            let text = declared.as_str();
-            if text == running {
-                return Ok(());
-            }
-            if let (Some(running_version), Ok(range)) =
-                (running_version.as_ref(), text.parse::<VersionRange>())
-                && is_range(text)
-                && range.matches(running_version)
-            {
+            let matches = match &declared.0 {
+                MinecraftSupportKind::Exact(text) => text.as_str() == running,
+                MinecraftSupportKind::Range(range) => running_version
+                    .as_ref()
+                    .is_some_and(|version| range.matches(version)),
+            };
+            if matches {
                 return Ok(());
             }
         }
         Err(CompatibilityError::Minecraft {
-            declared: self
-                .minecraft
-                .iter()
-                .map(|declared| declared.as_str().to_owned())
-                .collect(),
+            declared: self.minecraft.iter().map(ToString::to_string).collect(),
             running: running.to_owned(),
         })
     }
@@ -72,7 +153,7 @@ pub enum CompatibilityError {
     },
     /// The running Minecraft version is not one the package declared.
     Minecraft {
-        /// The exact versions the package declared.
+        /// The exact release names and version ranges the package declared.
         declared: Vec<String>,
         /// The Minecraft version that is running.
         running: String,
@@ -159,6 +240,51 @@ mod tests {
         assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
         assert_eq!(error.diagnostic().redaction(), Redaction::Raw);
         assert!(!error.quotes_untrusted_text());
+    }
+
+    #[test]
+    fn malformed_minecraft_ranges_are_rejected_at_manifest_parsing() {
+        for text in [">=26.1, <", ">", "^bad", "~", "*oops", "26.1, bad", "=bad"] {
+            let entries = serde_json::to_string(&[text]).expect("strings serialize");
+            let document = manifest_document("*", &entries, DIGEST, DIGEST);
+            assert!(PackageManifest::parse(&document).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn minecraft_support_round_trips_as_strings_with_checked_variants() {
+        let manifest = manifest("*", r#"["24w45a", "26.1.7", ">=26.1, <26.2"]"#);
+        assert!(matches!(
+            &manifest.compatibility.minecraft[0].0,
+            super::MinecraftSupportKind::Exact(_)
+        ));
+        assert!(matches!(
+            &manifest.compatibility.minecraft[1].0,
+            super::MinecraftSupportKind::Exact(_)
+        ));
+        assert!(matches!(
+            &manifest.compatibility.minecraft[2].0,
+            super::MinecraftSupportKind::Range(_)
+        ));
+        assert_eq!(manifest.compatibility.check_minecraft("24w45a"), Ok(()));
+        assert_eq!(
+            PackageManifest::parse(&manifest.to_json()).expect("typed entries serialize"),
+            manifest
+        );
+    }
+
+    #[test]
+    fn minecraft_support_errors_identify_the_input_and_preserve_the_source() {
+        use std::error::Error;
+
+        for text in ["", ">=26.1, <"] {
+            let error = super::MinecraftSupport::try_from(text.to_owned())
+                .expect_err("invalid support is refused");
+            assert!(error.to_string().contains(&format!("`{text}`")), "{error}");
+            assert!(error.source().is_some());
+            let encoded = serde_json::to_string(text).expect("strings serialize");
+            assert!(serde_json::from_str::<super::MinecraftSupport>(&encoded).is_err());
+        }
     }
 
     #[test]

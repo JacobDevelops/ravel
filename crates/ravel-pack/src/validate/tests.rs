@@ -1,9 +1,10 @@
 use ravel_config::{ConfigurationDeclaration, LayerError, ValueDocument};
+use ravel_core::paths::{INSTANCE_DIRECTORY, PACK_CONFIG_DIRECTORY};
 use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath, Side, Version};
 use ravel_data::{ContentDeclaration, TagId};
 use ravel_package::PackageManifest;
 
-use super::{ClosureError, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE, validate};
+use super::{ClosureError, UnprovidedEntry, VANILLA_NAMESPACE, validate};
 use crate::declare::PackDeclaration;
 
 const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -73,12 +74,12 @@ fn a_pack_whose_four_closures_hold_writes_its_manifest_and_nothing_else() {
             .iter()
             .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
-        [format!("{RESERVED_PREFIX}pack.json")]
+        [format!("{INSTANCE_DIRECTORY}/pack.json")]
     );
     assert_eq!(validated.overrides(), []);
 
     let manifest = validated
-        .file(&path(&format!("{RESERVED_PREFIX}pack.json")))
+        .file(&path(&format!("{INSTANCE_DIRECTORY}/pack.json")))
         .expect("the pack writes its own manifest");
     let text = String::from_utf8(manifest.bytes().to_vec()).expect("the manifest is UTF-8");
     assert_eq!(
@@ -418,7 +419,7 @@ fn ordinary_member_resource_override_is_recorded() -> Result<(), Box<dyn std::er
 
 #[test]
 fn member_resources_cannot_use_ravels_directory() -> Result<(), Box<dyn std::error::Error>> {
-    let reserved = path(&format!("{RESERVED_PREFIX}member.json"));
+    let reserved = path(&format!("{INSTANCE_DIRECTORY}/member.json"));
     let (pack, manifests, _) = one_member();
     let mut declaration = ContentDeclaration::new(id("base_mod"));
     declaration.resource(reserved.clone(), b"{}".to_vec())?;
@@ -433,13 +434,16 @@ fn member_resources_cannot_use_ravels_directory() -> Result<(), Box<dyn std::err
 #[test]
 fn nothing_but_ravel_may_write_into_ravels_own_directory() {
     let (mut pack, manifests, content) = one_member();
-    pack.supply(path(&format!("{RESERVED_PREFIX}pack.json")), b"{}".to_vec())
-        .expect("one supplied path");
+    pack.supply(
+        path(&format!("{INSTANCE_DIRECTORY}/pack.json")),
+        b"{}".to_vec(),
+    )
+    .expect("one supplied path");
 
     assert_eq!(
         validate(&pack, &manifests, &content, &[]),
         Err(ClosureError::ReservedPath {
-            path: path(&format!("{RESERVED_PREFIX}pack.json")),
+            path: path(&format!("{INSTANCE_DIRECTORY}/pack.json")),
         })
     );
 }
@@ -761,8 +765,7 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
         .expect("every closure holds");
     let written = validated
         .file(&path(&format!(
-            "{}/base_mod.json",
-            ravel_core::paths::PACK_CONFIG_DIRECTORY
+            "{INSTANCE_DIRECTORY}/{PACK_CONFIG_DIRECTORY}/base_mod.json"
         )))
         .expect("the pack writes its own layer");
     let text = String::from_utf8(written.bytes().to_vec()).expect("the document is UTF-8");
@@ -771,10 +774,7 @@ fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
         text.ends_with('\n'),
         "every written document ends in a newline"
     );
-    assert!(
-        ravel_core::paths::PACK_CONFIG_DIRECTORY.starts_with(RESERVED_PREFIX),
-        "the pack layer is under the prefix `reserved` keeps everything else out of"
-    );
+    assert_eq!(written.path().first_segment(), INSTANCE_DIRECTORY);
 }
 
 #[test]

@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 /// Instance-private root, relative to the game directory.
 pub const INSTANCE_DIRECTORY: &str = "ravel";
-/// Installed package sources, relative to the game directory.
-pub const PACKAGES_DIRECTORY: &str = "ravel/mods";
-/// Pack configuration, relative to the game directory.
-pub const PACK_CONFIG_DIRECTORY: &str = "ravel/config";
+/// Installed package sources, relative to the instance-private root.
+pub const PACKAGES_DIRECTORY: &str = "mods";
+/// Pack configuration, relative to the instance-private root.
+pub const PACK_CONFIG_DIRECTORY: &str = "config";
 /// Generated host crate, relative to the instance-private root.
 pub const HOST_DIRECTORY: &str = "host";
 /// The library name the generated host produces and the JVM loads.
@@ -64,7 +64,7 @@ impl RelativePath {
         self.0.split('/').next().unwrap_or("")
     }
 
-    fn validate(candidate: &str) -> Result<(), RelativePathError> {
+    fn check(candidate: &str) -> Result<(), RelativePathError> {
         if candidate.is_empty() {
             return Err(RelativePathError::Empty);
         }
@@ -93,7 +93,7 @@ impl TryFrom<String> for RelativePath {
     type Error = RelativePathError;
 
     fn try_from(candidate: String) -> Result<Self, Self::Error> {
-        Self::validate(&candidate)?;
+        Self::check(&candidate)?;
         Ok(Self(candidate))
     }
 }

@@ -21,9 +21,9 @@ stable contracts toward concrete host internals.
 - `ravel-core::paths` owns the instance-private layout: the `ravel` root,
   installed packages, pack configuration, generated host, and seeded-pack record.
   Discovery, configuration, generation, and startup import those constants.
-- Typed configuration reads accept declared key names directly and report
-  unknown names through `ValueError`, without reparsing static names. Render
-  contributions take `RenderStage`; text is admitted with `RenderStage::published`.
+- Typed configuration reads, edits, and declaration lookup accept key names directly
+  without reparsing static names; unknown names report their original text.
+  Render contributions take `RenderStage`; text is admitted with `RenderStage::published`.
   Ordering refusals name only actual cycle members, never innocent declarations
   blocked downstream of a cycle.
   Pack file supply refuses duplicate paths immediately and preserves the first

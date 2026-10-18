@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 use ravel_core::{LifecycleState, Side};
-use ravel_package::{NonEmptyText, PackageManifest};
+use ravel_package::PackageManifest;
 use ravel_test_mod_noop::NoopMod;
 use ravel_testkit::{Host, PipelineRun, TestPackage, executed_states, run_order, run_pipeline};
 use serde_json::{Value, json};
@@ -35,8 +35,7 @@ fn running_minecraft() -> String {
         .minecraft
         .first()
         .expect("the schema requires at least one Minecraft version")
-        .as_str()
-        .to_owned();
+        .to_string();
     assert!(
         repository_root()
             .join("minecraft/versions")
@@ -115,7 +114,7 @@ fn record() -> Value {
                     .compatibility
                     .minecraft
                     .iter()
-                    .map(NonEmptyText::as_str)
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>(),
             },
             "sourceFiles": record_source_files(&manifest),
@@ -166,7 +165,7 @@ fn validates(schema: &str, instance: &Path) -> bool {
         .arg(repository_root().join(schema))
         .arg(instance)
         .output()
-        .expect("check-jsonschema should be on PATH inside the devenv shell")
+        .expect("check-jsonschema should be on PATH via mise install and mise exec --")
         .status
         .success()
 }

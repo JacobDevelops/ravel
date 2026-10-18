@@ -90,7 +90,7 @@ impl ServiceContext<'_> {
     fn record_failure(&mut self, source: &HostError) -> Result<bool, ServiceRefused> {
         let stop = self
             .machine
-            .fail_setup_callback(source, self.environment)
+            .fail_callback_must_stop(source, self.environment)
             .map_err(ServiceRefused::Lifecycle)?;
         self.failures
             .insert(source.mod_id().clone(), source.clone());

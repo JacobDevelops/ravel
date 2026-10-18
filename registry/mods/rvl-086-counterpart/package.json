@@ -103,7 +103,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "225a4cbbd330bc870de6c27fcb97d84f8daac4a53a0c6eeb0142f98c4902a5a1"
+        "sha256": "4b5081b00476547f8e13fe10cf0b993aa47b40d32e9b95b4baa1ce8024b20e95"
       },
       {
         "path": "src/tooltip.rs",

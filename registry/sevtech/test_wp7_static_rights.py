@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "registry/sevtech/rights-static.py"
 FIXTURE = "sevtech-ages-3.2.3"
 

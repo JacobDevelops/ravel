@@ -12,8 +12,6 @@ mod redaction;
 mod sides;
 mod states;
 
-use serde::{Deserialize, Serialize};
-
 pub use content::{
     ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
 };
@@ -35,46 +33,9 @@ pub use states::LifecycleState;
 /// The environment variable selecting a build's tracked Minecraft version.
 pub const MINECRAFT_VERSION_SELECTION: &str = "RAVEL_MINECRAFT_VERSION";
 
-/// How a declared dependency constrains the load graph.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DependencyRelationship {
-    /// The dependant cannot load without it, and its absence fails closed.
-    Required,
-    /// The dependant loads with or without it, and orders after it when present.
-    Optional,
-    /// The two mods cannot load together.
-    Incompatible,
-    /// The two mods may load together, but the combination is reported.
-    Discouraged,
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{DependencyRelationship, Version, VersionRange};
-
-    const RELATIONSHIPS: [DependencyRelationship; 4] = [
-        DependencyRelationship::Required,
-        DependencyRelationship::Optional,
-        DependencyRelationship::Incompatible,
-        DependencyRelationship::Discouraged,
-    ];
-
-    #[test]
-    fn every_schema_relationship_round_trips_as_a_kebab_case_name() {
-        for relationship in RELATIONSHIPS {
-            let encoded = serde_json::to_string(&relationship).expect("should serialize");
-            assert_eq!(
-                serde_json::from_str::<DependencyRelationship>(&encoded)
-                    .expect("should deserialize"),
-                relationship
-            );
-        }
-        assert_eq!(
-            serde_json::to_string(&DependencyRelationship::Incompatible).expect("should serialize"),
-            "\"incompatible\""
-        );
-    }
+    use super::{Version, VersionRange};
 
     #[test]
     fn the_adopted_range_grammar_covers_every_comparator_it_documents() {

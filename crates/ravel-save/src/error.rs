@@ -78,10 +78,17 @@ pub enum SavedDataError {
         /// The owner declared more than once.
         owner: ModId,
     },
-    /// An envelope or migration chain names an owner without a matching declaration.
+    /// An aggregate envelope has no saved-data declaration in this set.
     UnknownOwner {
-        /// The owner whose saved-data declaration is unavailable or does not match.
+        /// The owner whose saved-data declaration is unavailable.
         owner: ModId,
+    },
+    /// A migration chain belongs to a different owner than the declaration.
+    MismatchedChain {
+        /// The owner declaring saved data.
+        declared: ModId,
+        /// The owner of the supplied migration chain.
+        chain: ModId,
     },
     /// An envelope requires a package that is not installed.
     MissingPackage {
@@ -127,12 +134,23 @@ impl SavedDataError {
             | Self::UnknownOwner { owner }
             | Self::MissingPackage { owner, .. } => Some(owner),
             Self::IncompatiblePackage(conflict) => Some(&conflict.owner),
+            Self::MismatchedChain { declared, .. } => Some(declared),
             Self::AggregateTooLarge { .. }
             | Self::InvalidAggregate(_)
             | Self::UnsupportedAggregateVersion { .. } => None,
         }
     }
 }
+impl fmt::Display for PackageConflict {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "`{}` data requires `{}` {}, but {} is installed",
+            self.owner, self.package, self.required, self.installed
+        )
+    }
+}
+
 impl fmt::Display for SavedDataError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -188,7 +206,11 @@ impl fmt::Display for SavedDataError {
             }
             Self::UnknownOwner { owner } => write!(
                 formatter,
-                "the aggregate contains data for uninstalled owner `{owner}`"
+                "the aggregate contains data for `{owner}`, which declares no saved data in this set"
+            ),
+            Self::MismatchedChain { declared, chain } => write!(
+                formatter,
+                "`{chain}`'s migration chain was supplied for `{declared}`"
             ),
             Self::MissingPackage {
                 owner,
@@ -198,11 +220,7 @@ impl fmt::Display for SavedDataError {
                 formatter,
                 "`{owner}` data requires missing package `{package}` {required}"
             ),
-            Self::IncompatiblePackage(conflict) => write!(
-                formatter,
-                "`{}` data requires `{}` {}, but {} is installed",
-                conflict.owner, conflict.package, conflict.required, conflict.installed
-            ),
+            Self::IncompatiblePackage(conflict) => conflict.fmt(formatter),
         }
     }
 }

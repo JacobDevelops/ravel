@@ -12,7 +12,7 @@ use crate::document::{DocumentError, ValueDocument};
 /// The directory under a game directory that holds player configuration.
 const DIRECTORY: &str = "config";
 
-use ravel_core::paths::PACK_CONFIG_DIRECTORY;
+use ravel_core::paths::{INSTANCE_DIRECTORY, PACK_CONFIG_DIRECTORY};
 
 /// The suffix a file is written under before it is put in place.
 const STAGING_SUFFIX: &str = ".pending";
@@ -27,6 +27,7 @@ pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
 #[must_use]
 pub fn pack_path(game_directory: &Path, owner: &ModId) -> PathBuf {
     game_directory
+        .join(INSTANCE_DIRECTORY)
         .join(PACK_CONFIG_DIRECTORY)
         .join(format!("{owner}.json"))
 }
@@ -41,7 +42,9 @@ pub fn pack_path(game_directory: &Path, owner: &ModId) -> PathBuf {
 /// Returns the same errors as [`read`], plus [`FileError::Name`] for a JSON file
 /// whose name is not a mod id and so names no owner at all.
 pub fn read_pack(game_directory: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileError> {
-    let directory = game_directory.join(PACK_CONFIG_DIRECTORY);
+    let directory = game_directory
+        .join(INSTANCE_DIRECTORY)
+        .join(PACK_CONFIG_DIRECTORY);
     let listing = match fs::read_dir(&directory) {
         Ok(listing) => listing,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
@@ -354,8 +357,11 @@ mod tests {
     fn every_pack_document_is_read_back_under_the_owner_its_file_is_named_for() {
         let root = directory("pack-layer");
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
-        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
-            .expect("a writable pack directory");
+        std::fs::create_dir_all(
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(super::PACK_CONFIG_DIRECTORY),
+        )
+        .expect("a writable pack directory");
         for owner in [owner(), other.clone()] {
             std::fs::write(
                 super::pack_path(&root, &owner),
@@ -366,7 +372,9 @@ mod tests {
         // Not a document, and not read as one: a pack directory holds Ravel's own
         // files and this is what says the reader takes only the ones it named.
         std::fs::write(
-            root.join(super::PACK_CONFIG_DIRECTORY).join("notes.txt"),
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(super::PACK_CONFIG_DIRECTORY)
+                .join("notes.txt"),
             "ignored",
         )
         .expect("the file should be writable");
@@ -395,8 +403,11 @@ mod tests {
     fn a_pack_document_naming_one_owner_and_stating_another_refuses_the_whole_layer() {
         let root = directory("pack-mismatched");
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
-        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
-            .expect("a writable pack directory");
+        std::fs::create_dir_all(
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(super::PACK_CONFIG_DIRECTORY),
+        )
+        .expect("a writable pack directory");
         std::fs::write(
             super::pack_path(&root, &owner()),
             ValueDocument::empty(other.clone()).to_json(),
@@ -413,10 +424,14 @@ mod tests {
     #[test]
     fn a_pack_document_whose_name_is_not_a_mod_id_states_nobodys_values() {
         let root = directory("pack-unnamed");
-        std::fs::create_dir_all(root.join(super::PACK_CONFIG_DIRECTORY))
-            .expect("a writable pack directory");
+        std::fs::create_dir_all(
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(super::PACK_CONFIG_DIRECTORY),
+        )
+        .expect("a writable pack directory");
         std::fs::write(
-            root.join(super::PACK_CONFIG_DIRECTORY)
+            root.join(super::INSTANCE_DIRECTORY)
+                .join(super::PACK_CONFIG_DIRECTORY)
                 .join("Not A Mod.json"),
             ValueDocument::empty(owner()).to_json(),
         )

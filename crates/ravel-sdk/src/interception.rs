@@ -1,12 +1,11 @@
 //! Ordered answers at published interception points.
 //!
-//! Hosts collect typed declarations in [`Points`], consume them with [`Points::admit`]
-//! at the declaration barrier, and reuse the resulting immutable [`AdmittedPoints`]
-//! for rounds. Admission validates every point before any callback runs, rejecting
-//! ordering endpoints that answer no point and naming the edge's declaring owners.
-//! Each round filters its cached order against owners enabled on its execution side.
+//! Declare the points your mod answers with [`InterceptionDeclaration`], and
+//! order answers relative to other declaring owners. The loader checks ordering
+//! before callbacks run. A refusal ends the round and withholds the operation
+//! described by that point.
 //!
-//! Declare points with [`InterceptionDeclaration`] and implement [`crate::Mod::intercept`].
+//! Implement [`crate::Mod::intercept`] to answer declared points.
 //! The first refusal ends a round; each point permits at most one replacement.
 //! Ordering may connect owners answering different points, but both must answer somewhere.
 //! Only [`Point::WorldIsSaved`] is delivered today; refusal withholds Ravel's
@@ -55,7 +54,4 @@
 //! assert_eq!(guard.intercept(occasion), Ok(Outcome::Refuse));
 //! ```
 
-pub use ravel_host_api::{
-    AdmittedPoints, InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points,
-    Round,
-};
+pub use ravel_host_api::{InterceptionDeclaration, Occasion, Outcome, Point};

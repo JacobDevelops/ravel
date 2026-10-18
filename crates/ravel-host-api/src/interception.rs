@@ -269,7 +269,7 @@ impl Points {
     ///
     /// Returns unknown ordering owners, contested replacements, or circular ordering.
     pub fn admit(self) -> Result<AdmittedPoints, InterceptionRefused> {
-        self.validate_owners()?;
+        self.check_owners()?;
         let mut ordered = BTreeMap::new();
         for point in Point::ALL {
             ordered.insert(point, self.order(point)?);
@@ -277,7 +277,7 @@ impl Points {
         Ok(AdmittedPoints { ordered })
     }
 
-    fn validate_owners(&self) -> Result<(), InterceptionRefused> {
+    fn check_owners(&self) -> Result<(), InterceptionRefused> {
         let answering: BTreeSet<_> = self.answers.iter().map(|answer| &answer.owner).collect();
         let owners: BTreeSet<_> = self
             .after

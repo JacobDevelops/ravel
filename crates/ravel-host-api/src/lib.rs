@@ -151,7 +151,14 @@ impl fmt::Display for ModError {
     }
 }
 
-impl std::error::Error for ModError {}
+impl std::error::Error for ModError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidPacket { source } => Some(source.as_ref()),
+            Self::Refused { .. } | Self::Unsupported => None,
+        }
+    }
+}
 
 /// A host-hook failure, attributed to its owning mod and current lifecycle phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -194,14 +201,16 @@ pub enum HostError {
     Unsupported {
         /// The mod that has no implementation for the step.
         mod_id: ModId,
-        /// The state the mod was asked to enter.
+        /// The lifecycle phase: the requested state for a transition, otherwise
+        /// the owner's current state.
         state: LifecycleState,
     },
     /// The callback unwound into the loader's panic boundary.
     Panicked {
         /// The mod whose callback panicked.
         mod_id: ModId,
-        /// The owner's lifecycle state when the callback ran.
+        /// The callback's lifecycle phase: the requested state for a transition,
+        /// otherwise the owner's current state.
         state: LifecycleState,
     },
 }
@@ -331,7 +340,18 @@ impl fmt::Display for HostError {
     }
 }
 
-impl std::error::Error for HostError {}
+impl std::error::Error for HostError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidPacket { source, .. } => Some(source.as_ref()),
+            Self::PreviouslyFailed { .. }
+            | Self::Refused { .. }
+            | Self::OperationRefused { .. }
+            | Self::Unsupported { .. }
+            | Self::Panicked { .. } => None,
+        }
+    }
+}
 
 impl StructuredFailure for HostError {
     fn failure_kind(&self) -> Option<FailureKind> {
@@ -483,16 +503,20 @@ pub trait Mod: Send {
         Err(ModError::Unsupported)
     }
 
-    /// Produces a complete checkpoint envelope; defaults to none.
+    /// Produces a complete checkpoint envelope; defaults to none only without a declaration.
     ///
     /// # Errors
     ///
-    /// Returns a mod's refusal. Saves run after world mutation, so any failure
+    /// Returns [`ModError::Unsupported`] by default when saved data is declared,
+    /// or a mod's refusal. Saves run after world mutation, so any failure
     /// refuses this Ravel write (the previous durable aggregate is kept and the
     /// game's own save continues), halts every mod, and refuses later saves for
     /// the session.
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
-        Ok(None)
+        if self.saved_data_declaration()?.is_none() {
+            return Ok(None);
+        }
+        Err(ModError::Unsupported)
     }
 
     /// Drains sound requests for later host execution, without delivery confirmation.
@@ -816,6 +840,49 @@ mod tests {
     }
 
     #[test]
+    fn default_writer_refuses_declared_data_and_preserves_declaration_errors() {
+        struct Saving {
+            id: ModId,
+            declaration: Result<Option<ravel_save::SavedDataDeclaration>, ModError>,
+        }
+
+        impl Mod for Saving {
+            fn id(&self) -> &ModId {
+                &self.id
+            }
+
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+                Ok(())
+            }
+
+            fn saved_data_declaration(
+                &self,
+            ) -> Result<Option<ravel_save::SavedDataDeclaration>, ModError> {
+                self.declaration.clone()
+            }
+        }
+
+        let mut saving = Saving {
+            id: "saving".parse().expect("valid owner"),
+            declaration: Ok(None),
+        };
+        assert_eq!(saving.save_saved_data(), Ok(None));
+        saving.declaration = Ok(Some(
+            ravel_save::SavedDataDeclaration::new(
+                saving.id.clone(),
+                [std::num::NonZeroU32::new(1).expect("nonzero version")],
+            )
+            .expect("one declared version"),
+        ));
+        assert_eq!(saving.save_saved_data(), Err(ModError::Unsupported));
+        saving.declaration = Err(ModError::refused("declaration failed"));
+        assert_eq!(
+            saving.save_saved_data(),
+            Err(ModError::refused("declaration failed"))
+        );
+    }
+
+    #[test]
     fn malformed_packets_retain_typed_source_and_host_attribution() {
         let source = ravel_network::DeliveryRefused::Malformed {
             id: ravel_network::PacketId::new("example_mod:ping".parse().expect("valid id")),
@@ -825,11 +892,27 @@ mod tests {
             source: Box::new(source.clone()),
         };
         assert_eq!(refusal.to_string(), format!("invalid packet: {source}"));
+        assert_eq!(
+            std::error::Error::source(&refusal)
+                .and_then(|error| error.downcast_ref::<ravel_network::DeliveryRefused>()),
+            Some(&source)
+        );
         let owner = "example_mod".parse().expect("valid owner");
         let failure = HostError::from_operation_refusal(owner, LifecycleState::Running, refusal);
         assert!(failure.quotes_untrusted_text());
         assert_eq!(failure.state(), LifecycleState::Running);
         assert_eq!(failure.mod_id().as_str(), "example_mod");
+        let delivery = std::error::Error::source(&failure).expect("typed delivery source");
+        assert_eq!(
+            delivery.downcast_ref::<ravel_network::DeliveryRefused>(),
+            Some(&source)
+        );
+        assert_eq!(
+            delivery
+                .source()
+                .and_then(|error| error.downcast_ref::<ravel_network::WireError>()),
+            Some(&ravel_network::WireError::NotABool { byte: 3 })
+        );
         assert!(matches!(
             failure,
             HostError::InvalidPacket { source: actual, .. } if actual.as_ref() == &source

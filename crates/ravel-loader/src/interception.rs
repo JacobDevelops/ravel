@@ -37,7 +37,7 @@ pub fn open_interceptions<H: std::ops::DerefMut<Target: Mod>>(
                     let source = crate::owner_refusal(machine, owner, &refused)
                         .map_err(InterceptRefused::Lifecycle)?;
                     stop |= machine
-                        .fail_setup_callback(&source, environment)
+                        .fail_callback_must_stop(&source, environment)
                         .map_err(InterceptRefused::Lifecycle)?;
                 }
                 if stop || refused.claimants().is_empty() {
@@ -53,9 +53,7 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Vec<InterceptionDeclaration>, InterceptRefused> {
     let (machine, mods) = loaded.parts();
-    if let Some(by) = machine.halted_by() {
-        return Err(InterceptRefused::Halted { by: by.clone() });
-    }
+    ensure_active(machine)?;
     let eligible: Vec<_> = machine
         .eligible()
         .filter(|(_, state)| crate::executes_mod_code(*state))
@@ -78,14 +76,13 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            let source = crate::owner_refusal(machine, &mod_id, &refused)
-                .map_err(InterceptRefused::Lifecycle)?;
-            if machine
-                .fail_setup_callback(&source, environment)
-                .map_err(InterceptRefused::Lifecycle)?
-            {
-                return Err(refused);
-            }
+            crate::lifecycle::isolate_foreign(
+                machine,
+                environment,
+                &mod_id,
+                refused,
+                InterceptRefused::Lifecycle,
+            )?;
             continue;
         }
         declarations.push(declaration);
@@ -107,11 +104,9 @@ pub fn intercept<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Round, InterceptRefused> {
     let (machine, mods) = loaded.parts();
-    if let Some(by) = machine.halted_by() {
-        return Err(InterceptRefused::Halted { by: by.clone() });
-    }
-    let side = if point == Point::WorldIsSaved && machine.side() == ravel_core::Side::Client {
-        ravel_core::Side::IntegratedServer
+    ensure_active(machine)?;
+    let side = if point == Point::WorldIsSaved {
+        crate::lifecycle::world_side(machine)
     } else {
         machine.side()
     };
@@ -138,16 +133,22 @@ fn declaration_failure(
     environment: &FailureEnvironment,
     source: HostError,
 ) -> Result<(), InterceptRefused> {
-    if machine
-        .fail_setup_callback(&source, environment)
-        .map_err(InterceptRefused::Lifecycle)?
-    {
-        return Err(InterceptRefused::Mod {
+    crate::lifecycle::isolate(
+        machine,
+        environment,
+        source,
+        InterceptRefused::Lifecycle,
+        |source| InterceptRefused::Mod {
             mod_id: source.mod_id().clone(),
             source,
-        });
-    }
-    Ok(())
+        },
+    )
+}
+
+fn ensure_active(machine: &crate::LifecycleMachine) -> Result<(), InterceptRefused> {
+    crate::events::active_blocker(machine).map_or(Ok(()), |by| {
+        Err(InterceptRefused::Halted { by: by.clone() })
+    })
 }
 
 /// Why a point could not be asked at all.
@@ -155,9 +156,9 @@ fn declaration_failure(
 pub enum InterceptRefused {
     /// The lifecycle refused failure attribution.
     Lifecycle(crate::LifecycleError),
-    /// The set has halted and cannot ask any mod.
+    /// A required failure or halted set blocks asking any mod.
     Halted {
-        /// The mod whose failure halted the set.
+        /// The mod whose failure blocks the set.
         by: ModId,
     },
     /// A mod refused to declare its interceptions.
@@ -194,7 +195,7 @@ impl fmt::Display for InterceptRefused {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
             Self::Mod { source, .. } => source.fmt(formatter),
-            Self::Halted { by } => write!(formatter, "the mod set halted after `{by}` failed"),
+            Self::Halted { by } => write!(formatter, "the mod set is blocked after `{by}` failed"),
             Self::ForeignDeclaration { mod_id, owner } => write!(
                 formatter,
                 "`{mod_id}` declared interceptions owned by `{owner}`, and a mod answers only for \
@@ -359,6 +360,53 @@ mod tests {
             }
             Ok(self.answer)
         }
+    }
+
+    #[test]
+    fn required_failure_before_world_mutation_blocks_both_interception_entries() {
+        let mut owner = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
+        let mut machine = LifecycleMachine::new(
+            Side::DedicatedServer,
+            vec![entry(GUARD, &[Side::DedicatedServer])],
+        )
+        .expect("valid plan");
+        advance_through(&mut machine, LifecycleState::Running);
+        let points = super::open_interceptions(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
+                .expect("paired owner"),
+            &crate::tests::environment(),
+        )
+        .expect("admitted point");
+        machine
+            .fail_callback(
+                &HostError::Unsupported {
+                    mod_id: id(GUARD),
+                    state: LifecycleState::Running,
+                },
+                &crate::tests::environment(),
+                None,
+            )
+            .expect("record failure");
+        assert!(machine.halted_by().is_none(), "no post-mutation halt latch");
+        let mut mods: [&mut dyn Mod; 1] = [&mut owner];
+        let mut loaded = LoadedMods::new(&mut machine, &mut mods).expect("failed owner paired");
+        assert_eq!(
+            super::open_interceptions(&mut loaded, &crate::tests::environment()),
+            Err(InterceptRefused::Halted { by: id(GUARD) }),
+        );
+        assert_eq!(
+            super::intercept(
+                &mut loaded,
+                &points,
+                Point::WorldIsSaved,
+                &crate::tests::environment(),
+            ),
+            Err(InterceptRefused::Halted { by: id(GUARD) }),
+        );
+        assert!(
+            owner.seen.is_empty(),
+            "blocked entries invoke no owner callbacks"
+        );
     }
 
     struct Quiet {

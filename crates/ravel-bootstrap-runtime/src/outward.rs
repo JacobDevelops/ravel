@@ -19,10 +19,14 @@ pub(crate) struct Action {
 }
 
 /// Asks for a declared sound to be played on the client.
-pub(crate) fn play(owner: &str, entry: &str) -> Action {
+pub(crate) fn play(id: &ravel_core::ContentId) -> Action {
     Action {
         verb: PLAY,
-        arguments: vec![owner.to_owned(), entry.to_owned(), "1".to_owned()],
+        arguments: vec![
+            id.namespace().to_string(),
+            id.path().to_owned(),
+            "1".to_owned(),
+        ],
     }
 }
 
@@ -110,7 +114,8 @@ mod tests {
 
     #[test]
     fn draining_answers_what_was_queued_and_empties_it() {
-        let mut queued = vec![play("audio", "door_opens")];
+        let id = "audio:door_opens".parse().expect("valid audio id");
+        let mut queued = vec![play(&id)];
 
         assert_eq!(
             drain(&mut queued),

@@ -596,10 +596,18 @@ mod tests {
             })
             .expect("failed-owner envelopes are opaque");
         assert_eq!(admitted.to_bytes().expect("bytes"), bytes);
-        assert!(matches!(
-            SavedDataAggregate::open(Some(&bytes), &[], &BTreeMap::new()),
-            Err(SavedDataError::UnknownOwner { .. })
-        ));
+        let refusal = SavedDataAggregate::open(Some(&bytes), &[], &BTreeMap::new())
+            .expect_err("owner has no declaration in this set");
+        assert_eq!(
+            refusal,
+            SavedDataError::UnknownOwner {
+                owner: id("failed_owner")
+            }
+        );
+        assert_eq!(
+            refusal.to_string(),
+            "the aggregate contains data for `failed_owner`, which declares no saved data in this set"
+        );
     }
 
     #[test]

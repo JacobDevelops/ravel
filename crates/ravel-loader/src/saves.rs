@@ -45,7 +45,9 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
     let mut aggregate = SavedDataAggregate::fresh();
     for (entry, state) in machine.tracked_entries() {
         let mod_id = &entry.mod_id;
-        if !entry.sides.loads_on(machine.side()) {
+        if !entry.sides.loads_on(machine.side())
+            || !entry.sides.loads_on(crate::lifecycle::world_side(machine))
+        {
             continue;
         }
         if state == LifecycleState::Failed {
@@ -78,9 +80,11 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
 /// Validates and migrates all saved data before handing entries to owners in load order.
 /// Declaration and migration callbacks follow lifecycle order even when services reorder slots.
 ///
-/// Parked mods are skipped. Failed owners' prior envelopes remain opaque without
-/// consulting metadata, invoking their code, or migrating their payloads. Active owners
-/// receive current payloads after loader-owned migration. Optional owner contract failures
+/// Owners not loaded on the world-executing side are excluded from declarations;
+/// stored envelopes for those parked owners refuse the world. Failed owners' prior
+/// envelopes remain opaque without consulting metadata, invoking their code, or
+/// migrating their payloads. Active owners receive current payloads after loader-owned
+/// migration. Optional owner contract failures
 /// preserve prior data; required owner failures and invalid world data prevent world opening.
 /// Callback failures are attributed using the supplied session `environment`, including
 /// its Minecraft and Ravel versions; persistence failures have no failure surface.
@@ -202,6 +206,7 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
     let mut chains = Vec::with_capacity(mods.len());
     let order: Vec<_> = machine
         .eligible()
+        .filter(|(entry, _)| entry.sides.loads_on(crate::lifecycle::world_side(machine)))
         .map(|(entry, _)| entry.mod_id.clone())
         .collect();
     for mod_id in &order {
@@ -263,15 +268,16 @@ fn owner_callback<T>(
     match crate::callback(mod_id, state, call) {
         Ok(value) => Ok(Some(value)),
         Err(source) => {
-            if machine
-                .fail_setup_callback(&source, environment)
-                .map_err(SaveRefused::Lifecycle)?
-            {
-                return Err(SaveRefused::Mod {
+            crate::lifecycle::isolate(
+                machine,
+                environment,
+                source,
+                SaveRefused::Lifecycle,
+                |source| SaveRefused::Mod {
                     mod_id: mod_id.clone(),
                     source,
-                });
-            }
+                },
+            )?;
             Ok(None)
         }
     }
@@ -283,14 +289,13 @@ fn isolate_refusal(
     mod_id: &ModId,
     refused: SaveRefused,
 ) -> Result<(), SaveRefused> {
-    let source = crate::owner_refusal(machine, mod_id, &refused).map_err(SaveRefused::Lifecycle)?;
-    if machine
-        .fail_setup_callback(&source, environment)
-        .map_err(SaveRefused::Lifecycle)?
-    {
-        return Err(refused);
-    }
-    Ok(())
+    crate::lifecycle::isolate_foreign(
+        machine,
+        environment,
+        mod_id,
+        refused,
+        SaveRefused::Lifecycle,
+    )
 }
 
 fn record_refusal<T>(
@@ -329,6 +334,7 @@ fn breaks_owner_contract(refused: &SaveRefused) -> bool {
                 SavedDataError::MigrationFailed { .. }
                     | SavedDataError::MissingMigration { .. }
                     | SavedDataError::NoVersionsDeclared { .. }
+                    | SavedDataError::MismatchedChain { .. }
             )
     )
 }
@@ -347,7 +353,7 @@ pub enum SaveRefused {
         /// The identity the declaration names as its owner.
         owner: ModId,
     },
-    /// A mod refused the entry it was handed.
+    /// A mod's saved-data callback (declaration, migration, open, or snapshot) failed.
     Mod {
         /// The mod that refused.
         mod_id: ModId,
@@ -393,7 +399,10 @@ impl fmt::Display for SaveRefused {
                  world data"
             ),
             Self::Mod { mod_id, source } => {
-                write!(formatter, "`{mod_id}` refused its saved data: {source}")
+                write!(
+                    formatter,
+                    "`{mod_id}` failed a saved-data callback: {source}"
+                )
             }
         }
     }
@@ -457,6 +466,68 @@ mod tests {
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
     use crate::tests::entry;
+
+    struct WorldProbe {
+        id: ModId,
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl Mod for WorldProbe {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _: LifecycleState) -> Result<(), ModError> {
+            Ok(())
+        }
+
+        fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(Some(
+                SavedDataDeclaration::new(self.id.clone(), [version(1)]).expect("valid"),
+            ))
+        }
+
+        fn open_saved_data(&mut self, _: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(())
+        }
+
+        fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn client_world_persistence_uses_only_started_world_side_owners() {
+        let mut client = WorldProbe {
+            id: id("client"),
+            calls: std::cell::Cell::new(0),
+        };
+        let mut shared = WorldProbe {
+            id: id("shared"),
+            calls: std::cell::Cell::new(0),
+        };
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![
+                entry("client", &[Side::Client]),
+                entry("shared", &[Side::Client, Side::IntegratedServer]),
+                entry("server", &[Side::IntegratedServer]),
+            ],
+        )
+        .expect("valid plan");
+        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        let mut mods: [&mut dyn Mod; 2] = [&mut client, &mut shared];
+        let mut loaded = LoadedMods::new(&mut machine, &mut mods).expect("started owners paired");
+        let aggregate = open_saved_data(&mut loaded, None, &BTreeMap::new(), &environment())
+            .expect("fresh world");
+        super::produce_saved_data(&mut loaded, Some(&aggregate), &environment()).expect("snapshot");
+        assert_eq!(client.calls.get(), 0);
+        assert_eq!(shared.calls.get(), 3);
+        assert_eq!(machine.state(&id("server")), Ok(LifecycleState::Resolved));
+    }
 
     struct Failing {
         id: ModId,
@@ -825,7 +896,7 @@ mod tests {
         owner.requirement = Requirement::Optional;
         let mut machine = machine(vec![entry("active", &[Side::DedicatedServer]), owner]);
         machine
-            .fail_setup_callback(
+            .fail_callback_must_stop(
                 &HostError::Unsupported {
                     mod_id: id("failed"),
                     state: LifecycleState::Discovered,
@@ -971,6 +1042,107 @@ mod tests {
             }
             self.read = envelope.map(|held| held.payload().clone());
             Ok(())
+        }
+    }
+
+    #[test]
+    fn a_declared_owner_without_a_writer_refuses_and_halts_later_snapshots() {
+        let mut host = Storing::new("stored");
+        let mut machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
+        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        machine.record_world_mutation().expect("world opened");
+        let mut prior = SavedDataAggregate::fresh();
+        prior.replace(SavedDataEnvelope::new(
+            id("stored"),
+            version(3),
+            Vec::new(),
+            None,
+            json!({"durable": true}),
+        ));
+        let refusal = super::produce_saved_data(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
+                .expect("paired owner"),
+            Some(&prior),
+            &environment(),
+        )
+        .expect_err("a declared owner must implement its writer");
+        assert!(matches!(
+            refusal,
+            SaveRefused::Mod {
+                mod_id, source: HostError::Unsupported { .. },
+            } if mod_id == id("stored")
+        ));
+        assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Failed));
+        assert_eq!(machine.halted_by(), Some(&id("stored")));
+        let failure = machine
+            .failure(&id("stored"))
+            .expect("tracked")
+            .expect("attributed");
+        assert_eq!(failure.mod_id, Some(id("stored")));
+        assert_eq!(failure.environment, environment());
+        assert_eq!(
+            prior
+                .envelope(&id("stored"))
+                .expect("prior retained")
+                .payload(),
+            &json!({"durable": true}),
+        );
+        let later = super::produce_saved_data(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
+                .expect("failed owner remains paired"),
+            Some(&prior),
+            &environment(),
+        )
+        .expect_err("halted snapshots cannot write partial state");
+        assert!(matches!(
+            later,
+            SaveRefused::Lifecycle(crate::LifecycleError::PartialStateRefused { mod_id })
+                if mod_id == id("stored")
+        ));
+    }
+
+    #[test]
+    fn a_foreign_migration_chain_is_isolated_as_the_declaring_owners_failure() {
+        for requirement in [Requirement::Required, Requirement::Optional] {
+            let mut declaring = Storing::new("declaring");
+            declaring.chain = Some(MigrationChain::new(id("other")));
+            let mut other = Storing::new("other");
+            let mut planned = entry("declaring", &[Side::DedicatedServer]);
+            planned.requirement = requirement;
+            let mut machine = machine(vec![planned, entry("other", &[Side::DedicatedServer])]);
+            let result = open_saved_data(
+                &mut LoadedMods::<&mut dyn Mod>::new(
+                    &mut machine,
+                    &mut [&mut declaring, &mut other],
+                )
+                .expect("paired owners"),
+                None,
+                &BTreeMap::new(),
+                &environment(),
+            );
+            match requirement {
+                Requirement::Required => assert_eq!(
+                    result,
+                    Err(SaveRefused::Data(SavedDataError::MismatchedChain {
+                        declared: id("declaring"),
+                        chain: id("other"),
+                    })),
+                ),
+                Requirement::Optional => assert!(result.is_ok(), "optional owner isolated"),
+            }
+            assert_eq!(machine.state(&id("declaring")), Ok(LifecycleState::Failed));
+            assert_eq!(machine.state(&id("other")), Ok(LifecycleState::Discovered));
+            let failure = machine
+                .failure(&id("declaring"))
+                .expect("tracked")
+                .expect("attributed");
+            assert_eq!(failure.mod_id, Some(id("declaring")));
+            assert_eq!(failure.environment, environment());
+            assert!(machine.failure(&id("other")).expect("tracked").is_none());
+            assert!(
+                declaring.read.is_none(),
+                "invalid owner never receives saved data"
+            );
         }
     }
 

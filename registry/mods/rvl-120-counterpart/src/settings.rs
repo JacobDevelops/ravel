@@ -182,7 +182,7 @@ impl Settings {
 mod tests {
     use super::*;
     use ravel_sdk::Side;
-    use ravel_sdk::config::{SettingKey, ValueDocument};
+    use ravel_sdk::config::ValueDocument;
 
     fn resolved(values: &str) -> LayeredConfiguration {
         let declaration = declaration().expect("the packaged declaration is well formed");
@@ -270,12 +270,10 @@ mod tests {
     fn the_declaration_carries_three_server_settings_and_seventy_colours() {
         let declaration = declaration().expect("the packaged declaration is well formed");
         for key in [DEBUG_LOGGING, RECORD_OWNER, INFUSION_CEILING] {
-            let parsed: SettingKey = key.parse().expect("a legal setting key");
-            assert!(declaration.setting(&parsed).is_some(), "{key} is declared");
+            assert!(declaration.setting(key).is_some(), "{key} is declared");
         }
         for role in &COLOURS {
-            let parsed: SettingKey = role.key().parse().expect("a legal setting key");
-            assert!(declaration.setting(&parsed).is_some());
+            assert!(declaration.setting(&role.key()).is_some());
         }
     }
 
@@ -385,10 +383,7 @@ mod tests {
 
         let declaration = declaration().expect("the packaged declaration is well formed");
         for key in [DEBUG_LOGGING, RECORD_OWNER, INFUSION_CEILING] {
-            let parsed: SettingKey = key.parse().expect("a legal setting key");
-            let setting = declaration
-                .setting(&parsed)
-                .expect("the setting is declared");
+            let setting = declaration.setting(key).expect("the setting is declared");
             assert_eq!(
                 setting.side,
                 SettingSide::Common,

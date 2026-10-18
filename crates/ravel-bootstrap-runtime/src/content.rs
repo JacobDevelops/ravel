@@ -97,7 +97,7 @@ mod tests {
         name.parse().expect("a valid mod id")
     }
 
-    fn runtime(mod_ids: &[&str]) -> LoaderRuntime {
+    fn fixture(mod_ids: &[&str]) -> DocumentFixture {
         let entries = mod_ids
             .iter()
             .map(|name| LifecycleEntry {
@@ -109,7 +109,7 @@ mod tests {
             .collect();
         let mut fixture = DocumentFixture::new(Side::Client, entries);
         advance_through(&mut fixture.machine, LifecycleState::Constructed);
-        LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch())
+        fixture
     }
 
     #[test]
@@ -119,7 +119,9 @@ mod tests {
 
     #[test]
     fn an_installed_set_that_claimed_nothing_answers_with_an_empty_table() {
-        let runtime = runtime(&["example_mod"]);
+        let fixture = fixture(&["example_mod"]);
+        let runtime =
+            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -128,19 +130,25 @@ mod tests {
 
     #[test]
     fn every_admitted_block_and_item_crosses_with_its_namespace_and_owner() {
-        let runtime = runtime(&["first_mod", "second_mod"]);
-        runtime
-            .claim(
+        let mut fixture = fixture(&["first_mod", "second_mod"]);
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("second_mod"),
                 &"item:second_mod:ingot".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
-        runtime
-            .claim(
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("first_mod"),
                 &"block:first_mod:copper".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
+        let runtime =
+            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -171,19 +179,22 @@ mod tests {
 
     #[test]
     fn a_described_claim_crosses_with_the_values_the_mod_chose() {
-        let runtime = runtime(&["example_mod"]);
-        runtime
-            .claim_describing(
+        let mut fixture = fixture(&["example_mod"]);
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("example_mod"),
                 &"block:example_mod:obsidian".parse().expect("valid key"),
-                ContentBehaviour::Block(BlockBehaviour {
+                Some(ContentBehaviour::Block(BlockBehaviour {
                     hardness: 50.0,
                     explosion_resistance: 1200.0,
                     requires_correct_tool: true,
                     random_ticks: false,
-                }),
+                })),
             )
             .expect("accepted");
+        let runtime =
+            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -207,25 +218,33 @@ mod tests {
 
     #[test]
     fn a_claim_naming_a_registry_this_seam_cannot_commit_to_does_not_cross() {
-        let runtime = runtime(&["example_mod"]);
-        runtime
-            .claim(
+        let mut fixture = fixture(&["example_mod"]);
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("example_mod"),
                 &"command:example_mod:home".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
-        runtime
-            .claim(
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("example_mod"),
                 &"recipe:example_mod:alloy".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
-        runtime
-            .claim(
+        fixture
+            .machine
+            .claim_registry_identifier(
                 &id("example_mod"),
                 &"block:example_mod:copper".parse().expect("valid key"),
+                None,
             )
             .expect("accepted");
+        let runtime =
+            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 

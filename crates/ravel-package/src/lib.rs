@@ -10,11 +10,11 @@ mod values;
 #[cfg(test)]
 mod test_support;
 
-pub use compatibility::CompatibilityError;
+pub use compatibility::{CompatibilityError, MinecraftSupport, MinecraftSupportError};
 pub use integrity::{IntegrityError, verify_package, verify_provenance, verify_source_file};
 pub use manifest::{
-    Author, Compatibility, Dependency, DependencyOrder, ManifestError, PackageManifest, Provenance,
-    Source, SourceFile,
+    Author, Compatibility, Dependency, DependencyOrder, DependencyRelationship, ManifestError,
+    PackageManifest, Provenance, Source, SourceFile,
 };
 pub use values::{
     EmptyText, NonEmptyText, RelativePath, RelativePathError, SchemaVersion, SchemaVersionError,

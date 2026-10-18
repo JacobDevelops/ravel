@@ -75,7 +75,8 @@ fn state_of(state: &Value) -> SavedState {
 fn entry(saved: &SavedDataMod) -> LifecycleEntry {
     LifecycleEntry {
         mod_id: saved.id().clone(),
-        sides: SideSet::new([Side::Client, Side::DedicatedServer]).expect("a non-empty side set"),
+        sides: SideSet::new([Side::Client, Side::IntegratedServer, Side::DedicatedServer])
+            .expect("a non-empty side set"),
         requirement: Requirement::Required,
         saved_data_versions: saved
             .declaration()

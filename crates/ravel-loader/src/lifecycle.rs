@@ -11,6 +11,40 @@ use ravel_core::{
 };
 use ravel_data::ContentBehaviour;
 
+pub(crate) fn isolate<E>(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    error: ravel_host_api::HostError,
+    lifecycle: fn(LifecycleError) -> E,
+    stop: impl FnOnce(ravel_host_api::HostError) -> E,
+) -> Result<(), E> {
+    if machine
+        .fail_callback_must_stop(&error, environment)
+        .map_err(lifecycle)?
+    {
+        return Err(stop(error));
+    }
+    Ok(())
+}
+
+pub(crate) fn isolate_foreign<E: std::fmt::Display>(
+    machine: &mut LifecycleMachine,
+    environment: &FailureEnvironment,
+    owner: &ModId,
+    refused: E,
+    lifecycle: fn(LifecycleError) -> E,
+) -> Result<(), E> {
+    let source = crate::owner_refusal(machine, owner, &refused).map_err(lifecycle)?;
+    isolate(machine, environment, source, lifecycle, |_| refused)
+}
+
+pub(crate) const fn world_side(machine: &LifecycleMachine) -> Side {
+    match machine.side() {
+        Side::Client | Side::IntegratedServer => Side::IntegratedServer,
+        Side::DedicatedServer => Side::DedicatedServer,
+    }
+}
+
 /// Whether a lifecycle state can run mod code.
 #[must_use]
 pub const fn executes_mod_code(state: LifecycleState) -> bool {
@@ -436,7 +470,8 @@ impl LifecycleMachine {
     }
 
     /// Records a mod callback failure and reports whether the caller must stop.
-    pub(crate) fn fail_setup_callback(
+    #[must_use = "the stop decision must be handled"]
+    pub(crate) fn fail_callback_must_stop(
         &mut self,
         error: &ravel_host_api::HostError,
         environment: &FailureEnvironment,
@@ -582,12 +617,6 @@ impl LifecycleMachine {
                 mod_id: mod_id.clone(),
             })
         })
-    }
-
-    /// Reports whether a failed owner has halted further set-wide delivery.
-    #[must_use]
-    pub const fn is_halted(&self) -> bool {
-        self.halted.is_some()
     }
 
     pub(crate) const fn halted_by(&self) -> Option<&ModId> {

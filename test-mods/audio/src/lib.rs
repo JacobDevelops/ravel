@@ -105,9 +105,17 @@ impl AudioMod {
     ///
     /// # Errors
     ///
-    /// Returns [`AudioError::WrongSide`] on every server side.
+    /// Returns [`AudioError::WrongSide`] on every server side, or
+    /// [`AudioError::UnknownEvent`] if this mod's declaration omits its event.
     pub fn play(side: Side) -> Result<PlayRequest, AudioError> {
-        Self::declaration()?.play(ENTRY, side)
+        let declared = Self::declaration()?;
+        let event = declared
+            .events()
+            .find(|event| event.entry() == ENTRY)
+            .ok_or_else(|| AudioError::UnknownEvent {
+                name: ENTRY.to_owned(),
+            })?;
+        declared.play(event, side)
     }
 }
 

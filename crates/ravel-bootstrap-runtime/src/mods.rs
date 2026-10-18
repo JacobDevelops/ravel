@@ -485,15 +485,41 @@ mod tests {
         assert_eq!(read.len(), 13, "and nothing follows it");
     }
 
+    struct RefusingObserver(ModId);
+
+    impl ravel_host_api::Mod for RefusingObserver {
+        fn id(&self) -> &ModId {
+            &self.0
+        }
+
+        fn enter(&mut self, _: LifecycleState) -> Result<(), ravel_host_api::ModError> {
+            Ok(())
+        }
+
+        fn observe(
+            &mut self,
+            _: ravel_host_api::GameEvent,
+        ) -> Result<(), ravel_host_api::ModError> {
+            Err(ravel_host_api::ModError::refused("the observer broke"))
+        }
+    }
+
     #[test]
     fn the_screen_reads_the_set_as_it_stands_rather_than_as_it_launched() {
-        let runtime = running(machine(vec![entry("broken_mod", Requirement::Required)]));
+        let mut fixture = machine(vec![entry("broken_mod", Requirement::Required)]);
+        crate::runtime::advance_through(&mut fixture.machine, LifecycleState::Running);
+        let runtime = LoaderRuntime::new(
+            fixture.machine,
+            vec![Box::new(RefusingObserver(mod_id("broken_mod")))],
+            crate::runtime::test_launch(),
+        );
         let before = fields(&runtime.mod_document(&configurable(&[])));
         assert_eq!(before[9], "false");
 
-        runtime.fail_while_running(
-            &mod_id("broken_mod"),
-            attribution(LifecycleState::Loaded, Some(FailureKind::SideMismatch)),
+        assert!(
+            runtime
+                .legacy_event(ravel_host_api::GameEvent::ClientTick)
+                .is_err()
         );
 
         let after = fields(&runtime.mod_document(&configurable(&[])));

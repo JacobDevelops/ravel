@@ -63,7 +63,7 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
     side: Side,
     call: impl FnOnce(&ModId, LifecycleState, &mut H::Target) -> Result<(), HostError>,
     surface: FailureSurface,
-    declines: fn(&HostError) -> bool,
+    is_decline: fn(&HostError) -> bool,
     environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
@@ -87,16 +87,24 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
         Ok(()) => Ok(Delivery {
             received: vec![owner],
             failure: None,
+            declined: None,
         }),
         Err(error) => {
-            if !declines(&error) {
+            let declined = is_decline(&error);
+            if !declined {
                 machine
                     .fail_callback(&error, environment, Some(surface))
                     .map_err(DispatchRefused::Lifecycle)?;
             }
+            let (failure, declined) = if declined {
+                (None, Some(error))
+            } else {
+                (Some(error), None)
+            };
             Ok(Delivery {
                 received: Vec::new(),
-                failure: Some(error),
+                failure,
+                declined,
             })
         }
     }
@@ -111,7 +119,7 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
 /// # Errors
 ///
 /// Returns [`DispatchRefused`] for a halted set, an invalid command key, or an absent or inactive owner.
-pub fn route<H: std::ops::DerefMut<Target: Mod>>(
+pub fn deliver_command<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
     profiler: &mut Profiler,

@@ -12,7 +12,7 @@
     "repository": "https://example.invalid/ravel-test-mods",
     "files": [
       { "path": "Cargo.toml", "sha256": "605122b87adef2840bff05b68ead0b67766cfe53aee2a9ba3db858205c337bc0" },
-      { "path": "src/lib.rs", "sha256": "bcf52534261a5b8f908a43a51f66b3e7f1970c392511a53cd479656b7d0dba78" },
+      { "path": "src/lib.rs", "sha256": "5f92aaf27354973cdd1d5e9ed69f004b19057e2cafa73b8b01c1d52fc16514b7" },
       { "path": "assets/audio/sounds.json", "sha256": "37adf507d928f913d25333b91751c2341aeef5b6994f34504372e3f32f657182" },
       { "path": "data/audio/recipes/paper_echo.json", "sha256": "875f3a064a5034642b12d18815822913adefb29db0eecaab8e46992a7689757b" }
     ]

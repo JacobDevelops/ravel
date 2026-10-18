@@ -68,9 +68,8 @@ impl fmt::Display for ServerDataKind {
 /// A mod-owned server-data entry and its derived pack path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServerDataEntry {
-    owner: ModId,
+    id: ContentId,
     kind: ServerDataKind,
-    name: String,
     path: RelativePath,
 }
 
@@ -78,7 +77,7 @@ impl ServerDataEntry {
     /// Returns the mod that owns the entry.
     #[must_use]
     pub const fn owner(&self) -> &ModId {
-        &self.owner
+        self.id.namespace()
     }
 
     /// Returns the kind of entry this is.
@@ -90,7 +89,13 @@ impl ServerDataEntry {
     /// Returns the name the mod declared it under.
     #[must_use]
     pub fn name(&self) -> &str {
-        &self.name
+        self.id.path()
+    }
+
+    /// Returns the validated identity of this entry.
+    #[must_use]
+    pub const fn id(&self) -> &ContentId {
+        &self.id
     }
 
     /// Returns where the entry is generated.
@@ -171,13 +176,12 @@ impl ServerDataDeclaration {
             return Err(ServerDataError::ClaimedPath {
                 path,
                 kind: existing.kind,
-                name: existing.name.clone(),
+                name: existing.name().to_owned(),
             });
         }
         let entry = ServerDataEntry {
-            owner: self.owner.clone(),
+            id,
             kind,
-            name: name.to_owned(),
             path: path.clone(),
         };
         self.entries.insert(path, (entry.clone(), bytes.to_vec()));
@@ -350,6 +354,7 @@ mod tests {
         assert_eq!(entry.owner(), &owner());
         assert_eq!(entry.name(), "plate_from_ingot");
         assert_eq!(entry.kind(), ServerDataKind::Crafting);
+        assert_eq!(entry.id().to_string(), "sample:plate_from_ingot");
 
         let generated = declared.generate();
         assert_eq!(generated.files().count(), 1);

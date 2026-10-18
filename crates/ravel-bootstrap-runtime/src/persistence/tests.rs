@@ -439,6 +439,24 @@ fn owners_running_with_requirement(
     report: ravel_observability::PreWorldReport,
     requirement: Requirement,
 ) -> (LoaderRuntime, Vec<Arc<Held>>) {
+    let (machine, hosts, held) = owner_parts(owners, requirement);
+    (
+        LoaderRuntime::with_observers(
+            machine,
+            hosts,
+            ravel_observability::Profiler::off(),
+            report,
+            crate::runtime::test_launch(),
+            std::collections::BTreeMap::new(),
+        ),
+        held,
+    )
+}
+
+fn owner_parts(
+    owners: &[&str],
+    requirement: Requirement,
+) -> (LifecycleMachine, Vec<Box<dyn Mod>>, Vec<Arc<Held>>) {
     let held: Vec<Arc<Held>> = owners.iter().map(|_| Arc::new(Held::default())).collect();
     let hosts: Vec<Box<dyn Mod>> = owners
         .iter()
@@ -463,17 +481,7 @@ fn owners_running_with_requirement(
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("independent mods are a legal plan");
     advance_through(&mut machine, LifecycleState::Running);
-    (
-        LoaderRuntime::with_observers(
-            machine,
-            hosts,
-            ravel_observability::Profiler::off(),
-            report,
-            crate::runtime::test_launch(),
-            std::collections::BTreeMap::new(),
-        ),
-        held,
-    )
+    (machine, hosts, held)
 }
 
 const GUARD: &str = "zephyr_guard";
@@ -647,14 +655,7 @@ fn an_optional_owner_failed_before_first_open_is_admitted_without_callbacks() {
         .stage_world(WorldIdentity::of(FIRST), None, true)
         .expect("fresh world");
     let durable = replacement(source.save_world(&WorldIdentity::of(FIRST)));
-    let (runtime, held) = optional_running();
-    runtime
-        .inner
-        .lock()
-        .expect("test lock")
-        .loaded
-        .fail(&id(OWNER), attribution())
-        .expect("optional owner fails before opening");
+    let (runtime, held) = failed_optional();
     held.refuses_declaration.store(true, Ordering::SeqCst);
     held.refuses_open.store(true, Ordering::SeqCst);
     runtime
@@ -669,14 +670,7 @@ fn an_optional_owner_failed_before_first_open_is_admitted_without_callbacks() {
 #[test]
 fn an_already_failed_owner_keeps_its_original_version_without_migration() {
     let stored = stored_at(version(99), 5);
-    let (runtime, held) = optional_running();
-    runtime
-        .inner
-        .lock()
-        .expect("test lock")
-        .loaded
-        .fail(&id(OWNER), attribution())
-        .expect("optional owner failed before mutation");
+    let (runtime, held) = failed_optional();
     held.refuses_declaration.store(true, Ordering::SeqCst);
     held.refuses_open.store(true, Ordering::SeqCst);
     runtime
@@ -831,23 +825,16 @@ fn a_foreign_saved_data_declaration_fails_its_producer_without_opening_another_o
 fn foreign_envelopes_cannot_overwrite_live_or_failed_owners() {
     for (victim_failed, next_world) in [(false, false), (true, false), (false, true), (true, true)]
     {
-        let (runtime, held) = owners_running_with_requirement(
-            &[OWNER, OTHER_OWNER],
-            crate::runtime::pre_world_report(),
-            Requirement::Optional,
-        );
+        let (mut machine, hosts, held) = owner_parts(&[OWNER, OTHER_OWNER], Requirement::Optional);
         let [_, writer] = held.as_slice() else {
             panic!("the fixture has two owners");
         };
         if victim_failed {
-            runtime
-                .inner
-                .lock()
-                .expect("test lock")
-                .loaded
+            machine
                 .fail(&id(OWNER), attribution())
                 .expect("optional owner failed before mutation");
         }
+        let runtime = LoaderRuntime::new(machine, hosts, crate::runtime::test_launch());
         let stored = stored_owning(&[(OWNER, version(2), 7), (OTHER_OWNER, version(2), 11)]);
         runtime
             .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
@@ -934,6 +921,17 @@ fn optional_running() -> (LoaderRuntime, Arc<Held>) {
         Requirement::Optional,
     );
     (runtime, held.remove(0))
+}
+
+fn failed_optional() -> (LoaderRuntime, Arc<Held>) {
+    let (mut machine, hosts, mut held) = owner_parts(&[OWNER], Requirement::Optional);
+    machine
+        .fail(&id(OWNER), attribution())
+        .expect("optional owner fails before opening");
+    (
+        LoaderRuntime::new(machine, hosts, crate::runtime::test_launch()),
+        held.remove(0),
+    )
 }
 
 #[test]
@@ -1144,7 +1142,8 @@ fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
             Side::Client,
             vec![LifecycleEntry {
                 mod_id: id(OWNER),
-                sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+                sides: SideSet::new([Side::Client, Side::IntegratedServer])
+                    .expect("client and integrated world owner"),
                 requirement,
                 saved_data_versions: BTreeSet::from([version(1), version(2)]),
             }],
@@ -1403,7 +1402,8 @@ fn shipped_running() -> LoaderRuntime {
     let shipped = ravel_test_mod_saved_data::SavedDataMod::new();
     let entries = vec![LifecycleEntry {
         mod_id: shipped.id().clone(),
-        sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+        sides: SideSet::new([Side::Client, Side::IntegratedServer])
+            .expect("client and integrated world owner"),
         requirement: Requirement::Required,
         saved_data_versions: shipped
             .declaration()
@@ -1506,13 +1506,25 @@ fn a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing() {
         "{refused}"
     );
 
-    assert!(
-        matches!(
-            runtime.save_world(&WorldIdentity::of(FIRST)),
-            SaveOutcome::IdentityMismatch(_)
-        ),
-        "a world the mod refused was staged anyway"
-    );
+    {
+        let inner = runtime
+            .inner
+            .lock()
+            .expect("refusal leaves the lock healthy");
+        assert!(
+            inner.persistence.staged.is_none(),
+            "the refused world was staged"
+        );
+        assert!(
+            inner.persistence.live.is_none(),
+            "the refused world became live"
+        );
+        drop(inner);
+    }
+    let SaveOutcome::Failed(detail) = runtime.save_world(&WorldIdentity::of(FIRST)) else {
+        panic!("the failed required owner must block saving");
+    };
+    assert!(detail.contains(OWNER), "{detail}");
 }
 
 #[test]
@@ -1867,7 +1879,8 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
         Side::Client,
         vec![LifecycleEntry {
             mod_id: id(OWNER),
-            sides: SideSet::new([Side::Client]).expect("client side"),
+            sides: SideSet::new([Side::Client, Side::IntegratedServer])
+                .expect("client and integrated world resource supplier"),
             requirement: Requirement::Required,
             saved_data_versions: BTreeSet::from([version(1), version(2)]),
         }],
@@ -1962,12 +1975,27 @@ fn assert_fresh_world_pack(world: &std::path::Path) {
 
 #[test]
 fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
-    let (runtime, _held) = running();
+    let (runtime, held) = running();
     runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
         .expect("a running set opens a world");
 
-    runtime.fail_while_running(&id(OWNER), attribution());
+    held.refuses_interception.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
+    assert!(
+        runtime
+            .inner
+            .lock()
+            .expect("callback failure leaves the runtime lock healthy")
+            .loaded
+            .machine()
+            .save_access()
+            .is_err(),
+        "the real callback failure must latch the post-mutation halt"
+    );
 
     let refused = runtime
         .stage_world(WorldIdentity::of(SECOND), None, true)

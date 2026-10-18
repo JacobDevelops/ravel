@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Structured diagnostics, redaction, metrics, and opt-in profiling contracts.
+//! Structured diagnostics, metrics, and opt-in profiling contracts.
 
 mod profiling;
 mod report;

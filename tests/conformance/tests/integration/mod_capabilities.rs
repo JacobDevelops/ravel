@@ -8,7 +8,7 @@ use ravel_core::{ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet}
 use ravel_data::ResourceSet;
 use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod};
 use ravel_loader::{
-    DispatchRefused, LifecycleEntry, LifecycleMachine, Requirement, broadcast, route,
+    DispatchRefused, LifecycleEntry, LifecycleMachine, Requirement, broadcast, deliver_command,
 };
 use ravel_test_mod_commands::CommandsMod;
 use ravel_test_mod_events::EventsMod;
@@ -66,7 +66,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
         Side::Client,
         vec!["set".to_owned(), "base".to_owned()],
     );
-    let delivery = route(
+    let delivery = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         &invocation,
@@ -294,7 +294,7 @@ fn a_command_owned_by_a_mod_that_does_not_load_here_is_refused_rather_than_swall
         vec![entry("commands", &[Side::Client])],
     )
     .expect("a legal plan");
-    let refused = route(
+    let refused = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut elsewhere, &mut mods)
             .expect("all active mods have hosts"),
         &CommandInvocation::new(owned.clone(), Side::DedicatedServer, vec!["set".to_owned()]),
@@ -384,7 +384,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
         &mut mods,
     );
 
-    let delivery = route(
+    let delivery = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         &CommandInvocation::new(CommandsMod::new().key("warp"), Side::Client, Vec::new()),
@@ -393,7 +393,10 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
     )
     .expect("routing found the owner");
     assert_eq!(delivery.received(), []);
-    match delivery.failure() {
+    assert_eq!(delivery.failure(), None);
+    assert_eq!(delivery.failed_by(), None);
+    assert!(!delivery.is_complete());
+    match delivery.declined() {
         Some(HostError::OperationRefused { mod_id, detail, .. }) => {
             assert_eq!(mod_id, &id("commands"));
             assert!(detail.contains("needs a subcommand"), "{detail}");
@@ -401,7 +404,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
         other => panic!("expected the owner to refuse, got {other:?}"),
     }
 
-    let accepted = route(
+    let accepted = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         &CommandInvocation::new(
@@ -515,7 +518,7 @@ fn a_command_nobody_claimed_is_refused_by_name() {
             .parse()
             .expect("a legal content id"),
     );
-    let refused = route(
+    let refused = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         &CommandInvocation::new(orphan.clone(), Side::Client, vec!["x".to_owned()]),

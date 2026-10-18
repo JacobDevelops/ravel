@@ -276,23 +276,17 @@ mod tests {
     }
 
     fn resolved_on(key: &str, side: Side) -> bool {
-        let Ok(key) = key.parse() else {
-            return false;
-        };
         declaration().is_ok_and(|declared| {
             declared
-                .setting(&key)
+                .setting(key)
                 .is_some_and(|setting| setting.side.applies_to(side))
         })
     }
 
     fn admits(key: &str, value: &JsonValue) -> bool {
-        let Ok(parsed) = key.parse() else {
-            return false;
-        };
         declaration().is_ok_and(|declared| {
             declared
-                .setting(&parsed)
+                .setting(key)
                 .is_some_and(|setting| setting.value_schema.check(value).is_ok())
         })
     }
@@ -363,9 +357,7 @@ mod tests {
         assert_eq!(declared.settings().len(), 8);
         for key in KEYS {
             assert!(
-                declared
-                    .setting(&key.parse().expect("a legal key"))
-                    .is_some(),
+                declared.setting(key).is_some(),
                 "the document declares {key}"
             );
         }

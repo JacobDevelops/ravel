@@ -106,7 +106,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "3c9b401161a2dc9e7f42dcf564d2b17f310d9cae019bc6fbfc50aff50b755f79"
+        "sha256": "8b06ed4b9107ac110de9b4c7e3fe7d59a62235e316eef94b99f96d585838f0de"
       },
       {
         "path": "src/settings/colour.rs",

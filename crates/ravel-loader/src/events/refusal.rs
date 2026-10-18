@@ -30,16 +30,16 @@ pub enum DispatchRefused {
         /// The non-command key that cannot be routed.
         key: RegistryKey,
     },
-    /// The command's owner is not in a state that reacts.
+    /// The delivery's owner is not in a state that reacts.
     OwnerNotReacting {
-        /// The mod that owns the command.
+        /// The owner the delivery was routed to.
         mod_id: ModId,
         /// The state it is in.
         state: LifecycleState,
     },
     /// The owner's declared sides do not include the executing side.
     OwnerWrongSide {
-        /// The mod that owns the command.
+        /// The owner the delivery was routed to.
         mod_id: ModId,
     },
     /// The delivery's own side field disagrees with the side the set runs on.
@@ -100,13 +100,12 @@ impl fmt::Display for DispatchRefused {
             Self::NotACommand { key } => write!(formatter, "`{key}` is not a command"),
             Self::OwnerNotReacting { mod_id, state } => write!(
                 formatter,
-                "`{mod_id}` owns the command and is `{}`, which does not react",
+                "`{mod_id}` owns this delivery and is `{}`, which does not react",
                 state.as_str()
             ),
-            Self::OwnerWrongSide { mod_id } => write!(
-                formatter,
-                "`{mod_id}` owns the command and does not load on this side"
-            ),
+            Self::OwnerWrongSide { mod_id } => {
+                write!(formatter, "`{mod_id}` does not load on this side")
+            }
             Self::PacketForeignSide {
                 id,
                 claimed,

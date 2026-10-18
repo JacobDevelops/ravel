@@ -4,6 +4,9 @@ Descriptors contain source metadata, expected versions, counts, and cryptographi
 hashes. Reconstruction uses the publisher's download endpoint and writes to the
 ignored `tests/fixtures/local/` directory.
 
+Regression tests for SevTech descriptor bindings and rights checks live beside
+the scripts in `registry/sevtech/` and run through that directory's test discovery.
+
 ## Where a runtime-inputs pin comes from
 
 `runtime-inputs-1.21.1.json` pins the launcher-side inputs of the 1.21.1 target

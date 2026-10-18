@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
 use ravel_config::{
-    LayeredConfiguration, ResolvedSetting, SettingKey, ValueDocument, ValueKind, ValueSource, file,
+    LayeredConfiguration, ResolvedSetting, ValueDocument, ValueKind, ValueSource, file,
 };
 use ravel_core::{DiagnosticMessage, ModId, Side};
 use serde_json::Value;
@@ -245,18 +245,13 @@ impl Store {
         let mut refused = String::new();
         let mut refusals = 0_usize;
         for (key, typed) in edits {
-            let Ok(parsed) = key.parse::<SettingKey>() else {
-                refusals += 1;
-                write_refusal(&mut refused, &key, "that is not a setting name");
-                continue;
-            };
             let kind = configuration
                 .declaration()
-                .setting(&parsed)
+                .setting(&key)
                 .and_then(|setting| setting.value_schema.kind);
-            if let Err(error) = configuration.set(&parsed, value_of(kind, &typed), side) {
+            if let Err(error) = configuration.set(&key, value_of(kind, &typed), side) {
                 refusals += 1;
-                write_refusal(&mut refused, parsed.as_str(), &error.to_string());
+                write_refusal(&mut refused, &key, &error.to_string());
             }
         }
 

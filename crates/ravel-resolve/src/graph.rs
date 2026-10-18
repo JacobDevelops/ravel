@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ravel_core::{DependencyRelationship, ModId, Side, Version};
-use ravel_package::{Dependency, DependencyOrder, PackageManifest};
+use ravel_core::{ModId, Side, Version};
+use ravel_package::{Dependency, DependencyOrder, DependencyRelationship, PackageManifest};
 
 use crate::error::ResolutionError;
 use crate::plan::{Discouraged, LoadPlan};

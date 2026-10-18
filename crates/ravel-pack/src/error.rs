@@ -5,7 +5,8 @@ use ravel_core::{ContentId, ModId, RegistryKey, RelativePath, Side, Version};
 use ravel_data::TagId;
 use ravel_resolve::ResolutionError;
 
-use crate::validate::{RESERVED_PREFIX, VANILLA_NAMESPACE};
+use crate::validate::VANILLA_NAMESPACE;
+use ravel_core::paths::INSTANCE_DIRECTORY;
 
 /// Why a registry entry is one this pack cannot account for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,15 +74,6 @@ pub enum ClosureError {
     ContentTwice {
         /// The owner named twice.
         owner: ModId,
-    },
-    /// Two members claim the same registry entry.
-    EntryContested {
-        /// The contested entry.
-        key: RegistryKey,
-        /// The member that claimed it first.
-        first: ModId,
-        /// The member that claimed it second.
-        second: ModId,
     },
     /// A tag names a member nothing in this pack provides.
     TagMember {
@@ -171,10 +163,6 @@ impl fmt::Display for ClosureError {
             Self::ContentTwice { owner } => {
                 write!(formatter, "`{owner}` declared its content twice")
             }
-            Self::EntryContested { key, first, second } => write!(
-                formatter,
-                "`{first}` and `{second}` both claim `{key}`, and one entry has one owner"
-            ),
             Self::TagMember { tag, member, kind } => write!(
                 formatter,
                 "`{tag}` holds `{member}`, which nothing in this pack provides: {kind}"
@@ -190,7 +178,7 @@ impl fmt::Display for ClosureError {
             } => fmt_path_contested(formatter, path, first, second),
             Self::ReservedPath { path } => write!(
                 formatter,
-                "`{path}` is under `{RESERVED_PREFIX}`, which holds Ravel's own files only"
+                "`{path}` is under `{INSTANCE_DIRECTORY}/`, which holds Ravel's own files only"
             ),
             Self::ResourceMissing { path, referrer } => write!(
                 formatter,
@@ -227,7 +215,6 @@ impl std::error::Error for ClosureError {
             | Self::ContentMissing { .. }
             | Self::ContentUnpinned { .. }
             | Self::ContentTwice { .. }
-            | Self::EntryContested { .. }
             | Self::TagMember { .. }
             | Self::Gate { .. }
             | Self::PathContested { .. }

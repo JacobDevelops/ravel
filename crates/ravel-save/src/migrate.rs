@@ -121,11 +121,12 @@ impl MigrationChain {
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError::UnknownOwner`] for a different owner or [`SavedDataError::MissingMigration`] for a missing step.
+    /// Returns [`SavedDataError::MismatchedChain`] for a different owner or [`SavedDataError::MissingMigration`] for a missing step.
     pub fn check_covers(&self, declaration: &SavedDataDeclaration) -> Result<(), SavedDataError> {
         if declaration.owner() != &self.owner {
-            return Err(SavedDataError::UnknownOwner {
-                owner: declaration.owner().clone(),
+            return Err(SavedDataError::MismatchedChain {
+                declared: declaration.owner().clone(),
+                chain: self.owner.clone(),
             });
         }
         for version in declaration.versions().skip(1) {
@@ -143,11 +144,12 @@ impl MigrationChain {
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError::UnknownOwner`], [`SavedDataError::MissingMigration`], or [`SavedDataError::MigrationFailed`].
+    /// Returns [`SavedDataError::MismatchedChain`], [`SavedDataError::MissingMigration`], or [`SavedDataError::MigrationFailed`].
     pub fn apply(&self, plan: &SavedDataPlan, payload: &Value) -> Result<Value, SavedDataError> {
         if plan.owner() != &self.owner {
-            return Err(SavedDataError::UnknownOwner {
-                owner: plan.owner().clone(),
+            return Err(SavedDataError::MismatchedChain {
+                declared: plan.owner().clone(),
+                chain: self.owner.clone(),
             });
         }
         let mut migrated = payload.clone();
@@ -306,15 +308,25 @@ mod tests {
 
         assert_eq!(
             other.check_covers(&declaration),
-            Err(SavedDataError::UnknownOwner {
-                owner: id("example"),
+            Err(SavedDataError::MismatchedChain {
+                declared: id("example"),
+                chain: id("other"),
             })
         );
         assert_eq!(
             other.apply(&plan, &stored(1)),
-            Err(SavedDataError::UnknownOwner {
-                owner: id("example"),
+            Err(SavedDataError::MismatchedChain {
+                declared: id("example"),
+                chain: id("other"),
             })
+        );
+        let refusal = other
+            .check_covers(&declaration)
+            .expect_err("different chain owner");
+        assert_eq!(refusal.owner(), Some(&id("example")));
+        assert_eq!(
+            refusal.to_string(),
+            "`other`'s migration chain was supplied for `example`"
         );
     }
 }

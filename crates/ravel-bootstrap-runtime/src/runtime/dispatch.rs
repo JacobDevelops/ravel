@@ -5,7 +5,7 @@ use std::sync::PoisonError;
 
 use ravel_core::{ContentId, ContentKind, DiagnosticMessage, RegistryKey};
 use ravel_host_api::{CommandInvocation, GameEvent};
-use ravel_loader::{broadcast, route};
+use ravel_loader::{broadcast, deliver_command};
 use ravel_minecraft::{HookTarget, HookValue};
 
 use super::{Inner, LoaderRuntime};
@@ -170,7 +170,7 @@ impl Inner {
                 &mut self.profiler,
                 self.report.environment(),
             ),
-            Work::Command(invocation) => route(
+            Work::Command(invocation) => deliver_command(
                 &mut loaded,
                 invocation,
                 &mut self.profiler,
@@ -193,6 +193,7 @@ impl Inner {
         self.carry_outward();
         delivery
             .failure()
+            .or_else(|| delivery.declined())
             .map_or(Ok(()), |error| Err(error.to_string()))
     }
 
@@ -213,7 +214,7 @@ impl Inner {
                 drained
                     .into_requests()
                     .into_iter()
-                    .map(|request| outward::play(request.owner().as_str(), request.entry())),
+                    .map(|request| outward::play(request.id())),
             ),
             // The halt already has its owning failure attribution.
             Err(ravel_loader::DispatchRefused::Halted { .. }) => {}

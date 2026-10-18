@@ -47,14 +47,13 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            let error = crate::owner_refusal(machine, &mod_id, &refused)
-                .map_err(ConfigRefused::Lifecycle)?;
-            if machine
-                .fail_setup_callback(&error, environment)
-                .map_err(ConfigRefused::Lifecycle)?
-            {
-                return Err(refused);
-            }
+            crate::lifecycle::isolate_foreign(
+                machine,
+                environment,
+                &mod_id,
+                refused,
+                ConfigRefused::Lifecycle,
+            )?;
             continue;
         }
 
@@ -87,16 +86,16 @@ fn record_failure(
     environment: &FailureEnvironment,
     source: HostError,
 ) -> Result<(), ConfigRefused> {
-    if machine
-        .fail_setup_callback(&source, environment)
-        .map_err(ConfigRefused::Lifecycle)?
-    {
-        return Err(ConfigRefused::Mod {
+    crate::lifecycle::isolate(
+        machine,
+        environment,
+        source,
+        ConfigRefused::Lifecycle,
+        |source| ConfigRefused::Mod {
             mod_id: source.mod_id().clone(),
             source,
-        });
-    }
-    Ok(())
+        },
+    )
 }
 
 /// Which mods were configured, and what the player asked for and did not get.

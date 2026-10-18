@@ -106,6 +106,10 @@ own signatures as well as report it.
 Declare every version this build can read. The oldest is what still opens; the
 highest is what you write.
 
+Declaring saved data requires both `open_saved_data` and `save_saved_data`.
+Their defaults refuse unsupported callbacks rather than silently dropping a
+declared owner's stored state. A snapshot callback failure blocks the save.
+
 ```rust
 fn read_entries(current: &JsonValue) -> Vec<String> {
     current

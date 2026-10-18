@@ -237,7 +237,10 @@ fn a_pack_that_states_nothing_writes_no_layer_and_every_member_keeps_its_default
         .expect("the pack should write");
 
     assert!(
-        !game.join(ravel_core::paths::PACK_CONFIG_DIRECTORY).exists(),
+        !game
+            .join(ravel_core::paths::INSTANCE_DIRECTORY)
+            .join(ravel_core::paths::PACK_CONFIG_DIRECTORY)
+            .exists(),
         "a pack with no overrides writes no settings directory"
     );
     assert_eq!(launch(&game), [Some(4), Some(4)]);

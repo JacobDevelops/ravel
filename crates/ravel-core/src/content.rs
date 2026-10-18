@@ -115,7 +115,7 @@ impl ContentId {
     /// Returns [`ContentIdError`] for an empty, malformed, or traversing path.
     pub fn new(namespace: ModId, path: impl Into<String>) -> Result<Self, ContentIdError> {
         let path = path.into();
-        Self::validate_path(&path)?;
+        Self::check_path(&path)?;
         Ok(Self { namespace, path })
     }
 
@@ -131,7 +131,7 @@ impl ContentId {
         &self.path
     }
 
-    fn validate_path(path: &str) -> Result<(), ContentIdError> {
+    fn check_path(path: &str) -> Result<(), ContentIdError> {
         if path.is_empty() {
             return Err(ContentIdError::EmptyPath);
         }

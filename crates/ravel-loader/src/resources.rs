@@ -31,12 +31,13 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
             Ok(Some(declaration)) => declaration,
             Ok(None) => continue,
             Err(source) => {
-                if machine
-                    .fail_setup_callback(&source, environment)
-                    .map_err(ResourceRefused::Lifecycle)?
-                {
-                    return Err(ResourceRefused::Mod { mod_id, source });
-                }
+                crate::lifecycle::isolate(
+                    machine,
+                    environment,
+                    source,
+                    ResourceRefused::Lifecycle,
+                    |source| ResourceRefused::Mod { mod_id, source },
+                )?;
                 continue;
             }
         };
@@ -45,14 +46,13 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            let error = crate::owner_refusal(machine, &mod_id, &refused)
-                .map_err(ResourceRefused::Lifecycle)?;
-            if machine
-                .fail_setup_callback(&error, environment)
-                .map_err(ResourceRefused::Lifecycle)?
-            {
-                return Err(refused);
-            }
+            crate::lifecycle::isolate_foreign(
+                machine,
+                environment,
+                &mod_id,
+                refused,
+                ResourceRefused::Lifecycle,
+            )?;
             continue;
         }
         generated.push((mod_id.clone(), declaration.generate()));

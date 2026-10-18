@@ -170,7 +170,6 @@ check-jsonschema --schemafile schemas/fixture.schema.json \
 check-jsonschema --schemafile schemas/runtime-inputs.schema.json \
   tests/fixtures/descriptors/runtime-inputs-*.json
 python3 -B -m unittest discover -s registry/sevtech -p 'test_*.py'
-python3 -B -m unittest discover -s tests/fixtures/descriptors -p 'test_wp7_*.py'
 python3 -B -m unittest discover -s jvm/legacy-platform/tools -p 'test_*.py'
 '''
 

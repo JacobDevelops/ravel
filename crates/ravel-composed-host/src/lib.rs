@@ -167,12 +167,39 @@ mod tests {
     }
 
     #[test]
+    fn the_source_factory_instantiates_every_member_even_when_parked() {
+        for side in Side::ALL {
+            let supplied = super::members(side);
+            assert_eq!(
+                supplied.len(),
+                if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+                    8
+                } else {
+                    5
+                },
+                "the actual factory must supply the complete set on {side:?}"
+            );
+            for owner in [
+                owner(),
+                saved_owner(),
+                client_owner(),
+                server_owner(),
+                registries_owner(),
+            ] {
+                assert!(
+                    supplied.iter().any(|member| member.value.id() == &owner),
+                    "the actual factory omitted {owner} on {side:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn the_client_only_member_is_admitted_and_parked_on_a_dedicated_server() {
         let game = directory("dedicated");
         let Composition { loaded, .. } =
             compose(&game, Side::DedicatedServer).expect("the tracked composition should start");
         let machine = loaded.machine();
-        let mods = loaded.mods();
 
         assert_eq!(
             machine.state(&client_owner()),
@@ -187,7 +214,9 @@ mod tests {
             "a server-only mod was kept off the side it declares"
         );
         assert!(
-            mods.iter().any(|held| held.id() == &client_owner()),
+            machine
+                .entries()
+                .any(|entry| entry.mod_id == client_owner()),
             "a parked mod is installed rather than absent"
         );
     }
@@ -237,7 +266,6 @@ mod tests {
         let Composition { loaded, .. } =
             compose(&game, Side::Client).expect("the tracked composition should start");
         let machine = loaded.machine();
-        let mods = loaded.mods();
 
         assert_eq!(
             machine.state(&server_owner()),
@@ -247,7 +275,9 @@ mod tests {
         assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
         assert_eq!(machine.state(&owner()), Ok(LifecycleState::Running));
         assert!(
-            mods.iter().any(|held| held.id() == &server_owner()),
+            machine
+                .entries()
+                .any(|entry| entry.mod_id == server_owner()),
             "a parked mod is installed rather than absent"
         );
     }
@@ -284,7 +314,6 @@ mod tests {
             ..
         } = compose(&game, Side::Client).expect("the tracked composition should start");
         let machine = loaded.machine();
-        let mods = loaded.mods();
 
         for id in [owner(), saved_owner(), client_owner(), registries_owner()] {
             assert_eq!(machine.state(&id), Ok(LifecycleState::Running), "{id}");
@@ -295,7 +324,7 @@ mod tests {
             "the server-only member is parked on the client"
         );
 
-        let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
+        let driven: Vec<&ModId> = machine.entries().map(|entry| &entry.mod_id).collect();
         assert_eq!(
             driven.len(),
             if ravel_bootstrap_runtime::LEGACY_ADAPTER {
@@ -433,6 +462,7 @@ mod tests {
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
         let running = ravel_host_runtime::environment();
         let root = game
+            .join(ravel_core::paths::INSTANCE_DIRECTORY)
             .join(ravel_core::paths::PACKAGES_DIRECTORY)
             .join(format!("{id}-1.0.0"));
         std::fs::create_dir_all(root.join("src")).expect("a package directory is creatable");

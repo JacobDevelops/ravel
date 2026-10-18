@@ -160,12 +160,9 @@ pub fn travels_to_clients() -> bool {
 /// side edited in [`DOCUMENT`] moves this with it.
 #[must_use]
 pub fn resolved_on(key: &str, side: Side) -> bool {
-    let Ok(key) = key.parse() else {
-        return false;
-    };
     declaration().is_ok_and(|declaration| {
         declaration
-            .setting(&key)
+            .setting(key)
             .is_some_and(|setting| setting.side.applies_to(side))
     })
 }
@@ -216,9 +213,8 @@ mod tests {
     fn the_packaged_document_parses_and_declares_four_settings() {
         let declaration = declaration().expect("the packaged document parses");
         for key in [TAG_TOOLTIP, DATA_TOOLTIP, PREFERENCE, SELF_HEAL] {
-            let parsed = key.parse().expect("every declared key is legal");
             assert!(
-                declaration.setting(&parsed).is_some(),
+                declaration.setting(key).is_some(),
                 "the document declares {key}"
             );
         }

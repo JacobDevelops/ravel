@@ -254,7 +254,7 @@ fn reported_codes(label: &str, source: &str) -> BTreeSet<String> {
         .arg(directory.join(format!("{label}.meta")))
         .arg(&file)
         .output()
-        .expect("rustc runs inside the devenv shell");
+        .expect("rustc should be on PATH via mise install and mise exec --");
     fs::remove_dir_all(&directory).expect("the snippet directory is removable");
 
     assert!(

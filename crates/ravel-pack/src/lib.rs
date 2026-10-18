@@ -15,5 +15,5 @@ mod write;
 pub use declare::{PackDeclaration, PackError, ResourceReference, SuppliedFile};
 pub use error::{ClosureError, UnprovidedEntry};
 pub use progression::{Progression, ProgressionError, ProgressionState};
-pub use validate::{PackFile, RESERVED_PREFIX, VANILLA_NAMESPACE, ValidatedPack, validate};
+pub use validate::{PackFile, VANILLA_NAMESPACE, ValidatedPack, validate};
 pub use write::WriteError;

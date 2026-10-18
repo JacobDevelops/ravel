@@ -6,11 +6,11 @@
 use std::collections::BTreeSet;
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::Mod;
+use ravel_host_api::{Mod, Points, Round};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_resolve::Provision;
 use ravel_sdk::audio::AudioError;
-use ravel_sdk::interception::{Outcome, Point, Points};
+use ravel_sdk::interception::{Outcome, Point};
 use ravel_sdk::provision::Provided;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration};
 use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
@@ -259,7 +259,7 @@ fn a_refusal_at_a_point_ends_the_round_where_it_was_given() {
 }
 
 // The follower sorts first by id, so only the declared edge puts it after the guard.
-fn round(guarding: bool) -> ravel_sdk::interception::Round {
+fn round(guarding: bool) -> Round {
     struct Follower {
         id: ModId,
         after: ModId,

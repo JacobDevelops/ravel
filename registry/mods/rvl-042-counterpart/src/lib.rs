@@ -202,7 +202,15 @@ impl Entry {
             return Ok(false);
         }
         let request = Self::audio_declaration()
-            .and_then(|declared| declared.play(SOUND, side))
+            .and_then(|declared| {
+                let event = declared
+                    .events()
+                    .find(|event| event.entry() == SOUND)
+                    .ok_or_else(|| AudioError::UnknownEvent {
+                        name: SOUND.to_owned(),
+                    })?;
+                declared.play(event, side)
+            })
             .map_err(ModError::from_display)?;
         self.asked.push(request);
         Ok(true)

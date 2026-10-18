@@ -197,8 +197,7 @@ fn host() -> Host {
         .minecraft
         .first()
         .expect("the schema requires at least one Minecraft version")
-        .as_str()
-        .to_owned();
+        .to_string();
     assert!(
         repository_root()
             .join("minecraft/versions")
@@ -493,24 +492,33 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
         &ravel_host_runtime::environment(),
     )
     .expect("the routing reached the owner");
-    let failure = delivered.failure().map(ToString::to_string);
-    (failure, server)
+    assert!(
+        delivered.failure().is_none(),
+        "packet declines do not fail the owner"
+    );
+    assert!(
+        delivered.failed_by().is_none(),
+        "packet declines are not quarantines"
+    );
+    let decline = delivered.declined().map(ToString::to_string);
+    assert_eq!(delivered.is_complete(), decline.is_none());
+    (decline, server)
 }
 
 #[test]
 fn a_truncated_payload_is_refused_at_every_length_it_could_be_cut_to() {
     let full = encode(&Ping::noted(7, "note", false));
     for cut in 0..full.len() {
-        let (failure, server) = ping_arriving(full[..cut].to_vec(), ping_id());
+        let (decline, server) = ping_arriving(full[..cut].to_vec(), ping_id());
         assert!(
-            failure.is_some(),
+            decline.is_some(),
             "a payload cut to {cut} bytes was read as a ping"
         );
         assert!(server.answered().is_empty(), "cut at {cut}");
     }
 
-    let (failure, server) = ping_arriving(full, ping_id());
-    assert_eq!(failure, None);
+    let (decline, server) = ping_arriving(full, ping_id());
+    assert_eq!(decline, None);
     assert_eq!(server.answered().len(), 1);
 }
 
@@ -535,9 +543,9 @@ fn a_length_prefix_past_the_end_is_refused_with_the_length_it_claimed() {
         "the note's length prefix claims the whole address space and nothing follows it"
     );
 
-    let (failure, server) = ping_arriving(hostile, ping_id());
-    let failure = failure.expect("a length prefix past the end");
-    assert!(failure.contains("4294967295"), "{failure}");
+    let (decline, server) = ping_arriving(hostile, ping_id());
+    let decline = decline.expect("a length prefix past the end");
+    assert!(decline.contains("4294967295"), "{decline}");
     assert_eq!(server.answered(), []);
 }
 
@@ -546,9 +554,9 @@ fn a_payload_with_bytes_left_over_is_refused_rather_than_read_as_the_packet_insi
     let mut trailing = encode(&Ping::new(1));
     trailing.push(0);
 
-    let (failure, server) = ping_arriving(trailing, ping_id());
-    let failure = failure.expect("a byte nothing accounts for");
-    assert!(failure.contains("accounts for"), "{failure}");
+    let (decline, server) = ping_arriving(trailing, ping_id());
+    let decline = decline.expect("a byte nothing accounts for");
+    assert!(decline.contains("accounts for"), "{decline}");
     assert_eq!(server.answered(), []);
 }
 
@@ -558,9 +566,9 @@ fn a_payload_written_under_another_version_is_refused_rather_than_misread() {
     let offset = 4 + ping_id().to_string().len();
     other[offset..offset + 4].copy_from_slice(&(PING_VERSION + 1).to_be_bytes());
 
-    let (failure, server) = ping_arriving(other.clone(), ping_id());
-    let failure = failure.expect("another version");
-    assert!(failure.contains("version"), "{failure}");
+    let (decline, server) = ping_arriving(other.clone(), ping_id());
+    let decline = decline.expect("another version");
+    assert!(decline.contains("version"), "{decline}");
     assert_eq!(server.answered(), []);
 
     assert_eq!(
@@ -574,9 +582,9 @@ fn a_payload_written_under_another_version_is_refused_rather_than_misread() {
 
 #[test]
 fn a_payload_written_under_another_contract_is_refused_by_name() {
-    let (failure, server) = ping_arriving(encode(&Overlay::new(Vec::new())), ping_id());
-    let failure = failure.expect("the payload is an overlay");
-    assert!(failure.contains(&overlay_id().to_string()), "{failure}");
+    let (decline, server) = ping_arriving(encode(&Overlay::new(Vec::new())), ping_id());
+    let decline = decline.expect("the payload is an overlay");
+    assert!(decline.contains(&overlay_id().to_string()), "{decline}");
     assert_eq!(server.answered(), []);
 }
 
@@ -584,9 +592,9 @@ fn a_payload_written_under_another_contract_is_refused_by_name() {
 fn a_delivery_naming_one_contract_and_carrying_another_is_refused() {
     // Keep the label in the owner's namespace so routing reaches payload validation.
     let other = PacketId::new("networking:other".parse().expect("a legal content id"));
-    let (failure, server) = ping_arriving(encode(&Ping::new(1)), other.clone());
+    let (decline, server) = ping_arriving(encode(&Ping::new(1)), other.clone());
 
-    let failure = failure.expect("the label and the payload disagree");
-    assert!(failure.contains(&other.to_string()), "{failure}");
+    let decline = decline.expect("the label and the payload disagree");
+    assert!(decline.contains(&other.to_string()), "{decline}");
     assert_eq!(server.answered(), []);
 }

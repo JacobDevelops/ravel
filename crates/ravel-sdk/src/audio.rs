@@ -29,9 +29,9 @@
 //! assert!(declared.event("door_closes").is_err());
 //!
 //! // The client plays it; a server is refused rather than ignored.
-//! assert_eq!(declared.play("door_opens", Side::Client)?.entry(), "door_opens");
+//! assert_eq!(declared.play(&event, Side::Client)?.entry(), "door_opens");
 //! let refusal = declared
-//!     .play("door_opens", Side::DedicatedServer)
+//!     .play(&event, Side::DedicatedServer)
 //!     .expect_err("a server has nothing to play with");
 //! assert_eq!(refusal.wrong_side(), Some(Side::DedicatedServer));
 //! # Ok::<(), ravel_sdk::audio::AudioError>(())

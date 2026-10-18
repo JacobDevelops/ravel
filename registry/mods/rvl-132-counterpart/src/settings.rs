@@ -344,11 +344,7 @@ mod tests {
             ABORT_ON_BUNDLE_FAILURE,
             IGNORED_COMPONENTS,
         ] {
-            let setting = declared
-                .settings()
-                .iter()
-                .find(|setting| setting.key.to_string() == key)
-                .expect("a declared setting");
+            let setting = declared.setting(key).expect("a declared setting");
             assert_eq!(
                 setting.side,
                 ravel_sdk::config::SettingSide::Common,
@@ -361,9 +357,7 @@ mod tests {
     fn the_diagnostic_setting_is_client_scoped() {
         let declared = declaration().expect("a packaged document");
         let setting = declared
-            .settings()
-            .iter()
-            .find(|setting| setting.key.to_string() == LOG_UNEQUAL_DATA)
+            .setting(LOG_UNEQUAL_DATA)
             .expect("a declared setting");
         assert_eq!(setting.side, ravel_sdk::config::SettingSide::Client);
     }

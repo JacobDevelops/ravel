@@ -194,8 +194,7 @@ pub struct Setting {
 /// }"#;
 ///
 /// let declaration = ConfigurationDeclaration::parse(document)?;
-/// let key = "render.distance".parse()?;
-/// let setting = declaration.setting(&key).expect("the only setting");
+/// let setting = declaration.setting("render.distance").expect("the only setting");
 ///
 /// assert_eq!(setting.side, SettingSide::Client);
 /// // `packOverride` is absent above, and the schema defaults it to `allowed`.
@@ -304,8 +303,10 @@ impl ConfigurationDeclaration {
 
     /// Returns the setting `key` names, if the author declared one.
     #[must_use]
-    pub fn setting(&self, key: &SettingKey) -> Option<&Setting> {
-        self.settings.iter().find(|setting| &setting.key == key)
+    pub fn setting(&self, key: &str) -> Option<&Setting> {
+        self.settings
+            .iter()
+            .find(|setting| setting.key.as_str() == key)
     }
 }
 
@@ -437,8 +438,9 @@ mod tests {
         assert_eq!(declaration.owner.as_str(), "example_mod");
         assert_eq!(declaration.version.get(), 1);
 
-        let key: SettingKey = "render.distance".parse().expect("a legal key");
-        let setting = declaration.setting(&key).expect("the declared setting");
+        let setting = declaration
+            .setting("render.distance")
+            .expect("the declared setting");
         assert_eq!(setting.title.as_deref(), Some("Render distance"));
         assert_eq!(setting.description, None);
         assert_eq!(setting.default, json!(12));
@@ -452,8 +454,9 @@ mod tests {
     fn a_key_nobody_declared_has_no_setting() {
         let declaration =
             ConfigurationDeclaration::parse(&document("")).expect("a legal declaration");
-        let absent: SettingKey = "render.absent".parse().expect("a legal key");
-        assert_eq!(declaration.setting(&absent), None);
+        assert_eq!(declaration.setting("render.absent"), None);
+        assert_eq!(declaration.setting("Render.Distance"), None);
+        assert_eq!(declaration.setting(""), None);
     }
 
     #[test]

@@ -56,16 +56,7 @@ fn compose_content(game: &std::path::Path, side: Side) -> Option<ravel_host_runt
     let package = include_str!("../../../../../examples/content-mod/package.json");
     let manifest = PackageManifest::parse(package).expect("the shipped manifest is valid");
     let running = ravel_host_runtime::environment().minecraft;
-    let version = running
-        .parse::<ravel_core::Version>()
-        .expect("the selected Minecraft release has a semantic version");
-    let compatible = manifest.compatibility.minecraft.iter().any(|declared| {
-        declared
-            .as_str()
-            .parse::<ravel_core::VersionRange>()
-            .expect("the content example declares Minecraft ranges")
-            .matches(&version)
-    });
+    let compatible = manifest.compatibility.check_minecraft(&running).is_ok();
     let composed = compose(
         game,
         side,
@@ -82,7 +73,7 @@ fn compose_content(game: &std::path::Path, side: Side) -> Option<ravel_host_runt
                 .compatibility
                 .minecraft
                 .iter()
-                .map(|range| range.as_str().to_owned())
+                .map(ToString::to_string)
                 .collect(),
             running,
         };

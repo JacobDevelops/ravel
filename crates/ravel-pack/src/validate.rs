@@ -15,9 +15,6 @@ use files::written_files;
 /// The game's namespace; entries here are allowed without verifying they exist.
 pub const VANILLA_NAMESPACE: &str = "minecraft";
 
-/// The output directory reserved for Ravel-owned files.
-pub const RESERVED_PREFIX: &str = "ravel/";
-
 /// One file a validated pack writes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackFile {
@@ -161,25 +158,11 @@ fn declared_content<'a>(
     Ok(declarations)
 }
 
-/// Refuses a contested registry claim and a tag member nothing provides.
+/// Refuses a tag member nothing provides.
 fn registry_closure(
     pack: &PackDeclaration,
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
 ) -> Result<(), ClosureError> {
-    let mut claimed: BTreeMap<&RegistryKey, &ModId> = BTreeMap::new();
-    for (owner, declaration) in declarations {
-        for key in declaration.entries() {
-            if let Some(first) = claimed.get(key) {
-                return Err(ClosureError::EntryContested {
-                    key: key.clone(),
-                    first: (*first).clone(),
-                    second: (*owner).clone(),
-                });
-            }
-            claimed.insert(key, owner);
-        }
-    }
-
     for declaration in declarations.values() {
         for tag in declaration.tags() {
             for member in declaration.tag_members(tag) {

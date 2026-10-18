@@ -490,12 +490,9 @@ mod tests {
     use ravel_sdk::{JsonValue, Side};
 
     fn admits(key: &str, value: &JsonValue) -> bool {
-        let Ok(parsed) = key.parse() else {
-            return false;
-        };
         declaration().is_ok_and(|declared| {
             declared
-                .setting(&parsed)
+                .setting(key)
                 .is_some_and(|setting| setting.value_schema.check(value).is_ok())
         })
     }
@@ -511,12 +508,9 @@ mod tests {
     }
 
     fn resolved_on(key: &str, side: Side) -> bool {
-        let Ok(key) = key.parse() else {
-            return false;
-        };
         declaration().is_ok_and(|declared| {
             declared
-                .setting(&key)
+                .setting(key)
                 .is_some_and(|setting| setting.side.applies_to(side))
         })
     }
@@ -615,8 +609,7 @@ mod tests {
         let declared = declaration().expect("the packaged document parses");
         assert_eq!(declared.settings().len(), 20);
         for key in KEYS {
-            let parsed = key.parse().expect("every declared key is legal");
-            assert!(declared.setting(&parsed).is_some(), "declares {key}");
+            assert!(declared.setting(key).is_some(), "declares {key}");
         }
     }
 

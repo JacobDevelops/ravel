@@ -551,6 +551,13 @@ fn a_key_the_owner_does_not_declare_is_refused_by_name() {
     assert_eq!(refused.len(), 2);
     assert_eq!(refused[0].0, "render.absent");
     assert_eq!(refused[1].0, "not a key");
+    for (key, reason) in refused {
+        assert_eq!(
+            reason,
+            format!("`{key}` is not a setting this mod declares")
+        );
+    }
+    assert_eq!(screen.row("render.distance").value, "12");
 }
 
 #[test]

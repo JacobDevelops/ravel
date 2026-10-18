@@ -154,7 +154,7 @@ impl LayeredConfiguration {
             for (key, value) in &stated.values {
                 let setting = layered
                     .declaration
-                    .setting(key)
+                    .setting(key.as_str())
                     .ok_or_else(|| LayerError::PackUnknown { key: key.clone() })?;
                 setting
                     .value_schema
@@ -178,7 +178,7 @@ impl LayeredConfiguration {
         if let Some(chosen) = player {
             layered.check_owner(chosen)?;
             for (key, value) in &chosen.values {
-                let reason = match layered.declaration.setting(key) {
+                let reason = match layered.declaration.setting(key.as_str()) {
                     None => RejectionReason::Unknown,
                     Some(setting) => match setting.value_schema.check(value) {
                         Ok(()) => {
@@ -288,9 +288,7 @@ impl LayeredConfiguration {
 
     fn setting(&self, key: &str) -> Result<&Setting, ValueError> {
         self.declaration
-            .settings()
-            .iter()
-            .find(|setting| setting.key.as_str() == key)
+            .setting(key)
             .ok_or_else(|| ValueError::Unknown {
                 key: key.to_owned(),
             })
@@ -356,41 +354,40 @@ impl LayeredConfiguration {
     /// [`EditError::OtherSide`] for a setting this side does not own,
     /// [`EditError::FixedByPack`] where the pack took the last word, and
     /// [`EditError::Illegal`] for a value the setting's `valueSchema` refuses.
-    pub fn set(
-        &mut self,
-        key: &SettingKey,
-        value: Value,
-        side: Side,
-    ) -> Result<EditOutcome, EditError> {
+    pub fn set(&mut self, key: &str, value: Value, side: Side) -> Result<EditOutcome, EditError> {
         let setting = self
             .declaration
             .setting(key)
-            .ok_or_else(|| EditError::Unknown { key: key.clone() })?;
+            .ok_or_else(|| EditError::Unknown {
+                key: key.to_owned(),
+            })?;
 
         if !setting.side.applies_to(side) {
             return Err(EditError::OtherSide {
-                key: key.clone(),
+                key: key.to_owned(),
                 declared: setting.side,
                 side,
             });
         }
-        if setting.pack_override.overrules_player() && self.pack.contains_key(key) {
-            return Err(EditError::FixedByPack { key: key.clone() });
+        if setting.pack_override.overrules_player() && self.pack.contains_key(&setting.key) {
+            return Err(EditError::FixedByPack {
+                key: key.to_owned(),
+            });
         }
         setting
             .value_schema
             .check(&value)
             .map_err(|reason| EditError::Illegal {
-                key: key.clone(),
+                key: key.to_owned(),
                 reason,
             })?;
         let restart_required = setting.restart_required;
 
-        self.written.insert(key.clone(), value.clone());
+        self.written.insert(setting.key.clone(), value.clone());
         if restart_required {
             return Ok(EditOutcome::NextLaunch);
         }
-        self.active.insert(key.clone(), value);
+        self.active.insert(setting.key.clone(), value);
         Ok(EditOutcome::Now)
     }
 
@@ -496,12 +493,12 @@ pub enum EditError {
     /// The owner declares no such setting.
     Unknown {
         /// The key the edit named.
-        key: SettingKey,
+        key: String,
     },
     /// The setting belongs to a side this process is not running as.
     OtherSide {
         /// The setting the edit named.
-        key: SettingKey,
+        key: String,
         /// The side the author declared it for.
         declared: SettingSide,
         /// The side the edit came from.
@@ -510,12 +507,12 @@ pub enum EditError {
     /// The pack took the last word on this setting.
     FixedByPack {
         /// The setting the pack fixed.
-        key: SettingKey,
+        key: String,
     },
     /// The value is one the setting's `valueSchema` refuses.
     Illegal {
         /// The setting the edit named.
-        key: SettingKey,
+        key: String,
         /// What the value schema said about the value.
         reason: ValueError,
     },
@@ -524,7 +521,7 @@ pub enum EditError {
 impl EditError {
     /// The setting the refused edit named.
     #[must_use]
-    pub const fn key(&self) -> &SettingKey {
+    pub fn key(&self) -> &str {
         match self {
             Self::Unknown { key }
             | Self::OtherSide { key, .. }
@@ -677,7 +674,7 @@ mod tests {
             })
         );
         config
-            .set(&key("engine.threads"), json!(8), Side::Client)
+            .set("engine.threads", json!(8), Side::Client)
             .expect("a valid edit");
         assert_eq!(config.integer("engine.threads"), Ok(4));
         let pack = document(&[
@@ -982,19 +979,15 @@ mod tests {
         let mut config = resolved(Some(&pack), None);
 
         let refused = config
-            .set(
-                &key("world.difficulty"),
-                json!("calm"),
-                Side::IntegratedServer,
-            )
+            .set("world.difficulty", json!("calm"), Side::IntegratedServer)
             .expect_err("the pack has the last word");
         assert_eq!(
             refused,
             EditError::FixedByPack {
-                key: key("world.difficulty"),
+                key: "world.difficulty".to_owned(),
             }
         );
-        assert_eq!(refused.key(), &key("world.difficulty"));
+        assert_eq!(refused.key(), "world.difficulty");
         assert_eq!(config.value("world.difficulty"), Ok(&json!("harsh")));
         assert!(config.player_document().values.is_empty());
     }
@@ -1005,23 +998,51 @@ mod tests {
 
         assert_eq!(
             config
-                .set(&key("server.motd"), json!("hello"), Side::Client)
+                .set("server.motd", json!("hello"), Side::Client)
                 .expect_err("no dedicated-server setting has a client screen"),
             EditError::OtherSide {
-                key: key("server.motd"),
+                key: "server.motd".to_owned(),
                 declared: SettingSide::DedicatedServer,
                 side: Side::Client,
             }
         );
         assert_eq!(
             config
-                .set(&key("render.absent"), json!(1), Side::Client)
+                .set("render.absent", json!(1), Side::Client)
                 .expect_err("undeclared"),
             EditError::Unknown {
-                key: key("render.absent"),
+                key: "render.absent".to_owned(),
             }
         );
         assert!(config.player_document().values.is_empty());
+    }
+
+    #[test]
+    fn malformed_and_unknown_names_are_refused_consistently_without_mutation() {
+        let mut config = resolved(None, None);
+        let before = config.player_document();
+        for key in ["render.absent", "Render.Distance", "not a key", ""] {
+            assert_eq!(config.declaration().setting(key), None);
+            assert_eq!(
+                config.value(key),
+                Err(ValueError::Unknown {
+                    key: key.to_owned(),
+                })
+            );
+            let refused = config
+                .set(key, json!(8), Side::Client)
+                .expect_err("only declared names may be edited");
+            assert_eq!(refused.key(), key);
+            assert_eq!(
+                refused,
+                EditError::Unknown {
+                    key: key.to_owned(),
+                }
+            );
+            assert_eq!(config.player_document(), before);
+            assert!(!config.restart_pending());
+        }
+        assert_eq!(config.integer("render.distance"), Ok(12));
     }
 
     #[test]
@@ -1029,12 +1050,12 @@ mod tests {
         let mut config = resolved(None, Some(&document(&[("render.distance", json!(8))])));
 
         let refused = config
-            .set(&key("render.distance"), json!(64), Side::Client)
+            .set("render.distance", json!(64), Side::Client)
             .expect_err("above the declared maximum");
         assert_eq!(
             refused,
             EditError::Illegal {
-                key: key("render.distance"),
+                key: "render.distance".to_owned(),
                 reason: ValueError::Above { maximum: 32.0 },
             }
         );
@@ -1051,7 +1072,7 @@ mod tests {
         let mut config = resolved(None, None);
 
         assert_eq!(
-            config.set(&key("render.distance"), json!(24), Side::Client),
+            config.set("render.distance", json!(24), Side::Client),
             Ok(EditOutcome::Now)
         );
         assert_eq!(config.value("render.distance"), Ok(&json!(24)));
@@ -1064,7 +1085,7 @@ mod tests {
         let mut config = resolved(None, None);
 
         assert_eq!(
-            config.set(&key("engine.threads"), json!(8), Side::Client),
+            config.set("engine.threads", json!(8), Side::Client),
             Ok(EditOutcome::NextLaunch)
         );
         assert_eq!(config.value("engine.threads"), Ok(&json!(4)));
@@ -1084,10 +1105,10 @@ mod tests {
         let pack = minimal_pack();
         let mut config = resolved(Some(&pack), None);
         config
-            .set(&key("render.distance"), json!(24), Side::Client)
+            .set("render.distance", json!(24), Side::Client)
             .expect("a legal edit");
         config
-            .set(&key("engine.threads"), json!(8), Side::Client)
+            .set("engine.threads", json!(8), Side::Client)
             .expect("a legal edit needing a restart");
 
         // Out to a document, out to JSON, and back in through both.

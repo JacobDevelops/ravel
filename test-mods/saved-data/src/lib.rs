@@ -158,13 +158,13 @@ impl SavedDataMod {
     /// every session produced the default payload, so the bytes a world stored
     /// were identical whatever had happened, and a save that restored nothing
     /// was indistinguishable from one that restored everything.
-    pub const fn open_counted(&mut self) {
+    pub const fn count_opening(&mut self) {
         self.state.visits = self.state.visits.saturating_add(1);
     }
 
     /// Records a visit to the world, which is what a reload has to preserve.
     pub fn visit(&mut self, waypoint: &str) {
-        self.open_counted();
+        self.count_opening();
         self.state.waypoints.push(waypoint.to_owned());
         self.state.waypoints.sort();
         self.state.waypoints.dedup();
@@ -262,7 +262,7 @@ impl Mod for SavedDataMod {
             .map_err(ModError::from_display)?
             .unwrap_or_default();
         self.state = state;
-        self.open_counted();
+        self.count_opening();
         Ok(())
     }
 

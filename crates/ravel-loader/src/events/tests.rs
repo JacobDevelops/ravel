@@ -30,11 +30,11 @@ fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
     )
 }
 
-fn route<H: std::ops::DerefMut<Target: Mod>>(
+fn deliver_command<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
 ) -> Result<Delivery, DispatchRefused> {
-    super::route(
+    super::deliver_command(
         loaded,
         invocation,
         &mut ravel_observability::Profiler::off(),
@@ -138,7 +138,7 @@ fn event_and_command_panics_name_the_called_owner() {
     let mut host = Recording::claiming("example_mod", vec![key.clone()]);
     let mut machine = panicking_running(&mut host);
     let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
-    let command = route(
+    let command = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
         &invocation,
@@ -197,7 +197,7 @@ fn non_command_claims_never_invoke_command_code() {
         &mut [&mut host],
     );
     let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
-    let refused = route(
+    let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
         &invocation,
@@ -222,7 +222,7 @@ fn panicking_commands_are_charged_to_the_owner() {
     );
     let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
     let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
-    let delivered = super::route(
+    let delivered = super::deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
         &invocation,
@@ -324,7 +324,7 @@ fn halted_sets_refuse_claimed_commands_and_non_command_keys_before_dispatch() {
     for key in [key, item] {
         let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
         assert_eq!(
-            route(
+            deliver_command(
                 &mut LoadedMods::<&mut dyn Mod>::new(
                     &mut machine,
                     &mut [&mut healthy, &mut failed]
@@ -510,7 +510,7 @@ fn failed_optional_mod_after_world_mutation_blocks_healthy_broadcasts() {
         refused
     );
     assert_eq!(
-        route(
+        deliver_command(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active hosts are supplied"),
             &CommandInvocation {
@@ -726,7 +726,7 @@ fn a_command_is_routed_to_its_owner_and_to_nobody_else() {
         Side::Client,
         vec!["set".to_owned(), "base".to_owned()],
     );
-    let delivery = route(
+    let delivery = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
         &invocation,
@@ -750,7 +750,7 @@ fn a_command_nobody_claimed_names_the_key_rather_than_a_mod() {
     );
 
     let orphan = command("example_mod", "nowhere");
-    let refused = route(
+    let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
         &CommandInvocation::new(orphan.clone(), Side::Client, Vec::new()),
@@ -779,7 +779,7 @@ fn a_command_whose_owner_has_not_started_is_refused_naming_the_owner() {
 
     // The command is claimed and the set never reached `Running`.
     let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
-    let refused = route(
+    let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
         &CommandInvocation::new(owned, Side::Client, Vec::new()),
@@ -831,7 +831,7 @@ fn a_mod_that_refuses_its_own_command_reports_the_failure_and_no_recipient() {
         &mut mods,
     );
 
-    let delivery = route(
+    let delivery = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
         &CommandInvocation::new(owned, Side::Client, Vec::new()),
@@ -898,6 +898,25 @@ fn every_refusal_says_which_state_it_is_about() {
 }
 
 #[test]
+fn shared_owner_refusals_describe_deliveries_not_commands() {
+    let inactive = DispatchRefused::OwnerNotReacting {
+        mod_id: id("example_mod"),
+        state: LifecycleState::Stopped,
+    };
+    assert_eq!(
+        inactive.to_string(),
+        "`example_mod` owns this delivery and is `stopped`, which does not react",
+    );
+    assert_eq!(
+        DispatchRefused::OwnerWrongSide {
+            mod_id: id("example_mod")
+        }
+        .to_string(),
+        "`example_mod` does not load on this side",
+    );
+}
+
+#[test]
 fn dispatch_lifecycle_refusals_expose_their_cause() {
     let cause = crate::LifecycleError::UnknownMod {
         mod_id: id("example_mod"),
@@ -919,6 +938,7 @@ fn a_delivery_that_reached_nobody_is_still_complete_when_nothing_failed() {
     let empty = Delivery {
         received: Vec::new(),
         failure: None,
+        declined: None,
     };
     assert!(empty.is_complete());
     assert_eq!(empty.received(), []);
@@ -1390,9 +1410,10 @@ fn malformed_and_unsupported_packets_do_not_fail_the_receiving_mod() {
             &sent,
         )
         .expect("typed packet refusal is delivered");
-        assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
+        assert_eq!(delivered.failed_by(), None);
+        assert_eq!(delivered.failure(), None);
         assert!(matches!(
-            delivered.failure(),
+            delivered.declined(),
             Some(HostError::InvalidPacket { .. } | HostError::Unsupported { .. })
         ));
         assert_eq!(
@@ -1420,10 +1441,10 @@ impl Outward {
     fn new(owner: &str, request_owner: &str) -> Self {
         let mut audio = ravel_data::AudioDeclaration::new(id(request_owner));
         audio.entry("tone", b"audio").expect("valid entry");
-        audio.event("tone").expect("declared entry");
+        let event = audio.event("tone").expect("declared entry");
         Self {
             id: id(owner),
-            requests: vec![audio.play("tone", Side::Client).expect("client playback")],
+            requests: vec![audio.play(&event, Side::Client).expect("client playback")],
             panics: false,
             drains: 0,
         }

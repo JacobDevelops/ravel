@@ -11,6 +11,10 @@ use crate::lifecycle::LifecycleMachine;
 /// Membership cannot change after construction. Borrowing for loader operations
 /// therefore neither repeats completeness checks nor reorders the stored mods.
 ///
+/// Prepare registry claims and existing failures on the lifecycle before handing
+/// it over. Once owned, callback delivery records failures through loader
+/// operations; callers can inspect members and failures through [`Self::machine`].
+///
 /// Owned membership is not mutable through the public API:
 ///
 /// ```compile_fail
@@ -58,57 +62,12 @@ impl Loaded {
         &self.machine
     }
 
-    /// Records an owner failure without changing the admitted membership.
-    ///
-    /// # Errors
-    /// Returns the lifecycle refusal for an unknown or ended owner.
-    pub fn fail(
-        &mut self,
-        owner: &ModId,
-        failure: ravel_core::FailureAttribution,
-    ) -> Result<(), crate::LifecycleError> {
-        self.machine.fail(owner, failure)
-    }
-
-    /// Records an attributed callback failure.
-    ///
-    /// # Errors
-    /// Returns the lifecycle refusal for an unknown or ended owner.
-    pub fn fail_callback(
-        &mut self,
-        error: &ravel_host_api::HostError,
-        environment: &ravel_core::FailureEnvironment,
-        surface: Option<ravel_core::FailureSurface>,
-    ) -> Result<crate::Requirement, crate::LifecycleError> {
-        self.machine.fail_callback(error, environment, surface)
-    }
-
-    /// Claims a registry identifier for an admitted member.
-    ///
-    /// # Errors
-    /// Returns the lifecycle's ownership or registration-barrier refusal.
-    pub fn claim_registry_identifier(
-        &mut self,
-        owner: &ModId,
-        key: &ravel_core::RegistryKey,
-        behaviour: Option<ravel_data::ContentBehaviour>,
-    ) -> Result<(), crate::LifecycleError> {
-        self.machine
-            .claim_registry_identifier(owner, key, behaviour)
-    }
-
     /// Records the world-mutation barrier without exposing mutable membership.
     ///
     /// # Errors
     /// Returns a refusal if this lifecycle cannot mutate the world.
     pub fn record_world_mutation(&mut self) -> Result<(), crate::LifecycleError> {
         self.machine.record_world_mutation()
-    }
-
-    /// Reads the owned mods, including side-incompatible parked members.
-    #[must_use]
-    pub fn mods(&self) -> &[Box<dyn Mod>] {
-        &self.mods
     }
 }
 
@@ -318,7 +277,7 @@ mod tests {
             Box::new(Recording::new("provider")),
         ];
         let mut loaded = Loaded::new(machine, mods).expect("complete owned set");
-        let storage = loaded.mods().as_ptr();
+        let storage = loaded.mods.as_ptr();
         for _ in 0..3 {
             let mut borrowed = loaded.borrow();
             let (_, mods) = borrowed.parts();

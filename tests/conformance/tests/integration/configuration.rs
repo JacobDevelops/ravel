@@ -18,10 +18,6 @@ fn document(values: &Value) -> ValueDocument {
     .expect("a valid value document")
 }
 
-fn key(value: &str) -> ravel_config::SettingKey {
-    value.parse().expect("a valid setting key")
-}
-
 fn directory(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!(
         "ravel-configuration-conformance-{}-{name}",
@@ -102,12 +98,12 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
         .expect("author defaults resolve");
 
     assert_eq!(
-        resolved.set(&key("client.enabled"), json!(false), Side::Client),
+        resolved.set("client.enabled", json!(false), Side::Client),
         Ok(EditOutcome::Now)
     );
     assert_eq!(resolved.value("client.enabled"), Ok(&json!(false)));
     assert_eq!(
-        resolved.set(&key("common.profile"), json!("verbose"), Side::Client),
+        resolved.set("common.profile", json!("verbose"), Side::Client),
         Ok(EditOutcome::NextLaunch)
     );
     assert_eq!(resolved.value("common.profile"), Ok(&json!("quiet")));
@@ -155,14 +151,13 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
         ..
     } = compose(&game, Side::Client).expect("the production source composition starts");
     let machine = loaded.machine();
-    let mods = loaded.mods();
     let owner = "configuration"
         .parse()
         .expect("the tracked mod id is valid");
 
     assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
     assert!(
-        mods.iter().any(|host| host.id() == &owner),
+        machine.entries().any(|entry| entry.mod_id == owner),
         "the production composition did not drive the configuration mod"
     );
     let resolved = configurations

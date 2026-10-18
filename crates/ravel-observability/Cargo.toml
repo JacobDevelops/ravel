@@ -1,6 +1,6 @@
 [package]
 name = "ravel-observability"
-description = "Structured diagnostics, redaction, metrics, and profiling contracts"
+description = "Structured diagnostics, metrics, and profiling contracts"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true

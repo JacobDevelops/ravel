@@ -4,7 +4,7 @@ mod routing;
 
 pub use play::{PlayRequests, take_play_requests};
 pub use refusal::DispatchRefused;
-pub use routing::{deliver_packet, route};
+pub use routing::{deliver_command, deliver_packet};
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId};
 use ravel_host_api::{GameEvent, HostError, Mod};
@@ -23,6 +23,7 @@ const fn reacts(state: LifecycleState) -> bool {
 pub struct Delivery {
     received: Vec<ModId>,
     failure: Option<HostError>,
+    declined: Option<HostError>,
 }
 
 impl Delivery {
@@ -38,6 +39,12 @@ impl Delivery {
         self.failure.as_ref()
     }
 
+    /// Returns a non-fatal refusal; its owner remains healthy.
+    #[must_use]
+    pub fn declined(&self) -> Option<&HostError> {
+        self.declined.as_ref()
+    }
+
     /// Returns the actual owner whose callback failed.
     #[must_use]
     pub fn failed_by(&self) -> Option<&ModId> {
@@ -47,7 +54,7 @@ impl Delivery {
     /// Returns whether every mod that should have reacted did so.
     #[must_use]
     pub const fn is_complete(&self) -> bool {
-        self.failure.is_none()
+        self.failure.is_none() && self.declined.is_none()
     }
 }
 
@@ -123,6 +130,7 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
             return Ok(Delivery {
                 received,
                 failure: Some(failure),
+                declined: None,
             });
         }
         received.push(mod_id);
@@ -130,6 +138,7 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     Ok(Delivery {
         received,
         failure: None,
+        declined: None,
     })
 }
 
@@ -140,7 +149,13 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
 /// Returns [`DispatchRefused::Halted`] for a latched halt or a required, side-loaded
 /// mod that failed before the world was modified.
 pub fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
-    let by = machine.halted_by().or_else(|| {
+    active_blocker(machine).map_or(Ok(()), |mod_id| {
+        Err(DispatchRefused::Halted { by: mod_id.clone() })
+    })
+}
+
+pub(crate) fn active_blocker(machine: &LifecycleMachine) -> Option<&ModId> {
+    machine.halted_by().or_else(|| {
         machine
             .tracked_entries()
             .find(|(entry, state)| {
@@ -149,9 +164,6 @@ pub fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> 
                     && *state == LifecycleState::Failed
             })
             .map(|(entry, _)| &entry.mod_id)
-    });
-    by.map_or(Ok(()), |mod_id| {
-        Err(DispatchRefused::Halted { by: mod_id.clone() })
     })
 }
 

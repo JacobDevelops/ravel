@@ -108,6 +108,8 @@ version (a snapshot must be pinned exactly). The build default remains `26.1.2`,
 with `1.21.1` support retained. The forward SevTech proof targets `1.12.2`, but
 its fixture or mappings do not establish tested compatibility for your package;
 declare that version only after its adapter and your behaviour are proved.
+Entries that contain range operators must parse as valid ranges; malformed ranges
+are refused when the manifest is read, not silently treated as unsupported versions.
 **`compatibility.ravel`** is a range; a mod outside it is refused at admission
 with both versions named.
 
@@ -225,11 +227,11 @@ whichever you already have installed.
 check-jsonschema --schemafile <path to ravel>/schemas/package.schema.json package.json
 ```
 
-Doing this catches the class of mistake the loader would otherwise report one
-field at a time, and it catches it before you have a digest to refresh. The
-schema and the Rust parser are held to the same verdict on the same candidates,
-in both directions, so a document a validator accepts is a document the loader
-accepts.
+Doing this catches structural mistakes before you have a digest to refresh.
+The Rust parser additionally validates version-range syntax and rejects
+equivalent Minecraft ranges that normalize to the same declaration; JSON Schema
+does not express those semantic checks. Loader admission also checks the running
+versions and package set, which schema validation alone cannot establish.
 
 ## The provenance record
 

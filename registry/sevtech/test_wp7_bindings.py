@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dependency-free WP7 binding regressions; all mutations stay in temporary trees.
 
-Run with: python3 -m unittest discover -s tests/fixtures/descriptors -p 'test_wp7_*.py'
+Run with: python3 -m unittest discover -s registry/sevtech -p 'test_wp7_*.py'
 """
 import hashlib
 import io
@@ -16,7 +16,7 @@ import unittest
 import zipfile
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 CHECKS = ROOT / "registry/sevtech"
 
 
@@ -327,7 +327,7 @@ class RightsEvidence(unittest.TestCase):
             ("unlicense.txt", "Unlicense", "ca2abdf695884c77ea4b4a5b64ca7b732d9d9dbade4eebc1c2e76c53e9e3bc83"),
         )
         for filename, declared, digest in fixtures:
-            content = (Path(__file__).parent / "licences" / filename).read_bytes()
+            content = (ROOT / "tests/fixtures/descriptors/licences" / filename).read_bytes()
             with self.subTest(declared=declared):
                 self.assertEqual(sha(content), digest)
                 self.assertTrue(matches(content.decode(), declared))

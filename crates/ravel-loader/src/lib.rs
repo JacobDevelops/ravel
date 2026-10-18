@@ -23,8 +23,8 @@ pub use config::{ConfigRefused, Configured, open_configuration};
 pub use discovery::{Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, discover};
 pub use driver::{DriveError, drive_loaded, stop_all};
 pub use events::{
-    Delivery, DispatchRefused, PlayRequests, broadcast, deliver_packet, ensure_active, route,
-    take_play_requests,
+    Delivery, DispatchRefused, PlayRequests, broadcast, deliver_command, deliver_packet,
+    ensure_active, take_play_requests,
 };
 pub use game_pack::{GamePackError, Half, Written, replaced_paths, write_game_pack};
 pub use interception::{InterceptRefused, intercept, open_interceptions};
@@ -45,7 +45,7 @@ pub use world::WorldRefused;
 /// # Errors
 ///
 /// Returns an attributed refusal or panic for the supplied owner and lifecycle state.
-pub fn callback<T>(
+pub(crate) fn callback<T>(
     mod_id: &ravel_core::ModId,
     state: ravel_core::LifecycleState,
     call: impl FnOnce() -> Result<T, ravel_host_api::ModError>,

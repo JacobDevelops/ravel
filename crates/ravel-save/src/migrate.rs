@@ -73,7 +73,7 @@ impl std::error::Error for MigrationFailed {}
 ///     .reaching(versions[1], to_two)
 ///     .reaching(versions[2], to_three);
 ///
-/// chain.covers(&declaration)?;
+/// chain.check_covers(&declaration)?;
 ///
 /// let plan = SavedDataPlan::open(&declaration, Some(versions[0]))?;
 /// assert_eq!(plan.steps(), [versions[1], versions[2]]);
@@ -122,7 +122,7 @@ impl MigrationChain {
     /// # Errors
     ///
     /// Returns [`SavedDataError::UnknownOwner`] for a different owner or [`SavedDataError::MissingMigration`] for a missing step.
-    pub fn covers(&self, declaration: &SavedDataDeclaration) -> Result<(), SavedDataError> {
+    pub fn check_covers(&self, declaration: &SavedDataDeclaration) -> Result<(), SavedDataError> {
         if declaration.owner() != &self.owner {
             return Err(SavedDataError::UnknownOwner {
                 owner: declaration.owner().clone(),
@@ -255,7 +255,7 @@ mod tests {
             .reaching(version(4), to_four);
 
         assert_eq!(
-            broken.covers(&declaration),
+            broken.check_covers(&declaration),
             Err(SavedDataError::MissingMigration {
                 owner: id("example"),
                 to: version(3),
@@ -269,7 +269,9 @@ mod tests {
                 to: version(3),
             })
         );
-        chain().covers(&declaration).expect("every link declared");
+        chain()
+            .check_covers(&declaration)
+            .expect("every link declared");
     }
 
     #[test]
@@ -303,7 +305,7 @@ mod tests {
         let other = MigrationChain::new(id("other")).reaching(version(2), to_two);
 
         assert_eq!(
-            other.covers(&declaration),
+            other.check_covers(&declaration),
             Err(SavedDataError::UnknownOwner {
                 owner: id("example"),
             })

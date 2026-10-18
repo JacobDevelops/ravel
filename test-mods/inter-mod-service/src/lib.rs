@@ -110,7 +110,7 @@ pub struct Stock {
 /// // Every version above the oldest has a step into it.
 /// stock
 ///     .chain()
-///     .covers(&stock.declaration()?)
+///     .check_covers(&stock.declaration()?)
 ///     .expect("the chain covers every declared version");
 /// assert_eq!(
 ///     stock.declaration()?.current(),
@@ -252,9 +252,11 @@ impl Mod for StockMod {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .provide(prices())
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -314,9 +316,11 @@ impl Mod for ShopMod {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .require(prices())
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     /// Calls the one service this mod declared, and refuses without an answer.
@@ -379,7 +383,7 @@ mod tests {
         let stock = StockMod::new();
         stock
             .chain()
-            .covers(&stock.declaration().expect("valid declaration"))
+            .check_covers(&stock.declaration().expect("valid declaration"))
             .expect("every declared version has a step into it");
         assert_eq!(
             stock.declaration().expect("valid declaration").current(),
@@ -540,7 +544,7 @@ mod tests {
                 |payload| Ok(payload.clone()),
             );
         let refusal = broken
-            .covers(&stock.declaration().expect("valid declaration"))
+            .check_covers(&stock.declaration().expect("valid declaration"))
             .expect_err("version 2 has no step");
         assert!(refusal.to_string().contains('2'), "{refusal}");
     }

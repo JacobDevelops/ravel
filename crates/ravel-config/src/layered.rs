@@ -113,10 +113,9 @@ pub enum EditOutcome {
 /// }"#)?;
 ///
 /// let config = LayeredConfiguration::resolve(declaration, Some(&pack), None)?;
-/// let key = "render.distance".parse()?;
 ///
-/// assert_eq!(config.value(&key), Some(&serde_json::json!(6)));
-/// assert_eq!(config.source(&key), Some(ValueSource::Pack));
+/// assert_eq!(config.value("render.distance"), Ok(&serde_json::json!(6)));
+/// assert_eq!(config.source("render.distance"), Ok(ValueSource::Pack));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug, PartialEq)]
@@ -230,10 +229,12 @@ impl LayeredConfiguration {
         &self.rejected
     }
 
-    /// Returns the value in force for `key`, or `None` for an undeclared one.
-    #[must_use]
-    pub fn value(&self, key: &SettingKey) -> Option<&Value> {
-        Some(self.layer(self.declaration.setting(key)?).0)
+    /// Returns the value in force for `key`.
+    ///
+    /// # Errors
+    /// Returns [`ValueError::Unknown`] when the key is undeclared.
+    pub fn value(&self, key: &str) -> Result<&Value, ValueError> {
+        Ok(self.layer(self.setting(key)?).0)
     }
 
     /// Returns a boolean from a setting declared as boolean.
@@ -277,14 +278,7 @@ impl LayeredConfiguration {
     }
 
     fn typed_value(&self, key: &str, expected: ValueKind) -> Result<&Value, ValueError> {
-        let setting = self
-            .declaration
-            .settings()
-            .iter()
-            .find(|setting| setting.key.as_str() == key)
-            .ok_or_else(|| ValueError::Unknown {
-                key: key.to_owned(),
-            })?;
+        let setting = self.setting(key)?;
         let declared = setting.value_schema.kind;
         if declared != Some(expected) {
             return Err(ValueError::AccessKind { expected, declared });
@@ -292,10 +286,22 @@ impl LayeredConfiguration {
         Ok(self.layer(setting).0)
     }
 
+    fn setting(&self, key: &str) -> Result<&Setting, ValueError> {
+        self.declaration
+            .settings()
+            .iter()
+            .find(|setting| setting.key.as_str() == key)
+            .ok_or_else(|| ValueError::Unknown {
+                key: key.to_owned(),
+            })
+    }
+
     /// Returns the layer the value in force for `key` came from.
-    #[must_use]
-    pub fn source(&self, key: &SettingKey) -> Option<ValueSource> {
-        Some(self.layer(self.declaration.setting(key)?).1)
+    ///
+    /// # Errors
+    /// Returns [`ValueError::Unknown`] when the key is undeclared.
+    pub fn source(&self, key: &str) -> Result<ValueSource, ValueError> {
+        Ok(self.layer(self.setting(key)?).1)
     }
 
     /// Resolves one setting through the three layers.
@@ -457,7 +463,14 @@ impl fmt::Display for LayerError {
     }
 }
 
-impl std::error::Error for LayerError {}
+impl std::error::Error for LayerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::PackValue { reason, .. } => Some(reason),
+            Self::Owner { .. } | Self::PackUnknown { .. } | Self::PackMissing { .. } => None,
+        }
+    }
+}
 
 impl StructuredFailure for LayerError {
     /// Configuration errors are not dependency-graph failures.
@@ -543,7 +556,14 @@ impl fmt::Display for EditError {
     }
 }
 
-impl std::error::Error for EditError {}
+impl std::error::Error for EditError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Illegal { reason, .. } => Some(reason),
+            Self::Unknown { .. } | Self::OtherSide { .. } | Self::FixedByPack { .. } => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -697,20 +717,25 @@ mod tests {
         let config = resolved(None, None);
 
         assert_eq!(config.owner(), &owner());
-        assert_eq!(config.value(&key("render.distance")), Some(&json!(12)));
-        assert_eq!(
-            config.source(&key("render.distance")),
-            Some(ValueSource::Default)
-        );
+        assert_eq!(config.value("render.distance"), Ok(&json!(12)));
+        assert_eq!(config.source("render.distance"), Ok(ValueSource::Default));
         assert_eq!(config.rejected(), []);
         assert!(!config.restart_pending());
     }
 
     #[test]
-    fn an_undeclared_key_resolves_to_nothing_at_all() {
+    fn an_undeclared_key_is_refused_by_every_accessor() {
         let config = resolved(None, None);
-        assert_eq!(config.value(&key("render.absent")), None);
-        assert_eq!(config.source(&key("render.absent")), None);
+        let unknown = Err(ValueError::Unknown {
+            key: "render.absent".to_owned(),
+        });
+        assert_eq!(config.value("render.absent"), unknown);
+        assert_eq!(
+            config.source("render.absent"),
+            Err(ValueError::Unknown {
+                key: "render.absent".to_owned(),
+            })
+        );
     }
 
     #[test]
@@ -723,18 +748,12 @@ mod tests {
 
         // The pack alone beats the default, and the player beats the pack.
         let without = resolved(Some(&pack), None);
-        assert_eq!(without.value(&key("render.distance")), Some(&json!(6)));
-        assert_eq!(
-            without.source(&key("render.distance")),
-            Some(ValueSource::Pack)
-        );
+        assert_eq!(without.value("render.distance"), Ok(&json!(6)));
+        assert_eq!(without.source("render.distance"), Ok(ValueSource::Pack));
 
         let with = resolved(Some(&pack), Some(&player));
-        assert_eq!(with.value(&key("render.distance")), Some(&json!(24)));
-        assert_eq!(
-            with.source(&key("render.distance")),
-            Some(ValueSource::Player)
-        );
+        assert_eq!(with.value("render.distance"), Ok(&json!(24)));
+        assert_eq!(with.source("render.distance"), Ok(ValueSource::Player));
     }
 
     #[test]
@@ -746,14 +765,8 @@ mod tests {
         let player = document(&[("world.difficulty", json!("calm"))]);
         let config = resolved(Some(&pack), Some(&player));
 
-        assert_eq!(
-            config.value(&key("world.difficulty")),
-            Some(&json!("harsh"))
-        );
-        assert_eq!(
-            config.source(&key("world.difficulty")),
-            Some(ValueSource::Pack)
-        );
+        assert_eq!(config.value("world.difficulty"), Ok(&json!("harsh")));
+        assert_eq!(config.source("world.difficulty"), Ok(ValueSource::Pack));
         // The player's value is kept in the file; it is simply not in force.
         assert_eq!(
             config
@@ -769,14 +782,8 @@ mod tests {
         let player = document(&[("world.difficulty", json!("harsh"))]);
         let config = resolved(Some(&minimal_pack()), Some(&player));
 
-        assert_eq!(
-            config.value(&key("world.difficulty")),
-            Some(&json!("harsh"))
-        );
-        assert_eq!(
-            config.source(&key("world.difficulty")),
-            Some(ValueSource::Player)
-        );
+        assert_eq!(config.value("world.difficulty"), Ok(&json!("harsh")));
+        assert_eq!(config.source("world.difficulty"), Ok(ValueSource::Player));
         assert!(
             config
                 .settings_on(Side::IntegratedServer)
@@ -790,11 +797,8 @@ mod tests {
         let player = document(&[("server.motd", json!("the player's server"))]);
         let config = resolved(Some(&minimal_pack()), Some(&player));
 
-        assert_eq!(
-            config.value(&key("server.motd")),
-            Some(&json!("the pack's server"))
-        );
-        assert_eq!(config.source(&key("server.motd")), Some(ValueSource::Pack));
+        assert_eq!(config.value("server.motd"), Ok(&json!("the pack's server")));
+        assert_eq!(config.source("server.motd"), Ok(ValueSource::Pack));
     }
 
     #[test]
@@ -820,11 +824,8 @@ mod tests {
         // `required` is an obligation on a pack, and there is no pack, so the
         // author's default is what the setting resolves to.
         let config = resolved(None, None);
-        assert_eq!(config.value(&key("server.motd")), Some(&json!("a server")));
-        assert_eq!(
-            config.source(&key("server.motd")),
-            Some(ValueSource::Default)
-        );
+        assert_eq!(config.value("server.motd"), Ok(&json!("a server")));
+        assert_eq!(config.source("server.motd"), Ok(ValueSource::Default));
     }
 
     #[test]
@@ -844,6 +845,10 @@ mod tests {
                 key: key("render.distance"),
                 reason: ValueError::Above { maximum: 32.0 },
             }
+        );
+        assert!(
+            std::error::Error::source(&illegal)
+                .is_some_and(<dyn std::error::Error>::is::<ValueError>)
         );
 
         let undeclared = LayeredConfiguration::resolve(
@@ -893,11 +898,8 @@ mod tests {
         ]);
         let config = resolved(None, Some(&player));
 
-        assert_eq!(config.value(&key("render.distance")), Some(&json!(12)));
-        assert_eq!(
-            config.source(&key("render.distance")),
-            Some(ValueSource::Default)
-        );
+        assert_eq!(config.value("render.distance"), Ok(&json!(12)));
+        assert_eq!(config.source("render.distance"), Ok(ValueSource::Default));
         assert_eq!(
             config.rejected(),
             [
@@ -993,10 +995,7 @@ mod tests {
             }
         );
         assert_eq!(refused.key(), &key("world.difficulty"));
-        assert_eq!(
-            config.value(&key("world.difficulty")),
-            Some(&json!("harsh"))
-        );
+        assert_eq!(config.value("world.difficulty"), Ok(&json!("harsh")));
         assert!(config.player_document().values.is_empty());
     }
 
@@ -1039,8 +1038,12 @@ mod tests {
                 reason: ValueError::Above { maximum: 32.0 },
             }
         );
+        assert!(
+            std::error::Error::source(&refused)
+                .is_some_and(<dyn std::error::Error>::is::<ValueError>)
+        );
         assert!(refused.to_string().contains("left unchanged"));
-        assert_eq!(config.value(&key("render.distance")), Some(&json!(8)));
+        assert_eq!(config.value("render.distance"), Ok(&json!(8)));
     }
 
     #[test]
@@ -1051,11 +1054,8 @@ mod tests {
             config.set(&key("render.distance"), json!(24), Side::Client),
             Ok(EditOutcome::Now)
         );
-        assert_eq!(config.value(&key("render.distance")), Some(&json!(24)));
-        assert_eq!(
-            config.source(&key("render.distance")),
-            Some(ValueSource::Player)
-        );
+        assert_eq!(config.value("render.distance"), Ok(&json!(24)));
+        assert_eq!(config.source("render.distance"), Ok(ValueSource::Player));
         assert!(!config.restart_pending());
     }
 
@@ -1067,7 +1067,7 @@ mod tests {
             config.set(&key("engine.threads"), json!(8), Side::Client),
             Ok(EditOutcome::NextLaunch)
         );
-        assert_eq!(config.value(&key("engine.threads")), Some(&json!(4)));
+        assert_eq!(config.value("engine.threads"), Ok(&json!(4)));
         assert_eq!(
             config.player_document().values.get(&key("engine.threads")),
             Some(&json!(8))
@@ -1075,7 +1075,7 @@ mod tests {
         assert!(config.restart_pending());
 
         let relaunched = resolved(None, Some(&config.player_document()));
-        assert_eq!(relaunched.value(&key("engine.threads")), Some(&json!(8)));
+        assert_eq!(relaunched.value("engine.threads"), Ok(&json!(8)));
         assert!(!relaunched.restart_pending());
     }
 
@@ -1096,11 +1096,11 @@ mod tests {
         let relaunched = LayeredConfiguration::resolve(declaration(), Some(&pack), Some(&reread))
             .expect("legal layers");
 
-        assert_eq!(relaunched.value(&key("render.distance")), Some(&json!(24)));
-        assert_eq!(relaunched.value(&key("engine.threads")), Some(&json!(8)));
+        assert_eq!(relaunched.value("render.distance"), Ok(&json!(24)));
+        assert_eq!(relaunched.value("engine.threads"), Ok(&json!(8)));
         assert_eq!(
-            relaunched.value(&key("server.motd")),
-            Some(&json!("the pack's server"))
+            relaunched.value("server.motd"),
+            Ok(&json!("the pack's server"))
         );
         assert_eq!(relaunched.rejected(), []);
         assert_eq!(relaunched.player_document().to_json(), written);

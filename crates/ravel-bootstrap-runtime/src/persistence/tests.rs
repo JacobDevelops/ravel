@@ -441,7 +441,8 @@ fn owners_running_with_requirement(
         .iter()
         .map(|owner| LifecycleEntry {
             mod_id: id(owner),
-            sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+            sides: SideSet::new([Side::Client, Side::IntegratedServer])
+                .expect("a non-empty side set"),
             requirement,
             saved_data_versions: BTreeSet::from([version(1), version(2)]),
         })
@@ -621,7 +622,8 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
         .iter()
         .map(|owner| LifecycleEntry {
             mod_id: id(owner),
-            sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+            sides: SideSet::new([Side::Client, Side::IntegratedServer])
+                .expect("a non-empty side set"),
             requirement: Requirement::Required,
             saved_data_versions: if *owner == OWNER {
                 BTreeSet::from([version(1), version(2)])
@@ -703,7 +705,8 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
     let hosts: Vec<Box<dyn Mod>> = vec![Box::new(Failing { id: id(GUARD) })];
     let entries = vec![LifecycleEntry {
         mod_id: id(GUARD),
-        sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+        sides: SideSet::new([Side::Client, Side::IntegratedServer])
+            .expect("client and integrated server"),
         requirement: Requirement::Required,
         saved_data_versions: BTreeSet::new(),
     }];
@@ -820,7 +823,7 @@ fn failed_checkpoint_serialization_retains_dirty_state_for_every_retry() {
 
 #[test]
 fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
-    let (runtime, held) = optional_running();
+    let (runtime, held) = running();
     let mut aggregate = SavedDataAggregate::fresh();
     aggregate.replace(SavedDataEnvelope::new(
         id(OWNER),
@@ -840,10 +843,47 @@ fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
     assert!(inner.persistence.staged.is_none());
     assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
     assert!(
-        inner.machine.world_access(&inner.report).is_ok(),
+        inner.machine.world_access(&inner.report).is_err(),
+        "a failed required owner blocks world admission"
+    );
+    assert!(
+        inner.machine.save_access().is_ok(),
         "no mutation was admitted"
     );
     drop(inner);
+}
+
+#[test]
+fn an_optional_failed_migration_is_isolated_without_delivering_its_payload() {
+    let (runtime, held) = optional_running();
+    let mut aggregate = SavedDataAggregate::fresh();
+    aggregate.replace(SavedDataEnvelope::new(
+        id(OWNER),
+        version(1),
+        Vec::new(),
+        None,
+        json!({"not_visits": true}),
+    ));
+    let bytes = aggregate.to_bytes().expect("bounded fixture");
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), Some(&bytes), false)
+        .expect("an optional migration failure does not withhold the world");
+    assert!(held.opened_with.lock().expect("test lock").is_none());
+    let inner = runtime.inner.lock().expect("test lock");
+    let staged = inner.persistence.staged.as_ref().expect("world is staged");
+    assert_eq!(staged.identity, WorldIdentity::of(FIRST));
+    assert_eq!(staged.aggregate, aggregate);
+    assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+    assert!(
+        inner.machine.world_access(&inner.report).is_ok(),
+        "the failed optional owner does not block world admission"
+    );
+    drop(inner);
+    assert_eq!(
+        replacement(runtime.save_world(&WorldIdentity::of(FIRST))),
+        bytes,
+        "the failed optional owner's opaque envelope is retained"
+    );
 }
 
 #[test]

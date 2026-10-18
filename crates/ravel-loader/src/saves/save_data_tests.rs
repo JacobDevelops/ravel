@@ -112,8 +112,8 @@ fn snapshot_guards_refuse_before_callbacks_and_forward_lifecycle_errors() {
         let refused = produce_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
                 .expect("complete hosts"),
-            &environment(),
             None,
+            &environment(),
         )
         .expect_err("lifecycle access is denied");
         assert_eq!(refused, SaveRefused::Lifecycle(expected.clone()));
@@ -147,8 +147,8 @@ fn snapshot_refusal_follows_lifecycle_order_not_service_slot_order() {
     let refused = produce_saved_data(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
             .expect("complete hosts in service order"),
-        &environment(),
         None,
+        &environment(),
     )
     .expect_err("alpha refuses first");
     assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("alpha")));
@@ -174,8 +174,8 @@ fn optional_snapshot_refusal_records_the_owner_failure() {
     let refused = produce_saved_data(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
             .expect("complete hosts"),
-        &environment(),
         None,
+        &environment(),
     )
     .expect_err("optional snapshot failure still refuses the save");
     assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("owner")));
@@ -225,8 +225,8 @@ fn failed_owners_keep_prior_envelopes_and_parked_and_extra_hosts_are_not_called(
             &mut [&mut extra, &mut healthy, &mut parked, &mut failed],
         )
         .expect("all loading hosts are supplied"),
-        &environment(),
         Some(&prior),
+        &environment(),
     )
     .expect("failed data remains opaque and healthy owners may return no envelope");
     assert_eq!(snapshot, prior);
@@ -264,8 +264,8 @@ fn healthy_snapshots_replace_only_the_producers_own_envelope() {
         let result = produce_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
                 .expect("complete reversed slots"),
-            &environment(),
             Some(&prior),
+            &environment(),
         );
         if foreign {
             assert_eq!(

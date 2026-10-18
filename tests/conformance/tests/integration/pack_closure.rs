@@ -282,7 +282,7 @@ fn a_tag_member_in_a_namespace_the_pack_pins_nothing_for_is_refused() {
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: ContentMod::lanterns(ContentKind::Item).to_string(),
+            tag: ContentMod::lanterns(ContentKind::Item),
             member: absent,
             kind: UnprovidedEntry::NoSuchMember,
         }
@@ -309,7 +309,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: ContentMod::lanterns(ContentKind::Item).to_string(),
+            tag: ContentMod::lanterns(ContentKind::Item),
             member: phantom,
             kind: UnprovidedEntry::MemberDoesNotDeclareIt,
         }

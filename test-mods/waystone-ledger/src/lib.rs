@@ -884,8 +884,7 @@ mod tests {
         assert_eq!(ledger.capacity(), 2);
         assert!(!ledger.overwrites());
         for key in [CAPACITY, OVERWRITE] {
-            let key = key.parse().expect("a legal key");
-            assert_eq!(resolved.source(&key), Some(ValueSource::Pack));
+            assert_eq!(resolved.source(key), Ok(ValueSource::Pack));
         }
     }
 
@@ -954,7 +953,7 @@ mod tests {
     #[test]
     fn the_chain_covers_every_version_the_declaration_admits() {
         WaystoneLedger::migrations()
-            .covers(&WaystoneLedger::saved_versions().expect("valid declaration"))
+            .check_covers(&WaystoneLedger::saved_versions().expect("valid declaration"))
             .expect("every declared version above the oldest has a step");
         assert_eq!(
             WaystoneLedger::saved_versions()

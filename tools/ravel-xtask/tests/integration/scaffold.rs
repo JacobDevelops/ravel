@@ -166,6 +166,30 @@ fn tracked_registry_paths_and_historical_names_are_allowed() {
 }
 
 #[test]
+fn runtime_directory_names_in_rust_modules_do_not_admit_runtime_data() {
+    assert_eq!(
+        verify_tracked_paths(["crates/ravel-loader/src/saves/save_data_tests.rs"]),
+        Vec::<String>::new()
+    );
+    let runtime_paths = [
+        "crates/ravel-loader/src/saves/level.dat",
+        "crates/ravel-loader/saves/world.rs",
+        "saves/world.rs",
+        "test-mods/example/saves/world.rs",
+        "crates/ravel-loader/src/logs/latest.rs",
+        "tools/ravel-xtask/src/crash-reports/report.rs",
+        "crates/../src/saves/world.rs",
+        "crates/ravel-loader/src/../saves/world.rs",
+        "crates/ravel-loader/src/./saves/world.rs",
+        "crates/ravel-loader/src//saves/world.rs",
+    ];
+    assert_eq!(
+        verify_tracked_paths(runtime_paths),
+        runtime_paths.map(|path| format!("forbidden tracked path: {path}"))
+    );
+}
+
+#[test]
 fn tracked_registry_documentation_and_historical_names_are_allowed() {
     let root = temporary_root("named");
     let relative = "docs/architecture/public-private-boundary.md".to_owned();

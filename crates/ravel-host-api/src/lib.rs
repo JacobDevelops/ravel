@@ -102,10 +102,10 @@ pub enum ModError {
         /// The mod's own words, not yet redacted.
         detail: String,
     },
-    /// Untrusted packet bytes do not satisfy the receiving contract.
+    /// Untrusted packet delivery does not satisfy the receiving contract.
     InvalidPacket {
-        /// The structured decoding refusal, not a failure of the receiving mod.
-        source: ravel_network::WireError,
+        /// The structured delivery refusal, not a failure of the receiving mod.
+        source: Box<ravel_network::DeliveryRefused>,
     },
     /// The mod does not implement the hook.
     Unsupported,
@@ -125,34 +125,12 @@ impl ModError {
     pub fn from_display(error: impl fmt::Display) -> Self {
         Self::refused(error.to_string())
     }
-
-    /// Attributes a non-transition operation using the host-known identity and phase.
-    #[must_use]
-    pub fn with_context(self, mod_id: ModId, state: LifecycleState) -> HostError {
-        HostError::from_operation_refusal(mod_id, state, self)
-    }
 }
 
 impl From<ravel_network::DeliveryRefused> for ModError {
     fn from(error: ravel_network::DeliveryRefused) -> Self {
-        match error {
-            ravel_network::DeliveryRefused::Malformed { source, .. } => {
-                Self::InvalidPacket { source }
-            }
-            ravel_network::DeliveryRefused::WrongContract { expected, found } => {
-                Self::InvalidPacket {
-                    source: ravel_network::WireError::Identity {
-                        expected: expected.to_string(),
-                        found: found.to_string(),
-                    },
-                }
-            }
-            error @ (ravel_network::DeliveryRefused::WrongSide { .. }
-            | ravel_network::DeliveryRefused::WrongDirection { .. }) => Self::InvalidPacket {
-                source: ravel_network::WireError::InvalidValue {
-                    message: error.to_string(),
-                },
-            },
+        Self::InvalidPacket {
+            source: Box::new(error),
         }
     }
 }
@@ -197,14 +175,14 @@ pub enum HostError {
         /// The refusal detail, not yet redacted.
         detail: String,
     },
-    /// The receiving mod rejected malformed untrusted packet bytes.
+    /// The receiving mod rejected untrusted packet delivery.
     InvalidPacket {
-        /// The mod whose packet contract rejected the bytes.
+        /// The mod whose packet contract rejected the delivery.
         mod_id: ModId,
-        /// The owner's phase while decoding.
+        /// The owner's phase while checking the delivery.
         state: LifecycleState,
-        /// The structured decoding refusal.
-        source: ravel_network::WireError,
+        /// The structured delivery refusal.
+        source: Box<ravel_network::DeliveryRefused>,
     },
     /// The mod does not implement the step at all.
     Unsupported {
@@ -503,7 +481,10 @@ pub trait Mod: Send {
     ///
     /// # Errors
     ///
-    /// Returns a mod's refusal; failure preserves the previous aggregate without aborting the game save.
+    /// Returns a mod's refusal. Saves run after world mutation, so any failure
+    /// refuses this Ravel write (the previous durable aggregate is kept and the
+    /// game's own save continues), halts every mod, and refuses later saves for
+    /// the session.
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         Ok(None)
     }
@@ -820,19 +801,22 @@ mod tests {
 
     #[test]
     fn malformed_packets_retain_typed_source_and_host_attribution() {
-        let source = ravel_network::WireError::NotABool { byte: 3 };
+        let source = ravel_network::DeliveryRefused::Malformed {
+            id: ravel_network::PacketId::new("example_mod:ping".parse().expect("valid id")),
+            source: ravel_network::WireError::NotABool { byte: 3 },
+        };
         let refusal = ModError::InvalidPacket {
-            source: source.clone(),
+            source: Box::new(source.clone()),
         };
         assert_eq!(refusal.to_string(), format!("invalid packet: {source}"));
         let owner = "example_mod".parse().expect("valid owner");
-        let failure = refusal.with_context(owner, LifecycleState::Running);
+        let failure = HostError::from_operation_refusal(owner, LifecycleState::Running, refusal);
         assert!(failure.quotes_untrusted_text());
         assert_eq!(failure.state(), LifecycleState::Running);
         assert_eq!(failure.mod_id().as_str(), "example_mod");
         assert!(matches!(
             failure,
-            HostError::InvalidPacket { source: actual, .. } if actual == source
+            HostError::InvalidPacket { source: actual, .. } if actual.as_ref() == &source
         ));
     }
 
@@ -848,7 +832,10 @@ mod tests {
                 source: WireError::NotUtf8,
             }),
             ModError::InvalidPacket {
-                source: WireError::NotUtf8
+                source: Box::new(DeliveryRefused::Malformed {
+                    id: expected.clone(),
+                    source: WireError::NotUtf8,
+                })
             }
         );
         assert_eq!(
@@ -857,10 +844,10 @@ mod tests {
                 found: found.clone(),
             }),
             ModError::InvalidPacket {
-                source: WireError::Identity {
-                    expected: expected.to_string(),
-                    found: found.to_string(),
-                },
+                source: Box::new(DeliveryRefused::WrongContract {
+                    expected: expected.clone(),
+                    found,
+                }),
             }
         );
         for error in [
@@ -878,9 +865,7 @@ mod tests {
             assert_eq!(
                 ModError::from(error.clone()),
                 ModError::InvalidPacket {
-                    source: WireError::InvalidValue {
-                        message: error.to_string()
-                    },
+                    source: Box::new(error),
                 }
             );
         }
@@ -915,7 +900,8 @@ mod tests {
         let refusal = ModError::refused("not today");
         assert_eq!(refusal.to_string(), "not today");
         let owner: ModId = "actual".parse().expect("valid id");
-        let error = refusal.with_context(owner.clone(), LifecycleState::Running);
+        let error =
+            HostError::from_operation_refusal(owner.clone(), LifecycleState::Running, refusal);
         assert_eq!(error.mod_id(), &owner);
         assert_eq!(error.state(), LifecycleState::Running);
         assert!(error.quotes_untrusted_text());
@@ -937,8 +923,11 @@ mod tests {
     #[test]
     fn refusal_construction_and_host_attribution_preserve_the_detail() {
         let actual: ModId = "actual".parse().expect("valid id");
-        let error =
-            ModError::refused("not today").with_context(actual.clone(), LifecycleState::Running);
+        let error = HostError::from_operation_refusal(
+            actual.clone(),
+            LifecycleState::Running,
+            ModError::refused("not today"),
+        );
         assert_eq!(error.mod_id(), &actual);
         assert_eq!(error.state(), LifecycleState::Running);
         assert_eq!(
@@ -1016,7 +1005,11 @@ mod tests {
     #[test]
     fn unsupported_steps_receive_the_actual_hook_context() {
         let actual: ModId = "actual".parse().expect("valid id");
-        let error = ModError::Unsupported.with_context(actual.clone(), LifecycleState::Running);
+        let error = HostError::from_operation_refusal(
+            actual.clone(),
+            LifecycleState::Running,
+            ModError::Unsupported,
+        );
         assert_eq!(error.mod_id(), &actual);
         assert_eq!(error.state(), LifecycleState::Running);
         assert_eq!(

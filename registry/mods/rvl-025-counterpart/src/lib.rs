@@ -584,9 +584,14 @@ impl Mod for Entry {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         let surface = Self::surface_service()?;
         let ordering = Self::ordering_service()?;
-        ServiceDeclaration::new(Self::declared_id().clone(), [surface, ordering], [])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .provide(surface)
+            .map_err(ModError::from_display)?;
+        declaration
+            .provide(ordering)
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     /// Answers §16's first two entries, which are the two a dependent needs.

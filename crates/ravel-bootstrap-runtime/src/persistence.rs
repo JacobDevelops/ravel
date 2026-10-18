@@ -271,17 +271,17 @@ impl LoaderRuntime {
             live.refresh(
                 ravel_loader::produce_saved_data(
                     &mut loaded,
-                    inner.report.environment(),
                     Some(&live.aggregate),
+                    inner.report.environment(),
                 )
                 .map_err(PersistenceError::Admission)?,
             );
         }
         ravel_loader::open_saved_data(
             &mut loaded,
-            inner.report.environment(),
             bytes,
             &inner.installed_packages,
+            inner.report.environment(),
         )
         .map_err(PersistenceError::Admission)
     }
@@ -306,7 +306,7 @@ impl LoaderRuntime {
         prior: Option<&SavedDataAggregate>,
         environment: &ravel_core::FailureEnvironment,
     ) -> Result<SavedDataAggregate, PersistenceError> {
-        ravel_loader::produce_saved_data(loaded, environment, prior)
+        ravel_loader::produce_saved_data(loaded, prior, environment)
             .map_err(PersistenceError::Admission)
     }
 

@@ -114,9 +114,11 @@ impl Mod for Settled {
         &mut self,
         resolved: &LayeredConfiguration,
     ) -> Result<(), ravel_host_api::ModError> {
-        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) = resolved
-            .value(&LIMIT.parse().expect("a legal setting key"))
-            .and_then(serde_json::Value::as_i64);
+        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) = Some(
+            resolved
+                .integer(LIMIT)
+                .map_err(ravel_host_api::ModError::from_display)?,
+        );
         Ok(())
     }
 }

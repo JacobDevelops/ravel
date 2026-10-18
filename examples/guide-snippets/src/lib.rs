@@ -388,14 +388,11 @@ pub mod optional_service {
         }
 
         fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-            ServiceDeclaration::with_optional(
-                Self::declared_id().clone(),
-                [],            // what you answer
-                [],            // what you need
-                [landmarks()], // what you use if something answers it
-            )
-            .map(Some)
-            .map_err(ModError::from_display)
+            let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+            declaration
+                .use_if_present(landmarks())
+                .map_err(ModError::from_display)?;
+            Ok(Some(declaration))
         }
 
         fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -516,7 +513,7 @@ mod tests {
             .expect("valid saved-data migrations")
             .expect("and declares a chain");
         chain
-            .covers(&declaration)
+            .check_covers(&declaration)
             .expect("every version above the oldest has a step");
 
         let one = SavedDataVersion::new(1).expect("1 is not zero");

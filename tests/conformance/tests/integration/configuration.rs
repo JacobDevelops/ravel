@@ -52,28 +52,16 @@ fn the_tracked_declaration_enforces_sides_validation_and_pack_policy() {
         LayeredConfiguration::resolve(ConfigurationMod::declaration(), Some(&pack), Some(&player))
             .expect("the complete pack document resolves");
 
-    assert_eq!(resolved.value(&key("client.enabled")), Some(&json!(true)));
+    assert_eq!(resolved.value("client.enabled"), Ok(&json!(true)));
+    assert_eq!(resolved.source("client.enabled"), Ok(ValueSource::Player));
+    assert_eq!(resolved.value("integrated.mob_limit"), Ok(&json!(40)));
     assert_eq!(
-        resolved.source(&key("client.enabled")),
-        Some(ValueSource::Player)
+        resolved.source("integrated.mob_limit"),
+        Ok(ValueSource::Pack)
     );
-    assert_eq!(
-        resolved.value(&key("integrated.mob_limit")),
-        Some(&json!(40))
-    );
-    assert_eq!(
-        resolved.source(&key("integrated.mob_limit")),
-        Some(ValueSource::Pack)
-    );
-    assert_eq!(resolved.value(&key("dedicated.motd")), Some(&json!("Pack")));
-    assert_eq!(
-        resolved.source(&key("dedicated.motd")),
-        Some(ValueSource::Pack)
-    );
-    assert_eq!(
-        resolved.value(&key("common.profile")),
-        Some(&json!("quiet"))
-    );
+    assert_eq!(resolved.value("dedicated.motd"), Ok(&json!("Pack")));
+    assert_eq!(resolved.source("dedicated.motd"), Ok(ValueSource::Pack));
+    assert_eq!(resolved.value("common.profile"), Ok(&json!("quiet")));
 
     for (side, specific) in [
         (Side::Client, "client.enabled"),
@@ -92,7 +80,7 @@ fn the_tracked_declaration_enforces_sides_validation_and_pack_policy() {
     let fallback =
         LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&invalid))
             .expect("an invalid player value falls back to its default");
-    assert_eq!(fallback.value(&key("client.enabled")), Some(&json!(true)));
+    assert_eq!(fallback.value("client.enabled"), Ok(&json!(true)));
     assert_eq!(fallback.rejected().len(), 1);
 
     let incomplete_pack = document(&json!({ "integrated.mob_limit": 40 }));
@@ -117,15 +105,12 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
         resolved.set(&key("client.enabled"), json!(false), Side::Client),
         Ok(EditOutcome::Now)
     );
-    assert_eq!(resolved.value(&key("client.enabled")), Some(&json!(false)));
+    assert_eq!(resolved.value("client.enabled"), Ok(&json!(false)));
     assert_eq!(
         resolved.set(&key("common.profile"), json!("verbose"), Side::Client),
         Ok(EditOutcome::NextLaunch)
     );
-    assert_eq!(
-        resolved.value(&key("common.profile")),
-        Some(&json!("quiet"))
-    );
+    assert_eq!(resolved.value("common.profile"), Ok(&json!("quiet")));
     assert!(resolved.restart_pending());
 
     file::write(&game, &resolved.player_document()).expect("the player document is persisted");
@@ -136,14 +121,8 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
         LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&reread))
             .expect("the persisted player document resolves on relaunch");
 
-    assert_eq!(
-        relaunched.value(&key("client.enabled")),
-        Some(&json!(false))
-    );
-    assert_eq!(
-        relaunched.value(&key("common.profile")),
-        Some(&json!("verbose"))
-    );
+    assert_eq!(relaunched.value("client.enabled"), Ok(&json!(false)));
+    assert_eq!(relaunched.value("common.profile"), Ok(&json!("verbose")));
     assert!(!relaunched.restart_pending());
 }
 
@@ -189,19 +168,16 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
         .iter()
         .find(|resolved| resolved.owner() == &owner)
         .expect("the configuration mod's settings resolved");
-    assert_eq!(resolved.value(&key("client.enabled")), Some(&json!(false)));
+    assert_eq!(resolved.value("client.enabled"), Ok(&json!(false)));
     assert_eq!(
-        resolved.value(&key("integrated.mob_limit")),
-        Some(&json!(40)),
+        resolved.value("integrated.mob_limit"),
+        Ok(&json!(40)),
         "the selected pack's locked value wins"
     );
     assert_eq!(
-        resolved.value(&key("dedicated.motd")),
-        Some(&json!("Pack")),
+        resolved.value("dedicated.motd"),
+        Ok(&json!("Pack")),
         "the selected pack supplies the required value"
     );
-    assert_eq!(
-        resolved.value(&key("common.profile")),
-        Some(&json!("verbose"))
-    );
+    assert_eq!(resolved.value("common.profile"), Ok(&json!("verbose")));
 }

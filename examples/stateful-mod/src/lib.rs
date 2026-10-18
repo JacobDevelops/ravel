@@ -213,9 +213,11 @@ impl Mod for Journal {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [entries_service()], [])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .provide(entries_service())
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -273,7 +275,7 @@ mod tests {
         let journal = Journal::new();
         journal
             .chain()
-            .covers(&journal.declaration().expect("valid declaration"))
+            .check_covers(&journal.declaration().expect("valid declaration"))
             .expect("every declared version has a step into it");
         assert_eq!(
             journal.declaration().expect("valid declaration").current(),
@@ -351,10 +353,9 @@ mod tests {
         journal.configure(&resolved).expect("a legal value");
 
         assert_eq!(journal.capacity(), 2);
-        let key = CAPACITY.parse().expect("a legal key");
         assert_eq!(
-            resolved.source(&key),
-            Some(ravel_sdk::config::ValueSource::Pack)
+            resolved.source(CAPACITY),
+            Ok(ravel_sdk::config::ValueSource::Pack)
         );
     }
 

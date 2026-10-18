@@ -405,9 +405,11 @@ mod tests {
             if self.deaf {
                 return Err(ravel_host_api::ModError::Unsupported);
             }
-            self.applied = resolved
-                .value(&"limit".parse().expect("a legal key"))
-                .and_then(serde_json::Value::as_i64);
+            self.applied = Some(
+                resolved
+                    .integer("limit")
+                    .map_err(ravel_host_api::ModError::from_display)?,
+            );
             Ok(())
         }
     }

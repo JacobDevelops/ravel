@@ -278,9 +278,11 @@ mod tests {
             .expect_err("the body ends early");
         assert!(matches!(
             error,
-            ModError::InvalidPacket {
-                source: WireError::Truncated { .. }
-            }
+            ModError::InvalidPacket { source }
+                if matches!(source.as_ref(), DeliveryRefused::Malformed {
+                    source: WireError::Truncated { .. },
+                    ..
+                })
         ));
         assert_eq!(host.answered(), []);
 
@@ -301,9 +303,11 @@ mod tests {
         assert!(
             matches!(
                 &error,
-                ModError::InvalidPacket {
-                    source: WireError::TrailingBytes { unread: 1 }
-                }
+                ModError::InvalidPacket { source }
+                    if matches!(source.as_ref(), DeliveryRefused::Malformed {
+                        source: WireError::TrailingBytes { unread: 1 },
+                        ..
+                    })
             ),
             "{error}"
         );
@@ -357,9 +361,8 @@ mod tests {
 
         assert!(matches!(
             host.receive_packet(&on_client),
-            Err(ModError::InvalidPacket {
-                source: WireError::InvalidValue { .. }
-            })
+            Err(ModError::InvalidPacket { source })
+                if matches!(source.as_ref(), DeliveryRefused::WrongSide { .. })
         ));
         assert_eq!(host.answered(), []);
     }

@@ -1,8 +1,8 @@
 //! Named JSON requests between mods, with providers started before consumers.
 //!
-//! Declare required services with [`ServiceDeclaration::new`] or optional
-//! services with [`ServiceDeclaration::with_optional`], then call them from
-//! [`crate::Mod::use_services`]. Optional absence is distinct from provider refusal.
+//! Start with [`ServiceDeclaration::new`], then [`ServiceDeclaration::provide`],
+//! [`ServiceDeclaration::require`], or [`ServiceDeclaration::use_if_present`].
+//! Call services from [`crate::Mod::use_services`]; optional absence differs from refusal.
 //!
 //! # Examples
 //!
@@ -30,9 +30,9 @@
 //!     }
 //!
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-//!         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
-//!             .map(Some)
-//!             .map_err(ModError::from_display)
+//!         let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+//!         declaration.provide(prices()).map_err(ModError::from_display)?;
+//!         Ok(Some(declaration))
 //!     }
 //!
 //!     fn answer_service(
@@ -62,9 +62,9 @@
 //!     }
 //!
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-//!         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
-//!             .map(Some)
-//!             .map_err(ModError::from_display)
+//!         let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+//!         declaration.require(prices()).map_err(ModError::from_display)?;
+//!         Ok(Some(declaration))
 //!     }
 //!
 //!     fn use_services(
@@ -81,7 +81,7 @@
 //!
 //! // A mod may only offer to answer names in its own namespace.
 //! assert!(
-//!     ServiceDeclaration::new(Shop::declared_id().clone(), [prices()], []).is_err()
+//!     ServiceDeclaration::new(Shop::declared_id().clone()).provide(prices()).is_err()
 //! );
 //! assert_eq!(prices().to_string(), "base:prices");
 //! ```
@@ -113,15 +113,9 @@
 //!     }
 //!
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-//!         // Nothing required, one service used if something answers it.
-//!         ServiceDeclaration::with_optional(
-//!             Self::declared_id().clone(),
-//!             [],
-//!             [],
-//!             [landmarks()],
-//!         )
-//!         .map(Some)
-//!         .map_err(ModError::from_display)
+//!         let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+//!         declaration.use_if_present(landmarks()).map_err(ModError::from_display)?;
+//!         Ok(Some(declaration))
 //!     }
 //!
 //!     fn use_services(
@@ -149,15 +143,9 @@
 //! assert_eq!(declaration.requires().count(), 0);
 //!
 //! // One service cannot be both: the two sides disagree about a missing provider.
-//! assert!(
-//!     ServiceDeclaration::with_optional(
-//!         Compass::declared_id().clone(),
-//!         [],
-//!         [landmarks()],
-//!         [landmarks()],
-//!     )
-//!     .is_err()
-//! );
+//! let mut declaration = ServiceDeclaration::new(Compass::declared_id().clone());
+//! declaration.require(landmarks()).expect("a required service");
+//! assert!(declaration.use_if_present(landmarks()).is_err());
 //! ```
 
 pub use ravel_host_api::{

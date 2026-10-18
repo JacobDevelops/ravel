@@ -5,7 +5,7 @@ use std::sync::PoisonError;
 
 use ravel_core::{ContentId, ContentKind, DiagnosticMessage, RegistryKey};
 use ravel_host_api::{CommandInvocation, GameEvent};
-use ravel_loader::{LoadedMods, broadcast_profiled, route_profiled};
+use ravel_loader::{LoadedMods, broadcast, route};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 
 use super::{Inner, LoaderRuntime};
@@ -121,21 +121,17 @@ impl LoaderRuntime {
                 return Err(error.to_string());
             }
         };
-        let delivery = ravel_loader::deliver_packet_profiled(
-            &mut loaded,
-            &packet,
-            profiler,
-            report.environment(),
-        )
-        .map_err(|error| {
-            let subject = error
-                .mod_id()
-                .map_or_else(ravel_observability::Subject::unidentified, |owner| {
-                    ravel_observability::Subject::of(owner.clone())
-                });
-            report.refuse(&subject, &error);
-            error.to_string()
-        })?;
+        let delivery =
+            ravel_loader::deliver_packet(&mut loaded, &packet, profiler, report.environment())
+                .map_err(|error| {
+                    let subject = error
+                        .mod_id()
+                        .map_or_else(ravel_observability::Subject::unidentified, |owner| {
+                            ravel_observability::Subject::of(owner.clone())
+                        });
+                    report.refuse(&subject, &error);
+                    error.to_string()
+                })?;
         inner.carry_outward();
         let result = delivery
             .failure()
@@ -214,13 +210,13 @@ impl Inner {
             error.to_string()
         })?;
         let delivered = match work {
-            Work::Event(event) => broadcast_profiled(
+            Work::Event(event) => broadcast(
                 &mut loaded,
                 *event,
                 &mut self.profiler,
                 self.report.environment(),
             ),
-            Work::Command(invocation) => route_profiled(
+            Work::Command(invocation) => route(
                 &mut loaded,
                 invocation,
                 &mut self.profiler,
@@ -229,12 +225,10 @@ impl Inner {
         };
         let delivery = match delivered {
             Ok(delivery) => delivery,
-            Err(ravel_loader::DispatchRefused::NotReacting { .. })
-                if matches!(work, Work::Event(_)) =>
-            {
+            Err(ravel_loader::DispatchRefused::Halted { .. }) if matches!(work, Work::Event(_)) => {
                 return Ok(());
             }
-            Err(error @ ravel_loader::DispatchRefused::NotReacting { .. }) => {
+            Err(error @ ravel_loader::DispatchRefused::Halted { .. }) => {
                 return Err(error.to_string());
             }
             Err(error) => {
@@ -281,8 +275,7 @@ impl Inner {
                     .into_iter()
                     .map(|request| outward::play(request.owner().as_str(), request.entry())),
             ),
-            // The halt already has its owning failure attribution.
-            Err(ravel_loader::DispatchRefused::NotReacting { .. }) => {}
+            Err(ravel_loader::DispatchRefused::Halted { .. }) => {}
             Err(error) => {
                 let subject = error
                     .mod_id()

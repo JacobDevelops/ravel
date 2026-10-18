@@ -151,7 +151,7 @@ fn parts(
 
     let entry = LifecycleEntry {
         mod_id: id(MOD),
-        sides: SideSet::new([side]).expect("a non-empty side set"),
+        sides: SideSet::new([side, Side::IntegratedServer]).expect("a non-empty side set"),
         requirement: Requirement::Required,
         saved_data_versions: BTreeSet::new(),
     };
@@ -317,7 +317,8 @@ fn driven_pair(
             .into_iter()
             .map(|name| LifecycleEntry {
                 mod_id: id(name),
-                sides: SideSet::new([Side::Client]).expect("client"),
+                sides: SideSet::new([Side::Client, Side::IntegratedServer])
+                    .expect("client and integrated server"),
                 requirement: Requirement::Optional,
                 saved_data_versions: BTreeSet::new(),
             })
@@ -695,7 +696,7 @@ fn integrated_commands_run_the_real_server_gated_tally_on_a_client_distribution(
     let owner = host.id().clone();
     let entry = LifecycleEntry {
         mod_id: owner.clone(),
-        sides: SideSet::new([Side::Client]).expect("client distribution"),
+        sides: SideSet::new([Side::Client, Side::IntegratedServer]).expect("client and server"),
         requirement: Requirement::Required,
         saved_data_versions: BTreeSet::new(),
     };
@@ -720,6 +721,48 @@ fn integrated_commands_run_the_real_server_gated_tally_on_a_client_distribution(
         .expect("the real server-gated tally executes");
     assert_eq!(inner.machine.state(&owner), Ok(LifecycleState::Running));
     assert_eq!(inner.machine.failure(&owner), Ok(None));
+}
+
+#[test]
+fn integrated_commands_refuse_a_client_only_owner() {
+    let host = rvl_180_counterpart::__ravel_entry(Side::Client);
+    let owner = host.id().clone();
+    let entry = LifecycleEntry {
+        mod_id: owner.clone(),
+        sides: SideSet::new([Side::Client]).expect("client only"),
+        requirement: Requirement::Required,
+        saved_data_versions: BTreeSet::new(),
+    };
+    let mut machine = LifecycleMachine::new(Side::Client, vec![entry]).expect("one mod");
+    let mut mods = vec![host];
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
+        &environment(),
+    )
+    .expect("counterpart registers its real commands");
+    let invocation = CommandInvocation::new(
+        RegistryKey::new(
+            ContentKind::Command,
+            format!("{owner}:entity_tally").parse().expect("command id"),
+        ),
+        Side::IntegratedServer,
+        Vec::new(),
+    );
+    let refused = ravel_loader::route(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
+        &invocation,
+        &mut ravel_observability::Profiler::off(),
+        &environment(),
+    )
+    .expect_err("client-only owners cannot execute integrated commands");
+    assert_eq!(
+        refused,
+        ravel_loader::DispatchRefused::OwnerWrongSide {
+            mod_id: owner.clone()
+        }
+    );
+    assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
+    assert_eq!(machine.failure(&owner), Ok(None));
 }
 
 #[test]

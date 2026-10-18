@@ -184,7 +184,7 @@ fn registry_closure(
         for tag in declaration.tags() {
             for member in declaration.tag_members(tag) {
                 provided(pack, declarations, member).map_err(|kind| ClosureError::TagMember {
-                    tag: tag.to_string(),
+                    tag: tag.clone(),
                     member: member.clone(),
                     kind,
                 })?;

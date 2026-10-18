@@ -1,7 +1,7 @@
 //! Differential conformance between Rust validators and schema patterns run by check-jsonschema.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use ravel_core::ModId;
@@ -10,13 +10,7 @@ use serde_json::{Value, json};
 
 const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn schema_path() -> PathBuf {
     repository_root().join("schemas/package.schema.json")

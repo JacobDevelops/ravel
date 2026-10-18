@@ -40,7 +40,7 @@ const fn has_registered(state: LifecycleState) -> bool {
 pub enum Requirement {
     /// The set fails closed without it.
     Required,
-    /// The set proceeds without it.
+    /// Before world mutation the set proceeds without it; after, its failure halts the set.
     Optional,
 }
 
@@ -194,8 +194,9 @@ impl LifecycleMachine {
 
     /// Iterates eligible members without re-querying tracked state.
     pub(crate) fn eligible(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
-        self.tracked_entries()
-            .filter(|(entry, _)| self.loads(&entry.mod_id))
+        self.tracked_entries().filter(|(entry, state)| {
+            entry.sides.loads_on(self.side) && *state != LifecycleState::Failed
+        })
     }
 
     pub(crate) fn tracked_entries_with_failures(
@@ -560,8 +561,9 @@ impl LifecycleMachine {
     ///
     /// # Errors
     ///
-    /// Returns whatever [`LifecycleMachine::world_access`] refuses: a set that
-    /// cannot open a world cannot have mutated one.
+    /// Returns [`LifecycleError::WorldAccessHalted`] or [`LifecycleError::WorldAccessBlocked`]
+    /// when the lifecycle blocks opening a world; pre-world report refusals are
+    /// checked separately by [`LifecycleMachine::world_access`].
     pub fn record_world_mutation(&mut self) -> Result<(), LifecycleError> {
         self.lifecycle_world_access()?;
         self.world_mutated = true;

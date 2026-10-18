@@ -6,7 +6,8 @@ use ravel_core::{
 };
 use ravel_host_api::{HostError, Mod};
 use ravel_save::{
-    MigrationChain, SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan,
+    MigrationChain, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
+    SavedDataPlan,
 };
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
@@ -24,8 +25,8 @@ use crate::loaded::LoadedMods;
 /// when an instance attempts to write another owner's data.
 pub fn produce_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
-    environment: &FailureEnvironment,
     prior: Option<&SavedDataAggregate>,
+    environment: &FailureEnvironment,
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let result = snapshot(loaded, prior);
     let (machine, _) = loaded.parts();
@@ -79,8 +80,8 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
 ///
 /// Parked mods are skipped. Failed owners' prior envelopes remain opaque without
 /// consulting metadata, invoking their code, or migrating their payloads. Active owners
-/// receive current payloads after loader-owned migration. Optional callback failures preserve prior data;
-/// required callback failures and invalid data prevent world opening.
+/// receive current payloads after loader-owned migration. Optional owner contract failures
+/// preserve prior data; required owner failures and invalid world data prevent world opening.
 /// Callback failures are attributed using the supplied session `environment`, including
 /// its Minecraft and Ravel versions; persistence failures have no failure surface.
 /// World compatibility refusals, such as newer stored data or unmet package requirements,
@@ -91,9 +92,9 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
 /// Returns [`SaveRefused`] for invalid data or migrations, foreign ownership, or owner refusal.
 pub fn open_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
-    environment: &FailureEnvironment,
     bytes: Option<&[u8]>,
     packages: &BTreeMap<ModId, Version>,
+    environment: &FailureEnvironment,
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let result = open(loaded, environment, bytes, packages);
     let (machine, _) = loaded.parts();
@@ -113,7 +114,7 @@ fn open<H: std::ops::DerefMut<Target: Mod>>(
             machine.state(owner) == Ok(LifecycleState::Failed)
         })
         .map_err(SaveRefused::Data)?;
-    migrate(machine, environment, &mut aggregate, &declarations, &chains)?;
+    let mut originals = migrate(machine, environment, &mut aggregate, &declarations, &chains)?;
     for declaration in &declarations {
         let mod_id = declaration.owner();
         if !machine.loads(mod_id) {
@@ -125,15 +126,11 @@ fn open<H: std::ops::DerefMut<Target: Mod>>(
             instance.open_saved_data(envelope)
         })?
         .is_none()
+            && let Some(index) = originals
+                .iter()
+                .position(|envelope| envelope.owner() == mod_id)
         {
-            let prior =
-                SavedDataAggregate::open_preserving(bytes, &declarations, packages, |owner| {
-                    machine.state(owner) == Ok(LifecycleState::Failed)
-                })
-                .map_err(SaveRefused::Data)?;
-            if let Some(envelope) = prior.envelope(mod_id) {
-                aggregate.replace(envelope.clone());
-            }
+            aggregate.replace(originals.swap_remove(index));
         }
     }
     Ok(aggregate)
@@ -145,7 +142,8 @@ fn migrate(
     aggregate: &mut SavedDataAggregate,
     declarations: &[SavedDataDeclaration],
     chains: &[MigrationChain],
-) -> Result<(), SaveRefused> {
+) -> Result<Vec<SavedDataEnvelope>, SaveRefused> {
+    let mut originals = Vec::new();
     for declaration in declarations {
         let mod_id = declaration.owner();
         if machine.state(mod_id) == Ok(LifecycleState::Failed) {
@@ -174,10 +172,25 @@ fn migrate(
         else {
             continue;
         };
-        let payload = payload.map_err(SaveRefused::Data)?;
-        aggregate.replace(envelope.migrated(declaration.current(), payload));
+        let payload = match payload {
+            Ok(payload) => payload,
+            Err(error) => {
+                isolate_refusal(machine, environment, mod_id, SaveRefused::Data(error))?;
+                continue;
+            }
+        };
+        let migrated = envelope.migrated(declaration.current(), payload);
+        if machine
+            .entry(mod_id)
+            .map_err(SaveRefused::Lifecycle)?
+            .requirement
+            == crate::Requirement::Optional
+        {
+            originals.push(envelope.clone());
+        }
+        aggregate.replace(migrated);
     }
-    Ok(())
+    Ok(originals)
 }
 
 fn declarations<H: std::ops::DerefMut<Target: Mod>>(
@@ -200,10 +213,16 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
             continue;
         };
         if declaration.owner() != mod_id {
-            return Err(SaveRefused::ForeignDeclaration {
-                mod_id: mod_id.clone(),
-                owner: declaration.owner().clone(),
-            });
+            isolate_refusal(
+                machine,
+                environment,
+                mod_id,
+                SaveRefused::ForeignDeclaration {
+                    mod_id: mod_id.clone(),
+                    owner: declaration.owner().clone(),
+                },
+            )?;
+            continue;
         }
         let Some(chain) = owner_callback(machine, environment, mod_id, || {
             instance.saved_data_migrations()
@@ -212,13 +231,22 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
             continue;
         };
         if let Some(chain) = chain {
-            chain.covers(&declaration).map_err(SaveRefused::Data)?;
+            if let Err(error) = chain.check_covers(&declaration) {
+                isolate_refusal(machine, environment, mod_id, SaveRefused::Data(error))?;
+                continue;
+            }
             chains.push(chain);
         } else if declaration.versions().count() > 1 {
-            return Err(SaveRefused::Data(SavedDataError::MissingMigration {
-                owner: mod_id.clone(),
-                to: declaration.current(),
-            }));
+            isolate_refusal(
+                machine,
+                environment,
+                mod_id,
+                SaveRefused::Data(SavedDataError::MissingMigration {
+                    owner: mod_id.clone(),
+                    to: declaration.current(),
+                }),
+            )?;
+            continue;
         }
         declarations.push(declaration);
     }
@@ -234,26 +262,35 @@ fn owner_callback<T>(
     let state = machine.state(mod_id).expect("loaded owner is tracked");
     match crate::callback(mod_id, state, call) {
         Ok(value) => Ok(Some(value)),
-        Err(source) => record_failure(machine, environment, mod_id, source),
+        Err(source) => {
+            if machine
+                .fail_setup_callback(&source, environment)
+                .map_err(SaveRefused::Lifecycle)?
+            {
+                return Err(SaveRefused::Mod {
+                    mod_id: mod_id.clone(),
+                    source,
+                });
+            }
+            Ok(None)
+        }
     }
 }
 
-fn record_failure<T>(
+fn isolate_refusal(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     mod_id: &ModId,
-    source: HostError,
-) -> Result<Option<T>, SaveRefused> {
+    refused: SaveRefused,
+) -> Result<(), SaveRefused> {
+    let source = crate::owner_refusal(machine, mod_id, &refused).map_err(SaveRefused::Lifecycle)?;
     if machine
         .fail_setup_callback(&source, environment)
         .map_err(SaveRefused::Lifecycle)?
     {
-        return Err(SaveRefused::Mod {
-            mod_id: mod_id.clone(),
-            source,
-        });
+        return Err(refused);
     }
-    Ok(None)
+    Ok(())
 }
 
 fn record_refusal<T>(
@@ -402,7 +439,6 @@ impl StructuredFailure for SaveRefused {
 }
 
 #[cfg(test)]
-#[path = "save_data_tests.rs"]
 mod save_data_tests;
 
 #[cfg(test)]
@@ -469,9 +505,9 @@ mod tests {
             let refusal = open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment,
                 None,
                 &BTreeMap::new(),
+                &environment,
             )
             .expect_err("all failures stay within the callback boundary");
             let SaveRefused::Mod { mod_id, source } = refusal else {
@@ -512,9 +548,9 @@ mod tests {
         let refusal = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("migration panic is contained");
         assert!(matches!(refusal, SaveRefused::Mod { mod_id, .. } if mod_id == id("stored")));
@@ -560,9 +596,9 @@ mod tests {
         let admitted = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("failed optional owner is carried over unchanged");
         assert_eq!(admitted.to_bytes().expect("unchanged aggregate"), bytes);
@@ -583,9 +619,9 @@ mod tests {
             let aggregate = open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment,
                 Some(&bytes),
                 &BTreeMap::new(),
+                &environment,
             )
             .expect("optional owner does not refuse the world");
             assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Failed));
@@ -616,9 +652,9 @@ mod tests {
             let refused = open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut instance])
                     .expect("complete instance set"),
-                &environment(),
                 Some(&bytes),
                 &BTreeMap::new(),
+                &environment(),
             )
             .expect_err("optional failure cannot leave a mutated world running");
             assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("stored")));
@@ -628,31 +664,83 @@ mod tests {
     }
 
     #[test]
-    fn optional_migration_panics_preserve_the_original_envelope() {
+    fn optional_migration_failures_preserve_the_original_envelope() {
         fn panics(_payload: &Value) -> Result<Value, MigrationFailed> {
             panic!("migration panic")
         }
-        let mut host = Storing::new("stored");
-        host.chain = Some(
-            MigrationChain::new(id("stored"))
-                .reaching(version(2), panics)
-                .reaching(version(3), to_three),
-        );
-        let mut owner = entry("stored", &[Side::DedicatedServer]);
-        owner.requirement = Requirement::Optional;
-        let mut machine = machine(vec![owner]);
-        let bytes = world(&[("stored", 1, json!({"opaque": true}))]);
-        let aggregate = open_saved_data(
-            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
-                .expect("complete host set"),
-            &environment(),
-            Some(&bytes),
-            &BTreeMap::new(),
-        )
-        .expect("optional migration failure does not refuse the world");
-        assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Failed));
-        assert_eq!(aggregate.to_bytes().expect("preserved"), bytes);
-        assert!(host.read.is_none());
+        fn refuses(_payload: &Value) -> Result<Value, MigrationFailed> {
+            Err(MigrationFailed::new("cannot migrate"))
+        }
+        let steps: [ravel_save::MigrationStep; 2] = [panics, refuses];
+        for step in steps {
+            let mut host = Storing::new("stored");
+            host.chain = Some(
+                MigrationChain::new(id("stored"))
+                    .reaching(version(2), to_two)
+                    .reaching(version(3), step),
+            );
+            let mut owner = entry("stored", &[Side::DedicatedServer]);
+            owner.requirement = Requirement::Optional;
+            let mut machine = machine(vec![owner]);
+            let bytes = world(&[("stored", 1, json!({"count": 7}))]);
+            let aggregate = open_saved_data(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
+                    .expect("complete host set"),
+                Some(&bytes),
+                &BTreeMap::new(),
+                &environment(),
+            )
+            .expect("optional migration failure does not refuse the world");
+            assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Failed));
+            assert_eq!(aggregate.to_bytes().expect("preserved"), bytes);
+            assert!(host.read.is_none());
+            let failure = machine
+                .failure(&id("stored"))
+                .expect("tracked")
+                .expect("recorded");
+            assert_eq!(failure.environment, environment());
+        }
+    }
+
+    #[test]
+    fn optional_invalid_declarations_preserve_data_and_leave_other_owners_healthy() {
+        for fault in ["foreign", "missing", "absent"] {
+            let mut active = Storing::new("active");
+            let mut failed = match fault {
+                "foreign" => Storing::new("failed").declaring_for("active"),
+                "missing" => Storing::new("failed").without_a_link(),
+                _ => Storing::new("failed"),
+            };
+            if fault == "absent" {
+                failed.chain = None;
+            }
+            let mut optional = entry("failed", &[Side::DedicatedServer]);
+            optional.requirement = Requirement::Optional;
+            let mut machine = machine(vec![entry("active", &[Side::DedicatedServer]), optional]);
+            let bytes = world(&[
+                ("active", 3, json!({"counts": [7], "total": 0})),
+                ("failed", 99, json!({"opaque": [null, "future"]})),
+            ]);
+            let aggregate = open_saved_data(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut active, &mut failed])
+                    .expect("complete hosts"),
+                Some(&bytes),
+                &BTreeMap::new(),
+                &environment(),
+            )
+            .expect("optional invalid declaration isolates its owner");
+            assert_eq!(aggregate.to_bytes().expect("preserved"), bytes);
+            assert!(active.read.is_some());
+            assert!(failed.read.is_none());
+            assert_eq!(machine.state(&id("failed")), Ok(LifecycleState::Failed));
+            assert_eq!(machine.state(&id("active")), Ok(LifecycleState::Discovered));
+            let failure = machine
+                .failure(&id("failed"))
+                .expect("tracked")
+                .expect("recorded");
+            assert_eq!(failure.mod_id, Some(id("failed")));
+            assert_eq!(failure.environment, environment());
+        }
     }
 
     #[test]
@@ -671,9 +759,9 @@ mod tests {
         let aggregate = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut active, &mut failed])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("active owner opens despite optional refusal after migration");
         assert_eq!(active.read, Some(json!({"counts": [7]})));
@@ -708,9 +796,9 @@ mod tests {
         let refusal = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("later migration refuses the world");
         assert_eq!(refusal.mod_id(), Some(&id("second")));
@@ -736,16 +824,15 @@ mod tests {
         let mut owner = entry("failed", &[Side::DedicatedServer]);
         owner.requirement = Requirement::Optional;
         let mut machine = machine(vec![entry("active", &[Side::DedicatedServer]), owner]);
-        super::record_failure::<()>(
-            &mut machine,
-            &environment(),
-            &id("failed"),
-            HostError::Unsupported {
-                mod_id: id("failed"),
-                state: LifecycleState::Discovered,
-            },
-        )
-        .expect("optional failure is recorded");
+        machine
+            .fail_setup_callback(
+                &HostError::Unsupported {
+                    mod_id: id("failed"),
+                    state: LifecycleState::Discovered,
+                },
+                &environment(),
+            )
+            .expect("optional failure is recorded");
         let bytes = world(&[
             ("active", 1, json!({"count": 7})),
             ("failed", 99, json!({"opaque": [null, "future"]})),
@@ -753,9 +840,9 @@ mod tests {
         let aggregate = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut active, &mut failed])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("failed owner metadata is never consulted");
         assert_eq!(
@@ -895,9 +982,9 @@ mod tests {
         let refusal = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             None,
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("invalid declarations cannot opt out");
         assert!(matches!(
@@ -917,9 +1004,9 @@ mod tests {
             open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment(),
                 None,
                 &BTreeMap::new(),
+                &environment(),
             ),
             Err(SaveRefused::Mod {
                 mod_id: id("refusing_mod"),
@@ -966,16 +1053,16 @@ mod tests {
                 crate::drive_loaded(&mut loaded, &environment).expect("owner starts");
                 open_saved_data(
                     &mut loaded,
-                    &environment,
                     Some(&compatible),
                     &BTreeMap::new(),
+                    &environment,
                 )
                 .expect("first compatible world opens");
                 let refused = open_saved_data(
                     &mut loaded,
-                    &environment,
                     Some(&refused_bytes),
                     &BTreeMap::new(),
+                    &environment,
                 )
                 .expect_err("incompatible input is refused");
                 assert!(
@@ -989,9 +1076,9 @@ mod tests {
                 );
                 open_saved_data(
                     &mut loaded,
-                    &environment,
                     Some(&compatible),
                     &BTreeMap::new(),
+                    &environment,
                 )
                 .expect("same running owner can retry a compatible world");
                 assert_eq!(machine.state(&id("stored")), Ok(LifecycleState::Running));
@@ -1035,9 +1122,9 @@ mod tests {
         let aggregate = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("both steps run");
 
@@ -1062,9 +1149,9 @@ mod tests {
         let refused = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("a mod owns only its own world data");
 
@@ -1091,9 +1178,9 @@ mod tests {
             open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment(),
                 Some(&bytes),
-                &BTreeMap::new()
+                &BTreeMap::new(),
+                &environment(),
             ),
             Err(SaveRefused::Data(SavedDataError::MissingMigration {
                 owner: id("stored"),
@@ -1114,9 +1201,9 @@ mod tests {
             open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment(),
                 Some(&bytes),
-                &BTreeMap::new()
+                &BTreeMap::new(),
+                &environment(),
             ),
             Err(SaveRefused::Data(SavedDataError::MissingMigration {
                 owner: id("stored"),
@@ -1136,9 +1223,9 @@ mod tests {
         open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut repaired_session, &mut [&mut whole])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("the chain covers every declared version");
         assert_eq!(whole.read, Some(json!({ "counts": [7], "total": 0 })));
@@ -1160,9 +1247,9 @@ mod tests {
         let refusal = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut alpha, &mut zeta])
                 .expect("complete host set"),
-            &environment(),
             Some(&bytes),
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("`zeta` refuses its own shape");
 
@@ -1179,9 +1266,9 @@ mod tests {
         let aggregate = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &environment(),
             None,
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("absence initializes");
         assert_eq!(aggregate, SavedDataAggregate::fresh());
@@ -1198,9 +1285,9 @@ mod tests {
             open_saved_data(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                     .expect("complete host set"),
-                &environment(),
                 None,
                 &BTreeMap::new(),
+                &environment(),
             ),
             Err(SaveRefused::Data(SavedDataError::MissingMigration {
                 owner: id("stored"),
@@ -1247,9 +1334,9 @@ mod tests {
         let refused = open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut zeta, &mut alpha])
                 .expect("all lifecycle hosts are supplied"),
-            &environment(),
             None,
             &BTreeMap::new(),
+            &environment(),
         )
         .expect_err("the first lifecycle owner refuses admission");
         assert!(matches!(refused, SaveRefused::Mod { mod_id, .. } if mod_id == id("alpha")));
@@ -1271,9 +1358,9 @@ mod tests {
         open_saved_data(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut parked, &mut host])
                 .expect("complete host set"),
-            &environment(),
             None,
             &BTreeMap::new(),
+            &environment(),
         )
         .expect("the parked mod takes no part");
         assert!(parked.read.is_none());

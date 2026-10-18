@@ -12,7 +12,7 @@
     "repository": "https://example.invalid/ravel-test-mods",
     "files": [
       { "path": "Cargo.toml", "sha256": "4e615cfe4f909ae00f2a6951c104e912e369636334fc1245a7c3a3fd6aa25701" },
-      { "path": "src/lib.rs", "sha256": "45feeec1ce8b184482130de09aaa07bdfb811ac1fa0ace58621a0d029049a79d" }
+      { "path": "src/lib.rs", "sha256": "8de20147a7773440153d480c776bacffd185496d1b38613cb3c38c512ab1f875" }
     ]
   },
   "provenance": { "record": "provenance.json", "sha256": "476ea486168925b80f1f7c66f622654dc46abbb11dbb15f7cff6145fdaf72e92" }

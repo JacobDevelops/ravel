@@ -207,9 +207,11 @@ pub(crate) fn collect_files(
 fn is_forbidden_tracked_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     let basename = lower.rsplit('/').next().unwrap_or(&lower);
-    let forbidden_component = lower
-        .split('/')
-        .any(|component| matches!(component, "saves" | "logs" | "crash-reports"));
+    let forbidden_component = lower.split('/').any(|component| match component {
+        "saves" => !is_cargo_rust_source(&lower),
+        "logs" | "crash-reports" => true,
+        _ => false,
+    });
     let forbidden_evidence_component = lower.starts_with("evidence/")
         && lower
             .split('/')
@@ -231,6 +233,21 @@ fn is_forbidden_tracked_path(path: &str) -> bool {
     .any(|extension| lower.ends_with(extension));
 
     forbidden_basename || forbidden_extension || forbidden_component || forbidden_evidence_component
+}
+
+fn is_cargo_rust_source(path: &str) -> bool {
+    let mut components = path.split('/');
+    matches!(
+        components.next(),
+        Some("crates" | "tools" | "examples" | "test-mods")
+    ) && components
+        .next()
+        .is_some_and(|package| !matches!(package, "" | "." | ".."))
+        && components.next() == Some("src")
+        && components.all(|component| !matches!(component, "" | "." | ".."))
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
 }
 
 fn has_credential_assignment(line: &str) -> bool {

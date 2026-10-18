@@ -561,24 +561,21 @@ mod tests {
         let resolved = settings_of(&configurations, &owner());
 
         assert_eq!(
-            resolved.value(&"client.enabled".parse().expect("a setting key")),
-            Some(&json!(true)),
+            resolved.value("client.enabled"),
+            Ok(&json!(true)),
             "allowed leaves the last word to the player"
         );
         assert_eq!(
-            resolved.value(&"integrated.mob_limit".parse().expect("a setting key")),
-            Some(&json!(40)),
+            resolved.value("integrated.mob_limit"),
+            Ok(&json!(40)),
             "locked leaves the last word to the pack"
         );
         assert_eq!(
-            resolved.value(&"dedicated.motd".parse().expect("a setting key")),
-            Some(&json!("Pack")),
+            resolved.value("dedicated.motd"),
+            Ok(&json!("Pack")),
             "required is supplied by and fixed to the pack"
         );
-        assert_eq!(
-            resolved.value(&"common.profile".parse().expect("a setting key")),
-            Some(&json!("quiet"))
-        );
+        assert_eq!(resolved.value("common.profile"), Ok(&json!("quiet")));
     }
 
     #[test]
@@ -602,14 +599,12 @@ mod tests {
             compose(&game, Side::Client).expect("the player values should resolve");
 
         assert_eq!(
-            settings_of(&configurations, &owner())
-                .value(&"client.enabled".parse().expect("a setting key")),
-            Some(&json!(false))
+            settings_of(&configurations, &owner()).value("client.enabled"),
+            Ok(&json!(false))
         );
         assert_eq!(
-            settings_of(&configurations, &owner())
-                .value(&"common.profile".parse().expect("a setting key")),
-            Some(&json!("verbose"))
+            settings_of(&configurations, &owner()).value("common.profile"),
+            Ok(&json!("verbose"))
         );
     }
 }

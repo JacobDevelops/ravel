@@ -1,4 +1,4 @@
-//! Packet contracts, framing, and side validation; no network transport is provided.
+//! Packet contracts, framing, and side validation; no outbound send operation is provided.
 //!
 //! Implement [`Packet`] for a value and use [`encode`] and [`decode`] for framing.
 //!

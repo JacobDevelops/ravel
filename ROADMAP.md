@@ -327,7 +327,7 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-minecraft-adapter` | Generated per-version hook target table and lookup |
 | `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data |
 | `ravel-config` | Schemas, validation, side/restart flags and layered overrides |
-| `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts |
+| `ravel-data` | Content and audio declarations, pack generation, tag/resource merging, server data and render-stage ordering |
 | `ravel-save` | Ownership, schema versioning, migrations and compatibility checks |
 | `ravel-network` | Ravel packet/channel abstractions and side rules |
 | `ravel-observability` | Structured reports, redaction, metric schemas and profiling coordinator |

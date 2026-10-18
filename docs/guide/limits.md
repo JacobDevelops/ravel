@@ -106,9 +106,9 @@ native owner. It preserves the vanilla buffer's reader index.
 
 The loader checks owner, lifecycle, receiving side and direction before calling
 `Mod::receive_packet`. Mods should convert `DeliveryRefused` with `ModError::from`:
-malformed bytes and foreign contract identities remain typed `InvalidPacket`
-refusals, not lifecycle failures. Trusted callback failures still receive normal
-owner attribution. A rejected network payload does not throw through vanilla's
+malformed bytes, foreign contract identities, and wrong sides or directions remain
+typed `InvalidPacket` refusals, not lifecycle failures. Trusted callback failures
+still receive normal owner attribution. A rejected network payload does not throw through vanilla's
 dispatch loop. Other version adapters do not yet provide this inbound transport,
 and `encode_from` does not itself send anything on any version.
 

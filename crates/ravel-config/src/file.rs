@@ -117,8 +117,8 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
     })?;
     if &document.owner != owner {
         return Err(FileError::Owner {
-            named: owner.to_string(),
-            found: document.owner.to_string(),
+            named: owner.clone(),
+            found: document.owner,
         });
     }
     Ok(Some(document))
@@ -189,9 +189,9 @@ pub enum FileError {
     /// The file is a valid document that belongs to another owner.
     Owner {
         /// The owner the file name claims.
-        named: String,
+        named: ModId,
         /// The owner the document inside it claims.
-        found: String,
+        found: ModId,
     },
 }
 
@@ -323,7 +323,7 @@ mod tests {
         assert!(matches!(
             read(&game, &owner()),
             Err(FileError::Owner { named, found })
-                if named == owner().to_string() && found == other.to_string()
+                if named == owner() && found == other
         ));
     }
 
@@ -406,7 +406,7 @@ mod tests {
         assert!(matches!(
             super::read_pack(&root),
             Err(FileError::Owner { named, found })
-                if named == owner().to_string() && found == other.to_string()
+                if named == owner() && found == other
         ));
     }
 

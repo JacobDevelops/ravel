@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure, Version};
 use ravel_host_api::HostError;
@@ -19,13 +18,7 @@ use serde_json::{Value, json};
 
 const WORLDS: &str = "tests/fixtures/public/worlds";
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn world(name: &str) -> Value {
     let path = repository_root().join(WORLDS).join(name).join("world.json");
@@ -231,9 +224,9 @@ fn reload(saved: &mut SavedDataMod, bytes: Option<&[u8]>) -> Result<SavedDataPla
     ravel_loader::open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut *saved])
             .expect("the saved-data mod is loaded"),
-        &ravel_bootstrap_runtime::environment(),
         bytes,
         &installation(),
+        &ravel_bootstrap_runtime::environment(),
     )?;
     let declaration = saved.declaration().map_err(SaveRefused::Data)?;
     let aggregate = admit(bytes).map_err(SaveRefused::Data)?;

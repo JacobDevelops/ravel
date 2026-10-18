@@ -4,7 +4,7 @@ mod routing;
 
 pub use play::{PlayRequests, take_play_requests};
 pub use refusal::DispatchRefused;
-pub use routing::{deliver_packet, deliver_packet_profiled, route, route_profiled};
+pub use routing::{deliver_packet, route};
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId};
 use ravel_host_api::{GameEvent, HostError, Mod};
@@ -75,6 +75,7 @@ impl LifecycleMachine {
 
 /// Broadcasts `event` in resolved order after validating the entire audience.
 ///
+/// Each callback's cost is attributed to `profiler`.
 /// Mod failures stop delivery and are returned in [`Delivery::failure`].
 ///
 /// # Errors
@@ -85,23 +86,6 @@ impl LifecycleMachine {
 ///
 /// Never; all audience members are checked before delivery.
 pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
-    loaded: &mut LoadedMods<'_, H>,
-    event: GameEvent,
-    environment: &FailureEnvironment,
-) -> Result<Delivery, DispatchRefused> {
-    broadcast_profiled(loaded, event, &mut Profiler::off(), environment)
-}
-
-/// Broadcasts `event`, attributing each mod's cost to `profiler`.
-///
-/// # Errors
-///
-/// The same as [`broadcast`].
-///
-/// # Panics
-///
-/// Never; all audience members are checked before delivery.
-pub fn broadcast_profiled<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
     profiler: &mut Profiler,
@@ -150,11 +134,18 @@ pub fn broadcast_profiled<H: std::ops::DerefMut<Target: Mod>>(
 }
 
 pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
-    machine.halted_by().map_or(Ok(()), |mod_id| {
-        Err(DispatchRefused::NotReacting {
-            mod_id: mod_id.clone(),
-            state: LifecycleState::Failed,
-        })
+    let by = machine.halted_by().or_else(|| {
+        machine
+            .tracked_entries()
+            .find(|(entry, state)| {
+                entry.requirement == crate::Requirement::Required
+                    && entry.sides.loads_on(machine.side())
+                    && *state == LifecycleState::Failed
+            })
+            .map(|(entry, _)| &entry.mod_id)
+    });
+    by.map_or(Ok(()), |mod_id| {
+        Err(DispatchRefused::Halted { by: mod_id.clone() })
     })
 }
 

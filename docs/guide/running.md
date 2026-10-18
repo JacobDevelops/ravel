@@ -26,6 +26,10 @@ resolved load order, so a mod that cares about ordering sees the same order ever
 run. A mod that fails on an event ends that broadcast, and the mods after it
 never see it.
 
+Host integrations use one profiler-taking loader entry point per operation:
+`broadcast`, `route`, and `deliver_packet`. A halted set has a distinct
+`DispatchRefused::Halted` refusal rather than an inactive-recipient refusal.
+
 There is a second filter and it is the one that surprises people. An event that
 does not happen on the running side at all has an empty audience — a client tick
 on a dedicated server reaches nobody, and that is not because no mod happened to
@@ -46,7 +50,9 @@ A command's arguments are text a player typed and nothing has interpreted them
 for you.
 
 Two mods cannot claim the same command root, and a command owned by a mod that
-does not load on this side is refused by name rather than swallowed.
+does not load on the executing side is refused by name rather than swallowed.
+On a client distribution, integrated-server commands require the owner's
+`sides` to include `IntegratedServer`; `Client` alone does not authorize them.
 
 ## Sides
 

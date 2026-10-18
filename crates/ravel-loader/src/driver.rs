@@ -1,7 +1,7 @@
 use std::fmt;
 
 use ravel_core::{
-    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure,
+    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, StructuredFailure,
 };
 use ravel_host_api::{HostError, Mod};
 
@@ -31,11 +31,10 @@ pub fn drive_loaded<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<(), DriveError> {
-    let order: Vec<_> = loaded.machine().order().cloned().collect();
     for state in START_ORDER {
-        enter_all(loaded, environment, &order, state)?;
+        enter_all(loaded, environment, state)?;
         if state == LifecycleState::Constructed {
-            register(loaded, environment, &order)?;
+            register(loaded, environment)?;
         }
         if state == LifecycleState::Registered {
             open_services(loaded, environment)?;
@@ -54,10 +53,9 @@ pub fn stop_all<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<(), DriveError> {
-    let order: Vec<_> = loaded.machine().order().cloned().collect();
     let mut failure = None;
     for state in [LifecycleState::Stopping, LifecycleState::Stopped] {
-        if let Err(error) = enter_all(loaded, environment, &order, state) {
+        if let Err(error) = enter_all(loaded, environment, state) {
             failure.get_or_insert(error);
         }
     }
@@ -67,7 +65,6 @@ pub fn stop_all<H: std::ops::DerefMut<Target: Mod>>(
 fn enter_all<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
-    order: &[ModId],
     state: LifecycleState,
 ) -> Result<(), DriveError> {
     let (machine, mods) = loaded.parts();
@@ -76,11 +73,12 @@ fn enter_all<H: std::ops::DerefMut<Target: Mod>>(
         return Ok(());
     }
     let mut failure = None;
-    for mod_id in order {
-        if !machine.loads(mod_id) || machine.state(mod_id).map_err(DriveError::Lifecycle)? != state
-        {
-            continue;
-        }
+    let due: Vec<_> = machine
+        .eligible()
+        .filter(|(_, current)| *current == state)
+        .map(|(entry, _)| entry.mod_id.clone())
+        .collect();
+    for mod_id in &due {
         let host = crate::loaded::instance_mut(mods, mod_id);
         let entered = crate::transition_callback(mod_id, state, || host.enter(state));
         if let Err(error) = entered
@@ -115,15 +113,14 @@ fn fail(
 fn register<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
-    order: &[ModId],
 ) -> Result<(), DriveError> {
     let (machine, mods) = loaded.parts();
-    for mod_id in order {
-        if !machine.loads(mod_id)
-            || machine.state(mod_id).map_err(DriveError::Lifecycle)? != LifecycleState::Constructed
-        {
-            continue;
-        }
+    let due: Vec<_> = machine
+        .eligible()
+        .filter(|(_, state)| *state == LifecycleState::Constructed)
+        .map(|(entry, _)| entry.mod_id.clone())
+        .collect();
+    for mod_id in &due {
         let host = crate::loaded::instance_mut(mods, mod_id);
         let mut window = machine
             .registration_window(mod_id)
@@ -321,10 +318,12 @@ mod tests {
                 ]
             );
             let required = ServiceId::new("absent:prices".parse().expect("a legal service id"));
-            Ok(Some(
-                ServiceDeclaration::new(self.id().clone(), Vec::new(), vec![required])
-                    .expect("a legal requirement"),
-            ))
+            Ok(Some({
+                let mut declaration = ServiceDeclaration::new(self.id().clone());
+
+                declaration.require(required).expect("a legal requirement");
+                declaration
+            }))
         }
     }
 
@@ -622,10 +621,14 @@ mod tests {
         fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             assert!(!self.declaration_panics, "service declaration panic");
             let absent = ServiceId::new("absent:clock".parse().expect("a legal service id"));
-            Ok(Some(
-                ServiceDeclaration::with_optional(self.id.clone(), [], [], [absent])
-                    .expect("a valid optional service"),
-            ))
+            Ok(Some({
+                let mut declaration = ServiceDeclaration::new(self.id.clone());
+
+                declaration
+                    .use_if_present(absent)
+                    .expect("a valid optional service");
+                declaration
+            }))
         }
 
         fn use_services(

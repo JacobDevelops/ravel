@@ -26,13 +26,7 @@ const RECORD_BYTES: &[u8] = b"{\"origin\":\"example\"}";
 
 const EVIDENCE_FILE: &str = "evidence/m2/pre-world-gate.json";
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::{assert_publishable, repository_root};
 
 fn host() -> Host {
     Host {
@@ -571,33 +565,5 @@ fn the_recorded_evidence_is_what_the_gate_does_now() {
 fn the_recorded_evidence_names_no_path_and_no_secret() {
     let stored = fs::read_to_string(repository_root().join(EVIDENCE_FILE))
         .expect("the record should be readable");
-    let lowered = stored.to_lowercase();
-
-    for forbidden in [
-        "/home/",
-        "/users/",
-        "c:\\users\\",
-        "/.minecraft",
-        "tests/fixtures/local/",
-        "evidence/private/",
-        concat!("gh", "p_"),
-        "token",
-        "password",
-        "secret",
-        "credential",
-        "authorization",
-    ] {
-        assert!(
-            !lowered.contains(forbidden),
-            "the record contains `{forbidden}`"
-        );
-    }
-    assert!(
-        !stored.contains(&repository_root().display().to_string()),
-        "the record names the directory it was generated in"
-    );
-    assert!(
-        !stored.contains(&std::env::temp_dir().display().to_string()),
-        "the record names the directory the fixtures were built in"
-    );
+    assert_publishable(&stored);
 }

@@ -59,8 +59,7 @@
 //! example.configure(&resolved)?;
 //!
 //! assert_eq!(example.lanterns, 3);
-//! let key = "lanterns".parse()?;
-//! assert_eq!(resolved.source(&key), Some(ValueSource::Default));
+//! assert_eq!(resolved.source("lanterns"), Ok(ValueSource::Default));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

@@ -47,68 +47,90 @@ pub struct ServiceDeclaration {
 }
 
 impl ServiceDeclaration {
-    /// Declares provided and required services with no optional dependencies.
-    ///
-    /// # Errors
-    ///
-    /// Returns the same declaration errors as [`Self::with_optional`].
-    pub fn new(
-        owner: ModId,
-        provides: impl IntoIterator<Item = ServiceId>,
-        requires: impl IntoIterator<Item = ServiceId>,
-    ) -> Result<Self, ServiceDeclarationError> {
-        Self::with_optional(owner, provides, requires, [])
+    /// Starts an empty declaration for `owner`.
+    #[must_use]
+    pub const fn new(owner: ModId) -> Self {
+        Self {
+            owner,
+            provides: BTreeSet::new(),
+            requires: BTreeSet::new(),
+            may_use: BTreeSet::new(),
+        }
     }
 
-    /// Declares provided, required, and optional services.
-    ///
-    /// Bind the lists to `provides`, `requires`, and `may_use` names before calling
-    /// this constructor when more than one is nonempty: required and optional
-    /// dependencies intentionally have different admission consequences.
+    /// Adds a service this mod answers.
     ///
     /// # Errors
     ///
-    /// Returns an error for foreign ownership, self-dependencies, or required/optional overlap.
-    pub fn with_optional(
-        owner: ModId,
-        provides: impl IntoIterator<Item = ServiceId>,
-        requires: impl IntoIterator<Item = ServiceId>,
-        may_use: impl IntoIterator<Item = ServiceId>,
-    ) -> Result<Self, ServiceDeclarationError> {
-        let provides: BTreeSet<ServiceId> = provides.into_iter().collect();
-        let requires: BTreeSet<ServiceId> = requires.into_iter().collect();
-        let may_use: BTreeSet<ServiceId> = may_use.into_iter().collect();
-
-        if let Some(foreign) = provides.iter().find(|id| id.owner() != &owner) {
+    /// Refuses foreign ownership or a service already declared as a dependency.
+    pub fn provide(&mut self, service: ServiceId) -> Result<&mut Self, ServiceDeclarationError> {
+        if service.owner() != &self.owner {
             return Err(ServiceDeclarationError::NotOurs {
-                declaring: owner,
-                service: foreign.clone(),
+                declaring: self.owner.clone(),
+                service,
             });
         }
-        if let Some(own) = requires.intersection(&provides).next() {
+        if self.requires.contains(&service) {
             return Err(ServiceDeclarationError::RequiresItself {
-                declaring: owner,
-                service: own.clone(),
+                declaring: self.owner.clone(),
+                service,
             });
         }
-        if let Some(own) = may_use.intersection(&provides).next() {
+        if self.may_use.contains(&service) {
             return Err(ServiceDeclarationError::MayUseItself {
-                declaring: owner,
-                service: own.clone(),
+                declaring: self.owner.clone(),
+                service,
             });
         }
-        if let Some(both) = may_use.intersection(&requires).next() {
+        self.provides.insert(service);
+        Ok(self)
+    }
+
+    /// Adds a service this mod cannot start without.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a service already provided or declared optional.
+    pub fn require(&mut self, service: ServiceId) -> Result<&mut Self, ServiceDeclarationError> {
+        if self.provides.contains(&service) {
+            return Err(ServiceDeclarationError::RequiresItself {
+                declaring: self.owner.clone(),
+                service,
+            });
+        }
+        if self.may_use.contains(&service) {
             return Err(ServiceDeclarationError::RequiredAndOptional {
-                declaring: owner,
-                service: both.clone(),
+                declaring: self.owner.clone(),
+                service,
             });
         }
-        Ok(Self {
-            owner,
-            provides,
-            requires,
-            may_use,
-        })
+        self.requires.insert(service);
+        Ok(self)
+    }
+
+    /// Adds a service this mod uses only when a provider is present.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a service already provided or required.
+    pub fn use_if_present(
+        &mut self,
+        service: ServiceId,
+    ) -> Result<&mut Self, ServiceDeclarationError> {
+        if self.provides.contains(&service) {
+            return Err(ServiceDeclarationError::MayUseItself {
+                declaring: self.owner.clone(),
+                service,
+            });
+        }
+        if self.requires.contains(&service) {
+            return Err(ServiceDeclarationError::RequiredAndOptional {
+                declaring: self.owner.clone(),
+                service,
+            });
+        }
+        self.may_use.insert(service);
+        Ok(self)
     }
 
     /// Returns the mod this declaration is for.
@@ -356,7 +378,9 @@ mod tests {
 
     #[test]
     fn a_mod_cannot_offer_to_answer_another_mods_service() {
-        let refusal = ServiceDeclaration::new(id("consumer"), [service("base", "prices")], [])
+        let mut declaration = ServiceDeclaration::new(id("consumer"));
+        let refusal = declaration
+            .provide(service("base", "prices"))
             .expect_err("the name is not the declaring mod's");
         assert_eq!(
             refusal,
@@ -370,12 +394,13 @@ mod tests {
 
     #[test]
     fn a_mod_that_requires_what_it_answers_is_refused_by_name() {
-        let refusal = ServiceDeclaration::new(
-            id("base"),
-            [service("base", "prices")],
-            [service("base", "prices")],
-        )
-        .expect_err("nothing starts it");
+        let mut declaration = ServiceDeclaration::new(id("base"));
+        declaration
+            .provide(service("base", "prices"))
+            .expect("our service");
+        let refusal = declaration
+            .require(service("base", "prices"))
+            .expect_err("nothing starts it");
         assert_eq!(
             refusal,
             ServiceDeclarationError::RequiresItself {
@@ -387,12 +412,16 @@ mod tests {
 
     #[test]
     fn a_declaration_reports_both_halves_in_name_order() {
-        let declaration = ServiceDeclaration::new(
-            id("base"),
-            [service("base", "stock"), service("base", "prices")],
-            [service("other", "clock")],
-        )
-        .expect("a legal declaration");
+        let mut declaration = ServiceDeclaration::new(id("base"));
+        declaration
+            .provide(service("base", "stock"))
+            .expect("our service");
+        declaration
+            .provide(service("base", "prices"))
+            .expect("our service");
+        declaration
+            .require(service("other", "clock"))
+            .expect("a dependency");
 
         assert_eq!(declaration.owner(), &id("base"));
         assert_eq!(
@@ -440,13 +469,13 @@ mod tests {
     fn an_optional_service_is_declared_callable_and_reported_as_one_it_can_do_without() {
         let prices = service("base", "prices");
         let clock = service("other", "clock");
-        let declaration = ServiceDeclaration::with_optional(
-            id("consumer"),
-            [],
-            [clock.clone()],
-            [prices.clone()],
-        )
-        .expect("a legal declaration");
+        let mut declaration = ServiceDeclaration::new(id("consumer"));
+        declaration
+            .require(clock.clone())
+            .expect("a required service");
+        declaration
+            .use_if_present(prices.clone())
+            .expect("an optional service");
 
         assert_eq!(declaration.may_use().collect::<Vec<_>>(), [&prices]);
         assert_eq!(declaration.requires().collect::<Vec<_>>(), [&clock]);
@@ -457,8 +486,10 @@ mod tests {
     }
 
     #[test]
-    fn the_three_part_form_declares_nothing_optional() {
-        let declaration = ServiceDeclaration::new(id("consumer"), [], [service("base", "prices")])
+    fn a_required_service_declares_nothing_optional() {
+        let mut declaration = ServiceDeclaration::new(id("consumer"));
+        declaration
+            .require(service("base", "prices"))
             .expect("a legal declaration");
         assert_eq!(declaration.may_use().count(), 0);
         assert!(!declaration.may_do_without(&service("base", "prices")));
@@ -466,13 +497,13 @@ mod tests {
 
     #[test]
     fn a_mod_that_may_use_what_it_answers_is_refused_by_name() {
-        let refusal = ServiceDeclaration::with_optional(
-            id("base"),
-            [service("base", "prices")],
-            [],
-            [service("base", "prices")],
-        )
-        .expect_err("nothing starts it");
+        let mut declaration = ServiceDeclaration::new(id("base"));
+        declaration
+            .provide(service("base", "prices"))
+            .expect("our service");
+        let refusal = declaration
+            .use_if_present(service("base", "prices"))
+            .expect_err("nothing starts it");
         assert_eq!(
             refusal,
             ServiceDeclarationError::MayUseItself {
@@ -485,13 +516,13 @@ mod tests {
 
     #[test]
     fn one_service_declared_both_required_and_optional_is_refused_rather_than_resolved() {
-        let refusal = ServiceDeclaration::with_optional(
-            id("consumer"),
-            [],
-            [service("base", "prices")],
-            [service("base", "prices")],
-        )
-        .expect_err("the declaration says two things");
+        let mut declaration = ServiceDeclaration::new(id("consumer"));
+        declaration
+            .require(service("base", "prices"))
+            .expect("a required service");
+        let refusal = declaration
+            .use_if_present(service("base", "prices"))
+            .expect_err("the declaration says two things");
         assert_eq!(
             refusal,
             ServiceDeclarationError::RequiredAndOptional {
@@ -500,6 +531,35 @@ mod tests {
             }
         );
         assert!(refusal.to_string().contains("base:prices"), "{refusal}");
+    }
+
+    #[test]
+    fn insertion_checks_both_orders_without_changing_a_refused_declaration() {
+        let prices = service("base", "prices");
+        let mut required = ServiceDeclaration::new(id("base"));
+        required.require(prices.clone()).expect("a dependency");
+        let before = required.clone();
+        assert!(matches!(
+            required.provide(prices.clone()),
+            Err(ServiceDeclarationError::RequiresItself { .. })
+        ));
+        assert_eq!(required, before);
+
+        let mut optional = ServiceDeclaration::new(id("base"));
+        optional
+            .use_if_present(prices.clone())
+            .expect("an optional dependency");
+        let before = optional.clone();
+        assert!(matches!(
+            optional.provide(prices.clone()),
+            Err(ServiceDeclarationError::MayUseItself { .. })
+        ));
+        assert_eq!(optional, before);
+        assert!(matches!(
+            optional.require(prices),
+            Err(ServiceDeclarationError::RequiredAndOptional { .. })
+        ));
+        assert_eq!(optional, before);
     }
 
     #[test]

@@ -142,6 +142,7 @@ impl InterceptionDeclaration {
     }
 
     /// Declares that this mod is asked after `earlier`, at every point they share.
+    /// Both owners must answer at least one point, though not necessarily the same point.
     pub fn after(&mut self, earlier: &ModId) -> &mut Self {
         self.after.push(earlier.clone());
         self
@@ -266,13 +267,38 @@ impl Points {
     ///
     /// # Errors
     ///
-    /// Returns contested replacements or circular ordering.
+    /// Returns unknown ordering owners, contested replacements, or circular ordering.
     pub fn admit(self) -> Result<AdmittedPoints, InterceptionRefused> {
+        self.validate_owners()?;
         let mut ordered = BTreeMap::new();
         for point in Point::ALL {
             ordered.insert(point, self.order(point)?);
         }
         Ok(AdmittedPoints { ordered })
+    }
+
+    fn validate_owners(&self) -> Result<(), InterceptionRefused> {
+        let answering: BTreeSet<_> = self.answers.iter().map(|answer| &answer.owner).collect();
+        let owners: BTreeSet<_> = self
+            .after
+            .iter()
+            .flat_map(|(earlier, later)| std::iter::once(earlier).chain(later))
+            .filter(|owner| !answering.contains(owner))
+            .collect();
+        if owners.is_empty() {
+            return Ok(());
+        }
+        let claimants: BTreeSet<_> = self
+            .after
+            .iter()
+            .flat_map(|(earlier, later)| later.iter().map(move |later| (earlier, later)))
+            .filter(|(earlier, later)| owners.contains(earlier) || owners.contains(later))
+            .map(|(_, later)| later)
+            .collect();
+        Err(InterceptionRefused::UnknownOwners {
+            owners: owners.into_iter().cloned().collect(),
+            claimants: claimants.into_iter().cloned().collect(),
+        })
     }
 
     fn order(&self, point: Point) -> Result<Vec<ModId>, InterceptionRefused> {
@@ -411,6 +437,13 @@ impl Round {
 /// Why a declared set of interceptions cannot be asked.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InterceptionRefused {
+    /// An ordering endpoint answers no published point.
+    UnknownOwners {
+        /// Unknown endpoints, in name order.
+        owners: Vec<ModId>,
+        /// The owners declaring the invalid edges, in name order.
+        claimants: Vec<ModId>,
+    },
     /// Two mods each replace the outcome at one point.
     ContestedPoint {
         /// The contested point.
@@ -428,11 +461,12 @@ pub enum InterceptionRefused {
 }
 
 impl InterceptionRefused {
-    /// Returns the published point the refusal is about.
+    /// Returns the published point the refusal is about, if it concerns one point.
     #[must_use]
-    pub const fn point(&self) -> Point {
+    pub const fn point(&self) -> Option<Point> {
         match self {
-            Self::ContestedPoint { point, .. } | Self::Circular { point, .. } => *point,
+            Self::ContestedPoint { point, .. } | Self::Circular { point, .. } => Some(*point),
+            Self::UnknownOwners { .. } => None,
         }
     }
 
@@ -440,7 +474,9 @@ impl InterceptionRefused {
     #[must_use]
     pub fn claimants(&self) -> &[ModId] {
         match self {
-            Self::ContestedPoint { claimants, .. } | Self::Circular { claimants, .. } => claimants,
+            Self::ContestedPoint { claimants, .. }
+            | Self::Circular { claimants, .. }
+            | Self::UnknownOwners { claimants, .. } => claimants,
         }
     }
 }
@@ -448,6 +484,11 @@ impl InterceptionRefused {
 impl fmt::Display for InterceptionRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnknownOwners { owners, .. } => write!(
+                formatter,
+                "{} is ordered against but answers no interception point",
+                ModId::display_list(owners)
+            ),
             Self::ContestedPoint { point, claimants } => {
                 let names: Vec<&str> = claimants.iter().map(ModId::as_str).collect();
                 write!(
@@ -490,6 +531,43 @@ mod tests {
             (Some(first), Some(second)) => first < second,
             (None, _) | (Some(_), None) => false,
         }
+    }
+
+    #[test]
+    fn unknown_ordering_endpoints_name_the_declaring_claimants() {
+        let earlier = id("earlier");
+        let later = id("later");
+        for answering in [None, Some(&earlier), Some(&later)] {
+            let mut points = Points::default();
+            if let Some(owner) = answering {
+                points.answer_at(owner, Point::WorldIsSaved);
+            }
+            points.after(&later, &earlier);
+            let refused = points.admit().expect_err("unknown endpoints are refused");
+            let expected: Vec<_> = [&earlier, &later]
+                .into_iter()
+                .filter(|owner| Some(*owner) != answering)
+                .cloned()
+                .collect();
+            assert_eq!(refused.point(), None);
+            assert_eq!(refused.claimants(), std::slice::from_ref(&later));
+            assert_eq!(
+                refused,
+                InterceptionRefused::UnknownOwners {
+                    owners: expected,
+                    claimants: vec![later.clone()],
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn ordering_owners_at_different_points_are_known() {
+        let mut points = Points::default();
+        points.answer_at(&id("earlier"), Point::WorldIsSaved);
+        points.answer_at(&id("later"), Point::BlockIsBroken);
+        points.after(&id("later"), &id("earlier"));
+        points.admit().expect("known owners need not share a point");
     }
 
     #[test]
@@ -621,7 +699,7 @@ mod tests {
             .admit()
             .expect_err("two replacements at one point are a conflict");
 
-        assert_eq!(refusal.point(), Point::BlockIsBroken);
+        assert_eq!(refusal.point(), Some(Point::BlockIsBroken));
         assert_eq!(refusal.claimants(), [first.clone(), second.clone()]);
         assert!(refusal.to_string().contains(first.as_str()));
         assert!(refusal.to_string().contains(second.as_str()));
@@ -685,7 +763,7 @@ mod tests {
             .admit()
             .expect_err("a cycle is rejected before any round");
 
-        assert_eq!(refusal.point(), Point::BlockIsBroken);
+        assert_eq!(refusal.point(), Some(Point::BlockIsBroken));
         assert_eq!(refusal.claimants(), [first, second]);
     }
 

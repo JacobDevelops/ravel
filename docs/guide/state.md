@@ -196,14 +196,15 @@ validates against it. Pass `None` if you publish no such name.
 
 A `MigrationStep` is a plain `fn(&JsonValue) -> Result<JsonValue,
 MigrationFailed>` — a function item, not a closure — so `to_two` is passed by
-name. `MigrationChain::covers` checks, before any world is opened, that every
+name. `MigrationChain::check_covers` checks, before any world is opened, that every
 declared version above the oldest has a step; call it in your own tests.
 
 The loader resolves your declaration against what the world holds and produces a
 `SavedDataPlan`: the version is current, or there is an ordered list of steps, or
-the world is refused. A refusal withholds the world rather than opening it
-half-applied — a save that will not open is recoverable, and a save that opened
-empty is not.
+the world is refused. A required mod's refusal withholds the world rather than
+opening it half-applied — a save that will not open is recoverable, and a save
+that opened empty is not. Before world mutation, an optional owner's migration
+or callback failure isolates that mod and preserves its original stored envelope.
 
 **The loader crosses the steps.** It applies your `MigrationChain` before
 `open_saved_data`, so the envelope you receive is always at your current declared
@@ -239,26 +240,22 @@ service from a client-only mod, your mod does not start on a dedicated server.
 ### Using a mod only if it is installed
 
 Most compatibility between two mods is not a requirement. If your mod is better
-when another is installed and fine without it, `requires` is the wrong word: it
-makes your mod's presence stop the game unless the other one is there. Say it
-with the third half of the declaration instead.
+when another is installed and fine without it, `require` is the wrong word: it
+makes your mod's presence stop the game unless the other one is there. Declare
+that service with `use_if_present` instead.
 
 ```rust
 fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-    ServiceDeclaration::with_optional(
-        Self::declared_id().clone(),
-        [],            // what you answer
-        [],            // what you need
-        [landmarks()], // what you use if something answers it
-    )
-    .map(Some)
-    .map_err(ModError::from_display)
+    let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+    declaration
+        .use_if_present(landmarks())
+        .map_err(ModError::from_display)?;
+    Ok(Some(declaration))
 }
 ```
 
-`with_optional` is `new` plus that fourth argument, and `new` still means "none
-of this is optional". What the optional half changes is one thing: a missing
-provider no longer refuses the set. Everything else is the same. A provider that
+`use_if_present` makes one dependency optional: a missing provider no longer
+refuses the set. Everything else is the same. A provider that
 *is* running is still composed before you, so you never get told a mod is missing
 because you happened to be composed first, and calling an optionally declared
 service is legal rather than `Undeclared`.

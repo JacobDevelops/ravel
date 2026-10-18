@@ -630,16 +630,15 @@ mod tests {
         fn service_declaration(
             &self,
         ) -> Result<Option<ravel_host_api::ServiceDeclaration>, ravel_host_api::ModError> {
-            Ok(Some(
-                ravel_host_api::ServiceDeclaration::new(
-                    self.id.clone(),
-                    [],
-                    [ravel_host_api::ServiceId::new(
+            Ok(Some({
+                let mut declaration = ravel_host_api::ServiceDeclaration::new(self.id.clone());
+                declaration
+                    .require(ravel_host_api::ServiceId::new(
                         "absent:clock".parse().expect("a valid service id"),
-                    )],
-                )
-                .expect("a valid service declaration"),
-            ))
+                    ))
+                    .expect("a valid service declaration");
+                declaration
+            }))
         }
     }
 

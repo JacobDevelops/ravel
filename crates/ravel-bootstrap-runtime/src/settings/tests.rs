@@ -508,14 +508,8 @@ fn a_saved_edit_round_trips_through_the_document_it_is_written_back_as() {
     let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&written))
         .expect("the written document should resolve");
 
-    assert_eq!(
-        relaunched.value(&"render.quality".parse().expect("a valid key")),
-        Some(&json!("fancy"))
-    );
-    assert_eq!(
-        relaunched.value(&"render.distance".parse().expect("a valid key")),
-        Some(&json!(8))
-    );
+    assert_eq!(relaunched.value("render.quality"), Ok(&json!("fancy")));
+    assert_eq!(relaunched.value("render.distance"), Ok(&json!(8)));
     assert!(!relaunched.restart_pending());
 }
 

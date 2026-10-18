@@ -79,7 +79,11 @@ fn register_all(
             outcomes.push((
                 mod_id.clone(),
                 host.register(&mut window).map_err(|error| {
-                    error.with_context(mod_id.clone(), LifecycleState::Constructed)
+                    HostError::from_operation_refusal(
+                        mod_id.clone(),
+                        LifecycleState::Constructed,
+                        error,
+                    )
                 }),
             ));
         }

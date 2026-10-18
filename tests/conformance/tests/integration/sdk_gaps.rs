@@ -355,7 +355,7 @@ fn two_mods_replacing_one_outcome_are_refused_at_the_barrier_naming_both() {
     let refusal = points
         .admit()
         .expect_err("two replacements at one point are a conflict");
-    assert_eq!(refusal.point(), Point::BlockIsBroken);
+    assert_eq!(refusal.point(), Some(Point::BlockIsBroken));
     assert_eq!(refusal.claimants(), [first, second]);
 }
 

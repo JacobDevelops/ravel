@@ -372,7 +372,14 @@ impl fmt::Display for DeclarationError {
     }
 }
 
-impl std::error::Error for DeclarationError {}
+impl std::error::Error for DeclarationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Default { reason, .. } => Some(reason),
+            Self::Syntax(_) | Self::Schema(_) => None,
+        }
+    }
+}
 
 impl StructuredFailure for DeclarationError {
     /// A declaration that will not read has no `SPEC.md` §9.2 kind. That list
@@ -509,6 +516,10 @@ mod tests {
                     found: "string",
                 },
             }
+        );
+        assert!(
+            std::error::Error::source(&error)
+                .is_some_and(<dyn std::error::Error>::is::<ValueError>)
         );
         assert!(error.to_string().contains("its own value schema refuses"));
         let direct = serde_json::from_str::<ConfigurationDeclaration>(contradictory)

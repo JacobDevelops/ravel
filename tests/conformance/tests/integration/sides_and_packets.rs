@@ -3,7 +3,6 @@
 //! Side isolation through declarations and manifests, plus packet routing and framing.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
 use ravel_loader::{
@@ -184,13 +183,7 @@ fn a_value_built_for_the_client_is_still_refused_to_the_server_half_of_one_proce
 const CLIENT_ONLY_PACKAGE: &str = "tests/fixtures/public/packages/client-only";
 const NOOP_PACKAGE: &str = "tests/fixtures/public/packages/noop";
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn discovered(directory: &str) -> TestPackage {
     TestPackage::read(repository_root().join(directory)).expect("the fixture package is readable")
@@ -363,6 +356,7 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
             )
             .expect("all active mods have hosts"),
             &arriving,
+            &mut ravel_observability::Profiler::off(),
             &ravel_bootstrap_runtime::environment(),
         )
         .expect_err("a server side is not an end of a client-bound link");
@@ -402,6 +396,7 @@ fn the_same_packet_on_the_client_round_trips_into_the_overlay_the_server_sent() 
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut client])
             .expect("all active mods have hosts"),
         &arriving,
+        &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
     .expect("the client is the receiving end");
@@ -449,6 +444,7 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
         )
         .expect("all active mods have hosts"),
         &arriving,
+        &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
     .expect("the server half owns the contract and is running");
@@ -493,6 +489,7 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut server])
             .expect("all active mods have hosts"),
         &arriving,
+        &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
     .expect("the routing reached the owner");

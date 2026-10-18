@@ -59,10 +59,11 @@ impl Mod for Recording {
         }
         let required =
             ravel_host_api::ServiceId::new("absent:prices".parse().expect("a legal service id"));
-        Ok(Some(
-            ravel_host_api::ServiceDeclaration::new(self.id.clone(), [], [required])
-                .expect("a legal requirement"),
-        ))
+        Ok(Some({
+            let mut declaration = ravel_host_api::ServiceDeclaration::new(self.id.clone());
+            declaration.require(required).expect("a legal requirement");
+            declaration
+        }))
     }
 }
 

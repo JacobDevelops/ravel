@@ -8,9 +8,14 @@ use ravel_network::{Direction, PacketId};
 pub enum DispatchRefused {
     /// The lifecycle refused callback failure attribution.
     Lifecycle(crate::LifecycleError),
+    /// A mod failure halted the set.
+    Halted {
+        /// The owner whose failure halted the set.
+        by: ModId,
+    },
     /// The set is not in a state that reacts.
     NotReacting {
-        /// The halting mod, or the first non-reacting audience member in resolved order.
+        /// The first non-reacting audience member in resolved order.
         mod_id: ModId,
         /// The state it is in.
         state: LifecycleState,
@@ -32,7 +37,7 @@ pub enum DispatchRefused {
         /// The state it is in.
         state: LifecycleState,
     },
-    /// The owner is loaded on sides that do not include the running one.
+    /// The owner's declared sides do not include the executing side.
     OwnerWrongSide {
         /// The mod that owns the command.
         mod_id: ModId,
@@ -68,6 +73,7 @@ impl DispatchRefused {
     pub fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::Lifecycle(error) => error.mod_id(),
+            Self::Halted { by } => Some(by),
             Self::NotReacting { mod_id, .. }
             | Self::OwnerNotReacting { mod_id, .. }
             | Self::OwnerWrongSide { mod_id }
@@ -84,6 +90,7 @@ impl fmt::Display for DispatchRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::Halted { by } => write!(formatter, "the set halted after `{by}` failed"),
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",
@@ -126,14 +133,30 @@ impl fmt::Display for DispatchRefused {
     }
 }
 
-impl std::error::Error for DispatchRefused {}
+impl std::error::Error for DispatchRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Lifecycle(error) => Some(error),
+            Self::Halted { .. }
+            | Self::NotReacting { .. }
+            | Self::Unclaimed { .. }
+            | Self::NotACommand { .. }
+            | Self::OwnerNotReacting { .. }
+            | Self::OwnerWrongSide { .. }
+            | Self::PacketForeignSide { .. }
+            | Self::PacketWrongSide { .. }
+            | Self::Absent { .. } => None,
+        }
+    }
+}
 
 impl StructuredFailure for DispatchRefused {
     /// Dispatch refusals are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
-            Self::NotReacting { .. }
+            Self::Halted { .. }
+            | Self::NotReacting { .. }
             | Self::Unclaimed { .. }
             | Self::NotACommand { .. }
             | Self::OwnerNotReacting { .. }
@@ -147,6 +170,7 @@ impl StructuredFailure for DispatchRefused {
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
+            Self::Halted { .. } => LifecycleState::Failed,
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
             | Self::NotACommand { .. }

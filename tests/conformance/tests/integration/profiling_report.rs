@@ -1,11 +1,10 @@
 //! Profiling behavior and the accuracy, support, privacy, and budget contracts in recorded evidence.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
 use ravel_host_api::{GameEvent, Mod};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, broadcast, broadcast_profiled};
+use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, broadcast};
 use ravel_observability::{CallKind, Metric, Profiler, ProfilingReport, Support};
 use serde_json::Value;
 
@@ -14,13 +13,7 @@ const EVIDENCE_FILE: &str = "evidence/m3/profiling-overhead.json";
 // Independent limit: one percent of a tick at 20 TPS.
 const NORMAL_MODE_BUDGET_NS: f64 = 500_000.0;
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::{assert_publishable, repository_root};
 
 fn record() -> Value {
     let path = repository_root().join(EVIDENCE_FILE);
@@ -242,30 +235,7 @@ fn the_break_even_crossing_count_is_recorded_so_the_assumed_one_can_be_replaced(
 fn the_recorded_evidence_names_no_path_and_no_secret() {
     let stored = fs::read_to_string(repository_root().join(EVIDENCE_FILE))
         .expect("the record should be readable");
-    let lowered = stored.to_lowercase();
-
-    for forbidden in [
-        "/home/",
-        "/users/",
-        "c:\\users\\",
-        "/.minecraft",
-        "tests/fixtures/local/",
-        "evidence/private/",
-        "token",
-        "password",
-        "secret",
-        "credential",
-        "authorization",
-    ] {
-        assert!(
-            !lowered.contains(forbidden),
-            "the record contains `{forbidden}`"
-        );
-    }
-    assert!(
-        !stored.contains(&repository_root().display().to_string()),
-        "the record names the directory it was generated in"
-    );
+    assert_publishable(&stored);
 }
 
 #[test]
@@ -278,11 +248,12 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut plain])
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
+        &mut Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
     .expect("the set is running");
     let mut off = Profiler::off();
-    let observed = broadcast_profiled(
+    let observed = broadcast(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut profiled])
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
@@ -306,7 +277,7 @@ fn a_profiled_dispatch_attributes_the_delivery_to_the_mod_that_received_it() {
     let mut profiler = Profiler::on(std::time::Duration::from_secs(1));
 
     for _ in 0..3 {
-        broadcast_profiled(
+        broadcast(
             &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active mods have hosts"),
             GameEvent::ClientTick,

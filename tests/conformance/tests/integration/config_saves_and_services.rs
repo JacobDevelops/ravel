@@ -74,9 +74,9 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
     let aggregate = open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&bytes),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect("both declared steps run");
 
@@ -103,7 +103,7 @@ fn the_shipped_chain_covers_every_version_the_shipped_declaration_admits() {
     let stock = StockMod::new();
     stock
         .chain()
-        .covers(&stock.declaration().expect("valid declaration"))
+        .check_covers(&stock.declaration().expect("valid declaration"))
         .expect("every declared version has a step into it");
     assert!(
         stock
@@ -130,9 +130,9 @@ fn a_world_already_at_the_current_version_is_read_without_a_step() {
     open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&bytes),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect("nothing to migrate");
 
@@ -150,9 +150,9 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
     let refusal = open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&bytes),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect_err("version 4 is above what this build writes");
 
@@ -277,14 +277,16 @@ impl Mod for Latch {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        Ok(Some(
-            ServiceDeclaration::new(
-                Self::declared_id().clone(),
-                [latch_service()],
-                [bolt_service()],
-            )
-            .expect("the latch service declaration is valid"),
-        ))
+        Ok(Some({
+            let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+            declaration
+                .provide(latch_service())
+                .expect("the latch service declaration is valid");
+            declaration
+                .require(bolt_service())
+                .expect("the latch service declaration is valid");
+            declaration
+        }))
     }
 }
 
@@ -295,14 +297,16 @@ impl Mod for Bolt {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        Ok(Some(
-            ServiceDeclaration::new(
-                Self::declared_id().clone(),
-                [bolt_service()],
-                [latch_service()],
-            )
-            .expect("the bolt service declaration is valid"),
-        ))
+        Ok(Some({
+            let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+            declaration
+                .provide(bolt_service())
+                .expect("the bolt service declaration is valid");
+            declaration
+                .require(latch_service())
+                .expect("the bolt service declaration is valid");
+            declaration
+        }))
     }
 }
 
@@ -339,14 +343,9 @@ fn two_mods_that_require_each_other_are_refused_and_both_are_named() {
 
 #[test]
 fn a_mod_that_requires_the_service_it_answers_is_refused_when_it_declares_it() {
-    assert!(
-        ServiceDeclaration::new(
-            Latch::declared_id().clone(),
-            [latch_service()],
-            [latch_service()],
-        )
-        .is_err()
-    );
+    let mut declaration = ServiceDeclaration::new(Latch::declared_id().clone());
+    declaration.provide(latch_service()).expect("our service");
+    assert!(declaration.require(latch_service()).is_err());
 }
 
 #[test]
@@ -359,9 +358,9 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
     let refusal = open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&bytes),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect_err("the first step cannot read this shape");
 
@@ -387,9 +386,9 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
     open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&world(owner, 1, json!({ "count": 12 }))),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect_err("the first step cannot read this shape");
     assert_eq!(machine.state(owner), Ok(LifecycleState::Failed));
@@ -405,9 +404,9 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
             &mut [&mut next_stock],
         )
         .expect("all active mods have hosts"),
-        &environment(),
         Some(&world(owner, 1, json!({ "stock": 5 }))),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect("a legal version-1 world");
     assert_eq!(next_stock.stock().stock, 5);
@@ -579,10 +578,9 @@ fn a_pack_may_state_a_legal_value_and_the_mod_reads_that_one() {
     stock.configure(&resolved).expect("a legal value");
     assert_eq!(stock.restock_size(), 32);
 
-    let key = RESTOCK_SIZE.parse().expect("a legal setting key");
     assert_eq!(
-        resolved.source(&key),
-        Some(ravel_sdk::config::ValueSource::Pack)
+        resolved.source(RESTOCK_SIZE),
+        Ok(ravel_sdk::config::ValueSource::Pack)
     );
 }
 
@@ -598,10 +596,14 @@ impl Mod for Fussy {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        Ok(Some(
-            ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
-                .expect("the fussy service declaration is valid"),
-        ))
+        Ok(Some({
+            let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+
+            declaration
+                .require(prices())
+                .expect("the fussy service declaration is valid");
+            declaration
+        }))
     }
 
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -655,9 +657,9 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
     open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&world(owner, 1, json!({ "stock": 9 }))),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect("a legal version-1 world");
 
@@ -673,9 +675,9 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
     open_saved_data(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut reopened])
             .expect("all active mods have hosts"),
-        &environment(),
         Some(&bytes),
         &BTreeMap::new(),
+        &environment(),
     )
     .expect("its own shape at its own version");
     assert_eq!(reopened.stock(), stock.stock());

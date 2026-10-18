@@ -456,9 +456,8 @@ mod tests {
                 .expect_err("a server side is not an end of a client-bound link");
             assert!(matches!(
                 error,
-                ModError::InvalidPacket {
-                    source: WireError::InvalidValue { .. }
-                }
+                ModError::InvalidPacket { source }
+                    if matches!(source.as_ref(), DeliveryRefused::WrongSide { .. })
             ));
             assert!(
                 host.work_done().is_empty(),

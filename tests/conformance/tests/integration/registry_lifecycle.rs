@@ -11,6 +11,7 @@ use ravel_sdk::{Mod, Side};
 
 mod expectations;
 
+use super::repository_root;
 use expectations::{assert_dependency_order, assert_started};
 
 type Constructor = fn(Side) -> Box<dyn Mod>;
@@ -82,6 +83,35 @@ fn lifecycle_entry(manifest: &PackageManifest) -> LifecycleEntry {
         requirement: Requirement::Required,
         saved_data_versions: manifest.saved_data_versions.iter().copied().collect(),
     }
+}
+
+#[test]
+fn every_discovered_counterpart_is_driven_through_lifecycle_admission() {
+    let directory = repository_root().join("registry/mods");
+    let discovered: std::collections::BTreeSet<_> = std::fs::read_dir(directory)
+        .expect("the registry directory is readable")
+        .map(|entry| {
+            entry
+                .expect("a readable registry entry")
+                .path()
+                .join("package.json")
+        })
+        .filter(|path| path.is_file())
+        .map(|path| {
+            let document = std::fs::read_to_string(path).expect("a readable shipped manifest");
+            PackageManifest::parse(&document)
+                .expect("a shipped manifest")
+                .id
+        })
+        .collect();
+    let driven: std::collections::BTreeSet<_> = manifests()
+        .into_iter()
+        .map(|manifest| manifest.id)
+        .collect();
+    assert_eq!(
+        discovered, driven,
+        "every shipped counterpart must enter PACKAGES"
+    );
 }
 
 #[test]

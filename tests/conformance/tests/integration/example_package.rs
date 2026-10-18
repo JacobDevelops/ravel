@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ravel_example_content_mod::ContentMod;
 use ravel_example_minimal_mod::MinimalMod;
@@ -12,13 +12,7 @@ use ravel_example_stateful_mod::Journal;
 use ravel_package::{PackageManifest, verify_package};
 use ravel_sdk::{Declared, Mod, Side};
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn declaration<M: Mod + Declared>(host: &M) -> (&'static str, Vec<u32>) {
     let versions = host

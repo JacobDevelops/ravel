@@ -401,9 +401,11 @@ impl Mod for Entry {
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         let service = Self::contribution_service()?;
-        ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .provide(service)
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {

@@ -121,9 +121,11 @@ impl Mod for SurveyMod {
     }
 
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [landmarks()], [])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .provide(landmarks())
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     /// Answers with the landmarks this survey holds.
@@ -189,12 +191,14 @@ impl Mod for CompassMod {
 
     /// Declares the survey as a service this mod may use rather than one it needs.
     ///
-    /// The difference is the whole mod: with `requires` in place of the optional
-    /// argument, installing this compass without the survey would refuse the set.
+    /// With `require` instead of `use_if_present`, installing this compass
+    /// without the survey would refuse the set.
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-        ServiceDeclaration::with_optional(Self::declared_id().clone(), [], [], [landmarks()])
-            .map(Some)
-            .map_err(ModError::from_display)
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .use_if_present(landmarks())
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
     }
 
     /// Calls the survey when one is installed, and records doing without when none
@@ -314,8 +318,12 @@ mod tests {
         let mut survey = SurveyMod::refusing();
         let refusal = survey
             .answer_service(&ServiceRequest::new(landmarks(), json!(null)))
-            .expect_err("this survey has no chart")
-            .with_context(SurveyMod::declared_id().clone(), LifecycleState::Running);
+            .expect_err("this survey has no chart");
+        let refusal = ravel_sdk::HostError::from_operation_refusal(
+            SurveyMod::declared_id().clone(),
+            LifecycleState::Running,
+            refusal,
+        );
         assert_eq!(refusal.mod_id(), SurveyMod::declared_id());
         assert_eq!(refusal.state(), LifecycleState::Running);
         assert!(refusal.to_string().contains("no chart loaded"), "{refusal}");

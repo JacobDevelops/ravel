@@ -507,7 +507,7 @@ fn a_tag_member_the_game_owns_is_allowed_and_one_nothing_pins_is_refused() {
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: tag.to_string(),
+            tag,
             member: absent,
             kind: UnprovidedEntry::NoSuchMember,
         }
@@ -532,7 +532,7 @@ fn a_tag_member_in_a_pinned_mods_namespace_that_the_mod_never_declared_is_refuse
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: tag.to_string(),
+            tag,
             member: never,
             kind: UnprovidedEntry::MemberDoesNotDeclareIt,
         }

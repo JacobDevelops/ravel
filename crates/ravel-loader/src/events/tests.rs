@@ -10,21 +10,36 @@ fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
 ) -> Result<Delivery, DispatchRefused> {
-    super::broadcast(loaded, event, &crate::tests::environment())
+    super::broadcast(
+        loaded,
+        event,
+        &mut ravel_observability::Profiler::off(),
+        &crate::tests::environment(),
+    )
 }
 
 fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     packet: &PacketDelivery,
 ) -> Result<Delivery, DispatchRefused> {
-    super::deliver_packet(loaded, packet, &crate::tests::environment())
+    super::deliver_packet(
+        loaded,
+        packet,
+        &mut ravel_observability::Profiler::off(),
+        &crate::tests::environment(),
+    )
 }
 
 fn route<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
 ) -> Result<Delivery, DispatchRefused> {
-    super::route(loaded, invocation, &crate::tests::environment())
+    super::route(
+        loaded,
+        invocation,
+        &mut ravel_observability::Profiler::off(),
+        &crate::tests::environment(),
+    )
 }
 use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 use crate::loaded::LoadedMods;
@@ -207,7 +222,7 @@ fn panicking_commands_are_charged_to_the_owner() {
     );
     let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
     let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
-    let delivered = super::route_profiled(
+    let delivered = super::route(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
         &invocation,
@@ -317,9 +332,8 @@ fn halted_sets_refuse_claimed_commands_and_non_command_keys_before_dispatch() {
                 .expect("all active hosts are supplied"),
                 &invocation
             ),
-            Err(DispatchRefused::NotReacting {
-                mod_id: id("required_mod"),
-                state: LifecycleState::Failed,
+            Err(DispatchRefused::Halted {
+                by: id("required_mod"),
             }),
         );
     }
@@ -428,9 +442,8 @@ fn failed_required_mod_blocks_healthy_broadcasts() {
                 .expect("all active hosts are supplied"),
             GameEvent::ClientTick
         ),
-        Err(DispatchRefused::NotReacting {
-            mod_id: id("required_mod"),
-            state: LifecycleState::Failed,
+        Err(DispatchRefused::Halted {
+            by: id("required_mod"),
         })
     );
     assert_eq!(healthy.seen, Vec::<GameEvent>::new());
@@ -485,9 +498,8 @@ fn failed_optional_mod_after_world_mutation_blocks_healthy_broadcasts() {
             failure_attribution("optional_mod", "optional mod failed"),
         )
         .expect("record optional failure");
-    let refused = Err(DispatchRefused::NotReacting {
-        mod_id: id("optional_mod"),
-        state: LifecycleState::Failed,
+    let refused = Err(DispatchRefused::Halted {
+        by: id("optional_mod"),
     });
     assert_eq!(
         broadcast(
@@ -843,6 +855,12 @@ fn every_refusal_says_which_state_it_is_about() {
     let key = command("example_mod", "home");
     let cases = [
         (
+            DispatchRefused::Halted {
+                by: id("example_mod"),
+            },
+            LifecycleState::Failed,
+        ),
+        (
             DispatchRefused::NotReacting {
                 mod_id: id("example_mod"),
                 state: LifecycleState::Loaded,
@@ -877,6 +895,23 @@ fn every_refusal_says_which_state_it_is_about() {
         assert!(!refused.quotes_untrusted_text());
         assert_ne!(refused.to_string(), "");
     }
+}
+
+#[test]
+fn dispatch_lifecycle_refusals_expose_their_cause() {
+    let cause = crate::LifecycleError::UnknownMod {
+        mod_id: id("example_mod"),
+    };
+    let refused = DispatchRefused::Lifecycle(cause.clone());
+    assert_eq!(
+        std::error::Error::source(&refused).map(ToString::to_string),
+        Some(cause.to_string()),
+    );
+    let halted = DispatchRefused::Halted {
+        by: id("example_mod"),
+    };
+    assert!(std::error::Error::source(&halted).is_none());
+    assert_eq!(halted.mod_id(), Some(&id("example_mod")));
 }
 
 #[test]
@@ -1018,7 +1053,7 @@ fn packet_profiling_charges_only_the_receiving_callback() {
         Direction::ToServer,
         Side::DedicatedServer,
     );
-    let delivered = super::deliver_packet_profiled(
+    let delivered = super::deliver_packet(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host]).expect("active host"),
         &packet,
         &mut profiler,
@@ -1028,7 +1063,7 @@ fn packet_profiling_charges_only_the_receiving_callback() {
     assert!(delivered.is_complete());
     let wrong_side = delivery("example_mod:ping", Direction::ToServer, Side::Client);
     assert!(matches!(
-        super::deliver_packet_profiled(
+        super::deliver_packet(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("active host"),
             &wrong_side,
@@ -1320,10 +1355,13 @@ fn malformed_and_unsupported_packets_do_not_fail_the_receiving_mod() {
         fn enter(&mut self, _: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
-        fn receive_packet(&mut self, _: &PacketDelivery) -> Result<(), ModError> {
+        fn receive_packet(&mut self, packet: &PacketDelivery) -> Result<(), ModError> {
             if self.malformed {
                 Err(ModError::InvalidPacket {
-                    source: ravel_network::WireError::NotUtf8,
+                    source: Box::new(ravel_network::DeliveryRefused::Malformed {
+                        id: packet.id.clone(),
+                        source: ravel_network::WireError::NotUtf8,
+                    }),
                 })
             } else {
                 Err(ModError::Unsupported)
@@ -1564,12 +1602,14 @@ fn optional_outward_failure_after_world_mutation_halts_without_exposing_requests
     assert_eq!(machine.halted_by(), Some(&id("failed_mod")));
     assert_eq!(machine.state(&id("failed_mod")), Ok(LifecycleState::Failed));
     assert_eq!(later.drains, 0);
-    assert!(matches!(
+    assert_eq!(
         super::take_play_requests(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut later])
                 .expect("paired owners"),
             &crate::tests::environment(),
         ),
-        Err(DispatchRefused::NotReacting { .. })
-    ));
+        Err(DispatchRefused::Halted {
+            by: id("failed_mod")
+        })
+    );
 }

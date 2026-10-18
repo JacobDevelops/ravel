@@ -2,6 +2,7 @@ use std::fmt;
 
 use ravel_config::LayerError;
 use ravel_core::{ContentId, ModId, RegistryKey, RelativePath, Side, Version};
+use ravel_data::TagId;
 use ravel_resolve::ResolutionError;
 
 use crate::validate::{RESERVED_PREFIX, VANILLA_NAMESPACE};
@@ -84,8 +85,8 @@ pub enum ClosureError {
     },
     /// A tag names a member nothing in this pack provides.
     TagMember {
-        /// The tag, rendered — a `TagId` is `ravel-data`'s and this is a report.
-        tag: String,
+        /// The tag whose member is missing.
+        tag: TagId,
         /// The member nothing provides.
         member: RegistryKey,
         /// Why nothing provides it.

@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use toml::{Table, Value};
@@ -38,13 +37,7 @@ const FORBIDDEN: &[(&str, &str)] = &[
     ("jni", "Java itself"),
 ];
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the conformance crate sits two directories below the root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn document(relative: &str) -> Table {
     let path = repository_root().join(relative);

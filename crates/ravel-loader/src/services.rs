@@ -9,7 +9,7 @@ use ravel_host_api::{
     ServiceRequest, ServiceResponse, ServiceUnavailable,
 };
 
-use crate::lifecycle::{LifecycleError, LifecycleMachine, Requirement};
+use crate::lifecycle::{LifecycleError, LifecycleMachine};
 
 /// The order the set's services were opened in.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,12 +30,12 @@ impl ServiceOrder {
 /// Only nonfailed mods on this side participate; directories contain providers whose services were opened earlier.
 /// Callback order follows service dependencies; supplied mod slots retain resolved lifecycle order.
 /// Present optional services add dependency edges; absent ones do not refuse the set.
-/// A refusal stops opening services, and the caller must not replay callbacks already completed.
+/// Required failures stop opening; optional failures are isolated before world mutation.
 /// The loader calls this after registration and before entering `running`.
 ///
 /// # Errors
 ///
-/// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or callback failure.
+/// Returns [`ServiceRefused`] for missing required providers, cycles, or a required/halting owner failure.
 pub fn open_services<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
@@ -77,19 +77,44 @@ impl ServiceContext<'_> {
     }
 
     fn fail(&mut self, source: HostError) -> Result<(), ServiceRefused> {
-        let requirement = self
+        let stop = self.record_failure(&source)?;
+        if stop {
+            return Err(ServiceRefused::Mod {
+                mod_id: source.mod_id().clone(),
+                source,
+            });
+        }
+        Ok(())
+    }
+
+    fn record_failure(&mut self, source: &HostError) -> Result<bool, ServiceRefused> {
+        let stop = self
             .machine
-            .fail_callback(&source, self.environment, None)
+            .fail_setup_callback(source, self.environment)
             .map_err(ServiceRefused::Lifecycle)?;
         self.failures
             .insert(source.mod_id().clone(), source.clone());
-        if requirement == Requirement::Optional && self.machine.halted_by().is_none() {
-            return Ok(());
+        Ok(stop)
+    }
+
+    fn require_live(&mut self, declaration: &ServiceDeclaration) -> Result<bool, ServiceRefused> {
+        for service in declaration.requires() {
+            let Some(source) = self.failure(service) else {
+                continue;
+            };
+            let refused = ServiceRefused::BrokenProvider {
+                consumer: declaration.owner().clone(),
+                service: service.clone(),
+                source: Box::new(source),
+            };
+            let error = crate::owner_refusal(self.machine, declaration.owner(), &refused)
+                .map_err(ServiceRefused::Lifecycle)?;
+            if self.record_failure(&error)? {
+                return Err(refused);
+            }
+            return Ok(false);
         }
-        Err(ServiceRefused::Mod {
-            mod_id: source.mod_id().clone(),
-            source,
-        })
+        Ok(true)
     }
 }
 
@@ -108,17 +133,18 @@ fn open_with_context<H: std::ops::DerefMut<Target: Mod>>(
         let Some(declaration) = declarations.get(consumer.id()) else {
             continue;
         };
-        if context.machine().state(consumer.id()) == Ok(LifecycleState::Failed) {
+        let mod_id = consumer.id().clone();
+        let Ok(state) = context.machine().state(&mod_id) else {
+            continue;
+        };
+        if state == LifecycleState::Failed || !context.require_live(declaration)? {
             continue;
         }
         if declaration.requires().next().is_none() && declaration.may_use().next().is_none() {
             continue;
         }
 
-        let mod_id = consumer.id().clone();
-        let Ok(state) = context.machine().state(&mod_id) else {
-            continue;
-        };
+        // The state above also supplies callback attribution without another lookup.
         let mut directory = Started {
             caller: mod_id.clone(),
             declaration,
@@ -166,10 +192,16 @@ fn declared<H: std::ops::DerefMut<Target: Mod>>(
             }
         };
         if declaration.owner() != &mod_id {
-            return Err(ServiceRefused::ForeignDeclaration {
-                mod_id,
+            let refused = ServiceRefused::ForeignDeclaration {
+                mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
-            });
+            };
+            let source = crate::owner_refusal(context.machine(), &mod_id, &refused)
+                .map_err(ServiceRefused::Lifecycle)?;
+            if context.record_failure(&source)? {
+                return Err(refused);
+            }
+            continue;
         }
         declarations.insert(mod_id, declaration);
     }
@@ -198,19 +230,15 @@ fn dependency_order(
 
     for (mod_id, declaration) in declarations {
         for service in declaration.requires() {
-            let provider = providers.get(service).ok_or_else(|| {
-                context.failure(service).map_or_else(
-                    || ServiceRefused::NoProvider {
-                        consumer: mod_id.clone(),
-                        service: service.clone(),
-                    },
-                    |source| ServiceRefused::BrokenProvider {
-                        consumer: mod_id.clone(),
-                        service: service.clone(),
-                        source: Box::new(source),
-                    },
-                )
-            })?;
+            let Some(provider) = providers.get(service) else {
+                if context.failure(service).is_some() {
+                    continue;
+                }
+                return Err(ServiceRefused::NoProvider {
+                    consumer: mod_id.clone(),
+                    service: service.clone(),
+                });
+            };
             consumers
                 .entry(provider.clone())
                 .or_default()
@@ -302,7 +330,7 @@ pub enum ServiceRefused {
         /// The service nothing answers.
         service: ServiceId,
     },
-    /// A required service belongs to a namespace whose mod already failed.
+    /// A required service belongs to a namespace whose mod failed before or during opening.
     BrokenProvider {
         /// The mod that cannot start without the service.
         consumer: ModId,
@@ -470,10 +498,14 @@ mod tests {
 
         fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             assert_ne!(self.phase, "declaration", "declaration panic");
-            Ok(Some(
-                ServiceDeclaration::new(self.id.clone(), [], [service("provider", "answer")])
-                    .expect("valid declaration"),
-            ))
+            Ok(Some({
+                let mut declaration = ServiceDeclaration::new(self.id.clone());
+
+                declaration
+                    .require(service("provider", "answer"))
+                    .expect("valid declaration");
+                declaration
+            }))
         }
 
         fn use_services(&mut self, _directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -519,9 +551,14 @@ mod tests {
     fn provider_panics_are_contained_and_stamped_with_the_provider() {
         let mut provider = Grudging::new("provider", &[service("provider", "answer")]);
         provider.panics = true;
-        let declaration =
-            ServiceDeclaration::new(id("consumer"), [], [service("provider", "answer")])
+        let declaration = {
+            let mut declaration = ServiceDeclaration::new(id("consumer"));
+
+            declaration
+                .require(service("provider", "answer"))
                 .expect("valid declaration");
+            declaration
+        };
         let mut providers: [&mut dyn Mod; 1] = [&mut provider];
         let mut machine = machine(vec![entry("provider", &[Side::DedicatedServer])]);
         let environment = environment();
@@ -814,9 +851,14 @@ mod tests {
         }
         let wanted = service("plain", "missing");
         let mut plain = Plain(id("plain"));
-        let declaration =
-            ServiceDeclaration::with_optional(id("consumer"), [], [], [wanted.clone()])
+        let declaration = {
+            let mut declaration = ServiceDeclaration::new(id("consumer"));
+
+            declaration
+                .use_if_present(wanted.clone())
                 .expect("valid optional declaration");
+            declaration
+        };
         let mut machine = machine(vec![entry("plain", &[Side::DedicatedServer])]);
         let state = machine.state(&id("plain")).expect("tracked namespace");
         let environment = environment();
@@ -866,12 +908,16 @@ mod tests {
         fn new(name: &str, provides: &[ServiceId], requires: &[ServiceId]) -> Self {
             Self {
                 id: id(name),
-                declaration: ServiceDeclaration::new(
-                    id(name),
-                    provides.to_vec(),
-                    requires.to_vec(),
-                )
-                .expect("a legal declaration"),
+                declaration: {
+                    let mut declaration = ServiceDeclaration::new(id(name));
+                    for service in provides.iter().cloned() {
+                        declaration.provide(service).expect("a legal declaration");
+                    }
+                    for service in requires.iter().cloned() {
+                        declaration.require(service).expect("a legal declaration");
+                    }
+                    declaration
+                },
                 answered: Vec::new(),
                 reached: Vec::new(),
                 refuses: false,
@@ -886,8 +932,16 @@ mod tests {
 
         /// Hands back a declaration built for `owner` rather than for this mod.
         fn answering_for(mut self, owner: &str, provides: &[ServiceId]) -> Self {
-            self.declaration = ServiceDeclaration::new(id(owner), provides.to_vec(), Vec::new())
-                .expect("a legal declaration for the other identity");
+            self.declaration = {
+                let mut declaration = ServiceDeclaration::new(id(owner));
+                for service in provides.iter().cloned() {
+                    declaration
+                        .provide(service)
+                        .expect("a legal declaration for the other identity");
+                }
+
+                declaration
+            };
             self
         }
     }
@@ -1228,14 +1282,14 @@ mod tests {
             }
 
             fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
-                Ok(Some(
-                    ServiceDeclaration::new(
-                        self.id.clone(),
-                        Vec::new(),
-                        vec![service("warehouse", "prices")],
-                    )
-                    .expect("valid service declaration"),
-                ))
+                Ok(Some({
+                    let mut declaration = ServiceDeclaration::new(self.id.clone());
+
+                    declaration
+                        .require(service("warehouse", "prices"))
+                        .expect("valid service declaration");
+                    declaration
+                }))
             }
 
             fn use_services(
@@ -1332,13 +1386,19 @@ mod tests {
         fn new(name: &str, provides: &[ServiceId], may_use: &[ServiceId]) -> Self {
             Self {
                 id: id(name),
-                declaration: ServiceDeclaration::with_optional(
-                    id(name),
-                    provides.to_vec(),
-                    Vec::new(),
-                    may_use.to_vec(),
-                )
-                .expect("a legal declaration"),
+                declaration: {
+                    let mut declaration = ServiceDeclaration::new(id(name));
+                    for service in provides.iter().cloned() {
+                        declaration.provide(service).expect("a legal declaration");
+                    }
+
+                    for service in may_use.iter().cloned() {
+                        declaration
+                            .use_if_present(service)
+                            .expect("a legal declaration");
+                    }
+                    declaration
+                },
                 reached: Vec::new(),
                 absent: Vec::new(),
                 refused: Vec::new(),
@@ -1403,8 +1463,14 @@ mod tests {
         fn new(name: &str, provides: &[ServiceId]) -> Self {
             Self {
                 id: id(name),
-                declaration: ServiceDeclaration::new(id(name), provides.to_vec(), [])
-                    .expect("a legal declaration"),
+                declaration: {
+                    let mut declaration = ServiceDeclaration::new(id(name));
+                    for service in provides.iter().cloned() {
+                        declaration.provide(service).expect("a legal declaration");
+                    }
+
+                    declaration
+                },
                 panics: false,
                 calls: 0,
             }
@@ -1495,13 +1561,17 @@ mod tests {
         // The two sides in one declaration: the optional name is missing and says
         // nothing, the required name is missing and refuses.
         let mut consumer = Hedging::new("consumer", &[], &[service("absent", "prices")]);
-        consumer.declaration = ServiceDeclaration::with_optional(
-            id("consumer"),
-            [],
-            [service("gone", "clock")],
-            [service("absent", "prices")],
-        )
-        .expect("a legal declaration");
+        consumer.declaration = {
+            let mut declaration = ServiceDeclaration::new(id("consumer"));
+
+            declaration
+                .require(service("gone", "clock"))
+                .expect("a legal declaration");
+            declaration
+                .use_if_present(service("absent", "prices"))
+                .expect("a legal declaration");
+            declaration
+        };
         let mut machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
 
         assert_eq!(
@@ -1551,6 +1621,114 @@ mod tests {
             .expect("known provider")
             .expect("recorded refusal");
         assert_eq!(failure.mod_id, Some(id("warehouse")));
+        assert_eq!(failure.environment, environment());
+    }
+
+    #[test]
+    fn a_required_consumer_never_opens_after_its_optional_provider_breaks() {
+        for requirement in [Requirement::Required, Requirement::Optional] {
+            let wanted = service("warehouse", "prices");
+            let mut warehouse = Grudging::new("warehouse", std::slice::from_ref(&wanted));
+            let mut earlier = Hedging::new("earlier", &[], std::slice::from_ref(&wanted));
+            let mut later = Wired::new("later", &[], std::slice::from_ref(&wanted));
+            let mut provider = entry("warehouse", &[Side::DedicatedServer]);
+            provider.requirement = Requirement::Optional;
+            let mut consumer = entry("later", &[Side::DedicatedServer]);
+            consumer.requirement = requirement;
+            let mut machine = machine(vec![
+                provider,
+                entry("earlier", &[Side::DedicatedServer]),
+                consumer,
+            ]);
+            let result = open_services(
+                &mut LoadedMods::<&mut dyn Mod>::new(
+                    &mut machine,
+                    &mut [&mut warehouse, &mut earlier, &mut later],
+                )
+                .expect("all active hosts are supplied"),
+                &environment(),
+            );
+            if requirement == Requirement::Required {
+                assert!(matches!(result, Err(ServiceRefused::BrokenProvider {
+                    consumer, service, ..
+                }) if consumer == id("later") && service == wanted));
+            } else {
+                assert_eq!(
+                    result.expect("optional consumer is isolated").order(),
+                    [id("earlier")]
+                );
+            }
+            assert_eq!(machine.state(&id("warehouse")), Ok(LifecycleState::Failed));
+            assert_eq!(machine.state(&id("later")), Ok(LifecycleState::Failed));
+            assert_eq!(later.reached, Vec::<String>::new());
+            assert_eq!(warehouse.calls, 1);
+        }
+    }
+
+    #[test]
+    fn optional_required_consumers_are_isolated_after_provider_declaration_failures() {
+        for foreign in [false, true] {
+            let mut provider: Box<dyn Mod> = if foreign {
+                Box::new(Wired::new("provider", &[], &[]).answering_for("other", &[]))
+            } else {
+                Box::new(Failing {
+                    id: id("provider"),
+                    phase: "declaration",
+                })
+            };
+            let mut consumer = Wired::new("consumer", &[], &[service("provider", "answer")]);
+            let mut other = Wired::new("other", &[], &[]);
+            let mut provider_entry = entry("provider", &[Side::DedicatedServer]);
+            provider_entry.requirement = Requirement::Optional;
+            let mut consumer_entry = entry("consumer", &[Side::DedicatedServer]);
+            consumer_entry.requirement = Requirement::Optional;
+            let mut machine = machine(vec![
+                provider_entry,
+                consumer_entry,
+                entry("other", &[Side::DedicatedServer]),
+            ]);
+            let opened = open_services(
+                &mut LoadedMods::<&mut dyn Mod>::new(
+                    &mut machine,
+                    &mut [&mut *provider, &mut consumer, &mut other],
+                )
+                .expect("all active hosts are supplied"),
+                &environment(),
+            )
+            .expect("optional provider and consumer failures are isolated");
+            assert_eq!(opened.order(), [id("other")]);
+            assert_eq!(machine.state(&id("provider")), Ok(LifecycleState::Failed));
+            assert_eq!(machine.state(&id("consumer")), Ok(LifecycleState::Failed));
+            assert!(
+                machine
+                    .failure(&id("consumer"))
+                    .expect("tracked consumer")
+                    .is_some()
+            );
+            assert_eq!(consumer.reached, Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn an_optional_foreign_declaration_fails_its_actual_owner_and_keeps_others() {
+        let mut thief = Wired::new("thief", &[], &[]).answering_for("other", &[]);
+        let mut other = Wired::new("other", &[], &[]);
+        let mut thief_entry = entry("thief", &[Side::DedicatedServer]);
+        thief_entry.requirement = Requirement::Optional;
+        let mut machine = machine(vec![thief_entry, entry("other", &[Side::DedicatedServer])]);
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut thief, &mut other])
+                .expect("all active hosts are supplied"),
+            &environment(),
+        )
+        .expect("an optional thief is isolated");
+        assert_eq!(opened.order(), [id("other")]);
+        assert_eq!(machine.state(&id("thief")), Ok(LifecycleState::Failed));
+        let failure = machine
+            .failure(&id("thief"))
+            .expect("tracked thief")
+            .expect("attributed declaration refusal");
+        assert_eq!(failure.mod_id, Some(id("thief")));
         assert_eq!(failure.environment, environment());
     }
 

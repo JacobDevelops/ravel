@@ -12,13 +12,7 @@ const SNIPPETS: &str = "examples/guide-snippets/src";
 
 const CHECKED_LANGUAGE: &str = "rust";
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate sits two directories below the repository root")
-        .to_path_buf()
-}
+use super::repository_root;
 
 fn files_in(directory: &Path) -> Vec<PathBuf> {
     let mut files = fs::read_dir(directory)

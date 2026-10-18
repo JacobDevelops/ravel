@@ -74,12 +74,17 @@ Ravel into a Java mod host.
   Stale-generation admission is separate from observing a vanilla completion,
   and does not cancel or suppress vanilla execution. No renderer type or game
   reference crosses into the SDK.
-- **Section capture.** Legacy compile observations copy a bounded section plus
-  a one-cell neighbour border and packed sky/block light in one primitive-array
-  JNI batch. `ravel-renderer` owns immutable palette-compressed values and
-  state/model lookup keys, outside the SDK closure. Generation admission rejects
-  obsolete captures. Observational snapshots are measured and discarded;
-  vanilla remains the mesh, model, visibility and GL authority.
+- **Section workers.** Legacy compile observations copy a bounded section plus
+  a one-cell neighbour border, packed sky/block light and game-derived opaque
+  full-cube flags in one primitive-array JNI batch. `ravel-renderer` owns
+  immutable palette-compressed values, CPU cube geometry and face-to-face
+  visibility outside the SDK closure. Unsupported state keys remain explicit;
+  numeric identity alone never implies a cube model. Two Rust workers share
+  eight bounded outstanding slots, including retained completions, with byte
+  reservations and generation cancellation. Java admits keyed work, consumes
+  checked result metadata and drains on teardown. Vanilla still owns actual
+  rendering, models, textures, shading and every GL operation; no worker result
+  is uploaded before the later submission cutover.
 - **Launcher integration.** Prism owns authentication, downloads, Java selection
   and launch; Ravel uses stock instance arguments rather than a launcher fork.
   The generated `Hook` loads the native library with `System.load` from the

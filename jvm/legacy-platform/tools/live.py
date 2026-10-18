@@ -43,10 +43,13 @@ def renderer_proof(path: Path, started: float) -> dict:
             and snapshot['modelKeys'] == 'state-derived-not-baked-model-identities'
             and snapshot['maxConcurrentCaptures'] == 1
             and snapshot['timingSampleLimit'] == 4096
-            and snapshot['javaBatchBytes'] == 29160
-            and snapshot['retainedStaleProofBytes'] == 29160
-            and snapshot['maxJavaBatchPayloadBytes'] == 58320
-            and snapshot['maxNativeCopyBytes'] == 29160 and snapshot['maxNativeScratchBytes'] > 0
+            and snapshot['javaBatchBytes'] == 34992
+            and snapshot['retainedStaleProofBytes'] == 34992
+            and snapshot['maxJavaBatchPayloadBytes'] == 69984
+            and snapshot['maxNativeCopyBytes'] == 34992
+            and snapshot['maxNativeScratchBytes'] > snapshot['maxNativeCopyBytes']
+            and snapshot['geometry'] == 'captured-game-isOpaqueCube-and-isFullCube'
+            and snapshot['fullOpaqueCells'] > 0
             and snapshot['cells'] == count * 5832 and snapshot['borderCells'] == count * 1736
             and snapshot['mismatches'] == 0 and snapshot['nonAirCells'] > 0
             and snapshot['adjacentVariation'] > 0 and snapshot['workerCaptures'] > 0
@@ -62,7 +65,74 @@ def renderer_proof(path: Path, started: float) -> dict:
             and 0 < snapshot['p50Nanos'] <= snapshot['p95Nanos'] <= snapshot['p99Nanos']
             <= snapshot['maxNanos'] <= snapshot['totalNanos']):
         raise RuntimeError('Bounded vanilla snapshot roundtrip, timing or stale capture proof missing')
+    mesh_proof(proof['mesh'])
     return proof
+
+
+MESH_LABELS = {'geometry': 'game-isOpaqueCube-and-isFullCube-per-state-air-key-zero-empty',
+               'fidelity': 'geometry-only-no-texture-ao-or-model-parity',
+               'upload': 'none-native-owned-until-drained-then-discarded',
+               'denominator': 'admitted-native-geometry-jobs-not-vanilla-compile-tasks',
+               'frameInterval': 'observational-stress-window-frame-interval-not-mesh-attribution',
+               'timingSampleLimit': 4096, 'keySlots': 16, 'recordWidth': 11,
+               'maxRecordsPerPollLimit': 8, 'statsWidth': 18, 'stalePollRejected': True,
+               'stress': {'seed': 8675309, 'teleports': 6, 'stepBlocks': 128, 'minimumDrainedPerStep': 32},
+               'closeDrain': {'stopped': 1, 'outstanding': 0, 'queued': 0, 'running': 0,
+                              'completed': 0, 'reservedBytes': 0, 'draining': 0, 'workerFailure': 0,
+                              'javaKeysHeld': 0}}
+
+
+def mesh_timing(mesh: dict) -> bool:
+    ordered = all(0 < mesh[f'{series}P50Nanos'] <= mesh[f'{series}P95Nanos'] <= mesh[f'{series}P99Nanos']
+                  <= mesh[f'max{series.title()}Nanos'] for series in ('mesh', 'drain'))
+    return (ordered and 0 <= mesh['queueP50Nanos'] <= mesh['queueP95Nanos'] <= mesh['queueP99Nanos']
+            <= mesh['maxQueueNanos']
+            and 0 < mesh['frameP50Nanos'] <= mesh['frameP95Nanos'] <= mesh['frameP99Nanos']
+            <= mesh['maxFrameNanos']
+            and 0 <= mesh['firstQueueNanos'] <= mesh['maxQueueNanos']
+            and 0 < mesh['firstMeshNanos'] <= mesh['maxMeshNanos']
+            and 0 < mesh['firstDrainNanos'] <= mesh['maxDrainNanos']
+            and 0 < mesh['firstCaptureNanos'] <= mesh['maxCaptureNanos']
+            and mesh['frameSamples'] > 0
+            and 0 < mesh['firstFiveSecondsMaxFrameNanos'] <= mesh['maxFrameNanos'])
+
+
+def unload_drained(mesh: dict) -> bool:
+    unload = mesh['unloadDrain']
+    return (unload['generation'] > 0 and unload['retiredPoolGeneration'] == unload['generation']
+            and 0 < unload['drainChecks'] <= mesh['drainChecks']
+            and unload['generation'] <= mesh['lastRetiredPoolGeneration']
+            and mesh['lifecyclesWithoutRetiredPool'] >= 0 and mesh['retiredUnadmitted'] >= 0)
+
+
+def mesh_proof(mesh: dict) -> None:
+    stress = mesh['stress']
+    retired = mesh['retiredBeforeDrain']
+    evidence = 'actual-retired-before-drain' if retired > 0 else 'deterministic-harness-only'
+    if not (all(mesh[key] == value for key, value in MESH_LABELS.items())
+            and mesh['cancellationEvidence'] == evidence and 0 <= retired <= mesh['submitted']
+            and 0 < mesh['drained'] and mesh['drained'] + retired <= mesh['submitted'] and mesh['errors'] == 0
+            and mesh['complete'] + mesh['incomplete'] + mesh['errors'] == mesh['drained']
+            and mesh['incomplete'] <= mesh['unsupportedKeys']
+            and mesh['maxUnsupportedKeys'] <= mesh['unsupportedKeys']
+            and mesh['vertices'] > 0 and mesh['vertices'] % 4 == 0
+            and mesh['indices'] * 4 == mesh['vertices'] * 6
+            and 0 < mesh['maxOutputBytes'] <= mesh['outputBytes']
+            and 0 < mesh['maxAllocations'] <= mesh['allocations']
+            and 0 < mesh['nonEmptyMeshes'] <= mesh['drained']
+            and 0 < mesh['occludingMeshes'] <= mesh['drained']
+            and mesh['rejectedRecords'] == 0 and mesh['refused'] >= 0 and mesh['tableFull'] >= 0
+            and mesh['stalePolls'] >= 0 and mesh['polls'] > 0
+            and 0 < mesh['maxRecordsPerPoll'] <= mesh['maxRecordsPerPollLimit']
+            and mesh['drainChecks'] > 0 and mesh['drainFailures'] == 0 and unload_drained(mesh)
+            and 0 < mesh['maxOutstanding'] <= mesh['maxOutstandingLimit'] == 8
+            and 0 < mesh['maxReservedBytes'] <= mesh['maxReservedBytesLimit']
+            and 0 < mesh['maxTableOccupancy'] <= mesh['keySlots']
+            and mesh['stressSubmitted'] > 0
+            and mesh['stressDrained'] >= stress['teleports'] * stress['minimumDrainedPerStep']
+            and mesh['captureFailures'] == 0 and mesh['lastFailureCode'] == 0 and mesh['workerFailures'] == 0
+            and mesh['injectedStaleRecordRejections'] > 0 and mesh_timing(mesh)):
+        raise RuntimeError('Bounded native geometry admission, drain, stale rejection or timing proof missing')
 
 
 def launch(action: str, connected: bool = False, suffix: str = '') -> dict[str, object]:

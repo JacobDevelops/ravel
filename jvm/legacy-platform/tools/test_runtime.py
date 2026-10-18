@@ -242,9 +242,10 @@ def renderer_proof_fixture():
                 'oracle': 'coordinate-only-same-mappings',
                 'modelKeys': 'state-derived-not-baked-model-identities',
                 'maxConcurrentCaptures': 1, 'timingSampleLimit': 4096,
-                'javaBatchBytes': 29160, 'retainedStaleProofBytes': 29160,
-                'maxJavaBatchPayloadBytes': 58320,
-                'maxNativeCopyBytes': 29160, 'maxNativeScratchBytes': 39712,
+                'javaBatchBytes': 34992, 'retainedStaleProofBytes': 34992,
+                'maxJavaBatchPayloadBytes': 69984,
+                'maxNativeCopyBytes': 34992, 'maxNativeScratchBytes': 80536,
+                'geometry': 'captured-game-isOpaqueCube-and-isFullCube', 'fullOpaqueCells': 1,
                 'cells': 11664, 'borderCells': 3472, 'mismatches': 0,
                 'nonAirCells': 1, 'adjacentVariation': 1, 'workerCaptures': 1,
                 'oracleChecks': 125, 'oracleMismatches': 0, 'oracleBorderChecks': 98,
@@ -252,7 +253,47 @@ def renderer_proof_fixture():
                 'staleCaptureRejections': 1, 'lastThread': 2, 'lastGeneration': 4,
                 'rejected': 0, 'skipped': 1, 'maxBytes': 100, 'totalBytes': 200,
                 'p50Nanos': 10, 'p95Nanos': 20, 'p99Nanos': 30,
-                'maxNanos': 40, 'totalNanos': 80}}
+                'maxNanos': 40, 'totalNanos': 80},
+            'mesh': mesh_proof_fixture()}
+
+
+def mesh_proof_fixture():
+    return {'geometry': 'game-isOpaqueCube-and-isFullCube-per-state-air-key-zero-empty',
+            'fidelity': 'geometry-only-no-texture-ao-or-model-parity',
+            'upload': 'none-native-owned-until-drained-then-discarded',
+            'denominator': 'admitted-native-geometry-jobs-not-vanilla-compile-tasks',
+            'frameInterval': 'observational-stress-window-frame-interval-not-mesh-attribution',
+            'cancellationEvidence': 'actual-retired-before-drain',
+            'timingSampleLimit': 4096, 'keySlots': 16, 'recordWidth': 11,
+            'maxRecordsPerPollLimit': 8, 'statsWidth': 18,
+            'stress': {'seed': 8675309, 'teleports': 6, 'stepBlocks': 128, 'minimumDrainedPerStep': 32},
+            'stalePollRejected': True,
+            'closeDrain': {'stopped': 1, 'outstanding': 0, 'queued': 0, 'running': 0,
+                           'completed': 0, 'reservedBytes': 0, 'draining': 0, 'workerFailure': 0,
+                           'javaKeysHeld': 0},
+            'unloadDrain': {'generation': 6, 'retiredPoolGeneration': 6, 'drainChecks': 1},
+            'lifecyclesWithoutRetiredPool': 2, 'retiredUnadmitted': 1, 'lastRetiredPoolGeneration': 6,
+            'submitted': 300, 'refused': 2, 'tableFull': 0, 'drained': 290,
+            'complete': 200, 'incomplete': 90, 'errors': 0,
+            'unsupportedKeys': 120, 'maxUnsupportedKeys': 5,
+            'vertices': 4000, 'indices': 6000, 'outputBytes': 9000, 'maxOutputBytes': 900,
+            'allocations': 800, 'maxAllocations': 5, 'nonEmptyMeshes': 150, 'occludingMeshes': 40,
+            'rejectedRecords': 0, 'retiredBeforeDrain': 3, 'stalePolls': 1, 'polls': 500,
+            'maxRecordsPerPoll': 8,
+            'firstQueueNanos': 5, 'firstMeshNanos': 50, 'firstDrainNanos': 500, 'firstCaptureNanos': 70,
+            'maxQueueNanos': 60, 'maxMeshNanos': 400, 'maxDrainNanos': 5000, 'maxCaptureNanos': 700,
+            'drainChecks': 3, 'drainFailures': 0,
+            'maxOutstanding': 8, 'maxReservedBytes': 4000,
+            'maxOutstandingLimit': 8, 'maxReservedBytesLimit': 8000,
+            'frameSamples': 300, 'maxFrameNanos': 900, 'firstFiveSecondsMaxFrameNanos': 800,
+            'stressSubmitted': 250, 'stressDrained': 240, 'maxTableOccupancy': 9,
+            'injectedStaleRecordRejections': 1,
+            'captureFailures': 0, 'lastFailureCode': 0, 'lastFailureDetailA': 0,
+            'lastFailureDetailB': 0, 'lastFailureDetailC': 0, 'workerFailures': 0,
+            'queueP50Nanos': 10, 'queueP95Nanos': 20, 'queueP99Nanos': 30,
+            'meshP50Nanos': 100, 'meshP95Nanos': 200, 'meshP99Nanos': 300,
+            'drainP50Nanos': 1000, 'drainP95Nanos': 2000, 'drainP99Nanos': 3000,
+            'frameP50Nanos': 100, 'frameP95Nanos': 200, 'frameP99Nanos': 300}
 
 
 class RendererProofTests(unittest.TestCase):
@@ -283,9 +324,10 @@ class RendererProofTests(unittest.TestCase):
             for key, invalid in (('captures', 0), ('seed', 1), ('edge', 16),
                                  ('comparison', 'receipt-only'), ('modelKeys', 'baked'),
                                  ('maxConcurrentCaptures', 2), ('timingSampleLimit', 0),
-                                 ('javaBatchBytes', 0), ('retainedStaleProofBytes', 0),
-                                 ('maxJavaBatchPayloadBytes', 29160),
-                                 ('maxNativeCopyBytes', 0), ('maxNativeScratchBytes', 0),
+                                 ('javaBatchBytes', 29160), ('retainedStaleProofBytes', 29160),
+                                 ('maxJavaBatchPayloadBytes', 34992),
+                                 ('maxNativeCopyBytes', 29160), ('maxNativeScratchBytes', 0),
+                                 ('geometry', 'stone-only'), ('fullOpaqueCells', 0),
                                  ('cells', 5832), ('borderCells', 0), ('mismatches', 1),
                                  ('nonAirCells', 0), ('adjacentVariation', 0),
                                  ('workerCaptures', 0), ('staleCaptureRejections', 0),
@@ -300,6 +342,58 @@ class RendererProofTests(unittest.TestCase):
                                  ('p99Nanos', 19), ('maxNanos', 29), ('totalNanos', 39)):
                 with self.subTest(snapshotField=key):
                     path.write_text(json.dumps(proof | {'snapshot': snapshot | {key: invalid}}))
+                    with self.assertRaises(RuntimeError):
+                        live.renderer_proof(path, 0)
+
+    def test_mesh_admission_drain_and_bounded_timing(self):
+        proof = renderer_proof_fixture()
+        mesh = proof['mesh']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'renderer.json'
+            path.write_text(json.dumps(proof | {'mesh': mesh | {
+                'retiredBeforeDrain': 0, 'cancellationEvidence': 'deterministic-harness-only'}}))
+            live.renderer_proof(path, 0)
+            for key, invalid in (('geometry', 'stone-only'), ('fidelity', 'parity'),
+                                 ('upload', 'gl'), ('denominator', 'compile-tasks'),
+                                 ('frameInterval', 'mesh-cost'), ('cancellationEvidence', 'none'),
+                                 ('retiredBeforeDrain', 0), ('timingSampleLimit', 0),
+                                 ('keySlots', 8), ('recordWidth', 12), ('maxRecordsPerPollLimit', 9),
+                                 ('statsWidth', 15), ('stress', {'seed': 1}),
+                                 ('stalePollRejected', False),
+                                 ('closeDrain', mesh['closeDrain'] | {'outstanding': 1}),
+                                 ('closeDrain', mesh['closeDrain'] | {'stopped': 0}),
+                                 ('submitted', 0), ('drained', 0), ('drained', 301),
+                                 ('complete', 199), ('errors', 1), ('incomplete', 91),
+                                 ('unsupportedKeys', 89), ('maxUnsupportedKeys', 121),
+                                 ('vertices', 0), ('vertices', 4002), ('indices', 6001),
+                                 ('outputBytes', 0), ('maxOutputBytes', 9001), ('allocations', 4),
+                                 ('nonEmptyMeshes', 0), ('rejectedRecords', 1), ('polls', 0),
+                                 ('maxRecordsPerPoll', 9), ('firstQueueNanos', -1),
+                                 ('firstMeshNanos', 0), ('firstDrainNanos', 5001),
+                                 ('firstCaptureNanos', 701), ('maxQueueNanos', 29),
+                                 ('drainChecks', 0), ('drainFailures', 1),
+                                 ('maxOutstanding', 0), ('maxOutstanding', 9),
+                                 ('maxOutstandingLimit', 16), ('maxReservedBytes', 8001),
+                                 ('frameSamples', 0), ('firstFiveSecondsMaxFrameNanos', 901),
+                                 ('stressSubmitted', 0), ('stressDrained', 191),
+                                 ('maxTableOccupancy', 17), ('tableFull', -1), ('refused', -1),
+                                 ('injectedStaleRecordRejections', 0),
+                                 ('captureFailures', 1), ('lastFailureCode', 5), ('workerFailures', 1),
+                                 ('closeDrain', mesh['closeDrain'] | {'workerFailure': 1}),
+                                 ('closeDrain', mesh['closeDrain'] | {'javaKeysHeld': 1}),
+                                 ('closeDrain', mesh['closeDrain'] | {'draining': 1}),
+                                 ('unloadDrain', mesh['unloadDrain'] | {'drainChecks': 0}),
+                                 ('unloadDrain', mesh['unloadDrain'] | {'drainChecks': 4}),
+                                 ('unloadDrain', mesh['unloadDrain'] | {'retiredPoolGeneration': 5}),
+                                 ('unloadDrain', mesh['unloadDrain'] | {'generation': 0,
+                                                                        'retiredPoolGeneration': 0}),
+                                 ('lastRetiredPoolGeneration', 5), ('lifecyclesWithoutRetiredPool', -1),
+                                 ('retiredUnadmitted', -1), ('retiredBeforeDrain', 11),
+                                 ('occludingMeshes', 0), ('occludingMeshes', 291),
+                                 ('meshP50Nanos', 0), ('meshP95Nanos', 99), ('drainP99Nanos', 5001),
+                                 ('frameP99Nanos', 901)):
+                with self.subTest(meshField=key):
+                    path.write_text(json.dumps(proof | {'mesh': mesh | {key: invalid}}))
                     with self.assertRaises(RuntimeError):
                         live.renderer_proof(path, 0)
 

@@ -1,9 +1,8 @@
 //! Process/client-scoped renderer observations, independent of runtime selection.
 //!
-//! Only copied scalars and bounded primitive batches cross this seam: no game
-//! handles, meshes, callbacks or GL submission. The first admitted frame/reload
-//! observation pins the Java client thread for this process. Workers may observe
-//! compile/task activity only after that.
+//! Only copied scalars and bounded primitive batches cross this seam. Native
+//! workers own snapshots and meshes, never game handles or GL submission. The
+//! first admitted frame/reload pins the Java client thread for this process.
 //!
 //! Event 0 queries the authoritative generation without claiming a thread. All
 //! other events require the exact current token. Reload/unload invalidate it;
@@ -14,15 +13,16 @@
 //! Each observation and acceptance check is individually linearized by the
 //! mutex. Separate `accept` and event calls do not share a critical section:
 //! `accept` is a point-in-time check, not a lease across later Java/GL work.
-//! These observations do not authorize submission or replace the renderer.
+//! Java must recheck its generation before accepting drained completion metadata.
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Condvar, LockResult, Mutex, MutexGuard, PoisonError};
 
 use jni::objects::{JByteArray, JClass, JIntArray, JLongArray};
 use jni::sys::{JNI_FALSE, jboolean, jint, jlong};
 use jni::{Env, EnvUnowned};
 
 mod snapshot;
+mod work;
 
 // Shared wire values with the Java renderer observer (not raw hook IDs).
 const CURRENT: jint = 0;
@@ -36,11 +36,40 @@ const COMPILE: jint = 7;
 const TASK: jint = 8;
 const UPLOAD: jint = 9;
 
-static RENDERER: Mutex<Renderer> = Mutex::new(Renderer::new());
+static RENDERER: Lifecycle = Lifecycle::new(Renderer::new());
+
+struct Lifecycle {
+    state: Mutex<Renderer>,
+    drained: Condvar,
+}
+
+impl Lifecycle {
+    const fn new(renderer: Renderer) -> Self {
+        Self {
+            state: Mutex::new(renderer),
+            drained: Condvar::new(),
+        }
+    }
+
+    fn lock(&self) -> LockResult<MutexGuard<'_, Renderer>> {
+        self.state.lock()
+    }
+
+    fn wait<'a>(&self, locked: MutexGuard<'a, Renderer>) -> MutexGuard<'a, Renderer> {
+        self.drained
+            .wait(locked)
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+}
 
 struct Renderer {
     generation: jlong,
     owner_thread: jlong,
+    workers: Option<ravel_renderer::workers::WorkerPool>,
+    retired_stats: Option<ravel_renderer::workers::WorkerStats>,
+    draining: bool,
+    closed: bool,
+    worker_failure: bool,
 }
 
 impl Renderer {
@@ -48,6 +77,11 @@ impl Renderer {
         Self {
             generation: 1,
             owner_thread: 0,
+            workers: None,
+            retired_stats: None,
+            draining: false,
+            closed: false,
+            worker_failure: false,
         }
     }
 
@@ -104,17 +138,25 @@ impl Renderer {
 /// callers must never relabel stale worker output with that returned token.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererEvent")]
 pub fn ravel_renderer_event<'local>(
-    _env: EnvUnowned<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     event: jint,
     generation: jlong,
     thread_id: jlong,
     owner_thread: jboolean,
 ) -> jlong {
-    RENDERER
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .observe(event, generation, thread_id, owner_thread != JNI_FALSE)
+    env.with_env(
+        |_env: &mut Env<'local>| -> Result<jlong, work::BoundaryError> {
+            Ok(work::observe(
+                &RENDERER,
+                event,
+                generation,
+                thread_id,
+                owner_thread != JNI_FALSE,
+            ))
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 /// Checks a copied worker generation under the same gate used by invalidation.
@@ -134,26 +176,61 @@ pub fn ravel_renderer_accept<'local>(
 
 /// Compares every compactly decoded cell with a bounded vanilla state/light batch.
 ///
-/// Returns `[1, native_bytes, mismatched_cells, compared_cells, copy_bytes,
-/// scratch_bound_bytes]`, or an empty array for invalid/stale/busy input. No
-/// snapshot or game reference survives admission.
+/// Returns the existing six comparison values followed by `[admitted, key]`,
+/// structured failure values, or empty for stale/busy/closed/invalid-key input. Only compared
+/// immutable snapshots can enter the bounded native worker pool.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererSnapshot")]
 pub fn ravel_renderer_snapshot<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     generation: jlong,
+    key: jlong,
     states: JIntArray<'local>,
     light: JByteArray<'local>,
+    geometry: JByteArray<'local>,
 ) -> JLongArray<'local> {
     env.with_env(
-        |env: &mut Env<'local>| -> jni::errors::Result<JLongArray<'local>> {
-            let receipt = snapshot::admit(&RENDERER, generation, || {
-                snapshot::copy_and_compare(env, generation, &states, &light)
+        |env: &mut Env<'local>| -> Result<JLongArray<'local>, work::BoundaryError> {
+            let result = JLongArray::new(env, 8)?;
+            let receipt = snapshot::admit(&RENDERER, generation, key, || {
+                snapshot::copy_and_compare(env, generation, &states, &light, &geometry)
             })?;
-            let values = receipt.as_ref().map_or(&[][..], |values| &values[..]);
-            let result = JLongArray::new(env, values.len())?;
-            result.set_region(env, 0, values)?;
-            Ok(result)
+            let Some(receipt) = receipt else {
+                return Ok(JLongArray::new(env, 0)?);
+            };
+            Ok(snapshot::publish(
+                &RENDERER,
+                generation,
+                receipt,
+                |values| {
+                    if values.is_empty() {
+                        return JLongArray::new(env, 0);
+                    }
+                    result.set_region(env, 0, values)?;
+                    Ok(result)
+                },
+            )?)
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// Drains bounded native metadata, queries statistics, or synchronously stops workers.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererWork")]
+pub fn ravel_renderer_work<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    operation: jint,
+    generation: jlong,
+    key: jlong,
+) -> JLongArray<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JLongArray<'local>, work::BoundaryError> {
+            work::publish(&RENDERER, operation, generation, key, |values| {
+                let result = JLongArray::new(env, values.len())?;
+                result.set_region(env, 0, values)?;
+                Ok(result)
+            })
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -161,3 +238,6 @@ pub fn ravel_renderer_snapshot<'local>(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod work_tests;

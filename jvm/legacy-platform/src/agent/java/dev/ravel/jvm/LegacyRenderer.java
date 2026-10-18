@@ -22,16 +22,29 @@ public final class LegacyRenderer {
 
     static void enter(String id, Object first) {
         switch (id) {
-            case "legacyResourceReload" -> ownerEvent(1);
-            case "legacyRendererUnload" -> ownerEvent(2);
-            case "legacyRendererClose" -> ownerEvent(2);
-            case "legacyRendererFrame" -> ownerEvent(3);
+            case "legacyResourceReload" -> lifecycle(1);
+            case "legacyRendererUnload", "legacyRendererClose" -> lifecycle(2);
+            case "legacyRendererFrame" -> {
+                ownerEvent(3);
+                LegacyMeshWork.frame();
+            }
             case "legacyRendererTerrain" -> ownerEvent(4);
             case "legacyRendererLayer" -> ownerEvent(5);
-            case "legacyRendererUpdate" -> ownerEvent(6);
+            case "legacyRendererUpdate" -> {
+                ownerEvent(6);
+                LegacyMeshWork.poll();
+            }
             case "legacyRendererUpload" -> ownerEvent(9);
             default -> { }
         }
+    }
+
+    // Native invalidation joins its workers before returning; Java then forgets every retired key and
+    // checks the retired pool's final stats against the generation observed before the event.
+    private static void lifecycle(int event) {
+        long retiring = currentGeneration();
+        ownerEvent(event);
+        LegacyMeshWork.retire(retiring);
     }
 
     // These returns can include aborted compilation or a cancelled callback's early return.
@@ -61,6 +74,16 @@ public final class LegacyRenderer {
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }
+
+    public static long[] meshMetrics() { return LegacyMeshWork.metrics(); }
+    public static String[] meshMetricNames() { return LegacyMeshWork.NAMES.clone(); }
+    public static String[] meshSeries() { return LegacyMeshWork.SERIES.clone(); }
+    public static long meshPercentile(int series, int percent) { return LegacyMeshWork.percentile(series, percent); }
+    public static void beginMeshStress() { LegacyMeshWork.beginStress(); }
+    public static void endMeshStress() { LegacyMeshWork.endStress(); }
+    public static boolean injectStaleMeshProof(long retired) { return LegacyMeshWork.injectStaleProof(retired); }
+    public static int meshKeysHeld() { return LegacyMeshWork.occupied(); }
+    public static long[] shutdownMeshWork() { return LegacyMeshWork.shutdown(); }
 
     private static synchronized void callbackReturn(Object receiver) throws ReflectiveOperationException {
         if (TASKS.isEmpty()) return;

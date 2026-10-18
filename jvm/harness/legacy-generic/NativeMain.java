@@ -108,8 +108,8 @@ public final class NativeMain {
         LegacyRenderer.enter("legacyResourceReload", null);
         long reloaded = LegacyRenderer.currentGeneration();
         require(reloaded > initial && !LegacyRenderer.accepts(initial), "reload retained old task token");
-        require(Hook.ravelRendererSnapshot(initial, new int[5832], new byte[5832]).length == 0,
-                "retired snapshot batch accepted");
+        require(Hook.ravelRendererSnapshot(initial, LegacyMeshWork.probeKey(), new int[5832], new byte[5832],
+                new byte[5832]).length == 0, "retired snapshot batch accepted");
         require(LegacyRenderer.injectStaleProof(), "injected stale task observation was not rejected");
         LegacyRenderer.enter("legacyRendererWorker", queued);
         LegacyRenderer.exit("legacyRendererCompile", null, queued);
@@ -131,32 +131,228 @@ public final class NativeMain {
         LegacyRenderer.exit("legacyRendererCompile", null, retained[retained.length - 1]);
         require(LegacyRenderer.count(7) == compiled + 1, "bounded overflow relabelled untracked task");
         java.lang.ref.Reference.reachabilityFence(retained);
+        meshWork();
     }
 
     private static void snapshot(long generation) {
         int[] states = new int[5832];
         byte[] light = new byte[5832];
+        byte[] geometry = new byte[5832];
         for (int i = 0; i < states.length; i++) {
             states[i] = ((i * 179) & 1048575) << 4 | (i & 15);
             light[i] = (byte) i;
         }
         states[0] = 0;
         states[5831] = 0xffffff;
-        long[] receipt = Hook.ravelRendererSnapshot(generation, states, light);
-        require(receipt.length == 6 && receipt[0] == 1 && receipt[1] > 0
-                && receipt[2] == 0 && receipt[3] == 5832 && receipt[4] == 29160
-                && receipt[5] > 0, "native dense state/light batch roundtrip failed");
-        require(Hook.ravelRendererSnapshot(generation, null, light).length == 0
-                && Hook.ravelRendererSnapshot(generation, states, null).length == 0
-                && Hook.ravelRendererSnapshot(generation, new int[5831], light).length == 0
-                && Hook.ravelRendererSnapshot(generation, states, new byte[5833]).length == 0
-                && Hook.ravelRendererSnapshot(0, states, light).length == 0,
-                "malformed snapshot batch accepted");
+        for (int i = 0; i < states.length; i++) geometry[i] = (byte) ((states[i] >>> 4) & 1);
+        long key = LegacyMeshWork.reserve(generation);
+        long[] receipt = Hook.ravelRendererSnapshot(generation, key, states, light, geometry);
+        LegacyMeshWork.commit(key, receipt, 1);
+        require(receipt.length == 8 && receipt[0] == 1 && receipt[1] > 0
+                && receipt[2] == 0 && receipt[3] == 5832 && receipt[4] == 34992
+                && receipt[5] > 34992 && receipt[6] == 1 && receipt[7] == key,
+                "native dense state/light/geometry batch roundtrip failed");
+        snapshotFailures(generation, states, light, geometry);
+    }
+
+    // Each failure settles a really reserved key: it must be released and never counted as admitted.
+    private static void failure(long generation, int[] states, byte[] light, byte[] geometry,
+            long code, long a, long b, long c) {
+        long key = LegacyMeshWork.reserve(generation);
+        int held = LegacyMeshWork.occupied();
+        long[] receipt = Hook.ravelRendererSnapshot(generation, key, states, light, geometry);
+        require(key > 0 && receipt.length == 8 && receipt[0] == -1 && receipt[1] == code && receipt[2] == a
+                && receipt[3] == b && receipt[4] == c && receipt[5] == 0 && receipt[6] == 0 && receipt[7] == key,
+                "native capture failure " + code + " not surfaced: " + java.util.Arrays.toString(receipt));
+        long[] before = LegacyMeshWork.metrics();
+        LegacyMeshWork.commit(key, receipt, 1);
+        long[] after = LegacyMeshWork.metrics();
+        require(after[0] == before[0] && after[1] == before[1] && after[43] == before[43] + 1
+                && after[44] == code && after[45] == a && LegacyMeshWork.occupied() == held - 1,
+                "Java counted a capture failure as admitted or kept its key");
+    }
+
+    private static void snapshotFailures(long generation, int[] states, byte[] light, byte[] geometry) {
+        long probe = LegacyMeshWork.probeKey();
+        require(Hook.ravelRendererSnapshot(0, probe, states, light, geometry).length == 0
+                && Hook.ravelRendererSnapshot(generation, 0, states, light, geometry).length == 0
+                && Hook.ravelRendererSnapshot(generation, -1, states, light, geometry).length == 0,
+                "stale generation or reserved key reached capture validation");
+        failure(generation, null, light, null, 7, 5, 0, 0);
+        failure(generation, states, null, geometry, 7, 2, 0, 0);
+        failure(generation, new int[5831], light, geometry, 2, 5831, 5832, 5832);
+        failure(generation, states, new byte[5833], geometry, 2, 5832, 5833, 5832);
+        failure(generation, states, light, new byte[5831], 2, 5832, 5832, 5831);
+        geometry[1] = 2;
+        failure(generation, states, light, geometry, 4, 1, 2, 0);
+        geometry[1] = (byte) ((states[1] >>> 4) & 1);
+        states[2] = states[1];
+        geometry[2] = (byte) (geometry[1] ^ 1);
+        failure(generation, states, light, geometry, 5, states[1], 0, 0);
+        geometry[2] = geometry[1];
         for (int invalid : new int[] {-1, 0x1000000}) {
             states[0] = invalid;
-            require(Hook.ravelRendererSnapshot(generation, states, light).length == 0,
-                    "out-of-contract state key accepted");
+            failure(generation, states, light, geometry, 3, 0, invalid, 0);
         }
+        long key = LegacyMeshWork.reserve(generation);
+        int held = LegacyMeshWork.occupied();
+        try {
+            LegacyMeshWork.commit(key, new long[] {1, 0, 0, 5832, 34992, 1, 1, key + 1}, 1);
+            throw new AssertionError("receipt for another key was accepted");
+        } catch (IllegalStateException expected) {
+            require(LegacyMeshWork.occupied() == held - 1, "malformed receipt leaked its Java key");
+        }
+    }
+
+    private static final int STONE = 1 << 4;
+    private static final int NON_CUBE = 20 << 4;
+
+    // Deterministic geometry section: one full-opaque cube, one non-cube state and optionally a sealed layer.
+    private static long submit(long generation, boolean sealed) {
+        int[] states = new int[5832];
+        byte[] geometry = new byte[5832];
+        states[(1 * 18 + 1) * 18 + 1] = STONE;
+        states[(1 * 18 + 1) * 18 + 3] = NON_CUBE;
+        if (sealed) for (int z = 0; z < 18; z++) for (int x = 0; x < 18; x++) states[(9 * 18 + z) * 18 + x] = STONE;
+        for (int i = 0; i < states.length; i++) geometry[i] = (byte) (states[i] == STONE ? 1 : 0);
+        long key = LegacyMeshWork.reserve(generation);
+        require(key > 0, "Java key table refused deterministic geometry job");
+        long[] receipt = Hook.ravelRendererSnapshot(generation, key, states, new byte[5832], geometry);
+        LegacyMeshWork.commit(key, receipt, 1);
+        require(receipt.length == 8 && receipt[2] == 0 && receipt[7] == key && (receipt[6] & ~1L) == 0,
+                "current-generation geometry batch did not return an admission receipt");
+        return receipt[6];
+    }
+
+    private static void drain(long target) throws InterruptedException {
+        long deadline = System.nanoTime() + 30_000_000_000L;
+        while (LegacyMeshWork.metrics()[3] < target) {
+            require(System.nanoTime() < deadline, "native geometry completions were not drained");
+            LegacyRenderer.enter("legacyRendererUpdate", null);
+            Thread.sleep(1);
+        }
+    }
+
+    // Drained before any reload: one exposed cube plus one unsupported state, then a sealed full layer.
+    private static long[] geometryRecords(long current) throws InterruptedException {
+        long[] before = LegacyMeshWork.metrics();
+        require(submit(current, false) == 1, "current geometry job was not admitted");
+        drain(before[3] + 1);
+        long[] one = LegacyMeshWork.metrics();
+        require(one[5] == before[5] + 1 && one[7] == before[7] + 1 && one[9] - before[9] == 24
+                && one[10] - before[10] == 36 && one[16] == before[16] && one[17] == 0,
+                "full-cube/unsupported geometry metadata was not drained exactly");
+        require(submit(current, true) == 1, "sealed geometry job was not admitted");
+        drain(one[3] + 1);
+        long[] sealed = LegacyMeshWork.metrics();
+        require(sealed[5] == one[5] + 1 && sealed[16] == one[16] + 1 && sealed[9] > one[9] + 24
+                && sealed[17] == 0, "sealed full-cube layer did not split section visibility");
+        return sealed;
+    }
+
+    // Deterministic native proof, not live evidence: admitted jobs are retired before Java drains them.
+    private static void meshWork() throws Exception {
+        LegacyRenderer.enter("legacyResourceReload", null);
+        long current = LegacyRenderer.currentGeneration();
+        long[] drained = geometryRecords(current);
+        int admitted = 0;
+        for (int index = 0; index < 12; index++) admitted += (int) submit(current, false);
+        long[] stats = Hook.ravelRendererWork(1, current, 0);
+        long[] full = LegacyMeshWork.metrics();
+        require(stats.length == 18 && stats[1] == current && stats[15] == 8 && stats[17] == 0
+                && admitted == stats[15] && stats[3] == stats[15] && stats[8] == stats[15]
+                && stats[7] == stats[16] && stats[9] == stats[16] && full[1] - drained[1] == 12 - admitted
+                && full[0] - drained[0] == admitted, "native work did not admit exactly its job and byte ceilings");
+        LegacyRenderer.enter("legacyResourceReload", null);
+        long next = LegacyRenderer.currentGeneration();
+        long[] after = LegacyMeshWork.metrics();
+        require(after[18] - full[18] == admitted && after[30] == full[30] + 1 && after[31] == full[31]
+                && after[51] == current && after[49] == full[49] && LegacyMeshWork.occupied() == 0,
+                "reload did not retire undrained keys and prove the retired pool drained");
+        long[] retired = Hook.ravelRendererWork(3, next, 0);
+        require(retired.length == 18 && retired[1] == current && retired[2] == 1 && retired[14] == 0
+                && java.util.Arrays.stream(retired, 3, 8).allMatch(v -> v == 0) && retired[8] == 8
+                && retired[9] == retired[16], "retired pool final stats lost their actual high-water marks");
+        require(Hook.ravelRendererWork(0, current, 0).length == 0
+                && Hook.ravelRendererWork(1, current, 0).length == 0
+                && Hook.ravelRendererWork(3, current, 0).length == 0
+                && LegacyMeshWork.injectStaleProof(current)
+                && LegacyMeshWork.metrics()[42] == after[42] + 1 && LegacyMeshWork.occupied() == 0,
+                "retired generation work was published");
+        restartAndClose(next, after);
+    }
+
+    private static void restartAndClose(long next, long[] after) throws InterruptedException {
+        require(submit(next, false) == 1, "work did not restart for the subsequent generation");
+        drain(after[3] + 1);
+        require(LegacyMeshWork.metrics()[3] == after[3] + 1 && LegacyMeshWork.metrics()[17] == 0,
+                "restarted generation published a retired key");
+        drainedBeforeReceipt(next);
+        require(submit(next, false) == 1, "second restarted job was not admitted");
+        long admittedKey = LegacyMeshWork.reserve(next);
+        long[] admittedReceipt = capturedReceipt(next, admittedKey);
+        long pending = LegacyMeshWork.reserve(next);
+        require(pending > 0, "Java key table refused pending close reservation");
+        long[] before = LegacyMeshWork.metrics();
+        Thread late = lateReceipt(admittedKey, admittedReceipt, pending);
+        long[] closed = LegacyMeshWork.shutdown();
+        long[] settled = LegacyMeshWork.metrics();
+        require(LegacyMeshWork.occupied() == 0 && settled[50] == before[50] + 1
+                && settled[0] == before[0] + 1 && settled[18] == before[18] + 2,
+                "shutdown returned before admitted and unadmitted late receipts settled");
+        late.join();
+        require(closed.length == 18 && closed[1] == next && closed[2] == 1 && closed[17] == 0
+                && java.util.Arrays.stream(closed, 3, 8).allMatch(v -> v == 0)
+                && closed[14] == 0 && LegacyMeshWork.occupied() == 0,
+                "shutdown did not drain every native reservation and withdraw every Java key");
+        require(LegacyMeshWork.reserve(next) == 0 && LegacyMeshWork.occupied() == 0,
+                "closed generation reserved a Java key");
+        require(Hook.ravelRendererSnapshot(next, LegacyMeshWork.probeKey(), new int[5832], new byte[5832],
+                new byte[5832]).length == 0, "closed generation admitted new work");
+    }
+
+    private static long[] capturedReceipt(long generation, long key) {
+        require(key > 0, "Java key table refused delayed receipt reservation");
+        long[] receipt = Hook.ravelRendererSnapshot(generation, key, new int[5832], new byte[5832],
+                new byte[5832]);
+        require(receipt.length == 8 && receipt[0] == 1 && receipt[2] == 0
+                && receipt[6] == 1 && receipt[7] == key, "delayed JNI capture was not admitted");
+        return receipt;
+    }
+
+    // A native completion can drain while Java still owns the uncommitted admitted receipt.
+    private static void drainedBeforeReceipt(long generation) throws InterruptedException {
+        long[] before = LegacyMeshWork.metrics();
+        long key = LegacyMeshWork.reserve(generation);
+        long[] receipt = capturedReceipt(generation, key);
+        drain(before[3] + 1);
+        require(LegacyMeshWork.occupied() == 1 && LegacyMeshWork.metrics()[0] == before[0],
+                "draining an uncommitted receipt lost its reserved slot");
+        LegacyMeshWork.commit(key, receipt, 1);
+        long[] settled = LegacyMeshWork.metrics();
+        require(LegacyMeshWork.occupied() == 0 && settled[0] == before[0] + 1
+                && settled[18] == before[18] && settled[50] == before[50],
+                "drained-before-commit admission was lost or counted as retired");
+    }
+
+    // Settle real JNI admission only after shutdown retires both pending slots, never on a timer.
+    private static Thread lateReceipt(long admittedKey, long[] receipt, long pending) {
+        Thread late = new Thread(() -> {
+            long deadline = System.nanoTime() + 30_000_000_000L;
+            while (!LegacyMeshWork.retiredPending(admittedKey) || !LegacyMeshWork.retiredPending(pending)) {
+                require(System.nanoTime() < deadline, "shutdown never retired pending receipt slots");
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted awaiting pending receipt retirement", interrupted);
+                }
+            }
+            LegacyMeshWork.commit(admittedKey, receipt, 1);
+            LegacyMeshWork.commit(pending, new long[0], 1);
+        });
+        late.start();
+        return late;
     }
 
     // Pure admission checks intentionally do not stand in for live game-region evidence.

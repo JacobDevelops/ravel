@@ -288,15 +288,18 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
 - **Risks:** incorrect transparency/culling, snapshot races, native use-after-free, memory moved off heap rather than
   saved, modern-GL-only design excluding Jacob's machines. [Design risk analysis; Nothirium multiple-backend precedent
   above]
-- **Status:** slices 1–3 completed: [vanilla baseline](vanilla-baseline.md),
-  [pinned renderer lifecycle contract](../../../docs/runbooks/legacy-launch.md#renderer-lifecycle-observations)
-  and [bounded observational section snapshots](section-snapshots.md).
-  Official live reload/unload/reopen advances generations and rejects retired task observations and actual
-  retired section batches. Java reads the post-compile region on its compilation thread; Rust validates every
-  decoded state/light cell against the copied batch, with separate live coordinate-oracle samples.
-  Java retains game/model/GL ownership; Rust owns scalar generations and compact immutable values outside SDK.
-  This is functional lifecycle/copy proof, not successful mesh publication, an atomic world transaction or
-  matched performance evidence; the replacement renderer and resource savings remain unproved.
+- **Status:** slices 1–4 completed: [vanilla baseline](vanilla-baseline.md),
+  [pinned renderer lifecycle contract](../../../docs/runbooks/legacy-launch.md#renderer-lifecycle-observations),
+  [bounded observational section snapshots](section-snapshots.md) and
+  [bounded Rust mesh/visibility workers](mesh-workers.md).
+  Official live reload/unload/reopen advances generations, rejects stale work and proves actual retired-pool
+  drain. Captured game full-opaque-cube properties select geometry; unsupported state keys are explicit.
+  Two Rust workers share eight work slots and a fixed native byte reservation ceiling. Physical-GPU and
+  Xvfb moving stress both reach the ceiling without stale publication or leaked shutdown reservations.
+  Java checks completion metadata but discards native geometry; vanilla still renders and owns GL.
+  Slices 5–7 remain: batched upload, complete model/layer/reload fidelity and default cutover.
+  This is functional geometry/ownership proof, not an atomic world transaction, full visual parity,
+  matched performance evidence or demonstrated resource savings.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

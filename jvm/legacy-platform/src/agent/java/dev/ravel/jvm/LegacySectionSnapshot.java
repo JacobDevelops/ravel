@@ -14,12 +14,13 @@ import java.util.concurrent.locks.ReentrantLock;
 final class LegacySectionSnapshot {
     private static final int CELLS = 18 * 18 * 18;
     private static final AtomicBoolean BUSY = new AtomicBoolean();
-    private static final long[] METRICS = new long[23];
+    private static final long[] METRICS = new long[24];
     private static final long[] TIMES = new long[4096];
     private static int samples;
     private static Access access;
     private static int[] proofStates;
     private static byte[] proofLight;
+    private static byte[] proofGeometry;
     private static long proofGeneration;
 
     private LegacySectionSnapshot() { }
@@ -48,23 +49,14 @@ final class LegacySectionSnapshot {
             } finally { lock.unlock(); }
             int[] states = new int[CELLS];
             byte[] light = new byte[CELLS];
-            long nonAir = fill(a, region, x, y, z, states, light);
-            long[] candidate = retainProof && !proofReady() ? oracle(a, region, x, y, z, states, light) : null;
-            long[] receipt = Hook.ravelRendererSnapshot(generation, states, light);
-            if (receipt.length == 0) { increment(7); return; }
-            if (receipt.length != 6 || receipt[0] != 1 || receipt[2] != 0 || receipt[3] != CELLS)
-                throw new IllegalStateException("Native snapshot did not round-trip every copied region cell");
-            record(receipt, System.nanoTime() - started, generation, nonAir, states, light);
-            if (candidate != null) synchronized (LegacySectionSnapshot.class) {
-                if (proofStates == null) {
-                    proofStates = states;
-                    proofLight = light;
-                    proofGeneration = generation;
-                    METRICS[18] = candidate[0];
-                    METRICS[19] = candidate[1];
-                    METRICS[20] = candidate[2];
-                }
-            }
+            byte[] geometry = new byte[CELLS];
+            long nonAir = fill(a, region, x, y, z, states, light, geometry);
+            long[] candidate = retainProof && !proofReady()
+                    ? oracle(a, region, x, y, z, new byte[][] {light, geometry}, states) : null;
+            long[] receipt = submit(generation, states, light, geometry, started);
+            if (receipt == null) return;
+            record(receipt, System.nanoTime() - started, generation, nonAir, states, light, geometry);
+            if (candidate != null) retain(candidate, generation, states, light, geometry);
         } catch (RuntimeException | Error failure) {
             throw failure;
         } catch (Throwable failure) {
@@ -73,8 +65,37 @@ final class LegacySectionSnapshot {
         } finally { BUSY.set(false); }
     }
 
-    private static long fill(Access a, Object region, int ox, int oy, int oz, int[] states, byte[] light)
-            throws Throwable {
+    // The Java key is reserved before the native call; every outcome settles it exactly once.
+    private static long[] submit(long generation, int[] states, byte[] light, byte[] geometry, long started) {
+        long key = LegacyMeshWork.reserve(generation);
+        if (key == 0) { increment(8); return null; }
+        long[] receipt = null;
+        try {
+            receipt = Hook.ravelRendererSnapshot(generation, key, states, light, geometry);
+        } finally {
+            LegacyMeshWork.commit(key, receipt, System.nanoTime() - started);
+        }
+        if (receipt.length == 0) { increment(7); return null; }
+        if (receipt.length == 8 && receipt[0] == -1) return null; // Counted with its code by LegacyMeshWork.
+        if (receipt.length != 8 || receipt[0] != 1 || receipt[2] != 0 || receipt[3] != CELLS)
+            throw new IllegalStateException("Native snapshot did not round-trip every copied region cell");
+        return receipt;
+    }
+
+    private static synchronized void retain(long[] candidate, long generation, int[] states, byte[] light,
+            byte[] geometry) {
+        if (proofStates != null) return;
+        proofStates = states;
+        proofLight = light;
+        proofGeometry = geometry;
+        proofGeneration = generation;
+        METRICS[18] = candidate[0];
+        METRICS[19] = candidate[1];
+        METRICS[20] = candidate[2];
+    }
+
+    private static long fill(Access a, Object region, int ox, int oy, int oz, int[] states, byte[] light,
+            byte[] geometry) throws Throwable {
         Object pos = (Object) a.position.invokeExact(0, 0, 0);
         long nonAir = 0;
         for (int y = 0; y < 18; y++) for (int z = 0; z < 18; z++) for (int x = 0; x < 18; x++) {
@@ -89,14 +110,20 @@ final class LegacySectionSnapshot {
             int index = ((y * 18) + z) * 18 + x;
             states[index] = (id << 4) | meta;
             light[index] = (byte) ((sky << 4) | emitted);
+            geometry[index] = fullCube(a, state);
             if (id != 0) nonAir++;
         }
         return nonAir;
     }
 
+    // The game's own per-state predicates, never an id list: isOpaqueCube && isFullCube.
+    private static byte fullCube(Access a, Object state) throws Throwable {
+        return (byte) ((boolean) a.opaque.invokeExact(state) && (boolean) a.cube.invokeExact(state) ? 1 : 0);
+    }
+
     // Coordinate oracle only: same exact mappings, independently constructed origin-offset positions.
-    private static long[] oracle(Access a, Object region, int ox, int oy, int oz,
-            int[] states, byte[] light) throws Throwable {
+    private static long[] oracle(Access a, Object region, int ox, int oy, int oz, byte[][] copied,
+            int[] states) throws Throwable {
         int[] offsets = {-1, 0, 7, 15, 16};
         long checks = 0, mismatches = 0, border = 0;
         for (int dx : offsets) for (int dy : offsets) for (int dz : offsets) {
@@ -108,7 +135,8 @@ final class LegacySectionSnapshot {
             int emitted = (int) a.light.invokeExact(region, a.emitted, pos);
             int index = (dy + 1) * 324 + (dz + 1) * 18 + dx + 1;
             checks++;
-            if (states[index] != key || Byte.toUnsignedInt(light[index]) != (sky * 16 + emitted)) mismatches++;
+            if (states[index] != key || Byte.toUnsignedInt(copied[0][index]) != (sky * 16 + emitted)
+                    || copied[1][index] != fullCube(a, state)) mismatches++;
             if (dx == -1 || dx == 16 || dy == -1 || dy == 16 || dz == -1 || dz == 16) border++;
         }
         synchronized (LegacySectionSnapshot.class) {
@@ -124,7 +152,7 @@ final class LegacySectionSnapshot {
     private static synchronized void increment(int index) { METRICS[index]++; }
 
     private static synchronized void record(long[] receipt, long nanos, long generation,
-            long nonAir, int[] states, byte[] light) {
+            long nonAir, int[] states, byte[] light, byte[] geometry) {
         METRICS[0]++;
         METRICS[1] += receipt[1];
         METRICS[2] = Math.max(METRICS[2], receipt[1]);
@@ -137,6 +165,7 @@ final class LegacySectionSnapshot {
         METRICS[11] = generation;
         METRICS[12] += nonAir;
         for (int i = 1; i < CELLS; i++) if (states[i] != states[i - 1] || light[i] != light[i - 1]) METRICS[13]++;
+        for (byte flag : geometry) METRICS[23] += flag;
         METRICS[14] = Math.max(METRICS[14], receipt[4]);
         METRICS[15] = Math.max(METRICS[15], receipt[5]);
         if (Thread.currentThread().threadId() != LegacyRenderer.ownerThread()) METRICS[17]++;
@@ -151,13 +180,15 @@ final class LegacySectionSnapshot {
             throw new IllegalStateException("Retired captured batch generation still accepted: " + proofGeneration);
         if (!BUSY.compareAndSet(false, true)) return false;
         try {
-            long[] receipt = Hook.ravelRendererSnapshot(proofGeneration, proofStates, proofLight);
+            long[] receipt = Hook.ravelRendererSnapshot(proofGeneration, LegacyMeshWork.probeKey(),
+                    proofStates, proofLight, proofGeometry);
             if (receipt.length != 0)
                 throw new IllegalStateException("Native accepted actual retired captured batch: generation="
                         + proofGeneration + ", receipt=" + Arrays.toString(receipt));
             METRICS[16]++;
             proofStates = null;
             proofLight = null;
+            proofGeometry = null;
             return true;
         } finally {
             BUSY.set(false);
@@ -197,6 +228,8 @@ final class LegacySectionSnapshot {
         final MethodHandle state = handle("LEGACY_WORLD_VIEW", "getBlockState", Object.class, Object.class, Object.class);
         final MethodHandle block = handle("LEGACY_BLOCK_STATE", "getBlock", Object.class, Object.class);
         final MethodHandle id = handle("LEGACY_BLOCK", "getId", int.class, Object.class);
+        final MethodHandle opaque = handle("LEGACY_BLOCK_PROPERTIES", "isSolidRender", boolean.class, Object.class);
+        final MethodHandle cube = handle("LEGACY_BLOCK_PROPERTIES", "isCube", boolean.class, Object.class);
         final MethodHandle meta = handle("LEGACY_BLOCK", "getMetadataFromState", int.class, Object.class, Object.class);
         final MethodHandle light = handle("LEGACY_WORLD_REGION", "getLight", int.class,
                 Object.class, Object.class, Object.class);

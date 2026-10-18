@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -40,6 +41,9 @@ final class ClientAutomation implements Runnable {
     private long rendererReopened;
     private boolean rendererStaleRejected;
     private boolean rendererInjectedStaleRejected;
+    private long unloadingGeneration;
+    private long unloadDrainChecks;
+    private long unloadRetiredPoolGeneration;
 
     ClientAutomation(ClassLoader loader, Path evidence) {
         this.loader = loader;
@@ -67,6 +71,7 @@ final class ClientAutomation implements Runnable {
             AudioAcceptance.play(evidence);
             snapshot("03-world");
             walkAndLook();
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) stressMovement();
             wheel();
             resize();
             key(KeyEvent.VK_F11);
@@ -81,12 +86,21 @@ final class ClientAutomation implements Runnable {
             await(() -> onGame(() -> field(game, "m") != null));
             if (Boolean.getBoolean("ravel.legacy.acceptance")) requirePausedHooks();
             snapshot("06-pause");
+            long drainChecks = Boolean.getBoolean("ravel.legacy.acceptance") ? meshMetric("drainChecks") : 0;
+            long drainFailures = Boolean.getBoolean("ravel.legacy.acceptance") ? meshMetric("drainFailures") : 0;
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) unloadingGeneration = rendererMetric("currentGeneration");
             button(1);
             await(() -> onGame(() -> field(game, "f") == null));
             if (Boolean.getBoolean("ravel.legacy.acceptance")) {
                 rendererAfterUnload = rendererMetric("currentGeneration");
                 require(rendererAfterUnload > rendererAfterReload, "Renderer unload did not retire generation");
                 rendererStaleRejected &= !rendererAccepts(rendererAfterReload);
+                unloadDrainChecks = meshMetric("drainChecks") - drainChecks;
+                unloadRetiredPoolGeneration = meshMetric("lastRetiredPoolGeneration");
+                // The unloaded generation's own pool must report stopped, empty, unreserved final stats.
+                require(unloadDrainChecks > 0 && unloadRetiredPoolGeneration == unloadingGeneration
+                        && meshMetric("drainFailures") == drainFailures && meshMetric("rejectedRecords") == 0,
+                        "Native geometry work of the unloaded generation did not drain at world unload");
             }
             snapshot("07-saved-menu");
             checkpoint("integrated-first.dat");
@@ -94,7 +108,9 @@ final class ClientAutomation implements Runnable {
             checkpoint("integrated-reopened.dat");
             if (Boolean.getBoolean("ravel.legacy.acceptance")) rendererProof();
             Files.writeString(evidence.resolve("automation.complete"),
-                    "seed=8675309\nactions=click-menu,type-worldname,type-seed,create,audio-playing,ticks,walk,look,wheel,resize,fullscreen,save-quit,reopen\n"
+                    "seed=8675309\nactions=click-menu,type-worldname,type-seed,create,audio-playing,ticks,walk,look"
+                    + (Boolean.getBoolean("ravel.legacy.acceptance") ? ",stress-teleport" : "")
+                    + ",wheel,resize,fullscreen,save-quit,reopen\n"
                     + "durationMillis=" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + "\n");
             onGame(() -> invoke(game, "n", new Class<?>[0]));
         } catch (Exception failure) {
@@ -215,14 +231,136 @@ final class ClientAutomation implements Runnable {
         require(rendererMetric("ownerThread") == onGame(() -> Thread.currentThread().threadId()),
                 "Renderer owner is not the client game thread");
         String snapshots = snapshotProof();
+        String mesh = meshProof();
         Files.writeString(evidence.resolve("renderer.json"),
                 "{\"beforeReload\":" + rendererBeforeReload + ",\"afterReload\":" + rendererAfterReload
                 + ",\"afterUnload\":" + rendererAfterUnload + ",\"reopened\":" + rendererReopened
                 + ",\"finalUnload\":" + finalUnload + ",\"staleRejected\":" + rendererStaleRejected
                 + ",\"ownerThread\":" + rendererMetric("ownerThread")
                 + ",\"injectedStaleObservationRejected\":" + rendererInjectedStaleRejected
-                + ",\"workerObserved\":" + worker + ",\"snapshot\":" + snapshots
+                + ",\"workerObserved\":" + worker + ",\"snapshot\":" + snapshots + ",\"mesh\":" + mesh
                 + ",\"seams\":{" + counts + "}}\n");
+    }
+
+    private static final int STRESS_TELEPORTS = 6;
+    private static final int STRESS_STEP_BLOCKS = 128;
+    private static final int STRESS_MIN_DRAINED = 32;
+
+    private long meshMetric(String name) throws ReflectiveOperationException {
+        String[] names = (String[]) rendererType().getMethod("meshMetricNames").invoke(null);
+        long[] values = (long[]) rendererType().getMethod("meshMetrics").invoke(null);
+        for (int index = 0; index < names.length; index++) if (names[index].equals(name)) return values[index];
+        throw new NoSuchFieldException(name);
+    }
+
+    // Server-authoritative teleports into ungenerated terrain force fresh section compiles and geometry jobs.
+    private void stressMovement() throws Exception {
+        Object server = onGame(() -> invoke(game, "F", new Class<?>[0]));
+        double[] origin = onGame(this::playerState);
+        boolean invulnerable = onServer(server, () -> abilities(server, true));
+        StringBuilder steps = new StringBuilder();
+        rendererType().getMethod("beginMeshStress").invoke(null);
+        try {
+            for (int step = 1; step <= STRESS_TELEPORTS; step++) {
+                long drained = meshMetric("drained");
+                long submitted = meshMetric("submitted");
+                teleport(server, origin[0] + step * STRESS_STEP_BLOCKS, 160, origin[2], origin);
+                await("Fresh geometry drains after stress teleport " + step,
+                        () -> meshMetric("drained") - drained >= STRESS_MIN_DRAINED, TimeUnit.MINUTES.toNanos(3));
+                waitTicks(20);
+                steps.append("step=").append(step).append(" submitted=").append(meshMetric("submitted") - submitted)
+                        .append(" drained=").append(meshMetric("drained") - drained).append('\n');
+            }
+            teleport(server, origin[0], origin[1], origin[2], origin);
+            waitTicks(40);
+        } finally {
+            rendererType().getMethod("endMeshStress").invoke(null);
+            onServer(server, () -> abilities(server, invulnerable));
+        }
+        Files.writeString(evidence.resolve("stress.txt"), "seed=8675309 teleports=" + STRESS_TELEPORTS
+                + " stepBlocks=" + STRESS_STEP_BLOCKS + " origin=" + Arrays.toString(origin) + "\n" + steps);
+        snapshot("04a-stress");
+    }
+
+    // Pinned 1.12.2: server.am() PlayerManager, v() players, aed.bO abilities, aeb.a invulnerable.
+    private boolean abilities(Object server, boolean invulnerable) throws ReflectiveOperationException {
+        Object abilities = field(serverPlayer(server), "bO");
+        Field flag = declaredField(abilities.getClass(), "a");
+        boolean before = flag.getBoolean(abilities);
+        flag.setBoolean(abilities, invulnerable);
+        return before;
+    }
+
+    private Object serverPlayer(Object server) throws ReflectiveOperationException {
+        List<?> players = (List<?>) invoke(invoke(server, "am", new Class<?>[0]), "v", new Class<?>[0]);
+        require(players.size() == 1, "Integrated stress requires exactly one server player");
+        return players.get(0);
+    }
+
+    // Pinned 1.12.2: ServerPlayerEntity.a networkHandler; pa.a(DDDFF) server teleport with client confirm.
+    private void teleport(Object server, double x, double y, double z, double[] look) throws Exception {
+        onServer(server, () -> invoke(field(serverPlayer(server), "a"), "a",
+                new Class<?>[] {double.class, double.class, double.class, float.class, float.class},
+                x, y, z, (float) look[3], (float) look[4]));
+        await(() -> onGame(() -> {
+            double[] now = playerState();
+            return Math.abs(now[0] - x) < 1 && Math.abs(now[2] - z) < 1;
+        }));
+    }
+
+    private <T> T onServer(Object server, Callable<T> action) throws Exception {
+        var value = new AtomicReference<T>();
+        Callable<Void> task = () -> {
+            value.set(action.call());
+            return null;
+        };
+        Object result = invoke(server, "a", new Class<?>[] {Callable.class}, task);
+        if (!(result instanceof Future<?> future)) throw new IllegalStateException("No server task future");
+        future.get(180, TimeUnit.SECONDS);
+        return value.get();
+    }
+
+    private String meshProof() throws Exception {
+        boolean stalePoll = onGame(() -> (boolean) rendererType().getMethod("injectStaleMeshProof", long.class)
+                .invoke(null, rendererBeforeReload));
+        long[] closed = onGame(() -> (long[]) rendererType().getMethod("shutdownMeshWork").invoke(null));
+        int keysHeld = (int) rendererType().getMethod("meshKeysHeld").invoke(null);
+        require(stalePoll && closed.length == 18 && closed[2] == 1
+                && Arrays.stream(closed, 3, 8).allMatch(value -> value == 0) && closed[14] == 0 && closed[17] == 0
+                && keysHeld == 0,
+                "Native geometry work was published stale or not drained at close");
+        String[] names = (String[]) rendererType().getMethod("meshMetricNames").invoke(null);
+        long[] values = (long[]) rendererType().getMethod("meshMetrics").invoke(null);
+        require(meshMetric("drained") > 0 && meshMetric("errors") == 0 && meshMetric("rejectedRecords") == 0
+                && meshMetric("captureFailures") == 0 && meshMetric("drainFailures") == 0
+                && meshMetric("workerFailures") == 0
+                && meshMetric("stressDrained") >= STRESS_TELEPORTS * STRESS_MIN_DRAINED,
+                "Native geometry admission/drain proof missing");
+        StringBuilder json = new StringBuilder("{\"geometry\":\"game-isOpaqueCube-and-isFullCube-per-state-air-key-zero-empty\","
+                + "\"fidelity\":\"geometry-only-no-texture-ao-or-model-parity\","
+                + "\"upload\":\"none-native-owned-until-drained-then-discarded\","
+                + "\"denominator\":\"admitted-native-geometry-jobs-not-vanilla-compile-tasks\","
+                + "\"frameInterval\":\"observational-stress-window-frame-interval-not-mesh-attribution\","
+                + "\"cancellationEvidence\":\"" + (meshMetric("retiredBeforeDrain") > 0
+                        ? "actual-retired-before-drain" : "deterministic-harness-only") + "\","
+                + "\"timingSampleLimit\":4096,\"keySlots\":16,\"recordWidth\":11,"
+                + "\"maxRecordsPerPollLimit\":8,\"statsWidth\":18,"
+                + "\"stress\":{\"seed\":8675309,\"teleports\":" + STRESS_TELEPORTS + ",\"stepBlocks\":"
+                + STRESS_STEP_BLOCKS + ",\"minimumDrainedPerStep\":" + STRESS_MIN_DRAINED + "},"
+                + "\"stalePollRejected\":" + stalePoll + ",\"closeDrain\":{\"stopped\":" + closed[2]
+                + ",\"outstanding\":" + closed[3] + ",\"queued\":" + closed[4] + ",\"running\":" + closed[5]
+                + ",\"completed\":" + closed[6] + ",\"reservedBytes\":" + closed[7]
+                + ",\"draining\":" + closed[14] + ",\"workerFailure\":" + closed[17]
+                + ",\"javaKeysHeld\":" + keysHeld + "},\"unloadDrain\":{\"generation\":" + unloadingGeneration
+                + ",\"retiredPoolGeneration\":" + unloadRetiredPoolGeneration
+                + ",\"drainChecks\":" + unloadDrainChecks + "}");
+        for (int i = 0; i < names.length; i++) json.append(",\"").append(names[i]).append("\":").append(values[i]);
+        String[] series = (String[]) rendererType().getMethod("meshSeries").invoke(null);
+        for (int s = 0; s < series.length; s++) for (int percent : new int[] {50, 95, 99}) {
+            long nanos = (long) rendererType().getMethod("meshPercentile", int.class, int.class).invoke(null, s, percent);
+            json.append(",\"").append(series[s]).append('P').append(percent).append("Nanos\":").append(nanos);
+        }
+        return json.append('}').toString();
     }
 
     private String snapshotProof() throws Exception {
@@ -232,23 +370,25 @@ final class ClientAutomation implements Runnable {
                 "lastGeneration", "nonAirCells", "adjacentVariation", "maxNativeCopyBytes",
                 "maxNativeScratchBytes", "staleCaptureRejections", "workerCaptures",
                 "oracleChecks", "oracleMismatches", "oracleBorderChecks",
-                "oracleRetryCells", "oracleRetryCandidates"};
+                "oracleRetryCells", "oracleRetryCandidates", "fullOpaqueCells"};
         require(values.length == names.length && values[0] > 0 && values[1] > 0
                 && values[2] > 0 && values[3] > 0 && values[4] > 0 && values[5] == 0
                 && values[6] == values[0] * 5832 && values[9] == values[0] * 1736
                 && values[10] > 0 && values[11] > 0 && values[12] > 0 && values[13] > 0
-                && values[14] == 29160 && values[15] > 0 && values[16] > 0 && values[17] > 0
+                && values[14] == 34992 && values[15] > 34992 && values[16] > 0 && values[17] > 0
                 && values[18] == 125 && values[19] == 0 && values[20] == 98
-                && values[22] >= 0 && values[21] >= values[22] && values[21] <= values[22] * 125,
-                "Snapshot proof missing bounded vanilla nonair/border roundtrip or stale rejection");
+                && values[22] >= 0 && values[21] >= values[22] && values[21] <= values[22] * 125
+                && values[23] > 0,
+                "Snapshot proof missing bounded vanilla nonair/border/geometry roundtrip or stale rejection");
         StringBuilder json = new StringBuilder("{\"seed\":8675309,\"edge\":18,"
                 + "\"comparison\":\"decoded-vs-Java-copied-post-compile-region\","
                 + "\"light\":\"raw-stored-sky-and-block-not-combined-mesh-light\","
                 + "\"oracle\":\"coordinate-only-same-mappings\","
                 + "\"modelKeys\":\"state-derived-not-baked-model-identities\","
+                + "\"geometry\":\"captured-game-isOpaqueCube-and-isFullCube\","
                 + "\"timingSampleLimit\":4096,\"maxConcurrentCaptures\":1,"
-                + "\"javaBatchBytes\":29160,\"retainedStaleProofBytes\":29160,"
-                + "\"maxJavaBatchPayloadBytes\":58320");
+                + "\"javaBatchBytes\":34992,\"retainedStaleProofBytes\":34992,"
+                + "\"maxJavaBatchPayloadBytes\":69984");
         for (int i = 0; i < names.length; i++)
             json.append(",\"").append(names[i]).append("\":").append(values[i]);
         for (int percent : new int[] {50, 95, 99}) {

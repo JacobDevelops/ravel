@@ -668,6 +668,20 @@ runtime = "awt"
 name = "getBlock"
 descriptor = "()Lnet/minecraft/block/Block;"
 
+# Pinned awt extends aws (MCP IBlockProperties). Bytecode: the awu$a state's p()Z calls Block.b(state)
+# and Block's constructor stores it as the opaque-cube flag (isOpaqueCube); its g()Z calls Block.c(state)
+# and Block.k(state) requires material opacity && g()Z (isFullCube). Feather names them below.
+[[reflected]]
+name = "LEGACY_BLOCK_PROPERTIES"
+class = "net.minecraft.block.state.BlockProperties"
+runtime = "aws"
+[[reflected.member]]
+name = "isSolidRender"
+descriptor = "()Z"
+[[reflected.member]]
+name = "isCube"
+descriptor = "()Z"
+
 [[reflected]]
 name = "LEGACY_LIGHT_TYPE"
 class = "net.minecraft.world.LightType"

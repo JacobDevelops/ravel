@@ -167,12 +167,17 @@ stable contracts toward concrete host internals.
   do not require the integrated server's thread-selected composition. Java keeps
   game references, vanilla task identity, context ownership and all GL calls.
 
-- `ravel-renderer` owns bounded immutable section values and deduplicated
-  state/model keys. It has no JVM, adapter, loader or SDK dependency. Bootstrap
-  runtime copies bounded primitive arrays into this value layer and checks its
-  renderer generation before admitting a snapshot. Java retains authoritative
-  game state, task/thread ownership and all model/GL calls. Observational capture
-  does not retain a world mirror or replace vanilla meshing.
+- `ravel-renderer` owns bounded immutable section values, deduplicated state/model
+  keys, CPU cube meshes and conservative face-to-face visibility. It has no JVM,
+  adapter, loader or SDK dependency. Bootstrap runtime copies bounded primitive
+  arrays into this value layer and owns worker generation admission, cancellation
+  and drain. Worker count, outstanding work and reserved snapshot/output/scratch
+  bytes have explicit ceilings; completed results retain their reservation until
+  consumed. Java captures full/opaque state properties rather than inferring
+  geometry from numeric IDs, and retains authoritative game state, task/thread
+  ownership, model access and all GL calls. Unsupported keys are explicit.
+  Observational worker output is not uploaded and does not retain a world mirror
+  or replace vanilla rendering.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

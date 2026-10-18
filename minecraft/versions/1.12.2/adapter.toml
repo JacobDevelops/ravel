@@ -59,7 +59,7 @@ sha256 = "98526209edda16b783d7c0386474163eb510078e2e1d3d35078a2b660d0875ca"
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.12.2/reflection.toml"
-sha256 = "769624c4e09756334ccddacbad619f2f8c326ae463c88708f9d3c67ba5c08da7"
+sha256 = "ffb7cfd247dd2ab20608f0f02810ebcb531b2b53c5de1b532a4be2bd0cc1e0b8"
 
 [inputs.mappingsLock]
 path = "minecraft/versions/1.12.2/mappings.lock"

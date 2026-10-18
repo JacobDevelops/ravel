@@ -1,14 +1,17 @@
 #![forbid(unsafe_code)]
 
-//! Observational, owned section snapshots, not a world mirror or mesh renderer.
+//! Owned section snapshots and bounded CPU geometric primitives, not a world mirror.
 //!
 //! The 16-cube core includes a full one-cell border. Coordinates `0..18` denote
 //! section origin minus one through origin plus sixteen, in `((y * 18) + z) * 18 + x`
 //! order. State keys are numeric block ids shifted left four bits, plus metadata.
-//! Model keys currently identify render states only: no geometry is captured.
+//! Geometry captures only the full-opaque-cube predicate, not baked models or textures.
 //! Callers must check the live generation before and after copying game data.
 
 use std::mem::{size_of, size_of_val};
+
+pub mod mesh;
+pub mod workers;
 
 /// Core section edge, excluding neighbours.
 pub const SECTION_EDGE: usize = 16;
@@ -24,10 +27,10 @@ pub const MAX_STATE_KEY: u32 = (MAX_BLOCK_ID << 4) | 15;
 pub const MAX_GENERATION: u64 = 0x7fff_ffff_ffff_ffff;
 /// Every cell may have its own palette entry.
 pub const MAX_PALETTE_ENTRIES: usize = CELL_COUNT;
-/// Successful capture makes at most four heap allocations, including transient palette scratch.
-pub const MAX_CAPTURE_ALLOCATIONS: usize = 4;
+/// Successful capture makes at most five heap allocations, including palette scratch.
+pub const MAX_CAPTURE_ALLOCATIONS: usize = 5;
 /// Worst-case retained heap payload; allocator metadata is excluded.
-pub const MAX_HEAP_BYTES: usize = CELL_COUNT * (size_of::<u32>() + size_of::<u16>() + 1);
+pub const MAX_HEAP_BYTES: usize = CELL_COUNT * (size_of::<u32>() + size_of::<u16>() + 2);
 /// Retained object plus its maximum heap payload, excluding allocator metadata.
 pub const MAX_TOTAL_BYTES: usize = size_of::<SectionSnapshot>() + MAX_HEAP_BYTES;
 /// Maximum input cells visited; there are no retries or world-size-dependent work.
@@ -45,7 +48,7 @@ const _: () = {
 };
 
 /// Fixed-array stack scratch payload during capture, excluding scalar locals and stack frames.
-pub const MAX_CAPTURE_STACK_SCRATCH_BYTES: usize = LOOKUP_SLOTS * size_of::<u16>();
+pub const MAX_CAPTURE_STACK_SCRATCH_BYTES: usize = LOOKUP_SLOTS * size_of::<u16>() + CELL_COUNT;
 /// Fixed-size heap palette scratch payload during capture.
 pub const MAX_CAPTURE_HEAP_SCRATCH_BYTES: usize = CELL_COUNT * size_of::<u32>();
 /// Total bounded scratch payload during capture, excluding scalar locals and stack frames.
@@ -63,6 +66,8 @@ pub enum SnapshotError {
         states: usize,
         /// Supplied packed-light count.
         light: usize,
+        /// Supplied geometry-flag count.
+        geometry: usize,
     },
     /// A state is negative or exceeds the numeric id/metadata contract.
     InvalidState {
@@ -70,6 +75,18 @@ pub enum SnapshotError {
         index: usize,
         /// Rejected packed state.
         state: i32,
+    },
+    /// Geometry must be zero (unknown) or one (captured full opaque cube).
+    InvalidGeometry {
+        /// Capture-order cell index.
+        index: usize,
+        /// Invalid flag.
+        flag: u8,
+    },
+    /// One state key cannot have contradictory captured geometry.
+    InconsistentGeometry {
+        /// State with conflicting flags.
+        state: u32,
     },
     /// The bounded palette cannot represent another entry.
     PaletteLimit,
@@ -80,6 +97,7 @@ pub enum SnapshotError {
 pub struct Cell {
     state: u32,
     light: u8,
+    full_opaque_cube: bool,
 }
 
 impl Cell {
@@ -101,6 +119,11 @@ impl Cell {
     /// Render-state identity, not a baked model or geometry handle.
     pub fn model_key(self) -> u32 {
         self.state
+    }
+
+    /// Captured full-opaque predicate, with air key zero unconditionally empty.
+    pub fn is_full_opaque_cube(self) -> bool {
+        self.state != 0 && self.full_opaque_cube
     }
 
     /// Sky light in the upper nibble, block light in the lower nibble.
@@ -126,25 +149,33 @@ pub struct SectionSnapshot {
     palette: Box<[u32]>,
     indices: Box<[u16]>,
     light: Box<[u8]>,
+    geometry: Box<[u8]>,
 }
 
 impl SectionSnapshot {
-    /// Copies exactly one bordered section, deduplicating state/model identities in
-    /// first-occurrence order. Only three exact-size heap slices survive capture.
-    /// Work is capped by `MAX_CAPTURE_CELL_VISITS` and `MAX_CAPTURE_PALETTE_PROBES`.
-    pub fn capture(generation: u64, states: &[i32], light: &[u8]) -> Result<Self, SnapshotError> {
+    /// Copies a complete bordered section. Geometry flags are captured game
+    /// `isOpaqueCube && isFullCube` predicates (zero/one), consistent per state.
+    /// Air key zero is always treated as empty by the mesh primitive.
+    pub fn capture(
+        generation: u64,
+        states: &[i32],
+        light: &[u8],
+        geometry: &[u8],
+    ) -> Result<Self, SnapshotError> {
         if generation == 0 || generation > MAX_GENERATION {
             return Err(SnapshotError::InvalidGeneration);
         }
-        if states.len() != CELL_COUNT || light.len() != CELL_COUNT {
+        if states.len() != CELL_COUNT || light.len() != CELL_COUNT || geometry.len() != CELL_COUNT {
             return Err(SnapshotError::InvalidLengths {
                 states: states.len(),
                 light: light.len(),
+                geometry: geometry.len(),
             });
         }
         let mut palette = vec![0; MAX_PALETTE_ENTRIES].into_boxed_slice();
         let mut indices = vec![0; CELL_COUNT].into_boxed_slice();
         let mut slots = [EMPTY_SLOT; LOOKUP_SLOTS];
+        let mut geometry_palette = [2; CELL_COUNT];
         let mut palette_len = 0;
         for (index, &state) in states.iter().enumerate() {
             let key = u32::try_from(state)
@@ -152,12 +183,22 @@ impl SectionSnapshot {
                 .filter(|&key| key <= MAX_STATE_KEY)
                 .ok_or(SnapshotError::InvalidState { index, state })?;
             indices[index] = intern(key, &mut palette, &mut palette_len, &mut slots)?;
+            let flag = geometry[index];
+            if flag > 1 {
+                return Err(SnapshotError::InvalidGeometry { index, flag });
+            }
+            let entry = &mut geometry_palette[usize::from(indices[index])];
+            if *entry != 2 && *entry != flag {
+                return Err(SnapshotError::InconsistentGeometry { state: key });
+            }
+            *entry = flag;
         }
         Ok(Self {
             generation,
             palette: Box::from(&palette[..palette_len]),
             indices,
             light: Box::from(light),
+            geometry: Box::from(&geometry_palette[..palette_len]),
         })
     }
 
@@ -177,6 +218,7 @@ impl SectionSnapshot {
         Some(Cell {
             state: self.palette[usize::from(palette_index)],
             light: self.light[index],
+            full_opaque_cube: self.geometry[usize::from(palette_index)] == 1,
         })
     }
 
@@ -193,6 +235,7 @@ impl SectionSnapshot {
         size_of_val(self.palette.as_ref())
             + size_of_val(self.indices.as_ref())
             + size_of_val(self.light.as_ref())
+            + size_of_val(self.geometry.as_ref())
     }
 
     /// Object size plus retained heap payload, excluding allocator metadata.

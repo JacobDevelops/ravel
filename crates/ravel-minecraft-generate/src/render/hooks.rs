@@ -277,8 +277,11 @@ fn written_declarations() -> &'static str {
          \x20   public static native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);\n\n\
          \x20   /** Whether completed renderer work still belongs to the active generation. */\n\
          \x20   public static native boolean ravelRendererAccept(long generation);\n\n\
-         \x20   /** Bounded batch; returns [accepted, bytes, mismatches, cells, copyBytes, scratchBoundBytes], or empty if refused. */\n\
-         \x20   public static native long[] ravelRendererSnapshot(long generation, int[] states, byte[] light);\n\n\
+         \x20   /** Bounded batch: [accepted, bytes, mismatches, cells, copyBytes, scratchBoundBytes, admitted, key]. Failure: [-1, code, detailA, detailB, detailC, 0, 0, key]; stale/busy is empty.\n\
+         \x20    * Failure codes: 1 generation; 2 lengths(states,light,geometry); 3 state(index,key); 4 geometry(index,flag); 5 inconsistent geometry(stateKey); 6 palette; 7 null arrays(bitmask states=1,light=2,geometry=4). */\n\
+         \x20   public static native long[] ravelRendererSnapshot(long generation, long key, int[] states, byte[] light, byte[] geometry);\n\n\
+         \x20   /** Native-only mesh work: 0 polls at most eight records, 1 queries 18 current stats (last is workerFailure), 2 joins/drains and closes this generation, 3 queries actual last-retired pool stats; authorize with current generation and zero key. */\n\
+         \x20   public static native long[] ravelRendererWork(int operation, long generation, long key);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

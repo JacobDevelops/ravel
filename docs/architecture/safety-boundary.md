@@ -67,3 +67,18 @@ redaction.
 
 If safe wrappers make a viable loader impossible or prevent measured targets
 from being met, implementation pauses for an explicit product decision.
+
+## Renderer worker ownership
+
+`ravel-renderer` workers receive immutable owned section values, never JNI
+references, Minecraft objects or GL handles. Java captures state classification,
+light and neighbour data on the compiling task's owner; Rust validates the copied
+batch before admitting bounded work. Unsupported state keys remain explicit.
+CPU cube primitives do not establish texture, shading or model fidelity.
+
+Generation invalidation cancels queued and running jobs and checks ownership
+again before completion publication. Java checks generation and task keys again
+when consuming metadata. Unload and close synchronously join and drain workers;
+no late result grants permission to upload. Worker code remains safe Rust with
+no new boundary crate or unsafe exception, and vanilla rendering stays
+authoritative until the separate Java-owned submission cutover.

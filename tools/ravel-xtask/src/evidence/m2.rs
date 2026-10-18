@@ -1,14 +1,14 @@
 //! M2 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::evidence::closure::verify_closure_records;
-use crate::evidence::rules::{RecordRule, require, require_manifest_rule, require_rows, unique_by};
-use crate::evidence::rules::{has_exact_benchmark_results, has_exact_work_packages};
+use crate::evidence::closure::{verify_closure_records, verify_manifest_closure};
+use crate::evidence::rules::{Rule, has_exact_benchmark_results, has_exact_work_packages};
+use crate::evidence::rules::{require, require_rows, unique_by};
 use crate::json::{array, nonempty, number};
 use crate::text::read_text;
 
@@ -32,13 +32,8 @@ const VOID_LIMITS: &[(&str, &str)] = &[
     ),
 ];
 
-pub(crate) fn verify_m2_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
+const M2_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
         |value| {
             has_exact_work_packages(
                 value,
@@ -48,10 +43,8 @@ pub(crate) fn verify_m2_manifest(
             )
         },
         "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             has_exact_benchmark_results(
                 value,
@@ -66,25 +59,28 @@ pub(crate) fn verify_m2_manifest(
         },
         "M2 manifest must record all four M2 results under the m2-loader-budget-v1 protocol, so \
          that each one is covered by a recomputed digest",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             array(value, "/attestations").iter().any(|attestation| {
                 attestation["platform"] == "linux" && attestation["architecture"] == "x86_64"
             })
         },
         "M2 closure requires a native Linux attestation for the operator-run launch",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M2 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
          as a refusal, so closure requires them to still be there",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m2_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M2_MANIFEST_RULES, violations);
     for (metric, why) in VOID_LIMITS {
         println!(
             "- evidence/m2/manifest.json: the budget limit {metric} is checked for shape and not \
@@ -94,10 +90,10 @@ pub(crate) fn verify_m2_manifest(
     verify_closure_records(Milestone::M2, records, M2_RECORDS, violations);
 }
 
-const M2_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
-    (
-        "noop-pipeline.json",
-        |value| {
+const M2_RECORDS: &[RecordDefinition] = &[
+    RecordDefinition {
+        name: "noop-pipeline.json",
+        rule: |value| {
             require_rows(value, "/runs", |run| {
                 require(
                     run["repeatedRunIsIdentical"] == true,
@@ -105,36 +101,36 @@ const M2_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
                 )
             })
         },
-        "a no-op pipeline record whose run is identical when repeated",
-        false,
-    ),
-    (
-        "pre-world-gate.json",
-        |value| {
+        description: "a no-op pipeline record whose run is identical when repeated",
+        required: false,
+    },
+    RecordDefinition {
+        name: "pre-world-gate.json",
+        rule: |value| {
             require(
                 value["gate"]["refusesWorldAccess"] == true,
                 "/gate/refusesWorldAccess",
             )?;
             require(value["gate"]["ranModCode"] == false, "/gate/ranModCode")
         },
-        "a pre-world gate record showing invalid packages refused before any mod code ran",
-        false,
-    ),
-    (
-        "loader-overhead.json",
-        m2_budget_limits,
-        "a loader overhead record whose budget lines each name one metric and a unit, and set an \
+        description: "a pre-world gate record showing invalid packages refused before any mod code ran",
+        required: false,
+    },
+    RecordDefinition {
+        name: "loader-overhead.json",
+        rule: m2_budget_limits,
+        description: "a loader overhead record whose budget lines each name one metric and a unit, and set an \
      upper limit above the positive measurement that limit was derived from",
-        true,
-    ),
-    (
-        "prism-launch.json",
-        m2_prism_launch,
-        "a launch record showing the official client reaching Ravel from an attested stock Prism, \
+        required: true,
+    },
+    RecordDefinition {
+        name: "prism-launch.json",
+        rule: m2_prism_launch,
+        description: "a launch record showing the official client reaching Ravel from an attested stock Prism, \
      with the transformer's own count of what it rewrote inside that process and of the hook \
      invocations that reached native code, and no other loader present",
-        false,
-    ),
+        required: false,
+    },
 ];
 
 fn m2_budget_limits(value: &Value) -> Result<(), String> {

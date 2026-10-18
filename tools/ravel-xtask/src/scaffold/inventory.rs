@@ -4,7 +4,7 @@ use std::path::Path;
 use std::{collections::BTreeSet, fs};
 
 use crate::hooks::{HookCounts, HookInventory, hook_counts};
-use crate::text::{Side, read_text, stated_counts};
+use crate::text::{Side, compare_stated, read_text, stated_counts};
 use crate::tracked::collect_files;
 use crate::version_boundary::VERSION_DATA;
 
@@ -100,21 +100,23 @@ fn hook_document_violations(document: &str, inventory: &str, counts: &HookCounts
         ),
     ] {
         let stated = stated_counts(document, phrase, side);
-        if stated.is_empty() {
-            violations.push(format!(
-                "{HOOK_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it is \
+        compare_stated(
+            &stated,
+            expected,
+            || {
+                format!(
+                    "{HOOK_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it is \
                  held to {inventory}'s {expected} {subject}"
-            ));
-            continue;
-        }
-        for count in stated {
-            if count != expected {
-                violations.push(format!(
+                )
+            },
+            |count| {
+                format!(
                     "{HOOK_DOCUMENT} states {count} {subject} where {inventory} declares \
-                     {expected}"
-                ));
-            }
-        }
+                 {expected}"
+                )
+            },
+            &mut violations,
+        );
     }
     violations
 }

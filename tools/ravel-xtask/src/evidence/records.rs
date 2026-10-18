@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::path::Path;
-use std::process::Command;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -321,13 +320,6 @@ fn verify_inputs(
             ));
         }
     }
-    if !root.join(".jj").exists() {
-        println!(
-            "- {label}: input digests are not recomputed, because this checkout has no jj \
-             repository to resolve the pinned revision in"
-        );
-        return;
-    }
     let Some(revision) = manifest
         .pointer("/revision/id")
         .and_then(Value::as_str)
@@ -338,7 +330,7 @@ fn verify_inputs(
         ));
         return;
     };
-    let resolved = match visible_commit(root, revision) {
+    let resolved = match crate::vcs::resolve_revision(root, revision) {
         Ok(commit) if commit == revision => commit,
         Ok(_) => {
             violations.push(format!(
@@ -366,45 +358,9 @@ fn verify_inputs(
     }
 }
 
-pub(crate) fn visible_commit(root: &Path, revision: &str) -> Result<String, String> {
-    let output = Command::new("jj")
-        .args([
-            "log",
-            "--color",
-            "never",
-            "-r",
-            &format!("(::visible_heads() & ({revision})) ~ root()"),
-            "--no-graph",
-            "-T",
-            r#"commit_id ++ "\n""#,
-        ])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot be resolved: {error}"))?;
-    if !output.status.success() {
-        return Err("cannot be resolved by jj".to_owned());
-    }
-    let resolved = String::from_utf8_lossy(&output.stdout);
-    let mut commits = resolved.lines().filter(|line| !line.trim().is_empty());
-    let Some(commit) = commits.next() else {
-        return Err("names no commit in visible history".to_owned());
-    };
-    if commits.next().is_some() {
-        return Err("names more than one visible commit".to_owned());
-    }
-    Ok(commit.to_owned())
-}
-
 fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<String, String> {
-    let output = Command::new("jj")
-        .args(["file", "show", "-r", revision, "--", name])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot read it at revision {revision}: {error}"))?;
-    if !output.status.success() {
-        return Err(format!("cannot read it at revision {revision}"));
-    }
-    Ok(crate::hex_digest(&Sha256::digest(&output.stdout)))
+    let bytes = crate::vcs::revision_bytes(root, revision, name)?;
+    Ok(crate::hex_digest(&Sha256::digest(&bytes)))
 }
 
 fn verify_artifact_digests(

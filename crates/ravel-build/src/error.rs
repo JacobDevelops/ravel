@@ -2,7 +2,28 @@
 
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
+
+/// The dependency identity Cargo requested or resolved.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Wanted {
+    /// Cargo resolved a concrete package version.
+    Resolved(semver::Version),
+    /// Cargo could not satisfy this declared requirement.
+    Requirement(semver::VersionReq),
+    /// Cargo found no package with the requested name.
+    Unresolved,
+}
+
+impl fmt::Display for Wanted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Resolved(version) => version.fmt(formatter),
+            Self::Requirement(requirement) => requirement.fmt(formatter),
+            Self::Unresolved => formatter.write_str("<unresolved>"),
+        }
+    }
+}
 
 /// Why a host could not be built from what the instance holds.
 #[derive(Debug)]
@@ -80,10 +101,10 @@ pub enum BuildRefused {
     UnpinnedDependency {
         /// The external package's name.
         package: String,
-        /// The resolved version, requested requirement, or `<unresolved>` if Cargo found no package.
-        version: String,
+        /// The resolved version, requested requirement, or absence of a matching package.
+        version: Wanted,
         /// Installed mods whose dependency graph reaches it.
-        mods: Vec<String>,
+        mods: Vec<ModId>,
     },
     /// The toolchain reported success and produced no library.
     MissingArtifact {
@@ -147,22 +168,34 @@ impl fmt::Display for BuildRefused {
                 package,
                 version,
                 mods,
-            } => write!(
-                formatter,
-                "resolved external dependency {package} {version} is not pinned by the Ravel \
-                 installation; required by installed mod(s): {}",
-                if mods.is_empty() {
-                    "<unknown>".to_owned()
-                } else {
-                    mods.join(", ")
-                }
-            ),
+            } => dependency_refusal(formatter, package, version, mods),
             Self::MissingArtifact { library } => write!(
                 formatter,
                 "the build reported success and produced no `{library}`"
             ),
         }
     }
+}
+
+fn dependency_refusal(
+    formatter: &mut fmt::Formatter<'_>,
+    package: &str,
+    version: &Wanted,
+    mods: &[ModId],
+) -> fmt::Result {
+    write!(
+        formatter,
+        "external dependency {package} {version} is not admitted by the Ravel \
+         installation; required by installed mod(s): "
+    )?;
+    let Some((first, remaining)) = mods.split_first() else {
+        return formatter.write_str("<unknown>");
+    };
+    write!(formatter, "{first}")?;
+    for mod_id in remaining {
+        write!(formatter, ", {mod_id}")?;
+    }
+    Ok(())
 }
 
 impl std::error::Error for BuildRefused {

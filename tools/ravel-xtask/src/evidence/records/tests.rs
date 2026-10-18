@@ -447,7 +447,7 @@ fn an_input_the_pinned_revision_does_not_hold_is_reported() {
         violations,
         [format!(
             "evidence/m9/manifest.json records input later.txt: cannot read it at revision \
-             {revision}"
+             {revision}: jj: Error: No such path: later.txt"
         )]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -690,6 +690,7 @@ fn verify_record_bindings(root: &Path) -> Vec<String> {
         ];
     }
     track_fixture_files(root);
+    pin_default_record_inputs(root, &manifests);
     let tracked = tracked_paths(root)
         .expect("tracked paths should be readable")
         .into_iter()
@@ -710,6 +711,40 @@ fn verify_record_bindings(root: &Path) -> Vec<String> {
         }
     }
     violations
+}
+
+fn pin_default_record_inputs(root: &Path, manifests: &[PathBuf]) {
+    let mut unpinned = Vec::with_capacity(manifests.len());
+    for path in manifests {
+        if let Ok(manifest) = read_json(path)
+            && manifest.get("revision").is_none()
+            && manifest.get("inputs").is_none()
+        {
+            unpinned.push((path, manifest));
+        }
+    }
+    if unpinned.is_empty() {
+        return;
+    }
+    let input = "record-fixture-input.txt";
+    fs::write(root.join(input), "hello\n").expect("default fixture input should be writable");
+    let revision = crate::vcs::resolve_revision(root, "@")
+        .expect("default fixture input revision should resolve");
+    let advanced = Command::new("jj")
+        .args(["new", "-m", "bind record fixture inputs"])
+        .current_dir(root)
+        .output()
+        .expect("jj should preserve the pinned fixture revision");
+    assert!(advanced.status.success(), "{advanced:?}");
+    for (path, mut manifest) in unpinned {
+        manifest["revision"] = serde_json::json!({"id": revision});
+        manifest["inputs"] = serde_json::json!([{"name": input, "sha256": HELLO_DIGEST}]);
+        fs::write(
+            path,
+            serde_json::to_vec(&manifest).expect("fixture manifest should serialize"),
+        )
+        .expect("pinned fixture manifest should be writable");
+    }
 }
 
 fn verify_admitted_revisions(root: &Path, path: &Path, violations: &mut Vec<String>) {
@@ -740,6 +775,67 @@ fn verify_recorded_inputs(
         tracked,
         violations,
     );
+}
+
+fn git_input_root() -> (PathBuf, String) {
+    let root = temporary_root("git-input-digests");
+    fs::write(root.join("input.txt"), "hello\n").expect("input should be writable");
+    for args in [
+        &["init"][..],
+        &["add", "input.txt"][..],
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "pin input",
+        ][..],
+    ] {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .expect("Git fixture initialization command should run");
+        assert!(output.status.success(), "{output:?}");
+    }
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&root)
+        .output()
+        .expect("Git fixture revision command should run");
+    assert!(output.status.success(), "{output:?}");
+    let revision = String::from_utf8(output.stdout)
+        .expect("Git fixture revision should be UTF-8")
+        .trim()
+        .to_owned();
+    (root, revision)
+}
+
+#[test]
+fn git_checkout_recomputes_input_digests_without_a_jj_workspace() {
+    let (root, revision) = git_input_root();
+    assert!(!root.join(".jj").exists());
+    fs::write(root.join("input.txt"), "working tree differs\n")
+        .expect("working input should be rewritable after pinning");
+    let tracked = tracked_paths(&root)
+        .expect("Git input inventory should be readable")
+        .into_iter()
+        .collect();
+    let path = root.join("evidence/m9/manifest.json");
+    let mut violations = Vec::new();
+    write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
+    verify_recorded_inputs(&root, &path, &tracked, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    write_input_manifest(&root, &revision, "input.txt", &"0".repeat(64));
+    verify_recorded_inputs(&root, &path, &tracked, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains(&format!("but revision {revision} holds {HELLO_DIGEST}")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("Git digest fixture should be removable");
 }
 
 #[test]

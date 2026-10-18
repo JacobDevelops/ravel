@@ -101,8 +101,8 @@ struct Lock {
     schema_version: u8,
     minecraft: String,
     extractor: String,
-    client_jar_sha256: String,
-    data_fixer_jar_sha256: Option<String>,
+    client_jar_sha256: crate::inputs::Sha256Digest,
+    data_fixer_jar_sha256: Option<crate::inputs::Sha256Digest>,
     #[serde(rename = "stub")]
     stubs: Vec<Stub>,
 }
@@ -720,9 +720,21 @@ mod tests {
             .expect_err("a modern adapter cannot omit its library hash");
         from_lock(&tracked, &pinned.adapter, &pinned.seeds)
             .expect_err("a library-free adapter cannot accept a recorded library hash");
-        let empty = format!("dataFixerJarSha256 = \"\"\n{absent}");
-        from_lock(&empty, &pinned.adapter, &pinned.seeds)
-            .expect_err("an empty hash is present, not absent");
+        let digest = modern
+            .inputs
+            .data_fixer_jar
+            .as_ref()
+            .expect("modern library")
+            .sha256
+            .as_deref()
+            .expect("library pin");
+        let recorded = format!("dataFixerJarSha256 = \"{digest}\"\n{absent}");
+        let error = from_lock(&recorded, &pinned.adapter, &pinned.seeds)
+            .expect_err("a valid recorded hash cannot match an absent adapter library");
+        assert!(
+            error.to_string().contains("the data fixer jar hash"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -1175,12 +1187,30 @@ mod tests {
     }
 
     #[test]
+    fn uppercase_lock_digests_canonicalize_before_comparison() {
+        let lock: Lock = toml::from_str(&format!(
+            "schemaVersion = 1\nminecraft = \"test\"\nextractor = \"classfile\"\n\
+             clientJarSha256 = \"{}\"\ndataFixerJarSha256 = \"{}\"\nstub = []\n",
+            "AB".repeat(32),
+            "CD".repeat(32)
+        ))
+        .expect("complete uppercase digests are admitted");
+        assert_eq!(lock.client_jar_sha256.as_str(), "ab".repeat(32));
+        assert_eq!(
+            lock.data_fixer_jar_sha256.as_deref(),
+            Some("cd".repeat(32).as_str())
+        );
+    }
+
+    #[test]
     fn the_lock_shape_round_trips_through_the_kinds_a_stub_can_be() {
-        let lock: Lock = toml::from_str(
+        let lock: Lock = toml::from_str(&format!(
             "schemaVersion = 1\nminecraft = \"0.0.0\"\nextractor = \"classfile\"\n\
-             clientJarSha256 = \"00\"\ndataFixerJarSha256 = \"01\"\n\n\
+             clientJarSha256 = \"{}\"\ndataFixerJarSha256 = \"{}\"\n\n\
              [[stub]]\nclass = \"a/B\"\nflags = 1553\n",
-        )
+            "0".repeat(64),
+            "1".repeat(64)
+        ))
         .expect("a stub with no members and no supertypes is a whole stub");
 
         let [stub] = lock.stubs.as_slice() else {

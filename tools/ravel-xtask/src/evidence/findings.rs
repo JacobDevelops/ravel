@@ -8,7 +8,6 @@ use serde_json::Value;
 
 use super::rules::Milestone;
 use crate::text::{read_text, relative_label};
-use crate::tracked::tracked_paths;
 
 const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
     "fn", "struct", "enum", "trait", "union", "const", "static", "type",
@@ -27,30 +26,46 @@ struct Anchor {
     paths: Vec<String>,
 }
 
+pub(crate) struct FindingSources {
+    sources: Vec<(String, String)>,
+    defined: BTreeSet<String>,
+}
+
+impl FindingSources {
+    pub(crate) fn load(
+        root: &Path,
+        tracked: &BTreeSet<String>,
+        violations: &mut Vec<String>,
+    ) -> Self {
+        let sources = tracked
+            .iter()
+            .filter(|path| {
+                Path::new(path)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+            })
+            .filter_map(|relative| match read_text(root, Path::new(relative)) {
+                Ok(source) => Some((relative.clone(), source)),
+                Err(error) => {
+                    violations.push(error);
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let defined = defined_rust_symbols(&sources);
+        Self { sources, defined }
+    }
+}
+
 pub(crate) fn verify_finding_anchors_value(
     root: &Path,
     manifest_path: &Path,
     milestone: Milestone,
     document: &Value,
+    sources: &FindingSources,
     violations: &mut Vec<String>,
 ) {
     let label = relative_label(root, manifest_path);
-    let tracked = match tracked_paths(root) {
-        Ok(tracked) => tracked,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let sources = tracked
-        .into_iter()
-        .filter(|path| {
-            Path::new(path)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
-        })
-        .collect::<Vec<_>>();
-    let defined = defined_rust_symbols(root, &sources);
     let mut findings = Vec::new();
     for field in ["deviations", "risks"] {
         let Some(rows) = document[field].as_array() else {
@@ -77,10 +92,9 @@ pub(crate) fn verify_finding_anchors_value(
         | Milestone::M13 => true,
     };
     verify_finding_anchors_rows(
-        root,
         &label,
-        &sources,
-        &defined,
+        &sources.sources,
+        &sources.defined,
         &findings,
         anchored_from,
         violations,
@@ -88,9 +102,8 @@ pub(crate) fn verify_finding_anchors_value(
 }
 
 fn verify_finding_anchors_rows(
-    root: &Path,
     label: &str,
-    sources: &[String],
+    sources: &[(String, String)],
     defined: &BTreeSet<String>,
     findings: &[Finding],
     anchored_from: bool,
@@ -141,7 +154,7 @@ fn verify_finding_anchors_rows(
             .map(String::as_str)
             .filter(|prefix| !prefix.is_empty())
             .collect::<Vec<_>>();
-        for source in sources_naming(root, sources, symbol) {
+        for source in sources_naming(sources, symbol) {
             if !allowed.iter().any(|prefix| source.starts_with(prefix)) {
                 violations.push(format!(
                     "{label} anchors a finding on {symbol} outside {paths:?}, and \
@@ -152,12 +165,9 @@ fn verify_finding_anchors_rows(
     }
 }
 
-pub(crate) fn defined_rust_symbols(root: &Path, sources: &[String]) -> BTreeSet<String> {
+pub(crate) fn defined_rust_symbols(sources: &[(String, String)]) -> BTreeSet<String> {
     let mut defined = BTreeSet::new();
-    for relative in sources {
-        let Ok(source) = read_text(root, Path::new(relative)) else {
-            continue;
-        };
+    for (_, source) in sources {
         for line in source.lines() {
             let mut words = line.split_whitespace();
             while let Some(word) = words.next() {
@@ -190,17 +200,15 @@ pub(crate) fn named_rust_symbols(summary: &str, defined: &BTreeSet<String>) -> V
         .collect()
 }
 
-pub(crate) fn sources_naming(root: &Path, sources: &[String], symbol: &str) -> Vec<String> {
+pub(crate) fn sources_naming(sources: &[(String, String)], symbol: &str) -> Vec<String> {
     sources
         .iter()
-        .filter(|relative| {
-            read_text(root, Path::new(relative)).is_ok_and(|source| {
-                source
-                    .split(|character: char| !is_identifier_character(character))
-                    .any(|word| word == symbol)
-            })
+        .filter(|(_, source)| {
+            source
+                .split(|character: char| !is_identifier_character(character))
+                .any(|word| word == symbol)
         })
-        .cloned()
+        .map(|(relative, _)| relative.clone())
         .collect()
 }
 

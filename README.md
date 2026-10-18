@@ -43,7 +43,8 @@ and [`examples/`](examples/) holds the worked mods.
 ## Development
 
 Run `mise install` once, then activate mise in your shell or prefix commands with
-`mise exec --`. Rustup provisions Rust 1.95.0 from `rust-toolchain.toml`.
+`mise exec --`. Rustup provisions the dated nightly pinned in `rust-toolchain.toml`;
+`rust-version = 1.95` in `Cargo.toml` is the declared minimum.
 The development and CI gate is:
 
 ```console

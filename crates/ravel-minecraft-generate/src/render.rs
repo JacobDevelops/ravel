@@ -34,14 +34,14 @@ mod tests {
         let mut adapter = adapter();
         adapter.mapping_source = MappingSource::OfficialProguardMappings;
         let mut mappings = adapter.inputs.client_jar.clone();
-        mappings.sha256 = Some("reviewed-mappings".to_owned());
+        mappings.sha256 = Some("c".repeat(64).try_into().expect("complete digest"));
         adapter.inputs.client_mappings = Some(mappings);
         let (_, mut resolved) = reviewed(&[CANDIDATES[1], CANDIDATES[0]]);
         resolved[0].runtime_member = "b".to_owned();
 
         let lock = super::locks::lock(&adapter, &resolved);
 
-        assert!(lock.contains("clientMappingsSha256 = \"reviewed-mappings\""));
+        assert!(lock.contains(&format!("clientMappingsSha256 = \"{}\"", "c".repeat(64))));
         let (translated, unchanged) = lock
             .split_once("[target.\"registry.register\"]")
             .expect("second target");
@@ -163,12 +163,12 @@ mod tests {
         let modern = super::locks::lock(&adapter, &[]);
         assert!(!modern.contains("serverJarSha256"));
         let mut server = adapter.inputs.client_jar.clone();
-        server.sha256 = Some("reviewed-server-hash".to_owned());
+        server.sha256 = Some("d".repeat(64).try_into().expect("complete digest"));
         adapter.inputs.server_jar = Some(server);
         let legacy = super::locks::lock(&adapter, &[]);
-        let pin = "serverJarSha256 = \"reviewed-server-hash\"\n";
-        assert!(legacy.contains(pin));
-        assert_eq!(legacy.replace(pin, ""), modern);
+        let pin = format!("serverJarSha256 = \"{}\"\n", "d".repeat(64));
+        assert!(legacy.contains(&pin));
+        assert_eq!(legacy.replace(&pin, ""), modern);
     }
 
     /// Adapter inputs standing in for the tracked ones.
@@ -202,14 +202,14 @@ mod tests {
             },
             inputs: Inputs {
                 client_jar: Input {
-                    sha256: Some("a".repeat(64)),
+                    sha256: Some("a".repeat(64).try_into().expect("complete digest")),
                     ..unpinned()
                 },
                 server_jar: None,
                 client_mappings: None,
                 mapping_io_jar: None,
                 data_fixer_jar: Some(Input {
-                    sha256: Some("b".repeat(64)),
+                    sha256: Some("b".repeat(64).try_into().expect("complete digest")),
                     ..unpinned()
                 }),
                 version_manifest: unpinned(),

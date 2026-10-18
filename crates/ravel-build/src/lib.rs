@@ -1,6 +1,13 @@
 #![forbid(unsafe_code)]
 
 //! Plans deterministic host workspaces from installed packages and builds their libraries.
+//!
+//! Installed mods may reach only the installation-pinned dependency closure of
+//! `ravel-sdk`, `serde`, `serde_json`, and `num-traits`; direct internal path
+//! dependencies remain restricted to the SDK and other planned mods. Generated
+//! hosts may use other installation-pinned dependencies. Player workspaces keep
+//! the installation's Rust channel with the minimal profile, not its developer
+//! components or cross-compilation targets.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -17,12 +24,17 @@ mod error;
 mod generate;
 
 pub use compile::build;
-pub use error::BuildRefused;
+pub use error::{BuildRefused, Wanted};
 
 use generate::{host_manifest, host_source, workspace_manifest};
 
 /// The entry function `ravel_sdk::export_mod!` writes into a package.
 pub const ENTRY_FUNCTION: &str = "__ravel_entry";
+
+// Workspace-lent dependencies and explicitly versioned author seeds are separate:
+// num-traits is admitted without adding a workspace inheritance convention.
+const AUTHOR_DEPENDENCIES: &[&str] = &["serde", "serde_json"];
+const AUTHOR_SEEDS: &[&str] = &["ravel-sdk", "serde", "serde_json", "num-traits"];
 
 /// What a host will be generated from, and the bytes that generate it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,7 +109,7 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
     }
 
     let dependencies = installation_dependencies(ravel_root)?;
-    let author_dependencies = dependency_entries(&dependencies, &["serde", "serde_json"])?;
+    let author_dependencies = dependency_entries(&dependencies, AUTHOR_DEPENDENCIES)?;
     let jni_dependency = dependency_entries(&dependencies, &["jni"])?;
     let installation_lock = installation_file(ravel_root, "Cargo.lock")?;
     compile::lock_packages(&installation_lock).map_err(|detail| BuildRefused::Installation {
@@ -107,7 +119,7 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
     let mut files = BTreeMap::new();
     files.insert(
         "rust-toolchain.toml".to_owned(),
-        installation_file(ravel_root, "rust-toolchain.toml")?,
+        player_toolchain(&installation_file(ravel_root, "rust-toolchain.toml")?)?,
     );
     files.insert(
         "Cargo.toml".to_owned(),
@@ -176,6 +188,36 @@ fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {
             directory: directory.to_owned(),
             detail: "no `package.name` is declared".to_owned(),
         })
+}
+
+fn player_toolchain(document: &str) -> Result<String, BuildRefused> {
+    let invalid = |detail| BuildRefused::Installation {
+        file: "rust-toolchain.toml".to_owned(),
+        detail,
+    };
+    let parsed: toml::Table =
+        toml::from_str(document).map_err(|error| invalid(error.to_string()))?;
+    let channel = parsed
+        .get("toolchain")
+        .and_then(|toolchain| toolchain.get("channel"))
+        .and_then(toml::Value::as_str)
+        .filter(|channel| !channel.is_empty())
+        .ok_or_else(|| invalid("no toolchain.channel is declared".to_owned()))?;
+    let toolchain = toml::Table::from_iter([
+        (
+            "channel".to_owned(),
+            toml::Value::String(channel.to_owned()),
+        ),
+        (
+            "profile".to_owned(),
+            toml::Value::String("minimal".to_owned()),
+        ),
+    ]);
+    toml::to_string(&toml::Table::from_iter([(
+        "toolchain".to_owned(),
+        toml::Value::Table(toolchain),
+    )]))
+    .map_err(|error| invalid(error.to_string()))
 }
 
 fn installation_file(root: &Path, file: &str) -> Result<String, BuildRefused> {

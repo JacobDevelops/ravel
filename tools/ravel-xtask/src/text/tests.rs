@@ -5,6 +5,32 @@ use super::{numbers_after, numbers_before, read_text, redacted_path, relative_la
 use crate::test_support::temporary_root;
 
 #[test]
+fn stated_count_comparison_reports_absence_and_each_mismatch() {
+    for (stated, expected) in [
+        (&[][..], vec!["absent".to_owned()]),
+        (&[3][..], vec![]),
+        (
+            &[2, 3, 4, 2][..],
+            vec![
+                "differs: 2".to_owned(),
+                "differs: 4".to_owned(),
+                "differs: 2".to_owned(),
+            ],
+        ),
+    ] {
+        let mut violations = Vec::new();
+        super::compare_stated(
+            stated,
+            3,
+            || "absent".to_owned(),
+            |count| format!("differs: {count}"),
+            &mut violations,
+        );
+        assert_eq!(violations, expected);
+    }
+}
+
+#[test]
 fn gate_output_never_names_an_absolute_path() {
     let absolute = std::env::current_dir()
         .expect("the current directory must be available")

@@ -221,12 +221,12 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 
     verify_input(root, &adapter.inputs.stub_seeds)?;
     let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
-    if seeds.minecraft != adapter.minecraft || seeds.schema_version != adapter.schema_version {
-        return Err(GenerateError::Drift(format!(
-            "the stub seeds pin {} at schema {} but the adapter inputs pin {} at schema {}",
-            seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
-        )));
-    }
+    pinned_like(
+        "stub seeds",
+        &seeds.minecraft,
+        seeds.schema_version,
+        &adapter,
+    )?;
     verify_roles(&seeds)?;
 
     let surface = reflection(root, &adapter)?;
@@ -247,18 +247,12 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 /// Shares inventory identity and declaration checks with repository tooling.
 fn read_inventory(path: &Path, adapter: &Adapter) -> Result<Inventory, GenerateError> {
     let inventory: Inventory = parse(path)?;
-    if inventory.minecraft != adapter.minecraft {
-        return Err(GenerateError::Drift(format!(
-            "the inventory pins {} but the adapter inputs pin {}",
-            inventory.minecraft, adapter.minecraft
-        )));
-    }
-    if inventory.schema_version != adapter.schema_version {
-        return Err(GenerateError::Drift(format!(
-            "the inventory is schema {} but the adapter inputs are schema {}",
-            inventory.schema_version, adapter.schema_version
-        )));
-    }
+    pinned_like(
+        "inventory",
+        &inventory.minecraft,
+        inventory.schema_version,
+        adapter,
+    )?;
     verify_non_goals(&inventory)?;
     verify_title_menu_row(&inventory)?;
     Ok(inventory)
@@ -268,15 +262,51 @@ fn read_inventory(path: &Path, adapter: &Adapter) -> Result<Inventory, GenerateE
 fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateError> {
     verify_input(root, &adapter.inputs.reflective_surface)?;
     let surface: Reflection = parse(&root.join(&adapter.inputs.reflective_surface.path))?;
-    if surface.minecraft != adapter.minecraft || surface.schema_version != adapter.schema_version {
-        return Err(GenerateError::Drift(format!(
-            "the reflective surface pins {} at schema {} but the adapter inputs pin {} at schema \
-             {}",
-            surface.minecraft, surface.schema_version, adapter.minecraft, adapter.schema_version
-        )));
-    }
+    pinned_like(
+        "reflective surface",
+        &surface.minecraft,
+        surface.schema_version,
+        adapter,
+    )?;
     semantics::verify_surface(&surface)?;
     Ok(surface)
+}
+
+/// Every reviewed document shares its adapter's version and schema identity.
+fn pinned_like(
+    what: &str,
+    minecraft: &str,
+    schema: u8,
+    adapter: &Adapter,
+) -> Result<(), GenerateError> {
+    if minecraft != adapter.minecraft || schema != adapter.schema_version {
+        return Err(GenerateError::Drift(format!(
+            "the {what} pins {minecraft} at schema {schema} but the adapter inputs pin {} at schema {}",
+            adapter.minecraft, adapter.schema_version
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod pin_identity_tests {
+    #[test]
+    fn every_document_identity_uses_the_adapter_version_and_schema() {
+        let adapter = crate::test_fixtures::legacy_adapter();
+        for label in ["stub seeds", "inventory", "reflective surface"] {
+            super::pinned_like(label, &adapter.minecraft, adapter.schema_version, &adapter)
+                .expect("matching identities pass");
+            for (version, schema) in [
+                ("other-version", adapter.schema_version),
+                (adapter.minecraft.as_str(), adapter.schema_version + 1),
+            ] {
+                let error = super::pinned_like(label, version, schema, &adapter)
+                    .expect_err("either identity mismatch is drift");
+                assert!(matches!(error, crate::GenerateError::Drift(_)));
+                assert!(error.to_string().contains(&format!("the {label} pins")));
+            }
+        }
+    }
 }
 
 /// Picks the one version directory this build reads.
@@ -771,7 +801,10 @@ descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
 
     fn write_inventory(root: &std::path::Path, inventory: &str) {
         let adapter = fixtures::document("unobfuscated-class-files", "").replace(
-            "[inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"",
+            &format!(
+                "[inputs.hookInventory]\npath = \"d\"\nsha256 = \"{}\"",
+                "0".repeat(64)
+            ),
             &format!(
                 "[inputs.hookInventory]\npath = \"reviewed.toml\"\nsha256 = \"{}\"",
                 sha256(inventory.as_bytes())
@@ -845,11 +878,7 @@ descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
             ("instance-method", "unknown-kind", "unknown variant"),
             ("capability = \"tick\"", "unknown = true", "unknown field"),
             ("0.0.0-test", "other-version", "the inventory pins"),
-            (
-                "schemaVersion = 1",
-                "schemaVersion = 2",
-                "the inventory is schema",
-            ),
+            ("schemaVersion = 1", "schemaVersion = 2", "at schema 2"),
         ] {
             write_inventory(&root, &INVENTORY.replace(from, to));
             let error = hook_inventory(&root, "0.0.0-test").expect_err("invalid inventory");

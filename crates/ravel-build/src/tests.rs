@@ -765,10 +765,24 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
         fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock")
     );
     assert!(!plan.files().contains_key("Cargo.lock"));
+    let toolchain: toml::Table = plan.files()["rust-toolchain.toml"]
+        .parse()
+        .expect("toolchain");
+    let installed: toml::Table = fs::read_to_string(ravel_root().join("rust-toolchain.toml"))
+        .expect("installation toolchain")
+        .parse()
+        .expect("valid installation toolchain");
     assert_eq!(
-        plan.files()["rust-toolchain.toml"],
-        fs::read_to_string(ravel_root().join("rust-toolchain.toml"))
-            .expect("installation toolchain")
+        toolchain["toolchain"]["channel"],
+        installed["toolchain"]["channel"]
+    );
+    assert_eq!(toolchain["toolchain"]["profile"].as_str(), Some("minimal"));
+    assert_eq!(
+        toolchain["toolchain"]
+            .as_table()
+            .expect("toolchain table")
+            .len(),
+        2
     );
     assert_eq!(host["lib"]["name"].as_str(), Some(HOST_LIBRARY));
     fs::remove_dir_all(&instance).expect("cleanup");
@@ -809,14 +823,41 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
     }
     let discovered = discover(&instance).expect("empty instance");
     let first = plan(&discovered, &root).expect("first plan");
-    let changed = format!(
-        "{}\n# changed installation\n",
-        first.files()["rust-toolchain.toml"]
+    let original = fs::read_to_string(root.join("rust-toolchain.toml")).expect("toolchain");
+    fs::write(
+        root.join("rust-toolchain.toml"),
+        format!("{original}\n# developer edit\n"),
+    )
+    .expect("comment edit");
+    assert_eq!(
+        first.fingerprint(),
+        plan(&discovered, &root)
+            .expect("same channel")
+            .fingerprint()
     );
-    fs::write(root.join("rust-toolchain.toml"), &changed).expect("changed toolchain");
+    fs::write(
+        root.join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"nightly-2026-10-10\"\ncomponents = [\"clippy\"]\n\
+         targets = [\"aarch64-apple-darwin\"]\n",
+    )
+    .expect("changed channel");
     let second = plan(&discovered, &root).expect("second plan");
-    assert_eq!(second.files()["rust-toolchain.toml"], changed);
+    let toolchain: toml::Table = second.files()["rust-toolchain.toml"]
+        .parse()
+        .expect("toolchain");
+    assert_eq!(
+        toolchain["toolchain"]["channel"].as_str(),
+        Some("nightly-2026-10-10")
+    );
+    assert_eq!(toolchain["toolchain"].as_table().expect("table").len(), 2);
     assert_ne!(first.fingerprint(), second.fingerprint());
+    for invalid in ["not valid TOML", "[toolchain]\nprofile = \"minimal\"\n"] {
+        fs::write(root.join("rust-toolchain.toml"), invalid).expect("invalid toolchain");
+        assert!(
+            matches!(plan(&discovered, &root), Err(BuildRefused::Installation { file, .. })
+            if file == "rust-toolchain.toml")
+        );
+    }
     fs::remove_file(root.join("rust-toolchain.toml")).expect("toolchain removed");
     let refused = plan(&discovered, &root).expect_err("the installation must pin a toolchain");
     assert!(matches!(refused, BuildRefused::InstallationIo { file, .. }
@@ -840,21 +881,21 @@ fn missing_offline_dependencies_are_policy_refusals_without_a_cargo_cache() {
             "error: no matching package named `unvetted` found\n\
              location searched: crates.io index\n\
              required by package `installed-mod v1.0.0 (/private/instance)`",
-            "<unresolved>",
+            super::Wanted::Unresolved,
             &["installed_mod"][..],
         ),
         (
             "error: failed to select a version for the requirement `unvetted = \"^2\"`\n\
              candidate versions found which didn't match: 1.0.0\n\
              required by package `installed-mod v1.0.0 (/private/instance)`",
-            "^2",
+            super::Wanted::Requirement("^2".parse().expect("requirement")),
             &["installed_mod"][..],
         ),
         (
             "error: failed to download `unvetted v2.0.0`\n\
              Caused by:\n\
                attempting to make an HTTP request, but --offline was specified",
-            "2.0.0",
+            super::Wanted::Resolved("2.0.0".parse().expect("version")),
             &[][..],
         ),
     ] {
@@ -862,7 +903,7 @@ fn missing_offline_dependencies_are_policy_refusals_without_a_cargo_cache() {
         assert!(matches!(refused, BuildRefused::UnpinnedDependency {
                 package, version: actual, mods,
             } if package == "unvetted" && actual == version
-                && mods.iter().map(String::as_str).eq(expected_mods.iter().copied())));
+                && mods.iter().map(ravel_core::ModId::as_str).eq(expected_mods.iter().copied())));
     }
     let refused = super::compile::metadata_refusal(
         &plan,
@@ -1085,21 +1126,24 @@ fn generated_hosts_enter_integrated_composition_through_the_shared_runtime() {
 #[test]
 fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() {
     let seed = "version = 4\n\
-        [[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\n\
+        [[package]]\nname = \"serde_json\"\nversion = \"1.0.0\"\n\
         source = \"registry+https://example.invalid/index\"\nchecksum = \"vetted\"\n";
     let adjusted = format!(
         "{seed}\n[[package]]\nname = \"ravel-generated-host\"\nversion = \"0.0.0\"\n\
          dependencies = [\"installed-mod\"]\n\
          [[package]]\nname = \"installed-mod\"\nversion = \"1.0.0\"\n\
-         dependencies = [\"dependency\"]\n"
+         dependencies = [\"serde_json\"]\n"
     );
-    let mods = std::collections::BTreeMap::from([("installed-mod", "installed_mod")]);
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("installed-mod", &mod_id)]);
     super::compile::vetted_dependencies(seed, &adjusted, &mods).expect("only local graph changes");
     for changed in [
         adjusted.replacen("version = \"1.0.0\"", "version = \"2.0.0\"", 1),
         adjusted.replace("checksum = \"vetted\"", "checksum = \"other\""),
         adjusted.replace("example.invalid/index", "other.invalid/index"),
-        adjusted.replace("\"dependency\"", "\"unvetted\""),
+        adjusted.replace("\"serde_json\"", "\"unvetted\""),
     ] {
         let refused = super::compile::vetted_dependencies(seed, &changed, &mods)
             .expect_err("an external dependency differs from the installation lock");
@@ -1109,7 +1153,7 @@ fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() 
         else {
             panic!("the refusal should name an unpinned dependency: {refused:?}");
         };
-        assert_eq!(requiring, &["installed_mod"]);
+        assert_eq!(requiring, std::slice::from_ref(&mod_id));
         assert!(refused.to_string().contains("installed_mod"), "{refused}");
     }
     let refused = super::compile::vetted_dependencies(seed, "[[package]", &mods)
@@ -1126,7 +1170,10 @@ fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() 
 
 #[test]
 fn path_dependencies_keep_the_sdk_boundary_even_when_seeded() {
-    let mods = std::collections::BTreeMap::from([("installed-mod", "installed_mod")]);
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("installed-mod", &mod_id)]);
     for name in ["ravel-sdk", "ravel-host-api", "serde"] {
         let path_package = format!("[[package]]\nname = \"{name}\"\nversion = \"1.0.0\"\n");
         let resolved = format!(
@@ -1140,7 +1187,7 @@ fn path_dependencies_keep_the_sdk_boundary_even_when_seeded() {
             let refused = result.expect_err("even seeded paths cannot expose host internals");
             assert!(
                 matches!(&refused, BuildRefused::UnpinnedDependency { package, mods, .. }
-                    if package == name && mods == &["installed_mod"]),
+                    if package == name && mods == std::slice::from_ref(&mod_id)),
                 "{refused:?}"
             );
         }
@@ -1158,10 +1205,9 @@ fn path_dependencies_keep_the_sdk_boundary_even_when_seeded() {
     let resolved = "[[package]]\nname = \"installed-mod\"\nversion = \"1.0.0\"\n\
         dependencies = [\"other-mod\"]\n\
         [[package]]\nname = \"other-mod\"\nversion = \"1.0.0\"\n";
-    let mods = std::collections::BTreeMap::from([
-        ("installed-mod", "installed_mod"),
-        ("other-mod", "other_mod"),
-    ]);
+    let other_id = "other_mod".parse::<ravel_core::ModId>().expect("mod id");
+    let mods =
+        std::collections::BTreeMap::from([("installed-mod", &mod_id), ("other-mod", &other_id)]);
     super::compile::vetted_dependencies(
         "[[package]]\nname = \"seed\"\nversion = \"1.0.0\"\n",
         resolved,
@@ -1228,7 +1274,7 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
     let mods = plan
         .members()
         .iter()
-        .map(|member| (member.crate_name.as_str(), member.mod_id.as_str()))
+        .map(|member| (member.crate_name.as_str(), &member.mod_id))
         .collect();
     super::compile::vetted_dependencies(plan.installation_lock(), &lock, &mods)
         .expect("the installed host uses only vetted external dependencies");
@@ -1245,4 +1291,217 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
         "the later dependency was resolved from the seed pin"
     );
     fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+fn registry_lock_package(name: &str, version: &str, dependencies: &[&str]) -> String {
+    format!(
+        "[[package]]\nname = {name:?}\nversion = {version:?}\n\
+         source = \"registry+https://example.invalid/index\"\nchecksum = \"vetted\"\n\
+         dependencies = {dependencies:?}\n"
+    )
+}
+
+#[test]
+fn installed_mods_cannot_reach_host_or_tooling_externals_even_when_pinned() {
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("installed-mod", &mod_id)]);
+    for (name, version) in [("jni", "0.22.4"), ("zip", "9.0.3"), ("noak", "0.7.0")] {
+        let seed = registry_lock_package(name, version, &[]);
+        let host = format!(
+            "{seed}[[package]]\nname = \"ravel-generated-host\"\n\
+            version = \"0.0.0\"\ndependencies = [\"{name}\"]\n"
+        );
+        super::compile::vetted_dependencies(&seed, &host, &mods)
+            .expect("generated hosts retain pinned host and tooling dependency freedom");
+        let direct = format!(
+            "{host}[[package]]\nname = \"installed-mod\"\n\
+            version = \"1.0.0\"\ndependencies = [\"{name}\"]\n"
+        );
+        let refused = super::compile::vetted_dependencies(&seed, &direct, &mods)
+            .expect_err("installed mods cannot borrow unrelated root pins");
+        assert!(
+            matches!(refused, BuildRefused::UnpinnedDependency { package, version: super::Wanted::Resolved(_), mods }
+            if package == name && mods == [mod_id.clone()])
+        );
+        let indirect = format!(
+            "{host}[[package]]\nname = \"installed-mod\"\n\
+            version = \"1.0.0\"\ndependencies = [\"other-mod\"]\n\
+            [[package]]\nname = \"other-mod\"\nversion = \"1.0.0\"\ndependencies = [\"{name}\"]\n"
+        );
+        let other_id = "other_mod".parse::<ravel_core::ModId>().expect("mod id");
+        let both = std::collections::BTreeMap::from([
+            ("installed-mod", &mod_id),
+            ("other-mod", &other_id),
+        ]);
+        let refused = super::compile::vetted_dependencies(&seed, &indirect, &both)
+            .expect_err("transitive installed dependencies follow the same policy");
+        assert!(
+            matches!(refused, BuildRefused::UnpinnedDependency { mods, .. }
+            if mods == [mod_id.clone(), other_id])
+        );
+    }
+}
+
+#[test]
+fn author_seed_closure_admits_dependencies_with_qualified_lock_edges() {
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("installed-mod", &mod_id)]);
+    for seed_name in ["serde", "serde_json", "num-traits", "ravel-sdk"] {
+        let edge = "helper 1.0.0 (registry+https://example.invalid/index)";
+        let seed = format!(
+            "{}{}",
+            registry_lock_package(seed_name, "1.0.0", &[edge]),
+            registry_lock_package("helper", "1.0.0", &[])
+        );
+        let resolved = format!(
+            "{seed}[[package]]\nname = \"installed-mod\"\n\
+            version = \"1.0.0\"\ndependencies = [\"{seed_name}\", \"{edge}\"]\n"
+        );
+        super::compile::vetted_dependencies(&seed, &resolved, &mods)
+            .expect("authors can use the explicitly allowed seed closure");
+        let changed = resolved.replace("helper 1.0.0", "helper 2.0.0").replace(
+            "name = \"helper\"\nversion = \"1.0.0\"",
+            "name = \"helper\"\nversion = \"2.0.0\"",
+        );
+        assert!(super::compile::vetted_dependencies(&seed, &changed, &mods).is_err());
+    }
+}
+
+#[test]
+fn malformed_lock_identities_are_not_reported_with_sentinel_versions() {
+    for package in [
+        "name = \"missing-version\"",
+        "version = \"1.0.0\"",
+        "name = \"bad\"\nversion = \"invalid\"",
+    ] {
+        let lock = format!("[[package]]\n{package}\n");
+        assert!(matches!(
+            super::compile::vetted_dependencies(&lock, &lock, &std::collections::BTreeMap::new()),
+            Err(BuildRefused::Installation { .. })
+        ));
+        assert!(matches!(
+            super::compile::vetted_dependencies(
+                "[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\n",
+                &lock,
+                &std::collections::BTreeMap::new()
+            ),
+            Err(BuildRefused::ResolvedLock { .. })
+        ));
+    }
+}
+
+#[test]
+fn author_closure_does_not_admit_an_unrelated_version_or_source() {
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("installed-mod", &mod_id)]);
+    let approved = "helper 1.0.0 (registry+https://example.invalid/index)";
+    let seed = format!(
+        "{}{}{}{}",
+        registry_lock_package("serde_json", "1.0.0", &[approved]),
+        registry_lock_package("helper", "1.0.0", &[]),
+        registry_lock_package("helper", "2.0.0", &[]),
+        registry_lock_package("helper", "1.0.0", &[])
+            .replace("example.invalid/index", "other.invalid/index")
+    );
+    for edge in [
+        "helper 2.0.0 (registry+https://example.invalid/index)",
+        "helper 1.0.0 (registry+https://other.invalid/index)",
+    ] {
+        let resolved = format!(
+            "{seed}[[package]]\nname = \"installed-mod\"\n\
+            version = \"1.0.0\"\ndependencies = [\"{edge}\"]\n"
+        );
+        let refused = super::compile::vetted_dependencies(&seed, &resolved, &mods)
+            .expect_err("only identities actually reached by allowed seeds are admitted");
+        assert!(
+            matches!(refused, BuildRefused::UnpinnedDependency { package, mods, .. }
+            if package == "helper" && mods == [mod_id.clone()])
+        );
+    }
+}
+
+#[test]
+fn offline_mod_diagnostics_enforce_the_author_dependency_closure() {
+    let instance = instance("offline-author-policy");
+    install(
+        &instance,
+        "installed",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    let mut plan = planned(&instance);
+    plan.installation_lock = format!(
+        "{}{}{}",
+        registry_lock_package("serde", "1.0.0", &[]),
+        registry_lock_package("zip", "9.0.3", &[]),
+        registry_lock_package("noak", "0.7.0", &[])
+    );
+    for (name, version) in [("zip", "9.0.3"), ("noak", "0.7.0"), ("serde", "1.0.0")] {
+        let messages = [
+            format!("error: no matching package named `{name}` found"),
+            format!(
+                "error: failed to select a version for the requirement `{name} = \"={version}\"`"
+            ),
+            format!("error: failed to download `{name} v{version}`\n--offline was specified"),
+        ];
+        for message in messages {
+            assert!(
+                matches!(
+                    super::compile::metadata_refusal(&plan, &message, &instance),
+                    BuildRefused::Compile { .. }
+                ),
+                "unattributed host cache failures remain compile errors"
+            );
+            let detail = format!("{message}\nrequired by package `installed-mod v1.0.0`");
+            let refused = super::compile::metadata_refusal(&plan, &detail, &instance);
+            if name == "serde" {
+                assert!(matches!(refused, BuildRefused::Compile { .. }));
+            } else {
+                assert!(
+                    matches!(refused, BuildRefused::UnpinnedDependency { package, mods, .. }
+                    if package == name && mods.iter().map(ravel_core::ModId::as_str).eq(["installed_mod"]))
+                );
+            }
+        }
+    }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn host_external_names_do_not_turn_into_installed_mod_identities() {
+    let mod_id = "installed_mod"
+        .parse::<ravel_core::ModId>()
+        .expect("mod id");
+    let mods = std::collections::BTreeMap::from([("log", &mod_id)]);
+    let seed = format!(
+        "{}{}",
+        registry_lock_package("log", "1.0.0", &["host-helper"]),
+        registry_lock_package("host-helper", "1.0.0", &[])
+    );
+    let resolved = format!(
+        "{seed}[[package]]\nname = \"ravel-generated-host\"\n\
+        version = \"0.0.0\"\ndependencies = [\"log 1.0.0 (registry+https://example.invalid/index)\"]\n\
+        [[package]]\nname = \"log\"\nversion = \"2.0.0\"\n"
+    );
+    super::compile::vetted_dependencies(&seed, &resolved, &mods)
+        .expect("only the source-less planned log package starts a mod dependency graph");
+    let changed = resolved
+        .replace(
+            "name = \"host-helper\"\nversion = \"1.0.0\"",
+            "name = \"host-helper\"\nversion = \"2.0.0\"",
+        )
+        .replace(
+            "dependencies = [\"host-helper\"]",
+            "dependencies = [\"host-helper 2.0.0\"]",
+        );
+    let refused = super::compile::vetted_dependencies(&seed, &changed, &mods)
+        .expect_err("unvetted host dependencies still refuse without blaming a same-name mod");
+    assert!(matches!(refused, BuildRefused::UnpinnedDependency { mods, .. } if mods.is_empty()));
 }

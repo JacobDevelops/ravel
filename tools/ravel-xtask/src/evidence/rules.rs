@@ -48,6 +48,10 @@ impl Milestone {
             Self::M13 => "M13",
         }
     }
+
+    pub(crate) fn directory(self) -> String {
+        format!("evidence/{}", self.as_str().to_ascii_lowercase())
+    }
 }
 
 impl fmt::Display for Milestone {
@@ -252,21 +256,21 @@ pub(crate) fn verify_redaction_value(
         .iter()
         .any(|pattern| lower.contains(pattern))
             || contains_credential(text)
-    }) || credential_field(document, false);
+    }) || has_credential_field(document, false);
     if sensitive {
         violations.push(format!("{subject} contains sensitive or local data"));
     }
 }
 
-fn credential_field(value: &Value, sensitive_path: bool) -> bool {
+fn has_credential_field(value: &Value, sensitive_path: bool) -> bool {
     match value {
         Value::String(text) => sensitive_path && !text.is_empty(),
         Value::Array(values) => values
             .iter()
-            .any(|value| credential_field(value, sensitive_path)),
+            .any(|value| has_credential_field(value, sensitive_path)),
         Value::Object(values) => values.iter().any(|(name, value)| {
             let lower = name.to_ascii_lowercase();
-            credential_field(
+            has_credential_field(
                 value,
                 sensitive_path || CREDENTIAL_WORDS.iter().any(|word| lower.contains(word)),
             )

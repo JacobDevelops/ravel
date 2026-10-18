@@ -1,6 +1,6 @@
 //! M6 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
 use std::path::Path;
 
@@ -11,10 +11,10 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, column_sum, nonempty, number, sum};
 
-use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::rules::{
-    RecordRule, require, require_fields, require_manifest_rule, require_rows, unique_by,
+use crate::evidence::closure::{
+    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
+use crate::evidence::rules::{require, require_fields, require_rows, unique_by};
 
 fn counterpart_record(v: &Value) -> Result<(), String> {
     require(v["workPackage"] == "M6-W6", "/workPackage must be M6-W6")?;
@@ -150,15 +150,15 @@ fn same_wave_entries(v: &Value) -> bool {
             .all(|entry| counterparts.iter().any(|row| row["entry"] == entry["id"]))
 }
 
-const M6_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
-    "counterpart-summary.json",
-    counterpart_record,
-    "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
+const M6_RECORDS: &[RecordDefinition] = &[RecordDefinition {
+    name: "counterpart-summary.json",
+    rule: counterpart_record,
+    description: "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
  counterpart with its observable areas as numbers, the cluster scenario's steps, the \
  process-validation artefacts, and the rewrite-integrity check's scan counts and both \
  mutation exit statuses",
-    false,
-)];
+    required: false,
+}];
 
 const M6_ARITHMETIC: &[(Rule, &str)] = &[
     (
@@ -405,65 +405,62 @@ const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
     ),
 ];
 
-pub(crate) fn verify_m6_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
-        |v| has_exact_work_packages(v, &["M6-W1", "M6-W2", "M6-W3", "M6-W4", "M6-W5", "M6-W6"]),
+const M6_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
+        |value| {
+            has_exact_work_packages(
+                value,
+                &["M6-W1", "M6-W2", "M6-W3", "M6-W4", "M6-W5", "M6-W6"],
+            )
+        },
         "M6 manifest must include every work package from M6-W1 through M6-W6 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| {
-            v["benchmarks"]["protocolVersion"] == "m6-counterpart-v1"
-                && array(v, "/benchmarks/results")
+    ),
+    (
+        |value| {
+            value["benchmarks"]["protocolVersion"] == "m6-counterpart-v1"
+                && array(value, "/benchmarks/results")
                     .iter()
                     .any(|row| row["name"] == "counterpart-summary.json")
         },
         "M6 manifest must record its counterpart summary under the m6-counterpart-v1 protocol, so \
          that the record carrying every figure is covered by a recomputed digest",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| all_gates_closed(v, "M6-W6", 5),
+    ),
+    (
+        |value| all_gates_closed(value, "M6-W6", 5),
         "M6 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| {
-            v["environment"]["settings"]["rewriteIntegrity"]["enforcing"] == true
+    ),
+    (
+        |value| {
+            value["environment"]["settings"]["rewriteIntegrity"]["enforcing"] == true
                 && [
                     "/environment/settings/rewriteIntegrity/sourceInjectionExitStatus",
                     "/environment/settings/rewriteIntegrity/artifactInjectionExitStatus",
                 ]
                 .iter()
-                .all(|path| number(v, path).is_some_and(|n| n.abs() > 0.0))
+                .all(|path| number(value, path).is_some_and(|count| count.abs() > 0.0))
         },
         "M6 closure requires the manifest itself to record the rewrite-integrity check as \
          enforcing and to record a nonzero exit status for each of the two injections that \
          prove it",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_native_attestation(value, "official-atm11"),
         "M6 closure requires a native Linux attestation for the recorded counterpart run",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
+    ),
+    (
+        |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M6 counts the observable areas nothing runs, and a milestone disclosing that and \
          recording no deviation or risk deleted the finding rather than the defect",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m6_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M6_MANIFEST_RULES, violations);
 
     verify_closure_records(Milestone::M6, records, M6_RECORDS, violations);
 }
@@ -482,7 +479,7 @@ pub(crate) fn verify_m6_integrity(
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M6, M6_RECORDS, violations);
-    if let Some(record) = records.get(M6_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+    if let Some(record) = records.carried(&M6_FIGURES) {
         verify_milestone_figures(record, manifest, &M6_FIGURES, violations);
     }
     records

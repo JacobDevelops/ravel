@@ -20,7 +20,7 @@ pub(crate) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
     let bytes = fs::read(root.join(&input.path)).map_err(|error| GenerateError::io(name, error))?;
     if let Some(expected) = &input.sha256 {
         let actual = sha256(&bytes);
-        if &actual != expected {
+        if actual != expected.as_str() {
             return Err(GenerateError::Drift(format!(
                 "{name} hashes {actual} but the adapter inputs pin {expected}"
             )));
@@ -139,7 +139,7 @@ mod tests {
 
         let drifted = Input {
             path: adapter.inputs.hook_inventory.path,
-            sha256: Some("0".repeat(64)),
+            sha256: Some("0".repeat(64).try_into().expect("complete digest")),
             bytes: None,
             upstream: None,
         };
@@ -248,6 +248,19 @@ bytes = 2
             error.to_string().contains("hash and length to rewrite"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn uppercase_input_pins_verify_against_the_same_bytes() {
+        let root = repository_root();
+        let path = "minecraft/README.md";
+        let bytes = std::fs::read(root.join(path)).expect("tracked input");
+        let input: Input = toml::from_str(&format!(
+            "path = \"{path}\"\nsha256 = \"{}\"\n",
+            sha256(&bytes).to_ascii_uppercase()
+        ))
+        .expect("uppercase pins canonicalize at admission");
+        verify_input(root, &input).expect("text case does not change the pinned bytes");
     }
 
     #[test]

@@ -1,21 +1,21 @@
 //! M3 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::evidence::closure::verify_closure_records;
-use crate::evidence::rules::require_manifest_rule;
+use crate::evidence::closure::{verify_closure_records, verify_manifest_closure};
 use crate::evidence::rules::{
-    RecordRule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
+    Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation, require,
 };
 use crate::json::{array, number};
 use crate::text::read_text;
-use crate::text::{Side, numbers_before, stated_counts};
+use crate::text::{Side, compare_stated, numbers_before, stated_counts};
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
@@ -34,13 +34,8 @@ pub(crate) fn verify_m3_integrity(
     records
 }
 
-pub(crate) fn verify_m3_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
+const M3_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
         |value| {
             has_exact_work_packages(
                 value,
@@ -50,10 +45,8 @@ pub(crate) fn verify_m3_manifest(
             )
         },
         "M3 manifest must include every work package from M3-W0 through M3-W8 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             has_exact_benchmark_results(
                 value,
@@ -67,33 +60,34 @@ pub(crate) fn verify_m3_manifest(
             )
         },
         "M3 manifest must record all four M3 results under the m3-prototype-v1 protocol, so that each one is covered by a recomputed digest",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| all_gates_closed(value, "M3-W8", 8),
         "M3 closure requires a gateStatus row for every work package, each implementation row closed and naming its evidence",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_native_attestation(value, "ravel"),
         "M3 closure requires a native Linux attestation for the operator-run Ravel launch",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M3 recorded deviations and risks, and an empty finding set satisfies every rule phrased as a refusal, so closure requires them to still be there",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m3_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M3_MANIFEST_RULES, violations);
     verify_closure_records(Milestone::M3, records, M3_RECORDS, violations);
 }
 
-const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
-    (
-        "class-loader-identity.json",
-        |value| {
+const M3_RECORDS: &[RecordDefinition] = &[
+    RecordDefinition {
+        name: "class-loader-identity.json",
+        rule: |value| {
             require(
                 value["observed"]["sameObject"] == true,
                 "/observed/sameObject",
@@ -118,13 +112,13 @@ const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             )?;
             Ok(())
         },
-        "a class-loader identity record showing the loader that resolved a rewritten game class \
+        description: "a class-loader identity record showing the loader that resolved a rewritten game class \
      is the system loader, measured in a launch that rewrote classes and reached native code",
-        false,
-    ),
-    (
-        "pack-compile.json",
-        |value| {
+        required: false,
+    },
+    RecordDefinition {
+        name: "pack-compile.json",
+        rule: |value| {
             require(value["gate"] == "ADG-2", "/gate must be ADG-2")?;
             require(
                 value["protocol"] == "m3-pack-compile-v1",
@@ -143,13 +137,13 @@ const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             }
             Ok(())
         },
-        "a pack-compile record pricing ADG-2's source distribution with a repeated measurement, \
+        description: "a pack-compile record pricing ADG-2's source distribution with a repeated measurement, \
      a positive marginal per-mod cost, and the toolchain size the decision accepted",
-        false,
-    ),
-    (
-        "profiling-overhead.json",
-        |value| {
+        required: false,
+    },
+    RecordDefinition {
+        name: "profiling-overhead.json",
+        rule: |value| {
             require(
                 value["workPackage"] == "M3-W6",
                 "/workPackage must be M3-W6",
@@ -175,13 +169,13 @@ const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             )?;
             Ok(())
         },
-        "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
+        description: "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
      per-mod attribution accuracy stated and the unsupported metrics named",
-        false,
-    ),
-    (
-        "linux-process-matrix.json",
-        |value| {
+        required: false,
+    },
+    RecordDefinition {
+        name: "linux-process-matrix.json",
+        rule: |value| {
             require(
                 value["workPackage"] == "M3-W7",
                 "/workPackage must be M3-W7",
@@ -217,11 +211,11 @@ const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             }
             Ok(())
         },
-        "a Linux process-matrix record showing every M3 surface passing natively in an instance \
+        description: "a Linux process-matrix record showing every M3 surface passing natively in an instance \
      the scan proves holds no other loader, with the world round trip preserving bytes and \
      refusing a world it cannot read",
-        true,
-    ),
+        required: true,
+    },
 ];
 fn profiling_off_tick_limit(value: &Value) -> Result<(), String> {
     let mut failure = Err("/budget/limits must contain metric profiling.off.perTick".to_owned());
@@ -364,64 +358,67 @@ fn matrix_count(matrix: &Value, pointer: &str) -> Result<usize, String> {
         .ok_or_else(|| format!("{CAMPAIGN_MATRIX} does not record a whole number at `{pointer}`"))
 }
 
+#[derive(Clone, Copy)]
+enum CampaignCountMatcher {
+    Phrase(&'static str, Side),
+    Words(&'static [&'static str]),
+}
+
 fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> Vec<String> {
     let mut violations = Vec::new();
     let document = document.split_whitespace().collect::<Vec<_>>().join(" ");
     let document = document.as_str();
-    for (phrase, side, expected, subject) in [
+    for (matcher, expected, subject, absent_subject) in [
         (
-            " callable targets",
-            Side::Before,
+            CampaignCountMatcher::Phrase(" callable targets", Side::Before),
             derived.targets,
+            "callable targets",
             "callable targets",
         ),
         (
-            " classes in the reviewed inventory",
-            Side::Before,
+            CampaignCountMatcher::Phrase(" classes in the reviewed inventory", Side::Before),
             derived.classes,
+            "classes in the reviewed inventory",
             "classes in the reviewed inventory",
         ),
         (
-            "moved from ",
-            Side::After,
+            CampaignCountMatcher::Phrase("moved from ", Side::After),
             derived.prior,
             "callable targets before the count moved",
+            "callable targets before the count moved",
+        ),
+        (
+            CampaignCountMatcher::Words(&["surface", "launches"]),
+            derived.launches,
+            "surface launches",
+            "launches in the surface campaign",
         ),
     ] {
-        let stated = stated_counts(document, phrase, side);
-        if stated.is_empty() {
-            violations.push(format!(
-                "{CAMPAIGN_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it \
-                 is held to {CAMPAIGN_MATRIX}'s {expected} {subject}"
-            ));
-            continue;
-        }
-        for count in stated {
-            if count != expected {
-                violations.push(format!(
+        let stated = match matcher {
+            CampaignCountMatcher::Phrase(phrase, side) => stated_counts(document, phrase, side),
+            CampaignCountMatcher::Words(words) => numbers_before(document, words),
+        };
+        compare_stated(
+            &stated,
+            expected,
+            || {
+                let phrase = match matcher {
+                    CampaignCountMatcher::Phrase(phrase, _) => Cow::Borrowed(phrase),
+                    CampaignCountMatcher::Words(words) => Cow::Owned(words.join(" ")),
+                };
+                format!(
+                    "{CAMPAIGN_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it \
+                     is held to {CAMPAIGN_MATRIX}'s {expected} {absent_subject}"
+                )
+            },
+            |count| {
+                format!(
                     "{CAMPAIGN_DOCUMENT} states {count} {subject} where {CAMPAIGN_MATRIX} records \
-                     {expected}"
-                ));
-            }
-        }
-    }
-
-    let stated = numbers_before(document, &["surface", "launches"]);
-    if stated.is_empty() {
-        violations.push(format!(
-            "{CAMPAIGN_DOCUMENT} no longer writes a count against `surface launches`, so nothing \
-             in it is held to {CAMPAIGN_MATRIX}'s {} launches in the surface campaign",
-            derived.launches
-        ));
-    }
-    for count in stated {
-        if count != derived.launches {
-            violations.push(format!(
-                "{CAMPAIGN_DOCUMENT} states {count} surface launches where {CAMPAIGN_MATRIX} \
-                 records {}",
-                derived.launches
-            ));
-        }
+                 {expected}"
+                )
+            },
+            &mut violations,
+        );
     }
     violations
 }
@@ -475,20 +472,23 @@ fn verify_lifecycle_counts(
     declared: usize,
     violations: &mut Vec<String>,
 ) {
-    if stated.is_empty() {
-        violations.push(format!(
-            "{relative} no longer writes a count against `world lifecycles`, so \
+    compare_stated(
+        stated,
+        declared,
+        || {
+            format!(
+                "{relative} no longer writes a count against `world lifecycles`, so \
              nothing in it is held to {PERSISTENCE_HARNESS}'s {declared}"
-        ));
-    }
-    for count in stated {
-        if *count != declared {
-            violations.push(format!(
+            )
+        },
+        |count| {
+            format!(
                 "{relative} states {count} world lifecycles where \
-                 {PERSISTENCE_HARNESS} declares {declared}"
-            ));
-        }
-    }
+             {PERSISTENCE_HARNESS} declares {declared}"
+            )
+        },
+        violations,
+    );
 }
 
 fn matrix_lifecycle_counts(record: &Value) -> Vec<usize> {

@@ -18,25 +18,27 @@ use crate::version_boundary::{VERSION_DATA, verify_version_directories};
 fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
     use super::{AGENT_SOURCE_MANIFEST, agent_source_manifest, compiled_bootstrap_source};
     let sources = agent_source_manifest(AGENT_SOURCE_MANIFEST)?;
-    for (group, name) in sources {
+    for &(group, name) in &sources {
         let path = PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/{name}.java"));
-        assert!(compiled_bootstrap_source(&path, false), "{name}");
+        assert!(compiled_bootstrap_source(&path, false, &sources), "{name}");
         assert_eq!(
-            compiled_bootstrap_source(&path, true),
+            compiled_bootstrap_source(&path, true, &sources),
             group == "core",
             "{name}"
         );
         assert!(!compiled_bootstrap_source(
             &path.with_extension("java.in"),
-            false
+            false,
+            &sources
         ));
         let nested = PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/nested/{name}.java"));
-        assert!(!compiled_bootstrap_source(&nested, false));
-        assert!(!compiled_bootstrap_source(&nested, true));
+        assert!(!compiled_bootstrap_source(&nested, false, &sources));
+        assert!(!compiled_bootstrap_source(&nested, true, &sources));
     }
     assert!(compiled_bootstrap_source(
         std::path::Path::new("jvm/bootstrap/dev/ravel/jvm/LegacyContent.java"),
-        true
+        true,
+        &sources
     ));
     for malformed in [
         "",
@@ -50,6 +52,29 @@ fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
     let build = include_str!("../../../../../jvm/build/build-agent.sh");
     assert!(build.contains("jvm/build/agent-sources.txt"));
     assert!(build.contains("-maxdepth 1 -name 'Legacy*.java'"));
+    Ok(())
+}
+
+#[test]
+fn agent_source_selection_uses_the_supplied_manifest() -> Result<(), String> {
+    use super::{agent_source_manifest, compiled_bootstrap_source};
+    let sources = agent_source_manifest("core CustomCore\nmodern CustomModern\n")?;
+    let path = |name| PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/{name}.java"));
+    for (name, modern, legacy) in [
+        ("CustomCore", true, true),
+        ("CustomModern", true, false),
+        ("Boot", false, false),
+        ("LegacyCustom", false, true),
+    ] {
+        assert_eq!(
+            compiled_bootstrap_source(&path(name), false, &sources),
+            modern
+        );
+        assert_eq!(
+            compiled_bootstrap_source(&path(name), true, &sources),
+            legacy
+        );
+    }
     Ok(())
 }
 

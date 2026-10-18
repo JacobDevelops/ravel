@@ -12,9 +12,7 @@ use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
 
-pub(crate) const VERSION_FILES: [&str; 6] = [
-    "README.md",
-    "adapter.toml",
+pub(crate) const TOML_VERSION_FILES: [&str; 4] = [
     "mappings.lock",
     "reflection.toml",
     "stubs.lock",
@@ -99,13 +97,27 @@ pub(crate) fn verify_version_directories(
 
     let mut inventories = Vec::with_capacity(versions.len());
     for version in &versions {
-        for file in VERSION_FILES {
-            verify_version_file(root, version, file, &mut eligibility, violations);
+        let prose = format!("{VERSION_DATA}/{version}/{VERSION_PROSE_FILE}");
+        if !root.join(&prose).is_file() {
+            violations.push(format!("missing required file: {prose}"));
         }
-        if eligibility.contains_key(version)
-            && let Some(inventory) = verified_hook_inventory(root, version, violations)
-        {
-            inventories.push(inventory);
+        let adapter = format!("{VERSION_DATA}/{version}/adapter.toml");
+        let facts = if root.join(&adapter).is_file() {
+            adapter_facts(root, version).map_err(|error| error.to_string())
+        } else {
+            Err(format!("missing required file: {adapter}"))
+        };
+        for file in TOML_VERSION_FILES {
+            verify_version_toml(root, version, file, violations);
+        }
+        match facts {
+            Ok(facts) => {
+                eligibility.insert(version.to_owned(), facts);
+                if let Some(inventory) = verified_hook_inventory(root, version, violations) {
+                    inventories.push(inventory);
+                }
+            }
+            Err(error) => violations.push(error),
         }
     }
     (eligibility, inventories)
@@ -130,28 +142,10 @@ fn verified_hook_inventory(
     Some(inventory)
 }
 
-fn verify_version_file(
-    root: &Path,
-    version: &str,
-    file: &str,
-    eligibility: &mut VersionAdapters,
-    violations: &mut Vec<String>,
-) {
+fn verify_version_toml(root: &Path, version: &str, file: &str, violations: &mut Vec<String>) {
     let relative = format!("{VERSION_DATA}/{version}/{file}");
     if !root.join(&relative).is_file() {
         violations.push(format!("missing required file: {relative}"));
-        return;
-    }
-    if file == VERSION_PROSE_FILE {
-        return;
-    }
-    if file == "adapter.toml" {
-        match adapter_facts(root, version) {
-            Ok(facts) => {
-                eligibility.insert(version.to_owned(), facts);
-            }
-            Err(error) => violations.push(error.to_string()),
-        }
         return;
     }
     let text = match read_text(root, Path::new(&relative)) {

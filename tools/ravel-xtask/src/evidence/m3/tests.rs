@@ -87,6 +87,11 @@ fn a_campaign_document_stating_no_count_at_all_is_not_read_as_agreement() {
             .all(|violation| violation.contains("no longer writes a count against")),
         "{violations:?}"
     );
+    assert_eq!(
+        violations[3],
+        "evidence/m3/README.md no longer writes a count against `surface launches`, so nothing in it \
+         is held to evidence/m3/linux-process-matrix.json's 3 launches in the surface campaign",
+    );
 }
 #[test]
 fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
@@ -109,8 +114,12 @@ fn tracked_record(name: &str) -> Value {
 
 #[test]
 fn every_tracked_m3_record_satisfies_its_closure_rule() {
-    for (name, rule, _, _) in M3_RECORDS {
-        assert!(rule(&tracked_record(name)).is_ok(), "{name} fails its rule");
+    for record in M3_RECORDS {
+        let name = record.name;
+        assert!(
+            (record.rule)(&tracked_record(name)).is_ok(),
+            "{name} fails its rule"
+        );
     }
 }
 
@@ -134,10 +143,11 @@ fn every_m3_record_rule_refuses_a_missing_or_null_required_field() {
         ),
         ("linux-process-matrix.json", "/rewrite/classesRewritten"),
     ] {
-        let (_, rule, _, _) = M3_RECORDS
+        let rule = M3_RECORDS
             .iter()
-            .find(|(record, _, _, _)| *record == name)
-            .expect("record should have a rule");
+            .find(|record| record.name == name)
+            .expect("record should have a rule")
+            .rule;
 
         let mut nulled = tracked_record(name);
         *nulled
@@ -160,10 +170,11 @@ fn every_m3_record_rule_refuses_a_missing_or_null_required_field() {
 
 #[test]
 fn the_m3_matrix_refuses_another_loader_and_a_zero_rewrite() {
-    let (_, rule, _, _) = M3_RECORDS
+    let rule = M3_RECORDS
         .iter()
-        .find(|(record, _, _, _)| *record == "linux-process-matrix.json")
-        .expect("matrix should have a rule");
+        .find(|record| record.name == "linux-process-matrix.json")
+        .expect("matrix should have a rule")
+        .rule;
     let mut other_loader = tracked_record("linux-process-matrix.json");
     other_loader["instance"]["otherLoaderComponents"] = serde_json::json!(1);
     assert!(rule(&other_loader).is_err());

@@ -1,9 +1,9 @@
 //! Cross-milestone review and documentation arithmetic.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::evidence::rules::{Milestone, milestone_manifests};
-use crate::text::{numbers_after, numbers_before, read_text};
+use crate::text::{compare_stated, numbers_after, numbers_before, read_text};
 
 const ROUND_COUNT_EXEMPT: [Milestone; 2] = [Milestone::M0, Milestone::M1];
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
@@ -12,13 +12,10 @@ const ROUND_NOUNS: [&str; 5] = ["rounds", "verdicts", "audits", "reviews", "iter
 
 fn verify_review_round_counts_for(
     root: &Path,
-    milestone: Option<Milestone>,
+    manifests: &[(PathBuf, Milestone)],
     violations: &mut Vec<String>,
 ) {
-    for (record, documents) in round_count_subjects(root, violations) {
-        if !matches_milestone(&record, milestone) {
-            continue;
-        }
+    for (record, documents) in round_count_subjects(manifests) {
         if !root.join(&record).is_file() {
             violations.push(format!("missing required file: {record}"));
         }
@@ -54,16 +51,9 @@ fn verify_review_round_counts_for(
     }
 }
 
-fn round_count_subjects(root: &Path, violations: &mut Vec<String>) -> Vec<(String, [String; 2])> {
-    let manifests = match milestone_manifests(root) {
-        Ok(manifests) => manifests,
-        Err(error) => {
-            violations.push(error);
-            return Vec::new();
-        }
-    };
+fn round_count_subjects(manifests: &[(PathBuf, Milestone)]) -> Vec<(String, [String; 2])> {
     manifests
-        .into_iter()
+        .iter()
         .filter(|(_, milestone)| !ROUND_COUNT_EXEMPT.contains(milestone))
         .map(|(manifest, _)| {
             let directory = manifest
@@ -113,11 +103,11 @@ const UNTALLIED_RECORDS: [&str; 2] = ["evidence/m3/review.md", "evidence/m4/revi
 
 fn verify_review_blocking_counts_for(
     root: &Path,
-    milestone: Option<Milestone>,
+    manifests: &[(PathBuf, Milestone)],
     violations: &mut Vec<String>,
 ) {
-    for (record, _) in round_count_subjects(root, violations) {
-        if !matches_milestone(&record, milestone) || UNTALLIED_RECORDS.contains(&record.as_str()) {
+    for (record, _) in round_count_subjects(manifests) {
+        if UNTALLIED_RECORDS.contains(&record.as_str()) {
             continue;
         }
         let path = root.join(&record);
@@ -152,40 +142,33 @@ fn verify_review_blocking_counts_for(
 
         let mut stated = numbers_before(summary, &["blocking", "findings"]);
         stated.extend(numbers_after(summary, &["blocking", "findings"]));
-        if stated.is_empty() {
-            violations.push(format!(
-                "{record} states no tally of the blocking findings its {rounds} round headings \
+        compare_stated(
+            &stated,
+            total,
+            || {
+                format!(
+                    "{record} states no tally of the blocking findings its {rounds} round headings \
                  declare; the summary carries that figure so a reader is not left to sum them"
-            ));
-        }
-        for count in stated {
-            if count != total {
-                violations.push(format!(
+                )
+            },
+            |count| {
+                format!(
                     "{record} states that {count} blocking findings were raised; its own round \
-                     headings declare {total} across {rounds} rounds, and the headings are where \
-                     that figure is written"
-                ));
-            }
-        }
+                 headings declare {total} across {rounds} rounds, and the headings are where \
+                 that figure is written"
+                )
+            },
+            violations,
+        );
     }
 }
 
 fn verify_manifest_percentages_for(
     root: &Path,
-    selected: Option<Milestone>,
+    manifests: &[(PathBuf, Milestone)],
     violations: &mut Vec<String>,
 ) {
-    let manifests = match milestone_manifests(root) {
-        Ok(manifests) => manifests,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
     for (relative, milestone) in manifests {
-        if selected.is_some_and(|selected| selected != milestone) {
-            continue;
-        }
         let relative = relative.display().to_string();
         match read_text(root, Path::new(&relative)) {
             Ok(manifest) => {
@@ -223,19 +206,20 @@ pub(crate) fn verify_accounting(
     milestone: Option<Milestone>,
     violations: &mut Vec<String>,
 ) {
-    verify_review_round_counts_for(root, milestone, violations);
-    verify_review_blocking_counts_for(root, milestone, violations);
-    verify_manifest_percentages_for(root, milestone, violations);
-}
-
-fn matches_milestone(record: &str, milestone: Option<Milestone>) -> bool {
-    milestone.is_none_or(|milestone| {
-        record
-            == format!(
-                "evidence/{}/review.md",
-                milestone.as_str().to_ascii_lowercase()
-            )
-    })
+    let manifests = match milestone_manifests(root) {
+        Ok(manifests) => manifests,
+        Err(error) => {
+            violations.push(error);
+            Vec::new()
+        }
+    };
+    let manifests: Vec<_> = manifests
+        .into_iter()
+        .filter(|(_, each)| milestone.is_none_or(|selected| selected == *each))
+        .collect();
+    verify_review_round_counts_for(root, &manifests, violations);
+    verify_review_blocking_counts_for(root, &manifests, violations);
+    verify_manifest_percentages_for(root, &manifests, violations);
 }
 
 #[cfg(test)]

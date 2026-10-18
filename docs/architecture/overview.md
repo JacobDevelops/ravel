@@ -152,13 +152,19 @@ Ravel into a Java mod host.
   and one reconstructible Cargo build cache per machine across instances.
   Cargo's cache keys separate different builds, and its lock serializes concurrent
   access; cache size and eviction remain open work.
-  Each generated workspace includes the installation's `rust-toolchain.toml`
-  and starts with its `Cargo.lock`; both participate in its build fingerprint.
+  Each generated workspace selects the installation's pinned toolchain channel
+  with the minimal profile, without developer components or extra targets.
+  That generated toolchain file and the installation's `Cargo.lock` participate
+  in its build fingerprint.
   Cargo runs from that workspace so rustup selects its pinned compiler.
   Cargo resolves generated local host and mod entries offline; every resolved external name, version, source,
   and checksum must match an installation lock entry before compilation runs
   with `--locked`. An unvetted third-party resolution is refused, not silently
-  added to the installation's dependency graph. Source-less packages must be
+  added to the installation's dependency graph.
+  Installed mods may reach only the SDK dependency closure and the explicitly
+  supported serde, serde_json and num-traits dependency closures, not every
+  tooling or host dependency that happens to occur in the installation lock.
+  Source-less packages must be
   planned members, the generated host, or identities already in the installation
   lock. A member's direct path dependencies may reach only the SDK or another
   planned member, not host internals or vendored third-party code. Generated

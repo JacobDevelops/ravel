@@ -48,12 +48,13 @@ pub(crate) fn document(source: &str, mappings: &str) -> String {
          {mappings}\
          [inputs.clientJar]\npath = \"a\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n\
          [inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n\
-         [inputs.versionManifest]\npath = \"c\"\nsha256 = \"0\"\n\
-         [inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"\n\
-         [inputs.stubSeeds]\npath = \"e\"\nsha256 = \"0\"\n\
-         [inputs.reflectiveSurface]\npath = \"h\"\nsha256 = \"0\"\n\
-         [inputs.mappingsLock]\npath = \"f\"\nsha256 = \"0\"\n\
-         [inputs.stubsLock]\npath = \"g\"\nsha256 = \"0\"\n"
+         [inputs.versionManifest]\npath = \"c\"\nsha256 = \"{zero}\"\n\
+         [inputs.hookInventory]\npath = \"d\"\nsha256 = \"{zero}\"\n\
+         [inputs.stubSeeds]\npath = \"e\"\nsha256 = \"{zero}\"\n\
+         [inputs.reflectiveSurface]\npath = \"h\"\nsha256 = \"{zero}\"\n\
+         [inputs.mappingsLock]\npath = \"f\"\nsha256 = \"{zero}\"\n\
+         [inputs.stubsLock]\npath = \"g\"\nsha256 = \"{zero}\"\n",
+        zero = "0".repeat(64)
     )
 }
 

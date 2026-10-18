@@ -1,6 +1,6 @@
 //! M5 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
 use std::path::Path;
 
@@ -12,10 +12,11 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, nonempty, number, sum};
 
-use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
+use crate::evidence::closure::{
+    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
+};
 use crate::evidence::rules::{
-    RecordRule, require, require_fields, require_manifest_rule, require_nonempty_array,
-    require_rows, unique_by,
+    require, require_fields, require_nonempty_array, require_rows, unique_by,
 };
 
 fn inventory_record(v: &Value) -> Result<(), String> {
@@ -148,61 +149,55 @@ fn inventory_numbers(v: &Value) -> Result<(), String> {
     )
 }
 
-const M5_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
-    "inventory-summary.json",
-    inventory_record,
-    "an inventory summary carrying every aggregate as a number, a digest over every \
+const M5_RECORDS: &[RecordDefinition] = &[RecordDefinition {
+    name: "inventory-summary.json",
+    rule: inventory_record,
+    description: "an inventory summary carrying every aggregate as a number, a digest over every \
  registry file it binds with the class that digest freezes, its trail of machinery \
  amendments, and its own disclosure of what the read observation watches and \
  which of its claims rest on judgement",
-    false,
-)];
+    required: false,
+}];
 
-pub(crate) fn verify_m5_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
-        |v| {
+const M5_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
+        |value| {
             has_exact_work_packages(
-                v,
+                value,
                 &[
                     "M5-W1", "M5-W2", "M5-W3", "M5-W4", "M5-W5", "M5-W6", "M5-W7", "M5-W8",
                 ],
             )
         },
         "M5 manifest must include every work package from M5-W1 through M5-W8 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_exact_benchmark_results(value, "m5-inventory-v1", &["inventory-summary.json"]),
         "M5 manifest must record its inventory summary under the m5-inventory-v1 protocol, so \
          that the record carrying every figure is covered by a recomputed digest",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| all_gates_closed(v, "M5-W8", 7),
+    ),
+    (
+        |value| all_gates_closed(value, "M5-W8", 7),
         "M5 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_native_attestation(value, "official-atm11"),
         "M5 closure requires a native Linux attestation for the recorded inventory run",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
+    ),
+    (
+        |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M5 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
          as a refusal, so closure requires them to still be there",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m5_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M5_MANIFEST_RULES, violations);
 
     verify_closure_records(Milestone::M5, records, M5_RECORDS, violations);
 
@@ -388,7 +383,7 @@ pub(crate) fn verify_m5_integrity(
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M5, M5_RECORDS, violations);
-    if let Some(record) = records.get(M5_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+    if let Some(record) = records.carried(&M5_FIGURES) {
         verify_milestone_figures(record, manifest, &M5_FIGURES, violations);
     }
     records

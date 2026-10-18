@@ -98,6 +98,7 @@ pub(super) fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, S
 
 pub(super) fn verify_persistence_reflection_roles(
     surfaces: &[ReflectiveSurface],
+    manifest: &[(&str, &str)],
     spelled: &[(String, String)],
     reached: &[(String, String)],
     violations: &mut Vec<String>,
@@ -107,7 +108,7 @@ pub(super) fn verify_persistence_reflection_roles(
             verify_legacy_reflection(surface, violations);
         }
         let compiled = |(relative, _): &&(String, String)| {
-            compiled_bootstrap_source(Path::new(relative), surface.legacy_adapter)
+            compiled_bootstrap_source(Path::new(relative), surface.legacy_adapter, manifest)
         };
         let declaring = &surface.path;
         let declared: Vec<&str> = surface
@@ -360,10 +361,13 @@ pub(crate) fn verify_persistence_reflection(
     adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    if let Err(error) = agent_source_manifest(AGENT_SOURCE_MANIFEST) {
-        violations.push(error);
-        return;
-    }
+    let manifest = match agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
     let surfaces = reflective_surfaces(root, adapters, violations);
 
     let sources = java_sources(&root.join(AGENT_JAR_SOURCES), violations);
@@ -380,17 +384,19 @@ pub(crate) fn verify_persistence_reflection(
     for path in &sources {
         let relative = relative_label(root, path);
         let selected = Path::new(&relative);
-        if !surfaces
-            .iter()
-            .any(|surface| compiled_bootstrap_source(selected, surface.legacy_adapter))
-        {
+        let modern = compiled_bootstrap_source(selected, false, &manifest);
+        let legacy = compiled_bootstrap_source(selected, true, &manifest);
+        if !surfaces.iter().any(|surface| {
+            (surface.legacy_adapter && legacy) || (!surface.legacy_adapter && modern)
+        }) {
             continue;
         }
         match read_text(root, path) {
             Ok(source) => {
-                for surface in surfaces.iter().filter(|surface| {
-                    surface.legacy_adapter && compiled_bootstrap_source(selected, true)
-                }) {
+                for surface in surfaces
+                    .iter()
+                    .filter(|surface| surface.legacy_adapter && legacy)
+                {
                     verify_legacy_lookups(surface, &relative, &source, violations);
                 }
                 for name in game_class_literals(&source) {
@@ -417,5 +423,5 @@ pub(crate) fn verify_persistence_reflection(
         }
     }
 
-    verify_persistence_reflection_roles(&surfaces, &spelled, &reached, violations);
+    verify_persistence_reflection_roles(&surfaces, &manifest, &spelled, &reached, violations);
 }

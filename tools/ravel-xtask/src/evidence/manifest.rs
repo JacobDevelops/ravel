@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::evidence::closure::LoadedRecords;
+use crate::evidence::closure::{LoadedRecords, verify_manifest_closure};
 use crate::evidence::rules::{
     Milestone, Rule, any_string, evidence_schema_matches, milestone_manifests,
     require_manifest_rule, verify_redaction_value,
@@ -22,24 +22,24 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         Ok(manifests) => manifests,
         Err(error) => return vec![error],
     };
-    if manifests.is_empty() {
-        return vec![
-            "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
-             vacuously"
-                .to_owned(),
-        ];
-    }
     let tracked = match tracked_paths(root) {
         Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
         Err(error) => return vec![error],
     };
     let mut violations = Vec::new();
+    let sources = findings::FindingSources::load(root, &tracked, &mut violations);
     for (path, milestone) in manifests {
         let path = root.join(path);
         match read_json(&path) {
             Ok(manifest) => {
-                let records =
-                    verify_manifest_integrity(root, &path, milestone, &manifest, &mut violations);
+                let records = verify_manifest_integrity(
+                    root,
+                    &path,
+                    milestone,
+                    &manifest,
+                    Some(&sources),
+                    &mut violations,
+                );
                 records::verify_recorded_manifest(
                     root,
                     &path,
@@ -62,10 +62,7 @@ pub fn verify_milestone(root: &Path, milestone: &str) -> Vec<String> {
         Ok(milestone) => milestone,
         Err(error) => return vec![error],
     };
-    let relative = format!(
-        "evidence/{}/manifest.json",
-        milestone.as_str().to_ascii_lowercase()
-    );
+    let relative = format!("{}/manifest.json", milestone.directory());
     let path = root.join(&relative);
     let document = match read_json(&path) {
         Ok(document) => document,
@@ -97,22 +94,34 @@ fn verify_document(
     document: &Value,
 ) -> Vec<String> {
     let mut violations = Vec::new();
-    let records = verify_manifest_integrity(root, path, milestone, document, &mut violations);
+    let tracked = if document.is_object() {
+        match tracked_paths(root) {
+            Ok(paths) => Some(paths.into_iter().collect::<BTreeSet<_>>()),
+            Err(error) => {
+                violations.push(error);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let sources = tracked
+        .as_ref()
+        .map(|paths| findings::FindingSources::load(root, paths, &mut violations));
+    let records = verify_manifest_integrity(
+        root,
+        path,
+        milestone,
+        document,
+        sources.as_ref(),
+        &mut violations,
+    );
     if !document.is_object() {
         return violations;
     }
-    for (rule, violation) in MANIFEST_VERDICTS {
-        require_manifest_rule(document, rule, violation, &mut violations);
-    }
-    match tracked_paths(root) {
-        Ok(paths) => records::verify_recorded_review_value(
-            root,
-            path,
-            document,
-            &paths.into_iter().collect(),
-            &mut violations,
-        ),
-        Err(error) => violations.push(error),
+    verify_manifest_closure(document, MANIFEST_VERDICTS, &mut violations);
+    if let Some(paths) = tracked {
+        records::verify_recorded_review_value(root, path, document, &paths, &mut violations);
     }
     match milestone {
         Milestone::M0 => m0::verify_m0_manifest(document, &mut violations),
@@ -139,6 +148,7 @@ pub(crate) fn verify_manifest_integrity(
     path: &Path,
     milestone: Milestone,
     document: &Value,
+    sources: Option<&findings::FindingSources>,
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
     if !document.is_object() {
@@ -171,10 +181,12 @@ pub(crate) fn verify_manifest_integrity(
         "work-package IDs must belong to the manifest milestone",
         violations,
     );
-    for (rule, violation) in MANIFEST_INVARIANTS {
-        require_manifest_rule(document, rule, violation, violations);
+    verify_manifest_closure(document, MANIFEST_INVARIANTS, violations);
+    if let Some(sources) = sources {
+        findings::verify_finding_anchors_value(
+            root, path, milestone, document, sources, violations,
+        );
     }
-    findings::verify_finding_anchors_value(root, path, milestone, document, violations);
     match milestone {
         Milestone::M2 => m2::verify_m2_integrity(root, document, violations),
         Milestone::M3 => m3::verify_m3_integrity(root, document, violations),

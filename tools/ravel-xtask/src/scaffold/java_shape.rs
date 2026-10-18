@@ -42,16 +42,20 @@ pub(crate) fn verify_hook_name_literals(
     adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    if let Err(error) = agent_source_manifest(AGENT_SOURCE_MANIFEST) {
-        violations.push(error);
-        return;
-    }
+    let manifest = match agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
 
     for path in java_sources(&root.join(AGENT_JAR_SOURCES), violations) {
         let relative = relative_label(root, &path);
         let selected = Path::new(&relative);
-        if !compiled_bootstrap_source(selected, false) && !compiled_bootstrap_source(selected, true)
-        {
+        let modern = compiled_bootstrap_source(selected, false, &manifest);
+        let legacy = compiled_bootstrap_source(selected, true, &manifest);
+        if !modern && !legacy {
             continue;
         }
         let source = match read_text(root, &path) {
@@ -61,14 +65,14 @@ pub(crate) fn verify_hook_name_literals(
                 continue;
             }
         };
-        if compiled_bootstrap_source(selected, false) {
+        if modern {
             let modern = source
                 .split(HOOK_NAME_MATCH)
                 .skip(1)
                 .filter_map(|tail| tail.split('"').next());
             verify_hook_literals(&relative, modern, false, inventories, adapters, violations);
         }
-        if compiled_bootstrap_source(selected, true) {
+        if legacy {
             let legacy = legacy_hook_literals(&source);
             verify_hook_literals(
                 &relative,
@@ -193,7 +197,7 @@ fn agent_source_manifest(text: &str) -> Result<Vec<(&str, &str)>, String> {
 }
 
 /// Shares build-agent.sh's manifest and its top-level-only legacy source glob.
-fn compiled_bootstrap_source(path: &Path, legacy: bool) -> bool {
+fn compiled_bootstrap_source(path: &Path, legacy: bool, manifest: &[(&str, &str)]) -> bool {
     let Some(parent) = path.parent() else {
         return false;
     };
@@ -205,11 +209,10 @@ fn compiled_bootstrap_source(path: &Path, legacy: bool) -> bool {
     let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
         return false;
     };
-    AGENT_SOURCE_MANIFEST.lines().any(|line| {
-        let mut fields = line.split_whitespace();
-        let mode = fields.next();
-        fields.next() == Some(name) && (mode == Some("core") || !legacy)
-    }) || legacy && name.starts_with("Legacy")
+    manifest
+        .iter()
+        .any(|(group, source)| *source == name && (*group == "core" || !legacy))
+        || legacy && name.starts_with("Legacy")
 }
 
 #[cfg(test)]

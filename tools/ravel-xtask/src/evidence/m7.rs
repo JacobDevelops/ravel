@@ -1,6 +1,6 @@
 //! M7 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
 use std::path::Path;
 
@@ -11,10 +11,10 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, column_sum, nonempty, number, read_json, sum};
 
-use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::rules::{
-    RecordRule, require, require_fields, require_manifest_rule, require_rows, unique_by,
+use crate::evidence::closure::{
+    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
+use crate::evidence::rules::{require, require_fields, require_rows, unique_by};
 
 fn legacy_fixture_total() -> Option<f64> {
     static TOTAL: std::sync::LazyLock<Option<f64>> = std::sync::LazyLock::new(|| {
@@ -131,14 +131,14 @@ fn library_counts(v: &Value) -> Result<(), String> {
     Ok(())
 }
 
-const M7_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
-    "library-summary.json",
-    library_record,
-    "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
+const M7_RECORDS: &[RecordDefinition] = &[RecordDefinition {
+    name: "library-summary.json",
+    rule: library_record,
+    description: "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
  depends on, any evidence correction with the figure it replaced and its reason, and the \
  dependency, registry, provenance, routing and suite figures M7-W5 audits",
-    false,
-)];
+    required: false,
+}];
 
 const M7_ARITHMETIC: &[(Rule, &str)] = &[
     (
@@ -336,57 +336,51 @@ const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
     }),
 ];
 
-pub(crate) fn verify_m7_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
-        |v| {
+const M7_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
+        |value| {
             has_exact_work_packages(
-                v,
+                value,
                 &[
                     "M7-W0", "M7-W1", "M7-W2", "M7-W3", "M7-W4", "M7-W5", "M7-W6",
                 ],
             )
         },
         "M7 manifest must include every work package from M7-W0 through M7-W6 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| {
+    ),
+    (
+        |value| {
             matches!(
-                v["benchmarks"]["protocolVersion"].as_str(),
+                value["benchmarks"]["protocolVersion"].as_str(),
                 Some("m7-library-v1" | "m7-library-v2")
-            ) && array(v, "/benchmarks/results").len() == 1
-                && v["benchmarks"]["results"][0]["name"] == "library-summary.json"
+            ) && array(value, "/benchmarks/results").len() == 1
+                && value["benchmarks"]["results"][0]["name"] == "library-summary.json"
         },
         "M7 manifest must record its library summary under the m7-library-v1 or m7-library-v2 \
          protocol, so that the record carrying every figure is covered by a recomputed digest",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| all_gates_closed(v, "M7-W6", 6),
+    ),
+    (
+        |value| all_gates_closed(value, "M7-W6", 6),
         "M7 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_native_attestation(value, "official-atm11"),
         "M7 closure requires a native Linux attestation for the recorded library run",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
-        |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
+    ),
+    (
+        |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M7 closes the selected workload library, and an empty finding set satisfies every rule \
          phrased as a refusal",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m7_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M7_MANIFEST_RULES, violations);
 
     verify_closure_records(Milestone::M7, records, M7_RECORDS, violations);
     if records
@@ -521,7 +515,7 @@ pub(crate) fn verify_m7_integrity(
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M7, M7_RECORDS, violations);
-    if let Some(record) = records.get(M7_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+    if let Some(record) = records.carried(&M7_FIGURES) {
         verify_m7_verified_fixture_total(root, record, violations);
         verify_milestone_figures(record, manifest, &M7_FIGURES, violations);
     }

@@ -1,28 +1,23 @@
 //! M4 closure rules.
 
-use crate::evidence::closure::{LoadedRecords, read_records};
+use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::Value;
 
-use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
-use crate::evidence::rules::require_manifest_rule;
+use crate::evidence::closure::{
+    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
+};
 use crate::evidence::rules::{
-    RecordRule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
+    Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation, require, require_fields, require_rows,
 };
 use crate::json::{array, nonempty, number};
 
-pub(crate) fn verify_m4_manifest(
-    manifest: &Value,
-    records: &LoadedRecords,
-    violations: &mut Vec<String>,
-) {
-    require_manifest_rule(
-        manifest,
+const M4_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
         |value| {
             has_exact_work_packages(
                 value,
@@ -32,10 +27,8 @@ pub(crate) fn verify_m4_manifest(
             )
         },
         "M4 manifest must include every work package from M4-W1 through M4-W8 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             has_exact_benchmark_results(
                 value,
@@ -45,38 +38,37 @@ pub(crate) fn verify_m4_manifest(
         },
         "M4 manifest must record both M4 results under the m4-surface-v1 protocol, so that each \
          one is covered by a recomputed digest",
-        violations,
-    );
-
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| all_gates_closed(value, "M4-W8", 7),
         "M4 closure requires a gateStatus row for every work package, each implementation row \
          closed and naming its evidence",
-        violations,
-    );
-
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| has_native_attestation(value, "ravel"),
         "M4 closure requires a native Linux attestation for the recorded gate run",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| !array(value, "/deviations").is_empty() && !array(value, "/risks").is_empty(),
         "M4 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
          as a refusal, so closure requires them to still be there",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m4_manifest(
+    manifest: &Value,
+    records: &LoadedRecords,
+    violations: &mut Vec<String>,
+) {
+    verify_manifest_closure(manifest, M4_MANIFEST_RULES, violations);
 
     verify_closure_records(Milestone::M4, records, M4_RECORDS, violations);
 }
 
-const M4_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
-    (
-        "linux-process-matrix.json",
-        |value| {
+const M4_RECORDS: &[RecordDefinition] = &[
+    RecordDefinition {
+        name: "linux-process-matrix.json",
+        rule: |value| {
             require(
                 value["workPackage"] == "M4-W8",
                 "/workPackage must be M4-W8",
@@ -123,14 +115,14 @@ const M4_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             })?;
             Ok(())
         },
-        "a Linux process matrix in which every recorded gate process exited zero and says what it \
+        description: "a Linux process matrix in which every recorded gate process exited zero and says what it \
      does not prove, and which states in a field rather than in prose that no game process \
      was launched for it",
-        false,
-    ),
-    (
-        "sdk-surface.json",
-        |value| {
+        required: false,
+    },
+    RecordDefinition {
+        name: "sdk-surface.json",
+        rule: |value| {
             let mut packages = array(value, "/workPackages")
                 .iter()
                 .filter_map(|row| row["id"].as_str())
@@ -172,21 +164,13 @@ const M4_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
             })?;
             Ok(())
         },
-        "an SDK surface record inventorying what each of M4-W1 through M4-W7 shipped, what proves \
+        description: "an SDK surface record inventorying what each of M4-W1 through M4-W7 shipped, what proves \
      it, and what it does not prove",
-        false,
-    ),
+        required: false,
+    },
 ];
 
 pub(crate) fn verify_m4_surface(root: &Path, value: &Value, violations: &mut Vec<String>) {
-    if !root.join(".jj").exists() && !root.join(".git").exists() {
-        violations.push(
-            "cannot verify historical M4 inventory: missing repository history \
-            (.jj or .git)"
-                .to_owned(),
-        );
-        return;
-    }
     let paths = match recorded_surface_paths(root) {
         Ok(paths) => paths,
         Err(error) => {
@@ -233,76 +217,10 @@ pub(crate) fn verify_m4_surface(root: &Path, value: &Value, violations: &mut Vec
 }
 
 fn recorded_surface_paths(root: &Path) -> Result<BTreeSet<String>, String> {
-    let revision = surface_record_revision(root)?;
-    let uses_jj = root.join(".jj").exists();
-    let mut command = Command::new(if uses_jj { "jj" } else { "git" });
-    if uses_jj {
-        command.args(["file", "list", "-r", &revision, "-T", "path ++ \"\\0\""]);
-    } else {
-        command.args(["ls-tree", "-r", "--name-only", "-z", &revision]);
-    }
-    let output = command
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot list M4 inventory tree: {error}"))?;
-    if !output.status.success() {
-        return Err("cannot list M4 inventory tree".to_owned());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(str::to_owned)
+    let revision = crate::vcs::last_modifying_revision(root, "evidence/m4/sdk-surface.json")?;
+    Ok(crate::vcs::tracked_files(root, Some(&revision))?
+        .into_iter()
         .collect())
-}
-
-fn surface_record_revision(root: &Path) -> Result<String, String> {
-    let record = "evidence/m4/sdk-surface.json";
-    let uses_jj = root.join(".jj").exists();
-    let mut command = Command::new(if uses_jj { "jj" } else { "git" });
-    if uses_jj {
-        command.args([
-            "log",
-            "--no-graph",
-            "--color",
-            "never",
-            "-r",
-            "latest(::@ & files(\"evidence/m4/sdk-surface.json\"))",
-            "-T",
-            "commit_id",
-        ]);
-    } else {
-        require_complete_inventory_history(root)?;
-        command.args(["log", "-1", "--format=%H", "HEAD", "--", record]);
-    }
-    let output = command
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot resolve M4 inventory revision: {error}"))?;
-    let revision = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if !output.status.success() || revision.is_empty() {
-        return Err(format!(
-            "cannot resolve the last revision modifying {record}"
-        ));
-    }
-    Ok(revision)
-}
-
-fn require_complete_inventory_history(root: &Path) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--is-shallow-repository"])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot check M4 inventory history completeness: {error}"))?;
-    if !output.status.success() {
-        return Err("cannot check M4 inventory history completeness".to_owned());
-    }
-    match String::from_utf8_lossy(&output.stdout).trim() {
-        "false" => Ok(()),
-        "true" => Err("historical M4 inventory requires complete Git history; \
-            missing amendment history in shallow repository"
-            .to_owned()),
-        _ => Err("cannot determine M4 inventory history completeness".to_owned()),
-    }
 }
 
 const M4_PROCESS_MATRIX: &str = "evidence/m4/linux-process-matrix.json";
@@ -384,7 +302,7 @@ pub(crate) fn verify_m4_integrity(
     if let Some(surface) = records.get("sdk-surface.json") {
         verify_m4_surface(root, surface, violations);
     }
-    if let Some(record) = records.get(M4_FIGURES.record.rsplit('/').next().unwrap_or_default()) {
+    if let Some(record) = records.carried(&M4_FIGURES) {
         verify_m4_process_matrix(record, violations);
         verify_milestone_figures(record, manifest, &M4_FIGURES, violations);
     }

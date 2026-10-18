@@ -90,15 +90,15 @@ struct Lock {
     minecraft: String,
     mapping_source: MappingSource,
     extractor: String,
-    client_jar_sha256: String,
+    client_jar_sha256: crate::inputs::Sha256Digest,
     #[serde(default)]
-    server_jar_sha256: Option<String>,
+    server_jar_sha256: Option<crate::inputs::Sha256Digest>,
     /// The published mapping the linked names below were read from.
     ///
     /// Absent under a source that reads none, which is the same shape the
     /// adapter inputs declare it in.
     #[serde(default)]
-    client_mappings_sha256: Option<String>,
+    client_mappings_sha256: Option<crate::inputs::Sha256Digest>,
     #[serde(rename = "target")]
     targets: BTreeMap<String, Pinned>,
 }
@@ -348,19 +348,28 @@ mod tests {
     }
 
     #[test]
-    fn absent_client_hash_does_not_match_an_empty_lock_hash() {
-        let mut pinned = pinned();
+    fn uppercase_mapping_lock_hashes_match_the_adapter() {
+        let pinned = pinned();
         let tracked = tracked_lock(&pinned);
         let digest = pinned
             .adapter
             .inputs
             .client_jar
             .sha256
-            .take()
-            .expect("the pinned fixture must include a client jar hash");
-        let tracked = tracked.replace(&digest, "");
+            .as_deref()
+            .expect("client pin");
+        let uppercase = tracked.replace(digest, &digest.to_ascii_uppercase());
+        from_lock(&uppercase, &pinned.adapter, &pinned.inventory)
+            .expect("a lock pin's text case cannot create drift");
+    }
+
+    #[test]
+    fn an_absent_client_hash_cannot_match_a_valid_lock_hash() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        pinned.adapter.inputs.client_jar.sha256 = None;
         let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
-            .expect_err("an empty client jar lock hash must be refused");
+            .expect_err("a recorded client hash cannot match an absent adapter pin");
         assert!(error.to_string().contains("the client jar hash"), "{error}");
     }
 
@@ -380,7 +389,7 @@ mod tests {
         let tracked = tracked_lock(&pinned);
         pinned.adapter.inputs.server_jar = Some(inputs::Input {
             path: "server.jar".to_owned(),
-            sha256: Some("b".repeat(64)),
+            sha256: Some("b".repeat(64).try_into().expect("complete digest")),
             bytes: None,
             upstream: None,
         });
@@ -400,7 +409,10 @@ mod tests {
         pinned.adapter.inputs.server_jar = None;
         for unexpected in [
             matching,
-            tracked.replace("extractor = ", "serverJarSha256 = \"\"\nextractor = "),
+            tracked.replace(
+                "extractor = ",
+                &format!("serverJarSha256 = \"{}\"\nextractor = ", "b".repeat(64)),
+            ),
         ] {
             let error = from_lock(&unexpected, &pinned.adapter, &pinned.inventory)
                 .expect_err("modern locks must omit server provenance when inputs omit the server");
@@ -453,7 +465,7 @@ mod tests {
         pinned.adapter.mapping_source = MappingSource::OfficialProguardMappings;
         pinned.adapter.inputs.client_mappings = Some(inputs::Input {
             path: "nowhere/client.txt".to_owned(),
-            sha256: Some("a".repeat(64)),
+            sha256: Some("a".repeat(64).try_into().expect("complete digest")),
             bytes: None,
             upstream: None,
         });

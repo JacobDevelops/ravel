@@ -6,11 +6,11 @@ use crate::evidence::findings::{
     defined_rust_symbols, distinguishable_symbol, named_rust_symbols, sources_naming,
 };
 use crate::evidence::manifest::verify_milestone;
-use crate::evidence::records::visible_commit;
 use crate::evidence::rules::{Milestone, verify_redaction_value};
 use crate::test_support::{
     PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root, track_fixture_files,
 };
+use crate::vcs::resolve_revision;
 
 fn pinned_record_root(label: &str) -> PathBuf {
     let root = temporary_root(label);
@@ -27,7 +27,7 @@ fn pinned_record_root(label: &str) -> PathBuf {
 fn an_abandoned_commit_is_not_visible_although_jj_still_reads_it() {
     let root = pinned_record_root("visible-abandoned");
     fs::write(root.join("input.txt"), "hello\n").expect("input should be writable");
-    let abandoned = visible_commit(&root, "@").expect("the working copy should be visible");
+    let abandoned = resolve_revision(&root, "@").expect("the working copy should be visible");
     let described = Command::new("jj")
         .args(["describe", "-m", "moves the change off that commit"])
         .current_dir(&root)
@@ -41,7 +41,7 @@ fn an_abandoned_commit_is_not_visible_although_jj_still_reads_it() {
         .expect("jj should be available");
     assert!(readable.status.success(), "{readable:?}");
     assert_eq!(
-        visible_commit(&root, &abandoned),
+        resolve_revision(&root, &abandoned),
         Err("names no commit in visible history".to_owned())
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -51,7 +51,7 @@ fn an_abandoned_commit_is_not_visible_although_jj_still_reads_it() {
 fn a_missing_or_root_revision_is_not_visible() {
     let root = pinned_record_root("visible-bogus");
     for revision in ["1".repeat(40), "0".repeat(40)] {
-        assert!(visible_commit(&root, &revision).is_err());
+        assert!(resolve_revision(&root, &revision).is_err());
     }
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -250,9 +250,12 @@ fn the_tree_decides_what_a_finding_named_rather_than_its_author() {
         "fn verify_something_narrow() {}\nstruct WidgetHandle;\nfn go() {}\n",
     )
     .expect("source should be writable");
-    let sources = vec!["source.rs".to_owned()];
+    let sources = vec![(
+        "source.rs".to_owned(),
+        fs::read_to_string(root.join("source.rs")).expect("source should be readable"),
+    )];
 
-    let defined = defined_rust_symbols(&root, &sources);
+    let defined = defined_rust_symbols(&sources);
 
     assert!(defined.contains("verify_something_narrow"));
     assert!(defined.contains("WidgetHandle"));
@@ -278,9 +281,17 @@ fn an_anchor_goes_stale_when_a_caller_appears_outside_its_path_set() {
         "fn call() { verify_something_narrow(); }\n",
     )
     .expect("source should be writable");
-    let sources = vec!["source.rs".to_owned(), "elsewhere/caller.rs".to_owned()];
+    let sources = ["source.rs", "elsewhere/caller.rs"]
+        .into_iter()
+        .map(|path| {
+            (
+                path.to_owned(),
+                fs::read_to_string(root.join(path)).expect("source should be readable"),
+            )
+        })
+        .collect::<Vec<_>>();
 
-    let naming = sources_naming(&root, &sources, "verify_something_narrow");
+    let naming = sources_naming(&sources, "verify_something_narrow");
 
     assert_eq!(naming, vec!["source.rs", "elsewhere/caller.rs"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -321,4 +332,85 @@ fn a_nonobject_manifest_does_not_misreport_existing_records_as_missing() {
     let violations = super::verify_evidence_manifest(&root, &path, "M5");
     assert_eq!(violations, ["milestone manifest must be a JSON object"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn finding_anchors_report_a_source_read_failure_once_without_skipping_readable_sources() {
+    let root = temporary_root("finding-source-read-failure");
+    fs::write(root.join("source.rs"), "fn verify_something_narrow() {}\n")
+        .expect("source should be writable");
+    fs::write(root.join("unreadable.rs"), [0xff]).expect("invalid UTF-8 should be writable");
+    track_fixture_files(&root);
+    let finding = serde_json::json!({
+        "summary": "verify_something_narrow needs review",
+        "anchor": {"symbol": "verify_something_narrow", "paths": ["source.rs"]},
+    });
+    let document = serde_json::json!({
+        "deviations": [finding],
+        "risks": [finding],
+    });
+    let mut violations = Vec::new();
+    let tracked = crate::tracked::tracked_paths(&root)
+        .expect("tracked paths should load")
+        .into_iter()
+        .collect();
+    let sources = crate::evidence::findings::FindingSources::load(&root, &tracked, &mut violations);
+
+    crate::evidence::findings::verify_finding_anchors_value(
+        &root,
+        &root.join("evidence/m5/manifest.json"),
+        Milestone::M5,
+        &document,
+        &sources,
+        &mut violations,
+    );
+
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with("cannot read unreadable.rs:"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn evidence_sweep_loads_finding_sources_once_across_manifests() {
+    let root = temporary_root("sweep-finding-source-read-failure");
+    fs::write(root.join("source.rs"), "fn verify_something_narrow() {}\n")
+        .expect("source should write");
+    fs::write(root.join("unreadable.rs"), [0xff]).expect("invalid UTF-8 should write");
+    let finding = serde_json::json!({
+        "summary": "verify_something_narrow needs review",
+        "anchor": {"symbol": "verify_something_narrow", "paths": ["source.rs"]},
+    });
+    for milestone in [Milestone::M0, Milestone::M1, Milestone::M5] {
+        let directory = root.join(milestone.directory());
+        fs::create_dir_all(&directory).expect("milestone directory should exist");
+        let document = serde_json::json!({
+            "schemaVersion": 1,
+            "milestone": milestone.as_str(),
+            "deviations": [finding.clone()],
+            "risks": [finding.clone()],
+        });
+        fs::write(directory.join("manifest.json"), document.to_string())
+            .expect("manifest should write");
+    }
+    track_fixture_files(&root);
+    let violations = super::verify_evidence_records(&root);
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|violation| { violation.starts_with("cannot read unreadable.rs:") })
+            .count(),
+        1,
+        "{violations:?}",
+    );
+    assert!(
+        !violations.iter().any(|violation| {
+            violation.contains("which no tracked Rust source defines")
+                || violation.contains("which the finding's own summary does not")
+        }),
+        "{violations:?}",
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
 }

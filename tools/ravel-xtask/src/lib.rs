@@ -13,6 +13,7 @@ mod package_digests;
 mod scaffold;
 mod text;
 mod tracked;
+mod vcs;
 mod version_boundary;
 
 #[cfg(test)]

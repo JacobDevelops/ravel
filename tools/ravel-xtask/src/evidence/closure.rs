@@ -73,11 +73,20 @@ impl LoadedRecords {
         self.values.get(name).and_then(Option::as_ref)
     }
 
+    pub(crate) fn carried(&self, figures: &CarriedFigures) -> Option<&Value> {
+        self.get(figures.record.rsplit('/').next()?)
+    }
+
     pub(crate) fn was_loaded(&self, name: &str) -> bool {
         self.values.contains_key(name)
     }
 }
-pub(crate) type RecordDefinition = (&'static str, RecordRule, &'static str, bool);
+pub(crate) struct RecordDefinition {
+    pub(crate) name: &'static str,
+    pub(crate) rule: RecordRule,
+    pub(crate) description: &'static str,
+    pub(crate) required: bool,
+}
 
 pub(crate) fn read_records(
     root: &Path,
@@ -85,9 +94,9 @@ pub(crate) fn read_records(
     definitions: &[RecordDefinition],
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
-    let directory = format!("evidence/{}", milestone.as_str().to_ascii_lowercase());
+    let directory = milestone.directory();
     let mut records = LoadedRecords::default();
-    for (name, _, _, required) in definitions {
+    for RecordDefinition { name, required, .. } in definitions {
         let relative = format!("{directory}/{name}");
         let path = root.join(&relative);
         if !path.is_file() {
@@ -116,8 +125,14 @@ pub(crate) fn verify_closure_records(
     definitions: &[RecordDefinition],
     violations: &mut Vec<String>,
 ) {
-    let directory = format!("evidence/{}", milestone.as_str().to_ascii_lowercase());
-    for (name, rule, description, _) in definitions {
+    let directory = milestone.directory();
+    for RecordDefinition {
+        name,
+        rule,
+        description,
+        ..
+    } in definitions
+    {
         let relative = format!("{directory}/{name}");
         let Some(record) = records.get(name) else {
             if !records.was_loaded(name) {
@@ -138,6 +153,16 @@ pub(crate) fn verify_closure_records(
             ));
         }
         verify_redaction_value(record, &relative, violations);
+    }
+}
+
+pub(crate) fn verify_manifest_closure(
+    manifest: &Value,
+    rules: &[(Rule, &str)],
+    violations: &mut Vec<String>,
+) {
+    for (rule, violation) in rules {
+        super::rules::require_manifest_rule(manifest, rule, violation, violations);
     }
 }
 

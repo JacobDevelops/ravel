@@ -600,6 +600,7 @@ impl NameMap {
                     let from = internal(original);
                     let to = internal(obfuscated);
                     admit_class(&mut classes, &mut mojang, &from, &to, number)?;
+                    declared.entry(from.clone()).or_default();
                     current = Some(from);
                 }
                 ProguardRecord::Field { .. } | ProguardRecord::Method { .. } => {
@@ -1322,6 +1323,26 @@ com.example.Plain -> com.example.Plain:
                 .expect("nothing to translate"),
             ("allowed".to_owned(), "(C)Z".to_owned())
         );
+    }
+
+    #[test]
+    fn proguard_named_classes_refuse_members_even_without_declarations() {
+        for text in [
+            "com.example.Alpha -> a:\n",
+            "com.example.Alpha -> a:\n    1:1:void com.example.Other.tick():2:2 -> b\n",
+        ] {
+            let mapping = Mapping::read(MappingSource::OfficialProguardMappings, text)
+                .expect("a named class with no declared members is valid");
+            mapping
+                .runtime_member("com/example/Alpha", "tick", "()V")
+                .expect_err("a named class cannot pass an undeclared member through");
+            assert_eq!(
+                mapping
+                    .runtime_member("com/example/Unmapped", "tick", "()V")
+                    .expect("unnamed library classes retain their names"),
+                ("tick".to_owned(), "()V".to_owned())
+            );
+        }
     }
 
     #[test]

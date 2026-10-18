@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::scaffold::java_shape::REFLECTION_FILE;
 use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{
-    SWEPT_SCOPE, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
+    SWEPT_SCOPE, TOML_VERSION_FILES, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_PROSE_FILE,
     verify_version_boundary, verify_version_directories, version_class_names, version_directories,
 };
 
@@ -164,6 +164,38 @@ fn a_version_directory_missing_a_required_file_is_reported() {
 }
 
 #[test]
+fn prose_and_adapter_files_have_distinct_validation() {
+    let root = temporary_root("version-prose-adapter");
+    let version = "26.1.2";
+    version_directory(&root, version, &[VERSION_PROSE_FILE]);
+    let directory = root.join(VERSION_DATA).join(version);
+    let mut violations = Vec::new();
+    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    assert_eq!(adapters.len(), 1);
+    assert_eq!(inventories.len(), 1);
+    assert_eq!(
+        violations,
+        [format!(
+            "missing required file: {VERSION_DATA}/{version}/{VERSION_PROSE_FILE}"
+        )]
+    );
+    fs::write(directory.join(VERSION_PROSE_FILE), "Not TOML: prose only.")
+        .expect("prose should be writable");
+    fs::remove_file(directory.join("adapter.toml")).expect("adapter should be removable");
+    violations.clear();
+    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    assert!(adapters.is_empty());
+    assert!(inventories.is_empty());
+    assert_eq!(
+        violations,
+        [format!(
+            "missing required file: {VERSION_DATA}/{version}/adapter.toml"
+        )]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_version_whose_inventory_cannot_be_counted_is_reported() {
     let root = temporary_root("version-counts");
     version_directory(&root, "26.1.2", &[]);
@@ -215,10 +247,7 @@ fn a_version_directory_declaring_another_versions_data_is_reported() {
     let root = temporary_root("version-declaration");
     version_directory(&root, "26.1.2", &[]);
     version_directory(&root, "1.21.1", &[]);
-    for file in VERSION_FILES {
-        if file == VERSION_PROSE_FILE {
-            continue;
-        }
+    for file in TOML_VERSION_FILES.into_iter().chain(["adapter.toml"]) {
         let source = root.join(format!("{VERSION_DATA}/26.1.2/{file}"));
         let text = fs::read_to_string(source).expect("version data should be readable");
         fs::write(root.join(format!("{VERSION_DATA}/1.21.1/{file}")), text)
@@ -228,7 +257,11 @@ fn a_version_directory_declaring_another_versions_data_is_reported() {
 
     verify_version_directories(&root, &mut violations);
 
-    assert_eq!(violations.len(), VERSION_FILES.len() - 1, "{violations:?}");
+    assert_eq!(
+        violations.len(),
+        TOML_VERSION_FILES.len() + 1,
+        "{violations:?}"
+    );
     for violation in &violations {
         assert!(
             violation.contains("26.1.2") && violation.contains("1.21.1"),

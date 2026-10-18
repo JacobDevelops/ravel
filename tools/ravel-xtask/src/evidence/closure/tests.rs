@@ -45,8 +45,12 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
 fn missing_and_malformed_records_report_once_before_closure() {
     use super::{RecordDefinition, read_records, verify_closure_records};
     use crate::evidence::rules::Milestone;
-    const RECORDS: &[RecordDefinition] =
-        &[("inventory-summary.json", |_| Ok(()), "summary", false)];
+    const RECORDS: &[RecordDefinition] = &[RecordDefinition {
+        name: "inventory-summary.json",
+        rule: |_| Ok(()),
+        description: "summary",
+        required: false,
+    }];
     for (label, contents) in [("absent", None), ("malformed", Some("not JSON"))] {
         let root = crate::test_support::temporary_root(label);
         fs::create_dir_all(root.join("evidence/m5")).expect("record directory should exist");
@@ -66,12 +70,12 @@ fn missing_and_malformed_records_report_once_before_closure() {
 fn closure_uses_the_loaded_record_and_names_the_failed_clause() {
     use super::{RecordDefinition, read_records, verify_closure_records};
     use crate::evidence::rules::{Milestone, require};
-    const RECORDS: &[RecordDefinition] = &[(
-        "inventory-summary.json",
-        |value| require(value["wave"]["frozen"] == true, "wave.frozen"),
-        "a frozen wave",
-        false,
-    )];
+    const RECORDS: &[RecordDefinition] = &[RecordDefinition {
+        name: "inventory-summary.json",
+        rule: |value| require(value["wave"]["frozen"] == true, "wave.frozen"),
+        description: "a frozen wave",
+        required: false,
+    }];
     let root = summary_root(
         "cached-record-clause",
         r#"{"milestone":"M5","wave":{"frozen":false}}"#,
@@ -92,12 +96,12 @@ fn closure_uses_the_loaded_record_and_names_the_failed_clause() {
 fn record_metadata_requires_files_and_checks_the_selected_milestone() {
     use super::{RecordDefinition, read_records, verify_closure_records};
     use crate::evidence::rules::Milestone;
-    const RECORDS: &[RecordDefinition] = &[(
-        "custom.json",
-        |_| Err("later clause must hold".to_owned()),
-        "custom record",
-        true,
-    )];
+    const RECORDS: &[RecordDefinition] = &[RecordDefinition {
+        name: "custom.json",
+        rule: |_| Err("later clause must hold".to_owned()),
+        description: "custom record",
+        required: true,
+    }];
     let root = crate::test_support::temporary_root("required-record-metadata");
     fs::create_dir_all(root.join("evidence/m4")).expect("directory should exist");
     let mut violations = Vec::new();
@@ -124,4 +128,38 @@ fn record_metadata_requires_files_and_checks_the_selected_milestone() {
         );
     }
     fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn carried_figures_lookup_uses_the_loaded_record_name() {
+    use super::{RecordDefinition, read_records};
+    use crate::evidence::rules::Milestone;
+    const RECORDS: &[RecordDefinition] = &[RecordDefinition {
+        name: "inventory-summary.json",
+        rule: |_| Ok(()),
+        description: "summary",
+        required: true,
+    }];
+    let root = summary_root("carried-record-key", &balanced_summary());
+    let mut violations = Vec::new();
+    let records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    assert_eq!(
+        records.carried(&M5_FIGURES),
+        records.get("inventory-summary.json")
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn manifest_closure_reports_failed_rules_in_table_order() {
+    use crate::evidence::rules::Rule;
+    let rules: &[(Rule, &str)] = &[
+        (|_| true, "passing rule"),
+        (|_| false, "first failing rule"),
+        (|_| false, "second failing rule"),
+    ];
+    let mut violations = Vec::new();
+    super::verify_manifest_closure(&serde_json::json!({}), rules, &mut violations);
+    assert_eq!(violations, ["first failing rule", "second failing rule"]);
 }

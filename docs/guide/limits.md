@@ -59,10 +59,12 @@ One thing to plan around while that is true: a generated workspace supplies
 `ravel-*` crate is refused: author code uses the SDK facade, not loader internals.
 Other dependencies must name their own versions rather than inherit one, and their exact
 name, version, source and checksum must already be pinned by the Ravel installation's
-`Cargo.lock`. For example, `num-traits = { version = "0.2.19", default-features = false }`
-uses a vetted dependency. Anything outside that lock is refused as
-`resolved external dependency … is not pinned by the Ravel installation`, even if Cargo
-has cached it locally. See the [build contract](../architecture/overview.md).
+`Cargo.lock`, and belong to the SDK closure or the explicitly supported
+`serde`, `serde_json` and `num-traits` dependency closures. For example,
+`num-traits = { version = "0.2.19", default-features = false }` uses a vetted
+dependency. Internal tooling and JNI crates are not mod-facing dependencies just
+because the installation lock contains them. Unvetted dependencies are refused,
+even if Cargo has cached them locally. See the [build contract](../architecture/overview.md).
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side, and it no longer runs at `premain` either.

@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::test_support::temporary_root;
-use crate::tracked::{parse_tracked_paths, verify_tracked_contents, verify_tracked_paths};
+use crate::tracked::{verify_tracked_contents, verify_tracked_paths};
 
 #[test]
 fn file_collection_refuses_missing_or_non_directory_roots() {
@@ -285,35 +285,33 @@ fn a_tracked_file_that_is_not_utf8_is_still_scanned_for_credentials() {
 }
 
 #[test]
-fn nul_delimited_tracked_paths_preserve_newlines() {
-    assert_eq!(
-        parse_tracked_paths(b"registry/a\nb.rs\0registry/c.rs\0"),
-        ["registry/a\nb.rs", "registry/c.rs"]
-    );
-}
-
-#[test]
-fn git_inventory_excludes_untracked_and_ignored_files() {
-    let root = temporary_root("git-tracked");
+fn jj_inventory_excludes_untracked_and_ignored_files() {
+    let root = temporary_root("jj-tracked");
     for args in [
-        &["init"][..],
-        &["add", "--", ".gitignore", "tracked\nfile.txt"][..],
+        &["git", "init"][..],
+        &["config", "set", "--repo", "snapshot.auto-track", "none()"][..],
+        &[
+            "file",
+            "track",
+            ".gitignore",
+            r#"root-file:"tracked\x0afile.txt""#,
+        ][..],
     ] {
-        if args[0] == "add" {
+        if args[0] == "file" {
             fs::write(root.join(".gitignore"), "ignored.txt\n").expect("ignore should be writable");
             for name in ["tracked\nfile.txt", "untracked.txt", "ignored.txt"] {
                 fs::write(root.join(name), "sample").expect("sample should be writable");
             }
         }
-        let output = std::process::Command::new("git")
+        let output = std::process::Command::new("jj")
             .args(args)
             .current_dir(&root)
             .output()
-            .expect("git should run");
+            .expect("jj should run");
         assert!(output.status.success(), "{output:?}");
     }
     assert_eq!(
-        crate::tracked::tracked_paths(&root).expect("git inventory should be readable"),
+        crate::tracked::tracked_paths(&root).expect("jj inventory should be readable"),
         [".gitignore", "tracked\nfile.txt"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -326,7 +324,7 @@ fn tracked_inventory_requires_version_control() {
     assert!(
         crate::tracked::tracked_paths(&root)
             .expect_err("a directory listing is not a tracked inventory")
-            .contains("neither .jj nor .git")
+            .contains("cannot list tracked files")
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -354,18 +352,6 @@ fn credential_assignments_use_shared_words_without_treating_source_as_environmen
         "let token",
         " = redacted;"
     )));
-}
-
-#[test]
-fn broken_git_metadata_is_an_error_instead_of_a_directory_fallback() {
-    let root = temporary_root("broken-git");
-    fs::write(root.join(".git"), "gitdir: missing\n").expect("git marker should be writable");
-    assert!(
-        crate::tracked::tracked_paths(&root)
-            .expect_err("git failure must not become a disk inventory")
-            .contains("cannot list tracked files with git")
-    );
-    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
@@ -414,7 +400,7 @@ fn broken_jj_metadata_reports_the_underlying_error() {
     fs::create_dir(root.join(".jj")).expect("jj marker should be creatable");
     let error = super::tracked_paths(&root).expect_err("broken metadata should fail");
     let detail = error
-        .strip_prefix("cannot list tracked files with jj: ")
+        .strip_prefix("cannot list tracked files: jj: ")
         .expect("jj context should be preserved");
     assert!(!detail.is_empty(), "{error}");
     fs::remove_dir_all(root).expect("temporary root should be removable");

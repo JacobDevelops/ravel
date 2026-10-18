@@ -148,6 +148,24 @@ fn window_is_noun(noun: &[&str], window: &[&str]) -> bool {
             .eq_ignore_ascii_case(expected)
     })
 }
+
+pub(crate) fn compare_stated(
+    stated: &[usize],
+    expected: usize,
+    absent: impl FnOnce() -> String,
+    differs: impl Fn(usize) -> String,
+    violations: &mut Vec<String>,
+) {
+    if stated.is_empty() {
+        violations.push(absent());
+    }
+    for &count in stated {
+        if count != expected {
+            violations.push(differs(count));
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum Side {
     Before,

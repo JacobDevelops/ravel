@@ -16,8 +16,8 @@ stable contracts toward concrete host internals.
   libraries. They do not depend on bootstrap, SDK, or a concrete adapter.
   Shared-library provider selection also belongs to `ravel-resolve`; the host
   API and SDK expose only per-mod provider declarations, never launch resolution.
-  The launch caller consumes `Provided::into_parts` and passes owned names and
-  typed versions into the resolver, without a dependency on the host API.
+  No launch builds a `Provision` yet (`STATUS.md`); when one does, it consumes
+  `Provided::into_parts` so `ravel-resolve` needs no host-API dependency.
 - `ravel-core::paths` owns the instance-private layout: the `ravel` root,
   installed packages, pack configuration, generated host, and seeded-pack record.
   Discovery, configuration, generation, and startup import those constants.
@@ -47,6 +47,8 @@ stable contracts toward concrete host internals.
   `noak` retains raw JVM descriptors and decodes modified UTF-8; `zip` provides
   archive integrity and bounded DEFLATE reads; `proguard` parses mapping records.
   Artifact admission, descriptor validation and mapping uniqueness remain ours.
+  SHA-256 pins require 64 ASCII hexadecimal digits and canonicalize letter case
+  before integrity and lock-provenance comparisons.
   JVM names and descriptor tokens live in its classfile module, shared by source
   rendering, hook-shape classification and tooling inventory counts.
   Xtask consumes typed adapter admission and hook inventory facts instead of
@@ -55,6 +57,13 @@ stable contracts toward concrete host internals.
   that dependency runs in one direction only.
   Shared text loading, diagnostic paths and prose counts live in xtask's text
   module, independent of JSON schema checks and milestone accounting rules.
+  Java source checks consume validated agent-manifest rows. Version-directory
+  checks distinguish prose presence, typed adapter admission and TOML pins.
+  Evidence checks share typed milestone closure tables and carried-record
+  lookups. Finding-anchor scans load each tracked Rust source once and report
+  read failures rather than treating unreadable sources as absent symbols.
+  Tracked inventories and historical input digests share one VCS boundary,
+  preferring jj and falling back to Git in plain checkouts, including CI.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's
@@ -82,15 +91,14 @@ stable contracts toward concrete host internals.
   than sharing hook classes or exported symbol sets. So the general crates' claim
   rests on the id set being identical and on their holding no other version-derived
   name, both of which are checked, rather than on a second table being run.
-- `ravel-minecraft` is the highest crate that may name a JNI type, and
-  `JavaHandle` is the only one it names. A hook argument that refers to a game
-  object is a borrowed JNI local reference, and the lifetime that makes it safe
-  to hold is `jni`'s rather than one Ravel could invent; modelling it here would
-  be a second scheme with the same job and no borrow checker behind it. Nothing
-  above this crate names `JObject` — an observer sees a handle's declared class
-  and whether it is null, and no JNI type at all. Only `JavaHandle::new` names
-  one, and it is public solely because the generated exports that call it are
-  compiled into `ravel-bootstrap-runtime`. The SDK does not depend on this crate, so a
+- `ravel-minecraft` is the highest crate below the host crates that may name a JNI
+  type, and `JavaHandle` is the only one it names. Bootstrap-runtime,
+  host-runtime and the cdylib hosts form the JNI layer. A hook argument that
+  refers to a game object is a borrowed JNI local reference, and the lifetime
+  that makes it safe to hold is `jni`'s rather than one Ravel could invent.
+  Mod-facing contracts expose a handle's declared class and nullness, not
+  `JObject`. `JavaHandle::new` is public solely because generated exports call
+  it from `ravel-bootstrap-runtime`. The SDK does not depend on this crate, so a
   mod reaches it through nothing the SDK offers and needs it for nothing; a change
   that puts it in a mod's graph must seal that constructor rather than move the
   dependency.
@@ -120,8 +128,10 @@ stable contracts toward concrete host internals.
   never package or source dependencies.
 
 - `ravel-bootstrap-runtime` is the safe JNI integration runtime, built as an rlib and linked
-  into a host cdylib. Only host crates (`ravel-host-runtime` and the cdylib hosts)
-  may depend on it. The composed host and player-generated hosts own the JVM-loadable
+  into a host cdylib. Production dependencies are restricted to host crates
+  (`ravel-host-runtime` and the cdylib hosts); `ravel-build` and
+  `tests/conformance` have test-only dev-dependency exceptions.
+  The composed host and player-generated hosts own the JVM-loadable
   `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
   It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
   and exposes only safe Rust upward. SDK and mod dependency graphs must not reach it.

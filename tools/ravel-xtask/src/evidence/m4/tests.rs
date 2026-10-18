@@ -52,8 +52,8 @@ fn pin_surface_tree(root: &std::path::Path) {
             .expect("jj should be available");
         assert!(output.status.success(), "{output:?}");
     }
-    let revision = crate::evidence::records::visible_commit(root, "@-")
-        .expect("historical tree should resolve");
+    let revision =
+        crate::vcs::resolve_revision(root, "@-").expect("historical tree should resolve");
     fs::write(
         root.join("evidence/m4/manifest.json"),
         serde_json::json!({"revision": {"id": revision}}).to_string(),
@@ -464,70 +464,14 @@ fn an_amended_inventory_uses_its_amendment_tree_not_the_manifest_input_baseline(
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
-fn git_surface_root(label: &str, guide: &str, suite: &str) -> PathBuf {
-    let root = temporary_root(label);
-    for directory in [
-        "evidence/m4",
-        "docs/guide",
-        "tests/conformance/tests/integration",
-    ] {
-        fs::create_dir_all(root.join(directory)).expect("directory should be creatable");
-    }
-    fs::write(root.join("docs/guide").join(guide), "").expect("guide should be writable");
-    fs::write(
-        root.join("tests/conformance/tests/integration").join(suite),
-        "",
-    )
-    .expect("suite should be writable");
-    fs::write(
-        root.join("evidence/m4/sdk-surface.json"),
-        serde_json::json!({
-            "inventory": {"guideDocuments": [guide], "conformanceSuites": [suite]}
-        })
-        .to_string(),
-    )
-    .expect("record should be writable");
-    for arguments in [
-        &["init"][..],
-        &["add", "."][..],
-        &[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "-m",
-            "record SDK inventory",
-        ][..],
-    ] {
-        let output = std::process::Command::new("git")
-            .args(arguments)
-            .current_dir(&root)
-            .output()
-            .expect("git should be available");
-        assert!(output.status.success(), "{output:?}");
-    }
-    root
-}
-
-#[test]
-fn git_only_inventory_resolution_survives_later_removals() {
-    let root = git_surface_root("surface-git-only", "README.md", "suite.rs");
-    fs::remove_dir_all(root.join("docs")).expect("later guide removal should work");
-    fs::remove_dir_all(root.join("tests")).expect("later suite removal should work");
-    let mut violations = Vec::new();
-    verify_m4_surface(
-        &root,
-        &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
-        &mut violations,
-    );
-    assert!(violations.is_empty(), "{violations:?}");
-    fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
 #[test]
 fn inventory_assets_do_not_count_as_guide_documents_or_conformance_suites() {
-    let root = git_surface_root("surface-git-assets", "image.png", "fixture.json");
+    let root = surface_root(
+        "surface-assets",
+        &["image.png"],
+        &["fixture.json"],
+        &surface_record(&["image.png"], &["fixture.json"]),
+    );
     let mut violations = Vec::new();
     verify_m4_surface(
         &root,
@@ -572,38 +516,27 @@ fn an_inventory_amendment_can_name_direct_suites_under_the_historical_test_root(
 
 #[test]
 fn historical_suite_root_requires_direct_rust_source_children() {
-    let root = git_surface_root("surface-historical-suite-assets", "README.md", "suite.rs");
+    let root = surface_root(
+        "surface-historical-suite-assets",
+        &["README.md"],
+        &["suite.rs"],
+        &surface_record(&["README.md"], &["suite.rs"]),
+    );
     let directory = root.join("tests/conformance/tests");
     fs::create_dir_all(directory.join("nested")).expect("nested directory should be creatable");
     fs::write(directory.join("nested/hidden.rs"), "").expect("nested suite should be writable");
     fs::write(directory.join("fixture.json"), "").expect("fixture should be writable");
     fs::write(
         root.join("evidence/m4/sdk-surface.json"),
-        serde_json::json!({
-            "inventory": {"conformanceSuites": ["hidden.rs", "fixture.json"]}
-        })
-        .to_string(),
+        surface_record(&["README.md"], &["hidden.rs", "fixture.json"]),
     )
     .expect("inventory amendment should be writable");
-    for arguments in [
-        &["add", "."][..],
-        &[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "-m",
-            "record non-suite inventory entries",
-        ][..],
-    ] {
-        let output = std::process::Command::new("git")
-            .args(arguments)
-            .current_dir(&root)
-            .output()
-            .expect("git should be available");
-        assert!(output.status.success(), "{output:?}");
-    }
+    let output = std::process::Command::new("jj")
+        .args(["new", "-m", "record non-suite inventory entries"])
+        .current_dir(&root)
+        .output()
+        .expect("jj should be available");
+    assert!(output.status.success(), "{output:?}");
     let mut violations = Vec::new();
     verify_m4_surface(
         &root,
@@ -612,53 +545,6 @@ fn historical_suite_root_requires_direct_rust_source_children() {
     );
     assert_eq!(violations.len(), 2, "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
-fn shallow_git_inventory_requires_complete_amendment_history() {
-    let source = git_surface_root("surface-shallow-source", "README.md", "suite.rs");
-    fs::remove_file(source.join("tests/conformance/tests/integration/suite.rs"))
-        .expect("later suite removal should work");
-    for arguments in [
-        &["add", "."][..],
-        &[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "-m",
-            "remove suite after inventory record",
-        ][..],
-    ] {
-        let output = std::process::Command::new("git")
-            .args(arguments)
-            .current_dir(&source)
-            .output()
-            .expect("git should be available");
-        assert!(output.status.success(), "{output:?}");
-    }
-    let shallow = temporary_root("surface-shallow-clone");
-    let output = std::process::Command::new("git")
-        .args(["clone", "--depth", "1"])
-        .arg(format!("file://{}", source.display()))
-        .arg(&shallow)
-        .output()
-        .expect("git should be available");
-    assert!(output.status.success(), "{output:?}");
-    let mut violations = Vec::new();
-    verify_m4_surface(
-        &shallow,
-        &read_json(&shallow.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
-        &mut violations,
-    );
-    assert_eq!(
-        violations,
-        ["historical M4 inventory requires complete Git history; \
-        missing amendment history in shallow repository"]
-    );
-    fs::remove_dir_all(shallow).expect("shallow root should be removable");
-    fs::remove_dir_all(source).expect("source root should be removable");
 }
 
 #[test]
@@ -672,10 +558,7 @@ fn archive_inventory_without_repository_history_is_not_verifiable() {
         &read_json(&root.join("evidence/m4/sdk-surface.json")).expect("surface should parse"),
         &mut violations,
     );
-    assert_eq!(
-        violations,
-        ["cannot verify historical M4 inventory: \
-        missing repository history (.jj or .git)"]
-    );
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("git:"), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

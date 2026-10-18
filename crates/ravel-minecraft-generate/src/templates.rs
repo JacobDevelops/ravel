@@ -1264,9 +1264,11 @@ com.example.util.Held -> com.example.util.Held:
     }
 
     /// Digests every source path and byte plus deterministic, root-relative metadata.
-    fn modern_snapshot(root: &Path, sources: &[Sources; 4]) -> String {
+    fn modern_snapshot(root: &Path, sources: &crate::TemplateSources) -> String {
         let mut snapshot = String::new();
-        for (index, tree) in sources.iter().enumerate() {
+        let trees =
+            std::iter::once(&sources.screens).chain(sources.harness.iter().map(|(_, tree)| tree));
+        for (index, tree) in trees.enumerate() {
             let templates: Vec<_> = tree
                 .templates
                 .iter()
@@ -1335,7 +1337,20 @@ com.example.util.Held -> com.example.util.Held:
                     .expect("every modern version has a snapshot"),
                 "{version}: source paths, Java bytes and metadata"
             );
-            assert!(actual.iter().all(|tree| !tree.java.is_empty()));
+            assert_eq!(
+                actual.screens.java.len(),
+                10,
+                "{version}: the ten shared screen/support templates each emit one source"
+            );
+            assert!(actual.harness.iter().all(|(_, tree)| !tree.java.is_empty()));
+            assert_eq!(
+                actual
+                    .harness
+                    .iter()
+                    .map(|(name, _)| *name)
+                    .collect::<Vec<_>>(),
+                ["game", "driver", "sibling"]
+            );
             compared += 1;
         }
         assert_eq!(

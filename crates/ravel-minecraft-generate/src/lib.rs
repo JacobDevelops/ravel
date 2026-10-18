@@ -494,12 +494,7 @@ fn compose_render(
         .collect::<Result<Vec<_>, _>>()?;
     let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
     templates::verify_seeded_members_resolve(&roles, stubbed, mapping)?;
-    let [screens, stand_ins, drivers, siblings] = sources(root, pinned, &roles, stubbed, mapping)?;
-    let harness = [
-        ("game", stand_ins),
-        ("driver", drivers),
-        ("sibling", siblings),
-    ];
+    let TemplateSources { screens, harness } = sources(root, pinned, &roles, stubbed, mapping)?;
     let harness_origins = harness_origins(&harness);
     let harness_aliases = harness_aliases(&harness);
     let mut templates = screens.templates;
@@ -558,6 +553,12 @@ fn harness_aliases(trees: &[(&str, templates::Sources)]) -> String {
     lines.into_iter().collect()
 }
 
+/// Rendered trees retain the labels used to select their overrides.
+struct TemplateSources {
+    screens: templates::Sources,
+    harness: Vec<(&'static str, templates::Sources)>,
+}
+
 /// Renders screens, game stand-ins, drivers, and sibling stand-ins against one role table.
 fn sources(
     root: &Path,
@@ -565,7 +566,7 @@ fn sources(
     roles: &roles::Roles,
     stubs: &[stubs::Stub],
     mapping: &mapping::Mapping,
-) -> Result<[templates::Sources; 4], GenerateError> {
+) -> Result<TemplateSources, GenerateError> {
     let render = |tree: &templates::Tree<'_>, name_space| {
         templates::render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
     };
@@ -585,7 +586,10 @@ fn sources(
     if legacy {
         let name_space = templates::name_space(&screen_tree, roles, mapping)?;
         let screens = render(&screen_tree, name_space)?;
-        return Ok(screens_only(screens));
+        return Ok(TemplateSources {
+            screens,
+            harness: Vec::new(),
+        });
     }
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
     let game = root.join(HARNESS_STAND_IN_TEMPLATES);
@@ -599,42 +603,30 @@ fn sources(
         stand_ins: true,
     };
     let name_space = templates::name_space(&stand_ins, roles, mapping)?;
-    let trees = [
-        screen_tree,
-        stand_ins,
-        templates::Tree {
+    let screens = render(&screen_tree, name_space)?;
+    let mut rendered = Vec::with_capacity(3);
+    rendered.push(("game", render(&stand_ins, name_space)?));
+    for (name, shared, purpose) in [
+        ("driver", &driver, templates::Purpose::Driver),
+        ("sibling", &sibling, templates::Purpose::Screen),
+    ] {
+        let tree = templates::Tree {
             root,
-            shared: &driver,
-            overrides: harness.join("driver"),
-            purpose: templates::Purpose::Driver,
+            shared,
+            overrides: harness.join(name),
+            purpose,
             stand_ins: true,
-        },
-        templates::Tree {
-            root,
-            shared: &sibling,
-            overrides: harness.join("sibling"),
-            purpose: templates::Purpose::Screen,
-            stand_ins: true,
-        },
-    ];
-    let mut rendered = Vec::with_capacity(trees.len());
-    for tree in &trees {
-        rendered.push(render(tree, name_space)?);
+        };
+        rendered.push((name, render(&tree, name_space)?));
     }
-    templates::verify_added_templates_reached(root, &rendered.iter().collect::<Vec<_>>())?;
-    rendered
-        .try_into()
-        .map_err(|_| GenerateError::Input("one source set per template tree".to_owned()))
-}
-
-/// A legacy version draws screens without exposing a live game harness.
-fn screens_only(screens: templates::Sources) -> [templates::Sources; 4] {
-    [
+    let reached = std::iter::once(&screens)
+        .chain(rendered.iter().map(|(_, sources)| sources))
+        .collect::<Vec<_>>();
+    templates::verify_added_templates_reached(root, &reached)?;
+    Ok(TemplateSources {
         screens,
-        templates::Sources::default(),
-        templates::Sources::default(),
-        templates::Sources::default(),
-    ]
+        harness: rendered,
+    })
 }
 
 /// Java outputs owned by the explicit generation step.
@@ -1048,16 +1040,13 @@ mod tests {
         let mapping =
             super::mapping::Mapping::read(inputs::MappingSource::UnobfuscatedClassFiles, "")
                 .expect("class-file names need no mapping text");
-        let [screens, game, driver, sibling] =
+        let super::TemplateSources { screens, harness } =
             super::sources(&root, &pinned, &roles, &[], &mapping)
                 .expect("local support renders without a harness");
         assert_eq!(screens.templates, [template]);
         assert_eq!(screens.java.len(), 1);
         assert_eq!(screens.java[0].0, "dev/ravel/jvm/screen/LegacySupport.java");
-        for tree in [game, driver, sibling] {
-            assert_eq!(tree.java, []);
-            assert_eq!(tree.templates, Vec::<PathBuf>::new());
-        }
+        assert!(harness.is_empty(), "legacy versions have no harness trees");
         std::fs::remove_dir_all(&screen).expect("remove the required screen tree");
         assert!(super::sources(&root, &pinned, &roles, &[], &mapping).is_err());
         cleanup(&root);
@@ -2224,14 +2213,49 @@ mod tests {
         cleanup(&out);
     }
 
-    /// Every `key = "value"` a document declares, in the order it declares them.
-    fn declared_values(document: &str, key: &str) -> Vec<String> {
-        let prefix = format!("{key} = \"");
-        document
-            .lines()
-            .filter_map(|line| line.strip_prefix(&prefix)?.strip_suffix('"'))
-            .map(str::to_owned)
-            .collect()
+    /// Declares the actual members the jar-less fixture resolves on each named class.
+    fn fixture_proguard(pinned: &inputs::PinnedVersion, stubs: &[super::stubs::Stub]) -> String {
+        let mut mapping = String::new();
+        for reflected in &pinned.surface.classes {
+            writeln!(mapping, "{} -> {}:", reflected.class, reflected.runtime)
+                .expect("write mapping class");
+            let owner = reflected.class.replace('.', "/");
+            let mut members = BTreeSet::new();
+            for stub in stubs.iter().filter(|stub| stub.class == owner) {
+                members.extend(
+                    stub.members
+                        .iter()
+                        .map(|member| (member.name.as_str(), member.descriptor.as_str())),
+                );
+            }
+            for hook in &pinned.inventory.hooks {
+                if hook.class.replace('.', "/") == owner {
+                    members.insert((hook.member.as_str(), hook.descriptor.as_str()));
+                }
+            }
+            for member in &reflected.members {
+                if let inputs::Lookup::Descriptor(descriptor) = &member.lookup {
+                    members.insert((member.name.as_str(), descriptor.as_str()));
+                }
+            }
+            for (name, descriptor) in members {
+                if descriptor.starts_with('(') {
+                    let (parameters, returns) = super::classfile::signature(descriptor)
+                        .expect("reviewed method descriptor");
+                    writeln!(
+                        mapping,
+                        "    {returns} {name}({}) -> {name}",
+                        parameters.join(",")
+                    )
+                    .expect("write mapping method");
+                } else {
+                    let (kind, _) =
+                        super::classfile::java_type(descriptor).expect("reviewed field descriptor");
+                    writeln!(mapping, "    {kind} {name} -> {name}").expect("write mapping field");
+                }
+            }
+        }
+        mapping
     }
 
     /// Restages the copied version as an obfuscated one that publishes a mapping.
@@ -2247,14 +2271,11 @@ mod tests {
         let identity = "mappingSource = \"unobfuscated-class-files\"";
         let obfuscated = "mappingSource = \"official-proguard-mappings\"";
 
-        let surface = std::fs::read_to_string(directory.join("reflection.toml")).expect("readable");
-        let mut mapping = String::new();
-        for (class, runtime) in declared_values(&surface, "class")
-            .iter()
-            .zip(declared_values(&surface, "runtime"))
-        {
-            writeln!(mapping, "{class} -> {runtime}:").expect("write the staged mapping string");
-        }
+        let pinned = inputs::pinned(root, None).expect("the staged fixture is pinned");
+        let stub_lock = std::fs::read_to_string(directory.join("stubs.lock")).expect("stub lock");
+        let stubs = super::stubs::from_lock(&stub_lock, &pinned.adapter, &pinned.seeds)
+            .expect("the fixture stub lock resolves");
+        let mapping = fixture_proguard(&pinned, &stubs);
         assert!(!mapping.is_empty(), "the staged surface declares nothing");
         let mapping_path = directory.join("client.txt");
         std::fs::write(&mapping_path, &mapping).expect("writable");
@@ -2555,7 +2576,7 @@ mod tests {
         adapter.mapping_source = inputs::MappingSource::OfficialProguardMappings;
         adapter.inputs.client_mappings = Some(inputs::Input {
             path: adapter.inputs.hook_inventory.path.clone(),
-            sha256: Some("0".repeat(64)),
+            sha256: Some("0".repeat(64).try_into().expect("complete digest")),
             bytes: None,
             upstream: None,
         });

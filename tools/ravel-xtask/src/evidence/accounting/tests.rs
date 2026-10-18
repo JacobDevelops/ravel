@@ -5,6 +5,7 @@ use super::{
     verify_review_blocking_counts_for,
 };
 use crate::evidence::m2::verify_void_limits;
+use crate::evidence::rules::milestone_manifests;
 use crate::test_support::temporary_root;
 
 #[test]
@@ -18,7 +19,8 @@ fn missing_blocking_counts_in_every_heading_are_reported() {
     )
     .expect("review should write");
     let mut violations = Vec::new();
-    verify_review_blocking_counts_for(&root, None, &mut violations);
+    let manifests = milestone_manifests(&root).expect("manifests should discover");
+    verify_review_blocking_counts_for(&root, &manifests, &mut violations);
     assert_eq!(
         violations
             .iter()
@@ -35,9 +37,8 @@ fn review_sweep_discovers_later_milestones() {
     let root = temporary_root("review-dynamic-milestones");
     fs::create_dir_all(root.join("evidence/m9")).expect("milestone directory should exist");
     fs::write(root.join("evidence/m9/manifest.json"), "{}").expect("manifest should write");
-    let mut violations = Vec::new();
-    let subjects = round_count_subjects(&root, &mut violations);
-    assert!(violations.is_empty(), "{violations:?}");
+    let manifests = milestone_manifests(&root).expect("manifests should discover");
+    let subjects = round_count_subjects(&manifests);
     assert_eq!(subjects[0].0, "evidence/m9/review.md");
     fs::remove_dir_all(root).expect("temporary root should remove");
 }
@@ -108,7 +109,61 @@ fn blocking_summary_reads_the_immediate_tally_not_a_later_round_count() {
     )
     .expect("review should write");
     let mut violations = Vec::new();
-    verify_review_blocking_counts_for(&root, None, &mut violations);
+    let manifests = milestone_manifests(&root).expect("manifests should discover");
+    verify_review_blocking_counts_for(&root, &manifests, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn discovery_failure_is_reported_once() {
+    let root = temporary_root("accounting-empty-manifests");
+    fs::create_dir_all(root.join("evidence")).expect("evidence directory should exist");
+    fs::write(root.join("ROADMAP.md"), "").expect("roadmap should write");
+    let mut violations = Vec::new();
+    verify_accounting(&root, None, &mut violations);
+    assert_eq!(
+        violations,
+        ["evidence directory contains no milestone manifests"]
+    );
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn discovery_failure_does_not_skip_independent_roadmap_accounting() {
+    let root = temporary_root("accounting-empty-manifests-roadmap-drift");
+    fs::create_dir_all(root.join("evidence")).expect("evidence directory should exist");
+    fs::write(
+        root.join("ROADMAP.md"),
+        "Five independent reviews have run.",
+    )
+    .expect("roadmap should write");
+    let mut violations = Vec::new();
+    verify_accounting(&root, None, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert_eq!(
+        violations[0],
+        "evidence directory contains no milestone manifests"
+    );
+    assert!(violations[1].starts_with("ROADMAP.md restates that 5 review reviews exist;"));
+    fs::remove_dir_all(root).expect("temporary root should remove");
+}
+
+#[test]
+fn selected_milestone_filters_typed_manifest_subjects() {
+    let root = temporary_root("accounting-selected-milestone");
+    for milestone in ["m6", "m7"] {
+        let directory = root.join("evidence").join(milestone);
+        fs::create_dir_all(&directory).expect("milestone directory should exist");
+        fs::write(directory.join("manifest.json"), "{}").expect("manifest should write");
+        fs::write(directory.join("README.md"), "Five reviews have run.")
+            .expect("readme should write");
+        fs::write(directory.join("review.md"), "").expect("review should write");
+    }
+    fs::write(root.join("ROADMAP.md"), "").expect("roadmap should write");
+    let mut violations = Vec::new();
+    verify_accounting(&root, Some(super::Milestone::M6), &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].starts_with("evidence/m6/README.md"));
     fs::remove_dir_all(root).expect("temporary root should remove");
 }

@@ -60,9 +60,7 @@ fn verify_hash_pins(adapter: &Adapter) -> Result<(), GenerateError> {
         ("mappingIoJar", adapter.inputs.mapping_io_jar.as_ref()),
     ] {
         let Some(input) = input else { continue };
-        if !input.sha256.as_deref().is_some_and(|digest| {
-            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-        }) {
+        if input.sha256.is_none() {
             return Err(GenerateError::Input(format!(
                 "{name} must pin sha256 as 64 ASCII hex digits, not only a byte length"
             )));
@@ -158,15 +156,6 @@ mod tests {
         base.inputs.client_mappings = Some(base.inputs.client_jar.clone());
         base.inputs.server_jar = Some(base.inputs.client_jar.clone());
         base.inputs.mapping_io_jar = Some(base.inputs.client_jar.clone());
-        let invalid = [
-            None,
-            Some(String::new()),
-            Some("0".to_owned()),
-            Some(" ".repeat(64)),
-            Some("a".repeat(63)),
-            Some("g".repeat(64)),
-            Some("é".repeat(32)),
-        ];
         for name in [
             "clientJar",
             "clientMappings",
@@ -174,44 +163,42 @@ mod tests {
             "dataFixerJar",
             "mappingIoJar",
         ] {
-            for hash in &invalid {
-                let mut adapter = base.clone();
-                let input = match name {
-                    "clientJar" => &mut adapter.inputs.client_jar,
-                    "clientMappings" => adapter
-                        .inputs
-                        .client_mappings
-                        .as_mut()
-                        .expect("the complete fixture must include client mappings"),
-                    "serverJar" => adapter
-                        .inputs
-                        .server_jar
-                        .as_mut()
-                        .expect("the complete fixture must include a server jar"),
-                    "dataFixerJar" => adapter
-                        .inputs
-                        .data_fixer_jar
-                        .as_mut()
-                        .expect("the complete fixture must include a data fixer jar"),
-                    _ => adapter
-                        .inputs
-                        .mapping_io_jar
-                        .as_mut()
-                        .expect("the complete fixture must include a mapping I/O jar"),
-                };
-                input.sha256 = hash.clone();
-                input.bytes = Some(1);
-                let error = super::verify_pinned_sources(&adapter)
-                    .expect_err("an incomplete hash must be refused");
-                assert!(
-                    error
-                        .to_string()
-                        .contains(&format!("{name} must pin sha256")),
-                    "{error}"
-                );
-            }
+            let mut adapter = base.clone();
+            let input = match name {
+                "clientJar" => &mut adapter.inputs.client_jar,
+                "clientMappings" => adapter
+                    .inputs
+                    .client_mappings
+                    .as_mut()
+                    .expect("the complete fixture must include client mappings"),
+                "serverJar" => adapter
+                    .inputs
+                    .server_jar
+                    .as_mut()
+                    .expect("the complete fixture must include a server jar"),
+                "dataFixerJar" => adapter
+                    .inputs
+                    .data_fixer_jar
+                    .as_mut()
+                    .expect("the complete fixture must include a data fixer jar"),
+                _ => adapter
+                    .inputs
+                    .mapping_io_jar
+                    .as_mut()
+                    .expect("the complete fixture must include a mapping I/O jar"),
+            };
+            input.sha256 = None;
+            input.bytes = Some(1);
+            let error = super::verify_pinned_sources(&adapter)
+                .expect_err("an incomplete hash must be refused");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("{name} must pin sha256")),
+                "{error}"
+            );
         }
-        base.inputs.client_jar.sha256 = Some("AB".repeat(32));
+        base.inputs.client_jar.sha256 = Some("AB".repeat(32).try_into().expect("complete digest"));
         super::verify_pinned_sources(&base).expect("a complete ASCII SHA-256 fixture must pass");
     }
     #[test]
@@ -254,7 +241,7 @@ mod tests {
             error.to_string().contains("serverJar must pin sha256"),
             "{error}"
         );
-        server.sha256 = Some("0".repeat(64));
+        server.sha256 = Some("0".repeat(64).try_into().expect("complete digest"));
         server.upstream = Some("http://example.invalid/server.jar".to_owned());
         adapter.inputs.server_jar = Some(server);
         let error = super::verify_pinned_sources(&adapter).expect_err("insecure upstream");

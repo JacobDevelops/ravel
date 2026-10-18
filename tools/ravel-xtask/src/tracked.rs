@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use ravel_core::CREDENTIAL_WORDS;
 
@@ -141,47 +140,9 @@ fn resolves_outside_root(directory: &str, value: &str) -> bool {
     false
 }
 
-/// Lists version-controlled files, preferring jj and otherwise using Git's index.
-/// Trees without repository metadata are refused rather than treated as fully tracked.
+/// Lists version-controlled files through jj, or Git in a plain checkout.
 pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
-    if root.join(".jj").exists() {
-        let output = Command::new("jj")
-            .args(["file", "list", "-T", "path ++ \"\\0\""])
-            .current_dir(root)
-            .output()
-            .map_err(|error| format!("cannot list tracked files with jj: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "cannot list tracked files with jj: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        return Ok(parse_tracked_paths(&output.stdout));
-    }
-
-    if !root.join(".git").exists() {
-        return Err("cannot list tracked files: repository has neither .jj nor .git".to_owned());
-    }
-    let output = Command::new("git")
-        .args(["ls-files", "-z"])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot list tracked files with git: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "cannot list tracked files with git: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(parse_tracked_paths(&output.stdout))
-}
-
-fn parse_tracked_paths(output: &[u8]) -> Vec<String> {
-    String::from_utf8_lossy(output)
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(str::to_owned)
-        .collect()
+    crate::vcs::tracked_files(root, None)
 }
 
 pub(crate) fn collect_files(

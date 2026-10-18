@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::scaffold::java_shape::REFLECTION_FILE;
-use crate::version_boundary::{VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE};
+use crate::version_boundary::{TOML_VERSION_FILES, VERSION_DATA, VERSION_PROSE_FILE};
 
 pub(crate) const RECORDED_RUN: &str = r#""commands":[{"exitStatus":0}],
     "tests":{"total":9,"passed":9,"failed":0,"skipped":0,"lineCoveragePercent":85.97}"#;
@@ -30,9 +30,10 @@ pub(crate) fn hook_inventories(
 pub(crate) fn version_directory(root: &Path, version: &str, without: &[&str]) {
     let directory = root.join(format!("{VERSION_DATA}/{version}"));
     fs::create_dir_all(&directory).expect("version directory should be creatable");
-    for file in VERSION_FILES
-        .into_iter()
-        .chain(std::iter::once("hooks.toml"))
+    for file in
+        TOML_VERSION_FILES
+            .into_iter()
+            .chain([VERSION_PROSE_FILE, "adapter.toml", "hooks.toml"])
     {
         if without.contains(&file) {
             continue;
@@ -159,12 +160,10 @@ pub(crate) fn track_fixture_files(root: &Path) {
     if root.join(".jj").exists() {
         return;
     }
-    for args in [&["init"][..], &["add", "-A"][..]] {
-        let result = Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .expect("git should be available");
-        assert!(result.status.success(), "{result:?}");
-    }
+    let result = Command::new("jj")
+        .args(["git", "init"])
+        .current_dir(root)
+        .output()
+        .expect("jj should be available");
+    assert!(result.status.success(), "{result:?}");
 }

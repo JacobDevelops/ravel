@@ -433,6 +433,8 @@ mkdir -p target/mapping-io-tests
   crates/ravel-minecraft-generate/java/NormalizeMappingsTest.java
 "$JAVA_HOME/bin/java" -cp "$normalizer_jar:target/mapping-io-tests" NormalizeMappingsTest
 
+bash jvm/legacy-platform/launch.sh build
+
 # One line per tracked version, and each is written after the harness
 # returned rather than before it ran. `ravel-test` and `ravel-verify-java`
 # write the same shape beside it, and one xtask verb holds all three to
@@ -476,6 +478,24 @@ if ! grep -q '^ran: ' "$ran"; then
   echo "the harness ran for no tracked version, so this task proved nothing" >&2
   exit 1
 fi
+'''
+
+[tasks."ravel:legacy-client"]
+description = "Exercise the official legacy client on the LWJGL3 platform under Xvfb."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+bash jvm/legacy-platform/launch.sh client xvfb
+'''
+
+[tasks."ravel:legacy-server"]
+description = "Exercise the official legacy dedicated server without client natives."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+bash jvm/legacy-platform/launch.sh server
 '''
 
 [tasks."ravel:verify-stack"]

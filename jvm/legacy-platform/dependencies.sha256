@@ -1,0 +1,9 @@
+# LWJGL 3.3.6, Maven Central; paths relative to tests/fixtures/local/legacy-platform
+b00e2781b74cc829db9d39fb68746b25bb7b94ce61d46293457dbccddabd999c  lwjgl-3.3.6.jar
+2f0e65d6985d602c0e5e5aab6576db113a9a378a36f8144ec93b77a4fde5876c  lwjgl-3.3.6-natives-linux.jar
+b29c938ecc4997ce256a831aeca2033dab9829b5c21e72ebeb64aecd9e08450c  lwjgl-glfw-3.3.6.jar
+a1b60014597bc0e45bf39089f4d838c3aa87fd668f6fe4e7326aa314d2ec87c0  lwjgl-glfw-3.3.6-natives-linux.jar
+bb0430e0a5fd7b7b5770ae517960b2ea9887bb08d04f3a0cb1aae145332e1310  lwjgl-opengl-3.3.6.jar
+8c0b5c081a7872a3cdb02b6448921da5ae5c23ab49656f299edc7a09b7e99b74  lwjgl-opengl-3.3.6-natives-linux.jar
+5d8669ee52325080f500cf0060785a13135a10c602286cefc8ba285805fa8468  lwjgl-openal-3.3.6.jar
+d30c407c1182f507c70ad12e21bac98189c767bf5c7a592dbfaa4f11d139545c  lwjgl-openal-3.3.6-natives-linux.jar

@@ -1,0 +1,123 @@
+Pinned vanilla LWJGL linkage surface
+===================================
+
+Input: official Minecraft 1.12.2 client.jar from the locally pinned tooling
+fixture. The caller-preserving class API inventory is
+vanilla-1.12.2-lwjgl.tsv. It covers constant-pool references, including
+descriptor-only types and inherited calls whose symbolic owner is vanilla
+code, rather than just members declared directly on org/lwjgl owners.
+It is not a list of runtime-exercised calls.
+
+Regenerate the tracked, lexically sorted TSV from the repository root on
+JDK 27 (the pure inventory makes no replacement availability claims):
+
+  java jvm/legacy-platform/tools/LegacySurface.java \
+    tests/fixtures/local/legacy-platform/client.jar \
+    > jvm/legacy-platform/vanilla-1.12.2-lwjgl.tsv
+
+The scanner uses the JDK java.lang.classfile API, requires no dependencies,
+and never loads or initializes client/LWJGL classes. CLASS records represent
+class constants; TYPE records also expose descriptor-only types, including
+Matrix, Vector, and ReadableVector3f. FIELD and METHOD records include exact
+JVM descriptors and every referencing vanilla class. Indirect references
+retain their original symbolic owner: cid.transpose and cid.invert are
+included because cid inherits Matrix4f; cid's own declared methods are not.
+The scanner reads input class declarations first, then walks their
+superclasses/interfaces until a member declaration or LWJGL boundary is
+reached. A missing replacement method cannot hide the reference itself.
+Rows are deduplicated and sorted independently of ZIP order; there are no
+timestamps or absolute paths in output. Replacement member lookup combines
+the input hierarchy with the replacement API and follows inherited members;
+constructors are not inherited. SUPERCLASS records additionally reject a
+direct LWJGL superclass that is absent or final. The invocation column records
+actual bytecode modes; the build's JVM linkage test resolves each reference
+with its original caller access and invocation kind. Runtime behavior and
+native driver support still require the live workload.
+Omit replacement jars to emit UNCOMPARED instead of MISSING/PRESENT.
+
+For the integration build gate, insert --adapted before client.jar and add
+the compiled compatibility jar before the LWJGL3 jars. The single resource
+src/main/resources/dev/ravel/legacy/adapter-owners.txt maps every Ravel-owned
+compatibility owner, including descriptors, into dev/ravel/legacy. TSV retains
+the original vanilla names.
+Any MISSING row makes this mode exit 1. Inherited java.* members, including
+Throwable.getMessage, resolve from running JDK resources without initialization.
+
+After compiling platform.jar, invoke the exact adapted gate from the root:
+
+  java jvm/legacy-platform/tools/LegacySurface.java --adapted \
+    tests/fixtures/local/legacy-platform/client.jar \
+    tests/fixtures/local/legacy-platform/platform.jar \
+    tests/fixtures/local/legacy-platform/lwjgl-3.3.6.jar \
+    tests/fixtures/local/legacy-platform/lwjgl-glfw-3.3.6.jar \
+    tests/fixtures/local/legacy-platform/lwjgl-opengl-3.3.6.jar \
+    tests/fixtures/local/legacy-platform/lwjgl-openal-3.3.6.jar \
+    > tests/fixtures/local/legacy-platform/vanilla-linkage.tsv
+
+Audio is a separate companion surface, not a direct client.jar reference.
+Vanilla's OpenAL calls live in Paulscode's librarylwjglopenal. The client
+gate alone therefore does not check audio. Run the same adapted command
+with the first input jar replaced by:
+
+  tests/fixtures/local/legacy-platform/libraries/com/paulscode/librarylwjglopenal/20100824/librarylwjglopenal-20100824.jar
+
+Keep the platform and four LWJGL3 replacement jars unchanged and redirect
+the companion output to a separate ignored TSV, such as
+tests/fixtures/local/legacy-platform/audio-linkage.tsv. This checks the
+AL/AL10 adapter mappings against the actual audio callers.
+
+LWJGL3 dependencies
+-------------------
+Eight acquired artifacts (core, GLFW, OpenGL, OpenAL, plus each Linux x86_64
+native) reside only in ignored tests/fixtures/local/legacy-platform.
+The tracked dependencies.sha256 is usable with sha256sum -c from that
+fixture directory. Every artifact is pinned to 3.3.6 at Maven Central:
+https://repo.maven.apache.org/maven2/org/lwjgl/MODULE/3.3.6/FILENAME
+No LWJGL2 jar or native library belongs on the runtime class path.
+
+Compatibility boundary
+----------------------
+Every Ravel-owned compatibility class uses dev.ravel.legacy names; no split
+org.lwjgl packages remain. The four pinned LWJGL3 Java APIs are named modules,
+and only those modules receive native access. GL11, GL20, and ARBShaderObjects
+adapters inherit unchanged static methods from real LWJGL3 and declare only
+renamed buffer overloads. Other GL classes link
+directly to LWJGL3. Shader ByteBuffer source is decoded over its remaining
+range to UTF-8 for the replacement CharSequence API. ContextCapabilities
+captures the real current GL capabilities; seven extensions no longer
+exposed as LWJGL3 fields are queried from the actual extension list.
+GLContext caches this snapshot per thread and per native capabilities object.
+Vector and GLU math are independent scalar implementations; no upstream
+compatibility implementation was copied or adapted.
+GLFW is explicitly X11 for deterministic window-system behavior. Keyboard
+printable mapping uses the active GLFW layout; key releases carry NUL.
+Keyboard and mouse queues retain at most 50 events and drop new events when
+full, while held state remains current. Sys reports milliseconds at resolution
+1000. Optional narrator native loading is unsupported and receives no grant.
+
+License study / no borrowing
+---------------------------
+Only license material and repository listings were studied from the three
+compatibility projects. No implementation was borrowed, translated, copied,
+or reconstructed from their code. The arithmetic and delegation adapters
+were independently written from the official client descriptors, standard
+matrix algebra, and LWJGL3 API metadata.
+
+CleanroomMC current root license is CleanroomMC License Version 1.0,
+visible-source/source-available, explicitly not an open-source license.
+Sections 3-5 permit study and independently interoperating software, but
+restrict incorporation of protected implementation and redistribution.
+https://raw.githubusercontent.com/CleanroomMC/Cleanroom/master/LICENSE
+
+Original grum/lwjglx has no repository-root license in its tree; the
+LWJGLException.java license header carries the LWJGL Project 3-clause
+BSD conditions. This does not establish licensing of every other file.
+https://api.github.com/repos/grum/lwjglx/git/trees/master?recursive=1
+https://raw.githubusercontent.com/grum/lwjglx/master/src/org/lwjglx/LWJGLException.java
+The separate BoyOrigin/lwjglx root license is MIT, copyright 2023 BoyOrigin.
+https://raw.githubusercontent.com/BoyOrigin/lwjglx/master/LICENSE
+
+GTNewHorizons/lwjgl3ify root license is GNU LGPL version 3, incorporating
+GPLv3 with LGPL additional permissions and combined-work obligations.
+https://raw.githubusercontent.com/GTNewHorizons/lwjgl3ify/master/LICENSE
+

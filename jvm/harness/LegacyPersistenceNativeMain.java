@@ -30,8 +30,8 @@ public final class LegacyPersistenceNativeMain {
         seed(root.toPath(), old);
         Object owner = new Object();
         LegacyPersistence.openAt(owner, root);
-        require(Files.isRegularFile(root.toPath().resolve("datapacks/ravel/pack.mcmeta")),
-                "legacy open did not write the pack through its dedicated crossing");
+        require(!Files.exists(root.toPath().resolve("datapacks")),
+                "legacy admission wrote a datapack that this version cannot read");
         Object storage = storage(base.toFile(), "world");
         LegacyPersistence.bind(owner, root, storage);
         Object live = load(storage, data);

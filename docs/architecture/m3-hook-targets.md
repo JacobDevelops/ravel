@@ -118,6 +118,12 @@ exactly once. Both are inventoried, and because the override calls
 `super.tickServer`, an integrated server fires both hooks per tick — one
 invocation each, not a double count of one.
 
+Semantic delivery uses the executing server side: a modern client runtime routes
+`server.tick-integrated` as `IntegratedServer`, including only mods admitted on
+that side. On that client runtime, `server.tick` remains an observed hook but
+does not broadcast another `ServerTick`; the superclass call must not deliver a
+second semantic tick.
+
 Profiling anchors on `MinecraftServer`, all verified:
 `getAverageTickTimeNanos()J`, `getTickTimesNanos()[J`, `logTickMethodTime(J)V`,
 `getTickTimeLogger()Lnet/minecraft/util/debugchart/SampleLogger;`, and the field

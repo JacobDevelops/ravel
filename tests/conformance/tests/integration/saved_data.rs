@@ -92,7 +92,7 @@ fn running(saved: &mut SavedDataMod) -> LifecycleMachine {
     ravel_loader::drive_loaded(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [saved])
             .expect("all active mods have hosts"),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the production driver starts the saved-data mod");
     machine
@@ -227,7 +227,7 @@ fn reload(saved: &mut SavedDataMod, bytes: Option<&[u8]>) -> Result<SavedDataPla
             .expect("the saved-data mod is loaded"),
         bytes,
         &installation(),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )?;
     let declaration = saved.declaration().map_err(SaveRefused::Data)?;
     let aggregate = admit(bytes).map_err(SaveRefused::Data)?;

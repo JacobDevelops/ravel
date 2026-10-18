@@ -9,7 +9,7 @@ use jni::objects::JString;
 use jni::{Env, EnvUnowned};
 use ravel_minecraft::{HookTarget, HookValue};
 
-use crate::{dispatch, invocations};
+use crate::{invocations, runtime};
 
 /// A semantic refusal, unavailable runtime, or JNI argument error.
 #[derive(Debug)]
@@ -66,13 +66,13 @@ pub(crate) fn enter<'local, 'handle, Collect>(
     Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue<'handle>>, HookError>,
 {
     invocations::record_invocation();
-    if !dispatch::is_observed() {
+    if runtime::with_selected(|_| ()).is_none() {
         return;
     }
 
     let outcome = env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
         let values = collect(env)?;
-        dispatch::deliver(target, &values);
+        runtime::with_selected(|runtime| runtime.observe(target, &values));
         Ok(())
     });
     let () = outcome.resolve::<ThrowRuntimeExAndDefault>();

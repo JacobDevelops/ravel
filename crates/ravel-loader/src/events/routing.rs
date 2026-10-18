@@ -57,6 +57,39 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
         environment,
     )
 }
+/// Admits an owner on the executing side using the dispatch lifecycle policy.
+///
+/// Packet direction and claimed-side checks remain the packet router's responsibility.
+///
+/// # Errors
+///
+/// Returns a refusal for a halted set, absent owner, incompatible side, or inactive owner.
+pub fn accepts_owner(
+    machine: &crate::LifecycleMachine,
+    owner: &ModId,
+    side: Side,
+) -> Result<LifecycleState, DispatchRefused> {
+    ensure_active(machine)?;
+    let (entry, state) = machine
+        .tracked_entries()
+        .find(|(entry, _)| &entry.mod_id == owner)
+        .ok_or_else(|| DispatchRefused::Absent {
+            mod_id: owner.clone(),
+        })?;
+    if !entry.sides.loads_on(side) {
+        return Err(DispatchRefused::OwnerWrongSide {
+            mod_id: owner.clone(),
+        });
+    }
+    if !reacts(state) {
+        return Err(DispatchRefused::OwnerNotReacting {
+            mod_id: owner.clone(),
+            state,
+        });
+    }
+    Ok(state)
+}
+
 fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     owner: ModId,
@@ -67,21 +100,7 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
-    let (entry, state) = machine
-        .tracked_entries()
-        .find(|(entry, _)| entry.mod_id == owner)
-        .ok_or_else(|| DispatchRefused::Absent {
-            mod_id: owner.clone(),
-        })?;
-    if !entry.sides.loads_on(side) {
-        return Err(DispatchRefused::OwnerWrongSide { mod_id: owner });
-    }
-    if !reacts(state) {
-        return Err(DispatchRefused::OwnerNotReacting {
-            mod_id: owner,
-            state,
-        });
-    }
+    let state = accepts_owner(machine, &owner, side)?;
     let instance = crate::loaded::instance_mut(mods, &owner);
     match call(&owner, state, instance) {
         Ok(()) => Ok(Delivery {

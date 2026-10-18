@@ -27,11 +27,6 @@ fn document() -> Option<String> {
     )
 }
 
-/// The mod list a screen reads from one runtime, or nothing without one.
-fn document_of(runtime: Option<&LoaderRuntime>, configurable: &BTreeSet<ModId>) -> Option<String> {
-    Some(runtime?.mod_document(configurable))
-}
-
 /// Keeps the client settings identity while adding independently attributed server rows.
 fn document_with_integrated(
     runtime: Option<&LoaderRuntime>,
@@ -39,24 +34,33 @@ fn document_with_integrated(
     configurable: &BTreeSet<ModId>,
 ) -> Option<String> {
     let runtime = runtime?;
-    let Some(integrated) = integrated else {
-        return document_of(Some(runtime), configurable);
-    };
+    // Each snapshot keeps its rows and notices at the same instant.
     let (client, client_notices) = runtime.mod_view();
-    let (server, server_notices) = integrated.mod_view();
+    let integrated = integrated.map(LoaderRuntime::mod_view);
+    let server = integrated.as_ref().map(|(surface, _)| surface);
+    let server_notices = integrated
+        .as_ref()
+        .map_or(&[][..], |(_, notices)| notices.as_slice());
     let mut out = String::new();
     field(&mut out, MODS_VERSION);
     field(&mut out, client.side().as_str());
     count(
         &mut out,
-        client.actionable().count() + server.actionable().count(),
+        client.actionable().count() + server.map_or(0, |surface| surface.actionable().count()),
     );
-    count(&mut out, client.entries().len() + server.entries().len());
+    count(
+        &mut out,
+        client.entries().len() + server.map_or(0, |surface| surface.entries().len()),
+    );
     for (index, entry) in client.entries().iter().enumerate() {
         row(&mut out, index, entry, configurable.contains(&entry.mod_id));
     }
     let mut label = String::new();
-    for (index, entry) in server.entries().iter().enumerate() {
+    for (index, entry) in server
+        .into_iter()
+        .flat_map(ravel_loader::ModSurface::entries)
+        .enumerate()
+    {
         // The wire's id field is also the display label. Server rows never open
         // client settings, and are not collapsed into an identically named client mod.
         label.clear();
@@ -74,35 +78,13 @@ fn document_with_integrated(
     for notice in &client_notices {
         field(&mut out, notice.text());
     }
-    for notice in &server_notices {
+    for notice in server_notices {
         label.clear();
         write!(label, "[integrated-server] {}", notice.text())
             .expect("writing into a String cannot fail");
         field(&mut out, &label);
     }
     Some(out)
-}
-
-impl LoaderRuntime {
-    /// The whole mod list this runtime holds, as one payload.
-    pub(crate) fn mod_document(&self, configurable: &BTreeSet<ModId>) -> String {
-        // One acquisition, so the rows and the notice describe the same instant.
-        let (surface, notices) = self.mod_view();
-
-        let mut out = String::new();
-        field(&mut out, MODS_VERSION);
-        field(&mut out, surface.side().as_str());
-        count(&mut out, surface.actionable().count());
-        count(&mut out, surface.entries().len());
-        for (index, entry) in surface.entries().iter().enumerate() {
-            row(&mut out, index, entry, configurable.contains(&entry.mod_id));
-        }
-        count(&mut out, notices.len());
-        for notice in &notices {
-            field(&mut out, notice.text());
-        }
-        out
-    }
 }
 
 /// Writes one row with its one-based position in resolved load order.
@@ -210,7 +192,7 @@ mod tests {
 
     use std::collections::BTreeSet;
 
-    use super::document_of;
+    use super::document_with_integrated;
     use crate::runtime::{DocumentFixture, LoaderRuntime};
     use crate::wire::fields;
 
@@ -259,7 +241,10 @@ mod tests {
 
     #[test]
     fn a_screen_opened_before_a_set_is_installed_reads_nothing() {
-        assert_eq!(document_of(None, &configurable(&[])), None);
+        assert_eq!(
+            document_with_integrated(None, None, &configurable(&[])),
+            None
+        );
     }
 
     #[test]
@@ -269,7 +254,10 @@ mod tests {
             entry("second_mod", Requirement::Optional),
         ]));
 
-        let read = fields(&runtime.mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[0], "3", "the mod list's own version opens the payload");
         assert_eq!(read[1], "client");
@@ -299,8 +287,8 @@ mod tests {
         ]));
 
         assert_eq!(
-            runtime.mod_document(&configurable(&[])),
-            runtime.mod_document(&configurable(&[]))
+            document_with_integrated(Some(&runtime), None, &configurable(&[])),
+            document_with_integrated(Some(&runtime), None, &configurable(&[]))
         );
     }
 
@@ -317,7 +305,10 @@ mod tests {
             )
             .expect("a mod the machine holds can fail");
 
-        let read = fields(&running(plan).mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[2], "1", "one entry asks the player to act");
         assert_eq!(read[9], "true");
@@ -343,7 +334,10 @@ mod tests {
             .fail(&mod_id("broken_mod"), failure)
             .expect("the owner is tracked");
 
-        let read = fields(&running(plan).mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[13], "registry");
         assert_eq!(read[14], "command:broken_mod:go");
@@ -363,7 +357,10 @@ mod tests {
             )
             .expect("a mod the machine holds can fail");
 
-        let read = fields(&running(plan).mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[2], "0", "the plan tolerates its absence");
         assert_eq!(read[9], "false", "so it is reportable and not actionable");
@@ -384,7 +381,10 @@ mod tests {
             .fail(&mod_id("broken_mod"), broken)
             .expect("a mod the machine holds can fail");
 
-        let read = fields(&running(plan).mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
         let detail = read[20].clone();
 
         assert!(!detail.contains("/home/player"), "{detail}");
@@ -399,7 +399,10 @@ mod tests {
             entry("second_mod", Requirement::Required),
         ]));
 
-        let read = fields(&runtime.mod_document(&configurable(&["second_mod"])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&["second_mod"]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[5], "base_mod");
         assert_eq!(read[10], "false", "it declares nothing this side can show");
@@ -428,7 +431,10 @@ mod tests {
             "Ravel wrote the resource pack its mods supply and could not switch it on.",
         );
 
-        let read = fields(&runtime.mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[12], "1", "one notice follows the rows");
         assert_eq!(
@@ -448,7 +454,10 @@ mod tests {
             ),
         );
 
-        let read = fields(&runtime.mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[12], "1");
         assert!(!read[13].contains("/home/player"), "{}", read[13]);
@@ -466,7 +475,10 @@ mod tests {
             concat!("the launcher passed token=", "hunter2 to the game"),
         );
 
-        let read = fields(&runtime.mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert!(!read[13].contains("hunter2"), "{}", read[13]);
         assert_eq!(
@@ -479,7 +491,10 @@ mod tests {
     fn a_set_with_nothing_to_say_carries_no_notices_at_all() {
         let runtime = running(machine(vec![entry("base_mod", Requirement::Required)]));
 
-        let read = fields(&runtime.mod_document(&configurable(&[])));
+        let read = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
 
         assert_eq!(read[12], "0", "the block is present and empty");
         assert_eq!(read.len(), 13, "and nothing follows it");
@@ -513,7 +528,10 @@ mod tests {
             vec![Box::new(RefusingObserver(mod_id("broken_mod")))],
             crate::runtime::test_launch(),
         );
-        let before = fields(&runtime.mod_document(&configurable(&[])));
+        let before = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
         assert_eq!(before[9], "false");
 
         assert!(
@@ -522,7 +540,10 @@ mod tests {
                 .is_err()
         );
 
-        let after = fields(&runtime.mod_document(&configurable(&[])));
+        let after = fields(
+            &document_with_integrated(Some(&runtime), None, &configurable(&[]))
+                .expect("runtime installed"),
+        );
         assert_eq!(after[9], "true", "the second open sees the failure");
     }
 
@@ -540,12 +561,8 @@ mod tests {
             .expect("tracked mod");
         let server = noticed(plan, "server composition could not register its command");
         let read = fields(
-            &super::document_with_integrated(
-                Some(&client),
-                Some(&server),
-                &configurable(&["broken_mod"]),
-            )
-            .expect("client installed"),
+            &document_with_integrated(Some(&client), Some(&server), &configurable(&["broken_mod"]))
+                .expect("client installed"),
         );
 
         assert_eq!(&read[..4], &["3", "client", "1", "2"]);
@@ -564,15 +581,11 @@ mod tests {
     }
 
     #[test]
-    fn absent_integrated_runtime_leaves_mod_document_unchanged() {
+    fn an_integrated_runtime_alone_cannot_supply_a_mod_document() {
         let client = running(machine(vec![entry("base_mod", Requirement::Required)]));
         let settings = configurable(&["base_mod"]);
         assert_eq!(
-            super::document_with_integrated(Some(&client), None, &settings),
-            document_of(Some(&client), &settings),
-        );
-        assert_eq!(
-            super::document_with_integrated(None, Some(&client), &settings),
+            document_with_integrated(None, Some(&client), &settings),
             None,
         );
     }

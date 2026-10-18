@@ -131,6 +131,8 @@ stable contracts toward concrete host internals.
   into a host cdylib. Production dependencies are restricted to host crates
   (`ravel-host-runtime` and the cdylib hosts); `ravel-build` and
   `tests/conformance` have test-only dev-dependency exceptions.
+  Launch callers import `Composition` and `environment` directly from bootstrap,
+  not through the host-runtime admission facade.
   The composed host and player-generated hosts own the JVM-loadable
   `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
   It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
@@ -147,12 +149,16 @@ stable contracts toward concrete host internals.
   Callback dispatch and world persistence borrow the environment owned by the
   runtime's pre-world report; hooks do not reconstruct version or platform strings.
   Bootstrap's pack module owns resource, staged-data, and world-data destinations,
-  pack identity, descriptions and pinned metadata; loader retains only the generic
-  pack writer. Installed world-pack writes use `write_world_datapack`, exposed to Java
-  as `ravelWriteWorldDatapack`; opening world persistence only admits and stages saved
-  data. Host initialization takes the game
-  directory explicitly, with cwd resolved only at the process JNI entry; integrated
-  servers reuse that installed launch directory.
+  pack identity, descriptions, pinned metadata, and the idempotent staged tree
+  writer; loader supplies admitted resource sets without writing Minecraft packs.
+  Legacy adapters inject their resource proxy directly, so host initialization
+  skips resource-pack generation and options seeding for them. Modern resource-pack
+  selection uses `pack_id()` (`file/ravel`). Installed world-pack writes use
+  `write_world_datapack`, exposed to Java as `ravelWriteWorldDatapack`; opening world
+  persistence only admits and stages saved data. Legacy world admission writes no
+  datapack because that adapter has no datapack output. Host initialization takes
+  the game directory explicitly, with cwd resolved only at the process JNI entry;
+  integrated servers reuse that installed launch directory.
   A composition owns a loader `Loaded` pair that validates and orders its mods once;
   callbacks and persistence borrow that pair infallibly. Per-call dispatch refusals
   return to their caller rather than poisoning the launch report. A composition is

@@ -29,7 +29,6 @@ ravel-test-mod-server-only.workspace = true
 ravel-loader.workspace = true
 ravel-package.workspace = true
 ravel-config.workspace = true
-ravel-host-api.workspace = true
 serde_json.workspace = true
 
 [lints]

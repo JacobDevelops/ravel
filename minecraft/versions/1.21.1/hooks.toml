@@ -38,10 +38,9 @@
 # predates the architecture it belongs to. Both passes agree that `Screen`
 # declares no `extractRenderState` and that `GuiGraphicsExtractor` is in this
 # mapping under no name, so there is nothing here to rename it to. Retargeting it
-# at `Screen.render` was considered and refused: `render` is where drawing
-# happens and a refusable hook on it would suppress a frame, which is more than
-# the capability sentence promises. Per-frame screen observation is a 26.1.2-era
-# capability and this version does not offer it.
+# at `Screen.render` was considered and refused: `render` is the draw call itself,
+# which is more than the capability sentence promises. Per-frame screen observation
+# is a 26.1.2-era capability and this version does not offer it.
 #
 # Every rule the 26.1.2 header states holds here unchanged: exact JVM descriptors
 # in the reviewed Mojang name space, one resolution per entry, no capability
@@ -413,4 +412,4 @@ reason = "No equivalent at this version. `set(String, SavedData)` registers wher
 
 [[nonGoal]]
 id = "screen.extract-render-state"
-reason = "This version predates the architecture. `Screen` declares no `extractRenderState` and the mapping names no `GuiGraphicsExtractor`, so there is nothing to retarget; retargeting at `Screen.render` was refused because a refusable hook there would suppress a frame."
+reason = "This version predates the architecture. `Screen` declares no `extractRenderState` and the mapping names no `GuiGraphicsExtractor`, so there is nothing to retarget; retargeting at `Screen.render` was refused because `render` is the draw call itself, which is more than the capability sentence promises."

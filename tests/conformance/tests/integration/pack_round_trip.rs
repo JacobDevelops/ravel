@@ -7,11 +7,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ravel_bootstrap_runtime::environment;
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument, file};
 use ravel_core::{LifecycleState, ModId, Side};
 use ravel_data::ContentDeclaration;
 use ravel_host_api::Mod;
-use ravel_host_runtime::{Member, compose, environment};
+use ravel_host_runtime::{Member, compose};
 use ravel_pack::{ClosureError, PackDeclaration, ValidatedPack, validate};
 use ravel_package::PackageManifest;
 
@@ -178,7 +179,7 @@ fn manifests() -> Vec<PackageManifest> {
 
 fn launch(game: &Path) -> Vec<Option<i64>> {
     let (composed, applied) = members();
-    let ravel_host_runtime::Composition {
+    let ravel_bootstrap_runtime::Composition {
         loaded,
         configurations,
         ..

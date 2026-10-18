@@ -2,28 +2,26 @@
 
 //! Shared package admission, configuration, lifecycle, and pack setup for hosts.
 //! Hosts supply their members and export their own JNI entry point.
-//! Launch callers use [`Composition`] and [`environment`] through this facade;
-//! bootstrap-runtime retains ownership of the installed runtime.
 
 mod options;
 
 pub use options::{OptionsError, Seeded, seed_pack};
-pub use ravel_bootstrap_runtime::{Composition, environment};
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    InstallError, SideError, install, pre_world_report, write_resource_pack,
+    Composition, GamePackError, InstallError, SideError, environment, install, pre_world_report,
+    write_resource_pack,
 };
 use ravel_config::file;
 use ravel_core::{ModId, Side};
 use ravel_host_api::Mod;
 use ravel_loader::{
-    ConfigRefused, DiscoveryRefused, DriveError, GamePackError, LifecycleEntry, LifecycleError,
-    LifecycleMachine, Loaded, LoadedMods, ResourceRefused, admitted, discover, drive_loaded,
-    open_configuration, open_resources,
+    ConfigRefused, DiscoveryRefused, DriveError, LifecycleEntry, LifecycleError, LifecycleMachine,
+    Loaded, LoadedMods, ResourceRefused, admitted, discover, drive_loaded, open_configuration,
+    open_resources,
 };
 use ravel_observability::Profiler;
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
@@ -71,10 +69,7 @@ pub fn compose(
     )
     .map_err(LaunchError::Config)?
     .into_resolved();
-    drive_loaded(&mut loaded, &environment()).map_err(|error| match error {
-        DriveError::Services(error) => LaunchError::Services(error),
-        error @ (DriveError::Lifecycle(_) | DriveError::Host { .. }) => LaunchError::Drive(error),
-    })?;
+    drive_loaded(&mut loaded, &environment()).map_err(LaunchError::Drive)?;
     let (interceptions, resources) = open_declarations(&mut loaded)?;
 
     Ok(Composition {
@@ -209,13 +204,15 @@ pub fn initialize(
         return Err(LaunchError::Install(InstallError::AlreadyInstalled));
     }
     let composition = compose(game_directory, side, members())?;
-    // The client scans resource packs during startup, before runtime installation.
-    write_resource_pack(game_directory, &composition.resources).map_err(LaunchError::Pack)?;
-    let seeded = seed_pack(game_directory).map_err(LaunchError::Options)?;
-    // World data is written later, when the world-open crossing supplies its path.
     let mut report = pre_world_report();
-    if let Some(notice) = pack_notice(&seeded, side) {
-        report.note(&notice);
+    // Legacy injects its resource proxy directly; a second pack would shadow it.
+    if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        // The client scans resource packs during startup, before runtime installation.
+        write_resource_pack(game_directory, &composition.resources).map_err(LaunchError::Pack)?;
+        let seeded = seed_pack(game_directory).map_err(LaunchError::Options)?;
+        if let Some(notice) = pack_notice(&seeded, side) {
+            report.note(&notice);
+        }
     }
     install(
         composition,
@@ -295,15 +292,13 @@ pub enum LaunchError {
     Config(ConfigRefused),
     /// The set's supplied files could not be layered.
     Resources(ResourceRefused),
-    /// The set's services could not be resolved or consumed.
-    Services(ravel_loader::ServiceRefused),
     /// The set's interception declarations could not be admitted.
     Interceptions(ravel_loader::InterceptRefused),
     /// The set's files could not be written as a pack the game reads.
     Pack(GamePackError),
     /// The player's settings could not be read or replaced.
     Options(OptionsError),
-    /// The lifecycle could not drive a composed value.
+    /// Services or lifecycle startup refused a composed value.
     Drive(DriveError),
     /// The driven runtime could not be installed.
     Install(InstallError),
@@ -361,9 +356,6 @@ impl fmt::Display for LaunchError {
             Self::Resources(error) => {
                 write!(formatter, "the set's files were not layered: {error}")
             }
-            Self::Services(error) => {
-                write!(formatter, "the set's services were not opened: {error}")
-            }
             Self::Interceptions(error) => {
                 write!(
                     formatter,
@@ -408,7 +400,6 @@ impl std::error::Error for LaunchError {
             Self::Lifecycle(error) => Some(error),
             Self::Config(error) => Some(error),
             Self::Resources(error) => Some(error),
-            Self::Services(error) => Some(error),
             Self::Interceptions(error) => Some(error),
             Self::Pack(error) => Some(error),
             Self::Options(error) => Some(error),
@@ -427,6 +418,51 @@ mod tests {
     use ravel_host_api::Mod;
 
     use super::{Member, admit, environment};
+
+    #[test]
+    fn initialize_only_publishes_resource_packs_for_modern_adapters() {
+        const CHILD: &str = "RAVEL_INITIALIZE_PACK_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "tests::initialize_only_publishes_resource_packs_for_modern_adapters",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .expect("isolated initialization test");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            return;
+        }
+        let game = std::env::temp_dir().join(format!("ravel-pack-init-{}", std::process::id()));
+        std::fs::create_dir_all(&game).expect("game directory");
+        let original = "resourcePacks:[\"vanilla\"]\n";
+        std::fs::write(game.join("options.txt"), original).expect("initial settings");
+        super::initialize(&game, Side::Client, Vec::new, false).expect("empty launch");
+        let settings = std::fs::read_to_string(game.join("options.txt")).expect("player settings");
+        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            assert!(!game.join("resourcepacks/ravel").exists());
+            assert!(!game.join("ravel/seeded-packs").exists());
+            assert_eq!(settings, original);
+        } else {
+            assert!(game.join("resourcepacks/ravel/pack.mcmeta").is_file());
+            assert!(game.join("ravel/seeded-packs").is_file());
+            assert_eq!(
+                settings,
+                format!(
+                    "resourcePacks:[\"vanilla\",\"{}\"]\n",
+                    ravel_bootstrap_runtime::pack_id()
+                )
+            );
+        }
+        std::fs::remove_dir_all(game).expect("remove game directory");
+    }
 
     #[test]
     fn repeated_initialize_never_constructs_members_or_touches_launch_files() {
@@ -760,8 +796,8 @@ mod tests {
         std::fs::remove_dir_all(game).expect("remove launch directory");
         assert!(matches!(
             result,
-            Err(super::LaunchError::Services(
-                ravel_loader::ServiceRefused::NoProvider { .. }
+            Err(super::LaunchError::Drive(
+                ravel_loader::DriveError::Services(ravel_loader::ServiceRefused::NoProvider { .. })
             ))
         ));
         assert!(

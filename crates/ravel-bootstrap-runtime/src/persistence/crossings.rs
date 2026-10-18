@@ -12,7 +12,7 @@ enum Incoming {
     Absent,
     /// Empty arrays are present but unreadable, never fresh state.
     Present(Vec<u8>),
-    Oversized(String),
+    Oversized,
 }
 
 // Check the JNI array length before allocating native storage.
@@ -25,12 +25,7 @@ fn incoming<'local>(
     }
     let length = aggregate.len(env)?;
     if length > MAX_AGGREGATE_BYTES {
-        return Ok(Incoming::Oversized(
-            SavedDataError::AggregateTooLarge {
-                limit: MAX_AGGREGATE_BYTES,
-            }
-            .to_string(),
-        ));
+        return Ok(Incoming::Oversized);
     }
     Ok(Incoming::Present(env.convert_byte_array(aggregate)?))
 }
@@ -55,7 +50,9 @@ pub fn ravel_open_world_persistence<'local>(
                 Incoming::Present(bytes) => {
                     open_world_data(&identity, Some(&bytes), fresh_world != JNI_FALSE)
                 }
-                Incoming::Oversized(refusal) => OpenOutcome::Refused(refusal),
+                Incoming::Oversized => OpenOutcome::from(SavedDataError::AggregateTooLarge {
+                    limit: MAX_AGGREGATE_BYTES,
+                }),
             };
             Ok(match outcome {
                 OpenOutcome::Staged => env.new_string("")?,

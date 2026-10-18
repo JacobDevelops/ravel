@@ -16,7 +16,7 @@ use ravel_core::{DiagnosticMessage, ModId, Side};
 use serde_json::Value;
 
 use crate::guard::{HookError, hand_document, text};
-use crate::wire::{Reader, VERSION as WIRE_VERSION, field};
+use crate::wire::{Reader, VERSION as WIRE_VERSION, count, field, flag};
 
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
@@ -84,7 +84,7 @@ impl Store {
         field(&mut out, WIRE_VERSION);
         field(&mut out, owner.as_str());
         field(&mut out, self.side.as_str());
-        field(&mut out, &rows.len().to_string());
+        count(&mut out, rows.len());
         for resolved in &rows {
             row(&mut out, configuration, resolved);
         }
@@ -109,14 +109,14 @@ fn row(out: &mut String, configuration: &LayeredConfiguration, resolved: &Resolv
     field(out, schema.kind.map_or("", ValueKind::as_str));
     field(out, &text_of(resolved.value));
     field(out, source_name(resolved.source));
-    field(out, &resolved.editable.to_string());
-    field(out, &setting.restart_required.to_string());
-    field(out, &pending(configuration, resolved).to_string());
+    flag(out, resolved.editable);
+    flag(out, setting.restart_required);
+    flag(out, pending(configuration, resolved));
     field(out, &bound(schema.minimum));
     field(out, &bound(schema.maximum));
 
     let choices = schema.permitted.as_deref().unwrap_or_default();
-    field(out, &choices.len().to_string());
+    count(out, choices.len());
     for choice in choices {
         field(out, &text_of(choice));
     }
@@ -283,7 +283,7 @@ fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> Str
     }
 
     let mut out = String::with_capacity(encoded_refusals.len() + 8);
-    field(&mut out, &refusal_count.to_string());
+    count(&mut out, refusal_count);
     out.push_str(&encoded_refusals);
     out
 }
@@ -308,7 +308,7 @@ fn admit_client_directory(directory: &Path) -> Result<(), String> {
 
 fn refusal(key: &str, reason: &str) -> String {
     let mut out = String::new();
-    field(&mut out, "1");
+    count(&mut out, 1);
     write_refusal(&mut out, key, reason);
     out
 }

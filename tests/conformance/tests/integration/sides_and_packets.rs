@@ -356,7 +356,7 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
             .expect("all active mods have hosts"),
             &arriving,
             &mut ravel_observability::Profiler::off(),
-            &ravel_host_runtime::environment(),
+            &ravel_bootstrap_runtime::environment(),
         )
         .expect_err("a server side is not an end of a client-bound link");
 
@@ -396,7 +396,7 @@ fn the_same_packet_on_the_client_round_trips_into_the_overlay_the_server_sent() 
             .expect("all active mods have hosts"),
         &arriving,
         &mut ravel_observability::Profiler::off(),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the client is the receiving end");
 
@@ -444,7 +444,7 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
         .expect("all active mods have hosts"),
         &arriving,
         &mut ravel_observability::Profiler::off(),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the server half owns the contract and is running");
 
@@ -489,7 +489,7 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
             .expect("all active mods have hosts"),
         &arriving,
         &mut ravel_observability::Profiler::off(),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the routing reached the owner");
     assert!(

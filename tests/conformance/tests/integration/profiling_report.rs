@@ -64,7 +64,7 @@ fn running() -> LifecycleMachine {
     ravel_loader::drive_loaded(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active mods have hosts"),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the production driver starts the quiet mod");
     machine
@@ -248,8 +248,9 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut plain])
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
+        Side::Client,
         &mut Profiler::off(),
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the set is running");
     let mut off = Profiler::off();
@@ -257,8 +258,9 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut profiled])
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
+        Side::Client,
         &mut off,
-        &ravel_host_runtime::environment(),
+        &ravel_bootstrap_runtime::environment(),
     )
     .expect("the set is running");
 
@@ -281,8 +283,9 @@ fn a_profiled_dispatch_attributes_the_delivery_to_the_mod_that_received_it() {
             &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("all active mods have hosts"),
             GameEvent::ClientTick,
+            Side::Client,
             &mut profiler,
-            &ravel_host_runtime::environment(),
+            &ravel_bootstrap_runtime::environment(),
         )
         .expect("the set is running");
         profiler.tick();

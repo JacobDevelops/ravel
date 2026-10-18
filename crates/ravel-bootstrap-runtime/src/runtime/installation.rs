@@ -29,7 +29,7 @@ pub(crate) fn with_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> O
     with_thread_selected(body)
 }
 
-pub(super) fn with_thread_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> Option<T> {
+pub(crate) fn with_thread_selected<T>(body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> Option<T> {
     INTEGRATED.with(|slot| {
         let integrated = slot.borrow();
         if let Some(runtime) = integrated.as_ref() {
@@ -49,6 +49,10 @@ pub(crate) fn selected() -> Option<Arc<LoaderRuntime>> {
 }
 
 /// Shares integrated diagnostics without transferring server-thread ownership.
+///
+/// The server thread owns the runtime through its thread-local handle. On thread
+/// exit that handle is dropped; this weak view expires once outstanding diagnostic
+/// handles are released.
 pub(crate) fn integrated_runtime() -> Option<Arc<LoaderRuntime>> {
     INTEGRATED_VIEW
         .lock()
@@ -82,6 +86,7 @@ pub fn integrated_installed() -> bool {
 
 /// Installs a composition whose lifetime is the integrated server thread's lifetime.
 ///
+/// Its owning handle is dropped when that server thread exits.
 /// # Errors
 ///
 /// Refuses an already installed server thread or a non-integrated composition.

@@ -5,8 +5,9 @@
 
 use jni::EnvUnowned;
 use jni::objects::JClass;
+use ravel_bootstrap_runtime::Composition;
 use ravel_core::Side;
-use ravel_host_runtime::{Composition, Member};
+use ravel_host_runtime::Member;
 use ravel_test_mod_audio::AudioMod;
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
 use ravel_test_mod_commands::CommandsMod;
@@ -111,9 +112,9 @@ pub fn legacy_packet_receipts<'local>(
 
 #[cfg(test)]
 mod tests {
+    use ravel_bootstrap_runtime::Composition;
     use ravel_config::{LayeredConfiguration, ValueDocument, file};
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_runtime::Composition;
     use ravel_loader::DiscoveryRefused;
     use serde_json::json;
 
@@ -418,7 +419,7 @@ mod tests {
             (CLIENT_ONLY_PACKAGE, client_owner()),
             (SERVER_ONLY_PACKAGE, server_owner()),
         ];
-        let running = ravel_host_runtime::environment();
+        let running = ravel_bootstrap_runtime::environment();
         for (document, expected) in manifests {
             let manifest =
                 ravel_package::PackageManifest::parse(document).expect("a shipped manifest parses");
@@ -460,7 +461,7 @@ mod tests {
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
-        let running = ravel_host_runtime::environment();
+        let running = ravel_bootstrap_runtime::environment();
         let root = game
             .join(ravel_core::paths::INSTANCE_DIRECTORY)
             .join(ravel_core::paths::PACKAGES_DIRECTORY)

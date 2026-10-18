@@ -13,6 +13,13 @@ pub enum DispatchRefused {
         /// The owner whose failure halted the set.
         by: ModId,
     },
+    /// The executing event side cannot belong to this runtime.
+    EventForeignSide {
+        /// The executing side requested by the caller.
+        claimed: Side,
+        /// The side the set is running on.
+        running: Side,
+    },
     /// The set is not in a state that reacts.
     NotReacting {
         /// The first non-reacting audience member in resolved order.
@@ -82,6 +89,7 @@ impl DispatchRefused {
             Self::PacketForeignSide { id, .. } | Self::PacketWrongSide { id, .. } => {
                 Some(id.owner())
             }
+            Self::EventForeignSide { .. } => None,
         }
     }
 }
@@ -91,6 +99,12 @@ impl fmt::Display for DispatchRefused {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
             Self::Halted { by } => write!(formatter, "the set halted after `{by}` failed"),
+            Self::EventForeignSide { claimed, running } => write!(
+                formatter,
+                "event execution claimed the `{}` side and the set is running as `{}`",
+                claimed.as_str(),
+                running.as_str()
+            ),
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",
@@ -137,6 +151,7 @@ impl std::error::Error for DispatchRefused {
         match self {
             Self::Lifecycle(error) => Some(error),
             Self::Halted { .. }
+            | Self::EventForeignSide { .. }
             | Self::NotReacting { .. }
             | Self::Unclaimed { .. }
             | Self::NotACommand { .. }
@@ -155,6 +170,7 @@ impl StructuredFailure for DispatchRefused {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Halted { .. }
+            | Self::EventForeignSide { .. }
             | Self::NotReacting { .. }
             | Self::Unclaimed { .. }
             | Self::NotACommand { .. }
@@ -172,6 +188,7 @@ impl StructuredFailure for DispatchRefused {
             Self::Halted { .. } => LifecycleState::Failed,
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
+            | Self::EventForeignSide { .. }
             | Self::NotACommand { .. }
             | Self::OwnerWrongSide { .. }
             | Self::PacketForeignSide { .. }

@@ -25,36 +25,18 @@ fn document() -> Option<String> {
     )
 }
 
-/// The report a screen reads from one runtime, or nothing without one.
-fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
-    Some(render(&runtime?.profiling_report()))
-}
-
 /// Snapshots both runtimes only when a screen requests a report.
 fn document_with_integrated(
     runtime: Option<&LoaderRuntime>,
     integrated: Option<&LoaderRuntime>,
 ) -> Option<String> {
     let runtime = runtime?;
-    let Some(integrated) = integrated else {
-        return document_of(Some(runtime));
-    };
-    Some(render_with_integrated(
-        &runtime.profiling_report(),
-        Some(&integrated.profiling_report()),
-    ))
-}
-
-/// Encodes measurements alongside their attribution and support qualifications.
-fn render(report: &ProfilingReport) -> String {
-    render_with_integrated(report, None)
+    let server = integrated.map(LoaderRuntime::profiling_report);
+    Some(render(&runtime.profiling_report(), server.as_ref()))
 }
 
 /// Adds server rows without merging their costs or changing client header semantics.
-fn render_with_integrated(
-    report: &ProfilingReport,
-    integrated: Option<&ProfilingReport>,
-) -> String {
+fn render(report: &ProfilingReport, integrated: Option<&ProfilingReport>) -> String {
     let mut out = String::new();
     field(&mut out, VERSION);
     flag(&mut out, report.is_on());
@@ -148,7 +130,7 @@ mod tests {
     use ravel_minecraft::{HookId, HookKind, HookTarget};
     use ravel_observability::{Metric, Profiler};
 
-    use super::document_of;
+    use super::document_with_integrated;
     use crate::runtime::{LoaderRuntime, advance_through};
     use crate::wire::fields;
 
@@ -208,12 +190,12 @@ mod tests {
     }
 
     fn report(runtime: &LoaderRuntime) -> String {
-        document_of(Some(runtime)).expect("a runtime was handed over")
+        document_with_integrated(Some(runtime), None).expect("a runtime was handed over")
     }
 
     #[test]
     fn a_launch_with_no_set_installed_has_no_report_rather_than_an_empty_one() {
-        assert_eq!(document_of(None), None);
+        assert_eq!(document_with_integrated(None, None), None);
     }
 
     #[test]
@@ -289,8 +271,7 @@ mod tests {
         server.observe(&target("server.tick-integrated"), &[]);
         server.observe(&target("server.tick-integrated"), &[]);
         let read = fields(
-            &super::document_with_integrated(Some(&client), Some(&server))
-                .expect("client installed"),
+            &document_with_integrated(Some(&client), Some(&server)).expect("client installed"),
         );
 
         assert_eq!(read[0], "1", "the wire version is unchanged");
@@ -315,12 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn absent_integrated_runtime_preserves_the_original_report() {
+    fn an_integrated_runtime_alone_cannot_supply_a_profiling_report() {
         let client = running(Profiler::off());
-        assert_eq!(
-            super::document_with_integrated(Some(&client), None),
-            document_of(Some(&client)),
-        );
-        assert_eq!(super::document_with_integrated(None, Some(&client)), None,);
+        assert_eq!(document_with_integrated(None, Some(&client)), None);
     }
 }

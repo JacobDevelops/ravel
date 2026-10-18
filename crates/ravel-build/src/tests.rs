@@ -79,7 +79,7 @@ impl Mod for Silent {
 const RECORD: &[u8] = br#"{"origin":"example"}"#;
 
 fn game() -> String {
-    ravel_host_runtime::environment().minecraft
+    ravel_bootstrap_runtime::environment().minecraft
 }
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
@@ -490,7 +490,9 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   ).expect(\"the generated host initializes\");\n\
          \x20   let world = std::path::Path::new(&game).join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
-         \x20   ravel_bootstrap_runtime::write_world_datapack(&world);\n\
+         \x20   if !ravel_bootstrap_runtime::LEGACY_ADAPTER {\n\
+         \x20       ravel_bootstrap_runtime::write_world_datapack(&world);\n\
+         \x20   }\n\
          \x20   assert_eq!(\n\
          \x20       ravel_bootstrap_runtime::open_world_data(world.to_str().expect(\"world path\"), None, true),\n\
          \x20       ravel_bootstrap_runtime::OpenOutcome::Staged,\n\
@@ -498,6 +500,11 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          }\n";
 
 fn the_written_packs_hold_the_examples_content(instance: &Path) {
+    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        assert!(!instance.join("resourcepacks/ravel").exists());
+        assert!(!instance.join("saves/Driven/datapacks").exists());
+        return;
+    }
     let assets = instance.join("resourcepacks/ravel/assets/content");
     assert_eq!(
         fs::read_to_string(assets.join("models/block/copper_lantern.json"))
@@ -643,15 +650,20 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
     );
 
     the_written_packs_hold_the_examples_content(instance);
-    let settings = fs::read_to_string(instance.join("options.txt")).expect("seeded settings");
-    assert_eq!(
-        settings,
-        format!(
-            "resourcePacks:[\"vanilla\",\"{}\"]\n",
-            ravel_bootstrap_runtime::pack_id()
-        )
-    );
-    assert!(instance.join("ravel/seeded-packs").is_file());
+    let settings = fs::read_to_string(instance.join("options.txt")).expect("player settings");
+    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        assert_eq!(settings, "resourcePacks:[\"vanilla\"]\n");
+        assert!(!instance.join("ravel/seeded-packs").exists());
+    } else {
+        assert_eq!(
+            settings,
+            format!(
+                "resourcePacks:[\"vanilla\",\"{}\"]\n",
+                ravel_bootstrap_runtime::pack_id()
+            )
+        );
+        assert!(instance.join("ravel/seeded-packs").is_file());
+    }
 
     let recorded = fs::read_to_string(&marks).expect("the installed mod recorded nothing");
     assert!(

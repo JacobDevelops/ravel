@@ -195,7 +195,7 @@ impl LoaderRuntime {
         write: fn(
             &Path,
             &ravel_loader::Supplied,
-        ) -> Result<ravel_loader::Written, ravel_loader::GamePackError>,
+        ) -> Result<crate::packs::Written, crate::packs::GamePackError>,
     ) -> StagedPack {
         let directory = path.display();
         let launch = &self.launch;
@@ -428,11 +428,14 @@ fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
 // The writer replaces these entries, so a link among them would redirect it outside `world`.
 fn pack_targets_are_real(world: &Path) -> Result<(), String> {
     let packs = world.join(crate::packs::WORLD_DATA_PACKS);
-    let roots = crate::packs::world_pack_roots(world);
+    let roots = [
+        crate::packs::installed_pack_root(world),
+        crate::packs::staged_pack_root(world),
+    ];
     for path in std::iter::once(packs).chain(
         roots
             .iter()
-            .flat_map(|root| ravel_loader::replaced_paths(root)),
+            .flat_map(|root| crate::packs::replaced_paths(root)),
     ) {
         if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return Err(format!(

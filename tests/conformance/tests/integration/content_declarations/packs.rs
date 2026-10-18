@@ -52,10 +52,13 @@ const LOOT_TABLE: &str = r#"{
 "#;
 
 // Outside the example's declared range, admission refusal is the obligation instead.
-fn compose_content(game: &std::path::Path, side: Side) -> Option<ravel_host_runtime::Composition> {
+fn compose_content(
+    game: &std::path::Path,
+    side: Side,
+) -> Option<ravel_bootstrap_runtime::Composition> {
     let package = include_str!("../../../../../examples/content-mod/package.json");
     let manifest = PackageManifest::parse(package).expect("the shipped manifest is valid");
-    let running = ravel_host_runtime::environment().minecraft;
+    let running = ravel_bootstrap_runtime::environment().minecraft;
     let compatible = manifest.compatibility.check_minecraft(&running).is_ok();
     let composed = compose(
         game,
@@ -102,7 +105,7 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let Some(ravel_host_runtime::Composition {
+    let Some(ravel_bootstrap_runtime::Composition {
         loaded,
         resources: supplied,
         ..
@@ -160,7 +163,7 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let Some(ravel_host_runtime::Composition { resources, .. }) =
+    let Some(ravel_bootstrap_runtime::Composition { resources, .. }) =
         compose_content(&game, Side::Client)
     else {
         return;

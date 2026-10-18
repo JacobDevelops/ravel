@@ -6,14 +6,14 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::resources::Supplied;
+use ravel_loader::Supplied;
 
 /// The file every pack declares its format in.
 const PACK_METADATA: &str = "pack.mcmeta";
 
 /// The half of a supplied set a pack carries.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Half {
+pub(super) enum Half {
     /// Everything under `assets/`, which a client reads as a resource pack.
     Assets,
     /// Everything under `data/`, which a world reads as a data pack.
@@ -38,7 +38,7 @@ impl Half {
 /// # Errors
 ///
 /// Returns a [`GamePackError`] for any filesystem refusal; the caller must refuse the launch.
-pub fn write_game_pack(
+pub(super) fn write_game_pack(
     root: &Path,
     supplied: &Supplied,
     half: Half,
@@ -99,7 +99,7 @@ pub fn write_game_pack(
 ///
 /// Callers checking filesystem boundaries must check both paths before writing.
 #[must_use]
-pub fn replaced_paths(root: &Path) -> [PathBuf; 2] {
+pub(crate) fn replaced_paths(root: &Path) -> [PathBuf; 2] {
     [root.to_path_buf(), staging(root)]
 }
 
@@ -280,11 +280,12 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
-    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
-    use crate::resources::{Supplied, open_resources};
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{Mod, ModError};
+    use ravel_loader::{
+        LifecycleEntry, LifecycleMachine, LoadedMods, Requirement, Supplied, open_resources,
+    };
 
     use super::{Half, write_game_pack};
 
@@ -360,8 +361,8 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
         open_resources(
-            &mut crate::LoadedMods::new(&mut machine, &mut hosts).expect("complete host set"),
-            &crate::tests::environment(),
+            &mut LoadedMods::new(&mut machine, &mut hosts).expect("complete host set"),
+            &crate::runtime::environment(),
         )
         .expect("every declaration is its own")
     }

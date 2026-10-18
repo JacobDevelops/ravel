@@ -4,9 +4,9 @@ mod routing;
 
 pub use play::{PlayRequests, take_play_requests};
 pub use refusal::DispatchRefused;
-pub use routing::{deliver_command, deliver_packet};
+pub use routing::{accepts_owner, deliver_command, deliver_packet};
 
-use ravel_core::{FailureEnvironment, LifecycleState, ModId};
+use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side};
 use ravel_host_api::{GameEvent, HostError, Mod};
 use ravel_observability::{CallKind, Profiler};
 
@@ -62,7 +62,7 @@ impl LifecycleMachine {
     /// Returns side-compatible recipients, excluding failed optional mods, in resolved order.
     #[must_use]
     pub fn audience(&self, event: GameEvent) -> Vec<ModId> {
-        self.audience_entries(event)
+        self.audience_entries(event, self.side())
             .map(|(entry, _)| entry.mod_id.clone())
             .collect()
     }
@@ -70,9 +70,11 @@ impl LifecycleMachine {
     fn audience_entries(
         &self,
         event: GameEvent,
+        side: Side,
     ) -> impl Iterator<Item = (&crate::LifecycleEntry, LifecycleState)> {
         self.tracked_entries().filter(move |(entry, state)| {
-            event.happens_on(self.side())
+            event.happens_on(side)
+                && entry.sides.loads_on(side)
                 && entry.sides.loads_on(self.side())
                 && (entry.requirement == crate::Requirement::Required
                     || *state != LifecycleState::Failed)
@@ -82,12 +84,14 @@ impl LifecycleMachine {
 
 /// Broadcasts `event` in resolved order after validating the entire audience.
 ///
+/// `side` is the executing side, including integrated-server work in a client process.
 /// Each callback's cost is attributed to `profiler`.
 /// Mod failures stop delivery and are returned in [`Delivery::failure`].
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] if the set is halted or an audience member is not reacting.
+/// Returns [`DispatchRefused`] if the executing side is foreign to the runtime,
+/// the set is halted, or an audience member is not reacting.
 ///
 /// # Panics
 ///
@@ -95,13 +99,21 @@ impl LifecycleMachine {
 pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
+    side: Side,
     profiler: &mut Profiler,
     environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
+    let running = machine.side();
+    if side != running && !(running == Side::Client && side == Side::IntegratedServer) {
+        return Err(DispatchRefused::EventForeignSide {
+            claimed: side,
+            running,
+        });
+    }
     let audience: Vec<_> = machine
-        .audience_entries(event)
+        .audience_entries(event, side)
         .map(|(entry, state)| (entry.mod_id.clone(), state))
         .collect();
     for (mod_id, state) in &audience {

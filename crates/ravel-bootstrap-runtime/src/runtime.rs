@@ -21,7 +21,8 @@ use ravel_loader::LifecycleMachine;
 use semver::Version;
 
 mod dispatch;
-mod installation;
+pub(crate) mod installation;
+pub(crate) use dispatch::Undelivered;
 
 pub use installation::{
     InstallError, install, install_integrated, integrated_installed, is_installed,
@@ -29,7 +30,7 @@ pub use installation::{
 };
 pub(crate) use installation::{installed, integrated_runtime, selected, with_selected};
 
-/// The loader, and the mods it drives, for as long as the process runs.
+/// The loader and mods for one launch: the process slot or one integrated-server thread.
 pub(crate) struct LoaderRuntime {
     pub(crate) inner: Mutex<Inner>,
     pub(crate) launch: LaunchContext,
@@ -281,18 +282,11 @@ impl LoaderRuntime {
             .collect()
     }
 
-    /// Applies the same lifecycle owner admission as packet delivery.
+    /// Checks lifecycle owner admission, not packet direction or payload validity.
     pub(crate) fn accepts_packet_owner(&self, owner: &ravel_core::ModId) -> bool {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let machine = inner.loaded.machine();
-        let accepted = ravel_loader::ensure_active(machine).is_ok()
-            && machine.loads(owner)
-            && machine.state(owner).is_ok_and(|state| {
-                matches!(
-                    state,
-                    ravel_core::LifecycleState::Running | ravel_core::LifecycleState::Stopping
-                )
-            });
+        let accepted = ravel_loader::accepts_owner(machine, owner, machine.side()).is_ok();
         drop(inner);
         accepted
     }

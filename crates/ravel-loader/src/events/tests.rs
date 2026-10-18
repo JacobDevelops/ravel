@@ -10,9 +10,11 @@ fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     event: GameEvent,
 ) -> Result<Delivery, DispatchRefused> {
+    let side = loaded.machine().side();
     super::broadcast(
         loaded,
         event,
+        side,
         &mut ravel_observability::Profiler::off(),
         &crate::tests::environment(),
     )
@@ -1633,4 +1635,32 @@ fn optional_outward_failure_after_world_mutation_halts_without_exposing_requests
             by: id("failed_mod")
         })
     );
+}
+
+#[test]
+fn broadcast_admits_only_the_runtime_side_or_its_integrated_server()
+-> Result<(), Box<dyn std::error::Error>> {
+    for running in Side::ALL {
+        for claimed in Side::ALL {
+            let mut machine = LifecycleMachine::new(running, Vec::new())?;
+            let mut mods: Vec<Box<dyn Mod>> = Vec::new();
+            let result = super::broadcast(
+                &mut LoadedMods::new(&mut machine, &mut mods)?,
+                GameEvent::ResourcesReloaded,
+                claimed,
+                &mut ravel_observability::Profiler::off(),
+                &crate::tests::environment(),
+            );
+            if claimed == running || (running == Side::Client && claimed == Side::IntegratedServer)
+            {
+                assert!(result.is_ok(), "{running:?} must admit {claimed:?}");
+            } else {
+                assert_eq!(
+                    result,
+                    Err(DispatchRefused::EventForeignSide { claimed, running })
+                );
+            }
+        }
+    }
+    Ok(())
 }

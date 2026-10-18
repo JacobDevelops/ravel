@@ -254,7 +254,10 @@ mod tests {
 
         assert_eq!(
             settings(&game),
-            format!("{SURROUNDING}resourcePacks:[\"file/ravel\"]\nrenderDistance:12\n")
+            format!(
+                "{SURROUNDING}resourcePacks:[\"{}\"]\nrenderDistance:12\n",
+                pack_id()
+            )
         );
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
@@ -271,7 +274,10 @@ mod tests {
 
         assert_eq!(
             settings(&game),
-            "resourcePacks:[\"file/mine\",\"vanilla\",\"file/ravel\"]\n"
+            format!(
+                "resourcePacks:[\"file/mine\",\"vanilla\",\"{}\"]\n",
+                pack_id()
+            )
         );
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
@@ -312,7 +318,7 @@ mod tests {
 
         assert_eq!(
             settings(&game),
-            format!("{SURROUNDING}resourcePacks:[\"file/ravel\"]\n")
+            format!("{SURROUNDING}resourcePacks:[\"{}\"]\n", pack_id())
         );
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
@@ -330,7 +336,7 @@ mod tests {
 
         assert_eq!(
             settings(&game),
-            format!("{near}resourcePacks:[\"file/ravel\"]\n")
+            format!("{near}resourcePacks:[\"{}\"]\n", pack_id())
         );
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
@@ -394,8 +400,8 @@ mod tests {
     #[test]
     fn a_pack_the_player_already_enabled_is_recorded_without_a_rewrite() {
         let game = directory("already-there");
-        let written = "resourcePacks:[\"file/ravel\"]\n";
-        write_settings(&game, written);
+        let written = format!("resourcePacks:[\"{}\"]\n", pack_id());
+        write_settings(&game, &written);
 
         assert_eq!(
             seed_pack(&game).expect("a readable instance"),
@@ -455,12 +461,15 @@ mod tests {
         assert!(matches!(outcome, Seeded::Unrecorded(_)), "{outcome:?}");
         assert_eq!(
             settings(&game),
-            "resourcePacks:[\"file/ravel\"]\n",
+            format!("resourcePacks:[\"{}\"]\n", pack_id()),
             "the settings edit happened and stands"
         );
         let again = seed_pack(&game).expect("still not a refusal");
         assert!(matches!(again, Seeded::Unrecorded(_)), "{again:?}");
-        assert_eq!(settings(&game), "resourcePacks:[\"file/ravel\"]\n");
+        assert_eq!(
+            settings(&game),
+            format!("resourcePacks:[\"{}\"]\n", pack_id())
+        );
 
         std::fs::set_permissions(&ravel, std::fs::Permissions::from_mode(0o755))
             .expect("permissions are settable");
@@ -479,7 +488,10 @@ mod tests {
 
         assert_eq!(
             settings(&game),
-            "fov:0.0\r\nresourcePacks:[\"file/ravel\"]\r\nlang:en_us\r\n"
+            format!(
+                "fov:0.0\r\nresourcePacks:[\"{}\"]\r\nlang:en_us\r\n",
+                pack_id()
+            )
         );
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }

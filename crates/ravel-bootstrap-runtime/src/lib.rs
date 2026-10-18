@@ -3,12 +3,11 @@
 //! Safe hook runtime and JVM crossings linked into Ravel's host libraries.
 
 mod content;
-mod dispatch;
 mod guard;
 mod invocations;
 mod legacy;
 mod mods;
-pub mod outward;
+mod outward;
 mod packs;
 mod persistence;
 mod profiling;
@@ -17,10 +16,13 @@ mod settings;
 mod side;
 mod wire;
 
+#[cfg(test)]
+mod native_names;
+
 pub use guard::HookError;
 pub use packs::{
-    GAME_PACK_DIRECTORY, RESOURCE_PACKS, WORLD_DATA_PACKS, pack_id, write_resource_pack,
-    write_world_pack,
+    GAME_PACK_DIRECTORY, GamePackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id,
+    write_resource_pack, write_world_pack,
 };
 pub use persistence::{
     OpenOutcome, SaveOutcome, open_world_data, save_world_data, write_world_datapack,
@@ -44,6 +46,7 @@ pub mod exports {
         ravel_legacy_packet_owner, ravel_legacy_resource, ravel_legacy_resource_paths,
     };
     pub use crate::mods::ravel_mod_surface;
+    pub use crate::outward::ravel_outward_actions;
     pub use crate::persistence::crossings::{
         ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
         ravel_write_staged_datapack, ravel_write_world_datapack,

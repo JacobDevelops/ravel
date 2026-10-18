@@ -11,7 +11,7 @@ use ravel_core::ContentId;
 use ravel_network::PacketId;
 
 use crate::guard::{HookError, text};
-use crate::runtime::LoaderRuntime;
+use crate::runtime::{LoaderRuntime, Undelivered};
 use crate::wire::{VERSION, count, field};
 
 const MAX_PACKET_BYTES: usize = 32_767;
@@ -44,6 +44,24 @@ fn commands(runtime: &LoaderRuntime) -> String {
     output
 }
 
+fn command_answer(result: Result<(), Undelivered>) -> String {
+    match result {
+        Ok(()) => String::new(),
+        Err(Undelivered::Failed(ravel_host_api::HostError::OperationRefused {
+            detail, ..
+        })) => ravel_core::DiagnosticMessage::redacted(&detail)
+            .text()
+            .to_owned(),
+        Err(error) => {
+            eprintln!(
+                "[ravel] legacy command failed: {}",
+                ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
+            );
+            "command failed".to_owned()
+        }
+    }
+}
+
 /// Lists the admitted commands and their explicit vanilla permission policy.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelLegacyCommands")]
 pub fn ravel_legacy_commands<'local>(
@@ -70,8 +88,8 @@ pub fn ravel_legacy_command<'local>(
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
             let typed = text(env, &typed)?;
-            let answer = runtime()?.legacy_command(&typed).err().unwrap_or_default();
-            Ok(env.new_string(ravel_core::DiagnosticMessage::redacted(&answer).text())?)
+            let answer = command_answer(runtime()?.legacy_command(&typed));
+            Ok(env.new_string(answer)?)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -88,7 +106,11 @@ pub fn ravel_legacy_event<'local>(
         let kind = text(env, &kind)?;
         let event = ravel_host_api::GameEvent::published(&kind)
             .ok_or_else(|| refused("unknown legacy semantic event".to_owned()))?;
-        let delivery = runtime().and_then(|runtime| runtime.legacy_event(event).map_err(refused));
+        let delivery = runtime().and_then(|runtime| {
+            runtime
+                .legacy_event(event)
+                .map_err(|error| refused(error.to_string()))
+        });
         if let Err(error) = delivery {
             eprintln!(
                 "[ravel] legacy event refused: {}",
@@ -134,7 +156,7 @@ pub fn ravel_legacy_packet<'local>(
         {
             eprintln!(
                 "[ravel] legacy packet dropped: {}",
-                ravel_core::DiagnosticMessage::redacted(&reason).text()
+                ravel_core::DiagnosticMessage::redacted(&reason.to_string()).text()
             );
         }
         Ok(())
@@ -217,4 +239,127 @@ pub fn ravel_legacy_resource<'local>(
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+    use std::collections::BTreeSet;
+
+    use ravel_core::{LifecycleState, ModId, Side, SideSet};
+    use ravel_data::ContentDeclaration;
+    use ravel_host_api::{HostError, Mod, ModError, Registrar};
+    use ravel_loader::{LifecycleEntry, LifecycleMachine, LoadedMods, Requirement};
+
+    use super::{command_answer, commands, resource_paths};
+    use crate::runtime::{
+        DocumentFixture, LoaderRuntime, Undelivered, advance_through, test_launch,
+    };
+    use crate::wire::fields;
+
+    #[test]
+    fn command_payload_pins_literal_permission_and_usage() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let owner: ModId = "example_mod".parse()?;
+        let entry = LifecycleEntry {
+            mod_id: owner.clone(),
+            sides: SideSet::new([Side::DedicatedServer])?,
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        };
+        let mut fixture = DocumentFixture::new(Side::DedicatedServer, vec![entry]);
+        advance_through(&mut fixture.machine, LifecycleState::Constructed);
+        fixture
+            .machine
+            .registration_window(&owner)?
+            .claim("command:example_mod:warp".parse()?)?;
+        let runtime = LoaderRuntime::new(fixture.machine, fixture.mods, test_launch());
+        assert_eq!(
+            fields(&commands(&runtime)),
+            ["1", "1", "example_mod:warp", "2", "example_mod:warp"]
+        );
+        Ok(())
+    }
+
+    struct Supplying {
+        owner: ModId,
+        declaration: ContentDeclaration,
+    }
+
+    impl Mod for Supplying {
+        fn id(&self) -> &ModId {
+            &self.owner
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+            Ok(())
+        }
+
+        fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
+            Ok(Some(Cow::Borrowed(&self.declaration)))
+        }
+    }
+
+    #[test]
+    fn resource_payload_lists_only_admitted_paths_in_sorted_order()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let owner: ModId = "example_mod".parse()?;
+        let mut declaration = ContentDeclaration::new(owner.clone());
+        let first = "assets/example_mod/lang/en_us.json";
+        let last = "assets/example_mod/models/item/warp.json";
+        for path in [last, first] {
+            declaration.resource(path.to_owned().try_into()?, b"{}".to_vec())?;
+        }
+        let entry = LifecycleEntry {
+            mod_id: owner.clone(),
+            sides: SideSet::new([Side::Client])?,
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        };
+        let mut machine = LifecycleMachine::new(Side::Client, vec![entry])?;
+        let mut mods: Vec<Box<dyn Mod>> = vec![Box::new(Supplying { owner, declaration })];
+        let supplied = ravel_loader::open_resources(
+            &mut LoadedMods::new(&mut machine, &mut mods)?,
+            &crate::environment(),
+        )?;
+        let mut launch = test_launch();
+        launch.supplied = supplied;
+        let runtime = LoaderRuntime::new(machine, mods, launch);
+        assert_eq!(fields(&resource_paths(&runtime)), ["1", "2", first, last]);
+        Ok(())
+    }
+
+    #[test]
+    fn command_answers_publish_only_authored_refusal_details()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let owner = "example_mod".parse::<ModId>()?;
+        let failure = |error| Err(Undelivered::Failed(error));
+        assert_eq!(command_answer(Ok(())), "");
+        assert_eq!(
+            command_answer(failure(HostError::OperationRefused {
+                mod_id: owner.clone(),
+                state: LifecycleState::Running,
+                detail: "choose a destination".to_owned(),
+            })),
+            "choose a destination"
+        );
+        assert_eq!(
+            command_answer(failure(HostError::Panicked {
+                mod_id: owner.clone(),
+                state: LifecycleState::Running,
+            })),
+            "command failed"
+        );
+        assert_eq!(
+            command_answer(Err(Undelivered::Refused(
+                ravel_loader::DispatchRefused::Halted { by: owner }
+            ))),
+            "command failed"
+        );
+        assert_eq!(
+            command_answer(Err(Undelivered::Precondition("internal thread detail"))),
+            "command failed"
+        );
+        Ok(())
+    }
 }

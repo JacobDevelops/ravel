@@ -12,10 +12,10 @@ must come from the integration owner's results for the current tree, not old cou
 - Bootstrap owns `Composition` and its installed-package versions. Runtime construction
   requires `LaunchContext`; installation consumes the composition and profiler and
   returns `InstallError` on refusal.
-- Loader owns saved-data admission and callback attribution, outward-request dispatch,
-  and game-pack replacement paths (`replaced_paths`). Bootstrap consumes these decisions;
-  interception attribution remains in bootstrap because loader interception has no
-  failure environment. `Round::refused_by` supplies save-veto ownership.
+- Loader owns saved-data admission and callback attribution and outward-request dispatch.
+  Bootstrap owns game-pack writing and replacement paths (`replaced_paths`), and consumes
+  loader admission decisions. Interception attribution remains in bootstrap because loader
+  interception has no failure environment. `Round::refused_by` supplies save-veto ownership.
 - Failed owners' saved payloads remain opaque. Installed package metadata does not
   substitute for the mod's actual readable saved-data declarations.
 

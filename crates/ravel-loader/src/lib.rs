@@ -7,7 +7,6 @@ mod config;
 mod discovery;
 mod driver;
 mod events;
-mod game_pack;
 mod interception;
 mod lifecycle;
 mod loaded;
@@ -23,10 +22,9 @@ pub use config::{ConfigRefused, Configured, open_configuration};
 pub use discovery::{Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, discover};
 pub use driver::{DriveError, drive_loaded, stop_all};
 pub use events::{
-    Delivery, DispatchRefused, PlayRequests, broadcast, deliver_command, deliver_packet,
-    ensure_active, take_play_requests,
+    Delivery, DispatchRefused, PlayRequests, accepts_owner, broadcast, deliver_command,
+    deliver_packet, ensure_active, take_play_requests,
 };
-pub use game_pack::{GamePackError, Half, Written, replaced_paths, write_game_pack};
 pub use interception::{InterceptRefused, intercept, open_interceptions};
 pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,

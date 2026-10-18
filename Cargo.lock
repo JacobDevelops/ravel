@@ -351,7 +351,6 @@ dependencies = [
  "ravel-bootstrap-runtime",
  "ravel-config",
  "ravel-core",
- "ravel-host-api",
  "ravel-host-runtime",
  "ravel-loader",
  "ravel-package",

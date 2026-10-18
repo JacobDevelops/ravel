@@ -1,13 +1,19 @@
 //! Holds launch-supplied packs for world and create-world staging hooks.
 //!
 //! Repository creation selects packs; create-world initialization must also reload
-//! staged data. Legacy admission explicitly invokes the pack crossing before opening
-//! persistence; persistence admission itself never writes a pack.
+//! staged data. Persistence admission itself never writes a pack; legacy worlds
+//! consume resources and recipes through their adapter instead of data packs.
 //! Repeated writes are safe because `write_game_pack` leaves identical trees untouched.
 
 use std::path::{Path, PathBuf};
 
-use ravel_loader::{Half, Supplied, Written, write_game_pack};
+use ravel_loader::Supplied;
+
+mod writer;
+
+pub(crate) use writer::replaced_paths;
+pub use writer::{GamePackError, Written};
+use writer::{Half, write_game_pack};
 
 /// Where a client scans for packs a player can enable.
 pub const RESOURCE_PACKS: &str = "resourcepacks";
@@ -25,12 +31,14 @@ pub fn pack_id() -> &'static str {
     concat!("file/", "ravel")
 }
 
-/// The installed world-pack root and create-world staging root.
-pub(crate) fn world_pack_roots(world: &Path) -> [PathBuf; 2] {
-    [
-        world.join(WORLD_DATA_PACKS).join(GAME_PACK_DIRECTORY),
-        world.join(GAME_PACK_DIRECTORY),
-    ]
+/// The installed world-pack root.
+pub(crate) fn installed_pack_root(world: &Path) -> PathBuf {
+    world.join(WORLD_DATA_PACKS).join(GAME_PACK_DIRECTORY)
+}
+
+// Staging copies the holder's contents, so the pack belongs directly inside it.
+pub(crate) fn staged_pack_root(holder: &Path) -> PathBuf {
+    holder.join(GAME_PACK_DIRECTORY)
 }
 
 /// Writes the launch's supplied assets into the instance resource-pack directory.
@@ -41,7 +49,7 @@ pub(crate) fn world_pack_roots(world: &Path) -> [PathBuf; 2] {
 pub fn write_resource_pack(
     game_directory: &Path,
     supplied: &Supplied,
-) -> Result<Written, ravel_loader::GamePackError> {
+) -> Result<Written, GamePackError> {
     write_game_pack(
         &game_directory
             .join(RESOURCE_PACKS)
@@ -57,11 +65,8 @@ pub fn write_resource_pack(
 /// # Errors
 ///
 /// Returns an error if the pack cannot be written.
-pub fn write_world_pack(
-    world: &Path,
-    supplied: &Supplied,
-) -> Result<Written, ravel_loader::GamePackError> {
-    write_data_pack(&world_pack_roots(world)[0], supplied)
+pub fn write_world_pack(world: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
+    write_data_pack(&installed_pack_root(world), supplied)
 }
 
 /// Writes the launch's supplied data into a staging holder.
@@ -72,15 +77,11 @@ pub fn write_world_pack(
 pub(crate) fn write_staged_pack(
     holder: &Path,
     supplied: &Supplied,
-) -> Result<Written, ravel_loader::GamePackError> {
-    write_data_pack(&world_pack_roots(holder)[1], supplied)
+) -> Result<Written, GamePackError> {
+    write_data_pack(&staged_pack_root(holder), supplied)
 }
 
-// Staging copies the holder's contents, so the pack belongs directly inside it.
-fn write_data_pack(
-    root: &Path,
-    supplied: &Supplied,
-) -> Result<Written, ravel_loader::GamePackError> {
+fn write_data_pack(root: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
     write_game_pack(
         root,
         supplied,
@@ -130,19 +131,18 @@ mod tests {
     #[test]
     fn world_and_staged_writers_use_the_shared_roots() {
         let world = directory("shared-roots");
-        let roots = super::world_pack_roots(&world);
         let supplied = Supplied::default();
         assert_eq!(
             write_world_pack(&world, &supplied)
                 .expect("world pack")
                 .root(),
-            roots[0]
+            super::installed_pack_root(&world)
         );
         assert_eq!(
             write_staged_pack(&world, &supplied)
                 .expect("staged pack")
                 .root(),
-            roots[1]
+            super::staged_pack_root(&world)
         );
         std::fs::remove_dir_all(world).expect("remove world");
     }

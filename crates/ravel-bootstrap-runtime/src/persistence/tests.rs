@@ -103,8 +103,11 @@ fn every_pack_root_and_pending_tree_rejects_symlink_redirection() {
     for directory in [&game, &world, &outside] {
         std::fs::create_dir_all(directory).expect("scratch directory");
     }
-    for pack in crate::packs::world_pack_roots(&world) {
-        for target in ravel_loader::replaced_paths(&pack) {
+    for pack in [
+        crate::packs::installed_pack_root(&world),
+        crate::packs::staged_pack_root(&world),
+    ] {
+        for target in crate::packs::replaced_paths(&pack) {
             std::fs::create_dir_all(target.parent().expect("pack parent")).expect("pack holder");
             std::os::unix::fs::symlink(&outside, &target).expect("redirected target");
             let refusal = super::admissible_world(&world, &game).expect_err("redirected pack");
@@ -1937,6 +1940,18 @@ fn assert_malformed_world_refuses_at_the_public_crossing(world: &std::path::Path
 }
 
 fn assert_installed_process_context(game: &std::path::Path) {
+    assert!(
+        crate::runtime::installation::with_thread_selected(|_| ()).is_some(),
+        "the client owner retains access to its runtime"
+    );
+    assert!(
+        std::thread::spawn(|| {
+            crate::runtime::installation::with_thread_selected(|_| ()).is_none()
+        })
+        .join()
+        .expect("foreign thread completed"),
+        "legacy thread selection refuses a foreign thread access to the client runtime"
+    );
     let (directory, profiler) = crate::runtime::process_launch_context()
         .expect("installed process supplies launch context");
     assert_eq!(directory, game);

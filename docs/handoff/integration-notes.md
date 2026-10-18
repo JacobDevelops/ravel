@@ -93,6 +93,6 @@ is done.
     rights-evidence.json under `hostDeclaration`. Teach verify-rights to accept a cited grant whose source is in the
     evidence file, rather than requiring the jar's own declaration.
   - Add rows to registry/checks/licence-families.tsv for the new declared strings (GPL-3.0, LGPL-2.1, Unlicense,
-    CC-BY-4.0 and the rest in docs/handoff/sevtech-rights-report.md).
+    CC-BY-4.0 and the rest in registry/notes/sevtech/sevtech-rights-report.md).
   - The Prism-tree and surfaces.json prerequisites still block `verify-rights --fixture` and
     `verify-provenance --offline`.

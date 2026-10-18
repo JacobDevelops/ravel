@@ -1,7 +1,7 @@
 # Ravel handoff: deslop, numen score, SevTech on 1.12.2
 
-Repo: ravel (jj; public). Read AGENTS.md and docs/jj-stacked-changes.md before touching anything. Supporting reports
-live beside this file in docs/handoff/.
+Repo: ravel (jj; public). Read AGENTS.md and docs/jj-stacked-changes.md before touching anything. General reports
+live beside this file; upstream-specific SevTech research lives under registry/notes/sevtech/.
 
 ## What Jacob asked for
 
@@ -125,10 +125,10 @@ Strict went **24.3 → 82.0**. Target is 85; Jacob wants much higher.
    - ProGuard record grammar → `proguard` 5.10 (validation stays ours).
    - Use Fabric `mapping-io` at build time for Feather Tiny.
    - Keep `jni` 0.22.4 and `java.lang.classfile`; they're already right.
-6. **SevTech work packages** (sevtech-plan.md section 3), in this order:
+6. **SevTech work packages** (registry/notes/sevtech/sevtech-plan.md section 3), in this order:
    - WP7 schema cutover: Forge loader regex at schemas/fixture.schema.json:115, the runtime schema, Prism assumptions in
      registry/checks/artifact-set.sh:35-76, the `loader: ""` meaning, verify-rights accepting cited grants, and
-     licence-families.tsv rows (sevtech-wp0-report.md and sevtech-rights-report.md list the exact fields).
+     licence-families.tsv rows (registry/notes/sevtech/sevtech-wp0-report.md and sevtech-rights-report.md list the fields).
    - WP1 mappings generalisation (Feather/Tiny, optional DFU).
    - WP2 minecraft/versions/1.12.2 data.
    - WP3 JDK 27 boot with LWJGL3.
@@ -158,5 +158,5 @@ Strict went **24.3 → 82.0**. Target is 85; Jacob wants much higher.
 ## Reports in this directory
 
 integration-notes.md (cross-lane checklist), integration-report.md (final dispositions + gate numbers), lane-*-report.md
-(per-lane issue tables), sevtech-plan.md (1.12.2 design, WP0-WP9), sevtech-wp0-report.md, sevtech-rights-report.md,
-jvm-crate-audit.md, followups.md.
+(per-lane issue tables), jvm-crate-audit.md, followups.md. Upstream-specific reports live under registry/notes/sevtech/:
+sevtech-plan.md (1.12.2 design, WP0-WP9), sevtech-wp0-report.md and sevtech-rights-report.md.

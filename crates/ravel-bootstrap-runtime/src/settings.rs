@@ -295,8 +295,20 @@ fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> Str
 
 // Persistence failure leaves edits active in memory but absent from the next launch.
 fn persist(directory: &Path, document: &ValueDocument) -> Result<(), String> {
-    crate::game_directory::admit(directory)?;
+    admit_client_directory(directory)?;
     file::write(directory, document).map_err(|error| error.to_string())
+}
+
+const CLIENT_MARKER: &str = "options.txt";
+
+fn admit_client_directory(directory: &Path) -> Result<(), String> {
+    if directory.join(CLIENT_MARKER).is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "`{}` holds no `{CLIENT_MARKER}` and so cannot be confirmed as the client game directory",
+        directory.display()
+    ))
 }
 
 fn refusal(key: &str, reason: &str) -> String {

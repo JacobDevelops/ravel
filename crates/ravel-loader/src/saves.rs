@@ -15,7 +15,7 @@ use crate::loaded::LoadedMods;
 
 /// Snapshots lifecycle members in load order after checking save and world access.
 ///
-/// Failed hosts retain their prior envelopes without callbacks. Healthy hosts may return no
+/// Failed mods retain their prior envelopes without callbacks. Healthy mods may return no
 /// envelope. Any snapshot failure refuses the snapshot and records its owner's failure.
 ///
 /// # Errors

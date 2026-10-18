@@ -128,8 +128,8 @@ public final class GenericMain {
                     && transformer.transformedClasses() == 1, "unpublished rewrite " + hook);
             require(transformer.transformationFailures().isEmpty(), "failed " + hook);
         }
-        HookTarget good = new HookTarget("fixture/Partial", "run", "()V", true, "probe", "()V", false);
-        HookTarget bad = new HookTarget("fixture/Partial", "run", "()V", true, "probe", "not-a-descriptor", false);
+        HookTarget good = new HookTarget("fixture/Partial", "run", "()V", true, "probe", "()V");
+        HookTarget bad = new HookTarget("fixture/Partial", "run", "()V", true, "probe", "not-a-descriptor");
         Transformer partial = new Transformer(new HookTarget[] {good, bad}, true);
         byte[] original = target(good);
         byte[] snapshot = original.clone();

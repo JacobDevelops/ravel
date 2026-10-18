@@ -21,7 +21,7 @@ public final class ExecutableMain {
         ClassDesc returnType = ConstantDescs.CD_void;
         String nativeDescriptor = MethodTypeDesc.ofDescriptor(descriptor)
                 .changeReturnType(returnType).descriptorString();
-        return new HookTarget(OWNER, member, descriptor, isStatic, hook, nativeDescriptor, false);
+        return new HookTarget(OWNER, member, descriptor, isStatic, hook, nativeDescriptor);
     }
 
     private static void check(boolean condition, String message) {

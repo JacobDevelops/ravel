@@ -2,25 +2,27 @@
 
 //! Shared package admission, configuration, lifecycle, and pack setup for hosts.
 //! Hosts supply their members and export their own JNI entry point.
+//! Launch callers use [`Composition`] and [`environment`] through this facade;
+//! bootstrap-runtime retains ownership of the installed runtime.
 
 mod options;
 
 pub use options::{OptionsError, Seeded, seed_pack};
+pub use ravel_bootstrap_runtime::{Composition, environment};
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    Composition, InstallError, SideError, environment, install, pre_world_report,
-    side as running_side, write_resource_pack,
+    InstallError, SideError, install, pre_world_report, write_resource_pack,
 };
 use ravel_config::file;
 use ravel_core::{ModId, Side};
 use ravel_host_api::Mod;
 use ravel_loader::{
     ConfigRefused, DiscoveryRefused, DriveError, GamePackError, LifecycleEntry, LifecycleError,
-    LifecycleMachine, LoadedMods, ResourceRefused, admitted, discover, drive_loaded,
+    LifecycleMachine, Loaded, LoadedMods, ResourceRefused, admitted, discover, drive_loaded,
     open_configuration, open_resources,
 };
 use ravel_observability::Profiler;
@@ -28,27 +30,19 @@ use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
 use semver::Version;
 
-/// Whether declared adapter capabilities select the legacy game surface.
-pub use ravel_bootstrap_runtime::LEGACY_ADAPTER;
-
-/// Decodes the running side before side-dependent members are constructed.
-///
-/// # Errors
-///
-/// Returns [`LaunchError::Side`] for an unknown side code.
-pub fn side(code: i32) -> Result<Side, LaunchError> {
-    running_side(code).map_err(LaunchError::Side)
-}
-
 /// One member of a composed set: the package it ships as, and its value.
 pub struct Member {
     /// The `package.json` this member ships, as written.
     pub package: String,
     /// The compiled Rust value for this package.
-    pub host: Box<dyn Mod>,
+    pub value: Box<dyn Mod>,
 }
 
-type Admitted = Vec<(LifecycleEntry, Box<dyn Mod>)>;
+struct Admitted {
+    entries: Vec<LifecycleEntry>,
+    mods: Vec<Box<dyn Mod>>,
+    packages: BTreeMap<ModId, Version>,
+}
 
 /// Admits and configures a composed set, opening services before any mod starts.
 ///
@@ -64,11 +58,11 @@ pub fn compose(
 
     let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
 
-    let (admitted, installed_packages) = admit(side, members)?;
-    let (entries, mut mods): (Vec<_>, Vec<_>) = admitted.into_iter().unzip();
-    let mut machine = LifecycleMachine::new(side, entries).map_err(LaunchError::Lifecycle)?;
-    let mut loaded = LoadedMods::new(&mut machine, &mut mods)
+    let admitted = admit(side, members)?;
+    let machine = LifecycleMachine::new(side, admitted.entries).map_err(LaunchError::Lifecycle)?;
+    let mut owned = Loaded::new(machine, admitted.mods)
         .map_err(|error| LaunchError::Composition(error.mod_id().clone()))?;
+    let mut loaded = owned.borrow();
     let configurations = open_configuration(
         &mut loaded,
         &packs,
@@ -84,12 +78,11 @@ pub fn compose(
     let (interceptions, resources) = open_declarations(&mut loaded)?;
 
     Ok(Composition {
-        machine,
-        mods,
+        loaded: owned,
         configurations,
         resources,
         interceptions,
-        installed_packages,
+        installed_packages: admitted.packages,
     })
 }
 
@@ -110,22 +103,19 @@ fn account_for_installed(game_directory: &Path, members: &[Member]) -> Result<()
         .packages()
     {
         let id = &installed.manifest().id;
-        if !members.iter().any(|member| member.host.id() == id) {
+        if !members.iter().any(|member| member.value.id() == id) {
             return Err(LaunchError::NotComposed(id.clone()));
         }
     }
     Ok(())
 }
 
-fn admit(
-    side: Side,
-    members: Vec<Member>,
-) -> Result<(Admitted, BTreeMap<ModId, Version>), LaunchError> {
+fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     let mut manifests = Vec::with_capacity(members.len());
     let mut values = Vec::with_capacity(members.len());
     for member in members {
         manifests.push(PackageManifest::parse(&member.package).map_err(LaunchError::Manifest)?);
-        values.push(member.host);
+        values.push(member.value);
     }
 
     let plan = resolve(&manifests, side).map_err(LaunchError::Resolution)?;
@@ -133,22 +123,21 @@ fn admit(
     let entries = admitted(&plan, &manifests, &running.ravel, &running.minecraft)
         .map_err(LaunchError::Compatibility)?;
 
-    let mut composed = Vec::with_capacity(entries.len());
-    for entry in entries {
-        let at = values
-            .iter()
-            .position(|host| host.id() == &entry.mod_id)
-            .ok_or_else(|| LaunchError::Composition(entry.mod_id.clone()))?;
-        composed.push((entry, values.remove(at)));
-    }
-    if let Some(unclaimed) = values.first() {
+    if let Some(unclaimed) = values
+        .iter()
+        .find(|value| !entries.iter().any(|entry| &entry.mod_id == value.id()))
+    {
         return Err(LaunchError::Composition(unclaimed.id().clone()));
     }
     let installed_packages = manifests
         .into_iter()
         .map(|manifest| (manifest.id, manifest.version))
         .collect();
-    Ok((composed, installed_packages))
+    Ok(Admitted {
+        entries,
+        mods: values,
+        packages: installed_packages,
+    })
 }
 
 /// Enters the shared launch path and translates failures into redacted JVM exceptions.
@@ -158,11 +147,13 @@ pub fn enter(
     profiling_requested: jni::sys::jboolean,
     members: impl FnOnce(Side) -> Vec<Member>,
 ) {
+    ravel_bootstrap_runtime::install_panic_hook();
     env.with_env(|env| -> Result<(), LaunchError> {
         let result = std::env::current_dir()
             .map_err(LaunchError::CurrentDirectory)
             .and_then(|directory| {
-                let side = side(side_code)?;
+                let side = ravel_bootstrap_runtime::side_from_agent_code(side_code)
+                    .map_err(LaunchError::Side)?;
                 initialize(
                     &directory,
                     side,
@@ -180,17 +171,18 @@ pub fn enter(
 
 /// Enters an independent integrated-server composition on its owning game thread.
 pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
+    ravel_bootstrap_runtime::install_panic_hook();
     env.with_env(|env| -> Result<(), LaunchError> {
         if !ravel_bootstrap_runtime::integrated_installed() {
-            let result = std::env::current_dir()
-                .map_err(LaunchError::CurrentDirectory)
-                .and_then(|directory| {
+            let result = ravel_bootstrap_runtime::process_launch_context()
+                .map_err(LaunchError::Install)
+                .and_then(|(directory, profiler)| {
                     let composition = compose(
                         &directory,
                         Side::IntegratedServer,
                         members(Side::IntegratedServer),
                     )?;
-                    ravel_bootstrap_runtime::install_integrated(composition, directory)
+                    ravel_bootstrap_runtime::install_integrated(composition, directory, profiler)
                         .map_err(LaunchError::Install)
                 });
             if let Err(error) = result {
@@ -206,14 +198,13 @@ pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side)
 ///
 /// # Errors
 ///
-/// Returns an error if the directory, side, composition, pack setup, or installation fails.
+/// Returns an error if composition, pack setup, or runtime installation fails.
 pub fn initialize(
     game_directory: &Path,
     side: Side,
     members: impl FnOnce() -> Vec<Member>,
     profiling_requested: bool,
 ) -> Result<(), LaunchError> {
-    ravel_bootstrap_runtime::install_panic_hook();
     if ravel_bootstrap_runtime::is_installed() {
         return Err(LaunchError::Install(InstallError::AlreadyInstalled));
     }
@@ -447,9 +438,11 @@ mod tests {
         );
         ravel_bootstrap_runtime::install(
             super::Composition {
-                machine: ravel_loader::LifecycleMachine::new(Side::Client, vec![])
-                    .expect("empty plan"),
-                mods: vec![],
+                loaded: ravel_loader::Loaded::new(
+                    ravel_loader::LifecycleMachine::new(Side::Client, vec![]).expect("empty plan"),
+                    vec![],
+                )
+                .expect("complete empty set"),
                 configurations: vec![],
                 resources: ravel_loader::Supplied::default(),
                 interceptions: ravel_host_api::Points::default()
@@ -483,6 +476,46 @@ mod tests {
             !game.exists(),
             "rejected initialization has no filesystem effects"
         );
+    }
+
+    #[test]
+    fn initialize_preserves_the_callers_process_panic_hook() {
+        const CHILD: &str = "RAVEL_INITIALIZE_PANIC_HOOK_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "tests::initialize_preserves_the_callers_process_panic_hook",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .expect("isolated panic-hook test");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            return;
+        }
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = Arc::clone(&calls);
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |_| {
+            observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+        let result = std::panic::catch_unwind(|| {
+            super::initialize(
+                &std::env::temp_dir(),
+                Side::Client,
+                || panic!("member factory"),
+                false,
+            )
+        });
+        std::panic::set_hook(previous);
+        assert!(result.is_err());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -550,15 +583,19 @@ mod tests {
         let world = game.join("world");
         std::fs::create_dir_all(&world).expect("world directory");
         let (package, id, _) = member("optional_interceptor", &["client"]);
-        let (admitted, _) = admit(
+        let admitted = admit(
             Side::Client,
             vec![Member {
                 package,
-                host: Box::new(RefusingInterceptor { id: id.clone() }),
+                value: Box::new(RefusingInterceptor { id: id.clone() }),
             }],
         )
         .expect("package admission");
-        let (mut entries, mut mods): (Vec<_>, Vec<_>) = admitted.into_iter().unzip();
+        let super::Admitted {
+            mut entries,
+            mut mods,
+            ..
+        } = admitted;
         entries[0].requirement = ravel_loader::Requirement::Optional;
         let mut machine = ravel_loader::LifecycleMachine::new(Side::Client, entries).expect("plan");
         let mut loaded =
@@ -572,18 +609,18 @@ mod tests {
         );
         assert_eq!(machine.state(&id), Ok(LifecycleState::Failed));
         ravel_bootstrap_runtime::write_resource_pack(&game, &resources).expect("resource pack");
-        ravel_bootstrap_runtime::write_world_pack(&resources, &world).expect("world pack");
+        ravel_bootstrap_runtime::write_world_pack(&world, &resources).expect("world pack");
         assert!(
             !game
-                .join(ravel_loader::RESOURCE_PACKS)
-                .join(ravel_loader::GAME_PACK_DIRECTORY)
+                .join(ravel_bootstrap_runtime::RESOURCE_PACKS)
+                .join(ravel_bootstrap_runtime::GAME_PACK_DIRECTORY)
                 .join("assets/optional_interceptor/textures/failed.png")
                 .exists()
         );
         assert!(
             !world
-                .join(ravel_loader::WORLD_DATA_PACKS)
-                .join(ravel_loader::GAME_PACK_DIRECTORY)
+                .join(ravel_bootstrap_runtime::WORLD_DATA_PACKS)
+                .join(ravel_bootstrap_runtime::GAME_PACK_DIRECTORY)
                 .join("data/optional_interceptor/recipes/failed.json")
                 .exists()
         );
@@ -691,7 +728,7 @@ mod tests {
             Side::Client,
             vec![Member {
                 package,
-                host: Box::new(CountingConfiguration {
+                value: Box::new(CountingConfiguration {
                     id,
                     calls: Arc::clone(&calls),
                 }),
@@ -714,7 +751,7 @@ mod tests {
             Side::Client,
             vec![Member {
                 package,
-                host: Box::new(ServiceConsumer {
+                value: Box::new(ServiceConsumer {
                     id,
                     states: Arc::clone(&states),
                 }),
@@ -767,7 +804,7 @@ mod tests {
             Side::DedicatedServer,
             vec![Member {
                 package,
-                host: Box::new(RejectingConfiguration { id }),
+                value: Box::new(RejectingConfiguration { id }),
             }],
         );
         std::fs::remove_dir_all(game).expect("remove launch directory");
@@ -932,18 +969,16 @@ mod tests {
                 .iter()
                 .map(|(document, mod_id, log)| Member {
                     package: document.clone(),
-                    host: Box::new(Recording {
+                    value: Box::new(Recording {
                         id: mod_id.clone(),
                         states: Arc::clone(log),
                     }),
                 })
                 .collect();
 
-            let (entries, mut mods): (Vec<_>, Vec<_>) = admit(side, members)
-                .expect("a compatible set")
-                .0
-                .into_iter()
-                .unzip();
+            let super::Admitted {
+                entries, mut mods, ..
+            } = admit(side, members).expect("a compatible set");
             let mut machine =
                 ravel_loader::LifecycleMachine::new(side, entries).expect("compatible lifecycle");
             ravel_loader::drive_loaded(

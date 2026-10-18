@@ -53,6 +53,7 @@ final class LegacyPersistence {
             throw new IllegalStateException(verdict == null
                     ? "Ravel persistence did not answer" : verdict);
         }
+        Hook.ravelWriteWorldDatapack(identity);
         admittedServer = server;
         admittedIdentity = identity;
         admittedBytes = bytes;

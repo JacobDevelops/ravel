@@ -584,6 +584,12 @@ impl LifecycleMachine {
         })
     }
 
+    /// Reports whether a failed owner has halted further set-wide delivery.
+    #[must_use]
+    pub const fn is_halted(&self) -> bool {
+        self.halted.is_some()
+    }
+
     pub(crate) const fn halted_by(&self) -> Option<&ModId> {
         self.halted.as_ref()
     }

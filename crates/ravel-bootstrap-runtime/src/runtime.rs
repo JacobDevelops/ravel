@@ -9,15 +9,17 @@ use std::sync::{Mutex, PoisonError};
 use ravel_config::LayeredConfiguration;
 
 use ravel_core::{DiagnosticMessage, FailureEnvironment};
+#[cfg(test)]
 use ravel_host_api::Mod;
-use ravel_loader::{LifecycleMachine, ModSurface, Supplied};
+use ravel_loader::{Loaded, ModSurface, Supplied};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::outward;
 #[cfg(test)]
-use ravel_core::{FailureAttribution, RegistryKey};
+use ravel_core::FailureAttribution;
+use ravel_core::RegistryKey;
 #[cfg(test)]
-use ravel_loader::LoadedMods;
+use ravel_loader::LifecycleMachine;
 use semver::Version;
 
 mod dispatch;
@@ -25,6 +27,7 @@ mod installation;
 
 pub use installation::{
     InstallError, install, install_integrated, integrated_installed, is_installed,
+    process_launch_context,
 };
 pub(crate) use installation::{installed, integrated_runtime, selected, with_selected};
 
@@ -36,8 +39,7 @@ pub(crate) struct LoaderRuntime {
 
 /// Admitted and driven inputs owned by one launch.
 pub struct Composition {
-    pub machine: LifecycleMachine,
-    pub mods: Vec<Box<dyn Mod>>,
+    pub loaded: Loaded,
     pub configurations: Vec<LayeredConfiguration>,
     pub resources: Supplied,
     pub interceptions: ravel_host_api::AdmittedPoints,
@@ -154,11 +156,9 @@ pub fn install_panic_hook() {
 }
 
 pub(crate) struct Inner {
-    pub(crate) machine: LifecycleMachine,
-    pub(crate) mods: Vec<Box<dyn Mod>>,
+    pub(crate) loaded: Loaded,
     pub(crate) interceptions: ravel_host_api::AdmittedPoints,
     profiler: Profiler,
-    pairing_refused: bool,
     command_thread: Option<std::thread::ThreadId>,
     pub(crate) installed_packages: BTreeMap<ravel_core::ModId, Version>,
     pub(crate) persistence: crate::persistence::PersistenceState,
@@ -177,17 +177,20 @@ impl LoaderRuntime {
         report: PreWorldReport,
     ) -> Self {
         let Composition {
-            machine,
-            mods,
+            loaded,
             configurations,
             resources,
             installed_packages,
             interceptions,
         } = composition;
-        let launch = LaunchContext::new(machine.side(), game_directory, resources, configurations);
+        let launch = LaunchContext::new(
+            loaded.machine().side(),
+            game_directory,
+            resources,
+            configurations,
+        );
         Self::from_parts(
-            machine,
-            mods,
+            loaded,
             profiler,
             report,
             launch,
@@ -214,28 +217,25 @@ impl LoaderRuntime {
 
     #[cfg(test)]
     pub(crate) fn with_observers(
-        mut machine: LifecycleMachine,
-        mut mods: Vec<Box<dyn Mod>>,
+        machine: LifecycleMachine,
+        mods: Vec<Box<dyn Mod>>,
         profiler: Profiler,
         report: PreWorldReport,
         launch: LaunchContext,
         installed_packages: BTreeMap<ravel_core::ModId, Version>,
     ) -> Self {
-        let interceptions = if machine.save_access().is_err() {
+        let mut loaded = Loaded::new(machine, mods).expect("complete test composition");
+        let interceptions = if loaded.machine().save_access().is_err() {
             // Halted fixtures cannot execute a declaration or a later interception.
             ravel_host_api::Points::default()
                 .admit()
                 .expect("empty interceptions")
         } else {
-            ravel_loader::open_interceptions(
-                &mut LoadedMods::new(&mut machine, &mut mods).expect("complete test composition"),
-                report.environment(),
-            )
-            .expect("test interception declarations admit")
+            ravel_loader::open_interceptions(&mut loaded.borrow(), report.environment())
+                .expect("test interception declarations admit")
         };
         Self::from_parts(
-            machine,
-            mods,
+            loaded,
             profiler,
             report,
             launch,
@@ -247,8 +247,7 @@ impl LoaderRuntime {
     /// Owns a driven mod set with the supplied profiler and pre-world report.
     #[must_use]
     fn from_parts(
-        machine: LifecycleMachine,
-        mods: Vec<Box<dyn Mod>>,
+        loaded: Loaded,
         profiler: Profiler,
         report: PreWorldReport,
         launch: LaunchContext,
@@ -259,10 +258,8 @@ impl LoaderRuntime {
             inner: Mutex::new(Inner {
                 installed_packages,
                 interceptions,
-                machine,
-                mods,
+                loaded,
                 profiler,
-                pairing_refused: false,
                 command_thread: None,
                 persistence: crate::persistence::PersistenceState::default(),
                 report,
@@ -270,6 +267,34 @@ impl LoaderRuntime {
             }),
             launch,
         }
+    }
+
+    /// Lists the command keys admitted by this runtime's lifecycle.
+    pub(crate) fn command_keys(&self) -> Vec<RegistryKey> {
+        let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        inner
+            .loaded
+            .machine()
+            .claimed_keys()
+            .filter(|key| key.kind() == ravel_core::ContentKind::Command)
+            .cloned()
+            .collect()
+    }
+
+    /// Applies the same lifecycle owner admission as packet delivery.
+    pub(crate) fn accepts_packet_owner(&self, owner: &ravel_core::ModId) -> bool {
+        let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let machine = inner.loaded.machine();
+        let accepted = ravel_loader::ensure_active(machine).is_ok()
+            && machine.loads(owner)
+            && machine.state(owner).is_ok_and(|state| {
+                matches!(
+                    state,
+                    ravel_core::LifecycleState::Running | ravel_core::LifecycleState::Stopping
+                )
+            });
+        drop(inner);
+        accepted
     }
 
     /// Drains only the actions produced by this runtime.
@@ -283,9 +308,15 @@ impl LoaderRuntime {
     pub(crate) fn profiling_report(&self) -> ProfilingReport {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let claims = inner
-            .machine
+            .loaded
+            .machine()
             .order()
-            .map(|mod_id| (mod_id.clone(), inner.machine.registry_claim_count(mod_id)))
+            .map(|mod_id| {
+                (
+                    mod_id.clone(),
+                    inner.loaded.machine().registry_claim_count(mod_id),
+                )
+            })
             .collect::<Vec<_>>();
         for (mod_id, count) in claims {
             inner
@@ -300,7 +331,7 @@ impl LoaderRuntime {
     pub(crate) fn mod_view(&self) -> (ModSurface, Vec<DiagnosticMessage>) {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         (
-            ModSurface::of(&inner.machine),
+            ModSurface::of(inner.loaded.machine()),
             inner.report.notices().iter().cloned().collect(),
         )
     }
@@ -316,7 +347,7 @@ impl LoaderRuntime {
         self.inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .machine
+            .loaded
             .fail(mod_id, attribution)
             .expect("a mod the machine holds can fail");
     }
@@ -329,7 +360,7 @@ impl LoaderRuntime {
         self.inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .machine
+            .loaded
             .claim_registry_identifier(mod_id, identifier, None)
     }
 
@@ -342,7 +373,7 @@ impl LoaderRuntime {
         self.inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .machine
+            .loaded
             .claim_registry_identifier(mod_id, identifier, Some(behaviour))
     }
 }

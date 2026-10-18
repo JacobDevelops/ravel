@@ -1,8 +1,8 @@
 # Game classes the always-present agent jar resolves by name, for Minecraft 26.1.2.
 #
 # ADG-1 forbids that jar from *declaring* a game type and `build-agent.sh` enforces
-# it by construction, compiling with no `-cp` at all. ADG-4 admits a hook that
-# observes or vetoes, so anything the host has to *perform* — storing a world's
+# it by construction, compiling with no `-cp` at all. A generated hook only
+# observes, so anything the host has to *perform* — storing a world's
 # aggregate, registering a mod's block, starting a sound — is performed by a
 # hand-written adapter under `jvm/bootstrap` that reaches the game by name instead.
 # This file is that set, declared rather than inferred.

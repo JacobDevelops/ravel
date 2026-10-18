@@ -11,28 +11,15 @@ public final class Hook {
                         "(Z)Ldev/ravel/jvm/hierarchy/HierarchyBase;",
                         true,
                         "hierarchySource",
-                        "(Z)V",
-                        false),
+                        "(Z)V"),
                 new HookTarget(
                         "dev/ravel/jvm/hierarchy/HierarchyTarget",
                         "value",
                         "()Ljava/lang/String;",
                         false,
                         "hierarchyTarget",
-                        "()V",
-                        false),
+                        "()V"),
             }
-            : Boolean.getBoolean("ravel.test.transform.refusal")
-                    ? new HookTarget[] {
-                        new HookTarget(
-                                "dev/ravel/jvm/refusal/RefusalTarget",
-                                "record",
-                                "()V",
-                                true,
-                                "refusalRecord",
-                                "()Z",
-                                true),
-                    }
             : Boolean.getBoolean("ravel.test.transform.persistence")
                     ? persistenceTargets()
             : Boolean.getBoolean("ravel.test.transform.content")
@@ -52,32 +39,28 @@ public final class Hook {
                                 "(DD)D",
                                 false,
                                 "inputSmoothDelta",
-                                "(DD)V",
-                                false),
+                                "(DD)V"),
                         new HookTarget(
                                 "net/minecraft/core/MappedRegistry",
                                 "freeze",
                                 "()Lnet/minecraft/core/Registry;",
                                 false,
                                 "registryFreeze",
-                                "()V",
-                                false),
+                                "()V"),
                         new HookTarget(
                                 "net/minecraft/commands/Commands",
                                 "performPrefixedCommand",
                                 "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V",
                                 false,
                                 "commandPerformPrefixed",
-                                "(Ljava/lang/Object;Ljava/lang/String;)V",
-                                false),
+                                "(Ljava/lang/Object;Ljava/lang/String;)V"),
                         new HookTarget(
                                 "net/minecraft/server/MinecraftServer",
                                 "tickServer",
                                 "(Ljava/util/function/BooleanSupplier;)V",
                                 false,
                                 "serverTick",
-                                "(Ljava/lang/Object;)V",
-                                false),
+                                "(Ljava/lang/Object;)V"),
                     }
             : Boolean.getBoolean("ravel.test.transform.failure")
                     ? new HookTarget[] {
@@ -87,16 +70,14 @@ public final class Hook {
                                 "(I)Z",
                                 true,
                                 "chatAllowedCharacter",
-                                "(I)V",
-                                false),
+                                "(I)V"),
                         new HookTarget(
                                 "net/minecraft/util/StringUtil",
                                 "broken",
                                 "not-a-descriptor",
                                 true,
                                 "broken",
-                                "()V",
-                                false),
+                                "()V"),
                     }
                     : new HookTarget[] {
                 new HookTarget(
@@ -105,32 +86,28 @@ public final class Hook {
                         "(I)Z",
                         true,
                         "chatAllowedCharacter",
-                        "(I)V",
-                        false),
+                        "(I)V"),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "filterText",
                 "(Ljava/lang/String;Z)Ljava/lang/String;",
                 true,
                 "chatFilterText",
-                "(Ljava/lang/String;Z)V",
-                false),
+                "(Ljava/lang/String;Z)V"),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "filterText",
                 "(Ljava/lang/String;)Ljava/lang/String;",
                 true,
                 "chatFilterTextSimple",
-                "(Ljava/lang/String;)V",
-                false),
+                "(Ljava/lang/String;)V"),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "isValidPlayerName",
                 "(Ljava/lang/String;)Z",
                 true,
                 "playerNameValid",
-                "(Ljava/lang/String;)V",
-                false),
+                "(Ljava/lang/String;)V"),
     };
 
     /** This fixture provides the modern Hook surface. */
@@ -177,7 +154,7 @@ public final class Hook {
         if (parts.length != ENTRY_FIELDS) {
             throw new IllegalStateException(
                     "a hook table entry is a class, a member, a descriptor, whether it is static, "
-                            + "a prologue, its descriptor and whether it refuses: "
+                            + "a prologue and its descriptor: "
                             + seam(prologue));
         }
         return new HookTarget(
@@ -186,11 +163,10 @@ public final class Hook {
                 parts[2],
                 Boolean.parseBoolean(parts[3]),
                 parts[4],
-                parts[5],
-                Boolean.parseBoolean(parts[6]));
+                parts[5]);
     }
 
-    private static final int ENTRY_FIELDS = 7;
+    private static final int ENTRY_FIELDS = 6;
 
     private static String seam(String prologue) {
         String named = System.getProperty("ravel.test.target." + prologue);
@@ -213,8 +189,6 @@ public final class Hook {
         String className;
         if (Boolean.getBoolean("ravel.test.transform.hierarchy")) {
             className = "dev.ravel.jvm.hierarchy.HierarchySource";
-        } else if (Boolean.getBoolean("ravel.test.transform.refusal")) {
-            className = "dev.ravel.jvm.refusal.RefusalTarget";
         } else if (Boolean.getBoolean("ravel.test.transform.persistence")) {
             className = linkedTargetClass("worldOpenPersistence");
         } else if (Boolean.getBoolean("ravel.test.transform.content")) {
@@ -331,25 +305,19 @@ public final class Hook {
         invocations++;
     }
 
-    public static boolean refusalRecord() {
-        invocations++;
-        return Boolean.getBoolean("ravel.test.refusal.verdict");
-    }
 
     /** The seam under a version whose world load carries the selected data pack list. */
-    public static boolean worldOpenPersistence(
+    public static void worldOpenPersistence(
             Object access, Object packs, Object stem, Object gameRules, boolean newWorld) {
         requireOpenArity(5);
         invocations++;
-        return false;
     }
 
     /** The same seam under a version whose world load takes no rule overrides. */
-    public static boolean worldOpenPersistence(
+    public static void worldOpenPersistence(
             Object access, Object packs, Object stem, boolean newWorld) {
         requireOpenArity(4);
         invocations++;
-        return false;
     }
 
     // Both version overloads compile here; reject a call using the wrong target arity.

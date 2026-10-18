@@ -173,7 +173,7 @@ public final class LegacyRuntimeMain {
         LegacyRuntime.enter("legacyServerWorldTick", receiver, null, null, 0);
         require(LegacyRuntime.semanticCount("server-tick") == server + 1,
                 "one base simulation tick was duplicated by its world hook");
-        long events = LegacyRuntime.semanticCount("resource-reloaded");
+        long events = LegacyRuntime.semanticCount("resources-reloaded");
         long completed = LegacyRuntime.completedResourceGeneration();
         LegacyRuntime.beginGeneration(receiver);
         long failed = LegacyRuntime.resourceGeneration();
@@ -181,7 +181,7 @@ public final class LegacyRuntimeMain {
         require(LegacyRuntime.atlasResourceGeneration() == failed,
                 "atlas did not join the active generation");
         require(LegacyRuntime.completedResourceGeneration() == completed
-                && LegacyRuntime.semanticCount("resource-reloaded") == events,
+                && LegacyRuntime.semanticCount("resources-reloaded") == events,
                 "incomplete/throwing reload published successful completion");
         LegacyRuntime.beginGeneration(receiver);
         long succeeded = LegacyRuntime.resourceGeneration();
@@ -189,7 +189,7 @@ public final class LegacyRuntimeMain {
         LegacyRuntime.exit("legacyResourceReload", receiver, null, null, 0, null, 0);
         require(succeeded == failed + 1 && LegacyRuntime.completedResourceGeneration() == succeeded
                 && LegacyRuntime.atlasResourceGeneration() == succeeded
-                && LegacyRuntime.semanticCount("resource-reloaded") == events + 1,
+                && LegacyRuntime.semanticCount("resources-reloaded") == events + 1,
                 "successful reload/atlas did not publish exactly one matching generation");
         LegacyRuntime.exit("legacyAtlasReload", receiver, null, null, 0, null, 0);
         require(LegacyRuntime.atlasResourceGeneration() == succeeded,

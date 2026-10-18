@@ -320,7 +320,6 @@ member = "worldOpenPersistence"
 descriptor = "(Lorg/exampleengine/store/WorldStore;Lorg/exampleengine/resource/PackStore;Lorg/exampleengine/world/WorldSeed;Ljava/util/Optional;Z)V"
 kind = "instance-method"
 capability = "Synthetic second-version target standing in for the `world.open-persistence` capability."
-refuses = true
 
 [[hook]]
 id = "world.save-persistence"

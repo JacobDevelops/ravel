@@ -6,7 +6,7 @@ use ravel_core::{
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostError, Mod, ModError, Registrar};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, Supplied};
-use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
+use ravel_minecraft::{HookId, HookKind, HookTarget, HookValue};
 
 use super::dispatch::{COMMAND, EVENTS};
 use super::{LoaderRuntime, advance_through, environment};
@@ -290,11 +290,12 @@ fn an_outward_request_cannot_impersonate_another_owner() {
     assert_eq!(runtime.drain_outward(), "");
     let inner = runtime.inner.lock().expect("healthy lock");
     assert_eq!(
-        inner.machine.state(&id("thief")),
+        inner.loaded.machine().state(&id("thief")),
         Ok(LifecycleState::Failed)
     );
     let failure = inner
-        .machine
+        .loaded
+        .machine()
         .failure(&id("thief"))
         .expect("owner")
         .expect("attributed");
@@ -371,36 +372,6 @@ fn outward_drains_follow_lifecycle_order_after_service_slot_reordering() {
 }
 
 #[test]
-fn a_missing_host_refuses_once_before_any_callback_on_later_ticks() {
-    let log = Arc::new(Mutex::new(Log::default()));
-    let runtime = failing_pair(Behaviour::Records, &log);
-    runtime
-        .inner
-        .lock()
-        .expect("nothing panicked")
-        .mods
-        .retain(|host| host.id().as_str() != "innocent");
-
-    for _ in 0..3 {
-        assert_eq!(
-            runtime.observe(&target("client.tick"), &[]),
-            HookOutcome::Proceed
-        );
-    }
-
-    assert_eq!(log.lock().expect("nothing panicked").seen, []);
-    assert_eq!(log.lock().expect("nothing panicked").drained, []);
-    let inner = runtime.inner.lock().expect("nothing panicked");
-    let [refusal] = inner.report.refusals() else {
-        panic!("the incomplete set produces one refusal");
-    };
-    assert_eq!(refusal.attribution().mod_id, Some(id("innocent")));
-    assert_eq!(refusal.attribution().state, LifecycleState::Running);
-    assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Running));
-    drop(inner);
-}
-
-#[test]
 fn unsupported_delivery_errors_fail_the_actual_event_or_command_owner() {
     for command in [false, true] {
         let runtime = failing_pair(
@@ -413,15 +384,19 @@ fn unsupported_delivery_errors_fail_the_actual_event_or_command_owner() {
             runtime.observe(&target("client.tick"), &[]);
         }
         let inner = runtime.inner.lock().expect("no panic");
-        assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
         assert_eq!(
-            inner.machine.state(&id("innocent")),
+            inner.loaded.machine().state(&id(MOD)),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(
+            inner.loaded.machine().state(&id("innocent")),
             Ok(LifecycleState::Running)
         );
         let none: [ravel_observability::Refusal; 0] = [];
         assert_eq!(inner.report.refusals(), none);
         let failure = inner
-            .machine
+            .loaded
+            .machine()
             .failure(&id(MOD))
             .expect("owner")
             .expect("failure");
@@ -464,11 +439,15 @@ fn a_mod_that_panicked_does_not_silence_every_later_hook() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(
-        inner.machine.state(&id(MOD)).expect("known mod"),
+        inner.loaded.machine().state(&id(MOD)).expect("known mod"),
         LifecycleState::Failed
     );
     assert_eq!(
-        inner.machine.state(&id("innocent")).expect("healthy mod"),
+        inner
+            .loaded
+            .machine()
+            .state(&id("innocent"))
+            .expect("healthy mod"),
         LifecycleState::Running
     );
     assert!(
@@ -515,19 +494,20 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
         crate::runtime::test_launch(),
     );
     for _ in 0..2 {
-        assert_eq!(
-            runtime.observe(&target("client.tick"), &[]),
-            HookOutcome::Proceed
-        );
+        runtime.observe(&target("client.tick"), &[]);
     }
     assert_eq!(drains.load(std::sync::atomic::Ordering::SeqCst), 1);
     let inner = runtime
         .inner
         .lock()
         .expect("the drain panic is caught before unlocking");
-    assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
+    assert_eq!(
+        inner.loaded.machine().state(&id(MOD)),
+        Ok(LifecycleState::Failed)
+    );
     let failure = inner
-        .machine
+        .loaded
+        .machine()
         .failure(&id(MOD))
         .expect("owner")
         .expect("failure");
@@ -554,7 +534,7 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
     {
         let mut inner = runtime.inner.lock().expect("healthy lock");
         inner
-            .machine
+            .loaded
             .fail_callback(
                 &HostError::Panicked {
                     mod_id: id(MOD),
@@ -575,8 +555,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
 
     super::install(
         super::Composition {
-            machine,
-            mods,
+            loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
             configurations: Vec::new(),
             resources: Supplied::default(),
             interceptions: ravel_host_api::Points::default()
@@ -589,7 +568,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
         ravel_observability::Profiler::off(),
     )
     .expect("the runtime installs");
-    crate::dispatch::deliver(&target("server.tick"), &[]).expect("nothing here vetoes");
+    crate::dispatch::deliver(&target("server.tick"), &[]);
 
     assert_eq!(
         log.lock().expect("nothing panicked").seen,
@@ -601,8 +580,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
     assert!(matches!(
         super::install(
             super::Composition {
-                machine,
-                mods,
+                loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
                 configurations: Vec::new(),
                 resources: Supplied::default(),
                 interceptions: ravel_host_api::Points::default()
@@ -616,8 +594,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
         ),
         Err(super::InstallError::AlreadyInstalled)
     ));
-    crate::dispatch::deliver(&target("server.tick"), &[])
-        .expect("the original runtime remains active");
+    crate::dispatch::deliver(&target("server.tick"), &[]);
     assert_eq!(replacement_log.lock().expect("nothing panicked").seen, []);
     assert_eq!(log.lock().expect("nothing panicked").seen.len(), 2);
 }
@@ -632,9 +609,7 @@ fn every_tick_hook_reaches_the_mod_as_the_event_it_stands_for() {
         };
         let (runtime, log) = running(side, Vec::new(), Behaviour::Records);
 
-        let outcome = runtime.observe(&target(hook), &[]);
-
-        assert_eq!(outcome, HookOutcome::Proceed, "{hook}");
+        runtime.observe(&target(hook), &[]);
         assert_eq!(
             log.lock().expect("nothing panicked").seen,
             [expected],
@@ -661,9 +636,7 @@ fn two_hooks_can_mean_one_event_and_the_mod_is_told_the_event() {
 fn a_hook_the_loader_has_no_meaning_for_delivers_nothing_and_proceeds() {
     let (runtime, log) = running(Side::Client, Vec::new(), Behaviour::Records);
 
-    let outcome = runtime.observe(&target("chat.filter-text"), &[HookValue::Int(65)]);
-
-    assert_eq!(outcome, HookOutcome::Proceed);
+    runtime.observe(&target("chat.filter-text"), &[HookValue::Int(65)]);
     let seen = log.lock().expect("nothing panicked");
     assert!(seen.seen.is_empty() && seen.ran.is_empty());
     drop(seen);
@@ -673,12 +646,11 @@ fn a_hook_the_loader_has_no_meaning_for_delivers_nothing_and_proceeds() {
 fn a_typed_command_reaches_the_mod_that_claimed_its_key_with_its_arguments() {
     let (runtime, log) = running(Side::Client, vec![key("home")], Behaviour::Records);
 
-    let outcome = runtime.observe(
+    runtime.observe(
         &target(COMMAND),
         &[HookValue::Text(format!("{MOD}:home set  spawn"))],
     );
 
-    assert_eq!(outcome, HookOutcome::Proceed);
     let ran = &log.lock().expect("nothing panicked").ran;
     assert_eq!(ran.len(), 1);
     assert_eq!(ran[0].key, key("home"));
@@ -691,8 +663,8 @@ fn a_typed_command_reaches_the_mod_that_claimed_its_key_with_its_arguments() {
 }
 
 #[test]
-fn integrated_commands_run_the_real_server_gated_tally_on_a_client_distribution() {
-    let host = rvl_180_counterpart::__ravel_entry(Side::Client);
+fn integrated_commands_run_a_server_gated_fixture_on_a_client_distribution() {
+    let host = ravel_test_mod_commands::__ravel_entry(Side::Client);
     let owner = host.id().clone();
     let entry = LifecycleEntry {
         mod_id: owner.clone(),
@@ -706,26 +678,35 @@ fn integrated_commands_run_the_real_server_gated_tally_on_a_client_distribution(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
         &environment(),
     )
-    .expect("counterpart registers its real commands");
+    .expect("the fixture registers its commands");
     let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
     runtime.observe(
         &target(COMMAND),
-        &[HookValue::Text(format!("{owner}:entity_tally"))],
+        &[HookValue::Text(format!(
+            "{owner}:{}",
+            ravel_test_mod_commands::SERVER_PROBE
+        ))],
     );
     let mut inner = runtime.inner.lock().expect("callback did not panic");
     let work = inner
-        .command(&format!("{owner}:entity_tally"))
+        .command(&format!(
+            "{owner}:{}",
+            ravel_test_mod_commands::SERVER_PROBE
+        ))
         .expect("a typed command");
     inner
         .deliver_checked(&work)
-        .expect("the real server-gated tally executes");
-    assert_eq!(inner.machine.state(&owner), Ok(LifecycleState::Running));
-    assert_eq!(inner.machine.failure(&owner), Ok(None));
+        .expect("the server-gated fixture executes with a server identity");
+    assert_eq!(
+        inner.loaded.machine().state(&owner),
+        Ok(LifecycleState::Running)
+    );
+    assert_eq!(inner.loaded.machine().failure(&owner), Ok(None));
 }
 
 #[test]
 fn integrated_commands_refuse_a_client_only_owner() {
-    let host = rvl_180_counterpart::__ravel_entry(Side::Client);
+    let host = ravel_test_mod_commands::__ravel_entry(Side::Client);
     let owner = host.id().clone();
     let entry = LifecycleEntry {
         mod_id: owner.clone(),
@@ -739,11 +720,13 @@ fn integrated_commands_refuse_a_client_only_owner() {
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
         &environment(),
     )
-    .expect("counterpart registers its real commands");
+    .expect("fixture registers its commands");
     let invocation = CommandInvocation::new(
         RegistryKey::new(
             ContentKind::Command,
-            format!("{owner}:entity_tally").parse().expect("command id"),
+            format!("{owner}:{}", ravel_test_mod_commands::SERVER_PROBE)
+                .parse()
+                .expect("command id"),
         ),
         Side::IntegratedServer,
         Vec::new(),
@@ -763,6 +746,15 @@ fn integrated_commands_refuse_a_client_only_owner() {
     );
     assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
     assert_eq!(machine.failure(&owner), Ok(None));
+    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let mut inner = runtime.inner.lock().expect("healthy lock");
+    assert_eq!(
+        inner.deliver_checked(&super::dispatch::Work::Command(invocation)),
+        Err(refused.to_string())
+    );
+    assert_eq!(inner.report.refusals(), []);
+    assert!(inner.loaded.machine().world_access(&inner.report).is_ok());
+    drop(inner);
 }
 
 #[test]
@@ -782,11 +774,7 @@ fn a_command_no_mod_claimed_is_left_alone_rather_than_guessed_at() {
     let (runtime, log) = running(Side::Client, Vec::new(), Behaviour::Records);
 
     for typed in ["give @s stone", "minecraft:give @s stone", ""] {
-        assert_eq!(
-            runtime.observe(&target(COMMAND), &[HookValue::Text(typed.to_owned())]),
-            HookOutcome::Proceed,
-            "`{typed}` is not Ravel's to run"
-        );
+        runtime.observe(&target(COMMAND), &[HookValue::Text(typed.to_owned())]);
     }
 
     assert!(
@@ -794,6 +782,10 @@ fn a_command_no_mod_claimed_is_left_alone_rather_than_guessed_at() {
         "an unqualified literal names no claim that could exist, and an \
          unclaimed one names no mod here"
     );
+    let inner = runtime.inner.lock().expect("healthy lock");
+    assert_eq!(inner.report.refusals(), []);
+    assert!(inner.loaded.machine().world_access(&inner.report).is_ok());
+    drop(inner);
 }
 
 #[test]
@@ -812,9 +804,7 @@ fn the_typed_line_is_found_by_kind_rather_than_by_position() {
 fn a_command_hook_carrying_no_text_reaches_nobody() {
     let (runtime, log) = running(Side::Client, vec![key("home")], Behaviour::Records);
 
-    let outcome = runtime.observe(&target(COMMAND), &[HookValue::Int(1)]);
-
-    assert_eq!(outcome, HookOutcome::Proceed);
+    runtime.observe(&target(COMMAND), &[HookValue::Int(1)]);
     let empty: [CommandInvocation; 0] = [];
     assert_eq!(log.lock().expect("nothing panicked").ran, empty);
 }
@@ -823,21 +813,16 @@ fn a_command_hook_carrying_no_text_reaches_nobody() {
 fn a_mod_that_fails_while_reacting_is_failed_rather_than_thrown_at_the_game() {
     let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
 
-    let outcome = runtime.observe(&target("server.tick"), &[]);
-
-    assert_eq!(
-        outcome,
-        HookOutcome::Proceed,
-        "a mod declining an event must not take the game down"
-    );
+    runtime.observe(&target("server.tick"), &[]);
 
     let inner = runtime.inner.lock().expect("nothing panicked");
     assert_eq!(
-        inner.machine.state(&id(MOD)).expect("known mod"),
+        inner.loaded.machine().state(&id(MOD)).expect("known mod"),
         LifecycleState::Failed
     );
     let attributed = inner
-        .machine
+        .loaded
+        .machine()
         .failure(&id(MOD))
         .expect("known mod")
         .expect("the failure was recorded");
@@ -858,7 +843,8 @@ fn a_real_event_callback_failure_records_the_delivered_event_surface() {
         .lock()
         .expect("callback failure stays contained");
     let failure = inner
-        .machine
+        .loaded
+        .machine()
         .failure(&id(MOD))
         .expect("known mod")
         .expect("the event callback really failed");
@@ -876,15 +862,13 @@ fn a_failed_mod_is_failed_once_however_many_ticks_follow() {
     let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
 
     for _ in 0..3 {
-        assert_eq!(
-            runtime.observe(&target("server.tick"), &[]),
-            HookOutcome::Proceed
-        );
+        runtime.observe(&target("server.tick"), &[]);
     }
 
     let inner = runtime.inner.lock().expect("nothing panicked");
     let failures = inner
-        .machine
+        .loaded
+        .machine()
         .transcript()
         .iter()
         .filter(|event| event.state == LifecycleState::Failed)
@@ -973,13 +957,12 @@ fn legacy_observations_do_not_duplicate_checked_tick_and_reload_events() -> Resu
         log.lock().map_err(|error| error.to_string())?.seen,
         Vec::<GameEvent>::new()
     );
-    runtime.legacy_event("client-tick")?;
-    runtime.legacy_event("resource-reloaded")?;
+    runtime.legacy_event(GameEvent::ClientTick)?;
+    runtime.legacy_event(GameEvent::ResourcesReloaded)?;
     assert_eq!(
         log.lock().map_err(|error| error.to_string())?.seen,
         [GameEvent::ClientTick, GameEvent::ResourcesReloaded]
     );
-    assert!(runtime.legacy_event("atlas-reloaded").is_err());
     Ok(())
 }
 
@@ -987,7 +970,7 @@ fn legacy_observations_do_not_duplicate_checked_tick_and_reload_events() -> Resu
 fn legacy_base_server_tick_is_the_only_simulation_event() -> Result<(), String> {
     let (runtime, log) = running(Side::IntegratedServer, Vec::new(), Behaviour::Records);
     runtime.observe(&target("legacy.integrated-server-tick"), &[]);
-    runtime.legacy_event("server-tick")?;
+    runtime.legacy_event(GameEvent::ServerTick)?;
     runtime.observe(&target("legacy.server-world-tick"), &[]);
     runtime.observe(&target("legacy.integrated-server-tick"), &[]);
     assert_eq!(
@@ -1047,12 +1030,14 @@ fn legacy_packets_reject_untrusted_input_without_poisoning_the_recipient() -> Re
         let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
         assert_eq!(
             inner
-                .machine
+                .loaded
+                .machine()
                 .state(&id("networking"))
                 .map_err(|error| error.to_string())?,
             LifecycleState::Running
         );
-        assert!(inner.machine.save_access().is_ok());
+        assert!(inner.loaded.machine().save_access().is_ok());
+        assert_eq!(inner.report.refusals(), []);
         drop(inner);
     }
     runtime.legacy_packet(ravel_test_mod_networking::ping_id(), bytes, true)?;
@@ -1076,12 +1061,14 @@ fn peer_selected_packet_contract_direction_cannot_fail_the_owner() -> Result<(),
     let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
     assert_eq!(
         inner
-            .machine
+            .loaded
+            .machine()
             .state(&id("networking"))
             .map_err(|error| error.to_string())?,
         LifecycleState::Running
     );
-    assert!(inner.machine.save_access().is_ok());
+    assert!(inner.loaded.machine().save_access().is_ok());
+    assert_eq!(inner.report.refusals(), []);
     drop(inner);
     Ok(())
 }
@@ -1090,8 +1077,7 @@ fn integrated_composition() -> (super::Composition, Arc<Mutex<Log>>) {
     let (machine, mods, log) = parts(Side::IntegratedServer, Vec::new(), Behaviour::Records);
     (
         super::Composition {
-            machine,
-            mods,
+            loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
             configurations: Vec::new(),
             resources: Supplied::default(),
             interceptions: ravel_host_api::Points::default()
@@ -1110,8 +1096,12 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
         let log = std::thread::spawn(|| -> Result<Arc<Mutex<Log>>, String> {
             assert!(!super::integrated_installed());
             let (composition, log) = integrated_composition();
-            super::install_integrated(composition, std::env::temp_dir())
-                .map_err(|error| error.to_string())?;
+            super::install_integrated(
+                composition,
+                std::env::temp_dir(),
+                ravel_observability::Profiler::from_switch(true),
+            )
+            .map_err(|error| error.to_string())?;
             let runtime = super::installation::with_thread_selected(Arc::clone)
                 .ok_or("missing thread-owned runtime")?;
             assert_eq!(
@@ -1119,23 +1109,31 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
                     .inner
                     .lock()
                     .map_err(|error| error.to_string())?
-                    .machine
+                    .loaded
+                    .machine()
                     .side(),
                 Side::IntegratedServer
             );
-            runtime.legacy_event("server-tick")?;
-            assert!(runtime.legacy_event("client-tick").is_err());
+            runtime.legacy_event(GameEvent::ServerTick)?;
+            assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
             let (duplicate, _) = integrated_composition();
             assert_eq!(
-                super::install_integrated(duplicate, std::env::temp_dir()),
+                super::install_integrated(
+                    duplicate,
+                    std::env::temp_dir(),
+                    ravel_observability::Profiler::off()
+                ),
                 Err(super::InstallError::AlreadyInstalled)
             );
             let (mut wrong_side, _) = integrated_composition();
             let (machine, mods, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
-            wrong_side.machine = machine;
-            wrong_side.mods = mods;
+            wrong_side.loaded = ravel_loader::Loaded::new(machine, mods).expect("complete set");
             assert_eq!(
-                super::install_integrated(wrong_side, std::env::temp_dir()),
+                super::install_integrated(
+                    wrong_side,
+                    std::env::temp_dir(),
+                    ravel_observability::Profiler::off()
+                ),
                 Err(super::InstallError::WrongSide)
             );
             Ok(log)
@@ -1152,44 +1150,160 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
 }
 
 #[test]
+fn integrated_install_uses_explicit_context_without_a_process_runtime() {
+    const CHILD: &str = "RAVEL_INTEGRATED_CONTEXT_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "runtime::tests::integrated_install_uses_explicit_context_without_a_process_runtime", "--nocapture"])
+            .env(CHILD, "1")
+            .output().expect("isolated integrated install");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        return;
+    }
+    assert!(!super::is_installed());
+    assert!(matches!(
+        super::process_launch_context(),
+        Err(super::InstallError::ProcessNotInstalled)
+    ));
+    let directory = std::env::temp_dir().join("ravel-explicit-integrated-directory");
+    let (composition, _) = integrated_composition();
+    super::install_integrated(
+        composition,
+        directory.clone(),
+        ravel_observability::Profiler::from_switch(true),
+    )
+    .expect("explicit integrated context requires no process runtime");
+    let runtime =
+        super::installation::with_thread_selected(Arc::clone).expect("integrated runtime");
+    assert_eq!(runtime.launch.game_directory, directory);
+    assert!(runtime.inner.lock().expect("healthy lock").profiler.is_on());
+    assert!(!super::is_installed());
+}
+
+#[test]
 fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), String> {
     let (runtime, _) = running(Side::Client, Vec::new(), Behaviour::Fails);
-    assert!(runtime.legacy_event("server-tick").is_err());
-    assert!(runtime.legacy_event("client-tick").is_err());
+    assert!(runtime.legacy_event(GameEvent::ServerTick).is_err());
+    assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
     assert_eq!(
         runtime
             .inner
             .lock()
             .map_err(|error| error.to_string())?
-            .machine
+            .loaded
+            .machine()
             .state(&id(MOD))
             .map_err(|error| error.to_string())?,
         LifecycleState::Failed
     );
-    assert!(runtime.legacy_event("resource-reloaded").is_ok());
+    assert!(runtime.legacy_event(GameEvent::ResourcesReloaded).is_ok());
     Ok(())
 }
 
 #[test]
-fn checked_commands_and_packets_respect_pairing_refusal() -> Result<(), String> {
+fn checked_commands_and_packets_respect_real_halts_without_launch_refusals() -> Result<(), String> {
     let (runtime, log) = running(Side::DedicatedServer, vec![key("warp")], Behaviour::Records);
     runtime.claim_command_thread()?;
-    runtime
-        .inner
-        .lock()
-        .map_err(|error| error.to_string())?
-        .pairing_refused = true;
-    assert!(runtime.legacy_command("example_mod:warp home").is_err());
+    {
+        let mut inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+        inner
+            .loaded
+            .record_world_mutation()
+            .map_err(|error| error.to_string())?;
+        inner
+            .loaded
+            .fail_callback(
+                &HostError::Panicked {
+                    mod_id: id(MOD),
+                    state: LifecycleState::Running,
+                },
+                &environment(),
+                None,
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    assert!(!runtime.accepts_packet_owner(&id(MOD)));
+    for _ in 0..3 {
+        assert!(runtime.legacy_command("example_mod:warp home").is_err());
+        assert!(
+            runtime
+                .legacy_packet(ravel_test_mod_networking::ping_id(), Vec::new(), true,)
+                .is_err()
+        );
+    }
+    let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+    assert_eq!(inner.report.refusals(), []);
+    assert!(inner.loaded.machine().world_access(&inner.report).is_err());
+    drop(inner);
+    assert_eq!(log.lock().map_err(|error| error.to_string())?.ran, []);
+    Ok(())
+}
+
+#[test]
+fn packet_admission_rejects_required_failure_before_the_halt_latch() {
+    let entries = [MOD, "innocent"]
+        .into_iter()
+        .map(|name| LifecycleEntry {
+            mod_id: id(name),
+            sides: SideSet::new([Side::Client]).expect("client side"),
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        })
+        .collect();
+    let mut machine = LifecycleMachine::new(Side::Client, entries).expect("two required mods");
+    advance_through(&mut machine, LifecycleState::Running);
+    let mods = [MOD, "innocent"]
+        .into_iter()
+        .map(|name| -> Box<dyn Mod> {
+            Box::new(Recording {
+                id: id(name),
+                log: Arc::new(Mutex::new(Log::default())),
+                behaviour: Behaviour::Records,
+                claims: Vec::new(),
+            })
+        })
+        .collect();
+    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    assert!(runtime.accepts_packet_owner(&id("innocent")));
+    {
+        let mut inner = runtime.inner.lock().expect("healthy lock");
+        inner
+            .loaded
+            .fail_callback(
+                &HostError::Panicked {
+                    mod_id: id(MOD),
+                    state: LifecycleState::Running,
+                },
+                &environment(),
+                None,
+            )
+            .expect("failure is recorded before world mutation");
+        assert!(!inner.loaded.machine().is_halted());
+        assert_eq!(
+            inner.loaded.machine().state(&id(MOD)),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(
+            inner.loaded.machine().state(&id("innocent")),
+            Ok(LifecycleState::Running)
+        );
+        assert_eq!(inner.report.refusals(), []);
+    }
+    assert!(!runtime.accepts_packet_owner(&id("innocent")));
     assert!(
         runtime
-            .legacy_packet(ravel_test_mod_networking::ping_id(), Vec::new(), true)
+            .legacy_packet(
+                ravel_network::PacketId::new("innocent:ping".parse().expect("packet id")),
+                Vec::new(),
+                false,
+            )
             .is_err()
     );
-    assert_eq!(
-        log.lock().map_err(|error| error.to_string())?.ran,
-        Vec::<CommandInvocation>::new()
-    );
-    Ok(())
 }
 
 #[test]
@@ -1236,12 +1350,13 @@ fn unsupported_packet_is_invalid_input_not_an_owner_failure() -> Result<(), Stri
     let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
     assert_eq!(
         inner
-            .machine
+            .loaded
+            .machine()
             .state(&id(MOD))
             .map_err(|error| error.to_string())?,
         LifecycleState::Running
     );
-    assert!(inner.machine.save_access().is_ok());
+    assert!(inner.loaded.machine().save_access().is_ok());
     drop(inner);
     Ok(())
 }
@@ -1260,7 +1375,8 @@ fn packet_callback_failure_is_attributed() -> Result<(), String> {
             .inner
             .lock()
             .map_err(|error| error.to_string())?
-            .machine
+            .loaded
+            .machine()
             .state(&id(MOD))
             .map_err(|error| error.to_string())?,
         LifecycleState::Failed

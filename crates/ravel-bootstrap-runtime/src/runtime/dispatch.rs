@@ -5,8 +5,8 @@ use std::sync::PoisonError;
 
 use ravel_core::{ContentId, ContentKind, DiagnosticMessage, RegistryKey};
 use ravel_host_api::{CommandInvocation, GameEvent};
-use ravel_loader::{LoadedMods, broadcast, route};
-use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
+use ravel_loader::{broadcast, route};
+use ravel_minecraft::{HookTarget, HookValue};
 
 use super::{Inner, LoaderRuntime};
 use crate::outward;
@@ -27,22 +27,18 @@ pub(super) const COMMAND: &str = "command.perform-prefixed";
 pub(super) enum Work {
     Event(GameEvent),
     Command(CommandInvocation),
+    Packet(ravel_network::PacketDelivery),
 }
 
 impl LoaderRuntime {
     /// Delivers a semantic event only after the Java adapter's success/thread checks.
-    pub(crate) fn legacy_event(&self, kind: &str) -> Result<(), String> {
-        let event = match kind {
-            "client-tick" => GameEvent::ClientTick,
-            "server-tick" => GameEvent::ServerTick,
-            "resource-reloaded" => GameEvent::ResourcesReloaded,
-            _ => return Err("unknown legacy semantic event".to_owned()),
-        };
+    pub(crate) fn legacy_event(&self, event: GameEvent) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        if !event.happens_on(inner.machine.side()) {
+        if !event.happens_on(inner.loaded.machine().side()) {
             return Err(format!(
-                "event `{kind}` does not happen on {}",
-                inner.machine.side().as_str()
+                "event `{}` does not happen on {}",
+                event.as_str(),
+                inner.loaded.machine().side().as_str()
             ));
         }
         inner.deliver_checked(&Work::Event(event))
@@ -51,7 +47,7 @@ impl LoaderRuntime {
     /// Binds command installation after vanilla confirms its owning server thread.
     pub(crate) fn claim_command_thread(&self) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        if !inner.machine.side().is_server() {
+        if !inner.loaded.machine().side().is_server() {
             return Err("native commands require the owning server runtime".to_owned());
         }
         let thread = std::thread::current().id();
@@ -72,7 +68,7 @@ impl LoaderRuntime {
     /// Routes only commands claimed by the admitted native set.
     pub(crate) fn legacy_command(&self, typed: &str) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        if !inner.machine.side().is_server() {
+        if !inner.loaded.machine().side().is_server() {
             return Err("native commands require the owning server runtime".to_owned());
         }
         if inner.command_thread != Some(std::thread::current().id()) {
@@ -92,64 +88,32 @@ impl LoaderRuntime {
         to_server: bool,
     ) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        if inner.pairing_refused {
-            return Err("the installed host set is incomplete".to_owned());
-        }
         let direction = if to_server {
             ravel_network::Direction::ToServer
         } else {
             ravel_network::Direction::ToClient
         };
-        let packet =
-            ravel_network::PacketDelivery::new(id, direction, inner.machine.side(), payload);
-        let Inner {
-            machine,
-            mods,
-            profiler,
-            pairing_refused,
-            report,
-            ..
-        } = &mut *inner;
-        let mut loaded = match LoadedMods::new(machine, mods) {
-            Ok(loaded) => loaded,
-            Err(error) => {
-                *pairing_refused = true;
-                report.refuse(
-                    &ravel_observability::Subject::of(error.mod_id().clone()),
-                    &error,
-                );
-                return Err(error.to_string());
-            }
-        };
-        let delivery =
-            ravel_loader::deliver_packet(&mut loaded, &packet, profiler, report.environment())
-                .map_err(|error| {
-                    let subject = error
-                        .mod_id()
-                        .map_or_else(ravel_observability::Subject::unidentified, |owner| {
-                            ravel_observability::Subject::of(owner.clone())
-                        });
-                    report.refuse(&subject, &error);
-                    error.to_string()
-                })?;
-        inner.carry_outward();
-        let result = delivery
-            .failure()
-            .map_or(Ok(()), |error| Err(error.to_string()));
-        drop(inner);
-        result
+        let packet = ravel_network::PacketDelivery::new(
+            id,
+            direction,
+            inner.loaded.machine().side(),
+            payload,
+        );
+        inner.deliver_checked(&Work::Packet(packet))
     }
 }
 
-impl HookObserver for LoaderRuntime {
+impl LoaderRuntime {
     /// Delivers hooks without vetoing game execution; mod failures update the machine.
-    fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
+    ///
+    /// Values have a fresh lifetime independent of `&self`; borrowed JNI handles
+    /// cannot be retained after observation.
+    pub(crate) fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) {
         // Mod callback panics are attributed by loader delivery before this lock is released.
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(work) = inner.work(target, values) {
             inner.deliver(&work);
         }
-        HookOutcome::Proceed
     }
 }
 
@@ -189,7 +153,7 @@ impl Inner {
     }
 
     fn server_side(&self) -> ravel_core::Side {
-        match self.machine.side() {
+        match self.loaded.machine().side() {
             ravel_core::Side::Client | ravel_core::Side::IntegratedServer => {
                 ravel_core::Side::IntegratedServer
             }
@@ -198,17 +162,7 @@ impl Inner {
     }
 
     pub(super) fn deliver_checked(&mut self, work: &Work) -> Result<(), String> {
-        if self.pairing_refused {
-            return Err("the installed host set is incomplete".to_owned());
-        }
-        let mut loaded = LoadedMods::new(&mut self.machine, &mut self.mods).map_err(|error| {
-            self.pairing_refused = true;
-            self.report.refuse(
-                &ravel_observability::Subject::of(error.mod_id().clone()),
-                &error,
-            );
-            error.to_string()
-        })?;
+        let mut loaded = self.loaded.borrow();
         let delivered = match work {
             Work::Event(event) => broadcast(
                 &mut loaded,
@@ -222,24 +176,19 @@ impl Inner {
                 &mut self.profiler,
                 self.report.environment(),
             ),
+            Work::Packet(packet) => ravel_loader::deliver_packet(
+                &mut loaded,
+                packet,
+                &mut self.profiler,
+                self.report.environment(),
+            ),
         };
         let delivery = match delivered {
             Ok(delivery) => delivery,
             Err(ravel_loader::DispatchRefused::Halted { .. }) if matches!(work, Work::Event(_)) => {
                 return Ok(());
             }
-            Err(error @ ravel_loader::DispatchRefused::Halted { .. }) => {
-                return Err(error.to_string());
-            }
-            Err(error) => {
-                let subject = error
-                    .mod_id()
-                    .map_or_else(ravel_observability::Subject::unidentified, |owner| {
-                        ravel_observability::Subject::of(owner.clone())
-                    });
-                self.report.refuse(&subject, &error);
-                return Err(error.to_string());
-            }
+            Err(error) => return Err(error.to_string()),
         };
         self.carry_outward();
         delivery
@@ -248,7 +197,7 @@ impl Inner {
     }
 
     fn deliver(&mut self, work: &Work) {
-        // The checked path publishes structural refusals before returning its error.
+        // Dispatch refusals are per-call diagnostics, not pre-world launch failures.
         if let Err(error) = self.deliver_checked(work) {
             eprintln!(
                 "[ravel] hook delivery refused: {}",
@@ -258,16 +207,7 @@ impl Inner {
     }
 
     fn carry_outward(&mut self) {
-        let mut loaded = match LoadedMods::new(&mut self.machine, &mut self.mods) {
-            Ok(loaded) => loaded,
-            Err(error) => {
-                self.report.refuse(
-                    &ravel_observability::Subject::of(error.mod_id().clone()),
-                    &error,
-                );
-                return;
-            }
-        };
+        let mut loaded = self.loaded.borrow();
         match ravel_loader::take_play_requests(&mut loaded, self.report.environment()) {
             Ok(drained) => self.outward.extend(
                 drained
@@ -275,15 +215,12 @@ impl Inner {
                     .into_iter()
                     .map(|request| outward::play(request.owner().as_str(), request.entry())),
             ),
+            // The halt already has its owning failure attribution.
             Err(ravel_loader::DispatchRefused::Halted { .. }) => {}
-            Err(error) => {
-                let subject = error
-                    .mod_id()
-                    .map_or_else(ravel_observability::Subject::unidentified, |owner| {
-                        ravel_observability::Subject::of(owner.clone())
-                    });
-                self.report.refuse(&subject, &error);
-            }
+            Err(error) => eprintln!(
+                "[ravel] play request drain refused: {}",
+                DiagnosticMessage::redacted(&error.to_string()).text()
+            ),
         }
     }
 }

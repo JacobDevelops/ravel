@@ -8,21 +8,6 @@ use std::path::{Path, PathBuf};
 
 use crate::resources::Supplied;
 
-/// Where a client scans for packs a player can enable.
-pub const RESOURCE_PACKS: &str = "resourcepacks";
-
-/// Where a world's automatically enabled packs live.
-pub const WORLD_DATA_PACKS: &str = "datapacks";
-
-/// The one directory Ravel writes in either place.
-pub const GAME_PACK_DIRECTORY: &str = "ravel";
-
-/// The folder-source identifier for [`GAME_PACK_DIRECTORY`].
-#[must_use]
-pub fn pack_id() -> &'static str {
-    concat!("file/", "ravel")
-}
-
 /// The file every pack declares its format in.
 const PACK_METADATA: &str = "pack.mcmeta";
 
@@ -41,15 +26,6 @@ impl Half {
         match self {
             Self::Assets => "assets/",
             Self::Data => "data/",
-        }
-    }
-
-    /// The sentence the written pack describes itself with.
-    #[must_use]
-    pub const fn description(self) -> &'static str {
-        match self {
-            Self::Assets => "Assets supplied by the Ravel mods this instance runs.",
-            Self::Data => "Data supplied by the Ravel mods this world was opened with.",
         }
     }
 }
@@ -208,7 +184,7 @@ fn write(path: &Path, root: &Path, bytes: &[u8]) -> Result<(), GamePackError> {
 fn relative(path: &Path, root: &Path) -> PathBuf {
     path.strip_prefix(root).map_or_else(
         |_| path.to_path_buf(),
-        |inside| Path::new(GAME_PACK_DIRECTORY).join(inside),
+        |inside| Path::new(root.file_name().unwrap_or_default()).join(inside),
     )
 }
 
@@ -284,16 +260,20 @@ impl std::error::Error for GamePackError {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn the_pack_id_is_the_directory_the_folder_source_would_have_listed() {
-        assert_eq!(super::pack_id(), format!("file/{GAME_PACK_DIRECTORY}"));
-    }
-
-    #[test]
     fn replacement_paths_include_the_root_and_sibling_staging_directory() {
         let root = PathBuf::from("resourcepacks").join("custom");
         assert_eq!(
             super::replaced_paths(&root),
             [root, PathBuf::from("resourcepacks").join("custom.pending")]
+        );
+    }
+
+    #[test]
+    fn diagnostic_paths_use_the_callers_pack_name() {
+        let root = PathBuf::from("packs/custom-pack");
+        assert_eq!(
+            super::relative(&root.join("assets/mod/file"), &root),
+            PathBuf::from("custom-pack/assets/mod/file")
         );
     }
 
@@ -306,7 +286,9 @@ mod tests {
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{Mod, ModError};
 
-    use super::{GAME_PACK_DIRECTORY, Half, write_game_pack};
+    use super::{Half, write_game_pack};
+
+    const GAME_PACK_DIRECTORY: &str = "custom-pack";
 
     const METADATA: &str = "{\n  \"pack\": {}\n}\n";
 
@@ -569,7 +551,7 @@ mod tests {
         );
         assert_eq!(timestamps(&root), before, "nothing on disk was touched");
         assert!(
-            !root.with_file_name("ravel.pending").exists(),
+            !super::staging(&root).exists(),
             "no staging directory is left behind"
         );
 
@@ -591,7 +573,7 @@ mod tests {
     #[test]
     fn a_leftover_staging_directory_is_removed_before_the_pack_is_built() {
         let root = directory("leftover").join(GAME_PACK_DIRECTORY);
-        let staged = root.with_file_name("ravel.pending");
+        let staged = super::staging(&root);
         std::fs::create_dir_all(staged.join("assets/ghost")).expect("a writable directory");
         std::fs::write(staged.join("assets/ghost/old.json"), b"{}").expect("a writable file");
         let set = supplied(&[("first_mod", &[("assets/first_mod/lang/en_us.json", "{}")])]);

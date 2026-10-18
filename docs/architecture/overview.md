@@ -53,9 +53,9 @@ Ravel into a Java mod host.
   search path so class loaders share one copy of Ravel's classes.
   The first distribution entry point names the running side and initializes the
   Rust runtime; `premain` does not infer the side.
-- **Refusable prologues.** An inventory-opted-in prepend on a void target can
-  return early when its hook answers a boolean refusal verdict.
-  The generated target data bounds that power, and non-void targets cannot use it.
+- **Observation hooks.** Generated hooks return no verdict and do not decide
+  whether a game call proceeds. World-open admission uses its own persistence
+  crossing; supported legacy semantic refusals use explicit adapter paths.
 - **Mod execution.** Mods ship independently as portable Rust source, and a
   Ravel-supplied toolchain compiles the installed set on the player's machine.
   Compiled mod artifacts are not distribution inputs, so Ravel owes no stable mod ABI.

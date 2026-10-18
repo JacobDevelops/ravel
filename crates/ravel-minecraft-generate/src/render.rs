@@ -385,7 +385,6 @@ mod tests {
                 kind: Kind::InstanceMethod,
                 capability: format!("A candidate {id} hook."),
                 side: crate::inputs::HookSide::Shared,
-                refuses: false,
                 title_menu_row: None,
             })
             .collect::<Vec<_>>();
@@ -734,69 +733,45 @@ mod tests {
         );
     }
 
-    /// The reviewed inventory with one entry opted into refusing its target.
-    fn opted_in(index: usize) -> (Inventory, Vec<Resolved>) {
-        let (mut inventory, resolved) = reviewed(&CANDIDATES);
-        inventory.hooks[index].refuses = true;
-        (inventory, resolved)
-    }
-
     #[test]
-    fn an_opted_in_target_answers_a_boolean_and_every_other_one_still_answers_nothing() {
-        // `server.tick` is the void candidate, so it is the one that may opt in.
-        let (inventory, resolved) = opted_in(1);
-
-        let shapes = shapes(&inventory, &resolved).expect("a void target may refuse");
+    fn every_observation_returns_void_even_when_the_game_target_returns_a_value() {
+        let mut candidates = CANDIDATES.to_vec();
+        candidates.push((
+            "chat.allowed-character",
+            "com.example.util.Chat",
+            "isAllowedChatCharacter",
+            "(I)Z",
+        ));
+        let (inventory, resolved) = reviewed(&candidates);
+        let shapes = shapes(&inventory, &resolved).expect("every candidate can be observed");
         let java = hook_java(&adapter(), &shapes);
         let rust = exports(&shapes);
 
-        assert!(
-            java.contains("public static native boolean serverTick(Object argument0);"),
-            "{java}"
-        );
-        assert!(
-            java.contains(
-                "\"serverTick\",\n                \"(Ljava/lang/Object;)Z\",\n                true)"
-            ),
-            "the opt-in reaches the target table beside the descriptor it changes: {java}"
-        );
-        assert!(
-            rust.contains(") -> ::jni::sys::jboolean {\n    crate::guard::enter_refusable("),
-            "{rust}"
-        );
-
-        // The other two candidates are untouched by their neighbour's opt-in.
-        assert!(
-            java.contains(
-                "public static native void registryRegister(Object argument0, \
-                 Object argument1, Object argument2);"
-            ),
-            "{java}"
-        );
-        assert!(
-            java.contains("\"(Ljava/lang/Object;Z)V\",\n                false)"),
-            "a target nobody opted in still answers nothing and says so: {java}"
-        );
-        assert_eq!(
-            rust.matches("crate::guard::enter(").count(),
-            2,
-            "only the opted-in export takes the refusable path: {rust}"
-        );
-    }
-
-    #[test]
-    fn a_target_that_returns_a_value_is_refused_the_opt_in_rather_than_given_a_default() {
-        // `registry.register` returns a `Holder$Reference`, so an early return
-        // would have to invent one.
-        let (inventory, resolved) = opted_in(0);
-
-        let error = shapes(&inventory, &resolved)
-            .expect_err("a value-returning target must not be refusable");
-
-        let message = error.to_string();
-        assert!(message.contains("registry.register"), "{message}");
-        assert!(message.contains("does not return void"), "{message}");
-        assert!(message.contains("invent a value"), "{message}");
+        assert!(java.contains("public static native void serverTick(Object argument0);"));
+        assert!(java.contains(
+            "public static native void registryRegister(Object argument0, \
+             Object argument1, Object argument2);"
+        ));
+        assert!(java.contains("public static native void chatAllowedCharacter(int argument0);"));
+        assert!(java.contains("\"(Ljava/lang/Object;)V\")"));
+        assert_eq!(rust.matches("crate::guard::enter(").count(), shapes.len());
+        for shape in &shapes {
+            let declaration = format!("pub fn {}<'local>(", shape.rust_function);
+            let signature = rust
+                .split_once(&declaration)
+                .expect("every observation has a Rust export")
+                .1;
+            let after_parameters = signature
+                .split_once("\n)")
+                .expect("observation parameter list terminates")
+                .1;
+            assert!(
+                after_parameters.starts_with(" {\n"),
+                "{} must return unit, not a verdict",
+                shape.rust_function
+            );
+        }
+        assert!(!rust.contains("enter_refusable"));
     }
 
     /// One stub, written the way the resolver hands them over.

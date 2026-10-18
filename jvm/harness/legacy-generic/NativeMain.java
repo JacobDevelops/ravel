@@ -112,7 +112,7 @@ public final class NativeMain {
         Hook.ravelLegacyEvent(side.equals("client") ? "client-tick" : "server-tick");
         long tick = eventCalls();
         require(tick > before, "tick did not dispatch a native mod callback");
-        Hook.ravelLegacyEvent("resource-reloaded");
+        Hook.ravelLegacyEvent("resources-reloaded");
         long reload = eventCalls();
         require(reload > tick, "reload did not dispatch a native mod callback");
         try {

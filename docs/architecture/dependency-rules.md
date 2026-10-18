@@ -125,21 +125,29 @@ stable contracts toward concrete host internals.
   `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
   It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
   and exposes only safe Rust upward. SDK and mod dependency graphs must not reach it.
-  The host entries delegate JNI side decoding and redacted exceptions to
-  `ravel-host-runtime`; its initialization installs the panic reporter before
-  constructing members. Bootstrap owns the installed composition, including the
-  admitted package-version map used to check saved-data requirements.
-  Composition admission freezes the loader's admitted interception ordering after
-  registration but before layering supplied files, so failed optional interceptors
-  contribute no pack bytes. Runtime saves use that owned cache instead of
+  The host JNI entries delegate side decoding and redacted exceptions to
+  `ravel-host-runtime` and install the panic reporter before constructing members.
+  In-process initialization does not replace the process panic hook. Bootstrap
+  owns the installed composition, including the admitted package-version map used
+  to check saved-data requirements. `ravel_host_runtime::compose` freezes the
+  loader's admitted interception ordering after registration but before layering
+  supplied files, so failed optional interceptors contribute no pack bytes.
+  Runtime saves use that owned cache instead of
   recollecting declarations or re-admitting conflicting claims.
   Callback dispatch and world persistence borrow the environment owned by the
   runtime's pre-world report; hooks do not reconstruct version or platform strings.
-  Bootstrap's pack module owns resource, staged-data, and world-data destinations
-  and pinned metadata; loader retains only the generic pack writer. Host initialization
-  takes the game directory explicitly, with cwd resolved only at the JNI entry.
-  A composition is consumed into private runtime state: package versions live only
-  in the lifecycle owner, and settings borrow the launch directory when saving.
+  Bootstrap's pack module owns resource, staged-data, and world-data destinations,
+  pack identity, descriptions and pinned metadata; loader retains only the generic
+  pack writer. Installed world-pack writes use `write_world_datapack`, exposed to Java
+  as `ravelWriteWorldDatapack`; opening world persistence only admits and stages saved
+  data. Host initialization takes the game
+  directory explicitly, with cwd resolved only at the process JNI entry; integrated
+  servers reuse that installed launch directory.
+  A composition owns a loader `Loaded` pair that validates and orders its mods once;
+  callbacks and persistence borrow that pair infallibly. Per-call dispatch refusals
+  return to their caller rather than poisoning the launch report. A composition is
+  consumed into private runtime state: package versions live only in the lifecycle
+  owner, and settings borrow the launch directory when saving.
   Hooks dispatch through the installed runtime, not a second observer registry;
   legacy integrated servers retain their thread-owned runtime selection. Server
   commands and world-save interceptions carry the executing integrated-server side

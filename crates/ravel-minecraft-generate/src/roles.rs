@@ -228,7 +228,6 @@ mod tests {
                     kind: Kind::InstanceMethod,
                     capability: String::from("test"),
                     side: crate::inputs::HookSide::Shared,
-                    refuses: false,
                     title_menu_row: None,
                 })
                 .collect(),

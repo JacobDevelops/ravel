@@ -41,8 +41,4 @@ fn main() {
     // Cargo forwards `links` metadata to direct dependants' build scripts.
     println!("cargo::metadata=bindings={}", generated.bindings.display());
     println!("cargo::metadata=exports={}", generated.exports.display());
-    println!(
-        "cargo::metadata=has_refusable_hooks={}",
-        generated.has_refusable_hooks
-    );
 }

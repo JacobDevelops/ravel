@@ -143,7 +143,7 @@ pub(super) fn host_source(members: &[PlannedMember]) -> String {
             pushes,
             "        Member {{\n\
              \x20           package: {constant}.to_owned(),\n\
-             \x20           host: {ident}::{ENTRY_FUNCTION}(side),\n\
+             \x20           value: {ident}::{ENTRY_FUNCTION}(side),\n\
              \x20       }},\n",
             ident = crate_ident(&member.crate_name),
         )

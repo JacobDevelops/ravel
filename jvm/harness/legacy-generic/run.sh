@@ -16,7 +16,7 @@ section() { printf '%s\n' "$1" >>"$record"; }
 jvm=("$java" -Xshare:off -Xverify:all --illegal-native-access=deny -Dravel.legacy.proof=true)
 mkdir -p "$work/classes" "$work/fixture" "$work/entries" "$work/missing"
 "$javac" -cp "$jar" -d "$work/classes" "$sources/GenericMain.java" "$sources/NativeMain.java"
-"$javac" -cp "$jar" -d "$work/fixture" "$sources/refusal/dev/ravel/jvm/Hook.java"
+"$javac" -cp "$jar" -d "$work/fixture" "$sources/fixture/dev/ravel/jvm/Hook.java"
 "$javac" -cp "$work/fixture:$jar" -d "$work/fixture" \
     "$sources/FixtureMain.java" "$sources/HierarchyFixture.java" \
     "$sources/InitTarget.java" "$sources/InitializationMain.java" \
@@ -33,12 +33,11 @@ server="${entries[1]}"
 # Real generated inventory: every method must contain native and adapter calls.
 (cd "$work" && "${native[@]}" -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.ExecutableMain
+# ExecutableMain checks the actual legacy fire-damage refusal crossing.
+section refusal
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.FixtureMain descriptors
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.PaletteMain
 section transformation
-# The legacy inventory has no refusal opt-in; exercise production Transformer with a fixture Hook.
-"${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.FixtureMain refusal
-section refusal
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.FixtureMain hierarchy
 section hierarchy
 

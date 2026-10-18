@@ -114,9 +114,6 @@ pub(crate) struct Hook {
     /// Client-only targets are explicitly exempt from dedicated-server checks.
     #[serde(default)]
     pub(crate) side: HookSide,
-    /// Whether this target's prologue may return from it before its body runs.
-    #[serde(default)]
-    pub(crate) refuses: bool,
     /// Where Ravel's own title-menu row goes, measured down from the column top.
     #[serde(default, rename = "titleMenuRow")]
     pub(crate) title_menu_row: Option<i16>,
@@ -495,15 +492,14 @@ stubsLock = { path = \"g\" } }\n";
         )?;
         let hook: Hook = toml::from_str(HOOK)?;
         assert_eq!(hook.side, HookSide::Shared);
-        assert!(!hook.refuses);
         assert_eq!(hook.title_menu_row, None);
         let explicit: Hook = toml::from_str(&format!(
-            "{HOOK}side = \"client-only\"\nrefuses = true\ntitleMenuRow = -2\n"
+            "{HOOK}side = \"client-only\"\ntitleMenuRow = -2\n"
         ))?;
         assert_eq!(explicit.side, HookSide::ClientOnly);
-        assert!(explicit.refuses);
         assert_eq!(explicit.title_menu_row, Some(-2));
         refused::<Hook>(&format!("{HOOK}title_menu_row = 1\n"), "unknown field");
+        refused::<Hook>(&format!("{HOOK}refuses = true\n"), "unknown field");
         Ok(())
     }
 

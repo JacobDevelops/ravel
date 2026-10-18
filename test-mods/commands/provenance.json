@@ -6,7 +6,7 @@
   "rights": [
     { "surface": "code", "status": "cleared", "basis": "Original work written for this repository and licensed under MIT OR Apache-2.0." },
     { "surface": "models", "status": "not-applicable" },
-    { "surface": "names", "status": "cleared", "basis": "Commands, warp and waypoint are ordinary descriptive words." },
+    { "surface": "names", "status": "cleared", "basis": "Commands, warp, waypoint and server_probe are ordinary descriptive words." },
     { "surface": "textures", "status": "not-applicable" },
     { "surface": "sounds", "status": "not-applicable" }
   ],

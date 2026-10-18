@@ -145,7 +145,7 @@ mod tests {
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_host_api::{GameEvent, Mod, ModError};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
-    use ravel_minecraft::{HookId, HookKind, HookObserver, HookTarget};
+    use ravel_minecraft::{HookId, HookKind, HookTarget};
     use ravel_observability::{Metric, Profiler};
 
     use super::document_of;

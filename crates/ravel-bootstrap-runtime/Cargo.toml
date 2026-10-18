@@ -30,9 +30,9 @@ serde_json.workspace = true
 
 [dev-dependencies]
 ravel-test-mod-audio.workspace = true
+ravel-test-mod-commands.workspace = true
 ravel-test-mod-networking.workspace = true
 ravel-test-mod-saved-data.workspace = true
-rvl-180-counterpart = { path = "../../registry/mods/rvl-180-counterpart", version = "4.6.1" }
 
 [lints]
 workspace = true

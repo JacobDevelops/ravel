@@ -133,7 +133,13 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     })
 }
 
-pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
+/// Checks the loader-owned admission rule shared by dispatch and host pre-admission.
+///
+/// # Errors
+///
+/// Returns [`DispatchRefused::Halted`] for a latched halt or a required, side-loaded
+/// mod that failed before the world was modified.
+pub fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
     let by = machine.halted_by().or_else(|| {
         machine
             .tracked_entries()

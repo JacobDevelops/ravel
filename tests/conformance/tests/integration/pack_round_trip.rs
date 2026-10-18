@@ -7,12 +7,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ravel_bootstrap_runtime::environment;
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument, file};
 use ravel_core::{LifecycleState, ModId, Side};
 use ravel_data::ContentDeclaration;
 use ravel_host_api::Mod;
-use ravel_host_runtime::{Member, compose};
+use ravel_host_runtime::{Member, compose, environment};
 use ravel_pack::{ClosureError, PackDeclaration, ValidatedPack, validate};
 use ravel_package::PackageManifest;
 
@@ -132,7 +131,7 @@ fn members() -> (Vec<Member>, Vec<Applied>) {
         let record = Arc::new(Mutex::new(None));
         composed.push(Member {
             package: package(owner),
-            host: Box::new(Settled {
+            value: Box::new(Settled {
                 id: id(owner),
                 applied: Arc::clone(&record),
             }),
@@ -179,11 +178,12 @@ fn manifests() -> Vec<PackageManifest> {
 
 fn launch(game: &Path) -> Vec<Option<i64>> {
     let (composed, applied) = members();
-    let ravel_bootstrap_runtime::Composition {
-        machine,
+    let ravel_host_runtime::Composition {
+        loaded,
         configurations,
         ..
     } = compose(game, SIDE, composed).expect("the composition should start");
+    let machine = loaded.machine();
 
     for owner in MEMBERS {
         assert_eq!(

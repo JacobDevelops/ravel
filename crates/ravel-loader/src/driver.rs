@@ -43,7 +43,7 @@ pub fn drive_loaded<H: std::ops::DerefMut<Target: Mod>>(
     Ok(())
 }
 
-/// Quiesces paired hosts through `stopping` and `stopped`.
+/// Quiesces paired mods through `stopping` and `stopped`.
 ///
 /// # Errors
 ///

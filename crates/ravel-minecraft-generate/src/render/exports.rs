@@ -25,14 +25,10 @@ pub(crate) fn exports(shapes: &[Shape]) -> String {
             .collect::<Vec<_>>();
         let carries_text = shape.parameters.contains(&JavaType::Text);
 
-        // A refusing export answers the injected branch, so its verdict is the
-        // whole point of calling it and dropping one is a bug.
-        let must_use = if shape.refuses { "#[must_use]\n" } else { "" };
         writeln!(
             text,
             "/// {}\n\
          #[::jni::jni_mangle(\"{HOOK_CLASS}\", \"{}\")]\n\
-         {must_use}\
          pub fn {}<'local>(\n\
          \x20   env: ::jni::EnvUnowned<'local>,\n\
          \x20   _class: ::jni::objects::JClass<'local>,",
@@ -56,21 +52,14 @@ pub(crate) fn exports(shapes: &[Shape]) -> String {
             format!("::std::vec![\n            {rendered},\n        ]")
         };
 
-        // A refusing export answers the injected branch, so it returns the
-        // guard's verdict rather than discarding it.
-        let (returns, entry, terminator) = if shape.refuses {
-            (" -> ::jni::sys::jboolean", "enter_refusable", "")
-        } else {
-            ("", "enter", ";")
-        };
         writeln!(
             text,
-            "){returns} {{\n\
-         \x20   crate::guard::{entry}(\n\
+            ") {{\n\
+         \x20   crate::guard::enter(\n\
          \x20       env,\n\
          \x20       &::ravel_minecraft_adapter::pinned::{},\n\
          \x20       |{}| ::std::result::Result::Ok({values}),\n\
-         \x20   ){terminator}\n\
+         \x20   );\n\
          }}\n",
             shape.constant,
             if carries_text { "env" } else { "_env" }

@@ -40,8 +40,8 @@ sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
 
 [inputs.hookInventory]
 path = "minecraft/versions/99.0.0-synthetic/hooks.toml"
-sha256 = "1090aed840eea48920cd646d177ac20f8579db8ba2f9c8d8d1ecce58b35717c3"
-bytes = 12412
+sha256 = "72ac59f299f07e415f8d2f1afc2619adca079e1e82c0da166ee24a07d02b67a1"
+bytes = 12397
 
 [inputs.stubSeeds]
 path = "minecraft/versions/99.0.0-synthetic/stubs.toml"

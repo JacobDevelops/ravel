@@ -22,7 +22,7 @@ public final class InitializationMain {
     private static void missingEntryMethods(int selectedSide) {
         for (String entry : new String[] {GameNames.CLIENT_ENTRY_POINT, GameNames.SERVER_ENTRY_POINT}) {
             String owner = entry.replace('.', '/');
-            HookTarget hook = new HookTarget(owner, "run", "()V", true, "probe", "()V", false);
+            HookTarget hook = new HookTarget(owner, "run", "()V", true, "probe", "()V");
             byte[] original = java.lang.classfile.ClassFile.of().build(
                     java.lang.constant.ClassDesc.ofInternalName(owner), builder -> {
                         builder.withFlags(java.lang.classfile.ClassFile.ACC_PUBLIC);

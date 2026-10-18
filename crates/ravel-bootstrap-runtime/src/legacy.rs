@@ -4,12 +4,10 @@
 //! retains lifecycle, side, ownership and callback-failure admission. Commands
 //! require vanilla permission level two before Java calls the execution crossing.
 
-use std::sync::PoisonError;
-
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{JNI_FALSE, jboolean};
 use jni::{Env, EnvUnowned};
-use ravel_core::{ContentId, ContentKind};
+use ravel_core::ContentId;
 use ravel_network::PacketId;
 
 use crate::guard::{HookError, text};
@@ -18,9 +16,11 @@ use crate::wire::{VERSION, count, field};
 
 const MAX_PACKET_BYTES: usize = 32_767;
 const MAX_CHANNEL_BYTES: usize = 20;
+/// Vanilla operator permission imposed by the legacy adapter, not a mod declaration.
+const LEGACY_COMMAND_LEVEL: &str = "2";
 
 fn refused(reason: String) -> HookError {
-    HookError::Vetoed {
+    HookError::Refused {
         hook: "legacy.semantic",
         reason,
     }
@@ -31,22 +31,14 @@ fn runtime() -> Result<std::sync::Arc<LoaderRuntime>, HookError> {
 }
 
 fn commands(runtime: &LoaderRuntime) -> String {
-    let keys: Vec<_> = runtime
-        .inner
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .machine
-        .claimed_keys()
-        .filter(|key| key.kind() == ContentKind::Command)
-        .cloned()
-        .collect();
+    let keys = runtime.command_keys();
     let mut output = String::new();
     field(&mut output, VERSION);
     count(&mut output, keys.len());
     for key in keys {
         let literal = key.id().to_string();
         field(&mut output, &literal);
-        field(&mut output, "2");
+        field(&mut output, LEGACY_COMMAND_LEVEL);
         field(&mut output, &literal);
     }
     output
@@ -85,7 +77,7 @@ pub fn ravel_legacy_command<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
-/// Delivers only the three semantic events reviewed for the legacy adapter.
+/// Delivers canonical semantic events after the Java adapter's success/thread checks.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelLegacyEvent")]
 pub fn ravel_legacy_event<'local>(
     mut env: EnvUnowned<'local>,
@@ -94,13 +86,9 @@ pub fn ravel_legacy_event<'local>(
 ) {
     env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
         let kind = text(env, &kind)?;
-        if !matches!(
-            kind.as_str(),
-            "client-tick" | "server-tick" | "resource-reloaded"
-        ) {
-            return Err(refused("unknown legacy semantic event".to_owned()));
-        }
-        let delivery = runtime().and_then(|runtime| runtime.legacy_event(&kind).map_err(refused));
+        let event = ravel_host_api::GameEvent::published(&kind)
+            .ok_or_else(|| refused("unknown legacy semantic event".to_owned()))?;
+        let delivery = runtime().and_then(|runtime| runtime.legacy_event(event).map_err(refused));
         if let Err(error) = delivery {
             eprintln!(
                 "[ravel] legacy event refused: {}",
@@ -165,18 +153,8 @@ pub fn ravel_legacy_packet_owner<'local>(
         let channel = text(env, &channel)?;
         let owned = channel.len() <= MAX_CHANNEL_BYTES
             && channel.parse::<ContentId>().is_ok_and(|id| {
-                crate::runtime::selected().is_some_and(|runtime| {
-                    let inner = runtime.inner.lock().unwrap_or_else(PoisonError::into_inner);
-                    inner.machine.save_access().is_ok()
-                        && inner.machine.loads(id.namespace())
-                        && inner.machine.state(id.namespace()).is_ok_and(|state| {
-                            matches!(
-                                state,
-                                ravel_core::LifecycleState::Running
-                                    | ravel_core::LifecycleState::Stopping,
-                            )
-                        })
-                })
+                crate::runtime::selected()
+                    .is_some_and(|runtime| runtime.accepts_packet_owner(id.namespace()))
             });
         Ok(if owned { jni::sys::JNI_TRUE } else { JNI_FALSE })
     })

@@ -4,7 +4,6 @@
 
 mod content;
 mod dispatch;
-mod game_directory;
 mod guard;
 mod invocations;
 mod legacy;
@@ -19,15 +18,20 @@ mod side;
 mod wire;
 
 pub use guard::HookError;
-pub use packs::{write_resource_pack, write_world_pack};
-pub use persistence::{OpenOutcome, SaveOutcome, open_world_data, save_world_data};
+pub use packs::{
+    GAME_PACK_DIRECTORY, RESOURCE_PACKS, WORLD_DATA_PACKS, pack_id, write_resource_pack,
+    write_world_pack,
+};
+pub use persistence::{
+    OpenOutcome, SaveOutcome, open_world_data, save_world_data, write_world_datapack,
+};
 /// Whether declared adapter capabilities select the legacy game surface.
 pub use ravel_minecraft_adapter::pinned::LEGACY_ADAPTER;
 pub use runtime::{
     Composition, InstallError, environment, install, install_integrated, install_panic_hook,
-    integrated_installed, is_installed, pre_world_report,
+    integrated_installed, is_installed, pre_world_report, process_launch_context,
 };
-pub use side::{SideError, side};
+pub use side::{SideError, side_from_agent_code};
 
 /// JNI exports for native entry points and generated callable hook shapes.
 pub mod exports {

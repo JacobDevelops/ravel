@@ -176,7 +176,7 @@ public final class LegacyRuntime {
         LegacyRecipes.install();
         completedGeneration = generation;
         reloading = null;
-        Hook.ravelLegacyEvent("resource-reloaded");
+        Hook.ravelLegacyEvent("resources-reloaded");
         if (PROOF) {
             RESOURCE_EVENTS.incrementAndGet();
         }
@@ -235,7 +235,7 @@ public final class LegacyRuntime {
         return switch (kind) {
             case "client-tick" -> CLIENT_EVENTS.get();
             case "server-tick" -> SERVER_EVENTS.get();
-            case "resource-reloaded" -> RESOURCE_EVENTS.get();
+            case "resources-reloaded" -> RESOURCE_EVENTS.get();
             default -> throw new IllegalArgumentException("unknown legacy semantic event");
         };
     }

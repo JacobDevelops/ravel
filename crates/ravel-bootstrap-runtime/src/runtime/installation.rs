@@ -56,6 +56,23 @@ pub(crate) fn integrated_runtime() -> Option<Arc<LoaderRuntime>> {
         .as_ref()
         .and_then(Weak::upgrade)
 }
+/// Copies the installed process launch context for an integrated-server launch.
+///
+/// # Errors
+/// Returns [`InstallError::ProcessNotInstalled`] when no process launch exists.
+pub fn process_launch_context() -> Result<(PathBuf, Profiler), InstallError> {
+    let runtime = installed().ok_or(InstallError::ProcessNotInstalled)?;
+    let profiling = runtime
+        .inner
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .profiler
+        .is_on();
+    Ok((
+        runtime.launch.game_directory.clone(),
+        Profiler::from_switch(profiling),
+    ))
+}
 
 /// Whether the calling thread already owns its integrated-server composition.
 #[must_use]
@@ -71,8 +88,9 @@ pub fn integrated_installed() -> bool {
 pub fn install_integrated(
     composition: Composition,
     game_directory: PathBuf,
+    profiler: Profiler,
 ) -> Result<(), InstallError> {
-    if composition.machine.side() != ravel_core::Side::IntegratedServer {
+    if composition.loaded.machine().side() != ravel_core::Side::IntegratedServer {
         return Err(InstallError::WrongSide);
     }
     INTEGRATED.with(|slot| {
@@ -80,18 +98,10 @@ pub fn install_integrated(
         if slot.is_some() {
             return Err(InstallError::AlreadyInstalled);
         }
-        let profiling = installed().is_some_and(|runtime| {
-            runtime
-                .inner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .profiler
-                .is_on()
-        });
         let runtime = Arc::new(LoaderRuntime::from_composition(
             composition,
             game_directory,
-            Profiler::from_switch(profiling),
+            profiler,
             pre_world_report(),
         ));
         *INTEGRATED_VIEW
@@ -111,10 +121,12 @@ pub fn is_installed() -> bool {
 /// A launch could not publish its runtime.
 #[derive(Debug, Eq, PartialEq)]
 pub enum InstallError {
-    /// Another runtime already owns this process.
+    /// The requested process slot or integrated-server thread slot is already occupied.
     AlreadyInstalled,
-    /// A non-server composition was supplied for integrated installation.
+    /// Integrated installation received a side other than `IntegratedServer`.
     WrongSide,
+    /// A caller requested process launch context before the process was installed.
+    ProcessNotInstalled,
 }
 
 impl std::fmt::Display for InstallError {
@@ -122,6 +134,7 @@ impl std::fmt::Display for InstallError {
         formatter.write_str(match self {
             Self::AlreadyInstalled => "the loader runtime is already installed",
             Self::WrongSide => "integrated installation requires the integrated-server side",
+            Self::ProcessNotInstalled => "the process launch context is not installed",
         })
     }
 }
@@ -141,7 +154,7 @@ pub fn install(
     if installed().is_some() {
         return Err(InstallError::AlreadyInstalled);
     }
-    let side = composition.machine.side();
+    let side = composition.loaded.machine().side();
     let runtime = Arc::new(LoaderRuntime::from_composition(
         composition,
         game_directory,

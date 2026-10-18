@@ -36,34 +36,8 @@ public final class FixtureMain {
         }
     }
     public static void main(String[] arguments) throws ReflectiveOperationException, IOException {
-        if (arguments[0].equals("refusal")) refusal();
-        else if (arguments[0].equals("descriptors")) descriptorRefusals();
+        if (arguments[0].equals("descriptors")) descriptorRefusals();
         else hierarchy();
-    }
-    private static void refusal() throws ReflectiveOperationException {
-        String name = "fixture/Refusal";
-        byte[] original = ClassFile.of().build(ClassDesc.ofInternalName(name), builder -> {
-            builder.withFlags(ClassFile.ACC_PUBLIC);
-            builder.withField("bodies", ClassDesc.ofDescriptor("I"), ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC);
-            builder.withMethodBody("run", MethodTypeDesc.ofDescriptor("()V"),
-                    ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> code
-                            .getstatic(ClassDesc.ofInternalName(name), "bodies", ClassDesc.ofDescriptor("I"))
-                            .iconst_1().iadd()
-                            .putstatic(ClassDesc.ofInternalName(name), "bodies", ClassDesc.ofDescriptor("I"))
-                            .return_());
-        });
-        HookTarget hook = new HookTarget(name, "run", "()V", true, "decide", "()Z", true);
-        Transformer transformer = new Transformer(new HookTarget[] {hook}, true);
-        byte[] rewritten = transformer.transform(null, FixtureMain.class.getClassLoader(), name, null, null, original);
-        require(rewritten != null && transformer.isInstalled("decide"), "refusal prologue not installed");
-        Class<?> target = new Definer().define(rewritten);
-        Hook.verdict = true;
-        target.getMethod("run").invoke(null);
-        require(target.getField("bodies").getInt(null) == 0 && Hook.calls == 1, "true did not refuse");
-        Hook.verdict = false;
-        target.getMethod("run").invoke(null);
-        require(target.getField("bodies").getInt(null) == 1 && Hook.calls == 2, "false did not continue");
-        System.out.println("legacy refusal true=skipped false=continued");
     }
     private record Drift(String hook, String descriptor, boolean isStatic) {}
 
@@ -102,7 +76,7 @@ public final class FixtureMain {
                         });
             });
             HookTarget hook = new HookTarget(owner, "run", drift.descriptor(), drift.isStatic(),
-                    drift.hook(), type.changeReturnType(returnType).descriptorString(), false);
+                    drift.hook(), type.changeReturnType(returnType).descriptorString());
             Transformer transformer = new Transformer(new HookTarget[] {hook}, true);
             byte[] snapshot = original.clone();
             byte[] rewritten = transformer.transform(null, FixtureMain.class.getClassLoader(), owner, null, null, original);
@@ -120,7 +94,7 @@ public final class FixtureMain {
             original = java.util.Objects.requireNonNull(input).readAllBytes();
         }
         HookTarget hook = new HookTarget(owner, "choose", "(Z)Ldev/ravel/jvm/HierarchyFixture$Base;",
-                true, "probe", "(Z)V", false);
+                true, "probe", "(Z)V");
         // The probe must accept the target argument; the fixture Hook has that overload.
         Resources resources = new Resources("");
         Transformer transformer = new Transformer(new HookTarget[] {hook}, true);

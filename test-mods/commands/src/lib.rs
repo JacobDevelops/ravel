@@ -11,10 +11,13 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "commands";
 
-// Claim roots, not subcommands; the mod parses `warp set` and `warp list`.
-const ROOTS: [&str; 2] = ["warp", "waypoint"];
+/// The command that refuses invocations without server-side identity.
+pub const SERVER_PROBE: &str = "server_probe";
 
-/// Owns two command roots and records routed invocations in arrival order.
+// Claim roots, not subcommands; the mod parses `warp set` and `warp list`.
+const ROOTS: [&str; 3] = ["warp", "waypoint", SERVER_PROBE];
+
+/// Owns command roots and records routed invocations in arrival order.
 ///
 /// # Examples
 ///
@@ -22,7 +25,7 @@ const ROOTS: [&str; 2] = ["warp", "waypoint"];
 /// use ravel_test_mod_commands::CommandsMod;
 ///
 /// let commands = CommandsMod::new();
-/// assert_eq!(commands.claims().len(), 2);
+/// assert_eq!(commands.claims().len(), 3);
 /// assert_eq!(commands.claims()[0].id().to_string(), "commands:warp");
 /// assert!(commands.invocations().is_empty());
 /// ```
@@ -93,7 +96,7 @@ impl Mod for CommandsMod {
         Ok(())
     }
 
-    /// Claims both root literals.
+    /// Claims every root literal, including the server-side probe.
     ///
     /// # Errors
     ///
@@ -107,9 +110,14 @@ impl Mod for CommandsMod {
     ///
     /// # Errors
     ///
-    /// Returns a [`ModError`] when the invocation has no subcommand.
+    /// Returns a [`ModError`] when the probe runs on a client or another command
+    /// has no subcommand.
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
-        if invocation.arguments.is_empty() {
+        let server_probe = invocation.key.id().path() == SERVER_PROBE;
+        if server_probe && !invocation.side.is_server() {
+            return Err(ModError::refused("server_probe requires a server side"));
+        }
+        if !server_probe && invocation.arguments.is_empty() {
             return Err(ModError::refused(format!(
                 "`{}` needs a subcommand",
                 invocation.key
@@ -126,7 +134,7 @@ mod tests {
     use ravel_sdk::events::CommandInvocation;
     use ravel_sdk::{Mod, ModId, Side};
 
-    use super::{CommandsMod, MOD_ID, ROOTS};
+    use super::{CommandsMod, MOD_ID, ROOTS, SERVER_PROBE};
 
     #[derive(Default)]
     struct Accepting {
@@ -277,6 +285,24 @@ mod tests {
             .run_command(&invocation("warp", &["set"]))
             .expect("it has a subcommand now");
         assert_eq!(commands.invocations().len(), 1);
+    }
+
+    #[test]
+    fn the_server_probe_refuses_clients_and_records_both_server_identities() {
+        let mut commands = CommandsMod::new();
+        let mut probe = invocation(SERVER_PROBE, &[]);
+        let error = commands.run_command(&probe).expect_err("not a server");
+        assert!(
+            error.to_string().contains("requires a server side"),
+            "{error}"
+        );
+        assert_eq!(commands.invocations(), []);
+
+        for side in [Side::IntegratedServer, Side::DedicatedServer] {
+            probe.side = side;
+            commands.run_command(&probe).expect("a server identity");
+            assert_eq!(commands.invocations().last(), Some(&probe));
+        }
     }
 
     #[test]

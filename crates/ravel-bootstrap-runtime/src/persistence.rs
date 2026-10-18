@@ -66,11 +66,15 @@ impl From<StagedPack> for jint {
 /// What the Java adapter should do at a save crossing.
 #[derive(Debug, Eq, PartialEq)]
 pub enum SaveOutcome {
+    /// Nothing changed since the last write; the adapter writes nothing.
     Unchanged,
     /// A mod vetoed this write; pending state is retained for the next save.
     Withheld,
+    /// The complete aggregate the adapter should persist.
     Replacement(Vec<u8>),
+    /// Unredacted failure diagnostic; publish only through `DiagnosticMessage::redacted`.
     Failed(String),
+    /// Unredacted identity diagnostic; publish only through `DiagnosticMessage::redacted`.
     IdentityMismatch(String),
 }
 
@@ -113,23 +117,23 @@ impl fmt::Display for WorldIdentity {
 #[must_use]
 pub fn open_world_data(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
     match runtime() {
-        Ok(runtime) => stage_world_and_write_pack(&runtime, identity_raw, bytes, fresh_world),
+        Ok(runtime) => {
+            match runtime.stage_world(WorldIdentity::of(identity_raw), bytes, fresh_world) {
+                Ok(()) => OpenOutcome::Staged,
+                Err(error) => OpenOutcome::Refused(error.to_string()),
+            }
+        }
         Err(error) => OpenOutcome::Refused(error),
     }
 }
 
-fn stage_world_and_write_pack(
-    runtime: &LoaderRuntime,
-    identity_raw: &str,
-    bytes: Option<&[u8]>,
-    fresh_world: bool,
-) -> OpenOutcome {
-    match runtime.stage_world(WorldIdentity::of(identity_raw), bytes, fresh_world) {
-        Ok(()) => {
-            runtime.write_world_pack(identity_raw);
-            OpenOutcome::Staged
-        }
-        Err(error) => OpenOutcome::Refused(error.to_string()),
+/// Writes the installed launch's world data pack before pack discovery.
+///
+/// With no installed runtime nothing is written. Filesystem refusals become
+/// runtime notices, matching the JVM pack crossing rather than refusing admission.
+pub fn write_world_datapack(world: &Path) {
+    if let Ok(runtime) = runtime() {
+        runtime.write_world_pack(world);
     }
 }
 
@@ -146,7 +150,6 @@ pub fn save_world_data(identity_raw: &str) -> SaveOutcome {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum PersistenceError {
     Lifecycle(ravel_loader::LifecycleError),
-    MissingMod(ravel_loader::MissingMod),
     World(ravel_loader::WorldRefused),
     Admission(ravel_loader::SaveRefused),
     Host(ravel_host_api::HostError),
@@ -157,7 +160,6 @@ impl fmt::Display for PersistenceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
-            Self::MissingMod(error) => error.fmt(formatter),
             Self::World(error) => error.fmt(formatter),
             Self::Admission(error) => error.fmt(formatter),
             Self::Host(error) => error.fmt(formatter),
@@ -170,7 +172,6 @@ impl std::error::Error for PersistenceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Lifecycle(error) => Some(error),
-            Self::MissingMod(error) => Some(error),
             Self::World(error) => Some(error),
             Self::Admission(error) => Some(error),
             Self::Host(error) => Some(error),
@@ -180,23 +181,23 @@ impl std::error::Error for PersistenceError {
 }
 
 impl LoaderRuntime {
-    fn write_world_pack(&self, world: &str) {
+    fn write_world_pack(&self, world: &Path) {
         self.put_pack(world, crate::packs::write_world_pack);
     }
 
-    fn write_staged_pack(&self, directory: &str) -> StagedPack {
+    fn write_staged_pack(&self, directory: &Path) -> StagedPack {
         self.put_pack(directory, crate::packs::write_staged_pack)
     }
 
     fn put_pack(
         &self,
-        directory: &str,
+        path: &Path,
         write: fn(
-            &ravel_loader::Supplied,
             &Path,
+            &ravel_loader::Supplied,
         ) -> Result<ravel_loader::Written, ravel_loader::GamePackError>,
     ) -> StagedPack {
-        let path = Path::new(directory);
+        let directory = path.display();
         let launch = &self.launch;
         if let Err(refusal) = admissible_world(path, &launch.game_directory) {
             self.inner
@@ -209,7 +210,7 @@ impl LoaderRuntime {
                 ));
             return StagedPack::Nothing;
         }
-        match write(&launch.supplied, path) {
+        match write(path, &launch.supplied) {
             Ok(written) if written.changed() => StagedPack::Written,
             Ok(_) => StagedPack::Unchanged,
             Err(error) => {
@@ -236,7 +237,8 @@ impl LoaderRuntime {
         let inner = &mut *locked;
         // Refuse before reading or writing any world state.
         inner
-            .machine
+            .loaded
+            .machine()
             .world_access(&inner.report)
             .map_err(PersistenceError::World)?;
         if bytes.is_none() && !fresh_world {
@@ -247,7 +249,7 @@ impl LoaderRuntime {
         }
         let aggregate = Self::open_world_data(inner, bytes)?;
         inner
-            .machine
+            .loaded
             .record_world_mutation()
             .map_err(PersistenceError::Lifecycle)?;
         inner.persistence.staged = Some(Checkpoint {
@@ -263,8 +265,7 @@ impl LoaderRuntime {
         inner: &mut crate::runtime::Inner,
         bytes: Option<&[u8]>,
     ) -> Result<SavedDataAggregate, PersistenceError> {
-        let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
-            .map_err(PersistenceError::MissingMod)?;
+        let mut loaded = inner.loaded.borrow();
         if inner.persistence.staged.is_none()
             && let Some(live) = &mut inner.persistence.live
         {
@@ -327,8 +328,7 @@ impl LoaderRuntime {
         let mut locked = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let inner = &mut *locked;
         let saved = (|| {
-            let mut loaded = LoadedMods::new(&mut inner.machine, &mut inner.mods)
-                .map_err(PersistenceError::MissingMod)?;
+            let mut loaded = inner.loaded.borrow();
             if let Some(refused) = Self::save_veto(
                 &mut loaded,
                 &inner.interceptions,
@@ -427,12 +427,8 @@ fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
 
 // The writer replaces these entries, so a link among them would redirect it outside `world`.
 fn pack_targets_are_real(world: &Path) -> Result<(), String> {
-    use ravel_loader::{GAME_PACK_DIRECTORY, WORLD_DATA_PACKS};
-    let packs = world.join(WORLD_DATA_PACKS);
-    let roots = [
-        packs.join(GAME_PACK_DIRECTORY),
-        world.join(GAME_PACK_DIRECTORY),
-    ];
+    let packs = world.join(crate::packs::WORLD_DATA_PACKS);
+    let roots = crate::packs::world_pack_roots(world);
     for path in std::iter::once(packs).chain(
         roots
             .iter()

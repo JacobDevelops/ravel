@@ -14,7 +14,7 @@ public final class PaletteMain {
         if (!condition) throw new AssertionError(message);
     }
     private static HookTarget target(String method) {
-        return new HookTarget(OWNER, method, "(I)V", false, "legacyGlobalPaletteSize", "(I)V", false);
+        return new HookTarget(OWNER, method, "(I)V", false, "legacyGlobalPaletteSize", "(I)V");
     }
     public static void main(String[] ignored) throws Exception {
         byte[] original;

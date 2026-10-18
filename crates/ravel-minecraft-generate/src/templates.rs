@@ -988,7 +988,6 @@ com.example.util.Held -> com.example.util.Held:
                         descriptor: String::from("()V"),
                         kind: inputs::Kind::InstanceMethod,
                         capability: String::from("test"),
-                        refuses: false,
                         title_menu_row: None,
                     })
                     .collect(),

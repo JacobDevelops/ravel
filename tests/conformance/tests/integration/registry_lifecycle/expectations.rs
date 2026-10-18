@@ -19,7 +19,7 @@ pub(super) fn assert_started(
     assert!(machine.registration_barrier_closed());
     machine
         .world_access(&ravel_observability::PreWorldReport::new(
-            ravel_bootstrap_runtime::environment(),
+            ravel_host_runtime::environment(),
         ))
         .expect("every required active mod is running");
     for host in hosts {

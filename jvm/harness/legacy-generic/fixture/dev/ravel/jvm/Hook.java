@@ -1,6 +1,6 @@
 package dev.ravel.jvm;
 
-/** Isolated fixture surface: production 1.12.2 has no refusal-capable hook. */
+/** Isolated fixture surface for observation and explicit legacy adapter crossings. */
 public final class Hook {
     public static int calls;
     public static boolean verdict;
@@ -89,7 +89,7 @@ public final class Hook {
     public static int observations;
     public static void legacyObserve(String id) { observations++; }
     public static final HookTarget[] TARGETS = {
-        new HookTarget("fixture/InitTarget", "run", "()V", true, "probe", "()V", false)
+        new HookTarget("fixture/InitTarget", "run", "()V", true, "probe", "()V")
     };
     public static void initialize() { }
     public static long nativeInvocations() { return calls; }
@@ -104,10 +104,6 @@ public final class Hook {
         }
     }
     private Hook() { }
-    public static boolean decide() {
-        calls++;
-        return verdict;
-    }
     public static void probe() { calls++; }
     public static void probe(boolean ignored) { calls++; }
 }

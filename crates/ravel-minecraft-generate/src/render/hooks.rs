@@ -77,7 +77,7 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
      \x20* Hook surface the agent injects calls to.\n\
      \x20*\n\
      \x20* <p>Each reviewed native observation receives the target's arguments.\n\
-     \x20* Inventory-opted void seams additionally return a boolean refusal verdict.\n\
+     \x20* Observation returns no verdict and does not decide whether the target runs.\n\
      \x20* Legacy semantic callbacks are separate: command dispatch may return an\n\
      \x20* integer result, and the reviewed item-fire seam may return false early.\n\
      \x20* Completion observers run only before normal returns, preserving the\n\
@@ -100,15 +100,13 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20               \"{}\",\n\
          \x20               {},\n\
          \x20               \"{}\",\n\
-         \x20               \"{}\",\n\
-         \x20               {}),",
+         \x20               \"{}\"),",
             shape.runtime_class,
             shape.runtime_member,
             shape.runtime_descriptor,
             shape.is_static,
             shape.java_method,
-            shape.hook_descriptor(),
-            shape.refuses
+            shape.hook_descriptor()
         )
         .expect("writing to a String cannot fail");
     }
@@ -137,10 +135,8 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
         writeln!(
             text,
             "    /** {} */\n\
-         \x20   public static native {} {}({declared});\n",
-            shape.capability,
-            shape.java_returns(),
-            shape.java_method
+         \x20   public static native void {}({declared});\n",
+            shape.capability, shape.java_method
         )
         .expect("writing to a String cannot fail");
     }
@@ -382,10 +378,6 @@ fn written_declarations() -> &'static str {
          \x20    * carries the directory rather than a handle because the native side\n\
          \x20    * writes files.\n\
          \x20    *\n\
-         \x20    * <p>Writing twice is the intended shape rather than a cost: the\n\
-         \x20    * open crossing still writes, and both write the same tree from the\n\
-         \x20    * same installed set.\n\
-         \x20    *\n\
          \x20    * @param world the world's own directory, as the storage access\n\
          \x20    *     spells it\n\
          \x20    */\n\
@@ -450,7 +442,7 @@ fn written_declarations() -> &'static str {
          \x20    * registry in the running game is where that becomes a block, so\n\
          \x20    * this is the read the content adapter performs at the last point\n\
          \x20    * the built-in registries still accept entries. A hook could not\n\
-         \x20    * do it: hooks only observe or veto, and registering is an action.\n\
+         \x20    * do it: hooks only observe, and registering is an action.\n\
          \x20    *\n\
          \x20    * <p>The payload carries only the kinds a registry can take,\n\
          \x20    * because which claims are registrable is an admission question\n\
@@ -465,8 +457,8 @@ fn written_declarations() -> &'static str {
          \x20    * Every action a mod asked for since this was last called.\n\
          \x20    *\n\
          \x20    * <p>The other direction of the same rule\n\
-         \x20    * {@code ravelAdmittedContent} carries: a hook only observes or\n\
-         \x20    * vetoes, so an action a mod asks for crosses as an instruction\n\
+         \x20    * {@code ravelAdmittedContent} carries: a hook only observes,\n\
+         \x20    * so an action a mod asks for crosses as an instruction\n\
          \x20    * and the Java adapter performs it. Every outbound action uses\n\
          \x20    * one mechanism, generic over the verb rather than written per verb.\n\
          \x20    *\n\

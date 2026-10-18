@@ -250,10 +250,13 @@ holds none — reviewing and pinning one is what `ROADMAP.md` leaves open.
 
 **A command runs for whoever typed it.** A command invocation carries its key,
 its side and its arguments, and nothing about who sent it or at what permission
-level. The hook sees the command source but the loader drops that handle, and no
-reviewed hook value carries a level. Treat every command you claim as one any
-connected player can run, and keep operator-only actions out of commands until a
-hook target carrying the source's level is reviewed and pinned.
+level. Modern hooks see the command source but the loader drops that handle, and
+no reviewed hook value carries a level. The 1.12.2 adapter requires vanilla
+operator permission level 2 before dispatching any claimed command; modern
+adapters enforce no permission level. That legacy restriction is adapter policy,
+not a permission declared by a mod. Treat portable commands as ones any connected
+player can run, and keep operator-only actions out until an invocation can carry
+the source's reviewed permission level.
 
 **Writing a packet field can panic; reading one cannot.** The reading half
 refuses everything the bytes do not say, including a length prefix that runs past

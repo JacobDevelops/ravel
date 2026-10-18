@@ -145,26 +145,6 @@ impl HookTarget {
 /// }
 /// ```
 ///
-/// An observer cannot retain a handle after the call:
-///
-/// ```compile_fail,E0521
-/// use std::sync::Mutex;
-/// use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue, JavaHandle};
-///
-/// struct Hoarder(Mutex<Vec<JavaHandle<'static>>>);
-///
-/// impl HookObserver for Hoarder {
-///     fn observe(&self, _target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
-///         for value in values {
-///             if let HookValue::Handle(handle) = value {
-///                 self.0.lock().expect("not poisoned").push(*handle);
-///             }
-///         }
-///         HookOutcome::Proceed
-///     }
-/// }
-/// ```
-///
 /// Reading a handle requires no JNI types or JVM calls:
 ///
 /// ```
@@ -236,6 +216,20 @@ impl fmt::Debug for JavaHandle<'_> {
 }
 
 /// Hook argument value or a game-object reference borrowed for the call.
+///
+/// A borrowed handle cannot be retained beyond the hook call:
+///
+/// ```compile_fail,E0521
+/// use ravel_minecraft::{HookValue, JavaHandle};
+///
+/// fn retain(values: &[HookValue<'_>], retained: &mut Vec<JavaHandle<'static>>) {
+///     for value in values {
+///         if let HookValue::Handle(handle) = value {
+///             retained.push(*handle);
+///         }
+///     }
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum HookValue<'local> {
     /// A `boolean` argument.
@@ -258,23 +252,6 @@ pub enum HookValue<'local> {
     Text(String),
     /// A reference argument, borrowed for the duration of the call.
     Handle(JavaHandle<'local>),
-}
-
-/// What an observer decided about the call it was shown.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HookOutcome {
-    /// The game call runs as it would have.
-    Proceed,
-    /// The game call is refused, and the reason is raised into the JVM.
-    Veto(String),
-}
-
-/// Observes hook invocations from any game thread.
-pub trait HookObserver: Send + Sync {
-    /// Observes one invocation with a fresh values lifetime independent of `&self`.
-    ///
-    /// Do not tie the lifetimes together: observers must not retain borrowed handles.
-    fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome;
 }
 
 /// Major and minor pack-format numbers supplied by version data.
@@ -409,7 +386,7 @@ mod tests {
 
     use jni::objects::JObject;
 
-    use super::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue, JavaHandle};
+    use super::{HookId, HookKind, HookTarget, HookValue, JavaHandle};
 
     const CHAT: HookId = HookId::new("chat.allowed-character");
     const INPUT: HookId = HookId::new("input.smooth-last-amount");
@@ -430,18 +407,6 @@ mod tests {
             HookKind::InstanceField,
         ),
     ];
-
-    struct Refusing;
-
-    impl HookObserver for Refusing {
-        fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
-            if values == [HookValue::Int(7)] {
-                HookOutcome::Veto(format!("{} refused 7", target.id()))
-            } else {
-                HookOutcome::Proceed
-            }
-        }
-    }
 
     #[test]
     fn a_pinned_target_reports_every_name_the_agent_needs() {
@@ -467,20 +432,6 @@ mod tests {
             assert_eq!(kind.is_method(), method, "{kind:?}");
             assert_eq!(kind.is_static(), is_static, "{kind:?}");
         }
-    }
-
-    #[test]
-    fn an_observer_decides_per_invocation_from_the_values_it_is_shown() {
-        let observer = Refusing;
-
-        assert_eq!(
-            observer.observe(&TARGETS[0], &[HookValue::Int(7)]),
-            HookOutcome::Veto("chat.allowed-character refused 7".to_owned())
-        );
-        assert_eq!(
-            observer.observe(&TARGETS[0], &[HookValue::Int(8)]),
-            HookOutcome::Proceed
-        );
     }
 
     #[test]

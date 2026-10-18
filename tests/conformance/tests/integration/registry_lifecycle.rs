@@ -126,7 +126,7 @@ fn every_counterpart_registers_alone_on_each_side() {
             drive_loaded(
                 &mut LoadedMods::new(&mut machine, &mut mods)
                     .expect("every active member has a mod value"),
-                &ravel_bootstrap_runtime::environment(),
+                &ravel_host_runtime::environment(),
             )
             .unwrap_or_else(|error| panic!("{} alone on {side:?}: {error}", manifest.id));
             assert_started(&machine, &mods, std::slice::from_ref(manifest), side);
@@ -138,7 +138,7 @@ fn every_counterpart_registers_alone_on_each_side() {
 fn all_counterparts_register_together_in_manifest_dependency_order_on_each_side() {
     let manifests = manifests();
     // This round tests the shipped packages' declared target, not the selected adapter.
-    let mut environment = ravel_bootstrap_runtime::environment();
+    let mut environment = ravel_host_runtime::environment();
     environment.minecraft = "1.21.1".to_owned();
     for side in SIDES {
         let plan = resolve(&manifests, side).expect("the shipped dependency graph resolves");

@@ -11,7 +11,7 @@ use crate::loaded::LoadedMods;
 ///
 /// Rejected player values fall back to lower layers and are reported in [`Configured`].
 /// Callback failures are recorded; only required owners stop configuration.
-/// The paired view has already refused missing hosts before any declarations or player reads.
+/// The paired view has already refused missing mods before any declarations or player reads.
 /// Player documents are read only after the mod's declaration has passed the ownership check.
 ///
 /// # Errors

@@ -630,3 +630,26 @@ fn a_player_value_the_schema_refuses_falls_back_to_the_layer_below() {
     assert_eq!(row(&rows, "render.distance").value, "12");
     assert_eq!(row(&rows, "render.distance").source, "default");
 }
+
+#[test]
+fn a_directory_the_client_has_started_in_is_admitted() {
+    let game = crate::tests::fresh_directory("settings-directory", "started");
+    std::fs::write(game.join(super::CLIENT_MARKER), "version:1\n")
+        .expect("the marker should be writable");
+    assert_eq!(super::admit_client_directory(&game), Ok(()));
+}
+
+#[test]
+fn a_directory_with_no_client_marker_is_refused_and_says_which_sign() {
+    let game = crate::tests::fresh_directory("settings-directory", "elsewhere");
+    let refused = super::admit_client_directory(&game).expect_err("no marker is refused");
+    assert!(refused.contains(super::CLIENT_MARKER), "{refused}");
+    assert!(refused.contains(&game.display().to_string()), "{refused}");
+}
+
+#[test]
+fn a_client_marker_that_is_a_directory_does_not_admit_it() {
+    let game = crate::tests::fresh_directory("settings-directory", "marker-is-a-directory");
+    std::fs::create_dir(game.join(super::CLIENT_MARKER)).expect("create the directory");
+    assert!(super::admit_client_directory(&game).is_err());
+}

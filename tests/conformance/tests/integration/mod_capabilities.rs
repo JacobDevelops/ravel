@@ -35,7 +35,7 @@ fn running(
     let mut machine = LifecycleMachine::new(side, entries).expect("a legal lifecycle plan");
     ravel_loader::drive_loaded(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("the production driver starts the set");
     machine
@@ -71,7 +71,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
             .expect("all active mods have hosts"),
         &invocation,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("the owner is running");
     assert_eq!(delivery.received(), [id("commands")]);
@@ -96,7 +96,7 @@ fn a_broadcast_reaches_every_mod_and_each_one_acts_on_what_it_cares_about() {
             .expect("all active mods have hosts"),
         GameEvent::ResourcesReloaded,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("the set is running");
     assert_eq!(
@@ -146,7 +146,7 @@ fn a_broadcast_arrives_in_the_plans_order_and_the_reversed_plan_reverses_it() {
                 .expect("all active mods have hosts"),
             GameEvent::ClientTick,
             &mut ravel_observability::Profiler::off(),
-            &ravel_bootstrap_runtime::environment(),
+            &ravel_host_runtime::environment(),
         )
         .expect("the set is running")
         .received()
@@ -171,7 +171,7 @@ fn the_same_set_broadcast_twice_delivers_to_the_same_mods_in_the_same_order() {
                 .expect("all active mods have hosts"),
             GameEvent::ClientTick,
             &mut ravel_observability::Profiler::off(),
-            &ravel_bootstrap_runtime::environment(),
+            &ravel_host_runtime::environment(),
         )
         .expect("the set is running")
         .received()
@@ -204,7 +204,7 @@ fn a_mod_sees_repeated_ticks_in_the_order_they_were_broadcast() {
                 .expect("all active mods have hosts"),
             event,
             &mut ravel_observability::Profiler::off(),
-            &ravel_bootstrap_runtime::environment(),
+            &ravel_host_runtime::environment(),
         )
         .expect("the set is running");
     }
@@ -235,7 +235,7 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("an empty audience");
     assert_eq!(ignored.received(), []);
@@ -245,7 +245,7 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
             .expect("all active mods have hosts"),
         GameEvent::ServerTick,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("the set is running");
     assert_eq!(
@@ -299,7 +299,7 @@ fn a_command_owned_by_a_mod_that_does_not_load_here_is_refused_rather_than_swall
             .expect("all active mods have hosts"),
         &CommandInvocation::new(owned.clone(), Side::DedicatedServer, vec!["set".to_owned()]),
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect_err("nothing claimed it on this side");
     assert_eq!(refused, DispatchRefused::Unclaimed { key: owned });
@@ -389,7 +389,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
             .expect("all active mods have hosts"),
         &CommandInvocation::new(CommandsMod::new().key("warp"), Side::Client, Vec::new()),
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("routing found the owner");
     assert_eq!(delivery.received(), []);
@@ -410,7 +410,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
             vec!["set".to_owned()],
         ),
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("routing found the owner");
     assert!(accepted.is_complete());
@@ -440,7 +440,7 @@ fn a_mod_that_fails_on_an_event_ends_the_broadcast_and_the_ones_after_it_never_s
             .expect("all active mods have hosts"),
         GameEvent::ResourcesReloaded,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect("the set is running");
     assert_eq!(delivery.received(), [id("resources")]);
@@ -484,7 +484,7 @@ fn nothing_is_delivered_before_the_set_reaches_running() {
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect_err("the set has not started");
     assert_eq!(
@@ -520,7 +520,7 @@ fn a_command_nobody_claimed_is_refused_by_name() {
             .expect("all active mods have hosts"),
         &CommandInvocation::new(orphan.clone(), Side::Client, vec!["x".to_owned()]),
         &mut ravel_observability::Profiler::off(),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_host_runtime::environment(),
     )
     .expect_err("nothing claimed it");
 
@@ -616,7 +616,7 @@ fn calls_for(pack_size: usize, ticks: usize) -> usize {
                 .expect("all active mods have hosts"),
             GameEvent::ServerTick,
             &mut ravel_observability::Profiler::off(),
-            &ravel_bootstrap_runtime::environment(),
+            &ravel_host_runtime::environment(),
         )
         .expect("the set is running");
         assert_eq!(delivery.received().len(), pack_size);

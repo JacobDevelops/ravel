@@ -6,7 +6,7 @@
 use jni::EnvUnowned;
 use jni::objects::JClass;
 use ravel_core::Side;
-use ravel_host_runtime::Member;
+use ravel_host_runtime::{Composition, Member};
 use ravel_test_mod_audio::AudioMod;
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
 use ravel_test_mod_commands::CommandsMod;
@@ -16,7 +16,6 @@ use ravel_test_mod_registries::RegistriesMod;
 use ravel_test_mod_saved_data::SavedDataMod;
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
-pub use ravel_bootstrap_runtime::Composition;
 pub use ravel_host_runtime::LaunchError;
 
 // Admit the same manifests the members ship.
@@ -33,37 +32,37 @@ fn members(side: Side) -> Vec<Member> {
     let mut members = vec![
         Member {
             package: CONFIGURATION_PACKAGE.to_owned(),
-            host: Box::new(ConfigurationMod::new()),
+            value: Box::new(ConfigurationMod::new()),
         },
         Member {
             package: SAVED_DATA_PACKAGE.to_owned(),
-            host: Box::new(SavedDataMod::new()),
+            value: Box::new(SavedDataMod::new()),
         },
         Member {
             package: CLIENT_ONLY_PACKAGE.to_owned(),
-            host: Box::new(ClientOnlyMod::new(side, &work_log())),
+            value: Box::new(ClientOnlyMod::new(side, &work_log())),
         },
         Member {
             package: REGISTRIES_PACKAGE.to_owned(),
-            host: Box::new(RegistriesMod::new()),
+            value: Box::new(RegistriesMod::new()),
         },
         Member {
             package: SERVER_ONLY_PACKAGE.to_owned(),
-            host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
+            value: Box::new(ServerOnlyMod::new(side, &server_work_log())),
         },
     ];
-    if ravel_host_runtime::LEGACY_ADAPTER {
+    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
         members.push(Member {
             package: COMMANDS_PACKAGE.to_owned(),
-            host: Box::new(CommandsMod::new()),
+            value: Box::new(CommandsMod::new()),
         });
         members.push(Member {
             package: NETWORKING_PACKAGE.to_owned(),
-            host: Box::new(NetworkingMod::new()),
+            value: Box::new(NetworkingMod::new()),
         });
         members.push(Member {
             package: AUDIO_PACKAGE.to_owned(),
-            host: Box::new(AudioMod::new()),
+            value: Box::new(AudioMod::new()),
         });
     }
     members
@@ -114,11 +113,12 @@ pub fn legacy_packet_receipts<'local>(
 mod tests {
     use ravel_config::{LayeredConfiguration, ValueDocument, file};
     use ravel_core::{LifecycleState, ModId, Side};
+    use ravel_host_runtime::Composition;
     use ravel_loader::DiscoveryRefused;
     use serde_json::json;
 
     use super::{
-        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, Composition, LaunchError, SAVED_DATA_PACKAGE,
+        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, LaunchError, SAVED_DATA_PACKAGE,
         SERVER_ONLY_PACKAGE, compose,
     };
 
@@ -169,8 +169,10 @@ mod tests {
     #[test]
     fn the_client_only_member_is_admitted_and_parked_on_a_dedicated_server() {
         let game = directory("dedicated");
-        let Composition { machine, mods, .. } =
+        let Composition { loaded, .. } =
             compose(&game, Side::DedicatedServer).expect("the tracked composition should start");
+        let machine = loaded.machine();
+        let mods = loaded.mods();
 
         assert_eq!(
             machine.state(&client_owner()),
@@ -194,8 +196,9 @@ mod tests {
     fn integrated_composition_has_its_own_world_owners_and_legacy_contracts() -> Result<(), String>
     {
         let game = directory("integrated-world-owners");
-        let Composition { machine, .. } =
+        let Composition { loaded, .. } =
             compose(&game, Side::IntegratedServer).map_err(|error| error.to_string())?;
+        let machine = loaded.machine();
         for owner in [owner(), saved_owner(), server_owner(), registries_owner()] {
             assert_eq!(
                 machine.state(&owner),
@@ -209,8 +212,15 @@ mod tests {
             .filter(|key| key.kind() == ravel_core::ContentKind::Command)
             .map(|key| key.id().to_string())
             .collect();
-        if ravel_host_runtime::LEGACY_ADAPTER {
-            assert_eq!(commands, ["commands:warp", "commands:waypoint"]);
+        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            assert_eq!(
+                commands,
+                [
+                    "commands:server_probe",
+                    "commands:warp",
+                    "commands:waypoint"
+                ]
+            );
             let networking = "networking"
                 .parse::<ModId>()
                 .map_err(|error| error.to_string())?;
@@ -224,8 +234,10 @@ mod tests {
     #[test]
     fn the_server_only_member_is_admitted_and_parked_on_the_client() {
         let game = directory("client");
-        let Composition { machine, mods, .. } =
+        let Composition { loaded, .. } =
             compose(&game, Side::Client).expect("the tracked composition should start");
+        let machine = loaded.machine();
+        let mods = loaded.mods();
 
         assert_eq!(
             machine.state(&server_owner()),
@@ -244,8 +256,9 @@ mod tests {
     fn the_shipped_pair_runs_on_opposite_sides_of_every_launch() {
         for side in Side::ALL {
             let game = directory(&format!("pair-{}", side.as_str()));
-            let Composition { machine, .. } =
+            let Composition { loaded, .. } =
                 compose(&game, side).expect("the tracked composition should start");
+            let machine = loaded.machine();
 
             assert_eq!(
                 machine.state(&client_owner()) == Ok(LifecycleState::Running),
@@ -266,11 +279,12 @@ mod tests {
     fn the_selected_composition_drives_every_mod_its_manifests_admit() {
         let game = directory("defaults");
         let Composition {
-            machine,
-            mods,
+            loaded,
             configurations,
             ..
         } = compose(&game, Side::Client).expect("the tracked composition should start");
+        let machine = loaded.machine();
+        let mods = loaded.mods();
 
         for id in [owner(), saved_owner(), client_owner(), registries_owner()] {
             assert_eq!(machine.state(&id), Ok(LifecycleState::Running), "{id}");
@@ -284,7 +298,7 @@ mod tests {
         let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
         assert_eq!(
             driven.len(),
-            if ravel_host_runtime::LEGACY_ADAPTER {
+            if ravel_bootstrap_runtime::LEGACY_ADAPTER {
                 8
             } else {
                 5
@@ -316,7 +330,7 @@ mod tests {
             .to_owned()
             .try_into()
             .map_err(|error: ravel_core::RelativePathError| error.to_string())?;
-        if ravel_host_runtime::LEGACY_ADAPTER {
+        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
             assert_eq!(
                 composition.resources.bytes(&path),
                 Some(
@@ -327,7 +341,7 @@ mod tests {
                 .parse()
                 .map_err(|error: ravel_core::ModIdError| error.to_string())?;
             assert_eq!(
-                composition.machine.state(&audio),
+                composition.loaded.machine().state(&audio),
                 Ok(LifecycleState::Running)
             );
         } else {
@@ -357,7 +371,8 @@ mod tests {
             );
             assert!(
                 composition
-                    .machine
+                    .loaded
+                    .machine()
                     .claimed_keys()
                     .any(|key| key.kind() == ravel_core::ContentKind::Item
                         && key.id().to_string() == "registries:copper")
@@ -374,7 +389,7 @@ mod tests {
             (CLIENT_ONLY_PACKAGE, client_owner()),
             (SERVER_ONLY_PACKAGE, server_owner()),
         ];
-        let running = ravel_bootstrap_runtime::environment();
+        let running = ravel_host_runtime::environment();
         for (document, expected) in manifests {
             let manifest =
                 ravel_package::PackageManifest::parse(document).expect("a shipped manifest parses");
@@ -416,7 +431,7 @@ mod tests {
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
-        let running = ravel_bootstrap_runtime::environment();
+        let running = ravel_host_runtime::environment();
         let root = game
             .join(ravel_core::paths::PACKAGES_DIRECTORY)
             .join(format!("{id}-1.0.0"));
@@ -490,8 +505,9 @@ mod tests {
         let game = directory("installed-known");
         install(&game, "client_only", SOURCE_DIGEST);
 
-        let Composition { machine, .. } =
+        let Composition { loaded, .. } =
             compose(&game, Side::Client).expect("the composition should start");
+        let machine = loaded.machine();
         assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
     }
 
@@ -499,10 +515,11 @@ mod tests {
     fn the_world_owning_mod_carries_the_versions_it_declares() {
         let game = directory("saved-versions");
         let Composition {
-            machine,
+            loaded,
             installed_packages,
             ..
         } = compose(&game, Side::Client).expect("the tracked composition should start");
+        let machine = loaded.machine();
 
         assert!(
             machine.order().any(|id| id == &saved_owner()),

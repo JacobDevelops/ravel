@@ -128,9 +128,7 @@ pub fn ravel_write_world_datapack<'local>(
 ) {
     env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
         let world = text(env, &world)?;
-        if let Ok(runtime) = runtime() {
-            runtime.write_world_pack(&world);
-        }
+        super::write_world_datapack(std::path::Path::new(&world));
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
@@ -151,7 +149,9 @@ pub fn ravel_write_staged_datapack<'local>(
         let Ok(runtime) = runtime() else {
             return Ok(jint::from(StagedPack::Nothing));
         };
-        Ok(jint::from(runtime.write_staged_pack(&directory)))
+        Ok(jint::from(
+            runtime.write_staged_pack(std::path::Path::new(&directory)),
+        ))
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
@@ -167,7 +167,7 @@ pub fn ravel_pack_id<'local>(
 ) -> JString<'local> {
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            Ok(env.new_string(ravel_loader::pack_id())?)
+            Ok(env.new_string(crate::packs::pack_id())?)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()

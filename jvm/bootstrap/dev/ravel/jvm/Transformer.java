@@ -566,10 +566,6 @@ public final class Transformer implements ClassFileTransformer {
                     slot += kind.slotSize();
                 }
                 builder.invokestatic(HOOK, target.hookMethod(), hookType);
-                if (target.refuses()) {
-                    // A true verdict skips the void target's body.
-                    builder.ifThen(blk -> blk.return_());
-                }
                 if (target.hookMethod().startsWith("legacy")) {
                     builder.loadConstant(target.hookMethod());
                     builder.invokestatic(HOOK, "legacyObserve",
@@ -578,7 +574,6 @@ public final class Transformer implements ClassFileTransformer {
                 if (legacyEntry() || legacyExit()) {
                     enterLegacy(builder);
                 }
-                // Consume the hook verdict before invoking adapters.
                 if (isWorldOpen(target)) {
                     // Close the storage access and stem on refusal before persistent mutation.
                     builder.aload(slot(0));

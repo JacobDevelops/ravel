@@ -322,9 +322,9 @@ dependencies = [
  "ravel-observability",
  "ravel-save",
  "ravel-test-mod-audio",
+ "ravel-test-mod-commands",
  "ravel-test-mod-networking",
  "ravel-test-mod-saved-data",
- "rvl-180-counterpart",
  "semver",
  "serde_json",
 ]

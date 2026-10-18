@@ -137,38 +137,20 @@ pub(crate) struct Shape {
     pub(super) runtime_member: String,
     pub(super) runtime_descriptor: String,
     pub(super) is_static: bool,
-    pub(super) refuses: bool,
-}
-
-impl Shape {
-    /// Whether this hook returns a veto verdict to its Java caller.
-    pub(crate) const fn refuses(&self) -> bool {
-        self.refuses
-    }
 }
 
 impl Shape {
     /// The descriptor of the generated hook method.
     ///
-    /// An ordinary hook returns nothing, because the injected call site then
-    /// needs no branch or discarded value. A hook that has to stop the call
-    /// throws, which the call site honours without any bytecode of its own.
-    ///
-    /// A target the reviewed inventory opts in returns a boolean instead:
-    /// the verdict says only whether to return from the host method before
-    /// its body runs, never what to return.
+    /// Observation returns nothing and does not decide whether the target runs.
+    /// The injected call site needs no verdict branch or discarded value.
     pub(super) fn hook_descriptor(&self) -> String {
         let mut text = String::from("(");
         for parameter in &self.parameters {
             text.push_str(parameter.descriptor());
         }
-        text.push_str(if self.refuses { ")Z" } else { ")V" });
+        text.push_str(")V");
         text
-    }
-
-    /// How the generated Java declares this hook's return type.
-    pub(super) const fn java_returns(&self) -> &'static str {
-        if self.refuses { "boolean" } else { "void" }
     }
 }
 
@@ -181,17 +163,6 @@ pub(crate) fn shapes(
     for (hook, target) in inventory.hooks.iter().zip(resolved) {
         if !hook.kind.is_method() {
             continue;
-        }
-        // Refusal permits a bare early return and nothing wider. A target that
-        // returns a value would need one synthesized to leave early, which is
-        // unsupported, so this is a hard error rather than a warning that
-        // renders anyway.
-        if hook.refuses && !target.runtime_descriptor.ends_with(")V") {
-            return Err(GenerateError::Unsupported(format!(
-                "{} may refuse its target, but {} does not return void and an early \
-                 return would have to invent a value",
-                hook.id, target.descriptor
-            )));
         }
         shapes.push(Shape {
             capability: hook.capability.clone(),
@@ -207,7 +178,6 @@ pub(crate) fn shapes(
             runtime_member: target.runtime_member.clone(),
             runtime_descriptor: target.runtime_descriptor.clone(),
             is_static: target.is_static,
-            refuses: hook.refuses,
         });
     }
 

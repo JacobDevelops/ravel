@@ -156,12 +156,9 @@ javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
 mapfile -d '' hierarchy_sources < <(find "$root/jvm/harness/hierarchy" -name '*.java' -print0 | sort -z)
 javac -d "$order/classes" "${hierarchy_sources[@]}"
-mapfile -d '' refusal_sources < <(find "$root/jvm/harness/refusal" -name '*.java' -print0 | sort -z)
-javac -d "$order/classes" "${refusal_sources[@]}"
 javac -cp "$work:$order/classes:$order/agent-classes" -d "$order/classes" \
 	"$root/jvm/harness/InitializationOrderMain.java" \
-	"$root/jvm/harness/HierarchyResolutionMain.java" \
-	"$root/jvm/harness/RefusalMain.java"
+	"$root/jvm/harness/HierarchyResolutionMain.java"
 printf 'Premain-Class: dev.ravel.jvm.Boot\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
 mapfile -d '' order_compiled < <(cd "$order/agent-classes" && find . -name '*.class' -print0 | sort -z)
 order_entries=()
@@ -238,40 +235,9 @@ if [ "$hierarchy_diagnostic" != "$order_expected_diagnostic" ]; then
 	exit 1
 fi
 
-# Exercise both branches of the rewritten refusal prologue.
-for verdict in true false; do
-	refusal_stdout="$order/refusal-$verdict-stdout"
-	refusal_stderr="$order/refusal-$verdict-stderr"
-	(cd "$order/classes" && "${jvm[@]}" \
-		-javaagent:"$order_agent" \
-		-Dravel.test.transform.refusal=true \
-		-Dravel.test.refusal.verdict="$verdict" \
-		-cp ".:$work" "$client_entry" RefusalMain >"$refusal_stdout" 2>"$refusal_stderr")
-	refusal_observed="$(<"$refusal_stdout")"
-	if [ "$verdict" = true ]; then
-		refusal_bodies=0
-	else
-		refusal_bodies=1
-	fi
-	refusal_expected="bodies=$refusal_bodies methods=1
-[ravel] rewrote 1 classes and 1 methods; 1 hook invocations reached native code"
-
-	printf '%s\n' "$refusal_observed"
-	while IFS= read -r line; do
-		printf '%s\n' "$line" >&2
-	done <"$refusal_stderr"
-
-	if [ "$refusal_observed" != "$refusal_expected" ]; then
-		echo >&2
-		echo "a prologue verdict of $verdict did not decide whether the body ran; expected:" >&2
-		printf '%s\n' "$refusal_expected" >&2
-		exit 1
-	fi
-done
 
 section_ran initialization
 section_ran hierarchy
-section_ran refusal
 
 # Field targets must survive rewriting; markers and counters identify the transformed class.
 
@@ -320,7 +286,7 @@ fi
 
 section_ran members
 
-# HookTarget entries span seven lines: the prologue has four fields before it and two after.
+# HookTarget entries span six lines: the prologue has four fields before it and one after.
 generated_hook="$root/target/ravel-jvm/generated/dev/ravel/jvm/Hook.java"
 hook_seam() {
 	awk -v prologue="$1" '
@@ -328,7 +294,7 @@ hook_seam() {
 		$0 ~ ("^[[:space:]]*\"" prologue "\",$") { at = NR }
 		END {
 			if (at == 0) { exit 1 }
-			for (field = at - 4; field <= at + 2; field++) {
+			for (field = at - 4; field <= at + 1; field++) {
 				value = line[field]
 				sub(/^[[:space:]]+/, "", value)
 				sub(/\),$/, "", value)
@@ -574,6 +540,8 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 fi
 
 section_ran persistence
+# The dedicated admission crossing above, not observation hooks, refuses world loads.
+section_ran refusal
 
 # Stand-in registries reject duplicates, frozen writes and missing property ids.
 

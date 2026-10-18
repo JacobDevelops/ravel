@@ -13,9 +13,9 @@
 # this jar, and each was re-checked against the class file's own member table for
 # name, descriptor, kind and static flag before it was written here.
 #
-# A capability sentence says what an observer may do, and an observer may do two
-# things: read the values it is shown, and return `HookOutcome::Veto` to refuse
-# the call. It cannot change an argument, substitute a return value, or call back
+# A capability sentence says what an observer may read from the values it is
+# shown. Observation does not decide whether the game call proceeds and cannot
+# change an argument, substitute a return value, or call back
 # into the JVM — a handle offers a declared class and a null check and nothing
 # else. So a sentence here never says rewrite, adjust, modify, or add. These
 # sentences ship as doc comments on the generated exports, which is why an
@@ -36,7 +36,7 @@ class = "net.minecraft.util.StringUtil"
 member = "isAllowedChatCharacter"
 descriptor = "(I)Z"
 kind = "static-method"
-capability = "Observe or veto a character the game would accept in chat."
+capability = "Observe a character the game would accept in chat."
 
 [[hook]]
 id = "chat.filter-text"
@@ -44,7 +44,7 @@ class = "net.minecraft.util.StringUtil"
 member = "filterText"
 descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
 kind = "static-method"
-capability = "Observe or veto chat text, in the overload that keeps newlines."
+capability = "Observe chat text, in the overload that keeps newlines."
 
 [[hook]]
 id = "chat.filter-text-simple"
@@ -52,7 +52,7 @@ class = "net.minecraft.util.StringUtil"
 member = "filterText"
 descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
 kind = "static-method"
-capability = "Observe or veto chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
+capability = "Observe chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
 
 [[hook]]
 id = "player.name-valid"
@@ -68,7 +68,7 @@ class = "net.minecraft.util.SmoothDouble"
 member = "getNewDeltaValue"
 descriptor = "(DD)D"
 kind = "instance-method"
-capability = "Observe or veto smoothed input deltas."
+capability = "Observe smoothed input deltas."
 
 [[hook]]
 id = "input.smooth-last-amount"
@@ -87,7 +87,7 @@ class = "net.minecraft.core.MappedRegistry"
 member = "register"
 descriptor = "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;"
 kind = "instance-method"
-capability = "Observe or veto one entry being added to a registry, naming the key and the value being registered."
+capability = "Observe one entry being added to a registry, naming the key and the value being registered."
 
 [[hook]]
 id = "registry.freeze"
@@ -204,7 +204,7 @@ class = "net.minecraft.commands.Commands"
 member = "performPrefixedCommand"
 descriptor = "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V"
 kind = "instance-method"
-capability = "Observe or veto one command being run, carrying its source and its text."
+capability = "Observe one command being run, carrying its source and its text."
 
 # Resources and data reload.
 
@@ -337,11 +337,8 @@ class = "net.minecraft.client.Minecraft"
 member = "doWorldLoad"
 descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V"
 kind = "instance-method"
-# The one target in this inventory whose prologue may return from it. ADG-1's
-# Phase C amendment bounds that power to the entries named here, and the entry is
-# legal only because `doWorldLoad` returns void: an early return from anything
-# else would have to invent a value, which the generator refuses outright.
-refuses = true
+# World admission uses the dedicated persistence crossing before the void body,
+# not a verdict from the observational hook.
 capability = "Admit or refuse a world's Ravel data before the load body's first persistent mutation, carrying the storage access that names the world, the pack repository, the world stem, the selected data pack list, and the game's advisory new-world marker."
 
 # The one seam every path that gives a world a pack repository goes through, and

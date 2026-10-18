@@ -35,7 +35,7 @@ impl std::error::Error for SideError {}
 /// # Errors
 ///
 /// Returns [`SideError`] for an unknown code.
-pub fn side(code: i32) -> Result<Side, SideError> {
+pub fn side_from_agent_code(code: i32) -> Result<Side, SideError> {
     match code {
         CLIENT => Ok(Side::Client),
         DEDICATED_SERVER => Ok(Side::DedicatedServer),
@@ -47,13 +47,16 @@ pub fn side(code: i32) -> Result<Side, SideError> {
 mod tests {
     use ravel_core::Side;
 
-    use super::{CLIENT, DEDICATED_SERVER, side};
+    use super::{CLIENT, DEDICATED_SERVER, side_from_agent_code};
 
     #[test]
     fn code_names_exactly_one_side() {
-        assert_eq!(side(CLIENT).expect("a known code"), Side::Client);
         assert_eq!(
-            side(DEDICATED_SERVER).expect("a known code"),
+            side_from_agent_code(CLIENT).expect("a known code"),
+            Side::Client
+        );
+        assert_eq!(
+            side_from_agent_code(DEDICATED_SERVER).expect("a known code"),
             Side::DedicatedServer
         );
     }
@@ -62,7 +65,7 @@ mod tests {
     fn no_code_names_the_integrated_server() {
         for code in [CLIENT, DEDICATED_SERVER] {
             assert_ne!(
-                side(code).expect("a known code"),
+                side_from_agent_code(code).expect("a known code"),
                 Side::IntegratedServer,
                 "a distribution entry point cannot name the server inside a client"
             );
@@ -72,7 +75,7 @@ mod tests {
     #[test]
     fn a_code_no_host_knows_refuses_rather_than_guessing() {
         for unknown in [-1, 2, i32::MAX] {
-            let refused = side(unknown).expect_err("no side is determinable");
+            let refused = side_from_agent_code(unknown).expect_err("no side is determinable");
             assert!(refused.to_string().contains(&unknown.to_string()));
         }
     }

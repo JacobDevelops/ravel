@@ -2,7 +2,7 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use ravel_loader::pack_id;
+use ravel_bootstrap_runtime::pack_id;
 
 const OPTIONS: &str = "options.txt";
 

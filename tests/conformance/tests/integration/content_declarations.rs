@@ -685,13 +685,10 @@ fn every_generated_document_is_legal_json_and_ends_in_one_newline() {
 }
 
 // Outside the example's declared range, admission refusal is the obligation instead.
-fn compose_content(
-    game: &std::path::Path,
-    side: Side,
-) -> Option<ravel_bootstrap_runtime::Composition> {
+fn compose_content(game: &std::path::Path, side: Side) -> Option<ravel_host_runtime::Composition> {
     let package = include_str!("../../../../examples/content-mod/package.json");
     let manifest = PackageManifest::parse(package).expect("the shipped manifest is valid");
-    let running = ravel_bootstrap_runtime::environment().minecraft;
+    let running = ravel_host_runtime::environment().minecraft;
     let version = running
         .parse::<ravel_core::Version>()
         .expect("the selected Minecraft release has a semantic version");
@@ -707,7 +704,7 @@ fn compose_content(
         side,
         vec![Member {
             package: package.to_owned(),
-            host: Box::new(ContentMod::new()),
+            value: Box::new(ContentMod::new()),
         }],
     );
     if compatible {
@@ -747,14 +744,15 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let Some(ravel_bootstrap_runtime::Composition {
-        machine,
+    let Some(ravel_host_runtime::Composition {
+        loaded,
         resources: supplied,
         ..
     }) = compose_content(&game, Side::DedicatedServer)
     else {
         return;
     };
+    let machine = loaded.machine();
     assert_eq!(
         machine.state(ContentMod::declared_id()),
         Ok(LifecycleState::Running)
@@ -804,7 +802,7 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let Some(ravel_bootstrap_runtime::Composition { resources, .. }) =
+    let Some(ravel_host_runtime::Composition { resources, .. }) =
         compose_content(&game, Side::Client)
     else {
         return;
@@ -905,6 +903,7 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     )
     .expect("the composed runtime should install");
 
+    ravel_bootstrap_runtime::write_world_datapack(&world);
     assert_eq!(
         ravel_bootstrap_runtime::open_world_data(
             world.to_str().expect("the temporary world path is UTF-8"),

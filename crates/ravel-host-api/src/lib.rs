@@ -52,6 +52,12 @@ impl GameEvent {
         }
     }
 
+    /// Resolves a published canonical event name.
+    #[must_use]
+    pub fn published(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|event| event.as_str() == name)
+    }
+
     /// Returns whether this event can happen on `side`.
     #[must_use]
     pub const fn happens_on(self, side: Side) -> bool {
@@ -726,6 +732,16 @@ mod tests {
 
     use super::{HostError, Mod, ModError, Registrar, RegistrationRefused};
     use ravel_data::ContentDeclaration;
+
+    #[test]
+    fn published_events_use_only_the_canonical_vocabulary() {
+        for event in super::GameEvent::ALL {
+            assert_eq!(super::GameEvent::published(event.as_str()), Some(event));
+        }
+        for name in ["resource-reloaded", "atlas-reloaded", "", "CLIENT-TICK"] {
+            assert_eq!(super::GameEvent::published(name), None);
+        }
+    }
 
     /// An in-memory registrar for exercising the mod-facing refusal contract.
     #[derive(Default)]

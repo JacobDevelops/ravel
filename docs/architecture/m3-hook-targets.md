@@ -49,8 +49,8 @@ constructor is before the `super()` call; it loads only declared parameters and
 never `this`, so the verifier should accept it, but "should" is not a claim this
 repository makes without a launch behind it. And the seam is wrong for what it
 was wanted for: vanilla registers every command inside that constructor, so a
-prepended hook fires before any registration has happened and cannot observe or
-veto one. `Commands.dispatcher` and `performPrefixedCommand` cover commands
+prepended hook fires before any registration has happened and cannot observe
+one. `Commands.dispatcher` and `performPrefixedCommand` cover commands
 without either problem, and both are inventoried.
 
 `Registry.freeze` and `WritableRegistry.register` are not candidates and are not

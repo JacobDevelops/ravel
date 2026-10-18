@@ -30,6 +30,8 @@ public final class LegacyPersistenceNativeMain {
         seed(root.toPath(), old);
         Object owner = new Object();
         LegacyPersistence.openAt(owner, root);
+        require(Files.isRegularFile(root.toPath().resolve("datapacks/ravel/pack.mcmeta")),
+                "legacy open did not write the pack through its dedicated crossing");
         Object storage = storage(base.toFile(), "world");
         LegacyPersistence.bind(owner, root, storage);
         Object live = load(storage, data);
@@ -93,6 +95,9 @@ public final class LegacyPersistenceNativeMain {
         require(load(storage, data) == held, "failed admission installed another live object");
         flush(storage);
         require(Arrays.equals(Files.readAllBytes(file), before), "failed admission dirtied NBT");
+        require(!Files.exists(root.toPath().resolve("datapacks/ravel"))
+                && !Files.exists(root.toPath().resolve("ravel")),
+                "failed admission wrote a world pack");
     }
 
     private static Object storage(File base, String name) throws ReflectiveOperationException {

@@ -161,9 +161,11 @@ A partially available set is an error naming the missing jar, including a
 missing DataFixerUpper jar beside a modern client jar. Either acquire the full
 pinned set or remove all its local jars to use the tracked locks.
 
-- **Transformer sections** (initialization, hierarchy, refusal, members,
-  transformation, load, and side) use hand-written targets and stand-ins. Neither
-  half of their comparison comes from version data.
+- **Transformer sections** (initialization, hierarchy, members, transformation,
+  load, and side) use hand-written targets and stand-ins. Neither half of their
+  comparison comes from version data. The refusal section exercises the dedicated
+  world-persistence admission crossing with generated stand-ins, or the legacy
+  adapter's actual fire-damage refusal.
 - **Content, outward, settings, screens, and persistence** resolve generated
   names against per-version generated stand-ins. Settings and screen drivers
   press buttons and inspect widget lists across reinitialization. They read
@@ -238,14 +240,15 @@ Appending to bootstrap disables the JVM's shared class archive. The harness
 passes `-Xshare:off` to keep that notice out of exact-output cases. Eager native
 loading makes missing libraries fail at startup instead of during a hook call.
 
-### What the panic guard and the veto path cost, and what shape they have
+### What the panic guard costs, and what shape observation has
 
 A panic unwinding out of `extern "system"` aborts the process. JNI crossings use
 `EnvUnowned::with_env` and `resolve::<ThrowRuntimeExAndDefault>` to turn caught
 panics and ordinary errors into `RuntimeException` on the calling game thread.
 An exception unwinds the rewritten method without an injected branch.
-Inventory-opted-in void targets also support boolean refusal: `true` returns
-early from the host method without inventing a return value.
+Generated observation hooks return void; they have no refusal verdict or early-return
+branch. World-open admission and supported legacy semantic refusals use separate
+adapter crossings.
 
 With no listener, `crate::guard::enter` performs a relaxed atomic increment and
 load, without allocating or attaching an environment. Argument collection,

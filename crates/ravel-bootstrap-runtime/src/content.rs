@@ -33,7 +33,8 @@ impl LoaderRuntime {
             .inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .machine
+            .loaded
+            .machine()
             .claimed_content()
             .filter(|(key, _, _)| is_registrable(key.kind()))
             .map(|(key, owner, behaviour)| (key, owner.clone(), behaviour))

@@ -80,7 +80,7 @@ impl std::error::Error for ContentKindError {}
 /// A `namespace:path` identifier whose namespace is a [`ModId`].
 ///
 /// Paths use ASCII lowercase letters, digits, `_`, `.`, `-`, and `/`, without
-/// leading or trailing `/` or `..` segments. Registrants may use another mod's namespace.
+/// empty, `.` or `..` segments. Registrants may use another mod's namespace.
 ///
 /// # Examples
 ///
@@ -135,10 +135,10 @@ impl ContentId {
         if path.is_empty() {
             return Err(ContentIdError::EmptyPath);
         }
-        if path.starts_with('/') || path.ends_with('/') {
+        if path.split('/').any(str::is_empty) {
             return Err(ContentIdError::PathBoundary);
         }
-        if crate::paths::is_traversal(path) {
+        if path.split('/').any(|segment| matches!(segment, "." | "..")) {
             return Err(ContentIdError::PathTraversal);
         }
 
@@ -209,9 +209,9 @@ pub enum ContentIdError {
     },
     /// The text after the `:` is empty.
     EmptyPath,
-    /// The path starts or ends with `/`, so it names a directory.
+    /// The path holds an empty segment, including a leading or trailing `/`.
     PathBoundary,
-    /// The path holds a `..` segment.
+    /// The path holds a `.` or `..` segment.
     PathTraversal,
     /// A path character is outside the documented charset.
     PathCharacter {
@@ -232,11 +232,11 @@ impl fmt::Display for ContentIdError {
             }
             Self::EmptyPath => formatter.write_str("a content id's path cannot be empty"),
             Self::PathBoundary => formatter.write_str(
-                "a content id's path names an entry, so it cannot start or end with `/`",
+                "a content id's path cannot hold empty segments or start or end with `/`",
             ),
             Self::PathTraversal => formatter.write_str(
                 "a content id's path names something inside its own namespace, so it cannot hold \
-                 a `..` segment",
+                 a `.` or `..` segment",
             ),
             Self::PathCharacter { character, index } => write!(
                 formatter,
@@ -465,6 +465,37 @@ mod tests {
         let dotted = ContentId::new(namespace, "a..b").expect("`a..b` is not a traversal");
         assert_eq!(dotted.path(), "a..b");
         assert!(RelativePath::try_from("data/example_mod/a..b.json".to_owned()).is_ok());
+    }
+
+    #[test]
+    fn noncanonical_segments_are_refused_by_construction_parsing_and_deserialization() {
+        let namespace: ModId = "example_mod".parse().expect("a legal mod id");
+        for (path, expected) in [
+            ("a//b", ContentIdError::PathBoundary),
+            ("a///b", ContentIdError::PathBoundary),
+            (".", ContentIdError::PathTraversal),
+            ("./x", ContentIdError::PathTraversal),
+            ("a/./b", ContentIdError::PathTraversal),
+            ("a/.", ContentIdError::PathTraversal),
+            ("..", ContentIdError::PathTraversal),
+            ("a/../b", ContentIdError::PathTraversal),
+        ] {
+            assert_eq!(
+                ContentId::new(namespace.clone(), path),
+                Err(expected.clone())
+            );
+            let text = format!("{namespace}:{path}");
+            assert_eq!(text.parse::<ContentId>(), Err(expected.clone()));
+            assert_eq!(ContentId::try_from(text.clone()), Err(expected));
+            let encoded = serde_json::to_string(&text).expect("serialize a candidate");
+            assert!(
+                serde_json::from_str::<ContentId>(&encoded).is_err(),
+                "{text}"
+            );
+        }
+        for path in ["a..b", ".hidden", "...", "a/.hidden", "a/b.c"] {
+            assert!(ContentId::new(namespace.clone(), path).is_ok(), "{path}");
+        }
     }
 
     #[test]

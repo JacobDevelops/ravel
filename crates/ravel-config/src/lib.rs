@@ -6,7 +6,7 @@
 //! borrowed settings, so resolved values cannot be invalidated after validation.
 //! [`LayeredConfiguration::boolean`], [`LayeredConfiguration::integer`],
 //! [`LayeredConfiguration::number`] and [`LayeredConfiguration::text`] enforce
-//! the declared scalar kind and report missing keys as [`ValueError`].
+//! the declared scalar kind and retain failing keys in [`AccessError`].
 //! Filesystem failures retain their path and original [`std::io::Error`] source.
 
 mod declaration;
@@ -25,8 +25,8 @@ pub use declaration::{
 };
 pub use document::{DocumentError, ValueDocument};
 pub use layered::{
-    EditError, EditOutcome, LayerError, LayeredConfiguration, Rejection, RejectionReason,
-    ResolvedSetting, ValueSource,
+    AccessError, EditError, EditOutcome, LayerError, LayeredConfiguration, Rejection,
+    RejectionReason, ResolvedSetting, ValueSource,
 };
 pub use schema::{ValueError, ValueKind, ValueSchema};
 

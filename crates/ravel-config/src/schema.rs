@@ -155,6 +155,11 @@ pub enum ValueError {
     },
     /// An integer cannot be represented as a signed 64-bit value.
     IntegerRange,
+    /// An integer cannot be represented by the requested Rust type.
+    TargetRange {
+        /// The diagnostic target type name, not a stable public identifier.
+        target: &'static str,
+    },
     /// The value has the wrong JSON type.
     Kind {
         /// The type the setting declared.
@@ -204,6 +209,9 @@ impl fmt::Display for ValueError {
                 declared.map_or("no scalar type", ValueKind::as_str)
             ),
             Self::IntegerRange => formatter.write_str("the integer does not fit in i64"),
+            Self::TargetRange { target } => {
+                write!(formatter, "the integer does not fit in {target}")
+            }
             Self::Kind { expected, found } => write!(
                 formatter,
                 "the setting holds a {}, not a {found}",

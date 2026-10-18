@@ -5,6 +5,7 @@
 
 mod content;
 mod diagnostics;
+mod digest;
 mod identity;
 pub mod paths;
 mod precedence;
@@ -19,6 +20,7 @@ pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
     Redaction, StructuredFailure,
 };
+pub use digest::{Sha256Digest, Sha256Error};
 pub use identity::{ModId, ModIdError, check_identifier};
 pub use paths::{RelativePath, RelativePathError};
 pub use precedence::{Cycle, precedence};

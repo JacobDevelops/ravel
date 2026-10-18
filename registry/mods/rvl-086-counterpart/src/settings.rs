@@ -20,7 +20,7 @@
 
 use ravel_sdk::Declared;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
 };
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
@@ -614,7 +614,7 @@ pub struct RepairMaterials {
     pub override_mode: bool,
 }
 impl RepairMaterials {
-    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             strip_enchantments: resolved.boolean(REPAIR_STRIP_ENCHANTMENTS)?,
             disable_defaults: resolved.boolean(REPAIR_DISABLE_DEFAULTS)?,
@@ -632,7 +632,7 @@ pub struct RepairDiscounts {
     pub shearing: bool,
 }
 impl RepairDiscounts {
-    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             digging: resolved.boolean(REPAIR_CHEAPER_DIGGING)?,
             shearing: resolved.boolean(REPAIR_CHEAPER_SHEARING)?,
@@ -684,7 +684,10 @@ impl Settings {
     ///
     /// Returns typed access errors, including repair costs outside their declared ranges.
     /// `host_namespace` completes an override selector written without one.
-    pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Result<Self, ValueError> {
+    pub fn read(
+        resolved: &LayeredConfiguration,
+        host_namespace: &str,
+    ) -> Result<Self, AccessError> {
         let mut switches = [false; 14];
         for feature in Feature::ALL {
             switches[feature.index()] = resolved.boolean(feature.key())?;
@@ -694,9 +697,14 @@ impl Settings {
             tooltip_excluded: Matcher::parse(resolved.text(TOOLTIP_EXCLUDED)?),
             switches,
             repair_enabled: resolved.boolean(REPAIR_ENABLED)?,
-            repair_cost: read_cost(resolved.integer(REPAIR_COST)?, COST_RANGE)?,
+            repair_cost: read_cost(
+                resolved.integer_in::<u32>(REPAIR_COST)?,
+                REPAIR_COST,
+                COST_RANGE,
+            )?,
             repair_enchantment_cost: read_cost(
-                resolved.integer(REPAIR_ENCHANTMENT_COST)?,
+                resolved.integer_in::<u32>(REPAIR_ENCHANTMENT_COST)?,
+                REPAIR_ENCHANTMENT_COST,
                 ENCHANTMENT_COST_RANGE,
             )?,
             repair_materials: RepairMaterials::read(resolved)?,
@@ -757,18 +765,25 @@ impl Settings {
     }
 }
 
-fn read_cost(value: i64, (minimum, maximum): (u32, u32)) -> Result<u32, ValueError> {
-    if value < i64::from(minimum) {
-        return Err(ValueError::Below {
+fn read_cost(value: u32, key: &str, (minimum, maximum): (u32, u32)) -> Result<u32, AccessError> {
+    let reason = if value < minimum {
+        Some(ValueError::Below {
             minimum: f64::from(minimum),
-        });
-    }
-    if value > i64::from(maximum) {
-        return Err(ValueError::Above {
+        })
+    } else if value > maximum {
+        Some(ValueError::Above {
             maximum: f64::from(maximum),
+        })
+    } else {
+        None
+    };
+    if let Some(reason) = reason {
+        return Err(AccessError {
+            key: key.to_owned(),
+            reason,
         });
     }
-    Ok(u32::try_from(value).expect("the supported cost range fits u32"))
+    Ok(value)
 }
 
 /// The twenty-six deciding settings, as they travel to a joining client.
@@ -938,18 +953,15 @@ mod tests {
             (REPAIR_ENCHANTMENT_COST, ENCHANTMENT_COST_RANGE),
         ] {
             for (value, refusal) in [
-                (
-                    -1,
-                    ValueError::Below {
-                        minimum: f64::from(range.0),
-                    },
-                ),
+                (-1_i64, ValueError::TargetRange { target: "u32" }),
                 (
                     900,
                     ValueError::Above {
                         maximum: f64::from(range.1),
                     },
                 ),
+                (i64::MIN, ValueError::TargetRange { target: "u32" }),
+                (i64::MAX, ValueError::TargetRange { target: "u32" }),
             ] {
                 let mut document: ravel_sdk::JsonValue =
                     DOCUMENT.parse().expect("the packaged document parses");
@@ -965,20 +977,14 @@ mod tests {
                     .expect("a widened declaration");
                 let resolved = LayeredConfiguration::resolve(declared, None, None)
                     .expect("the widened declaration resolves");
-                assert_eq!(Settings::read(&resolved, "host"), Err(refusal));
+                assert_eq!(
+                    Settings::read(&resolved, "host"),
+                    Err(AccessError {
+                        key: key.to_owned(),
+                        reason: refusal,
+                    })
+                );
             }
-            assert_eq!(
-                read_cost(i64::MIN, range),
-                Err(ValueError::Below {
-                    minimum: f64::from(range.0)
-                }),
-            );
-            assert_eq!(
-                read_cost(i64::MAX, range),
-                Err(ValueError::Above {
-                    maximum: f64::from(range.1)
-                }),
-            );
         }
     }
 

@@ -20,6 +20,15 @@ pub enum DispatchRefused {
         /// The side the set is running on.
         running: Side,
     },
+    /// The command's claimed side disagrees with the runtime's world side.
+    CommandForeignSide {
+        /// The command that was refused.
+        key: RegistryKey,
+        /// The execution side claimed by the caller.
+        claimed: Side,
+        /// The runtime's world execution side.
+        running: Side,
+    },
     /// The set is not in a state that reacts.
     NotReacting {
         /// The first non-reacting audience member in resolved order.
@@ -85,7 +94,9 @@ impl DispatchRefused {
             | Self::OwnerNotReacting { mod_id, .. }
             | Self::OwnerWrongSide { mod_id }
             | Self::Absent { mod_id } => Some(mod_id),
-            Self::Unclaimed { key } | Self::NotACommand { key } => Some(key.id().namespace()),
+            Self::Unclaimed { key }
+            | Self::NotACommand { key }
+            | Self::CommandForeignSide { key, .. } => Some(key.id().namespace()),
             Self::PacketForeignSide { id, .. } | Self::PacketWrongSide { id, .. } => {
                 Some(id.owner())
             }
@@ -98,6 +109,7 @@ impl DispatchRefused {
             Self::Lifecycle(error) => Some(error),
             Self::Halted { .. }
             | Self::EventForeignSide { .. }
+            | Self::CommandForeignSide { .. }
             | Self::NotReacting { .. }
             | Self::Unclaimed { .. }
             | Self::NotACommand { .. }
@@ -118,6 +130,16 @@ impl fmt::Display for DispatchRefused {
             Self::EventForeignSide { claimed, running } => write!(
                 formatter,
                 "event execution claimed the `{}` side and the set is running as `{}`",
+                claimed.as_str(),
+                running.as_str()
+            ),
+            Self::CommandForeignSide {
+                key,
+                claimed,
+                running,
+            } => write!(
+                formatter,
+                "`{key}` claimed the `{}` side and commands execute as `{}`",
                 claimed.as_str(),
                 running.as_str()
             ),
@@ -183,6 +205,7 @@ impl StructuredFailure for DispatchRefused {
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
             | Self::EventForeignSide { .. }
+            | Self::CommandForeignSide { .. }
             | Self::NotACommand { .. }
             | Self::OwnerWrongSide { .. }
             | Self::PacketForeignSide { .. }

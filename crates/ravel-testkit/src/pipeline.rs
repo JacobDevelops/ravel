@@ -6,7 +6,7 @@ use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFail
 use ravel_host_api::Mod;
 use ravel_loader::{
     DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
-    MissingMod, admitted, drive_loaded, executes_mod_code, stop_all,
+    MissingMod, admitted, executes_mod_code, start_all, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -139,7 +139,7 @@ pub fn run_pipeline(
     };
     let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;
     let mut loaded = LoadedMods::new(&mut machine, mods).map_err(PipelineError::MissingMod)?;
-    drive_loaded(&mut loaded, &environment).map_err(PipelineError::from)?;
+    start_all(&mut loaded, &environment).map_err(PipelineError::from)?;
     stop_all(&mut loaded, &environment).map_err(PipelineError::from)?;
 
     Ok(PipelineRun {

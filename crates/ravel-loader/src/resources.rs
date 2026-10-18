@@ -10,6 +10,7 @@ use ravel_host_api::{HostError, Mod};
 use crate::loaded::LoadedMods;
 
 /// Layers files from mods on this side in load order; later suppliers win contested paths.
+/// A required owner failure blocks collection before any declaration callback is invoked.
 ///
 /// # Errors
 ///
@@ -20,6 +21,9 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Supplied, ResourceRefused> {
     let (machine, mods) = loaded.parts();
+    if let Some(by) = crate::events::active_blocker(machine) {
+        return Err(ResourceRefused::Halted { by: by.clone() });
+    }
     let eligible: Vec<_> = machine
         .eligible()
         .map(|(entry, state)| (entry.mod_id.clone(), state))
@@ -46,7 +50,7 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            crate::lifecycle::isolate_foreign(
+            crate::lifecycle::isolate_loader_refusal(
                 machine,
                 environment,
                 &mod_id,
@@ -110,6 +114,11 @@ impl Supplied {
 pub enum ResourceRefused {
     /// The lifecycle refused failure attribution.
     Lifecycle(crate::LifecycleError),
+    /// A required failure or halted set blocks content callbacks.
+    Halted {
+        /// The mod whose failure blocks the set.
+        by: ModId,
+    },
     /// A mod refused to declare its content.
     Mod {
         /// The mod that refused.
@@ -131,7 +140,7 @@ impl ResourceRefused {
     #[must_use]
     pub const fn mod_id(&self) -> Option<&ModId> {
         match self {
-            Self::Lifecycle(_) => None,
+            Self::Lifecycle(_) | Self::Halted { .. } => None,
             Self::Mod { mod_id, .. } | Self::ForeignDeclaration { mod_id, .. } => Some(mod_id),
         }
     }
@@ -141,6 +150,7 @@ impl fmt::Display for ResourceRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::Halted { by } => write!(formatter, "the mod set is blocked after `{by}` failed"),
             Self::Mod { mod_id, source } => {
                 write!(
                     formatter,
@@ -161,7 +171,7 @@ impl std::error::Error for ResourceRefused {
         match self {
             Self::Lifecycle(error) => Some(error),
             Self::Mod { source, .. } => Some(source),
-            Self::ForeignDeclaration { .. } => None,
+            Self::Halted { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }
 }
@@ -171,7 +181,7 @@ impl StructuredFailure for ResourceRefused {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Mod { source, .. } => source.failure_kind(),
-            Self::ForeignDeclaration { .. } => None,
+            Self::Halted { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }
 
@@ -179,6 +189,7 @@ impl StructuredFailure for ResourceRefused {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
             Self::Mod { source, .. } => source.lifecycle_state(),
+            Self::Halted { .. } => LifecycleState::Failed,
             Self::ForeignDeclaration { .. } => LifecycleState::Registered,
         }
     }
@@ -187,7 +198,7 @@ impl StructuredFailure for ResourceRefused {
         match self {
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Mod { source, .. } => source.quotes_untrusted_text(),
-            Self::ForeignDeclaration { .. } => false,
+            Self::Halted { .. } | Self::ForeignDeclaration { .. } => false,
         }
     }
 }
@@ -295,6 +306,56 @@ mod tests {
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
+    }
+
+    #[test]
+    fn required_failures_and_post_mutation_optional_failures_block_resource_declarations() {
+        for (requirement, mutated) in [
+            (crate::Requirement::Required, false),
+            (crate::Requirement::Required, true),
+            (crate::Requirement::Optional, true),
+        ] {
+            let mut failed = Supplying::new("failed_mod", &[]);
+            let mut healthy = Supplying::new("healthy_mod", &[("assets/healthy.json", "healthy")]);
+            let mut failed_entry = entry("failed_mod", &[Side::DedicatedServer]);
+            failed_entry.requirement = requirement;
+            let mut machine = machine(vec![
+                failed_entry,
+                entry("healthy_mod", &[Side::DedicatedServer]),
+            ]);
+            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            if mutated {
+                machine.record_world_mutation().expect("running world");
+            }
+            machine
+                .fail_callback(
+                    &HostError::Unsupported {
+                        mod_id: id("failed_mod"),
+                        state: LifecycleState::Running,
+                    },
+                    &crate::tests::environment(),
+                    None,
+                )
+                .expect("record callback failure");
+            assert_eq!(
+                machine.halted_by(),
+                mutated.then(|| id("failed_mod")).as_ref(),
+            );
+            assert_eq!(
+                open_resources(
+                    &mut crate::LoadedMods::<&mut dyn Mod>::new(
+                        &mut machine,
+                        &mut [&mut failed, &mut healthy],
+                    )
+                    .expect("paired owners"),
+                ),
+                Err(ResourceRefused::Halted {
+                    by: id("failed_mod")
+                }),
+            );
+            assert_eq!(failed.calls.get(), 0);
+            assert_eq!(healthy.calls.get(), 0);
+        }
     }
 
     #[test]
@@ -453,7 +514,7 @@ mod tests {
         };
         let mut hosts: [&mut dyn Mod; 1] = [&mut host];
         let mut loaded = crate::LoadedMods::new(&mut machine, &mut hosts).expect("paired host");
-        crate::drive_loaded(&mut loaded, &environment).expect("optional failure permits startup");
+        crate::start_all(&mut loaded, &environment).expect("optional failure permits startup");
         let supplied = open_resources(&mut loaded).expect("failed owners are skipped");
         assert_eq!(supplied.generated(), []);
         assert_eq!(supplied.bytes(&path("assets/failed.json")), None);

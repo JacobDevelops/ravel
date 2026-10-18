@@ -18,7 +18,7 @@ pub const SEEDED_PACKS_FILE: &str = "seeded-packs";
 // ECMA `.` excludes these characters in the schema's `relativePath` pattern.
 const LINE_TERMINATORS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
-/// A non-empty relative path without leading `/`, backslashes, line breaks, or `..` segments.
+/// A canonical, non-empty relative path without backslashes, line breaks, or dot segments.
 ///
 /// # Examples
 ///
@@ -49,13 +49,10 @@ impl RelativePath {
         &self.0
     }
 
-    /// Returns the last non-empty segment, ignoring trailing slashes.
+    /// Returns the final path segment.
     #[must_use]
     pub fn file_name(&self) -> &str {
-        self.0
-            .rsplit('/')
-            .find(|segment| !segment.is_empty())
-            .unwrap_or("")
+        self.0.rsplit('/').next().unwrap_or("")
     }
 
     /// Returns the first segment, which names the path's subtree.
@@ -79,6 +76,12 @@ impl RelativePath {
         }
         if is_traversal(candidate) {
             return Err(RelativePathError::Traversal);
+        }
+        if candidate
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == ".")
+        {
+            return Err(RelativePathError::NonCanonical);
         }
         Ok(())
     }
@@ -123,6 +126,8 @@ pub enum RelativePathError {
     LineBreak,
     /// The candidate holds a `..` component.
     Traversal,
+    /// The candidate holds an empty or `.` component.
+    NonCanonical,
 }
 
 impl fmt::Display for RelativePathError {
@@ -138,6 +143,9 @@ impl fmt::Display for RelativePathError {
             Self::Traversal => formatter.write_str(
                 "a package path cannot leave the package, so it cannot hold a `..` component",
             ),
+            Self::NonCanonical => {
+                formatter.write_str("a package path cannot hold an empty or `.` component")
+            }
         }
     }
 }
@@ -157,10 +165,7 @@ mod tests {
             ("a/b/c/provenance.json", "provenance.json"),
             ("a..b/c", "c"),
             ("...", "..."),
-            ("./nested/file", "file"),
             ("deep/.hidden", ".hidden"),
-            ("deep/nested/", "nested"),
-            ("a//", "a"),
             ("single", "single"),
         ] {
             let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
@@ -199,6 +204,12 @@ mod tests {
             ("../sibling", RelativePathError::Traversal),
             ("nested/../../escape", RelativePathError::Traversal),
             ("nested/..", RelativePathError::Traversal),
+            (".", RelativePathError::NonCanonical),
+            ("./nested/file", RelativePathError::NonCanonical),
+            ("nested/./file", RelativePathError::NonCanonical),
+            ("deep/nested/", RelativePathError::NonCanonical),
+            ("a//", RelativePathError::NonCanonical),
+            ("a//b", RelativePathError::NonCanonical),
             ("..\\..\\escape", RelativePathError::Backslash),
             ("\\\\server\\share", RelativePathError::Backslash),
             ("nested\\file", RelativePathError::Backslash),
@@ -211,6 +222,11 @@ mod tests {
             assert_eq!(
                 RelativePath::try_from(candidate.to_owned()),
                 Err(expected),
+                "{candidate:?}"
+            );
+            let encoded = serde_json::to_string(candidate).expect("candidate string");
+            assert!(
+                serde_json::from_str::<RelativePath>(&encoded).is_err(),
                 "{candidate:?}"
             );
         }
@@ -235,6 +251,10 @@ mod tests {
             (
                 RelativePathError::Traversal,
                 "a package path cannot leave the package, so it cannot hold a `..` component",
+            ),
+            (
+                RelativePathError::NonCanonical,
+                "a package path cannot hold an empty or `.` component",
             ),
         ] {
             assert_eq!(error.to_string(), expected);

@@ -160,7 +160,7 @@ impl ShapingRecord {
 /// Why bytes a world stored are not a shaping record this build can read.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShapingError {
-    /// The bytes are not this record at all.
+    /// The bytes are not a shaping record this build can read.
     Unreadable {
         /// What made them unreadable, in the reader's words.
         detail: String,
@@ -175,7 +175,7 @@ pub enum ShapingError {
 }
 
 impl ShapingError {
-    /// Returns whether the bytes are not a shaping record.
+    /// Returns whether this build cannot read the bytes as a shaping record.
     #[must_use]
     pub const fn is_unreadable(&self) -> bool {
         matches!(self, Self::Unreadable { .. })
@@ -187,7 +187,7 @@ impl fmt::Display for ShapingError {
         match self {
             Self::Unreadable { detail } => write!(
                 formatter,
-                "these bytes are not a world shaping record: {detail}"
+                "this build cannot read these bytes as a world shaping record: {detail}"
             ),
             Self::IllegalOwner { candidate, source } => write!(
                 formatter,
@@ -305,6 +305,11 @@ mod tests {
             .expect_err("bytes from nowhere are refused rather than guessed at");
 
         assert!(refusal.is_unreadable());
+        assert!(
+            refusal
+                .to_string()
+                .starts_with("this build cannot read these bytes as a world shaping record:")
+        );
     }
 
     #[test]
@@ -314,6 +319,11 @@ mod tests {
 
         assert!(refusal.is_unreadable());
         assert!(refusal.to_string().contains('2'));
+        assert!(
+            refusal
+                .to_string()
+                .starts_with("this build cannot read these bytes as a world shaping record:")
+        );
     }
 
     #[test]

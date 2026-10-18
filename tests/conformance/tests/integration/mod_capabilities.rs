@@ -33,7 +33,7 @@ fn running(
     mods: &mut [&mut dyn Mod],
 ) -> LifecycleMachine {
     let mut machine = LifecycleMachine::new(side, entries).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -43,7 +43,7 @@ fn running(
 
 fn three_mod_plan() -> Vec<LifecycleEntry> {
     vec![
-        entry("commands", &[Side::Client, Side::DedicatedServer]),
+        entry("commands", &Side::ALL),
         entry("events", &[Side::Client, Side::DedicatedServer]),
         entry("resources", &[Side::Client, Side::DedicatedServer]),
     ]
@@ -63,7 +63,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
 
     let invocation = CommandInvocation::new(
         CommandsMod::new().key("warp"),
-        Side::Client,
+        Side::IntegratedServer,
         vec!["set".to_owned(), "base".to_owned()],
     );
     let delivery = deliver_command(
@@ -81,6 +81,40 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
     assert_eq!(commands.invocations(), [invocation]);
     assert_eq!(events.observed(), []);
     assert_eq!(resources.reloads(), 0);
+}
+
+#[test]
+fn a_client_process_refuses_client_claimed_commands_before_calling_the_owner() {
+    let mut commands = CommandsMod::new();
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut commands];
+    let mut machine = running(vec![entry("commands", &Side::ALL)], Side::Client, &mut mods);
+    let owner = id("commands");
+    let key = CommandsMod::new().key("warp");
+    assert_eq!(machine.registry_owner(&key), Some(&owner));
+    assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
+    assert_eq!(machine.failure(&owner), Ok(None));
+
+    let refused = deliver_command(
+        &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        &CommandInvocation::new(key.clone(), Side::Client, vec!["set".to_owned()]),
+        &mut ravel_observability::Profiler::off(),
+        &ravel_bootstrap_runtime::environment(),
+    )
+    .expect_err("commands execute on the integrated server, not the client process side");
+    assert_eq!(
+        refused,
+        DispatchRefused::CommandForeignSide {
+            key,
+            claimed: Side::Client,
+            running: Side::IntegratedServer,
+        }
+    );
+    assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
+    assert_eq!(machine.failure(&owner), Ok(None));
+
+    drop(mods);
+    assert_eq!(commands.invocations(), []);
 }
 
 #[test]
@@ -120,7 +154,11 @@ fn resources_layer_so_the_last_mod_to_declare_a_path_is_the_one_that_supplies_it
     let own = declared[1].clone();
     let later = id("skin_mod");
 
-    let set = resources.layered_under(&later, std::slice::from_ref(&shared));
+    let owner = id("resources");
+    let set = ResourceSet::layered([
+        (&owner, declared.iter()),
+        (&later, std::slice::from_ref(&shared).iter()),
+    ]);
 
     assert_eq!(set.supplier(&shared), Some(&later));
     assert_eq!(set.supplier(&own), Some(&id("resources")));
@@ -167,8 +205,7 @@ fn the_same_set_broadcast_twice_delivers_to_the_same_mods_in_the_same_order() {
         let mut resources = ResourcesMod::new();
         let mut mods: Vec<&mut dyn Mod> = vec![&mut commands, &mut events, &mut resources];
         let mut machine = running(three_mod_plan(), Side::Client, &mut mods);
-        let audience = machine.audience(GameEvent::ClientTick);
-        let received = broadcast(
+        broadcast(
             &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
                 .expect("all active mods have hosts"),
             GameEvent::ClientTick,
@@ -178,13 +215,12 @@ fn the_same_set_broadcast_twice_delivers_to_the_same_mods_in_the_same_order() {
         )
         .expect("the set is running")
         .received()
-        .to_vec();
-        (audience, received)
+        .to_vec()
     };
 
     let first = run_once();
     assert_eq!(first, run_once());
-    assert_eq!(first.0, first.1);
+    assert_eq!(first, [id("commands"), id("events"), id("resources")]);
 }
 
 #[test]
@@ -233,8 +269,7 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
     let mut mods: Vec<&mut dyn Mod> = vec![&mut commands, &mut events, &mut resources];
     let mut machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
 
-    assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
-    let ignored = broadcast(
+    let delivery = broadcast(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
         GameEvent::ClientTick,
@@ -243,7 +278,8 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
         &ravel_bootstrap_runtime::environment(),
     )
     .expect("an empty audience");
-    assert_eq!(ignored.received(), []);
+    assert_eq!(delivery.received(), []);
+    assert!(delivery.is_complete());
 
     let ticked = broadcast(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
@@ -265,22 +301,31 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
 
 #[test]
 fn a_mod_that_does_not_load_on_this_side_is_not_in_any_audience() {
-    let machine = LifecycleMachine::new(
-        Side::DedicatedServer,
+    let mut commands = CommandsMod::new();
+    let mut events = EventsMod::new();
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut commands, &mut events];
+    let mut machine = running(
         vec![
             entry("commands", &[Side::Client, Side::DedicatedServer]),
             entry("events", &[Side::Client]),
         ],
-    )
-    .expect("a legal plan");
-
+        Side::DedicatedServer,
+        &mut mods,
+    );
     for event in GameEvent::ALL {
-        assert!(
-            !machine.audience(event).contains(&id("events")),
-            "a client-only mod is in the audience for {event}"
-        );
+        if !event.happens_on(Side::DedicatedServer) {
+            continue;
+        }
+        let delivered = broadcast(
+            &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired hosts"),
+            event,
+            Side::DedicatedServer,
+            &mut ravel_observability::Profiler::off(),
+            &ravel_bootstrap_runtime::environment(),
+        )
+        .expect("server event");
+        assert_eq!(delivered.received(), [id("commands")]);
     }
-    assert_eq!(machine.audience(GameEvent::ServerTick), [id("commands")]);
 }
 
 #[test]
@@ -385,7 +430,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
     let mut commands = CommandsMod::new();
     let mut mods: Vec<&mut dyn Mod> = vec![&mut commands];
     let mut machine = running(
-        vec![entry("commands", &[Side::Client])],
+        vec![entry("commands", &[Side::Client, Side::IntegratedServer])],
         Side::Client,
         &mut mods,
     );
@@ -393,7 +438,11 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
     let delivery = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
-        &CommandInvocation::new(CommandsMod::new().key("warp"), Side::Client, Vec::new()),
+        &CommandInvocation::new(
+            CommandsMod::new().key("warp"),
+            Side::IntegratedServer,
+            Vec::new(),
+        ),
         &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -415,7 +464,7 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
             .expect("all active mods have hosts"),
         &CommandInvocation::new(
             CommandsMod::new().key("warp"),
-            Side::Client,
+            Side::IntegratedServer,
             vec!["set".to_owned()],
         ),
         &mut ravel_observability::Profiler::off(),
@@ -529,7 +578,7 @@ fn a_command_nobody_claimed_is_refused_by_name() {
     let refused = deliver_command(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active mods have hosts"),
-        &CommandInvocation::new(orphan.clone(), Side::Client, vec!["x".to_owned()]),
+        &CommandInvocation::new(orphan.clone(), Side::IntegratedServer, vec!["x".to_owned()]),
         &mut ravel_observability::Profiler::off(),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -657,17 +706,25 @@ fn a_mod_outside_the_audience_costs_nothing_per_tick() {
         id: id("client_mod"),
         calls: 0,
     };
-    let mods: Vec<&mut dyn Mod> = vec![&mut server_side, &mut client_only];
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut server_side, &mut client_only];
 
-    let machine = LifecycleMachine::new(
-        Side::DedicatedServer,
+    let mut machine = running(
         vec![
             entry("server_mod", &[Side::Client, Side::DedicatedServer]),
             entry("client_mod", &[Side::Client]),
         ],
+        Side::DedicatedServer,
+        &mut mods,
+    );
+    let delivered = broadcast(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired hosts"),
+        GameEvent::ServerTick,
+        Side::DedicatedServer,
+        &mut ravel_observability::Profiler::off(),
+        &ravel_bootstrap_runtime::environment(),
     )
-    .expect("a legal plan");
-    assert_eq!(machine.audience(GameEvent::ServerTick), [id("server_mod")]);
+    .expect("server event");
+    assert_eq!(delivered.received(), [id("server_mod")]);
 
     drop(mods);
     assert_eq!(client_only.calls, 0);

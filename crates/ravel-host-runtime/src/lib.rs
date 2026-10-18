@@ -20,8 +20,8 @@ use ravel_core::{ModId, Side};
 use ravel_host_api::Mod;
 use ravel_loader::{
     ConfigRefused, DiscoveryRefused, DriveError, LifecycleEntry, LifecycleError, LifecycleMachine,
-    Loaded, LoadedMods, ResourceRefused, admitted, discover, drive_loaded, open_configuration,
-    open_resources,
+    Loaded, LoadedMods, ResourceRefused, admitted, discover, open_configuration, open_resources,
+    start_all,
 };
 use ravel_observability::Profiler;
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
@@ -69,7 +69,7 @@ pub fn compose(
     )
     .map_err(LaunchError::Config)?
     .into_resolved();
-    drive_loaded(&mut loaded, &environment()).map_err(LaunchError::Drive)?;
+    start_all(&mut loaded, &environment()).map_err(LaunchError::Drive)?;
     let (interceptions, resources) = open_declarations(&mut loaded)?;
 
     Ok(Composition {
@@ -592,7 +592,7 @@ mod tests {
             let mut declaration = ravel_data::ContentDeclaration::new(self.id.clone());
             for path in [
                 "assets/optional_interceptor/textures/failed.png",
-                "data/optional_interceptor/recipes/failed.json",
+                "data/optional_interceptor/recipe/failed.json",
             ] {
                 declaration
                     .resource(
@@ -618,7 +618,7 @@ mod tests {
             std::env::temp_dir().join(format!("ravel-refused-interceptor-{}", std::process::id()));
         let world = game.join("world");
         std::fs::create_dir_all(&world).expect("world directory");
-        let (package, id, _) = member("optional_interceptor", &["client"]);
+        let (package, id, _) = member("optional_interceptor", &["client", "integrated-server"]);
         let admitted = admit(
             Side::Client,
             vec![Member {
@@ -636,7 +636,7 @@ mod tests {
         let mut machine = ravel_loader::LifecycleMachine::new(Side::Client, entries).expect("plan");
         let mut loaded =
             ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired mods");
-        ravel_loader::drive_loaded(&mut loaded, &environment()).expect("registration");
+        ravel_loader::start_all(&mut loaded, &environment()).expect("registration");
         let (_, resources) =
             super::open_declarations(&mut loaded).expect("optional failure is isolated");
         assert!(
@@ -657,7 +657,7 @@ mod tests {
             !world
                 .join(ravel_bootstrap_runtime::WORLD_DATA_PACKS)
                 .join(ravel_bootstrap_runtime::GAME_PACK_DIRECTORY)
-                .join("data/optional_interceptor/recipes/failed.json")
+                .join("data/optional_interceptor/recipe/failed.json")
                 .exists()
         );
         std::fs::remove_dir_all(game).expect("remove scratch game");
@@ -1017,7 +1017,7 @@ mod tests {
             } = admit(side, members).expect("a compatible set");
             let mut machine =
                 ravel_loader::LifecycleMachine::new(side, entries).expect("compatible lifecycle");
-            ravel_loader::drive_loaded(
+            ravel_loader::start_all(
                 &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
                 &environment(),
             )

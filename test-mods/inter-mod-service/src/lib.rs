@@ -208,12 +208,9 @@ impl Mod for StockMod {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.restock_size = u64::try_from(
-            resolved
-                .integer(RESTOCK_SIZE)
-                .map_err(ModError::from_display)?,
-        )
-        .map_err(ModError::from_display)?;
+        self.restock_size = resolved
+            .integer_in::<u64>(RESTOCK_SIZE)
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 

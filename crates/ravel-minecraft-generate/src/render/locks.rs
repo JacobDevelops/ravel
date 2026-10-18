@@ -2,18 +2,17 @@
 
 use std::fmt::Write as _;
 
+use ravel_core::Sha256Digest;
+
 use crate::EXTRACTOR;
 use crate::inputs::Adapter;
 use crate::resolve::Resolved;
 use crate::stubs::Stub;
 
 /// Leaves an absent hash absent instead of recording an empty-string identity.
-fn hash_pin(text: &mut String, name: &str, digest: Option<&str>) {
+fn hash_pin(text: &mut String, name: &str, digest: Option<Sha256Digest>) {
     if let Some(digest) = digest {
-        text.push_str(name);
-        text.push_str(" = \"");
-        text.push_str(digest);
-        text.push_str("\"\n");
+        writeln!(text, "{name} = \"{digest}\"").expect("writing to a String cannot fail");
     }
 }
 
@@ -41,7 +40,7 @@ pub(crate) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
     hash_pin(
         &mut text,
         "clientJarSha256",
-        adapter.inputs.client_jar.sha256.as_deref(),
+        adapter.inputs.client_jar.sha256,
     );
     for (name, input) in [
         ("serverJarSha256", adapter.inputs.server_jar.as_ref()),
@@ -50,11 +49,7 @@ pub(crate) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
             adapter.inputs.client_mappings.as_ref(),
         ),
     ] {
-        hash_pin(
-            &mut text,
-            name,
-            input.and_then(|input| input.sha256.as_deref()),
-        );
+        hash_pin(&mut text, name, input.and_then(|input| input.sha256));
     }
     for target in resolved {
         writeln!(
@@ -122,7 +117,7 @@ pub(crate) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
     hash_pin(
         &mut text,
         "clientJarSha256",
-        adapter.inputs.client_jar.sha256.as_deref(),
+        adapter.inputs.client_jar.sha256,
     );
     hash_pin(
         &mut text,
@@ -131,7 +126,7 @@ pub(crate) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
             .inputs
             .data_fixer_jar
             .as_ref()
-            .and_then(|input| input.sha256.as_deref()),
+            .and_then(|input| input.sha256),
     );
 
     stub_lock_entries(&mut text, stubs);
@@ -183,7 +178,9 @@ mod hash_tests {
         let mut text = String::new();
         super::hash_pin(&mut text, "clientJarSha256", None);
         assert_eq!(text, "");
-        super::hash_pin(&mut text, "clientJarSha256", Some("abc"));
-        assert_eq!(text, "clientJarSha256 = \"abc\"\n");
+        let hash = "ab".repeat(32);
+        let digest = hash.parse().expect("a lowercase SHA-256 digest");
+        super::hash_pin(&mut text, "clientJarSha256", Some(digest));
+        assert_eq!(text, format!("clientJarSha256 = \"{hash}\"\n"));
     }
 }

@@ -27,7 +27,7 @@ const START_ORDER: [LifecycleState; 6] = [
 ///
 /// Returns [`DriveError`] when startup is refused. Completeness is checked before
 /// this operation by [`crate::LoadedMods::new`], without advancing any lifecycle state.
-pub fn drive_loaded<H: std::ops::DerefMut<Target: Mod>>(
+pub fn start_all<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut crate::LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<(), DriveError> {
@@ -214,7 +214,7 @@ mod tests {
     use ravel_core::{LifecycleState, ModId, Side};
     use ravel_host_api::{HostError, Mod, ModError, Registrar, ServiceDeclaration, ServiceId};
 
-    use super::{DriveError, drive_loaded, stop_all};
+    use super::{DriveError, start_all, stop_all};
     use crate::lifecycle::{LifecycleMachine, Requirement};
     use crate::services::ServiceRefused;
     use crate::tests::{entry, environment};
@@ -252,7 +252,7 @@ mod tests {
                 .expect("valid lifecycle");
         let mut mods: [&mut dyn Mod; 1] = [&mut host];
         let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
-        drive_loaded(&mut loaded, &environment()).expect("the set should start");
+        start_all(&mut loaded, &environment()).expect("the set should start");
 
         assert_eq!(
             machine.state(&id("example_mod")),
@@ -284,7 +284,7 @@ mod tests {
         .expect("valid lifecycle");
         let mut mods: [&mut dyn Mod; 1] = [&mut host];
         let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("parked set");
-        drive_loaded(&mut loaded, &environment())
+        start_all(&mut loaded, &environment())
             .expect("a side-mismatched optional execution is parked");
 
         assert_eq!(
@@ -348,7 +348,7 @@ mod tests {
         .expect("valid lifecycle");
         let mut mods: [&mut dyn Mod; 2] = [&mut healthy, &mut consumer];
         let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
-        let outcome = drive_loaded(&mut loaded, &environment());
+        let outcome = start_all(&mut loaded, &environment());
         assert!(
             !states
                 .lock()
@@ -424,7 +424,7 @@ mod tests {
         .expect("valid lifecycle");
         let mut mods: [&mut dyn Mod; 2] = [&mut failure, &mut healthy];
         let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
-        let outcome = drive_loaded(&mut loaded, &environment());
+        let outcome = start_all(&mut loaded, &environment());
         if requirement == Requirement::Required {
             assert!(matches!(
                 &outcome,
@@ -508,7 +508,7 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("required_mod", &[Side::Client])])
                 .expect("valid lifecycle");
-        let error = drive_loaded(
+        let error = start_all(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &environment(),
@@ -543,7 +543,7 @@ mod tests {
                     .expect("valid lifecycle");
             let mut mods: [&mut dyn Mod; 1] = [&mut host];
             let mut loaded = crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
-            let error = drive_loaded(&mut loaded, &environment())
+            let error = start_all(&mut loaded, &environment())
                 .expect_err("the required callback refuses startup");
             let DriveError::Host { source, .. } = error else {
                 panic!("expected the authored callback refusal");
@@ -592,7 +592,7 @@ mod tests {
         let mut slots: [&mut dyn Mod; 1] = [&mut host];
         let mut loaded =
             crate::LoadedMods::new(&mut machine, &mut slots).expect("complete host set");
-        drive_loaded(&mut loaded, &environment()).expect("startup succeeds");
+        start_all(&mut loaded, &environment()).expect("startup succeeds");
         stop_all(&mut loaded, &environment()).expect("shutdown succeeds");
         assert_eq!(
             machine.state(&id("example_mod")),
@@ -662,7 +662,7 @@ mod tests {
                 let mut mods: [&mut dyn Mod; 2] = [&mut host, &mut healthy];
                 let mut loaded =
                     crate::LoadedMods::new(&mut machine, &mut mods).expect("complete set");
-                let outcome = drive_loaded(&mut loaded, &environment());
+                let outcome = start_all(&mut loaded, &environment());
                 if requirement == Requirement::Optional {
                     outcome.expect("optional service failure drops its owner");
                     assert_eq!(
@@ -763,7 +763,7 @@ mod tests {
         .expect("valid lifecycle");
         let mut loaded =
             crate::LoadedMods::new(&mut machine, &mut hosts).expect("complete host set");
-        drive_loaded(&mut loaded, &environment()).expect("startup succeeds");
+        start_all(&mut loaded, &environment()).expect("startup succeeds");
         let result = stop_all(&mut loaded, &environment());
         if requirement == Requirement::Required {
             assert!(matches!(result, Err(DriveError::Host { source, .. })

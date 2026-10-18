@@ -109,15 +109,12 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
             declined: None,
         }),
         Err(error) => {
-            let declined = is_decline(&error);
-            if !declined {
+            let (failure, declined) = if is_decline(&error) {
+                (None, Some(error))
+            } else {
                 machine
                     .fail_callback(&error, environment, Some(surface))
                     .map_err(DispatchRefused::Lifecycle)?;
-            }
-            let (failure, declined) = if declined {
-                (None, Some(error))
-            } else {
                 (Some(error), None)
             };
             Ok(Delivery {
@@ -134,10 +131,13 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
 /// Each command callback's cost is attributed to `profiler`.
 /// An owner refusing the invocation is reported in the delivery and keeps running;
 /// unsupported commands and panics fail the owner.
+/// The claimed execution side must match the runtime's world side: client
+/// runtimes execute commands on their integrated server, never their client lane.
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] for a halted set, an invalid command key, or an absent or inactive owner.
+/// Returns [`DispatchRefused`] for a halted set, a foreign execution side, an
+/// invalid command key, or an absent or inactive owner.
 pub fn deliver_command<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     invocation: &CommandInvocation,
@@ -146,6 +146,14 @@ pub fn deliver_command<H: std::ops::DerefMut<Target: Mod>>(
 ) -> Result<Delivery, DispatchRefused> {
     let machine = loaded.machine();
     ensure_active(machine)?;
+    let running = machine.side().world_side();
+    if invocation.side != running {
+        return Err(DispatchRefused::CommandForeignSide {
+            key: invocation.key.clone(),
+            claimed: invocation.side,
+            running,
+        });
+    }
     if invocation.key.kind() != ravel_core::ContentKind::Command {
         return Err(DispatchRefused::NotACommand {
             key: invocation.key.clone(),

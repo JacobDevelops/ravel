@@ -349,34 +349,30 @@ pub(super) fn from_lock(
 ) -> Result<Vec<Stub>, GenerateError> {
     let lock: Lock = toml::from_str(tracked)
         .map_err(|error| GenerateError::Input(format!("cannot parse stubs.lock: {error}")))?;
-
-    for (what, recorded, pinned) in [
-        (
-            "the version",
+    if lock.minecraft != adapter.minecraft {
+        return Err(GenerateError::Drift(format!(
+            "stubs.lock records the version as {:?} but the adapter inputs pin {:?}",
             Some(lock.minecraft.as_str()),
-            Some(adapter.minecraft.as_str()),
-        ),
-        (
-            "the client jar hash",
-            Some(lock.client_jar_sha256.as_str()),
-            adapter.inputs.client_jar.sha256.as_deref(),
-        ),
-    ] {
-        if recorded != pinned {
-            return Err(GenerateError::Drift(format!(
-                "stubs.lock records {what} as {recorded:?} but the adapter inputs pin {pinned:?}"
-            )));
-        }
+            Some(adapter.minecraft.as_str())
+        )));
+    }
+    if Some(lock.client_jar_sha256) != adapter.inputs.client_jar.sha256 {
+        return Err(GenerateError::Drift(format!(
+            "stubs.lock records the client jar hash as {} but the adapter inputs pin {}",
+            super::error::DigestPin(Some(lock.client_jar_sha256)),
+            super::error::DigestPin(adapter.inputs.client_jar.sha256)
+        )));
     }
     let library_hash = adapter
         .inputs
         .data_fixer_jar
         .as_ref()
-        .and_then(|input| input.sha256.as_deref());
-    if lock.data_fixer_jar_sha256.as_deref() != library_hash {
+        .and_then(|input| input.sha256);
+    if lock.data_fixer_jar_sha256 != library_hash {
         return Err(GenerateError::Drift(format!(
-            "stubs.lock records the data fixer jar hash as {:?} but the adapter inputs pin {:?}",
-            lock.data_fixer_jar_sha256, library_hash
+            "stubs.lock records the data fixer jar hash as {} but the adapter inputs pin {}",
+            super::error::DigestPin(lock.data_fixer_jar_sha256),
+            super::error::DigestPin(library_hash)
         )));
     }
     if lock.schema_version != adapter.schema_version {
@@ -719,8 +715,21 @@ mod tests {
         assert!(!absent.contains("dataFixerJarSha256"));
         from_lock(&absent, &pinned.adapter, &pinned.seeds)
             .expect("a library-free lock matches a library-free adapter");
-        from_lock(&absent, &modern, &pinned.seeds)
+        let error = from_lock(&absent, &modern, &pinned.seeds)
             .expect_err("a modern adapter cannot omit its library hash");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: stubs.lock records the data fixer jar hash as None but the adapter inputs pin Some(\"{}\")",
+                modern
+                    .inputs
+                    .data_fixer_jar
+                    .as_ref()
+                    .expect("modern library")
+                    .sha256
+                    .expect("library pin")
+            )
+        );
         from_lock(&tracked, &pinned.adapter, &pinned.seeds)
             .expect_err("a library-free adapter cannot accept a recorded library hash");
         let digest = modern
@@ -729,15 +738,41 @@ mod tests {
             .as_ref()
             .expect("modern library")
             .sha256
-            .as_deref()
+            .as_ref()
             .expect("library pin");
         let recorded = format!("dataFixerJarSha256 = \"{digest}\"\n{absent}");
         let error = from_lock(&recorded, &pinned.adapter, &pinned.seeds)
             .expect_err("a valid recorded hash cannot match an absent adapter library");
-        assert!(
-            error.to_string().contains("the data fixer jar hash"),
-            "{error}"
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: stubs.lock records the data fixer jar hash as Some(\"{digest}\") but the adapter inputs pin None"
+            )
         );
+    }
+
+    #[test]
+    fn client_hash_diagnostics_preserve_hex_and_absence() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        let digest = pinned.adapter.inputs.client_jar.sha256.expect("client pin");
+        for (actual, actual_text) in [
+            (
+                Some("ab".repeat(32).try_into().expect("complete digest")),
+                format!("Some(\"{}\")", "ab".repeat(32)),
+            ),
+            (None, "None".to_owned()),
+        ] {
+            pinned.adapter.inputs.client_jar.sha256 = actual;
+            let error = from_lock(&tracked, &pinned.adapter, &pinned.seeds)
+                .expect_err("a different or absent client pin cannot match");
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "an input drifted: stubs.lock records the client jar hash as Some(\"{digest}\") but the adapter inputs pin {actual_text}"
+                )
+            );
+        }
     }
 
     #[test]
@@ -849,8 +884,8 @@ mod tests {
             .inputs
             .client_jar
             .sha256
-            .as_deref()
-            .expect("a pinned hash");
+            .expect("a pinned hash")
+            .to_string();
         let library = pinned
             .adapter
             .inputs
@@ -858,27 +893,37 @@ mod tests {
             .as_ref()
             .expect("a modern data fixer jar")
             .sha256
-            .as_deref()
-            .expect("a pinned hash");
+            .expect("a pinned hash")
+            .to_string();
 
         for (broken, expected) in [
-            (tracked.replace(jar, &"0".repeat(64)), "the client jar hash"),
             (
-                tracked.replace(library, &"0".repeat(64)),
-                "the data fixer jar hash",
+                tracked.replace(&jar, &"0".repeat(64)),
+                format!(
+                    "an input drifted: stubs.lock records the client jar hash as Some(\"{}\") but the adapter inputs pin Some(\"{jar}\")",
+                    "0".repeat(64)
+                ),
+            ),
+            (
+                tracked.replace(&library, &"0".repeat(64)),
+                format!(
+                    "an input drifted: stubs.lock records the data fixer jar hash as Some(\"{}\") but the adapter inputs pin Some(\"{library}\")",
+                    "0".repeat(64)
+                ),
             ),
             (
                 tracked.replace("extractor = \"classfile\"", "extractor = \"javap\""),
-                "javap",
+                "an input drifted: stubs.lock was written by the javap extractor".to_owned(),
             ),
             (
                 tracked.replace("schemaVersion = 1", "schemaVersion = 2"),
-                "schema 2",
+                "an input drifted: stubs.lock is schema 2 but the adapter inputs are schema 1"
+                    .to_owned(),
             ),
         ] {
             let error = from_lock(&broken, &pinned.adapter, &pinned.seeds)
                 .expect_err("a drifted lock must be refused");
-            assert!(error.to_string().contains(expected), "{error}");
+            assert_eq!(error.to_string(), expected);
         }
     }
 
@@ -1193,19 +1238,17 @@ mod tests {
     }
 
     #[test]
-    fn uppercase_lock_digests_canonicalize_before_comparison() {
-        let lock: Lock = toml::from_str(&format!(
-            "schemaVersion = 1\nminecraft = \"test\"\nextractor = \"classfile\"\n\
-             clientJarSha256 = \"{}\"\ndataFixerJarSha256 = \"{}\"\nstub = []\n",
-            "AB".repeat(32),
-            "CD".repeat(32)
-        ))
-        .expect("complete uppercase digests are admitted");
-        assert_eq!(lock.client_jar_sha256.as_str(), "ab".repeat(32));
-        assert_eq!(
-            lock.data_fixer_jar_sha256.as_deref(),
-            Some("cd".repeat(32).as_str())
-        );
+    fn uppercase_lock_digests_are_refused() {
+        for (jar, library) in [("AB", "cd"), ("ab", "CD")] {
+            let error = toml::from_str::<Lock>(&format!(
+                "schemaVersion = 1\nminecraft = \"test\"\nextractor = \"classfile\"\n\
+                 clientJarSha256 = \"{}\"\ndataFixerJarSha256 = \"{}\"\nstub = []\n",
+                jar.repeat(32),
+                library.repeat(32)
+            ))
+            .expect_err("each lock pin requires canonical lowercase hex");
+            assert!(error.to_string().contains("a sha256 digest"), "{error}");
+        }
     }
 
     #[test]

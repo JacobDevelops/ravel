@@ -25,6 +25,15 @@ impl Side {
         matches!(self, Self::IntegratedServer | Self::DedicatedServer)
     }
 
+    /// Returns the server side executing world logic for this process side.
+    #[must_use]
+    pub const fn world_side(self) -> Self {
+        match self {
+            Self::Client | Self::IntegratedServer => Self::IntegratedServer,
+            Self::DedicatedServer => Self::DedicatedServer,
+        }
+    }
+
     /// Returns the side's canonical serialized name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -221,6 +230,19 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{ClientOnly, EmptySideSet, Side, SideSet};
+
+    #[test]
+    fn world_logic_runs_on_the_process_server_side() {
+        for (process, world) in [
+            (Side::Client, Side::IntegratedServer),
+            (Side::IntegratedServer, Side::IntegratedServer),
+            (Side::DedicatedServer, Side::DedicatedServer),
+        ] {
+            assert_eq!(process.world_side(), world);
+            assert!(world.is_server());
+            assert_eq!(world.world_side(), world);
+        }
+    }
 
     #[test]
     fn client_only_code_does_not_run_on_any_server_side() {

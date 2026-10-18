@@ -14,7 +14,7 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 use ravel_sdk::content::ContentIdError;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
@@ -352,7 +352,7 @@ impl Settings {
     }
 }
 impl DropSettings {
-    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             creature_material_chance: resolved.number(DROPS_CREATURE_MATERIAL_CHANCE)?,
             fertiliser_chance: resolved.number(DROPS_FERTILISER_CHANCE)?,
@@ -370,7 +370,7 @@ impl DropSettings {
 }
 
 impl GearSettings {
-    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             top: TopGearSettings {
                 tools_enchantable: resolved.boolean(GEAR_TOP_TOOLS_ENCHANTABLE)?,
@@ -383,7 +383,7 @@ impl GearSettings {
 }
 
 impl DepositSettings {
-    fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             rare_substitution_chance: resolved.number(WORLD_RARE_SUBSTITUTION_CHANCE)?,
             first: resolved.boolean(WORLD_FIRST_DEPOSIT)?,
@@ -396,11 +396,14 @@ impl DepositSettings {
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// Returns a typed access error if a key is missing or has the wrong kind.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    /// # Errors
+    ///
+    /// Returns a typed access error if a key is missing, has the wrong kind, or
+    /// its integer cannot be represented by the requested target type.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
-            ritual_catalyst_uses: ravel_sdk::config::unsigned(resolved, RITUAL_CATALYST_USES)?,
-            growth_pulse_seconds: ravel_sdk::config::unsigned(resolved, GROWTH_PULSE_SECONDS)?,
+            ritual_catalyst_uses: resolved.integer_in::<u32>(RITUAL_CATALYST_USES)?,
+            growth_pulse_seconds: resolved.integer_in::<u32>(GROWTH_PULSE_SECONDS)?,
             drops: DropSettings::read(resolved)?,
             growth_require_effective_ground: resolved.boolean(GROWTH_REQUIRE_EFFECTIVE_GROUND)?,
             ground_convert_by_material: resolved.boolean(GROUND_CONVERT_BY_MATERIAL)?,
@@ -480,7 +483,7 @@ pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::config::SettingSide;
+    use ravel_sdk::config::{SettingSide, ValueError};
     use ravel_sdk::json;
     use ravel_sdk::{JsonValue, Side};
 
@@ -539,7 +542,10 @@ mod tests {
 
     #[test]
     fn a_widened_declaration_reports_the_unsigned_upper_bound() {
-        for default in ["\"default\": 1000,", "\"default\": 10,"] {
+        for (key, default) in [
+            (RITUAL_CATALYST_USES, "\"default\": 1000,"),
+            (GROWTH_PULSE_SECONDS, "\"default\": 10,"),
+        ] {
             let changed = DOCUMENT
                 .replace("4294967295", "5000000000")
                 .replace(default, "\"default\": 4294967296,");
@@ -548,8 +554,9 @@ mod tests {
                 .expect("the widened declaration resolves");
             assert_eq!(
                 Settings::read(&resolved),
-                Err(ValueError::Above {
-                    maximum: f64::from(u32::MAX)
+                Err(AccessError {
+                    key: key.to_owned(),
+                    reason: ValueError::TargetRange { target: "u32" },
                 })
             );
         }

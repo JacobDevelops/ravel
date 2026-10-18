@@ -285,9 +285,9 @@ pub mod settings {
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-            self.capacity =
-                u64::try_from(resolved.integer(CAPACITY).map_err(ModError::from_display)?)
-                    .map_err(ModError::from_display)?;
+            self.capacity = resolved
+                .integer_in::<u64>(CAPACITY)
+                .map_err(ModError::from_display)?;
             Ok(())
         }
     }

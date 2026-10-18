@@ -238,29 +238,75 @@ impl LayeredConfiguration {
     }
 
     /// Returns a boolean from a setting declared as boolean.
-    pub fn boolean(&self, key: &str) -> Result<bool, ValueError> {
+    ///
+    /// # Errors
+    /// Returns [`AccessError`] retaining `key`, with [`ValueError::Unknown`] for an
+    /// undeclared key, [`ValueError::AccessKind`] for a declaration not explicitly
+    /// boolean, or [`ValueError::Kind`] for a non-boolean resolved value.
+    pub fn boolean(&self, key: &str) -> Result<bool, AccessError> {
         self.typed_value(key, ValueKind::Boolean)?
             .as_bool()
-            .ok_or(ValueError::Kind {
-                expected: ValueKind::Boolean,
-                found: "non-boolean",
+            .ok_or_else(|| {
+                AccessError::new(
+                    key,
+                    ValueError::Kind {
+                        expected: ValueKind::Boolean,
+                        found: "non-boolean",
+                    },
+                )
             })
     }
 
     /// Returns a signed integer from a setting declared as integer.
-    pub fn integer(&self, key: &str) -> Result<i64, ValueError> {
+    ///
+    /// # Errors
+    /// Returns [`AccessError`] retaining `key`, with [`ValueError::Unknown`] for an
+    /// undeclared key, [`ValueError::AccessKind`] for a declaration not explicitly
+    /// integer, or [`ValueError::IntegerRange`] for a resolved value outside `i64`.
+    pub fn integer(&self, key: &str) -> Result<i64, AccessError> {
         self.typed_value(key, ValueKind::Integer)?
             .as_i64()
-            .ok_or(ValueError::IntegerRange)
+            .ok_or_else(|| AccessError::new(key, ValueError::IntegerRange))
+    }
+
+    /// Reads a declared integer and converts it to the requested Rust type.
+    ///
+    /// # Errors
+    /// Returns [`AccessError`] retaining `key`, with [`ValueError::Unknown`] for an
+    /// undeclared key, [`ValueError::AccessKind`] for a declaration not explicitly
+    /// integer, [`ValueError::IntegerRange`] for a resolved value outside `i64`,
+    /// or [`ValueError::TargetRange`] when `T::try_from` refuses that signed value.
+    /// `TargetRange::target` is a diagnostic type name from [`std::any::type_name`],
+    /// not a stable public identifier.
+    pub fn integer_in<T: TryFrom<i64>>(&self, key: &str) -> Result<T, AccessError> {
+        T::try_from(self.integer(key)?).map_err(|_| {
+            AccessError::new(
+                key,
+                ValueError::TargetRange {
+                    target: std::any::type_name::<T>(),
+                },
+            )
+        })
     }
 
     /// Returns a number from a setting declared as number.
-    pub fn number(&self, key: &str) -> Result<f64, ValueError> {
+    ///
+    /// # Errors
+    /// Returns [`AccessError`] retaining `key`, with [`ValueError::Unknown`] for an
+    /// undeclared key, [`ValueError::AccessKind`] for a declaration not explicitly
+    /// number (including integer declarations), or [`ValueError::Kind`] for a
+    /// resolved value that cannot be represented as `f64`.
+    pub fn number(&self, key: &str) -> Result<f64, AccessError> {
         self.typed_value(key, ValueKind::Number)?
             .as_f64()
-            .ok_or(ValueError::Kind {
-                expected: ValueKind::Number,
-                found: "non-number",
+            .ok_or_else(|| {
+                AccessError::new(
+                    key,
+                    ValueError::Kind {
+                        expected: ValueKind::Number,
+                        found: "non-number",
+                    },
+                )
             })
     }
 
@@ -268,20 +314,35 @@ impl LayeredConfiguration {
     ///
     /// Closed choices also require `"type": "string"`; an enum alone does not
     /// establish a scalar kind.
-    pub fn text(&self, key: &str) -> Result<&str, ValueError> {
+    ///
+    /// # Errors
+    /// Returns [`AccessError`] retaining `key`, with [`ValueError::Unknown`] for an
+    /// undeclared key, [`ValueError::AccessKind`] for a declaration not explicitly
+    /// string, or [`ValueError::Kind`] for a non-string resolved value.
+    pub fn text(&self, key: &str) -> Result<&str, AccessError> {
         self.typed_value(key, ValueKind::String)?
             .as_str()
-            .ok_or(ValueError::Kind {
-                expected: ValueKind::String,
-                found: "non-string",
+            .ok_or_else(|| {
+                AccessError::new(
+                    key,
+                    ValueError::Kind {
+                        expected: ValueKind::String,
+                        found: "non-string",
+                    },
+                )
             })
     }
 
-    fn typed_value(&self, key: &str, expected: ValueKind) -> Result<&Value, ValueError> {
-        let setting = self.setting(key)?;
+    fn typed_value(&self, key: &str, expected: ValueKind) -> Result<&Value, AccessError> {
+        let setting = self
+            .setting(key)
+            .map_err(|reason| AccessError::new(key, reason))?;
         let declared = setting.value_schema.kind;
         if declared != Some(expected) {
-            return Err(ValueError::AccessKind { expected, declared });
+            return Err(AccessError::new(
+                key,
+                ValueError::AccessKind { expected, declared },
+            ));
         }
         Ok(self.layer(setting).0)
     }
@@ -562,14 +623,48 @@ impl std::error::Error for EditError {
     }
 }
 
+/// A typed configuration read failure retaining the requested setting key.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AccessError {
+    /// The requested setting, including malformed or undeclared names.
+    pub key: String,
+    /// The access or representation failure.
+    pub reason: ValueError,
+}
+
+impl AccessError {
+    fn new(key: &str, reason: ValueError) -> Self {
+        Self {
+            key: key.to_owned(),
+            reason,
+        }
+    }
+}
+
+impl fmt::Display for AccessError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if matches!(self.reason, ValueError::Unknown { .. }) {
+            self.reason.fmt(formatter)
+        } else {
+            write!(formatter, "`{}`: {}", self.key, self.reason)
+        }
+    }
+}
+
+impl std::error::Error for AccessError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.reason)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ravel_core::{LifecycleState, ModId, Side, StructuredFailure};
     use serde_json::{Value, json};
 
     use super::{
-        EditError, EditOutcome, LayerError, LayeredConfiguration, Rejection, RejectionReason,
-        ValueSource,
+        AccessError, EditError, EditOutcome, LayerError, LayeredConfiguration, Rejection,
+        RejectionReason, ValueSource,
     };
     use crate::declaration::{ConfigurationDeclaration, SettingKey, SettingSide};
     use crate::document::ValueDocument;
@@ -656,22 +751,31 @@ mod tests {
         assert_eq!(config.text("world.difficulty"), Ok("calm"));
         assert_eq!(
             config.boolean("render.distance"),
-            Err(ValueError::AccessKind {
-                expected: ValueKind::Boolean,
-                declared: Some(ValueKind::Integer),
-            })
+            Err(AccessError::new(
+                "render.distance",
+                ValueError::AccessKind {
+                    expected: ValueKind::Boolean,
+                    declared: Some(ValueKind::Integer),
+                }
+            ))
         );
         assert_eq!(
             config.text("absent"),
-            Err(ValueError::Unknown {
-                key: "absent".to_owned()
-            })
+            Err(AccessError::new(
+                "absent",
+                ValueError::Unknown {
+                    key: "absent".to_owned()
+                }
+            ))
         );
         assert_eq!(
             config.integer("Not a setting"),
-            Err(ValueError::Unknown {
-                key: "Not a setting".to_owned()
-            })
+            Err(AccessError::new(
+                "Not a setting",
+                ValueError::Unknown {
+                    key: "Not a setting".to_owned()
+                }
+            ))
         );
         config
             .set("engine.threads", json!(8), Side::Client)
@@ -699,13 +803,153 @@ mod tests {
         let config = LayeredConfiguration::resolve(declaration, None, None).expect("valid layers");
         assert_eq!(config.boolean("enabled"), Ok(true));
         assert_eq!(config.number("ratio"), Ok(1.5));
-        assert_eq!(config.integer("large"), Err(ValueError::IntegerRange));
+        assert_eq!(
+            config.integer("large"),
+            Err(AccessError::new("large", ValueError::IntegerRange))
+        );
+        assert_eq!(
+            config.integer_in::<u64>("large"),
+            Err(AccessError::new("large", ValueError::IntegerRange)),
+        );
         assert_eq!(
             config.boolean("untyped"),
-            Err(ValueError::AccessKind {
+            Err(AccessError::new(
+                "untyped",
+                ValueError::AccessKind {
+                    expected: ValueKind::Boolean,
+                    declared: None,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn narrowing_retains_keys_and_rust_target_types() {
+        let config = resolved(None, None);
+        assert_eq!(config.integer_in::<u32>("render.distance"), Ok(12));
+        assert_eq!(config.integer_in::<i8>("render.distance"), Ok(12));
+        let error = config
+            .boolean("render.distance")
+            .expect_err("wrong accessor");
+        assert_eq!(error.key, "render.distance");
+        assert_eq!(
+            error.reason,
+            ValueError::AccessKind {
                 expected: ValueKind::Boolean,
-                declared: None,
-            })
+                declared: Some(ValueKind::Integer),
+            }
+        );
+        assert_eq!(
+            std::error::Error::source(&error)
+                .and_then(|source| source.downcast_ref::<ValueError>()),
+            Some(&error.reason),
+        );
+        assert_eq!(
+            error.to_string(),
+            "`render.distance`: requested boolean, but the setting declares integer",
+        );
+    }
+
+    #[test]
+    fn narrowing_refuses_negative_and_overflowing_values_with_the_key() {
+        for value in [-1_i64, i64::from(u32::MAX) + 1, i64::MIN, i64::MAX] {
+            let declared = ConfigurationDeclaration::parse(
+                &json!({
+                    "schemaVersion": 1, "owner": "example_mod", "version": 1,
+                    "settings": [{"key": "count", "valueSchema": {"type": "integer"},
+                        "default": value, "side": "common", "restartRequired": false}]
+                })
+                .to_string(),
+            )
+            .expect("an unbounded integer declaration");
+            let config =
+                LayeredConfiguration::resolve(declared, None, None).expect("valid default");
+            let error = config.integer_in::<u32>("count").expect_err("outside u32");
+            assert_eq!(error.key, "count");
+            assert_eq!(error.reason, ValueError::TargetRange { target: "u32" });
+            assert_eq!(
+                error.to_string(),
+                "`count`: the integer does not fit in u32"
+            );
+        }
+    }
+
+    #[test]
+    fn narrowing_accepts_signed_and_unsigned_boundaries() {
+        for value in [
+            i64::MIN,
+            -129,
+            -128,
+            0,
+            127,
+            128,
+            i64::from(u32::MAX),
+            i64::MAX,
+        ] {
+            let declared = ConfigurationDeclaration::parse(
+                &json!({
+                    "schemaVersion": 1, "owner": "example_mod", "version": 1,
+                    "settings": [{"key": "count", "valueSchema": {"type": "integer"},
+                        "default": value, "side": "common", "restartRequired": false}]
+                })
+                .to_string(),
+            )
+            .expect("an unbounded integer declaration");
+            let config =
+                LayeredConfiguration::resolve(declared, None, None).expect("valid default");
+            assert_eq!(config.integer_in::<i64>("count"), Ok(value));
+            assert_eq!(
+                config.integer_in::<i8>("count"),
+                i8::try_from(value).map_err(|_| AccessError::new(
+                    "count",
+                    ValueError::TargetRange { target: "i8" },
+                )),
+            );
+            assert_eq!(
+                config.integer_in::<u32>("count"),
+                u32::try_from(value).map_err(|_| AccessError::new(
+                    "count",
+                    ValueError::TargetRange { target: "u32" },
+                )),
+            );
+        }
+    }
+
+    #[test]
+    fn every_typed_accessor_retains_the_key_for_the_wrong_declared_kind() {
+        let config = resolved(None, None);
+        let integer_error = |expected| {
+            AccessError::new(
+                "render.distance",
+                ValueError::AccessKind {
+                    expected,
+                    declared: Some(ValueKind::Integer),
+                },
+            )
+        };
+        assert_eq!(
+            config.boolean("render.distance"),
+            Err(integer_error(ValueKind::Boolean))
+        );
+        assert_eq!(
+            config.number("render.distance"),
+            Err(integer_error(ValueKind::Number))
+        );
+        assert_eq!(
+            config.text("render.distance"),
+            Err(integer_error(ValueKind::String))
+        );
+        let text_error = AccessError::new(
+            "world.difficulty",
+            ValueError::AccessKind {
+                expected: ValueKind::Integer,
+                declared: Some(ValueKind::String),
+            },
+        );
+        assert_eq!(config.integer("world.difficulty"), Err(text_error.clone()));
+        assert_eq!(
+            config.integer_in::<u32>("world.difficulty"),
+            Err(text_error)
         );
     }
 
@@ -733,6 +977,24 @@ mod tests {
                 key: "render.absent".to_owned(),
             })
         );
+        let keyed = AccessError::new(
+            "render.absent",
+            ValueError::Unknown {
+                key: "render.absent".to_owned(),
+            },
+        );
+        assert_eq!(
+            keyed.to_string(),
+            "`render.absent` is not a declared setting"
+        );
+        assert_eq!(config.boolean("render.absent"), Err(keyed.clone()));
+        assert_eq!(config.integer("render.absent"), Err(keyed.clone()));
+        assert_eq!(
+            config.integer_in::<u32>("render.absent"),
+            Err(keyed.clone())
+        );
+        assert_eq!(config.number("render.absent"), Err(keyed.clone()));
+        assert_eq!(config.text("render.absent"), Err(keyed));
     }
 
     #[test]

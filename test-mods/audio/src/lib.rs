@@ -32,14 +32,14 @@ static CONTENT: LazyLock<Result<ContentDeclaration, ModError>> = LazyLock::new(|
     declaration
         .resource(path, SOUND_ALIAS.to_vec())
         .map_err(ModError::from_display)?;
-    let path = "data/audio/recipes/paper_echo.json"
+    let path = "data/audio/recipe/paper_echo.json"
         .to_owned()
         .try_into()
         .map_err(ModError::from_display)?;
     declaration
         .resource(
             path,
-            include_bytes!("../data/audio/recipes/paper_echo.json").to_vec(),
+            include_bytes!("../data/audio/recipe/paper_echo.json").to_vec(),
         )
         .map_err(ModError::from_display)?;
     Ok(declaration)
@@ -168,11 +168,11 @@ mod tests {
             b"{\"door_opens\":{\"sounds\":[{\"name\":\"minecraft:ui.button.click\",\"type\":\"event\"}]}}\n");
         assert_eq!(
             data.files()[1].path().as_str(),
-            "data/audio/recipes/paper_echo.json"
+            "data/audio/recipe/paper_echo.json"
         );
         assert_eq!(
             data.files()[1].bytes(),
-            include_bytes!("../data/audio/recipes/paper_echo.json")
+            include_bytes!("../data/audio/recipe/paper_echo.json")
         );
         Ok(())
     }

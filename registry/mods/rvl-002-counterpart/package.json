@@ -117,7 +117,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "f72558c0d1082b957b02640f6381c2877ea5903ad0610339a632e0921f7d995a"
+        "sha256": "3f76f70e0d3e0b1a41fdde3676b44a0ab492a31ebcbbcb9f9bd8a326475fe571"
       },
       {
         "path": "src/tier.rs",

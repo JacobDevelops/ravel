@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Shipped example and registry manifests agree with their compiled crates and sources.
+//! Shipped package manifests agree with their compiled crates and sources.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -24,9 +24,56 @@ fn declaration<M: Mod + Declared>(host: &M) -> (&'static str, Vec<u32>) {
     (M::declared_id().as_str(), versions)
 }
 
+fn test_mod_declarations() -> BTreeMap<&'static str, (&'static str, Vec<u32>)> {
+    BTreeMap::from([
+        (
+            "test-mods/audio",
+            declaration(&ravel_test_mod_audio::AudioMod::new()),
+        ),
+        (
+            "test-mods/client-only",
+            declaration(&ravel_test_mod_client_only::ClientOnlyMod::new(
+                Side::Client,
+                &ravel_test_mod_client_only::work_log(),
+            )),
+        ),
+        (
+            "test-mods/commands",
+            declaration(&ravel_test_mod_commands::CommandsMod::new()),
+        ),
+        (
+            "test-mods/configuration",
+            declaration(&ravel_test_mod_configuration::ConfigurationMod::new()),
+        ),
+        (
+            "test-mods/networking",
+            declaration(&ravel_test_mod_networking::NetworkingMod::new()),
+        ),
+        (
+            "test-mods/registries",
+            declaration(&ravel_test_mod_registries::RegistriesMod::new()),
+        ),
+        (
+            "test-mods/saved-data",
+            declaration(&ravel_test_mod_saved_data::SavedDataMod::new()),
+        ),
+        (
+            "test-mods/server-only",
+            declaration(&ravel_test_mod_server_only::ServerOnlyMod::new(
+                Side::DedicatedServer,
+                &ravel_test_mod_server_only::work_log(),
+            )),
+        ),
+        (
+            "test-mods/waystone-ledger",
+            declaration(&waystone_ledger::WaystoneLedger::new(Side::Client)),
+        ),
+    ])
+}
+
 // Adding a shipped package requires a compiler-derived declaration, not another literal id.
 fn declarations() -> BTreeMap<&'static str, (&'static str, Vec<u32>)> {
-    BTreeMap::from([
+    let mut declarations = BTreeMap::from([
         ("examples/content-mod", declaration(&ContentMod::new())),
         ("examples/minimal-mod", declaration(&MinimalMod::new())),
         ("examples/stateful-mod", declaration(&Journal::new())),
@@ -81,12 +128,14 @@ fn declarations() -> BTreeMap<&'static str, (&'static str, Vec<u32>)> {
             "registry/mods/rvl-321-counterpart",
             declaration(&rvl_321_counterpart::Entry::new()),
         ),
-    ])
+    ]);
+    declarations.extend(test_mod_declarations());
+    declarations
 }
 
 fn packages() -> Vec<String> {
     let mut packages = Vec::new();
-    for parent in ["examples", "registry/mods"] {
+    for parent in ["examples", "registry/mods", "test-mods"] {
         for entry in fs::read_dir(repository_root().join(parent)).expect("package directory exists")
         {
             let path = entry.expect("a readable directory entry").path();

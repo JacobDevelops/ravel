@@ -19,7 +19,7 @@
 use core::fmt;
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 
 use crate::data::{Comparator, MAX_IGNORED};
@@ -137,8 +137,8 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 /// What a resolution refuses.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Refused {
-    /// A declared setting is missing or has the wrong kind.
-    Value(ValueError),
+    /// A declared setting is missing, has the wrong kind, or cannot fit its target type.
+    Value(AccessError),
     /// The brewing closure refuses a cap outside its supported domain.
     Cap(crate::recipes::Refused),
     /// The ignored-component list is longer than [`MAX_IGNORED_TEXT`].
@@ -184,8 +184,8 @@ impl std::error::Error for Refused {
     }
 }
 
-impl From<ValueError> for Refused {
-    fn from(error: ValueError) -> Self {
+impl From<AccessError> for Refused {
+    fn from(error: AccessError) -> Self {
         Self::Value(error)
     }
 }
@@ -222,11 +222,7 @@ impl Settings {
         let abort_on_bundle_failure = resolved.boolean(ABORT_ON_BUNDLE_FAILURE)?;
         let log_unequal_data = resolved.boolean(LOG_UNEQUAL_DATA)?;
         let ignored = ignored_from(resolved.text(IGNORED_COMPONENTS)?)?;
-        let cap = usize::try_from(resolved.integer(CLOSURE_CAP)?).map_err(|_| {
-            Refused::Cap(crate::recipes::Refused::Cap {
-                limit: crate::recipes::MAX_CLOSURE_CAP,
-            })
-        })?;
+        let cap = resolved.integer_in::<usize>(CLOSURE_CAP)?;
         let closure = Closure::new(cap).map_err(Refused::Cap)?;
         Ok(Self {
             abort_on_invalid_recipe,
@@ -292,6 +288,7 @@ pub fn ignored_from(text: &str) -> Result<Vec<String>, Refused> {
 mod tests {
     use super::*;
     use crate::data::{Components, Value};
+    use ravel_sdk::config::ValueError;
 
     #[test]
     fn a_missing_declared_key_is_returned_instead_of_defaulted() {
@@ -305,7 +302,7 @@ mod tests {
             assert!(
                 std::error::Error::source(&refused)
                     .expect("the typed value failure is retained")
-                    .downcast_ref::<ValueError>()
+                    .downcast_ref::<AccessError>()
                     .is_some()
             );
         }
@@ -466,7 +463,7 @@ mod tests {
 
     #[test]
     fn a_widened_declaration_cannot_silently_default_an_out_of_range_cap() {
-        for cap in ["-1", "0", "100001", "9223372036854775807"] {
+        for cap in [-1_i64, 0, 100_001, i64::MAX] {
             let changed = DOCUMENT
                 .replace(
                     "\"minimum\": 1.0, \"maximum\": 100000.0",
@@ -476,13 +473,17 @@ mod tests {
             let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the widened declaration resolves");
-            assert_eq!(
-                Settings::read(&resolved),
-                Err(Refused::Cap(crate::recipes::Refused::Cap {
-                    limit: crate::recipes::MAX_CLOSURE_CAP
-                })),
-                "{cap}"
-            );
+            let expected = if usize::try_from(cap).is_err() {
+                Refused::Value(AccessError {
+                    key: CLOSURE_CAP.to_owned(),
+                    reason: ValueError::TargetRange { target: "usize" },
+                })
+            } else {
+                Refused::Cap(crate::recipes::Refused::Cap {
+                    limit: crate::recipes::MAX_CLOSURE_CAP,
+                })
+            };
+            assert_eq!(Settings::read(&resolved), Err(expected), "{cap}");
         }
     }
 

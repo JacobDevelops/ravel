@@ -61,7 +61,7 @@ fn running() -> LifecycleMachine {
     let mut host = Quiet(id("example_mod"));
     let mut machine =
         LifecycleMachine::new(Side::Client, vec![entry]).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active mods have hosts"),
         &ravel_bootstrap_runtime::environment(),

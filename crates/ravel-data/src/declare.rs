@@ -8,6 +8,7 @@ use crate::generate::{
     GeneratedData, blockstate_document, item_definition_document, item_model_document,
     loot_table_document, sprite_model_document, tag_document, translation_document,
 };
+use crate::server_data::ServerDataKind;
 use crate::tags::TagId;
 
 /// Primitive block properties, defaulting to a stone-like block.
@@ -353,6 +354,29 @@ impl ContentDeclaration {
         Ok(())
     }
 
+    /// Supplies a server-data file in this mod's namespace at its canonical pack path.
+    ///
+    /// Bytes retain their version-specific format and share the resource collision barrier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid content path or a duplicate output-path error.
+    pub fn server_entry(
+        &mut self,
+        kind: ServerDataKind,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<RelativePath, ContentDeclarationError> {
+        let id = ContentId::new(self.owner.clone(), name)
+            .map_err(|source| ContentDeclarationError::Path { source })?;
+        let path = Self::data(
+            id.namespace(),
+            &format!("{}/{}.{}", kind.directory(), id.path(), kind.extension()),
+        );
+        self.resource(path.clone(), bytes.to_vec())?;
+        Ok(path)
+    }
+
     /// Returns the paths this mod supplies bytes for, in path order.
     pub fn resources(&self) -> impl Iterator<Item = &RelativePath> + '_ {
         self.resources.keys()
@@ -409,7 +433,10 @@ impl ContentDeclaration {
                 blockstate_document(namespace.as_str(), path),
             ));
             files.push((
-                Self::data(namespace, &format!("loot_table/blocks/{path}.json")),
+                Self::data(
+                    namespace,
+                    &format!("{}/blocks/{path}.json", ServerDataKind::Loot.directory()),
+                ),
                 loot_table_document(namespace.as_str(), path),
             ));
         }
@@ -723,6 +750,42 @@ mod tests {
             }
         );
         assert!(std::error::Error::source(&error).is_some());
+    }
+
+    #[test]
+    fn noncanonical_content_paths_are_refused_without_changing_generated_data() {
+        let mut declaration = declaration();
+        let valid = declaration
+            .entry(ContentKind::Item, "kept")
+            .expect("a legal entry");
+        let before = declaration.generate();
+        for candidate in ["a//b", "./x", "a/./b", ".", "a/."] {
+            for kind in ContentKind::ALL {
+                assert!(matches!(
+                    declaration.entry(kind, candidate),
+                    Err(ContentDeclarationError::Path { .. })
+                ));
+            }
+            for kind in crate::server_data::ServerDataKind::ALL {
+                assert!(matches!(
+                    declaration.server_entry(kind, candidate, b"{}"),
+                    Err(ContentDeclarationError::Path { .. })
+                ));
+            }
+            assert_eq!(declaration.entries(), std::slice::from_ref(&valid));
+            assert_eq!(declaration.resources().count(), 0);
+            assert_eq!(
+                declaration.generate().paths().collect::<Vec<_>>(),
+                before.paths().collect::<Vec<_>>()
+            );
+        }
+        declaration
+            .entry(ContentKind::Block, "a/b")
+            .expect("refusals do not reserve a canonical entry");
+        declaration
+            .server_entry(crate::server_data::ServerDataKind::Crafting, "a/b", b"{}")
+            .expect("refusals do not reserve a canonical server path");
+        assert!(!declaration.generate().is_empty());
     }
 
     #[test]

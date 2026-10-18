@@ -209,8 +209,7 @@ mod tests {
         for text in [
             INSTANCE_DIRECTORY.to_owned(),
             format!("{INSTANCE_DIRECTORY}/pack.json"),
-            format!("./{INSTANCE_DIRECTORY}/config/member.json"),
-            format!("././{INSTANCE_DIRECTORY}"),
+            format!("{INSTANCE_DIRECTORY}/config/member.json"),
         ] {
             let path = RelativePath::try_from(text).expect("a relative path");
             assert_eq!(reserved(&path), Err(ClosureError::ReservedPath { path }));
@@ -218,5 +217,18 @@ mod tests {
         let sibling = RelativePath::try_from(format!("{INSTANCE_DIRECTORY}-mod/file.json"))
             .expect("a relative path");
         assert_eq!(reserved(&sibling), Ok(()));
+    }
+
+    #[test]
+    fn noncanonical_reserved_paths_are_refused_before_pack_validation() {
+        for text in [
+            format!("./{INSTANCE_DIRECTORY}/config/member.json"),
+            format!("././{INSTANCE_DIRECTORY}"),
+        ] {
+            assert_eq!(
+                RelativePath::try_from(text),
+                Err(ravel_core::RelativePathError::NonCanonical)
+            );
+        }
     }
 }

@@ -236,7 +236,7 @@ pub mod prelude {
     pub use crate::save::{
         MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataVersion,
     };
-    pub use crate::server_data::{ServerDataDeclaration, ServerDataKind};
+    pub use crate::server_data::ServerDataKind;
     pub use crate::services::{
         ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
     };

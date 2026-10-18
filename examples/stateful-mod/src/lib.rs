@@ -163,8 +163,9 @@ impl Mod for Journal {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let capacity = resolved.integer(CAPACITY).map_err(ModError::from_display)?;
-        self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
+        self.capacity = resolved
+            .integer_in::<usize>(CAPACITY)
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 

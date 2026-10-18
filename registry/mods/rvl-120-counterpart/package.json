@@ -106,11 +106,11 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "f076c62820383c9af624e7476e822efc4637dbade160d90275aa73f58b095e17"
+        "sha256": "27d2ba1fad405e12ca26147ff6d2b19820f19ffd259d14d14c2b454ffbc293b9"
       },
       {
         "path": "src/settings/colour.rs",
-        "sha256": "08a148e5391cb51b22719004da55515dc3bcaf9c47d3ac2c490e6b12e3b1db55"
+        "sha256": "76238822f10cf2ff66ce55f7d5743f6bc61e7e0b8c907b4f68a769e604b77870"
       },
       {
         "path": "src/values.rs",

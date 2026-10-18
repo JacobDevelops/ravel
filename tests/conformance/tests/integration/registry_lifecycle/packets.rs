@@ -3,7 +3,7 @@
 //! Rejected wire deliveries must not fail their shipped counterpart's lifecycle.
 
 use ravel_core::LifecycleState;
-use ravel_loader::{LifecycleMachine, LoadedMods, deliver_packet, drive_loaded};
+use ravel_loader::{LifecycleMachine, LoadedMods, deliver_packet, start_all};
 use ravel_observability::Profiler;
 use ravel_sdk::network::{Direction, Packet, PacketDelivery, PacketId};
 use ravel_sdk::{Mod, Side};
@@ -24,7 +24,7 @@ fn assert_declined_packets_keep_running<M: Mod>(
         LifecycleMachine::new(side, vec![lifecycle_entry(&manifest)]).expect("a legal lifecycle");
     let environment = ravel_bootstrap_runtime::environment();
     let mut mods: [&mut dyn Mod; 1] = [&mut owner];
-    drive_loaded(
+    start_all(
         &mut LoadedMods::new(&mut machine, &mut mods).expect("the owner is hosted"),
         &environment,
     )

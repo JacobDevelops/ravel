@@ -406,10 +406,12 @@ dependencies = [
  "ravel-test-mod-noop",
  "ravel-test-mod-optional-service",
  "ravel-test-mod-provision",
+ "ravel-test-mod-registries",
  "ravel-test-mod-render-stages",
  "ravel-test-mod-resources",
  "ravel-test-mod-saved-data",
  "ravel-test-mod-server-data",
+ "ravel-test-mod-server-only",
  "ravel-test-mod-world-shaping",
  "ravel-testkit",
  "rvl-002-counterpart",
@@ -427,6 +429,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "waystone-ledger",
 ]
 
 [[package]]

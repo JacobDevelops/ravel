@@ -139,7 +139,7 @@ fn event_and_command_panics_name_the_called_owner() {
 
     let mut host = Recording::claiming("example_mod", vec![key.clone()]);
     let mut machine = panicking_running(&mut host);
-    let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
+    let invocation = CommandInvocation::new(key.clone(), Side::IntegratedServer, Vec::new());
     let command = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
@@ -198,7 +198,7 @@ fn non_command_claims_never_invoke_command_code() {
         Side::Client,
         &mut [&mut host],
     );
-    let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
+    let invocation = CommandInvocation::new(key.clone(), Side::IntegratedServer, Vec::new());
     let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
@@ -223,7 +223,7 @@ fn panicking_commands_are_charged_to_the_owner() {
         &mut [&mut host],
     );
     let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
-    let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+    let invocation = CommandInvocation::new(key, Side::IntegratedServer, Vec::new());
     let delivered = super::deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
             .expect("all active hosts are supplied"),
@@ -324,7 +324,7 @@ fn halted_sets_refuse_claimed_commands_and_non_command_keys_before_dispatch() {
         ContentId::new(id("healthy_mod"), "item").expect("valid item"),
     );
     for key in [key, item] {
-        let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+        let invocation = CommandInvocation::new(key, Side::IntegratedServer, Vec::new());
         assert_eq!(
             deliver_command(
                 &mut LoadedMods::<&mut dyn Mod>::new(
@@ -517,7 +517,7 @@ fn failed_optional_mod_after_world_mutation_blocks_healthy_broadcasts() {
                 .expect("all active hosts are supplied"),
             &CommandInvocation {
                 key: command("healthy_mod", "run"),
-                side: Side::Client,
+                side: Side::IntegratedServer,
                 arguments: Vec::new(),
             }
         ),
@@ -558,11 +558,6 @@ fn a_broadcast_reaches_every_mod_in_resolved_order() {
     assert!(delivery.is_complete());
     assert_eq!(delivery.failure(), None);
 
-    // The order is the audience's, and the audience is the plan's.
-    assert_eq!(
-        machine.audience(GameEvent::ClientTick),
-        [id("first_mod"), id("second_mod")]
-    );
     assert_eq!(first.seen, [GameEvent::ClientTick]);
     assert_eq!(second.seen, [GameEvent::ClientTick]);
 }
@@ -577,7 +572,6 @@ fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
         &mut mods,
     );
 
-    assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
     let delivery = broadcast(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
@@ -587,8 +581,6 @@ fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
     assert_eq!(delivery.received(), []);
     assert!(delivery.is_complete());
 
-    // A server tick on the same set is delivered, so the empty audience
-    // above is the event's doing and not the set's.
     let ticked = broadcast(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
@@ -604,20 +596,24 @@ fn an_event_that_cannot_happen_on_this_side_reaches_nobody() {
 }
 
 #[test]
-fn a_mod_that_does_not_load_here_is_left_out_of_the_audience() {
-    // The client-only mod is not driven, because the machine refuses to
-    // advance it onto a dedicated server at all. What is asserted is that
-    // the audience already knows that before anything is delivered.
-    let machine = LifecycleMachine::new(
-        Side::DedicatedServer,
+fn a_mod_that_does_not_load_here_is_left_out_of_delivery() {
+    let mut both = Recording::new("both_mod");
+    let mut client = Recording::new("client_mod");
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut both, &mut client];
+    let mut machine = running(
         vec![
             entry("both_mod", &[Side::Client, Side::DedicatedServer]),
             entry("client_mod", &[Side::Client]),
         ],
+        Side::DedicatedServer,
+        &mut mods,
+    );
+    let delivered = broadcast(
+        &mut LoadedMods::new(&mut machine, &mut mods).expect("paired hosts"),
+        GameEvent::ServerTick,
     )
-    .expect("a legal plan");
-
-    assert_eq!(machine.audience(GameEvent::ServerTick), [id("both_mod")]);
+    .expect("server event");
+    assert_eq!(delivered.received(), [id("both_mod")]);
 }
 
 #[test]
@@ -716,7 +712,7 @@ fn a_command_is_routed_to_its_owner_and_to_nobody_else() {
     let mut mods: Vec<&mut dyn Mod> = vec![&mut first, &mut second];
     let mut machine = running(
         vec![
-            entry("first_mod", &[Side::Client]),
+            entry("first_mod", &[Side::Client, Side::IntegratedServer]),
             entry("second_mod", &[Side::Client]),
         ],
         Side::Client,
@@ -725,7 +721,7 @@ fn a_command_is_routed_to_its_owner_and_to_nobody_else() {
 
     let invocation = CommandInvocation::new(
         owned,
-        Side::Client,
+        Side::IntegratedServer,
         vec!["set".to_owned(), "base".to_owned()],
     );
     let delivery = deliver_command(
@@ -755,7 +751,7 @@ fn a_command_nobody_claimed_names_the_key_rather_than_a_mod() {
     let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
-        &CommandInvocation::new(orphan.clone(), Side::Client, Vec::new()),
+        &CommandInvocation::new(orphan.clone(), Side::IntegratedServer, Vec::new()),
     )
     .expect_err("nothing claimed it");
     assert_eq!(refused, DispatchRefused::Unclaimed { key: orphan });
@@ -768,9 +764,8 @@ fn a_command_whose_owner_has_not_started_is_refused_naming_the_owner() {
     let owned = command("example_mod", "home");
     let mut only = Recording::claiming("example_mod", vec![owned.clone()]);
 
-    let mut machine =
-        LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
-            .expect("a legal plan");
+    let mut machine = LifecycleMachine::new(Side::Client, vec![entry("example_mod", &Side::ALL)])
+        .expect("a legal plan");
     advance_through(&mut machine, LifecycleState::Constructed);
     {
         let mut window = machine
@@ -784,7 +779,7 @@ fn a_command_whose_owner_has_not_started_is_refused_naming_the_owner() {
     let refused = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
-        &CommandInvocation::new(owned, Side::Client, Vec::new()),
+        &CommandInvocation::new(owned, Side::IntegratedServer, Vec::new()),
     )
     .expect_err("the set has not started");
     assert_eq!(
@@ -828,7 +823,7 @@ fn a_mod_that_refuses_its_own_command_reports_the_failure_and_no_recipient() {
     };
     let mut mods: Vec<&mut dyn Mod> = vec![&mut only];
     let mut machine = running(
-        vec![entry("example_mod", &[Side::Client])],
+        vec![entry("example_mod", &Side::ALL)],
         Side::Client,
         &mut mods,
     );
@@ -836,7 +831,7 @@ fn a_mod_that_refuses_its_own_command_reports_the_failure_and_no_recipient() {
     let delivery = deliver_command(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
             .expect("all active hosts are supplied"),
-        &CommandInvocation::new(owned, Side::Client, Vec::new()),
+        &CommandInvocation::new(owned, Side::IntegratedServer, Vec::new()),
     )
     .expect("the owner runs, so routing succeeded");
     assert_eq!(delivery.received(), []);
@@ -1676,8 +1671,7 @@ fn broadcast_admits_only_the_runtime_side_or_its_integrated_server()
                 &mut ravel_observability::Profiler::off(),
                 &crate::tests::environment(),
             );
-            if claimed == running || (running == Side::Client && claimed == Side::IntegratedServer)
-            {
+            if claimed == running || claimed == running.world_side() {
                 assert!(result.is_ok(), "{running:?} must admit {claimed:?}");
             } else {
                 assert_eq!(
@@ -1688,4 +1682,54 @@ fn broadcast_admits_only_the_runtime_side_or_its_integrated_server()
         }
     }
     Ok(())
+}
+
+#[test]
+fn commands_only_execute_on_the_runtime_world_side() {
+    for running_side in Side::ALL {
+        for claimed in Side::ALL {
+            let key = command("example_mod", "home");
+            let mut host = Recording::claiming("example_mod", vec![key.clone()]);
+            let mut mods: Vec<&mut dyn Mod> = vec![&mut host];
+            let mut machine = running(
+                vec![entry("example_mod", &Side::ALL)],
+                running_side,
+                &mut mods,
+            );
+            let invocation = CommandInvocation::new(key.clone(), claimed, Vec::new());
+            let result = deliver_command(
+                &mut LoadedMods::new(&mut machine, &mut mods).expect("paired host"),
+                &invocation,
+            );
+            let running = running_side.world_side();
+            if claimed == running {
+                assert_eq!(result.expect("world lane").received(), [id("example_mod")]);
+            } else {
+                let expected = DispatchRefused::CommandForeignSide {
+                    key,
+                    claimed,
+                    running,
+                };
+                assert_eq!(result, Err(expected.clone()));
+                assert_eq!(expected.mod_id(), Some(&id("example_mod")));
+                assert_eq!(expected.lifecycle_state(), LifecycleState::Running);
+                assert!(std::error::Error::source(&expected).is_none());
+                assert_eq!(
+                    expected.to_string(),
+                    format!(
+                        "`{}` claimed the `{}` side and commands execute as `{}`",
+                        invocation.key,
+                        claimed.as_str(),
+                        running.as_str()
+                    )
+                );
+                assert_eq!(
+                    machine.state(&id("example_mod")),
+                    Ok(LifecycleState::Running)
+                );
+            }
+            drop(mods);
+            assert_eq!(host.ran.len(), usize::from(claimed == running));
+        }
+    }
 }

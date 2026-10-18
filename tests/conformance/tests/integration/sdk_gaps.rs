@@ -10,10 +10,11 @@ use ravel_host_api::{Mod, Points, Round};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_resolve::Provision;
 use ravel_sdk::audio::AudioError;
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::interception::{Outcome, Point};
 use ravel_sdk::provision::Provided;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration};
-use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
+use ravel_sdk::server_data::ServerDataKind;
 use ravel_sdk::world_shaping::{ShapingRecord, WorldShaping};
 use ravel_sdk::{Declared, Version, VersionRange};
 use ravel_test_mod_audio::AudioMod;
@@ -45,7 +46,7 @@ fn drive(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
     let entries: Vec<LifecycleEntry> = mods.iter().map(|host| entry(host.id())).collect();
     let mut machine =
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -93,6 +94,7 @@ fn a_declared_server_entry_is_generated_at_the_path_this_file_spells() {
 
     let paths: Vec<String> = generated
         .files()
+        .iter()
         .map(|file| file.path().to_string())
         .collect();
     assert_eq!(
@@ -112,15 +114,20 @@ fn the_same_entries_declared_in_two_orders_generate_the_same_bytes() {
     let names = ["third", "first", "second"];
 
     let render = |order: &[usize]| -> Vec<(String, Vec<u8>)> {
-        let mut declared = ServerDataDeclaration::new(owner.clone());
+        let mut declared = ContentDeclaration::new(owner.clone());
         for index in order {
             declared
-                .crafting(names[*index], br#"{"result": "determinism_probe:plate"}"#)
+                .server_entry(
+                    ServerDataKind::Crafting,
+                    names[*index],
+                    br#"{"result": "determinism_probe:plate"}"#,
+                )
                 .expect("each name is claimed once");
         }
         declared
             .generate()
             .files()
+            .iter()
             .map(|file| (file.path().to_string(), file.bytes().to_vec()))
             .collect()
     };
@@ -136,7 +143,7 @@ fn the_same_entries_declared_in_two_orders_generate_the_same_bytes() {
 fn a_second_claim_on_one_server_entry_is_refused_by_the_declaration() {
     let mut declared = ServerDataMod::declaration().expect("the declaration is well formed");
     declared
-        .entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}")
+        .server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}")
         .expect_err("the mod already declares that entry");
 }
 
@@ -335,7 +342,7 @@ fn interception_machine(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
         .collect();
     let mut machine =
         LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -438,4 +445,155 @@ fn a_required_library_nothing_provides_is_refused_before_anything_runs() {
     assert_eq!(refusal.library(), "shared_numbers");
     assert!(refusal.has_no_provider());
     assert_eq!(refusal.unsatisfied(), [consumer]);
+}
+
+#[test]
+fn server_data_reaches_resource_collection_after_the_real_lifecycle() {
+    let mut server_data = ServerDataMod::new();
+    let mut mods: [&mut dyn Mod; 1] = [&mut server_data];
+    let mut machine = drive(&mut mods);
+    assert_eq!(
+        machine.state(ServerDataMod::declared_id()),
+        Ok(LifecycleState::Running)
+    );
+    let mut loaded = ravel_loader::LoadedMods::new(&mut machine, &mut mods)
+        .expect("the running server-data mod has its host");
+    let supplied =
+        ravel_loader::open_resources(&mut loaded, &ravel_bootstrap_runtime::environment())
+            .expect("the lifecycle declaration reaches resource collection");
+    let expected: [(&str, &[u8]); 4] = [
+        (
+            "data/server_data/advancement/first_plate.json",
+            br#"{"awarded_for": "server_data:plate"}"#,
+        ),
+        (
+            "data/server_data/function/grant_plate.mcfunction",
+            b"give @s server_data:plate\n",
+        ),
+        (
+            "data/server_data/loot_table/plate_from_ingot.json",
+            br#"{"drops": "server_data:plate"}"#,
+        ),
+        (
+            "data/server_data/recipe/plate_from_ingot.json",
+            br#"{"result": "server_data:plate"}"#,
+        ),
+    ];
+    assert_eq!(
+        supplied
+            .set()
+            .declared()
+            .iter()
+            .map(|resource| resource.path.as_str())
+            .collect::<Vec<_>>(),
+        expected.iter().map(|(path, _)| *path).collect::<Vec<_>>()
+    );
+    for (path, bytes) in expected {
+        let path = ravel_sdk::resources::RelativePath::try_from(path.to_owned())
+            .expect("an independently specified canonical path");
+        assert_eq!(
+            supplied.set().supplier(&path),
+            Some(ServerDataMod::declared_id())
+        );
+        assert_eq!(supplied.bytes(&path), Some(bytes));
+    }
+}
+
+#[test]
+fn resource_layering_keeps_uncontested_paths_and_records_the_shadowed_owner() {
+    let resources = ravel_test_mod_resources::ResourcesMod::new();
+    let declared = resources.declared();
+    let owner = id("resources");
+    let later = id("skin_mod");
+    let shared = declared[0].clone();
+    let set = ravel_data::ResourceSet::layered([
+        (&owner, declared.iter()),
+        (&later, std::slice::from_ref(&shared).iter()),
+    ]);
+    assert_eq!(set.supplier(&shared), Some(&later));
+    assert_eq!(set.supplier(&declared[1]), Some(&owner));
+    assert_eq!(set.overrides().len(), 1);
+    assert_eq!(set.overrides()[0].shadowed, [owner]);
+}
+
+#[test]
+fn resource_layering_without_shared_paths_has_no_overrides() {
+    let declared = ravel_test_mod_resources::ResourcesMod::new().declared();
+    let owner = id("resources");
+    let later = id("other_mod");
+    let extra = ravel_sdk::resources::RelativePath::try_from("resources/lang/fr.json".to_owned())
+        .expect("a legal relative path");
+    let set = ravel_data::ResourceSet::layered([
+        (&owner, declared.iter()),
+        (&later, std::slice::from_ref(&extra).iter()),
+    ]);
+    assert!(!set.has_overrides());
+    assert_eq!(set.declared().len(), 3);
+}
+
+#[test]
+fn the_examples_block_and_item_tags_keep_their_members_and_contributor() {
+    use ravel_core::ContentKind;
+    use ravel_example_content_mod::ContentMod;
+    let declaration = ContentMod::new().declaration().expect("valid declaration");
+    let set = ravel_data::TagSet::merged([&declaration]);
+    for kind in [ContentKind::Block, ContentKind::Item] {
+        let tag = ContentMod::lanterns(kind);
+        let members = set.members(&tag);
+        assert_eq!(members.len(), 1, "{tag}");
+        assert_eq!(members[0].kind(), kind);
+        assert_eq!(set.contributors(&tag), [ContentMod::declared_id().clone()]);
+    }
+}
+
+#[test]
+fn another_mod_joins_the_examples_shared_tag_without_conflicting() {
+    use ravel_core::ContentKind;
+    use ravel_example_content_mod::ContentMod;
+    let content = ContentMod::new().declaration().expect("valid declaration");
+    let tag = ContentMod::lanterns(ContentKind::Item);
+    let mut other = ContentDeclaration::new(id("other"));
+    let theirs = other
+        .entry(ContentKind::Item, "tin_lantern")
+        .expect("a legal entry");
+    other.tag(&tag, &theirs).expect("an item joins an item tag");
+    let set = ravel_data::TagSet::merged([&content, &other]);
+    assert_eq!(set.members(&tag).len(), 2);
+    assert_eq!(set.contributors(&tag).len(), 2);
+}
+
+#[test]
+fn the_examples_language_file_loses_to_the_later_translation_pack() {
+    use ravel_example_content_mod::ContentMod;
+    let english =
+        ravel_sdk::resources::RelativePath::try_from("assets/content/lang/en_us.json".to_owned())
+            .expect("a legal path");
+    let later = id("translation_pack");
+    let set = ravel_data::ResourceSet::layered([
+        (ContentMod::declared_id(), [&english]),
+        (&later, [&english]),
+    ]);
+    assert_eq!(set.supplier(&english), Some(&later));
+    assert_eq!(
+        set.overrides()[0].shadowed,
+        [ContentMod::declared_id().clone()]
+    );
+}
+
+#[test]
+fn waystone_tags_merge_the_block_and_item_in_their_own_registry() {
+    use ravel_core::ContentKind;
+    use waystone_ledger::WaystoneLedger;
+    let declaration = WaystoneLedger::declaration().expect("valid declaration");
+    let set = ravel_data::TagSet::merged([&declaration]);
+    for kind in [ContentKind::Block, ContentKind::Item] {
+        let tag = WaystoneLedger::waystones_tag(kind);
+        let members = set.members(&tag);
+        assert_eq!(members.len(), 1, "{tag}");
+        assert_eq!(members[0].kind(), kind);
+        assert_eq!(
+            set.contributors(&tag),
+            [WaystoneLedger::declared_id().clone()]
+        );
+    }
 }

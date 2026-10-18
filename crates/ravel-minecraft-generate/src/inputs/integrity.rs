@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::Path;
 
+use ravel_core::Sha256Digest;
 use sha2::{Digest, Sha256};
 
 use super::{GenerateError, Input, Inputs};
@@ -19,8 +20,8 @@ pub(crate) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
     }
     let bytes = fs::read(root.join(&input.path)).map_err(|error| GenerateError::io(name, error))?;
     if let Some(expected) = &input.sha256 {
-        let actual = sha256(&bytes);
-        if actual != expected.as_str() {
+        let actual = Sha256Digest::from_bytes(Sha256::digest(&bytes).into());
+        if actual != *expected {
             return Err(GenerateError::Drift(format!(
                 "{name} hashes {actual} but the adapter inputs pin {expected}"
             )));
@@ -104,13 +105,7 @@ pub(crate) fn file_name(path: &str) -> &str {
 
 /// Hex-encoded SHA-256 of some bytes.
 pub(crate) fn sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut text = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        text.push(char::from_digit(u32::from(byte >> 4), 16).unwrap_or('0'));
-        text.push(char::from_digit(u32::from(byte & 0x0f), 16).unwrap_or('0'));
-    }
-    text
+    Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string()
 }
 
 #[cfg(test)]
@@ -251,16 +246,10 @@ bytes = 2
     }
 
     #[test]
-    fn uppercase_input_pins_verify_against_the_same_bytes() {
-        let root = repository_root();
-        let path = "minecraft/README.md";
-        let bytes = std::fs::read(root.join(path)).expect("tracked input");
-        let input: Input = toml::from_str(&format!(
-            "path = \"{path}\"\nsha256 = \"{}\"\n",
-            sha256(&bytes).to_ascii_uppercase()
-        ))
-        .expect("uppercase pins canonicalize at admission");
-        verify_input(root, &input).expect("text case does not change the pinned bytes");
+    fn uppercase_input_pins_are_refused_at_admission() {
+        let text = format!("path = \"client.jar\"\nsha256 = \"{}\"\n", "AB".repeat(32));
+        let error = toml::from_str::<Input>(&text).expect_err("pins use canonical lowercase hex");
+        assert!(error.to_string().contains("a sha256 digest"), "{error}");
     }
 
     #[test]

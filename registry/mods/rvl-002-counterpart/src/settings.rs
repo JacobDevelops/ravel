@@ -16,7 +16,7 @@
 //! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 use ravel_sdk::content::ContentIdError;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
@@ -180,12 +180,12 @@ impl Settings {
     /// Reads the values in force out of a resolved configuration.
     ///
     /// Returns a typed access error if a key is missing, has the wrong kind, or exceeds its Rust type.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             drops_soul_chance: resolved.number(DROPS_SOUL_CHANCE)?,
-            drops_scale_count: ravel_sdk::config::unsigned(resolved, DROPS_SCALE_COUNT)?,
+            drops_scale_count: resolved.integer_in::<u32>(DROPS_SCALE_COUNT)?,
             crops_fertilisable: resolved.boolean(CROPS_FERTILISABLE)?,
-            foods_effect_seconds: ravel_sdk::config::unsigned(resolved, FOODS_EFFECT_SECONDS)?,
+            foods_effect_seconds: resolved.integer_in::<u32>(FOODS_EFFECT_SECONDS)?,
             world_lower: Deposits {
                 shard: resolved.boolean(WORLD_LOWER_SHARD_DEPOSIT)?,
                 essence: resolved.boolean(WORLD_LOWER_ESSENCE_DEPOSIT)?,
@@ -255,7 +255,7 @@ pub fn consumed_flags() -> Result<[FlagId; 2], ContentIdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::config::SettingSide;
+    use ravel_sdk::config::{SettingSide, ValueError};
     use ravel_sdk::{JsonValue, Side};
     fn travels_to_clients() -> bool {
         declaration().is_ok_and(|declared| {
@@ -295,7 +295,10 @@ mod tests {
 
     #[test]
     fn a_widened_declaration_refuses_integers_outside_the_rust_type() {
-        for (maximum, default) in [("64", "8"), ("2147483647", "180")] {
+        for (key, maximum, default) in [
+            (DROPS_SCALE_COUNT, "64", "8"),
+            (FOODS_EFFECT_SECONDS, "2147483647", "180"),
+        ] {
             let changed = DOCUMENT
                 .replace(
                     &format!("\"maximum\": {maximum}"),
@@ -310,8 +313,9 @@ mod tests {
                 .expect("the widened declaration resolves");
             assert_eq!(
                 Settings::read(&resolved),
-                Err(ValueError::Above {
-                    maximum: f64::from(u32::MAX)
+                Err(AccessError {
+                    key: key.to_owned(),
+                    reason: ValueError::TargetRange { target: "u32" },
                 })
             );
         }

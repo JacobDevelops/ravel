@@ -28,10 +28,10 @@ mod world;
 pub use admission::admitted;
 pub use config::{ConfigRefused, Configured, open_configuration};
 pub use discovery::{Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, discover};
-pub use driver::{DriveError, drive_loaded, stop_all};
+pub use driver::{DriveError, start_all, stop_all};
 pub use events::{
     Delivery, DispatchRefused, PlayRequests, accepts_owner, broadcast, deliver_command,
-    deliver_packet, ensure_active, take_play_requests,
+    deliver_packet, take_play_requests,
 };
 pub use interception::{InterceptRefused, intercept, open_interceptions};
 pub use lifecycle::{

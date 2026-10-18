@@ -199,23 +199,6 @@ fn verify_lock_header(
             Some(lock.mapping_source.as_str()),
             Some(adapter.mapping_source.as_str()),
         ),
-        (
-            "the client jar hash",
-            Some(lock.client_jar_sha256.as_str()),
-            adapter.inputs.client_jar.sha256.as_deref(),
-        ),
-        // Nothing on this path opens the mapping file, so its hash is the only
-        // thing that can say the lock's linked names came from the mapping the
-        // inputs now pin.
-        (
-            "the client mapping hash",
-            lock.client_mappings_sha256.as_deref(),
-            adapter
-                .inputs
-                .client_mappings
-                .as_ref()
-                .and_then(|input| input.sha256.as_deref()),
-        ),
     ] {
         if tracked != pinned {
             return Err(GenerateError::Drift(format!(
@@ -223,15 +206,42 @@ fn verify_lock_header(
             )));
         }
     }
+    // This lock-only path never opens the mapping file. Comparing its hash is
+    // what prevents linked names from silently surviving a mapping replacement.
+    for (what, tracked, pinned) in [
+        (
+            "the client jar hash",
+            Some(lock.client_jar_sha256),
+            adapter.inputs.client_jar.sha256,
+        ),
+        (
+            "the client mapping hash",
+            lock.client_mappings_sha256,
+            adapter
+                .inputs
+                .client_mappings
+                .as_ref()
+                .and_then(|input| input.sha256),
+        ),
+    ] {
+        if tracked != pinned {
+            return Err(GenerateError::Drift(format!(
+                "mappings.lock records {what} as {} but the adapter inputs pin {}",
+                super::error::DigestPin(tracked),
+                super::error::DigestPin(pinned)
+            )));
+        }
+    }
     let server_hash = adapter
         .inputs
         .server_jar
         .as_ref()
-        .and_then(|input| input.sha256.as_deref());
-    if lock.server_jar_sha256.as_deref() != server_hash {
+        .and_then(|input| input.sha256);
+    if lock.server_jar_sha256 != server_hash {
         return Err(GenerateError::Drift(format!(
-            "mappings.lock records the server jar hash as {:?} but the adapter inputs pin {server_hash:?}",
-            lock.server_jar_sha256
+            "mappings.lock records the server jar hash as {} but the adapter inputs pin {}",
+            super::error::DigestPin(lock.server_jar_sha256),
+            super::error::DigestPin(server_hash)
         )));
     }
     verify_lock_shape(lock, adapter, inventory)
@@ -348,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn uppercase_mapping_lock_hashes_match_the_adapter() {
+    fn uppercase_mapping_lock_hashes_are_refused() {
         let pinned = pinned();
         let tracked = tracked_lock(&pinned);
         let digest = pinned
@@ -356,21 +366,44 @@ mod tests {
             .inputs
             .client_jar
             .sha256
-            .as_deref()
-            .expect("client pin");
-        let uppercase = tracked.replace(digest, &digest.to_ascii_uppercase());
-        from_lock(&uppercase, &pinned.adapter, &pinned.inventory)
-            .expect("a lock pin's text case cannot create drift");
+            .expect("client pin")
+            .to_string();
+        let uppercase = tracked.replace(&digest, &digest.to_ascii_uppercase());
+        let error = from_lock(&uppercase, &pinned.adapter, &pinned.inventory)
+            .expect_err("lock pins use canonical lowercase hex");
+        assert!(error.to_string().contains("a sha256 digest"), "{error}");
     }
 
     #[test]
     fn an_absent_client_hash_cannot_match_a_valid_lock_hash() {
         let mut pinned = pinned();
         let tracked = tracked_lock(&pinned);
+        let digest = pinned.adapter.inputs.client_jar.sha256.expect("client pin");
         pinned.adapter.inputs.client_jar.sha256 = None;
         let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
             .expect_err("a recorded client hash cannot match an absent adapter pin");
-        assert!(error.to_string().contains("the client jar hash"), "{error}");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: mappings.lock records the client jar hash as Some(\"{digest}\") but the adapter inputs pin None"
+            )
+        );
+    }
+
+    #[test]
+    fn a_lock_server_hash_diagnostic_preserves_hex_and_absence() {
+        let pinned = pinned();
+        let mut lock: super::Lock = toml::from_str(&tracked_lock(&pinned)).expect("tracked lock");
+        lock.server_jar_sha256 = Some("ab".repeat(32).try_into().expect("complete digest"));
+        let error = super::verify_lock_header(&lock, &pinned.adapter, &pinned.inventory)
+            .expect_err("an absent server pin cannot match a recorded digest");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: mappings.lock records the server jar hash as Some(\"{}\") but the adapter inputs pin None",
+                "ab".repeat(32)
+            )
+        );
     }
 
     #[test]
@@ -441,20 +474,27 @@ mod tests {
     fn a_lock_that_pins_a_different_jar_is_refused() {
         let pinned = pinned();
         let tracked = tracked_lock(&pinned).replace(
-            pinned
+            &pinned
                 .adapter
                 .inputs
                 .client_jar
                 .sha256
-                .as_deref()
-                .expect("a pinned hash"),
+                .expect("a pinned hash")
+                .to_string(),
             &"0".repeat(64),
         );
 
         let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
             .expect_err("a drifted lock must be refused");
 
-        assert!(error.to_string().contains("the client jar hash"), "{error}");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: mappings.lock records the client jar hash as Some(\"{}\") but the adapter inputs pin Some(\"{}\")",
+                "0".repeat(64),
+                pinned.adapter.inputs.client_jar.sha256.expect("client pin")
+            )
+        );
     }
 
     /// Nothing on this path opens the mapping file, so swapping it for another
@@ -485,9 +525,13 @@ mod tests {
         let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
             .expect_err("a lock written from another mapping must be refused");
 
-        assert!(
-            error.to_string().contains("the client mapping hash"),
-            "{error}"
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "an input drifted: mappings.lock records the client mapping hash as Some(\"{}\") but the adapter inputs pin Some(\"{}\")",
+                "b".repeat(64),
+                "a".repeat(64)
+            )
         );
     }
 

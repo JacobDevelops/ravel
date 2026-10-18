@@ -3,7 +3,7 @@
 //! Drives shipped counterparts with required dependencies and together through real admission.
 
 use ravel_loader::{
-    LifecycleEntry, LifecycleMachine, LoadedMods, Requirement, admitted, drive_loaded,
+    LifecycleEntry, LifecycleMachine, LoadedMods, Requirement, admitted, start_all,
 };
 use ravel_package::PackageManifest;
 use ravel_resolve::resolve;
@@ -179,7 +179,7 @@ fn every_counterpart_registers_with_only_its_required_dependencies_on_each_side(
                 .collect();
             let mut machine = LifecycleMachine::new(side, entries)
                 .expect("the counterpart declares a legal lifecycle");
-            drive_loaded(
+            start_all(
                 &mut LoadedMods::new(&mut machine, &mut mods)
                     .expect("every active member has a mod value"),
                 &environment,
@@ -221,7 +221,7 @@ fn all_counterparts_register_together_in_manifest_dependency_order_on_each_side(
         // Supplied storage order must not override the manifest's resolved dependency order.
         mods.reverse();
         let mut machine = LifecycleMachine::new(side, entries).expect("a legal admitted lifecycle");
-        drive_loaded(
+        start_all(
             &mut LoadedMods::new(&mut machine, &mut mods)
                 .expect("every active member has a mod value"),
             &environment,
@@ -282,7 +282,7 @@ fn configured_provider_flags_reach_the_leaf_through_real_loader_startup() {
                     &environment,
                 )
                 .expect("the loader applies the provider's launch configuration");
-                drive_loaded(&mut loaded, &environment).expect("configured services start");
+                start_all(&mut loaded, &environment).expect("configured services start");
             }
             let hosts: [&dyn Mod; 3] = [&leaf, &provider, &shared];
             expectations::assert_running(&machine, hosts, side);

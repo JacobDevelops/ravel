@@ -13,7 +13,7 @@
 
 use ravel_sdk::Side;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 
 use core::fmt;
@@ -83,7 +83,7 @@ pub struct Settings {
 
 impl Settings {
     /// Reads the values in force, refusing a missing key or a value of the wrong kind.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
             scratch_world_shortcut: resolved.boolean(DEVELOPMENT_SHORTCUT)?,
             silence_music: resolved.boolean(DEVELOPMENT_SILENCE_MUSIC)?,
@@ -443,6 +443,7 @@ pub fn own_framework() -> Framework {
 mod tests {
     use super::*;
     use ravel_sdk::Side;
+    use ravel_sdk::config::ValueError;
 
     #[test]
     fn the_packaged_defaults_resolve_to_the_launch_settings() {
@@ -464,8 +465,11 @@ mod tests {
                 .expect("the changed declaration resolves");
             assert_eq!(
                 Settings::read(&resolved),
-                Err(ValueError::Unknown {
-                    key: name.to_owned()
+                Err(AccessError {
+                    key: name.to_owned(),
+                    reason: ValueError::Unknown {
+                        key: name.to_owned()
+                    },
                 })
             );
         }
@@ -481,7 +485,10 @@ mod tests {
             .expect("the changed declaration resolves");
         assert!(matches!(
             Settings::read(&resolved),
-            Err(ValueError::AccessKind { .. })
+            Err(AccessError {
+                reason: ValueError::AccessKind { .. },
+                ..
+            })
         ));
     }
 

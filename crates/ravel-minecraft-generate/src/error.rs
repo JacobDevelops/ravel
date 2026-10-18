@@ -2,6 +2,18 @@
 
 use std::fmt;
 
+/// Formats an optional pin as canonical hex without losing its absence.
+pub(crate) struct DigestPin(pub Option<crate::inputs::Sha256Digest>);
+
+impl fmt::Display for DigestPin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(digest) => write!(formatter, "Some(\"{digest}\")"),
+            None => formatter.write_str("None"),
+        }
+    }
+}
+
 /// Anything that stops a binding from being generated.
 #[derive(Debug)]
 pub enum GenerateError {

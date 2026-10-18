@@ -46,7 +46,7 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
     for (entry, state) in machine.tracked_entries() {
         let mod_id = &entry.mod_id;
         if !entry.sides.loads_on(machine.side())
-            || !entry.sides.loads_on(crate::lifecycle::world_side(machine))
+            || !entry.sides.loads_on(machine.side().world_side())
         {
             continue;
         }
@@ -112,7 +112,7 @@ fn open<H: std::ops::DerefMut<Target: Mod>>(
     packages: &BTreeMap<ModId, Version>,
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let (machine, mods) = loaded.parts();
-    let (declarations, chains) = declarations(machine, environment, mods)?;
+    let (declarations, chains) = collect_declarations(machine, environment, mods)?;
     let mut aggregate =
         SavedDataAggregate::open_preserving(bytes, &declarations, packages, |owner| {
             machine.state(owner) == Ok(LifecycleState::Failed)
@@ -186,7 +186,7 @@ fn migrate(
         let migrated = envelope.migrated(declaration.current(), payload);
         if machine
             .entry(mod_id)
-            .map_err(SaveRefused::Lifecycle)?
+            .expect("declaring owner is tracked")
             .requirement
             == crate::Requirement::Optional
         {
@@ -197,7 +197,7 @@ fn migrate(
     Ok(originals)
 }
 
-fn declarations<H: std::ops::DerefMut<Target: Mod>>(
+fn collect_declarations<H: std::ops::DerefMut<Target: Mod>>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     mods: &[H],
@@ -206,7 +206,7 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
     let mut chains = Vec::with_capacity(mods.len());
     let order: Vec<_> = machine
         .eligible()
-        .filter(|(entry, _)| entry.sides.loads_on(crate::lifecycle::world_side(machine)))
+        .filter(|(entry, _)| entry.sides.loads_on(machine.side().world_side()))
         .map(|(entry, _)| entry.mod_id.clone())
         .collect();
     for mod_id in &order {
@@ -289,7 +289,7 @@ fn isolate_refusal(
     mod_id: &ModId,
     refused: SaveRefused,
 ) -> Result<(), SaveRefused> {
-    crate::lifecycle::isolate_foreign(
+    crate::lifecycle::isolate_loader_refusal(
         machine,
         environment,
         mod_id,
@@ -1222,7 +1222,7 @@ mod tests {
                 let refused_bytes = incompatible_world(future);
                 let mut hosts: [&mut dyn Mod; 1] = [&mut host];
                 let mut loaded = LoadedMods::new(&mut machine, &mut hosts).expect("paired host");
-                crate::drive_loaded(&mut loaded, &environment).expect("owner starts");
+                crate::start_all(&mut loaded, &environment).expect("owner starts");
                 open_saved_data(
                     &mut loaded,
                     Some(&compatible),

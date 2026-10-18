@@ -2,7 +2,8 @@
 
 //! Declares one entry of each server-resolved data kind through `ravel-sdk`.
 
-use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataError, ServerDataKind};
+use ravel_sdk::content::{ContentDeclaration, ContentDeclarationError};
+use ravel_sdk::server_data::ServerDataKind;
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -45,10 +46,10 @@ const ENTRIES: [(ServerDataKind, &str, &[u8]); 4] = [
 ///
 /// let declared = ServerDataMod::declaration().expect("the declaration is well formed");
 /// let generated = declared.generate();
-/// assert_eq!(generated.files().count(), 4);
+/// assert_eq!(generated.files().len(), 4);
 ///
 /// // The paths are derived, so this mod never spells one.
-/// let paths: Vec<String> = generated.files().map(|file| file.path().to_string()).collect();
+/// let paths: Vec<String> = generated.files().iter().map(|file| file.path().to_string()).collect();
 /// assert!(paths.contains(&"data/server_data/recipe/plate_from_ingot.json".to_owned()));
 /// assert!(paths.contains(&"data/server_data/function/grant_plate.mcfunction".to_owned()));
 /// ```
@@ -74,12 +75,12 @@ impl ServerDataMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ServerDataError`] if any entry is refused, which would mean two
+    /// Returns [`ContentDeclarationError`] if any entry is refused, which would mean two
     /// of `ENTRIES` name one file.
-    pub fn declaration() -> Result<ServerDataDeclaration, ServerDataError> {
-        let mut declared = ServerDataDeclaration::new(Self::declared_id().clone());
+    pub fn declaration() -> Result<ContentDeclaration, ContentDeclarationError> {
+        let mut declared = ContentDeclaration::new(Self::declared_id().clone());
         for (kind, name, bytes) in ENTRIES {
-            declared.entry(kind, name, bytes)?;
+            declared.server_entry(kind, name, bytes)?;
         }
         Ok(declared)
     }
@@ -90,6 +91,14 @@ impl Mod for ServerDataMod {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
+    }
+
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        Self::declaration()
+            .map(|declaration| Some(std::borrow::Cow::Owned(declaration)))
+            .map_err(ModError::from_display)
     }
 }
 
@@ -108,10 +117,10 @@ mod tests {
     #[test]
     fn one_name_under_two_kinds_is_two_entries_at_two_paths() {
         let declared = ServerDataMod::declaration().expect("the declaration is well formed");
-        let paths: Vec<&str> = declared
-            .entries()
-            .filter(|entry| entry.name() == "plate_from_ingot")
-            .map(|entry| entry.path().as_str())
+        let generated = declared.generate();
+        let paths: Vec<&str> = generated
+            .paths()
+            .filter(|path| path.ends_with("/plate_from_ingot.json"))
             .collect();
 
         assert_eq!(paths.len(), 2);
@@ -124,13 +133,14 @@ mod tests {
         let generated = declared.generate();
 
         for kind in ServerDataKind::ALL {
-            let count = declared
-                .entries()
-                .filter(|entry| entry.kind() == kind)
+            let prefix = format!("data/server_data/{}/", kind.directory());
+            let count = generated
+                .paths()
+                .filter(|path| path.starts_with(&prefix))
                 .count();
             assert_eq!(count, 1, "{kind}");
         }
-        assert_eq!(generated.files().count(), 4);
+        assert_eq!(generated.files().len(), 4);
     }
 
     #[test]

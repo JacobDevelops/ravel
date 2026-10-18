@@ -14,7 +14,7 @@
 
 use ravel_sdk::ModError;
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
 };
 
 /// The key the ceiling on completed upgrade steps is written under.
@@ -115,26 +115,12 @@ impl Settings {
     /// Reads all four validated integer settings together for one launch.
     ///
     /// Returns a typed access error for a missing key, wrong kind or out-of-range integer.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
-        let integer = |name: &str| {
-            let value = resolved.integer(name)?;
-            i32::try_from(value).map_err(|_| {
-                if value < i64::from(i32::MIN) {
-                    ValueError::Below {
-                        minimum: f64::from(i32::MIN),
-                    }
-                } else {
-                    ValueError::Above {
-                        maximum: f64::from(i32::MAX),
-                    }
-                }
-            })
-        };
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, AccessError> {
         Ok(Self {
-            upgrade_ceiling: integer(UPGRADE_CEILING)?,
-            energy_per_tick: integer(ENERGY_PER_TICK)?,
-            energy_capacity: integer(ENERGY_CAPACITY)?,
-            energy_accepted: integer(ENERGY_ACCEPTED)?,
+            upgrade_ceiling: resolved.integer_in(UPGRADE_CEILING)?,
+            energy_per_tick: resolved.integer_in::<i32>(ENERGY_PER_TICK)?,
+            energy_capacity: resolved.integer_in::<i32>(ENERGY_CAPACITY)?,
+            energy_accepted: resolved.integer_in::<i32>(ENERGY_ACCEPTED)?,
         })
     }
 }
@@ -158,7 +144,7 @@ pub fn declared_sides() -> Result<Vec<SettingSide>, DeclarationError> {
 
 #[cfg(test)]
 mod tests {
-    use ravel_sdk::config::ValueDocument;
+    use ravel_sdk::config::{ValueDocument, ValueError};
     use ravel_sdk::json;
 
     #[test]
@@ -266,8 +252,9 @@ mod tests {
             .expect("the widened declaration resolves");
         assert_eq!(
             Settings::read(&resolved),
-            Err(ValueError::Above {
-                maximum: f64::from(i32::MAX)
+            Err(AccessError {
+                key: ENERGY_CAPACITY.to_owned(),
+                reason: ValueError::TargetRange { target: "i32" },
             })
         );
         let changed = DOCUMENT
@@ -278,8 +265,9 @@ mod tests {
             .expect("the widened declaration resolves");
         assert_eq!(
             Settings::read(&resolved),
-            Err(ValueError::Below {
-                minimum: f64::from(i32::MIN)
+            Err(AccessError {
+                key: ENERGY_CAPACITY.to_owned(),
+                reason: ValueError::TargetRange { target: "i32" },
             })
         );
     }

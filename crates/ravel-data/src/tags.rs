@@ -289,6 +289,32 @@ mod tests {
     }
 
     #[test]
+    fn noncanonical_tag_ids_are_refused_before_membership_or_path_generation() {
+        let valid = tag(ContentKind::Item, "kept");
+        let mut declaration = contributor("example_mod", ContentKind::Item, "kept", &valid);
+        let member = declaration.entries()[0].clone();
+        for candidate in ["a//b", "./x", "a/./b", ".", "a/."] {
+            let admitted =
+                ContentId::new("c".parse().expect("a legal mod id"), candidate).map(|id| {
+                    let tag = TagId::new(ContentKind::Item, id).expect("items are taggable");
+                    declaration.tag(&tag, &member).expect("a new tag");
+                    tag.generated_path()
+                });
+            assert!(admitted.is_err(), "{candidate}");
+            assert_eq!(declaration.tags().collect::<Vec<_>>(), [&valid]);
+            assert_eq!(
+                declaration.tag_members(&valid),
+                std::slice::from_ref(&member)
+            );
+            let generated = TagSet::merged([&declaration]).generate();
+            assert_eq!(
+                generated.paths().collect::<Vec<_>>(),
+                ["data/c/tags/item/kept.json"]
+            );
+        }
+    }
+
+    #[test]
     fn a_command_cannot_be_tagged_and_the_refusal_says_why() {
         let error =
             TagId::new(ContentKind::Command, id("c", "homes")).expect_err("commands are untagged");

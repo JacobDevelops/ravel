@@ -47,7 +47,7 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            crate::lifecycle::isolate_foreign(
+            crate::lifecycle::isolate_loader_refusal(
                 machine,
                 environment,
                 &mod_id,

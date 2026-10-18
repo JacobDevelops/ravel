@@ -18,7 +18,5 @@ pub use declare::{
 pub use generate::{GeneratedData, GeneratedFile};
 pub use render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
 pub use resources::{Override, Resource, ResourceSet};
-pub use server_data::{
-    GeneratedServerData, ServerDataDeclaration, ServerDataEntry, ServerDataError, ServerDataKind,
-};
+pub use server_data::ServerDataKind;
 pub use tags::{TagError, TagId, TagSet};

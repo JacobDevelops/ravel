@@ -180,14 +180,39 @@ fn the_package_path_grammar_agrees_with_the_schema_pattern_under_a_real_engine()
             "a\tb",
             "a b",
             "resources/lang/en.json",
+            "./src/lib.rs",
+            "src/./lib.rs",
+            "src//lib.rs",
+            "src/lib.rs/",
+            "src/lib.rs/.",
+            "src/.../lib.rs",
         ]
         .into_iter()
         .map(str::to_owned),
     );
+    let pack: Value = serde_json::from_str(
+        &fs::read_to_string(repository_root().join("schemas/pack.schema.json"))
+            .expect("the pack schema should be readable"),
+    )
+    .expect("the pack schema should be JSON");
+    assert_eq!(
+        pack["$defs"]["relativePath"]["pattern"],
+        defined_pattern("relativePath"),
+        "package and pack paths share one canonical grammar"
+    );
     assert_agrees(
         &defined_pattern("relativePath"),
         &candidates,
-        |candidate| RelativePath::try_from(candidate.to_owned()).is_ok(),
+        |candidate| {
+            let accepted = RelativePath::try_from(candidate.to_owned()).is_ok();
+            let encoded = serde_json::to_string(candidate).expect("a path serializes");
+            assert_eq!(
+                serde_json::from_str::<RelativePath>(&encoded).is_ok(),
+                accepted,
+                "{candidate:?}: constructor and serde disagree"
+            );
+            accepted
+        },
         "relative-path",
     );
 }
@@ -205,6 +230,7 @@ fn the_digest_grammar_agrees_with_the_schema_pattern_under_a_real_engine() {
         format!("g{}", &DIGEST[1..]),
         format!(" {}", &DIGEST[1..]),
         format!("{}\u{e9}", &DIGEST[..62]),
+        format!("{DIGEST}\n"),
     ]
     .into_iter()
     .collect();
@@ -275,6 +301,12 @@ fn a_document_ravel_package_refuses_is_one_the_schema_also_refuses() {
         ("traversal-path", "../src/lib.rs"),
         ("backslash-path", "..\\..\\src\\lib.rs"),
         ("line-break-path", "src/\nlib.rs"),
+        ("trailing-line-break-path", "src/lib.rs\n"),
+        ("dot-prefix-path", "./src/lib.rs"),
+        ("dot-segment-path", "src/./lib.rs"),
+        ("empty-segment-path", "src//lib.rs"),
+        ("trailing-slash-path", "src/lib.rs/"),
+        ("trailing-dot-path", "src/lib.rs/."),
     ] {
         let mut document = base.clone();
         document["source"]["files"][0]["path"] = json!(path);

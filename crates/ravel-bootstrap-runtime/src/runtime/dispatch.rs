@@ -152,7 +152,7 @@ impl Inner {
         }
         if let Some((_, event)) = EVENTS.iter().find(|(hook, _)| *hook == id) {
             let side = if id == "server.tick-integrated" {
-                self.server_side()
+                process_side.world_side()
             } else {
                 process_side
             };
@@ -182,16 +182,9 @@ impl Inner {
         let id = literal.parse::<ContentId>().ok()?;
         Some(Work::Command(CommandInvocation::new(
             RegistryKey::new(ContentKind::Command, id),
-            self.server_side(),
+            self.loaded.machine().side().world_side(),
             rest.split_whitespace().map(str::to_owned).collect(),
         )))
-    }
-
-    fn server_side(&self) -> Side {
-        match self.loaded.machine().side() {
-            Side::Client | Side::IntegratedServer => Side::IntegratedServer,
-            Side::DedicatedServer => Side::DedicatedServer,
-        }
     }
 
     pub(super) fn deliver_checked(&mut self, work: &Work) -> Result<(), Undelivered> {

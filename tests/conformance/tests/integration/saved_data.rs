@@ -89,7 +89,7 @@ fn entry(saved: &SavedDataMod) -> LifecycleEntry {
 fn running(saved: &mut SavedDataMod) -> LifecycleMachine {
     let mut machine =
         LifecycleMachine::new(Side::Client, vec![entry(saved)]).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [saved])
             .expect("all active mods have hosts"),
         &ravel_bootstrap_runtime::environment(),

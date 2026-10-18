@@ -42,18 +42,18 @@ pub(crate) fn isolate_recording<E>(
 }
 
 /// Attributes an owner-contract refusal, preserving it when isolation must stop.
-pub(crate) fn isolate_foreign<E: std::fmt::Display>(
+pub(crate) fn isolate_loader_refusal<E: std::fmt::Display>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     owner: &ModId,
     refused: E,
     lifecycle: fn(LifecycleError) -> E,
 ) -> Result<(), E> {
-    isolate_foreign_recording(machine, environment, owner, refused, lifecycle, |_| {})
+    isolate_loader_refusal_recording(machine, environment, owner, refused, lifecycle, |_| {})
 }
 
 /// Adds supplemental recording to the shared owner-contract attribution policy.
-pub(crate) fn isolate_foreign_recording<E: std::fmt::Display>(
+pub(crate) fn isolate_loader_refusal_recording<E: std::fmt::Display>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     owner: &ModId,
@@ -63,13 +63,6 @@ pub(crate) fn isolate_foreign_recording<E: std::fmt::Display>(
 ) -> Result<(), E> {
     let source = crate::owner_refusal(machine, owner, &refused).map_err(lifecycle)?;
     isolate_recording(machine, environment, source, lifecycle, record, |_| refused)
-}
-
-pub(crate) const fn world_side(machine: &LifecycleMachine) -> Side {
-    match machine.side() {
-        Side::Client | Side::IntegratedServer => Side::IntegratedServer,
-        Side::DedicatedServer => Side::DedicatedServer,
-    }
 }
 
 /// Whether a lifecycle state can run mod code.
@@ -913,7 +906,7 @@ mod tests {
             }
             .to_string();
             let environment = crate::tests::environment();
-            let result = super::isolate_foreign(
+            let result = super::isolate_loader_refusal(
                 &mut machine,
                 &environment,
                 &owner,
@@ -961,7 +954,7 @@ mod tests {
             owner: id("other_mod"),
         };
         assert_eq!(
-            super::isolate_foreign(
+            super::isolate_loader_refusal(
                 &mut machine,
                 &environment,
                 &owner,
@@ -1405,7 +1398,7 @@ mod tests {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
                 .expect("valid plan");
-        let error = crate::drive_loaded(
+        let error = crate::start_all(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &attribution("example_mod", LifecycleState::Constructed).environment,
@@ -1469,7 +1462,7 @@ mod tests {
         let mut host = Mismatched {
             owner: id("example_mod"),
         };
-        crate::drive_loaded(
+        crate::start_all(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
             &attribution("example_mod", LifecycleState::Constructed).environment,

@@ -2,6 +2,8 @@
 
 use serde::Deserialize;
 
+pub(crate) use ravel_core::Sha256Digest;
+
 /// Which verification stages a version is ready to exercise, not a support claim.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -290,43 +292,6 @@ pub(crate) struct Reflection {
     pub(crate) minecraft: String,
     #[serde(rename = "reflected")]
     pub(crate) classes: Vec<Reflected>,
-}
-
-/// A complete SHA-256 pin, canonicalized before it can enter generation.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
-#[serde(try_from = "String")]
-pub(crate) struct Sha256Digest(String);
-
-impl TryFrom<String> for Sha256Digest {
-    type Error = &'static str;
-
-    fn try_from(mut text: String) -> Result<Self, Self::Error> {
-        if text.len() != 64 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err("sha256 must contain exactly 64 ASCII hex digits");
-        }
-        text.make_ascii_lowercase();
-        Ok(Self(text))
-    }
-}
-
-impl Sha256Digest {
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for Sha256Digest {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl std::fmt::Display for Sha256Digest {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.as_str())
-    }
 }
 
 /// One pinned input file.
@@ -638,9 +603,12 @@ stubsLock = { path = \"g\" } }\n";
         let pinned: Input = toml::from_str(&format!(
             "path = \"client.jar\"\nsha256 = \"{}\"\nbytes = 0\n\
                  upstream = \"https://example.invalid/client.jar\"\n",
-            "AB".repeat(32)
+            "ab".repeat(32)
         ))?;
-        assert_eq!(pinned.sha256.as_deref(), Some("ab".repeat(32).as_str()));
+        assert_eq!(
+            pinned.sha256,
+            Some("ab".repeat(32).try_into().expect("digest"))
+        );
         assert_eq!(pinned.bytes, Some(0));
         assert_eq!(
             pinned.upstream.as_deref(),
@@ -652,10 +620,17 @@ stubsLock = { path = \"g\" } }\n";
 
     #[test]
     fn every_input_pin_refuses_malformed_digest_text() {
-        for text in ["", "0", &"g".repeat(64), &"é".repeat(32), &" ".repeat(64)] {
+        for text in [
+            "",
+            "0",
+            &"AB".repeat(32),
+            &"g".repeat(64),
+            &"é".repeat(32),
+            &" ".repeat(64),
+        ] {
             refused::<Input>(
                 &format!("path = \"input.toml\"\nsha256 = \"{text}\"\n"),
-                "64 ASCII hex digits",
+                "a sha256 digest",
             );
         }
     }

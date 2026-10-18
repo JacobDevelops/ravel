@@ -95,14 +95,8 @@ pub fn read(game_directory: &Path, owner: &ModId) -> Result<Option<ValueDocument
     read_path(&path(game_directory, owner), owner)
 }
 
-/// Reads one owner's values from an explicitly selected document path.
-///
-/// Both pack and player layers use the same parsing and owner validation.
-///
-/// # Errors
-///
-/// Returns the same errors as [`read`].
-pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileError> {
+// Both layers select conventional owner-named paths before parsing.
+fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileError> {
     let text = match fs::read_to_string(file) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),

@@ -266,13 +266,11 @@ pub fn declared_entries() -> Result<Vec<RegistryKey>, ModError> {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::content::{
-        ContentDeclaration, ContentDeclarationError, ContentKind, Registrar, RegistrationRefused,
-        RegistryKey,
+        ContentDeclarationError, ContentKind, Registrar, RegistrationRefused, RegistryKey,
     };
     use ravel_sdk::events::GameEvent;
     use ravel_sdk::generate::GeneratedFile;
-    use ravel_sdk::resources::{RelativePath, ResourceSet};
-    use ravel_sdk::tags::TagSet;
+    use ravel_sdk::resources::RelativePath;
     use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId};
 
     use super::{ContentMod, LANTERN, MODEL, declared_entries};
@@ -416,39 +414,6 @@ mod tests {
     }
 
     #[test]
-    fn the_block_and_the_item_join_the_tag_for_their_own_registry() {
-        let content = ContentMod::new();
-        let declaration = content.declaration().expect("valid declaration");
-        let set = TagSet::merged([&declaration]);
-
-        for kind in [ContentKind::Block, ContentKind::Item] {
-            let tag = ContentMod::lanterns(kind);
-            let members = set.members(&tag);
-            assert_eq!(members.len(), 1, "{tag}");
-            assert_eq!(members[0].kind(), kind);
-            assert_eq!(set.contributors(&tag), [ContentMod::declared_id().clone()]);
-        }
-    }
-
-    #[test]
-    fn a_second_mod_joins_the_same_shared_tag_rather_than_conflicting_with_this_one() {
-        // The convention namespace exists for this. Two mods in `c:lanterns` is
-        // the case a tag is for, and it is not a conflict anywhere.
-        let content = ContentMod::new().declaration().expect("valid declaration");
-        let tag = ContentMod::lanterns(ContentKind::Item);
-
-        let mut other = ContentDeclaration::new("other".parse().expect("a legal mod id"));
-        let theirs = other
-            .entry(ContentKind::Item, "tin_lantern")
-            .expect("a legal entry");
-        other.tag(&tag, &theirs).expect("an item joins an item tag");
-
-        let set = TagSet::merged([&content, &other]);
-        assert_eq!(set.members(&tag).len(), 2);
-        assert_eq!(set.contributors(&tag).len(), 2);
-    }
-
-    #[test]
     fn a_block_cannot_join_the_item_tag() {
         let mut declaration = ContentMod::new().declaration().expect("valid declaration");
         let block = declaration
@@ -529,26 +494,6 @@ mod tests {
             assert_eq!(left.path(), right.path());
             assert_eq!(left.bytes(), right.bytes());
         }
-    }
-
-    #[test]
-    fn this_mods_language_file_loses_to_a_mod_that_loads_after_it() {
-        // A resource is not a claim. A resource pack later in load order taking
-        // `en_us.json` is ordinary, and the mod it shadowed is named.
-        let english = RelativePath::try_from("assets/content/lang/en_us.json".to_owned())
-            .expect("a legal path");
-        let later: ModId = "translation_pack".parse().expect("a legal mod id");
-
-        let set = ResourceSet::layered([
-            (ContentMod::declared_id(), [&english]),
-            (&later, [&english]),
-        ]);
-
-        assert_eq!(set.supplier(&english), Some(&later));
-        assert_eq!(
-            set.overrides()[0].shadowed,
-            [ContentMod::declared_id().clone()]
-        );
     }
 
     #[test]

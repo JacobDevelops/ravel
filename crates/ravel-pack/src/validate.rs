@@ -88,9 +88,9 @@ pub fn validate(
     }
 
     let declarations = declared_content(pack, content)?;
-    registry_closure(pack, &declarations)?;
-    progression_closure(pack, &declarations)?;
-    settings_closure(pack, configurations)?;
+    check_registry_closure(pack, &declarations)?;
+    check_progression_closure(pack, &declarations)?;
+    check_settings_closure(pack, configurations)?;
     let (files, overrides) = written_files(pack, &installed, &declarations)?;
 
     Ok(ValidatedPack { files, overrides })
@@ -159,17 +159,19 @@ fn declared_content<'a>(
 }
 
 /// Refuses a tag member nothing provides.
-fn registry_closure(
+fn check_registry_closure(
     pack: &PackDeclaration,
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
 ) -> Result<(), ClosureError> {
     for declaration in declarations.values() {
         for tag in declaration.tags() {
             for member in declaration.tag_members(tag) {
-                provided(pack, declarations, member).map_err(|kind| ClosureError::TagMember {
-                    tag: tag.clone(),
-                    member: member.clone(),
-                    kind,
+                check_provided(pack, declarations, member).map_err(|kind| {
+                    ClosureError::TagMember {
+                        tag: tag.clone(),
+                        member: member.clone(),
+                        kind,
+                    }
                 })?;
             }
         }
@@ -178,7 +180,7 @@ fn registry_closure(
 }
 
 /// Refuses a dangling prerequisite, an unreachable step, and a gate nothing provides.
-fn progression_closure(
+fn check_progression_closure(
     pack: &PackDeclaration,
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
 ) -> Result<(), ClosureError> {
@@ -194,7 +196,7 @@ fn progression_closure(
     }
     for state in progression.states() {
         if let Some(gate) = state.gate() {
-            provided(pack, declarations, gate).map_err(|kind| ClosureError::Gate {
+            check_provided(pack, declarations, gate).map_err(|kind| ClosureError::Gate {
                 state: state.id().clone(),
                 entry: gate.clone(),
                 kind,
@@ -205,7 +207,7 @@ fn progression_closure(
 }
 
 /// Resolves the pack layer without a player layer.
-fn settings_closure(
+fn check_settings_closure(
     pack: &PackDeclaration,
     configurations: &[ConfigurationDeclaration],
 ) -> Result<(), ClosureError> {
@@ -229,7 +231,7 @@ fn settings_closure(
 }
 
 /// Applies the same entry-availability rule to tag members and progression gates.
-fn provided(
+fn check_provided(
     pack: &PackDeclaration,
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
     key: &RegistryKey,

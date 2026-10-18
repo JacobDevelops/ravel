@@ -759,8 +759,18 @@ mod tests {
     }
 
     #[test]
-    fn an_absolute_or_traversing_path_is_refused_wherever_a_path_appears() {
-        for candidate in ["/etc/passwd", "../escape", "nested/../../escape", ""] {
+    fn a_noncanonical_path_is_refused_wherever_a_path_appears() {
+        for candidate in [
+            "/etc/passwd",
+            "../escape",
+            "nested/../../escape",
+            "",
+            ".",
+            "./nested/file",
+            "nested/./file",
+            "nested//file",
+            "nested/",
+        ] {
             for pointer in ["resources", "configurationSchemas"] {
                 let mut document = minimal();
                 document[pointer] = json!([candidate]);

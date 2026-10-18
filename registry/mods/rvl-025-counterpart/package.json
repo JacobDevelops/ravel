@@ -114,7 +114,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "f27afd4bcab6129057880f59eaac1ecbc9bae6bd310838d9070e64827f2a7324"
+        "sha256": "bb9ba70fdc2a0da016700f86a613f964763b0795b27dbae2e44e930d4a4a8728"
       },
       {
         "path": "src/shapes.rs",

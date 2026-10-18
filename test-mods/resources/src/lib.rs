@@ -3,8 +3,8 @@
 //! Resource and generated-data test mod.
 
 use ravel_sdk::events::GameEvent;
-use ravel_sdk::resources::{RelativePath, ResourceSet};
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
+use ravel_sdk::resources::RelativePath;
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "resources";
@@ -76,19 +76,6 @@ impl ResourcesMod {
     pub const fn reloads(&self) -> usize {
         self.reloads
     }
-
-    /// Layers this mod's declarations under `later`, which takes what it shares.
-    ///
-    /// A mod cannot see the whole set — the resolved order belongs to the loader
-    /// — so this is the two-mod case a unit test can build, and the whole-set
-    /// case belongs to the process tests. It is here rather than in a test so
-    /// the layering a mod author reasons about is the same call the harness
-    /// makes.
-    #[must_use]
-    pub fn layered_under(&self, later: &ModId, paths: &[RelativePath]) -> ResourceSet {
-        let own = self.declared();
-        ResourceSet::layered([(Self::declared_id(), own.iter()), (later, paths.iter())])
-    }
 }
 
 impl Default for ResourcesMod {
@@ -127,14 +114,9 @@ impl Mod for ResourcesMod {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::events::GameEvent;
-    use ravel_sdk::resources::RelativePath;
     use ravel_sdk::{LifecycleState, Mod, ModId};
 
     use super::{DECLARED, MOD_ID, ResourcesMod};
-
-    fn path(text: &str) -> RelativePath {
-        RelativePath::try_from(text.to_owned()).expect("a legal relative path")
-    }
 
     #[test]
     fn the_mod_is_packaged_under_the_identity_it_reports() {
@@ -155,38 +137,6 @@ mod tests {
             assert!(!path.as_str().starts_with('/'), "{text}");
             assert!(!path.as_str().contains(".."), "{text}");
         }
-    }
-
-    #[test]
-    fn a_later_mod_takes_the_shared_path_and_leaves_the_unshared_one() {
-        let resources = ResourcesMod::new();
-        let later: ModId = "skin_mod".parse().expect("a legal mod id");
-        let shared = path("resources/lang/en.json");
-        let own = path("resources/models/warp.json");
-
-        let set = resources.layered_under(&later, std::slice::from_ref(&shared));
-
-        assert_eq!(set.supplier(&shared), Some(&later));
-        assert_eq!(
-            set.supplier(&own),
-            Some(&MOD_ID.parse::<ModId>().expect("legal id"))
-        );
-        assert_eq!(set.overrides().len(), 1);
-        assert_eq!(
-            set.overrides()[0].shadowed,
-            [MOD_ID.parse::<ModId>().expect("legal id")]
-        );
-    }
-
-    #[test]
-    fn a_later_mod_that_shares_nothing_contests_nothing() {
-        let resources = ResourcesMod::new();
-        let later: ModId = "other_mod".parse().expect("a legal mod id");
-
-        let set = resources.layered_under(&later, &[path("resources/lang/fr.json")]);
-
-        assert!(!set.has_overrides());
-        assert_eq!(set.declared().len(), 3);
     }
 
     #[test]

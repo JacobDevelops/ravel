@@ -62,7 +62,7 @@ fn verify_hash_pins(adapter: &Adapter) -> Result<(), GenerateError> {
         let Some(input) = input else { continue };
         if input.sha256.is_none() {
             return Err(GenerateError::Input(format!(
-                "{name} must pin sha256 as 64 ASCII hex digits, not only a byte length"
+                "{name} must pin sha256 as 64 lowercase ASCII hex digits, not only a byte length"
             )));
         }
     }
@@ -191,14 +191,14 @@ mod tests {
             input.bytes = Some(1);
             let error = super::verify_pinned_sources(&adapter)
                 .expect_err("an incomplete hash must be refused");
-            assert!(
-                error
-                    .to_string()
-                    .contains(&format!("{name} must pin sha256")),
-                "{error}"
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "an input is unusable: {name} must pin sha256 as 64 lowercase ASCII hex digits, not only a byte length"
+                )
             );
         }
-        base.inputs.client_jar.sha256 = Some("AB".repeat(32).try_into().expect("complete digest"));
+        base.inputs.client_jar.sha256 = Some("ab".repeat(32).try_into().expect("complete digest"));
         super::verify_pinned_sources(&base).expect("a complete ASCII SHA-256 fixture must pass");
     }
     #[test]
@@ -237,9 +237,9 @@ mod tests {
         server.bytes = Some(100);
         adapter.inputs.server_jar = Some(server.clone());
         let error = super::verify_pinned_sources(&adapter).expect_err("length is not identity");
-        assert!(
-            error.to_string().contains("serverJar must pin sha256"),
-            "{error}"
+        assert_eq!(
+            error.to_string(),
+            "an input is unusable: serverJar must pin sha256 as 64 lowercase ASCII hex digits, not only a byte length"
         );
         server.sha256 = Some("0".repeat(64).try_into().expect("complete digest"));
         server.upstream = Some("http://example.invalid/server.jar".to_owned());

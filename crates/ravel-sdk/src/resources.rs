@@ -1,26 +1,21 @@
 //! Supplied resource files and load-order overrides.
 //!
-//! Declare files in [`crate::content::ContentDeclaration`]. In [`ResourceSet`],
-//! the later supplier wins and overridden suppliers remain recorded.
+//! Declare files in [`crate::content::ContentDeclaration`]. At launch the later
+//! supplier wins, and the loader records which suppliers were overridden.
+//! Launch-wide layering belongs to the loader, not individual mods.
 //!
 //! # Examples
 //!
 //! ```
-//! use ravel_sdk::resources::{RelativePath, ResourceSet};
-//! use ravel_sdk::ModId;
+//! use ravel_sdk::content::{ContentDeclaration, ContentDeclarationError};
+//! use ravel_sdk::resources::RelativePath;
 //!
-//! let base: ModId = "base_mod".parse()?;
-//! let skin: ModId = "skin_mod".parse()?;
-//! let shared = RelativePath::try_from("assets/base_mod/lang/en_us.json".to_owned())
+//! let mut declared = ContentDeclaration::new("example".parse().expect("a legal mod id"));
+//! let path = RelativePath::try_from("assets/example/lang/en_us.json".to_owned())
 //!     .expect("a legal package path");
-//!
-//! // `skin_mod` loads later, so its copy is the one the game reads, and the mod
-//! // it shadowed is named rather than silently replaced.
-//! let set = ResourceSet::layered([(&base, [&shared]), (&skin, [&shared])]);
-//! assert_eq!(set.supplier(&shared), Some(&skin));
-//! assert_eq!(set.overrides()[0].shadowed, [base]);
-//! # Ok::<(), ravel_sdk::ModIdError>(())
+//! declared.resource(path.clone(), br#"{"item.example.plate":"Plate"}"#.to_vec())?;
+//! assert!(declared.generate().file(&path).is_some());
+//! # Ok::<(), ContentDeclarationError>(())
 //! ```
 
 pub use ravel_core::{RelativePath, RelativePathError};
-pub use ravel_data::{Override, Resource, ResourceSet};

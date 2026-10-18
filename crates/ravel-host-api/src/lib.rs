@@ -7,8 +7,7 @@ mod provision;
 mod services;
 
 pub use interception::{
-    AdmittedPoints, InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points,
-    Round,
+    AdmittedPoints, InterceptionDeclaration, Occasion, Outcome, Point, Points, PointsRefused, Round,
 };
 pub use provision::Provided;
 pub use services::{

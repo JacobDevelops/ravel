@@ -21,7 +21,7 @@
 //! default.
 
 use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, ValueError,
+    AccessError, ConfigurationDeclaration, DeclarationError, LayeredConfiguration,
 };
 use ravel_sdk::{JsonValue, json};
 
@@ -137,8 +137,8 @@ fn document() -> JsonValue {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SettingsRefused {
     /// Typed configuration access failed.
-    Value(ValueError),
-    /// The infusion ceiling must be between one and `i32::MAX`.
+    Value(AccessError),
+    /// The infusion ceiling is nonpositive.
     InfusionCeiling,
 }
 
@@ -162,8 +162,8 @@ impl std::error::Error for SettingsRefused {
     }
 }
 
-impl From<ValueError> for SettingsRefused {
-    fn from(error: ValueError) -> Self {
+impl From<AccessError> for SettingsRefused {
+    fn from(error: AccessError) -> Self {
         Self::Value(error)
     }
 }
@@ -199,8 +199,7 @@ impl Settings {
     ///
     /// Returns [`SettingsRefused`] for missing keys, wrong kinds or an unsupported ceiling.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, SettingsRefused> {
-        let infusion_ceiling = i32::try_from(resolved.integer(INFUSION_CEILING)?)
-            .map_err(|_| SettingsRefused::InfusionCeiling)?;
+        let infusion_ceiling = resolved.integer_in::<i32>(INFUSION_CEILING)?;
         if infusion_ceiling < 1 {
             return Err(SettingsRefused::InfusionCeiling);
         }
@@ -216,7 +215,7 @@ impl Settings {
 mod tests {
     use super::*;
     use ravel_sdk::Side;
-    use ravel_sdk::config::ValueDocument;
+    use ravel_sdk::config::{ValueDocument, ValueError};
 
     fn resolved(values: &str) -> LayeredConfiguration {
         let declaration = declaration().expect("the packaged declaration is well formed");
@@ -238,8 +237,11 @@ mod tests {
             .expect("the changed declaration resolves");
         assert_eq!(
             Settings::read(&resolved),
-            Err(SettingsRefused::Value(ValueError::Unknown {
-                key: DEBUG_LOGGING.to_owned()
+            Err(SettingsRefused::Value(AccessError {
+                key: DEBUG_LOGGING.to_owned(),
+                reason: ValueError::Unknown {
+                    key: DEBUG_LOGGING.to_owned()
+                },
             }))
         );
     }
@@ -289,7 +291,10 @@ mod tests {
             if name == DEBUG_LOGGING {
                 assert!(matches!(
                     Settings::read(&resolved),
-                    Err(SettingsRefused::Value(ValueError::AccessKind { .. }))
+                    Err(SettingsRefused::Value(AccessError {
+                        reason: ValueError::AccessKind { .. },
+                        ..
+                    }))
                 ));
             } else {
                 assert!(matches!(
@@ -351,10 +356,15 @@ mod tests {
                 .expect("an unconstrained integer declaration");
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the out-of-range integer resolves");
-            assert_eq!(
-                Settings::read(&resolved),
-                Err(SettingsRefused::InfusionCeiling)
-            );
+            let expected = if value > i64::from(i32::MAX) {
+                SettingsRefused::Value(AccessError {
+                    key: INFUSION_CEILING.to_owned(),
+                    reason: ValueError::TargetRange { target: "i32" },
+                })
+            } else {
+                SettingsRefused::InfusionCeiling
+            };
+            assert_eq!(Settings::read(&resolved), Err(expected));
         }
     }
 

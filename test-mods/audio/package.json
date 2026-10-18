@@ -12,9 +12,9 @@
     "repository": "https://example.invalid/ravel-test-mods",
     "files": [
       { "path": "Cargo.toml", "sha256": "605122b87adef2840bff05b68ead0b67766cfe53aee2a9ba3db858205c337bc0" },
-      { "path": "src/lib.rs", "sha256": "5f92aaf27354973cdd1d5e9ed69f004b19057e2cafa73b8b01c1d52fc16514b7" },
+      { "path": "src/lib.rs", "sha256": "2823f418ebee3ed1d2d53b4b05c5c5c1fcbc44392e54fcc47bbc411558dfd645" },
       { "path": "assets/audio/sounds.json", "sha256": "37adf507d928f913d25333b91751c2341aeef5b6994f34504372e3f32f657182" },
-      { "path": "data/audio/recipes/paper_echo.json", "sha256": "875f3a064a5034642b12d18815822913adefb29db0eecaab8e46992a7689757b" }
+      { "path": "data/audio/recipe/paper_echo.json", "sha256": "875f3a064a5034642b12d18815822913adefb29db0eecaab8e46992a7689757b" }
     ]
   },
   "provenance": { "record": "provenance.json", "sha256": "242f20ba34ca3710f90e0e8283617e183cd639f297bfd4c71ab1ae6cbd10c35d" }

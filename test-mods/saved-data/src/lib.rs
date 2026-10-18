@@ -229,10 +229,11 @@ impl Mod for SavedDataMod {
     /// Returns a [`ModError`] for an invalid key, a non-integer setting, or
     /// a limit this platform cannot represent.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let limit = resolved
-            .integer(WAYPOINT_LIMIT)
-            .map_err(ModError::from_display)?;
-        self.waypoint_limit = Some(usize::try_from(limit).map_err(ModError::from_display)?);
+        self.waypoint_limit = Some(
+            resolved
+                .integer_in::<usize>(WAYPOINT_LIMIT)
+                .map_err(ModError::from_display)?,
+        );
         Ok(())
     }
 

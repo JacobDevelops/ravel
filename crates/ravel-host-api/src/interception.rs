@@ -3,7 +3,8 @@ use std::fmt;
 
 use ravel_core::{ModId, Side, precedence};
 
-/// A published host decision point; world-save dispatch runs on the executing server side.
+/// A published host decision point; every point executes on the world side,
+/// including the integrated-server side of a client process.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Point {
     /// A block is about to be broken.
@@ -268,7 +269,7 @@ impl Points {
     /// # Errors
     ///
     /// Returns unknown ordering owners, contested replacements, or circular ordering.
-    pub fn admit(self) -> Result<AdmittedPoints, InterceptionRefused> {
+    pub fn admit(self) -> Result<AdmittedPoints, PointsRefused> {
         self.check_owners()?;
         let mut ordered = BTreeMap::new();
         for point in Point::ALL {
@@ -277,7 +278,7 @@ impl Points {
         Ok(AdmittedPoints { ordered })
     }
 
-    fn check_owners(&self) -> Result<(), InterceptionRefused> {
+    fn check_owners(&self) -> Result<(), PointsRefused> {
         let answering: BTreeSet<_> = self.answers.iter().map(|answer| &answer.owner).collect();
         let owners: BTreeSet<_> = self
             .after
@@ -295,13 +296,13 @@ impl Points {
             .filter(|(earlier, later)| owners.contains(earlier) || owners.contains(later))
             .map(|(_, later)| later)
             .collect();
-        Err(InterceptionRefused::UnknownOwners {
+        Err(PointsRefused::UnknownOwners {
             owners: owners.into_iter().cloned().collect(),
             claimants: claimants.into_iter().cloned().collect(),
         })
     }
 
-    fn order(&self, point: Point) -> Result<Vec<ModId>, InterceptionRefused> {
+    fn order(&self, point: Point) -> Result<Vec<ModId>, PointsRefused> {
         let claimants: Vec<ModId> = self
             .answers
             .iter()
@@ -309,11 +310,11 @@ impl Points {
             .map(|answer| answer.owner.clone())
             .collect();
         if claimants.len() > 1 {
-            return Err(InterceptionRefused::ContestedPoint { point, claimants });
+            return Err(PointsRefused::ContestedPoint { point, claimants });
         }
         let owners = self.answers.iter().filter(|answer| answer.point == point);
         precedence(owners.map(|answer| answer.owner.clone()), &self.after).map_err(|cycle| {
-            InterceptionRefused::Circular {
+            PointsRefused::Circular {
                 point,
                 claimants: self
                     .answers
@@ -436,7 +437,7 @@ impl Round {
 
 /// Why a declared set of interceptions cannot be asked.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InterceptionRefused {
+pub enum PointsRefused {
     /// An ordering endpoint answers no published point.
     UnknownOwners {
         /// Unknown endpoints, in name order.
@@ -460,7 +461,7 @@ pub enum InterceptionRefused {
     },
 }
 
-impl InterceptionRefused {
+impl PointsRefused {
     /// Returns the published point the refusal is about, if it concerns one point.
     #[must_use]
     pub const fn point(&self) -> Option<Point> {
@@ -481,7 +482,7 @@ impl InterceptionRefused {
     }
 }
 
-impl fmt::Display for InterceptionRefused {
+impl fmt::Display for PointsRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownOwners { owners, .. } => write!(
@@ -510,13 +511,13 @@ impl fmt::Display for InterceptionRefused {
     }
 }
 
-impl std::error::Error for InterceptionRefused {}
+impl std::error::Error for PointsRefused {}
 
 #[cfg(test)]
 mod tests {
     use ravel_core::{ModId, Side};
 
-    use super::{InterceptionRefused, Occasion, Outcome, Point, Points, Round};
+    use super::{Occasion, Outcome, Point, Points, PointsRefused, Round};
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a legal mod id")
@@ -553,7 +554,7 @@ mod tests {
             assert_eq!(refused.claimants(), std::slice::from_ref(&later));
             assert_eq!(
                 refused,
-                InterceptionRefused::UnknownOwners {
+                PointsRefused::UnknownOwners {
                     owners: expected,
                     claimants: vec![later.clone()],
                 }
@@ -833,7 +834,7 @@ mod tests {
         points.replace_at(&id("probe"), Point::WorldIsSaved);
         assert!(matches!(
             points.admit(),
-            Err(InterceptionRefused::ContestedPoint { .. })
+            Err(PointsRefused::ContestedPoint { .. })
         ));
     }
 

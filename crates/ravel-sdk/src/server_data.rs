@@ -1,42 +1,26 @@
-//! Server-data declarations with derived paths and duplicate-file detection.
+//! Server-data files declared through [`crate::content::ContentDeclaration`].
 //!
-//! Supply version-specific entry bodies as bytes. Ravel derives paths from
-//! their kind and name without interpreting the bodies.
+//! The declaration derives canonical paths for recipes, loot tables, advancements,
+//! and functions. Return it from [`crate::Mod::content_declaration`] so the loader
+//! includes those bytes in the world's data pack alongside other supplied resources.
 //!
 //! # Examples
 //!
 //! ```
-//! use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
-//! use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+//! use ravel_sdk::content::{ContentDeclaration, ContentDeclarationError};
+//! use ravel_sdk::server_data::ServerDataKind;
 //!
-//! struct Example;
-//!
-//! #[declare_mod(id = "example")]
-//! impl Mod for Example {
-//!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-//!         let _ = state;
-//!         Ok(())
-//!     }
-//! }
-//!
-//! let mut declared = ServerDataDeclaration::new(Example::declared_id().clone());
-//!
-//! // The path is the declaration's answer, not the author's guess.
-//! let plate = declared.crafting("plate_from_ingot", br#"{"result": "example:plate"}"#)?;
-//! assert_eq!(plate.path().as_str(), "data/example/recipe/plate_from_ingot.json");
-//!
-//! // One name under another kind is another entry.
-//! declared.entry(ServerDataKind::Loot, "plate_from_ingot", b"{}")?;
-//! // The same name under one kind is the second claim the barrier refuses.
-//! assert!(declared.crafting("plate_from_ingot", b"{}").is_err());
-//!
-//! // Generating twice produces the same bytes, not an equal-looking value.
+//! let mut declared = ContentDeclaration::new("example".parse().expect("a legal mod id"));
+//! let plate = declared.server_entry(
+//!     ServerDataKind::Crafting,
+//!     "plate_from_ingot",
+//!     br#"{"result": "example:plate"}"#,
+//! )?;
+//! assert_eq!(plate.as_str(), "data/example/recipe/plate_from_ingot.json");
 //! let generated = declared.generate();
-//! assert_eq!(generated.files().count(), 2);
-//! assert_eq!(declared.generate(), generated);
-//! # Ok::<(), ravel_sdk::server_data::ServerDataError>(())
+//! assert!(generated.file(&plate).is_some());
+//! assert!(declared.server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}").is_err());
+//! # Ok::<(), ContentDeclarationError>(())
 //! ```
 
-pub use ravel_data::{
-    GeneratedServerData, ServerDataDeclaration, ServerDataEntry, ServerDataError, ServerDataKind,
-};
+pub use ravel_data::ServerDataKind;

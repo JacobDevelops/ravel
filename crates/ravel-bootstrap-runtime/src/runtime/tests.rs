@@ -690,7 +690,7 @@ fn integrated_commands_run_a_server_gated_fixture_on_a_client_distribution() {
     };
     let mut machine = LifecycleMachine::new(Side::Client, vec![entry]).expect("one mod");
     let mut mods = vec![host];
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
         &environment(),
     )
@@ -732,7 +732,7 @@ fn integrated_commands_refuse_a_client_only_owner() {
     };
     let mut machine = LifecycleMachine::new(Side::Client, vec![entry]).expect("one mod");
     let mut mods = vec![host];
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete set"),
         &environment(),
     )

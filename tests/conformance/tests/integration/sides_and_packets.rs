@@ -70,7 +70,7 @@ fn started(side: Side, client_sides: &[Side]) -> (LifecycleMachine, WorkLog) {
         ],
     )
     .expect("a legal side-specific lifecycle");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods)
             .expect("every active member has a mod value"),
         &environment(),
@@ -86,7 +86,7 @@ fn running(
     mods: &mut [&mut dyn Mod],
 ) -> LifecycleMachine {
     let mut machine = LifecycleMachine::new(side, entries).expect("a legal lifecycle plan");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &environment(),
     )
@@ -305,7 +305,7 @@ fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
         })
         .collect();
     let mut machine = LifecycleMachine::new(side, entries).expect("a legal admitted lifecycle");
-    ravel_loader::drive_loaded(
+    ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods)
             .expect("every active member has a mod value"),
         &environment(),

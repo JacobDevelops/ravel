@@ -2,14 +2,15 @@ use std::fmt;
 
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_host_api::{
-    AdmittedPoints, HostError, InterceptionDeclaration, InterceptionRefused, Mod, Occasion, Point,
-    Points, Round,
+    AdmittedPoints, HostError, InterceptionDeclaration, Mod, Occasion, Point, Points,
+    PointsRefused, Round,
 };
 
 use crate::loaded::LoadedMods;
 
 /// Collects and admits interception declarations once, before world access.
 ///
+/// Only owners enabled on the executing world side declare interception points.
 /// Optional declaration failures and conflicts remove their owners and retry admission.
 /// All claimants of a conflict receive attribution, including required owners.
 ///
@@ -20,7 +21,7 @@ pub fn open_interceptions<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<AdmittedPoints, InterceptRefused> {
-    let declarations = declarations(loaded, environment)?;
+    let declarations = collect_declarations(loaded, environment)?;
     let (machine, _) = loaded.parts();
     loop {
         let mut points = Points::default();
@@ -48,7 +49,7 @@ pub fn open_interceptions<H: std::ops::DerefMut<Target: Mod>>(
     }
 }
 
-fn declarations<H: std::ops::DerefMut<Target: Mod>>(
+fn collect_declarations<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
     environment: &FailureEnvironment,
 ) -> Result<Vec<InterceptionDeclaration>, InterceptRefused> {
@@ -56,7 +57,9 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
     ensure_active(machine)?;
     let eligible: Vec<_> = machine
         .eligible()
-        .filter(|(_, state)| crate::executes_mod_code(*state))
+        .filter(|(entry, state)| {
+            entry.sides.loads_on(machine.side().world_side()) && crate::executes_mod_code(*state)
+        })
         .map(|(entry, state)| (entry.mod_id.clone(), state))
         .collect();
     let mut declarations = Vec::with_capacity(eligible.len());
@@ -76,7 +79,7 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
                 mod_id: mod_id.clone(),
                 owner: declaration.owner().clone(),
             };
-            crate::lifecycle::isolate_foreign(
+            crate::lifecycle::isolate_loader_refusal(
                 machine,
                 environment,
                 &mod_id,
@@ -93,6 +96,7 @@ fn declarations<H: std::ops::DerefMut<Target: Mod>>(
 /// Asks currently eligible owners from a previously admitted point set.
 ///
 /// Callback failures are recorded before returning the round; declarations are not recalled.
+/// Every world point uses the world-executing side, including integrated worlds on clients.
 ///
 /// # Errors
 ///
@@ -105,11 +109,7 @@ pub fn intercept<H: std::ops::DerefMut<Target: Mod>>(
 ) -> Result<Round, InterceptRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
-    let side = if point == Point::WorldIsSaved {
-        crate::lifecycle::world_side(machine)
-    } else {
-        machine.side()
-    };
+    let side = machine.side().world_side();
     let states: std::collections::BTreeMap<_, _> = machine
         .tracked_entries()
         .filter(|(entry, state)| entry.sides.loads_on(side) && crate::executes_mod_code(*state))
@@ -176,7 +176,7 @@ pub enum InterceptRefused {
         owner: ModId,
     },
     /// The declared set cannot be asked.
-    Refused(InterceptionRefused),
+    Refused(PointsRefused),
 }
 
 impl InterceptRefused {
@@ -248,8 +248,7 @@ impl StructuredFailure for InterceptRefused {
 mod tests {
     use ravel_core::{LifecycleState, ModId, Side, StructuredFailure};
     use ravel_host_api::{
-        HostError, InterceptionDeclaration, InterceptionRefused, Mod, ModError, Occasion, Outcome,
-        Point,
+        HostError, InterceptionDeclaration, Mod, ModError, Occasion, Outcome, Point, PointsRefused,
     };
 
     use super::InterceptRefused;
@@ -284,6 +283,7 @@ mod tests {
         id: ModId,
         point: Point,
         answer: Outcome,
+        replaces: bool,
         after: Option<ModId>,
         owner_override: Option<ModId>,
         fails: bool,
@@ -300,6 +300,7 @@ mod tests {
                 point,
                 answer,
                 after: None,
+                replaces: false,
                 owner_override: None,
                 fails: false,
                 refuses_declaration: false,
@@ -345,7 +346,11 @@ mod tests {
                 .clone()
                 .unwrap_or_else(|| self.id.clone());
             let mut declared = InterceptionDeclaration::new(owner);
-            declared.answer_at(self.point);
+            if self.replaces {
+                declared.replace_at(self.point);
+            } else {
+                declared.answer_at(self.point);
+            }
             if let Some(earlier) = &self.after {
                 declared.after(earlier);
             }
@@ -461,7 +466,7 @@ mod tests {
             if requirement == crate::Requirement::Required {
                 assert_eq!(
                     admitted.expect_err("required invalid owner refuses admission"),
-                    InterceptRefused::Refused(InterceptionRefused::UnknownOwners {
+                    InterceptRefused::Refused(PointsRefused::UnknownOwners {
                         owners: vec![id("missing")],
                         claimants: vec![id(GUARD)],
                     })
@@ -487,27 +492,65 @@ mod tests {
     }
 
     #[test]
-    fn client_world_save_asks_only_owners_enabled_on_the_integrated_side() {
-        let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse);
-        let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed);
-        let mut machine = LifecycleMachine::new(
-            Side::Client,
-            vec![
-                entry(GUARD, &[Side::Client]),
-                entry(LEDGER, &[Side::Client, Side::IntegratedServer]),
-            ],
-        )
-        .expect("client plan");
-        advance_through(&mut machine, LifecycleState::Running);
-        let round = intercept(
-            &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
-                .expect("paired owners"),
-            Point::WorldIsSaved,
-        )
-        .expect("integrated round");
-        assert_eq!(round.asked(), [id(LEDGER)]);
-        assert_eq!(ledger.seen[0].side(), Side::IntegratedServer);
-        assert_eq!(guard.seen, []);
+    fn client_world_points_ask_only_owners_enabled_on_the_integrated_side() {
+        for point in Point::ALL {
+            let mut guard = Answering::new(GUARD, point, Outcome::Refuse);
+            let mut ledger = Answering::new(LEDGER, point, Outcome::Proceed);
+            let mut machine = LifecycleMachine::new(
+                Side::Client,
+                vec![
+                    entry(GUARD, &[Side::Client]),
+                    entry(LEDGER, &[Side::Client, Side::IntegratedServer]),
+                ],
+            )
+            .expect("client plan");
+            advance_through(&mut machine, LifecycleState::Running);
+            let round = intercept(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
+                    .expect("paired owners"),
+                point,
+            )
+            .expect("integrated round");
+            assert_eq!(round.asked(), [id(LEDGER)]);
+            assert_eq!(ledger.seen[0].side(), Side::IntegratedServer);
+            assert_eq!(guard.seen, []);
+            assert_eq!(guard.declaration_calls.get(), 0);
+            assert_eq!(ledger.declaration_calls.get(), 1);
+        }
+    }
+
+    #[test]
+    fn client_only_replacements_never_contest_world_side_replacements() {
+        for point in Point::ALL {
+            let mut client = Answering::new(GUARD, point, Outcome::Refuse);
+            client.replaces = true;
+            let mut server = Answering::new(LEDGER, point, Outcome::Proceed);
+            server.replaces = true;
+            let mut machine = LifecycleMachine::new(
+                Side::Client,
+                vec![
+                    entry(GUARD, &[Side::Client]),
+                    entry(LEDGER, &[Side::Client, Side::IntegratedServer]),
+                ],
+            )
+            .expect("client plan");
+            advance_through(&mut machine, LifecycleState::Running);
+            let round = intercept(
+                &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut client, &mut server])
+                    .expect("paired owners"),
+                point,
+            )
+            .expect("unreachable replacement cannot contest the world-side owner");
+            assert_eq!(round.outcome(), Outcome::Proceed);
+            assert_eq!(round.asked(), [id(LEDGER)]);
+            assert_eq!(server.seen, [Occasion::at(point, Side::IntegratedServer)]);
+            assert_eq!(client.declaration_calls.get(), 0);
+            assert_eq!(server.declaration_calls.get(), 1);
+            assert_eq!(client.seen, Vec::<Occasion>::new());
+            for owner in [GUARD, LEDGER] {
+                assert_eq!(machine.state(&id(owner)), Ok(LifecycleState::Running));
+            }
+        }
     }
 
     #[test]
@@ -853,7 +896,7 @@ mod tests {
         assert!(
             matches!(
                 refused,
-                InterceptRefused::Refused(InterceptionRefused::ContestedPoint { .. })
+                InterceptRefused::Refused(PointsRefused::ContestedPoint { .. })
             ),
             "{refused:?}"
         );
@@ -981,8 +1024,7 @@ mod tests {
                 &crate::tests::environment(),
             )
             .expect_err("a required cycle owner prevents admission");
-            let InterceptRefused::Refused(InterceptionRefused::Circular { point, claimants }) =
-                refused
+            let InterceptRefused::Refused(PointsRefused::Circular { point, claimants }) = refused
             else {
                 panic!("expected a typed circular refusal, got {refused:?}");
             };
@@ -1048,7 +1090,7 @@ mod tests {
 
     #[test]
     fn point_set_refusals_do_not_identify_a_single_failing_owner() {
-        let refused = InterceptRefused::Refused(InterceptionRefused::ContestedPoint {
+        let refused = InterceptRefused::Refused(PointsRefused::ContestedPoint {
             point: Point::WorldIsSaved,
             claimants: vec![id(GUARD), id(LEDGER)],
         });

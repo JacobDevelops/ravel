@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use ravel_sdk::config::{LayeredConfiguration, ValueError};
+use ravel_sdk::config::{AccessError, LayeredConfiguration};
 
 use super::Document;
 
@@ -119,7 +119,7 @@ pub fn parse_colour(text: &str) -> Result<u32, ColourRefused> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColourRefused {
     /// The setting is absent or has the wrong kind.
-    Value(ValueError),
+    Value(AccessError),
     /// The setting is not six hexadecimal digits.
     NotHexadecimal {
         /// What the document held.
@@ -219,8 +219,11 @@ mod tests {
 
     #[test]
     fn colour_refusals_preserve_configuration_sources_only() {
-        let missing = ColourRefused::Value(ValueError::Unknown {
+        let missing = ColourRefused::Value(AccessError {
             key: COLOURS[0].key(),
+            reason: ravel_sdk::config::ValueError::Unknown {
+                key: COLOURS[0].key(),
+            },
         });
         assert!(std::error::Error::source(&missing).is_some());
         let malformed = parse_colour("zzzzzz").expect_err("not hexadecimal");

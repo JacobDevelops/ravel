@@ -492,11 +492,12 @@ impl Mod for WaystoneLedger {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when a declared key resolves to something
-    /// that is not the shape this mod declared for it.
+    /// Returns [`ModError::Refused`] when a declared key has the wrong shape or
+    /// its capacity cannot be represented on this platform.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let capacity = resolved.integer(CAPACITY).map_err(ModError::from_display)?;
-        self.capacity = usize::try_from(capacity).map_err(ModError::from_display)?;
+        self.capacity = resolved
+            .integer_in::<usize>(CAPACITY)
+            .map_err(ModError::from_display)?;
 
         self.overwrite = resolved
             .boolean(OVERWRITE)
@@ -615,7 +616,6 @@ mod tests {
     use ravel_sdk::resources::RelativePath;
     use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
     use ravel_sdk::sides::Side;
-    use ravel_sdk::tags::TagSet;
     use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, ModId, json};
 
     /// A registrar that accepts every claim, standing in for the loader's table.
@@ -780,10 +780,9 @@ mod tests {
     #[test]
     fn the_block_and_the_item_join_the_shared_tag_for_their_own_registry() {
         let declaration = WaystoneLedger::declaration().expect("valid declaration");
-        let set = TagSet::merged([&declaration]);
         for kind in [ContentKind::Block, ContentKind::Item] {
             let tag = WaystoneLedger::waystones_tag(kind);
-            let members = set.members(&tag);
+            let members = declaration.tag_members(&tag);
             assert_eq!(members.len(), 1, "{tag}");
             assert_eq!(members[0].kind(), kind);
         }

@@ -1,13 +1,14 @@
 //! Tag memberships shared by multiple mods.
 //!
-//! Declare memberships in [`crate::content::ContentDeclaration`]; [`TagSet`]
-//! merges contributions without exclusive ownership or registry claims.
+//! Declare memberships in [`crate::content::ContentDeclaration`]. At launch the
+//! loader merges contributions without exclusive ownership or registry claims.
+//! Launch-wide merging belongs to the loader, not individual mods.
 //!
 //! # Examples
 //!
 //! ```
 //! use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind};
-//! use ravel_sdk::tags::{TagId, TagSet};
+//! use ravel_sdk::tags::TagId;
 //! use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 //!
 //! struct Example;
@@ -42,11 +43,9 @@
 //!     .expect("a legal, undeclared entry");
 //! assert!(declaration.tag(&ingots, &block).is_err());
 //!
-//! // Alone, a mod is the only contributor; with others, the members merge.
-//! let set = TagSet::merged([&declaration]);
-//! assert_eq!(set.members(&ingots), [copper]);
-//! assert_eq!(set.contributors(&ingots), [Example::declared_id().clone()]);
+//! // The mod declares its own members; the loader merges other mods' contributions.
+//! assert_eq!(declaration.tag_members(&ingots), [copper]);
 //! # Ok::<(), ravel_sdk::ModIdError>(())
 //! ```
 
-pub use ravel_data::{TagError, TagId, TagSet};
+pub use ravel_data::{TagError, TagId};

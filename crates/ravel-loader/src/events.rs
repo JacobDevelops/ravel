@@ -59,14 +59,6 @@ impl Delivery {
 }
 
 impl LifecycleMachine {
-    /// Returns side-compatible recipients, excluding failed optional mods, in resolved order.
-    #[must_use]
-    pub fn audience(&self, event: GameEvent) -> Vec<ModId> {
-        self.audience_entries(event, self.side())
-            .map(|(entry, _)| entry.mod_id.clone())
-            .collect()
-    }
-
     fn audience_entries(
         &self,
         event: GameEvent,
@@ -87,6 +79,7 @@ impl LifecycleMachine {
 /// `side` is the executing side, including integrated-server work in a client process.
 /// Each callback's cost is attributed to `profiler`.
 /// Mod failures stop delivery and are returned in [`Delivery::failure`].
+/// Events that cannot happen on the executing side complete with no recipients.
 ///
 /// # Errors
 ///
@@ -106,7 +99,7 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
     let running = machine.side();
-    if side != running && !(running == Side::Client && side == Side::IntegratedServer) {
+    if side != running && side != running.world_side() {
         return Err(DispatchRefused::EventForeignSide {
             claimed: side,
             running,
@@ -160,7 +153,7 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
 ///
 /// Returns [`DispatchRefused::Halted`] for a latched halt or a required, side-loaded
 /// mod that failed before the world was modified.
-pub fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
+pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
     active_blocker(machine).map_or(Ok(()), |mod_id| {
         Err(DispatchRefused::Halted { by: mod_id.clone() })
     })

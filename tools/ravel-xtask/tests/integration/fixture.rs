@@ -22,6 +22,78 @@ fn pinned_atm10_tts_descriptor_records_the_exact_reference_contract() {
 }
 
 #[test]
+fn sevtech_archive_accounts_for_references_and_bundled_jars_separately() {
+    let root = temporary_root("sevtech-accounting");
+    let pinned = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/descriptors/sevtech-ages-3.2.3.json");
+    let descriptor = load_fixture_descriptor(&pinned).expect("SevTech descriptor should load");
+    assert_eq!(
+        descriptor.source.sha256,
+        "f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8"
+    );
+    assert_eq!(descriptor.manifest.expected_reference_count, 254);
+    assert_eq!(descriptor.manifest.minecraft, "1.12.2");
+    assert_eq!(descriptor.manifest.mod_loader, "forge-14.23.5.2860");
+    let files: Vec<_> = (1..=254)
+        .map(|id| serde_json::json!({"projectID": id, "fileID": id, "required": true}))
+        .collect();
+    let manifest = serde_json::json!({
+        "minecraft": {"version": "1.12.2",
+            "modLoaders": [{"id": "forge-14.23.5.2860", "primary": true}]},
+        "manifestType": "minecraftModpack", "manifestVersion": 1,
+        "name": descriptor.manifest.name, "version": descriptor.manifest.version,
+        "author": descriptor.manifest.author, "files": files, "overrides": "overrides"
+    });
+    let manifest_path = root.join("manifest.json");
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec(&manifest).expect("manifest should serialize"),
+    )
+    .expect("manifest should be writable");
+    let mods = root.join("overrides/mods");
+    fs::create_dir_all(mods.join("nested")).expect("override directories should be creatable");
+    for id in 0..5 {
+        fs::write(
+            mods.join(format!("bundled-{id}.jar")),
+            b"synthetic jar input",
+        )
+        .expect("jar input should be writable");
+    }
+    fs::write(mods.join("nested/not-top-level.jar"), b"nested")
+        .expect("nested file should be writable");
+    fs::write(mods.join("notes.txt"), b"not a jar").expect("notes should be writable");
+    let status = Command::new("zip")
+        .args(["-qr", "fixture.zip", "manifest.json", "overrides"])
+        .current_dir(&root)
+        .status()
+        .expect("zip should execute");
+    assert!(status.success());
+    let archive = root.join("fixture.zip");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(pinned).expect("descriptor should be readable"))
+            .expect("descriptor should parse");
+    value["source"]["sha256"] = sha256_file(&archive).expect("archive should hash").into();
+    value["manifest"]["sha256"] = sha256_file(&manifest_path)
+        .expect("manifest should hash")
+        .into();
+    let synthetic = root.join("descriptor.json");
+    fs::write(
+        &synthetic,
+        serde_json::to_vec(&value).expect("descriptor should serialize"),
+    )
+    .expect("descriptor should be writable");
+    let verified = verify_fixture_archive(&synthetic, &archive).expect("archive should verify");
+    assert_eq!(verified.reference_count, 254);
+    assert_eq!(verified.override_jar_count, 5);
+    fs::write(&archive, b"tampered override content").expect("archive should be writable");
+    assert!(matches!(
+        verify_fixture_archive(&synthetic, &archive),
+        Err(FixtureError::HashMismatch { .. })
+    ));
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn altered_archive_is_rejected_before_manifest_admission() {
     let root = temporary_root("altered");
     let archive = root.join("fixture.zip");
@@ -162,7 +234,7 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
 }
 
 fn exercise_fixture_cli_paths(root: &Path, synthetic_descriptor: &Path, archive: &Path) {
-    let default_descriptor = root.join("tests/fixtures/descriptors/atm10-tts-2.0.2.json");
+    let default_descriptor = root.join("tests/fixtures/descriptors/sevtech-ages-3.2.3.json");
     fs::create_dir_all(
         default_descriptor
             .parent()
@@ -172,7 +244,7 @@ fn exercise_fixture_cli_paths(root: &Path, synthetic_descriptor: &Path, archive:
     fs::copy(synthetic_descriptor, &default_descriptor)
         .expect("default descriptor should be copyable");
     let default_archive =
-        root.join("tests/fixtures/local/atm10-tts-2.0.2/source/atm10-tts-2.0.2.zip");
+        root.join("tests/fixtures/local/sevtech-ages-3.2.3/source/SevTech_Ages_3.2.3.zip");
     fs::create_dir_all(
         default_archive
             .parent()

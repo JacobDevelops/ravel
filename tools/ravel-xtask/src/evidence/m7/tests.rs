@@ -300,6 +300,150 @@ fn m7_audits_the_total_the_inventory_verified_or_a_correction_that_names_it() {
 }
 
 #[test]
+fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_behavior() {
+    let mut decimal: serde_json::Value =
+        serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
+    decimal["entries"]["total"] = serde_json::json!(324.0);
+    assert!((M7_ARITHMETIC[3].0)(&decimal));
+    let uncorrected: serde_json::Value =
+        serde_json::from_str(&library_summary(235, "null")).expect("summary should parse");
+    assert!(!(M7_ARITHMETIC[3].0)(&uncorrected));
+    let root = m7_root(
+        "m7-legacy-inventory",
+        &library_summary(235, "null"),
+        &balanced_m7_manifest(),
+    );
+    fs::write(
+        root.join("evidence/m5/inventory-summary.json"),
+        r#"{"artifacts":{"total":235}}"#,
+    )
+    .expect("inventory should be writable");
+    let mut violations = Vec::new();
+    verify_record_arithmetic(
+        &root,
+        "evidence/m7/library-summary.json",
+        M7_ARITHMETIC,
+        &mut violations,
+    );
+    verify_m7_verified_fixture_total(&root, &mut violations);
+    assert!(
+        !violations.is_empty(),
+        "235 without a correction must not close v1"
+    );
+    fs::write(
+        root.join("evidence/m7/library-summary.json"),
+        serde_json::to_vec(&decimal).expect("summary should serialize"),
+    )
+    .expect("summary should be writable");
+    fs::remove_file(root.join("evidence/m5/inventory-summary.json"))
+        .expect("inventory should be removable");
+    violations.clear();
+    verify_m7_verified_fixture_total(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+fn selected_workload_root(label: &str) -> (PathBuf, serde_json::Value) {
+    let root = m7_root(
+        label,
+        &library_summary(259, "null"),
+        &balanced_m7_manifest(),
+    );
+    let fixture = serde_json::json!({
+        "id": "sevtech-ages-3.2.3",
+        "artifactSet": {"count": 259, "sha256": "a".repeat(64)}
+    });
+    let directory = root.join("registry/inventory/sevtech-ages-3.2.3");
+    fs::create_dir_all(&directory).expect("inventory directory should be creatable");
+    fs::write(
+        directory.join("graph.json"),
+        serde_json::to_vec(&serde_json::json!({"fixture": fixture}))
+            .expect("inventory should serialize"),
+    )
+    .expect("inventory should be writable");
+    let path = root.join("evidence/m7/library-summary.json");
+    let mut record = read_json(&path).expect("summary should parse");
+    record["fixture"] = fixture;
+    record["protocol"] = "m7-library-v2".into();
+    (root, record)
+}
+
+#[test]
+fn selected_workload_uses_its_jar_inventory_not_historical_reference_totals() {
+    let (root, mut record) = selected_workload_root("m7-sevtech-total");
+    let path = root.join("evidence/m7/library-summary.json");
+    for (label, total, digest, accepted) in [
+        ("selected", 259, "a", true),
+        ("reference-only", 254, "a", false),
+        ("historical", 324, "a", false),
+        ("tampered-binding", 259, "b", false),
+    ] {
+        record["entries"]["total"] = total.into();
+        record["fixture"]["artifactSet"]["sha256"] = digest.repeat(64).into();
+        fs::write(
+            &path,
+            serde_json::to_vec(&record).expect("summary should serialize"),
+        )
+        .expect("summary should be writable");
+        let mut violations = Vec::new();
+        verify_m7_verified_fixture_total(&root, &mut violations);
+        assert_eq!(violations.is_empty(), accepted, "{label}: {violations:?}");
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn selected_workload_requires_a_binding_and_matching_protocol() {
+    let (root, record) = selected_workload_root("m7-sevtech-protocol");
+    let path = root.join("evidence/m7/library-summary.json");
+    assert!(super::library_record(&record));
+    assert!((M7_ARITHMETIC[3].0)(&record));
+    fs::write(
+        &path,
+        serde_json::to_vec(&record).expect("summary should serialize"),
+    )
+    .expect("summary should be writable");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&balanced_m7_manifest()).expect("manifest should parse");
+    let mut violations = Vec::new();
+    verify_m7_manifest(&root, &manifest, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|error| error.contains("same protocol")),
+        "{violations:?}"
+    );
+    manifest["benchmarks"]["protocolVersion"] = "m7-library-v2".into();
+    violations.clear();
+    verify_m7_manifest(&root, &manifest, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    let mut fractional = record.clone();
+    fractional["entries"]["total"] = serde_json::json!(259.0);
+    assert!(!super::library_record(&fractional));
+    for (protocol, fixture) in [
+        ("m7-library-v2", serde_json::Value::Null),
+        ("m7-library-v1", record["fixture"].clone()),
+    ] {
+        let mut stripped = record.clone();
+        stripped["protocol"] = protocol.into();
+        stripped["fixture"] = fixture;
+        stripped["correction"] = serde_json::json!({
+            "from": 324, "total": 259, "reason": "binding removed"
+        });
+        assert!(!super::library_record(&stripped));
+        fs::write(
+            &path,
+            serde_json::to_vec(&stripped).expect("summary should serialize"),
+        )
+        .expect("summary should be writable");
+        let mut violations = Vec::new();
+        verify_m7_verified_fixture_total(&root, &mut violations);
+        assert!(!violations.is_empty(), "{protocol}: {violations:?}");
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_complete_m7_record_set_leaves_m7_closure_with_nothing_to_report() {
     let root = m7_root(
         "m7-manifest-balanced",

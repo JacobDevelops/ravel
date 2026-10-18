@@ -87,6 +87,9 @@ pub struct FixtureVerification {
     pub pack_version: String,
     /// Referenced `CurseForge` file count.
     pub reference_count: usize,
+    /// Top-level jars bundled under the publisher's overrides/mods directory.
+    /// References are counted separately; neither count measures loaded containers.
+    pub override_jar_count: usize,
 }
 
 /// Loads and validates a public fixture descriptor.
@@ -172,7 +175,42 @@ pub fn verify_fixture_archive(
         ))
     })?;
 
-    verify_manifest(&descriptor.manifest, &manifest)
+    let mut verified = verify_manifest(&descriptor.manifest, &manifest)?;
+    verified.override_jar_count = count_override_jars(archive_path)?;
+    Ok(verified)
+}
+
+fn count_override_jars(archive: &Path) -> Result<usize, FixtureError> {
+    let output = Command::new("unzip")
+        .arg("-Z1")
+        .arg(archive)
+        .output()
+        .map_err(|error| FixtureError::Archive(format!("cannot execute unzip: {error}")))?;
+    if !output.status.success() {
+        return Err(FixtureError::Archive(format!(
+            "cannot list entries in {}",
+            archive.display()
+        )));
+    }
+    let entries = std::str::from_utf8(&output.stdout)
+        .map_err(|error| FixtureError::Archive(format!("non-UTF-8 archive entries: {error}")))?;
+    let mut jars = HashSet::new();
+    for entry in entries.lines() {
+        let Some(name) = entry.strip_prefix("overrides/mods/") else {
+            continue;
+        };
+        if is_safe_component(name)
+            && Path::new(name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
+            && !jars.insert(name)
+        {
+            return Err(FixtureError::Archive(format!(
+                "duplicate bundled override jar {entry}"
+            )));
+        }
+    }
+    Ok(jars.len())
 }
 
 /// Downloads and verifies the pinned archive under the ignored fixture root.
@@ -420,6 +458,7 @@ fn verify_manifest(
         mod_loader: actual_loader.clone(),
         pack_version: actual.version.clone(),
         reference_count: actual.files.len(),
+        override_jar_count: 0,
     })
 }
 
@@ -507,8 +546,9 @@ struct CurseForgeReference {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::temporary_root;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::process::Command;
 
     use super::{
@@ -714,14 +754,5 @@ mod tests {
                 file_id: 2,
             }],
         }
-    }
-
-    fn temporary_root(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("ravel-xtask-{label}-{}", std::process::id()));
-        if root.exists() {
-            fs::remove_dir_all(&root).expect("stale temporary root should be removable");
-        }
-        fs::create_dir_all(&root).expect("temporary root should be creatable");
-        root
     }
 }

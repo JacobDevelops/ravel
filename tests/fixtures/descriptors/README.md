@@ -26,5 +26,17 @@ Re-pinning means fetching each of those again and replacing the whole set, not
 editing one field. The digests are what make the descriptor checkable, so a value
 that cannot be fetched is left unpinned and reported rather than guessed.
 
-`macos-aarch64` is pinned because the schema requires both platforms. Native Mac
-launch attestations are deferred, so that row is a pin without a launch behind it.
+The launcher-shaped runtime descriptors require both `linux-x86_64` and
+`macos-aarch64`. A platform pin is not a native launch attestation.
+
+`runtime-inputs-1.12.2.json` instead pins Mojang's metadata and client/server
+downloads for a standalone acquisition; it deliberately has no Prism release
+or launcher platform rows. Its publisher baseline remains `jre-legacy`, Java 8.
+The separate `execution` object requests Eclipse Temurin `27.0.0+35`, pinned in
+`mise.toml`; this is an execution target, not evidence of a successful launch.
+
+`sevtech-ages-3.2.3.json` pins Minecraft `1.12.2` and Forge `14.23.5.2860`,
+254 publisher file references and five bundled override jars. These are acquired
+artifacts, not a count of Forge-loaded containers. An empty graph-node loader
+observation means the artifact did not declare a loader, not that the pack is
+vanilla or that Forge has hosted the artifact.

@@ -5,8 +5,9 @@ use std::process::ExitCode;
 
 use ravel_minecraft_generate as generate;
 
-const DEFAULT_DESCRIPTOR: &str = "tests/fixtures/descriptors/atm10-tts-2.0.2.json";
-const DEFAULT_ARCHIVE: &str = "tests/fixtures/local/atm10-tts-2.0.2/source/atm10-tts-2.0.2.zip";
+const DEFAULT_DESCRIPTOR: &str = "tests/fixtures/descriptors/sevtech-ages-3.2.3.json";
+const DEFAULT_ARCHIVE: &str =
+    "tests/fixtures/local/sevtech-ages-3.2.3/source/SevTech_Ages_3.2.3.zip";
 const USAGE: &str = "usage:
   cargo xtask verify scaffold
   cargo xtask verify spikes
@@ -132,8 +133,12 @@ fn reconstruct_fixture(root: &Path, descriptor: &Path) -> Result<(), Box<dyn Err
 fn verify_archive(descriptor: &Path, archive: &Path) -> Result<(), Box<dyn Error>> {
     let verified = ravel_xtask::fixture::verify_fixture_archive(descriptor, archive)?;
     println!(
-        "Verified {} references for Minecraft {} with {}.",
-        verified.reference_count, verified.minecraft, verified.mod_loader
+        "Verified {} publisher references and {} bundled override jars for Minecraft {} with {}; \
+         loaded container count is unknown.",
+        verified.reference_count,
+        verified.override_jar_count,
+        verified.minecraft,
+        verified.mod_loader
     );
     Ok(())
 }

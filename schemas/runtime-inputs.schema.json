@@ -4,7 +4,25 @@
   "title": "Ravel pinned Minecraft and launcher inputs",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "retrievedAt", "minecraft", "prism", "platforms"],
+  "required": ["$schema", "schemaVersion", "retrievedAt", "minecraft"],
+  "oneOf": [
+    {
+      "required": ["prism", "platforms"],
+      "properties": {
+        "minecraft": { "not": { "required": ["downloads"] } }
+      },
+      "not": { "required": ["execution"] }
+    },
+    {
+      "required": ["execution"],
+      "properties": {
+        "minecraft": { "required": ["downloads"] }
+      },
+      "not": {
+        "anyOf": [{ "required": ["prism"] }, { "required": ["platforms"] }]
+      }
+    }
+  ],
   "properties": {
     "$schema": {
       "type": "string"
@@ -15,6 +33,19 @@
     "retrievedAt": {
       "type": "string",
       "format": "date"
+    },
+    "execution": {
+      "description": "Requested execution target, not the publisher Java baseline or a launch attestation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["javaMajorVersion", "vendor", "version", "purpose", "pinSource"],
+      "properties": {
+        "javaMajorVersion": { "type": "integer", "minimum": 1 },
+        "vendor": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "purpose": { "type": "string", "minLength": 1 },
+        "pinSource": { "const": "mise.toml" }
+      }
     },
     "minecraft": {
       "type": "object",
@@ -29,6 +60,15 @@
         "javaMajorVersion"
       ],
       "properties": {
+        "downloads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["client", "server"],
+          "properties": {
+            "client": { "$ref": "#/$defs/gameDownload" },
+            "server": { "$ref": "#/$defs/gameDownload" }
+          }
+        },
         "version": {
           "type": "string",
           "minLength": 1
@@ -136,6 +176,21 @@
     }
   },
   "$defs": {
+    "gameDownload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha1", "sha256", "size"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://piston-data\\.mojang\\.com/v1/objects/[0-9a-f]{40}/(client|server)\\.jar$"
+        },
+        "sha1": { "$ref": "#/$defs/sha1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
     "sha1": {
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"

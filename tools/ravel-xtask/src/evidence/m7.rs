@@ -14,10 +14,40 @@ use crate::evidence::closure::{
 };
 use crate::evidence::manifest::require_manifest_rule;
 
+fn legacy_fixture_total() -> Option<f64> {
+    static TOTAL: std::sync::LazyLock<Option<f64>> = std::sync::LazyLock::new(|| {
+        let descriptor: Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/descriptors/atm10-tts-2.0.2.json"
+        ))
+        .ok()?;
+        number(&descriptor, "/manifest/expectedReferenceCount")
+    });
+    *TOTAL
+}
+
+fn library_protocol(v: &Value) -> bool {
+    match v["protocol"].as_str() {
+        Some("m7-library-v1") => v["fixture"].is_null(),
+        Some("m7-library-v2") => {
+            v["fixture"].is_object()
+                && nonempty(v, "/fixture/id")
+                && v["fixture"]["artifactSet"].is_object()
+                && v["correction"].is_null()
+                && ["total", "accepted", "blocked", "unstarted"]
+                    .iter()
+                    .all(|key| v["entries"][*key].as_u64().is_some())
+                && v["entries"]["total"]
+                    .as_u64()
+                    .is_some_and(|total| total > 0)
+        }
+        _ => false,
+    }
+}
+
 fn library_record(v: &Value) -> bool {
     v["milestone"] == "M7"
         && v["workPackage"] == "M7-W5"
-        && v["protocol"] == "m7-library-v1"
+        && library_protocol(v)
         && v["result"] == "pass"
         && v["entries"].is_object()
         && ["total", "accepted", "blocked", "unstarted"]
@@ -98,14 +128,20 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            number(v, "/entries/total") == Some(324.0)
-                || (v["correction"].is_object()
-                    && number(v, "/correction/total")
-                        .zip(number(v, "/entries/total"))
-                        .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
+            if v["protocol"] == "m7-library-v2" {
+                library_protocol(v)
+            } else {
+                number(v, "/entries/total")
+                    .zip(legacy_fixture_total())
+                    .is_some_and(|(total, expected)| total.total_cmp(&expected).is_eq())
+                    || (v["correction"].is_object()
+                        && number(v, "/correction/total")
+                            .zip(number(v, "/entries/total"))
+                            .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
+            }
         },
-        "M7-W5 audits 324 of 324 or an evidence-corrected total, and a different figure with no \
-         correction beside it is neither",
+        "M7-W5 audits the pinned historical reference total or an explicit correction under v1, \
+         or a positive whole-number total bound to the verified workload inventory under v2",
     ),
     (
         |v| number(v, "/dependencies/unresolved") == Some(0.0),
@@ -277,12 +313,14 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations:
     require_manifest_rule(
         manifest_path,
         |v| {
-            v["benchmarks"]["protocolVersion"] == "m7-library-v1"
-                && array(v, "/benchmarks/results").len() == 1
+            matches!(
+                v["benchmarks"]["protocolVersion"].as_str(),
+                Some("m7-library-v1" | "m7-library-v2")
+            ) && array(v, "/benchmarks/results").len() == 1
                 && v["benchmarks"]["results"][0]["name"] == "library-summary.json"
         },
-        "M7 manifest must record its library summary under the m7-library-v1 protocol, so that \
-         the record carrying every figure is covered by a recomputed digest",
+        "M7 manifest must record its library summary under the m7-library-v1 or m7-library-v2 \
+         protocol, so that the record carrying every figure is covered by a recomputed digest",
         violations,
     );
     require_manifest_rule(
@@ -301,25 +339,47 @@ pub(crate) fn verify_m7_manifest(root: &Path, manifest_path: &Value, violations:
     require_manifest_rule(
         manifest_path,
         |v| !array(v, "/deviations").is_empty() && !array(v, "/risks").is_empty(),
-        "M7 closes a library of 324 counterparts, and an empty finding set satisfies every rule \
+        "M7 closes the selected workload library, and an empty finding set satisfies every rule \
          phrased as a refusal",
         violations,
     );
 
     verify_closure_records(root, "M7", "evidence/m7", M7_RECORDS, violations);
+    if let Ok(record) = read_json(&root.join("evidence/m7/library-summary.json"))
+        && record["protocol"] != manifest_path["benchmarks"]["protocolVersion"]
+    {
+        violations.push("M7 manifest and library summary must use the same protocol".to_owned());
+    }
 }
 
 fn verify_m7_verified_fixture_total(root: &Path, violations: &mut Vec<String>) {
     let record = root.join("evidence/m7/library-summary.json");
-    let inventory = root.join("evidence/m5/inventory-summary.json");
-    if !record.is_file() || !inventory.is_file() {
+    if !record.is_file() {
         return;
     }
-    let (record, inventory) = match (read_json(&record), read_json(&inventory)) {
-        (Ok(record), Ok(inventory)) => (record, inventory),
-        (record, inventory) => {
-            violations.extend(record.err());
-            violations.extend(inventory.err());
+    let record = match read_json(&record) {
+        Ok(record) => record,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    if record["protocol"] == "m7-library-v2" {
+        verify_m7_workload_total(root, &record, violations);
+        return;
+    }
+    if !record["fixture"].is_null() {
+        violations.push("M7 v1 cannot carry a workload fixture binding".to_owned());
+        return;
+    }
+    let inventory = root.join("evidence/m5/inventory-summary.json");
+    if !inventory.is_file() {
+        return;
+    }
+    let inventory = match read_json(&inventory) {
+        Ok(inventory) => inventory,
+        Err(error) => {
+            violations.push(error);
             return;
         }
     };
@@ -348,6 +408,47 @@ fn verify_m7_verified_fixture_total(root: &Path, violations: &mut Vec<String>) {
             "evidence/m7/library-summary.json audits {audited} entries while \
              evidence/m5/inventory-summary.json verified {verified}; M7-W5 audits the verified \
              fixture total or an evidence correction that names the figure it replaced"
+        ));
+    }
+}
+
+fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
+    let Some(id) = record["fixture"]["id"].as_str().filter(|id| {
+        !id.is_empty()
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
+            && !id.starts_with('.')
+    }) else {
+        violations.push("M7 fixture must name a safe workload inventory id".to_owned());
+        return;
+    };
+    let path = root.join(format!("registry/inventory/{id}/graph.json"));
+    let inventory = match read_json(&path) {
+        Ok(inventory) => inventory,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let binding = &record["fixture"];
+    let count = inventory
+        .pointer("/fixture/artifactSet/count")
+        .and_then(Value::as_u64);
+    let digest = inventory
+        .pointer("/fixture/artifactSet/sha256")
+        .and_then(Value::as_str);
+    let valid_digest = digest.is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    });
+    if inventory["fixture"]["id"] != binding["id"]
+        || count.is_none_or(|count| count == 0)
+        || !valid_digest
+        || inventory["fixture"]["artifactSet"] != binding["artifactSet"]
+        || record.pointer("/entries/total").and_then(Value::as_u64) != count
+    {
+        violations.push(format!(
+            "M7 fixture binding and entries.total must match {id}'s verified artifact-set count and digest"
         ));
     }
 }

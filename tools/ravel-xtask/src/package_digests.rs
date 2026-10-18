@@ -313,8 +313,19 @@ mod tests {
 
     impl Drop for Package {
         fn drop(&mut self) {
-            fs::remove_dir_all(&self.directory).expect("remove temporary package");
+            if let Err(error) = fs::remove_dir_all(&self.directory)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                eprintln!("cannot remove temporary package: {error}");
+            }
         }
+    }
+
+    #[test]
+    fn temporary_package_cleanup_tolerates_an_already_removed_directory() {
+        let package = Package::new("already-removed");
+        fs::remove_dir_all(package.path()).expect("temporary package should be removable");
+        drop(package);
     }
 
     const ZEROES: &str = "0000000000000000000000000000000000000000000000000000000000000000";

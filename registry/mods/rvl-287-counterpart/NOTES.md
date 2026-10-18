@@ -115,6 +115,9 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
   `Entry::reload` drains the supply queue with it. A pack that stops shipping a document stops
   supplying it, which is what makes disabling a pack take effect, and the queue cannot grow across
   reloads.
+- **Grid cell-count refusals distinguish shortage from surplus.** A short cell list names its first
+  missing index; a surplus list reports both its declared texture count and addressable area.
+  Parsing validates dimensions and count before decoding textures, including invalid out-of-area cells.
 
 ## Derived rather than reproduced, and why
 
@@ -184,7 +187,7 @@ shape is declarable the package declares it and carries no pretend implementatio
   and the rights record leaves the names surface unresolved, so none is transcribed. Every name here
   is coined: the reload directory (`lookup::DIRECTORY`), the kind key (`lookup::KIND_KEY`), the
   eight kind identifiers (`kinds::BUILT_IN`), the condition discriminator with its eight form words
-  and two key names (`conditions::FORM_WORDS` and the key constants beside it), and the texture slot
+  and two key names (the parser and key constants in `conditions`), and the texture slot
   names with the four render-layer names (`quadrant::Quadrant::declared_name`,
   `slots::ColumnSlot::declared_name`, `slots::PaneEdge::declared_name`, `kinds::Layer`). **A pack
   written for the original does not load against this package**, which is the direct consequence of

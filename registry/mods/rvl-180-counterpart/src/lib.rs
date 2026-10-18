@@ -183,7 +183,7 @@ impl Entry {
     ///
     /// Returns [`ravel_sdk::sides::ClientOnlyError::WrongSide`] on a server side, where there is
     /// no client view because nothing built one.
-    pub fn client_view(&self) -> Result<&ClientState, ravel_sdk::sides::ClientOnlyError> {
+    pub fn client(&self) -> Result<&ClientState, ravel_sdk::sides::ClientOnlyError> {
         self.client.get(self.side)
     }
 
@@ -569,7 +569,7 @@ mod tests {
         assert_eq!(server.take_outgoing().len(), 1);
         assert_eq!(server.outbox().pending(), 0);
         assert!(
-            server.client_view().is_err(),
+            server.client().is_err(),
             "a server holds no client view at all"
         );
 
@@ -583,7 +583,7 @@ mod tests {
             .receive_packet(&delivery)
             .expect("the client reads what it was sent");
         assert_eq!(
-            client.client_view().expect("a client has a view").latest(),
+            client.client().expect("a client has a view").latest(),
             Some(&readout)
         );
     }

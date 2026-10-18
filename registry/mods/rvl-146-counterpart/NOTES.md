@@ -12,6 +12,13 @@ declarable kinds and identifier composition of §4 and the codec shapes of §10.
 already owns — content declaration and the registration barrier, side isolation, saved-data
 ownership, networking contracts — is expressed through Ravel rather than rebuilt.
 
+The recipe API names its operations explicitly: `Search::mark_inputs_changed` records an input
+mutation and `Search::search` performs a search. Channel and registration path refusals expose
+their `ContentIdError` through `std::error::Error::source`; leaf refusals have no source.
+Declined and host-blocked areas are documented below rather than exported as unused spec-only
+arrays. Tests exercise registration output and Ravel's stage API directly instead of keeping
+test-only public kind-mapping and stage-side helpers.
+
 ## What each section became
 
 | Section | Here | Where |
@@ -161,7 +168,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
   buffer read yields, including nothing, so a handler expecting a tag can receive none.
 - **A missing level is not a searched-and-empty recipe list (§6).** The original's no-match path sets
   the stuck flag as if every recipe had been examined, so a block whose level is momentarily absent
-  parks. `Search::run` answers `Outcome::CouldNotSearch` and moves nothing.
+  parks. `Search::search` answers `Outcome::CouldNotSearch` and moves nothing.
 - **The saved memory is read from the document it was written into (§6.1).** The original tests
   presence on the nested document and reads the value from the outer one, so both reads yield an
   empty string, which parses as a well-formed identifier whose lookup misses. Every saved recipe
@@ -238,7 +245,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
 
 ## Declined outright, and why
 
-§11's two, neither stubbed and neither reachable from this package. `DECLINED` names them.
+§11's two, neither stubbed and neither reachable from this package:
 
 - **The reflection kit.** It finds a method or field by trying several candidate names and makes it
   accessible, stripping the final modifier from a static final field on the way. The several-name
@@ -283,7 +290,7 @@ the portable decision logic is implemented and tested.
 
 ## Two shapes worth stating
 
-- **A search state machine cannot be parked by something that did not happen.** `Search::run` returns
+- **A search state machine cannot be parked by something that did not happen.** `Search::search` returns
   `Outcome::CouldNotSearch` before it touches any of the four pieces of state, so the "could not
   search" case is the type's shape rather than a discipline a later edit could forget.
 - **The client's highlights and clock are not built on a server.** They live in a `ClientOnly`, so a

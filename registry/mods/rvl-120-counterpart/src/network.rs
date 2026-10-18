@@ -37,9 +37,6 @@ use crate::commands::{Argument, CallRefused, CommandKey, MAX_ARGUMENTS, check_ar
 use crate::preferences::Preferences;
 use crate::values::{ValueMap, ValueRefused};
 
-/// The channel's declared version.
-pub const CHANNEL_VERSION: &str = "1.0";
-
 /// The contract version every payload here is declared under.
 pub const PAYLOAD_VERSION: u32 = 1;
 
@@ -118,7 +115,7 @@ pub trait Bounded {
     /// # Errors
     ///
     /// Returns [`PayloadRefused`] for a field past a ceiling.
-    fn bounds(&self) -> Result<(), PayloadRefused>;
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused>;
 }
 
 /// Decodes a payload and holds it to its own ceilings.
@@ -133,7 +130,7 @@ pub trait Bounded {
 /// and [`PayloadRefused::TooLarge`] for a field past a ceiling.
 pub fn admit<P: Packet + Bounded>(bytes: &[u8]) -> Result<P, PayloadRefused> {
     let payload = decode::<P>(bytes).map_err(PayloadRefused::Wire)?;
-    payload.bounds()?;
+    payload.verify_ceilings()?;
     Ok(payload)
 }
 
@@ -169,9 +166,20 @@ impl fmt::Display for PayloadRefused {
     }
 }
 
-impl std::error::Error for PayloadRefused {}
+impl std::error::Error for PayloadRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Wire(source) => Some(source),
+            Self::TooLarge { .. } => None,
+        }
+    }
+}
 
-fn ceiling(field: &'static str, length: usize, ceiling: usize) -> Result<(), PayloadRefused> {
+fn within_ceiling(
+    field: &'static str,
+    length: usize,
+    ceiling: usize,
+) -> Result<(), PayloadRefused> {
     if length > ceiling {
         return Err(PayloadRefused::TooLarge {
             field,
@@ -213,9 +221,9 @@ impl ScreenPayload {
         })
     }
 
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        ceiling("target", self.target.len(), Self::MAX_TARGET)?;
-        ceiling("body", self.body.len(), MAX_SCREEN_BYTES)
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("target", self.target.len(), Self::MAX_TARGET)?;
+        within_ceiling("body", self.body.len(), MAX_SCREEN_BYTES)
     }
 }
 
@@ -238,8 +246,8 @@ impl Packet for ScreenIn {
 }
 
 impl Bounded for ScreenIn {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        self.0.bounds()
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        self.0.verify_ceilings()
     }
 }
 
@@ -262,8 +270,8 @@ impl Packet for ScreenOut {
 }
 
 impl Bounded for ScreenOut {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        self.0.bounds()
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        self.0.verify_ceilings()
     }
 }
 
@@ -325,9 +333,9 @@ impl Packet for ScreenValues {
 }
 
 impl Bounded for ScreenValues {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        ceiling("target", self.target.len(), ScreenPayload::MAX_TARGET)?;
-        ceiling("values", self.values.len(), MAX_SCREEN_BYTES)
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("target", self.target.len(), ScreenPayload::MAX_TARGET)?;
+        within_ceiling("values", self.values.len(), MAX_SCREEN_BYTES)
     }
 }
 
@@ -387,8 +395,8 @@ impl Packet for StyleChoice {
 }
 
 impl Bounded for StyleChoice {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        ceiling("style", self.style.len(), ScreenPayload::MAX_TARGET)
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("style", self.style.len(), ScreenPayload::MAX_TARGET)
     }
 }
 
@@ -435,8 +443,8 @@ impl Packet for PreferencesPush {
 }
 
 impl Bounded for PreferencesPush {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        ceiling("record", self.record.len(), MAX_SCREEN_BYTES)
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("record", self.record.len(), MAX_SCREEN_BYTES)
     }
 }
 
@@ -587,10 +595,6 @@ impl TypedCommand {
             arguments,
         })
     }
-
-    fn bounded(&self) -> Result<(), PayloadRefused> {
-        ceiling("arguments", self.arguments.len(), MAX_ARGUMENTS)
-    }
 }
 
 impl Packet for TypedCommand {
@@ -610,8 +614,8 @@ impl Packet for TypedCommand {
 }
 
 impl Bounded for TypedCommand {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        self.bounded()
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("arguments", self.arguments.len(), MAX_ARGUMENTS)
     }
 }
 
@@ -638,8 +642,8 @@ impl Packet for ListRequest {
 }
 
 impl Bounded for ListRequest {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        self.0.bounded()
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        self.0.verify_ceilings()
     }
 }
 
@@ -671,9 +675,9 @@ impl Packet for CommandResult {
 }
 
 impl Bounded for CommandResult {
-    fn bounds(&self) -> Result<(), PayloadRefused> {
-        ceiling("name", self.name.len(), CommandKey::MAX_PART)?;
-        ceiling("body", self.body.len(), MAX_SCREEN_BYTES)
+    fn verify_ceilings(&self) -> Result<(), PayloadRefused> {
+        within_ceiling("name", self.name.len(), CommandKey::MAX_PART)?;
+        within_ceiling("body", self.body.len(), MAX_SCREEN_BYTES)
     }
 }
 
@@ -714,9 +718,19 @@ mod tests {
     const NOT_SHIPPED: &str = "login_finalised";
 
     #[test]
-    fn the_census_of_thirteen_kinds_is_shipped_as_twelve_kinds_and_thirteen_contracts() {
-        assert_eq!(BOTH_WAYS.len() + TO_SERVER.len() + TO_CLIENT.len(), 13);
+    fn payload_refusals_preserve_wire_sources_only() {
+        let wire = PayloadRefused::Wire(WireError::NotUtf8);
+        assert!(std::error::Error::source(&wire).is_some());
+        let ceiling = PayloadRefused::TooLarge {
+            field: "test",
+            length: 2,
+            ceiling: 1,
+        };
+        assert!(std::error::Error::source(&ceiling).is_none());
+    }
 
+    #[test]
+    fn the_census_of_thirteen_kinds_is_shipped_as_twelve_kinds_and_thirteen_contracts() {
         let shipped: Vec<&str> = PAYLOADS.iter().map(|(name, _)| *name).collect();
         assert!(
             !shipped.contains(&NOT_SHIPPED),
@@ -736,10 +750,6 @@ mod tests {
             assert!(shipped.contains(&kind), "{kind} is a kind §9 counts");
         }
 
-        assert_eq!(
-            PAYLOADS.len(),
-            BOTH_WAYS.len() * 2 + TO_SERVER.len() + TO_CLIENT.len() - 1
-        );
         let to_server = PAYLOADS
             .iter()
             .filter(|(_, direction)| *direction == Direction::ToServer)

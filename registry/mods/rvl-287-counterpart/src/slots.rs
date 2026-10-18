@@ -230,6 +230,13 @@ pub enum SlotError {
     UnusableGrid(usize),
     /// The grid declares no texture for one of its cells.
     MissingCell(u32),
+    /// The declaration contains more textures than its dimensions address.
+    SurplusCells {
+        /// Number of declared textures.
+        declared: usize,
+        /// Number of addressable cells.
+        area: usize,
+    },
 }
 
 impl fmt::Display for SlotError {
@@ -256,6 +263,10 @@ impl fmt::Display for SlotError {
             Self::MissingCell(cell) => write!(
                 formatter,
                 "the texture grid declares no texture for cell {cell}"
+            ),
+            Self::SurplusCells { declared, area } => write!(
+                formatter,
+                "the texture grid declares {declared} textures for {area} cells"
             ),
         }
     }
@@ -397,9 +408,18 @@ impl Grid {
     /// # Errors
     ///
     /// Returns [`SlotError::UnusableGrid`] when either dimension is zero or the
-    /// cell count exceeds [`MAX_CELLS`], and [`SlotError::MissingCell`] when
-    /// the cell list is not exactly `width * height` long.
+    /// cell count exceeds [`MAX_CELLS`], [`SlotError::MissingCell`] for a short
+    /// cell list, and [`SlotError::SurplusCells`] for surplus textures.
     pub fn new(width: u32, height: u32, cells: Vec<TextureId>) -> Result<Self, SlotError> {
+        Self::validate_shape(width, height, cells.len())?;
+        Ok(Self {
+            width,
+            height,
+            cells,
+        })
+    }
+
+    fn validate_shape(width: u32, height: u32, declared: usize) -> Result<(), SlotError> {
         let area = usize::try_from(width)
             .ok()
             .zip(usize::try_from(height).ok())
@@ -408,15 +428,14 @@ impl Grid {
         if width == 0 || height == 0 || area == 0 || area > MAX_CELLS {
             return Err(SlotError::UnusableGrid(area));
         }
-        if cells.len() != area {
-            let missing = u32::try_from(cells.len().min(area)).unwrap_or(0);
+        if declared > area {
+            return Err(SlotError::SurplusCells { declared, area });
+        }
+        if declared < area {
+            let missing = u32::try_from(declared).expect("a missing index is below MAX_CELLS");
             return Err(SlotError::MissingCell(missing));
         }
-        Ok(Self {
-            width,
-            height,
-            cells,
-        })
+        Ok(())
     }
 
     /// Returns the grid's width in cells.
@@ -464,9 +483,7 @@ impl Grid {
             .get(CELLS_KEY)
             .and_then(JsonValue::as_array)
             .ok_or(SlotError::Malformed)?;
-        if declared.len() > MAX_CELLS {
-            return Err(SlotError::UnusableGrid(declared.len()));
-        }
+        Self::validate_shape(width, height, declared.len())?;
         let mut cells = Vec::with_capacity(declared.len());
         for (position, held) in declared.iter().enumerate() {
             let texture = held.as_str().and_then(TextureId::parse).ok_or_else(|| {
@@ -474,7 +491,11 @@ impl Grid {
             })?;
             cells.push(texture);
         }
-        Self::new(width, height, cells)
+        Ok(Self {
+            width,
+            height,
+            cells,
+        })
     }
 
     /// Returns the texture at a cell index, or the missing sprite.
@@ -827,10 +848,33 @@ mod tests {
             Grid::new(2, 2, one),
             Err(SlotError::MissingCell(_))
         ));
+        assert_eq!(
+            Grid::new(2, 2, vec![texture("base:one"); 5]),
+            Err(SlotError::SurplusCells {
+                declared: 5,
+                area: 4
+            })
+        );
         let full: Vec<TextureId> = (0..MAX_CELLS)
             .map(|n| texture(&format!("base:c{n}")))
             .collect();
         assert!(Grid::new(16, 16, full).is_ok(), "the cap itself is usable");
+    }
+
+    #[test]
+    fn parsing_refuses_surplus_cells_before_decoding_their_textures() {
+        let value = json!({
+            "across": 2,
+            "down": 2,
+            "cells": ["base:one", "base:one", "base:one", "base:one", false]
+        });
+        assert_eq!(
+            Grid::parse(&value),
+            Err(SlotError::SurplusCells {
+                declared: 5,
+                area: 4
+            })
+        );
     }
 
     #[test]

@@ -22,7 +22,9 @@
 
 use std::fmt;
 
-use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
+use ravel_sdk::config::{
+    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey, ValueError,
+};
 use ravel_sdk::{JsonValue, json};
 
 /// The key debug logging is turned on and off under.
@@ -150,6 +152,10 @@ const fn build_roles() -> [Role; COLOUR_COUNT] {
 /// Returns whatever [`ConfigurationDeclaration::parse`] refuses, which for a
 /// document this function builds from its own tables is a packaging failure.
 pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
+    ConfigurationDeclaration::parse(&document().to_string())
+}
+
+fn document() -> JsonValue {
     let mut settings = vec![
         json!({
             "key": DEBUG_LOGGING,
@@ -196,13 +202,12 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
         }));
     }
 
-    let document = json!({
+    json!({
         "schemaVersion": 1,
         "owner": crate::MOD_ID,
         "version": 1,
         "settings": JsonValue::Array(settings),
-    });
-    ConfigurationDeclaration::parse(&document.to_string())
+    })
 }
 
 /// Returns the stored form of a colour: the low twenty-four bits, in hex.
@@ -224,34 +229,48 @@ pub fn stored_form(colour: u32) -> String {
 /// would hide a pack author's typo behind a screen that merely looks wrong.
 pub fn parse_colour(text: &str) -> Result<u32, ColourRefused> {
     if text.len() != 6 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(ColourRefused {
+        return Err(ColourRefused::NotHexadecimal {
             text: text.to_owned(),
         });
     }
-    let value = u32::from_str_radix(text, 16).map_err(|_| ColourRefused {
+    let value = u32::from_str_radix(text, 16).map_err(|_| ColourRefused::NotHexadecimal {
         text: text.to_owned(),
     })?;
     Ok(0xFF00_0000 | value)
 }
 
-/// A colour setting held something that is not a colour.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ColourRefused {
-    /// What the document held.
-    pub text: String,
+/// Why a colour setting could not be resolved.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ColourRefused {
+    /// The setting is absent or has the wrong kind.
+    Value(ValueError),
+    /// The setting is not six hexadecimal digits.
+    NotHexadecimal {
+        /// What the document held.
+        text: String,
+    },
 }
 
 impl fmt::Display for ColourRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "`{}` is not six hexadecimal digits, so no colour was resolved",
-            self.text
-        )
+        match self {
+            Self::Value(source) => source.fmt(formatter),
+            Self::NotHexadecimal { text } => write!(
+                formatter,
+                "`{text}` is not six hexadecimal digits, so no colour was resolved"
+            ),
+        }
     }
 }
 
-impl std::error::Error for ColourRefused {}
+impl std::error::Error for ColourRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Value(source) => Some(source),
+            Self::NotHexadecimal { .. } => None,
+        }
+    }
+}
 
 /// The three server values in force for one launch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -280,32 +299,22 @@ impl Settings {
     /// A value outside the declared bounds keeps the shipped default rather than
     /// being clamped into range. A resolution is not a trusted input, and a
     /// ceiling of zero would refuse every infusion silently.
-    #[must_use]
-    pub fn read(resolved: &LayeredConfiguration) -> Self {
-        let mut settings = Self::default();
-        if let Some(value) = DEBUG_LOGGING
-            .parse()
-            .ok()
-            .and_then(|key| resolved.boolean(&key).ok())
-        {
-            settings.debug_logging = value;
-        }
-        if let Some(value) = RECORD_OWNER
-            .parse()
-            .ok()
-            .and_then(|key| resolved.boolean(&key).ok())
-        {
-            settings.record_owner = value;
-        }
-        if let Some(value) = INFUSION_CEILING
-            .parse()
-            .ok()
-            .and_then(|key| resolved.integer(&key).ok())
-            && (1..=i64::from(i32::MAX)).contains(&value)
-        {
-            settings.infusion_ceiling = value;
-        }
-        settings
+    /// Missing keys and mismatched kinds are returned rather than defaulted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ValueError`] when a key is missing or its declared kind does not match.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+        let infusion_ceiling = resolved.integer(&key(INFUSION_CEILING))?;
+        Ok(Self {
+            debug_logging: resolved.boolean(&key(DEBUG_LOGGING))?,
+            record_owner: resolved.boolean(&key(RECORD_OWNER))?,
+            infusion_ceiling: if (1..=i64::from(i32::MAX)).contains(&infusion_ceiling) {
+                infusion_ceiling
+            } else {
+                INFUSION_CEILING_DEFAULT
+            },
+        })
     }
 }
 
@@ -342,9 +351,8 @@ impl Colours {
     ///
     /// # Errors
     ///
-    /// Returns [`ColourRefused`] for the first colour whose text is not
-    /// hexadecimal, naming the text rather than the key so the refusal says what
-    /// was wrong with the document.
+    /// Returns [`ColourRefused`] for a missing or wrongly typed setting, or the
+    /// first colour whose text is not hexadecimal.
     pub fn resolve(
         &mut self,
         document: Document,
@@ -355,15 +363,10 @@ impl Colours {
         }
         let mut read = Vec::with_capacity(COLOUR_COUNT);
         for role in &COLOURS {
-            match role
-                .key()
-                .parse()
-                .ok()
-                .and_then(|key| resolved.text(&key).ok())
-            {
-                Some(written) => read.push(parse_colour(written)?),
-                None => read.push(0xFF00_0000 | (role.default & 0x00FF_FFFF)),
-            }
+            let written = resolved
+                .text(&key(&role.key()))
+                .map_err(ColourRefused::Value)?;
+            read.push(parse_colour(written)?);
         }
         self.values = read;
         Ok(true)
@@ -380,6 +383,10 @@ impl Colours {
     pub fn values(&self) -> &[u32] {
         &self.values
     }
+}
+
+fn key(name: &str) -> SettingKey {
+    name.parse().expect("a declared key")
 }
 
 #[cfg(test)]
@@ -399,6 +406,88 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_declared_key_is_returned_instead_of_defaulted() {
+        let changed = document()
+            .to_string()
+            .replace(DEBUG_LOGGING, "server.renamed");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the changed declaration resolves");
+        assert_eq!(
+            Settings::read(&resolved),
+            Err(ValueError::Unknown {
+                key: key(DEBUG_LOGGING)
+            })
+        );
+    }
+
+    #[test]
+    fn a_missing_colour_is_refused_without_changing_any_colours() {
+        let changed = document()
+            .to_string()
+            .replace(&COLOURS[1].key(), "client.renamed");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let written = stored_form(COLOURS[0].default ^ 0x00FF_FFFF);
+        let values = json!({
+            "schemaVersion": 1,
+            "owner": crate::MOD_ID,
+            "values": { (COLOURS[0].key()): written }
+        });
+        let player = ValueDocument::parse(&values.to_string()).expect("a legal colour override");
+        let resolved = LayeredConfiguration::resolve(declared, None, Some(&player))
+            .expect("the changed declaration resolves");
+        assert_eq!(resolved.text(&key(&COLOURS[0].key())), Ok(written.as_str()));
+        let mut colours = Colours::shipped();
+        let before = colours.clone();
+        assert!(matches!(
+            colours.resolve(Document::Client, &resolved),
+            Err(ColourRefused::Value(_))
+        ));
+        assert_eq!(colours, before);
+    }
+
+    #[test]
+    fn a_wrongly_typed_setting_or_colour_is_refused() {
+        for name in [DEBUG_LOGGING.to_owned(), COLOURS[0].key()] {
+            let mut changed = document();
+            let settings = changed["settings"]
+                .as_array_mut()
+                .expect("a settings array");
+            let setting = settings
+                .iter_mut()
+                .find(|setting| setting["key"] == name)
+                .expect("the key is declared");
+            setting["valueSchema"] = json!({ "type": "integer" });
+            setting["default"] = json!(1);
+            let declared =
+                ConfigurationDeclaration::parse(&changed.to_string()).expect("a legal declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the changed declaration resolves");
+            if name == DEBUG_LOGGING {
+                assert!(matches!(
+                    Settings::read(&resolved),
+                    Err(ValueError::AccessKind { .. })
+                ));
+            } else {
+                assert!(matches!(
+                    Colours::shipped().resolve(Document::Client, &resolved),
+                    Err(ColourRefused::Value(_))
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn colour_refusals_preserve_configuration_sources_only() {
+        let missing = ColourRefused::Value(ValueError::Unknown {
+            key: key(&COLOURS[0].key()),
+        });
+        assert!(std::error::Error::source(&missing).is_some());
+        let malformed = parse_colour("zzzzzz").expect_err("not hexadecimal");
+        assert!(std::error::Error::source(&malformed).is_none());
+    }
+
+    #[test]
     fn the_declaration_carries_three_server_settings_and_seventy_colours() {
         let declaration = declaration().expect("the packaged declaration is well formed");
         for key in [DEBUG_LOGGING, RECORD_OWNER, INFUSION_CEILING] {
@@ -409,7 +498,6 @@ mod tests {
             let parsed: SettingKey = role.key().parse().expect("a legal setting key");
             assert!(declaration.setting(&parsed).is_some());
         }
-        assert_eq!(COLOURS.len(), 70);
     }
 
     #[test]
@@ -491,7 +579,7 @@ mod tests {
                 "server.infusion_ceiling": 64
             }"#,
         );
-        let settings = Settings::read(&resolved);
+        let settings = Settings::read(&resolved).expect("declared settings have matching types");
         assert!(settings.debug_logging);
         assert!(!settings.record_owner);
         assert_eq!(settings.infusion_ceiling, 64);
@@ -499,11 +587,27 @@ mod tests {
 
     #[test]
     fn a_ceiling_outside_its_declared_bounds_keeps_the_shipped_default() {
-        // The declaration itself refuses these, so what reaches `read` is the
-        // default; the bound here is the second one, held against a resolution
-        // that is not trusted to have applied the first.
-        let resolved = resolved(r#"{ "server.infusion_ceiling": 0 }"#);
-        assert_eq!(Settings::read(&resolved).infusion_ceiling, 256);
+        let mut changed = document();
+        let settings = changed["settings"]
+            .as_array_mut()
+            .expect("a settings array");
+        let ceiling = settings
+            .iter_mut()
+            .find(|setting| setting["key"] == INFUSION_CEILING)
+            .expect("the ceiling is declared");
+        ceiling["valueSchema"] = json!({ "type": "integer" });
+        ceiling["default"] = json!(0);
+        let declared = ConfigurationDeclaration::parse(&changed.to_string())
+            .expect("an unconstrained integer declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the out-of-range integer resolves");
+        assert_eq!(resolved.integer(&key(INFUSION_CEILING)), Ok(0));
+        assert_eq!(
+            Settings::read(&resolved)
+                .expect("declared settings have matching types")
+                .infusion_ceiling,
+            256
+        );
     }
 
     #[test]
@@ -546,7 +650,7 @@ mod tests {
 
         assert_eq!(
             colours.resolve(Document::Client, &resolved),
-            Err(ColourRefused {
+            Err(ColourRefused::NotHexadecimal {
                 text: "zzzzzz".to_owned()
             })
         );

@@ -99,7 +99,16 @@ impl fmt::Display for GroupingError {
     }
 }
 
-impl std::error::Error for GroupingError {}
+impl std::error::Error for GroupingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Namespace(source) => Some(source),
+            Self::Path(source) => Some(source),
+            Self::Untaggable(source) => Some(source),
+            Self::WrongRegistry { .. } | Self::Full { .. } => None,
+        }
+    }
+}
 
 impl From<ModIdError> for GroupingError {
     fn from(source: ModIdError) -> Self {
@@ -367,6 +376,20 @@ mod tests {
                 .expect("a legal content path"),
         )
         .expect("blocks are grouped")
+    }
+
+    #[test]
+    fn grouping_refusals_preserve_identity_sources() {
+        let namespace = "not a namespace"
+            .parse::<ravel_sdk::ModId>()
+            .expect_err("spaces are not legal in a namespace");
+        let refused = GroupingError::Namespace(namespace);
+        assert!(std::error::Error::source(&refused).is_some());
+        let refused = GroupingError::Full {
+            what: "test",
+            bound: 1,
+        };
+        assert!(std::error::Error::source(&refused).is_none());
     }
 
     #[test]

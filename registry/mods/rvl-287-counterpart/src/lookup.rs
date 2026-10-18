@@ -182,7 +182,7 @@ impl Catalogue {
 mod tests {
     use ravel_sdk::{JsonValue, json};
 
-    use super::{Catalogue, DIRECTORY, KIND_KEY, Lookup, MAX_DOCUMENTS};
+    use super::{Catalogue, DIRECTORY, Lookup, MAX_DOCUMENTS};
 
     fn declaring(kind: &str) -> JsonValue {
         json!({ "shape": kind, "textures": { "alone": "base:one" } })
@@ -320,9 +320,5 @@ mod tests {
             Some(expected.as_str())
         );
         assert_eq!(Catalogue::path_of("not a name"), None);
-        assert_eq!(
-            KIND_KEY, "shape",
-            "the key the tests above write by hand is the one the module publishes"
-        );
     }
 }

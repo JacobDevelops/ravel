@@ -10,8 +10,8 @@
 //! and says the safe decision for the second and third is server-side with an
 //! operator requirement. This package takes that decision and extends it to the
 //! first, because counting what is loaded reads world state as much as removing
-//! it does. The side is enforced here. The permission level is declared and not
-//! enforced: a [`ravel_sdk::events::CommandInvocation`] carries the side, the
+//! it does. The side is enforced here. The intended permission level is recorded
+//! only in `NOTES.md`: a [`ravel_sdk::events::CommandInvocation`] carries the side,
 //! key and the words a player typed, and names no invoker and no level, so there
 //! is nothing to compare a level against. `NOTES.md` lists that under what is
 //! declarable only.
@@ -33,13 +33,6 @@ pub const SWEEP: &str = "entity_sweep";
 
 /// Every root literal this package claims, in the order §5 numbers them.
 pub const ROOTS: [&str; 3] = [TALLY, RECLAIM, SWEEP];
-
-/// The permission level each command is declared to need.
-///
-/// Declared, not enforced: see this module's own documentation and `NOTES.md`.
-/// Two is the level the base game gives an operator command that changes a
-/// running world.
-pub const REQUIRED_LEVEL: u8 = 2;
 
 /// How many notes the console holds before it stops holding more.
 ///
@@ -77,12 +70,6 @@ impl Command {
     #[must_use]
     pub fn from_root(root: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|command| command.root() == root)
-    }
-
-    /// Returns the permission level this command is declared to need.
-    #[must_use]
-    pub const fn required_level(self) -> u8 {
-        REQUIRED_LEVEL
     }
 
     /// Returns whether this command runs on `side`.
@@ -181,7 +168,14 @@ impl fmt::Display for Refusal {
     }
 }
 
-impl std::error::Error for Refusal {}
+impl std::error::Error for Refusal {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Argument(source) => Some(source),
+            Self::WrongSide { .. } => None,
+        }
+    }
+}
 
 /// What the three commands read and change.
 ///
@@ -314,7 +308,7 @@ impl Console {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, Console, MAX_RETAINED, REQUIRED_LEVEL, ROOTS, Refusal, Report};
+    use super::{Command, Console, MAX_RETAINED, ROOTS, Refusal, Report};
     use crate::population::Line;
     use crate::presentation::text;
     use ravel_sdk::Side;
@@ -342,8 +336,25 @@ mod tests {
     }
 
     #[test]
+    fn command_refusals_preserve_argument_sources_only() {
+        let refused = populated()
+            .run(
+                Command::Sweep,
+                Side::DedicatedServer,
+                &words("not a selection"),
+            )
+            .expect_err("not a legal selection");
+        assert!(matches!(refused, Refusal::Argument(_)));
+        assert!(std::error::Error::source(&refused).is_some());
+        let refused = Refusal::WrongSide {
+            command: Command::Sweep,
+            side: Side::Client,
+        };
+        assert!(std::error::Error::source(&refused).is_none());
+    }
+
+    #[test]
     fn three_root_literals_are_claimed_and_each_names_one_command() {
-        assert_eq!(ROOTS.len(), 3);
         let distinct: BTreeSet<&str> = ROOTS.iter().copied().collect();
         assert_eq!(distinct.len(), 3);
         for root in ROOTS {
@@ -487,7 +498,6 @@ mod tests {
             assert!(!command.runs_on(Side::Client));
             assert!(command.runs_on(Side::IntegratedServer));
             assert!(command.runs_on(Side::DedicatedServer));
-            assert_eq!(command.required_level(), REQUIRED_LEVEL);
             assert!(matches!(
                 console.run(command, Side::Client, &words("all")),
                 Err(Refusal::WrongSide { .. })

@@ -90,4 +90,4 @@ fi
 
 printf 'counterpart build: %s packages compiled, formatted and linted, %s tests passed\n' \
   "$packages" "$tests"
-printf 'counterpart build: does not prove test quality, completeness of the counterpart set, or behaviour inside a running game; see each counterpart'"'"'s HOST_BLOCKERS.\n'
+printf 'counterpart build: does not prove test quality, completeness of the counterpart set, or behaviour inside a running game; see each counterpart'"'"'s NOTES.md.\n'

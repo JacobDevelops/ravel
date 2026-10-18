@@ -37,8 +37,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use ravel_sdk::ModId;
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration};
-use ravel_sdk::{ModId, Side};
 
 use crate::colour::Colour;
 
@@ -301,12 +301,6 @@ pub fn declare_stage(owner: &ModId) -> StageDeclaration {
     stages
 }
 
-/// Returns whether the stage this package would draw at happens on a side.
-#[must_use]
-pub fn draws_on(side: Side) -> bool {
-    RenderStage::AfterTerrain.happens_on(side)
-}
-
 #[cfg(test)]
 mod tests {
     use ravel_sdk::render_stages::RenderStage;
@@ -314,7 +308,6 @@ mod tests {
 
     use super::{
         AddRefused, Bounds, Face, Highlights, Key, MAX_ENTRIES, Moment, Place, declare_stage,
-        draws_on,
     };
     use crate::colour::Colour;
 
@@ -506,8 +499,8 @@ mod tests {
             .resolve()
             .expect("one contribution has no cycle");
         assert_eq!(order.at(RenderStage::AfterTerrain), [owner]);
-        assert!(draws_on(Side::Client));
-        assert!(!draws_on(Side::DedicatedServer));
-        assert!(!draws_on(Side::IntegratedServer));
+        assert!(RenderStage::AfterTerrain.happens_on(Side::Client));
+        assert!(!RenderStage::AfterTerrain.happens_on(Side::DedicatedServer));
+        assert!(!RenderStage::AfterTerrain.happens_on(Side::IntegratedServer));
     }
 }

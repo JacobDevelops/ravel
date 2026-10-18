@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "ed8c691234f2ab73717b36f783bbd2af6f52429188f8612891a031f069f458a7"
+        "sha256": "e5c208d666ad6e1b8d90a5a0e4fcddb22d2bf141e8d466802eaa46928679db6b"
       },
       {
         "path": "aliases.json",
@@ -54,7 +54,7 @@
       },
       {
         "path": "src/channel.rs",
-        "sha256": "fbe459afcc45e1bc36691a8c89180cbf29782c06f17a58edac344d810f3bdb50"
+        "sha256": "773e14098ddf59e431262325de3c24970aab042f2ddfc19286edbd626d467509"
       },
       {
         "path": "src/colour.rs",
@@ -66,11 +66,11 @@
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "8d71d373f7eabb69ee7f9ab999aa1bfb8d110adf0ba8a686b0124f6fe6a5353a"
+        "sha256": "97fdc9853c0974f0c8a0d1823e005c21e886ed12fe60aee045a9fcb2064c5979"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "154f1f82cf2e6e4d3f8d76e32bfaddd12e2fdcf5499686ebe8d03671dddfb3c6"
+        "sha256": "5f8f6aa8146399874d44aa16b692ff332aca23c2798211c224fa74fa54cb485d"
       },
       {
         "path": "src/menus.rs",
@@ -86,11 +86,11 @@
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "a12f2ac0500821e38a2819873eb98db88c2b3b14bcf96d5cca5ebf9f248b3739"
+        "sha256": "4c214f5b4c4bdbd4269bb10f7825c40f23bb7081864dad0fd314846b6bff3e49"
       },
       {
         "path": "src/registration.rs",
-        "sha256": "814845bda89913588c9c0d1abd50ff4beb1a5ce12a8b44e99533e99e33d94a9f"
+        "sha256": "acd91eb776f855e4f88bbabe1770bae69e42552cf15cec7fca6a4ad6890209f1"
       },
       {
         "path": "src/shapes.rs",

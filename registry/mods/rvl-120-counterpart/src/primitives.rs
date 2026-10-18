@@ -42,7 +42,7 @@ pub fn code_runs(values: &[u8]) -> Vec<u8> {
 /// Why a coded buffer was not read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RunError {
-    /// The buffer ends between a count and its value.
+    /// A coded pair or frame is incomplete, or its frame length is negative.
     Truncated,
     /// The buffer asks for more values than [`MAX_DECODED`] admits.
     TooLong {
@@ -54,9 +54,8 @@ pub enum RunError {
 impl fmt::Display for RunError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Truncated => {
-                formatter.write_str("a coded buffer ended between a count and its value")
-            }
+            Self::Truncated => formatter
+                .write_str("a coded pair or frame is incomplete or has a negative frame length"),
             Self::TooLong { asked } => write!(
                 formatter,
                 "a coded buffer asks for {asked} values and {MAX_DECODED} is the most one may ask for"
@@ -157,15 +156,12 @@ pub fn frame_runs(coded: Option<&[u8]>) -> Vec<u8> {
     framed
 }
 
-/// Reads a framed block back.
+/// Reads the first framed block, leaving any following bytes uninterpreted.
 ///
 /// # Errors
 ///
-/// Returns [`RunError::Truncated`] when the frame ends inside its own header or
-/// inside the block it announced, and [`RunError::TooLong`] when the announced
-/// length is negative or beyond what the buffer holds. A length prefix from the
-/// network decides an allocation, so it is checked against the bytes actually
-/// present rather than trusted.
+/// Returns [`RunError::Truncated`] when the frame ends inside its header, names
+/// a negative length, or announces more bytes than the buffer holds.
 pub fn read_framed(framed: &[u8]) -> Result<Option<&[u8]>, RunError> {
     let (&present, rest) = framed.split_first().ok_or(RunError::Truncated)?;
     if present == 0 {
@@ -176,9 +172,9 @@ pub fn read_framed(framed: &[u8]) -> Result<Option<&[u8]>, RunError> {
     }
     let (header, body) = rest.split_at(4);
     let announced = i32::from_be_bytes([header[0], header[1], header[2], header[3]]);
-    let length = usize::try_from(announced).map_err(|_| RunError::TooLong { asked: 0 })?;
+    let length = usize::try_from(announced).map_err(|_| RunError::Truncated)?;
     if length > body.len() {
-        return Err(RunError::TooLong { asked: length });
+        return Err(RunError::Truncated);
     }
     Ok(Some(&body[..length]))
 }
@@ -496,17 +492,22 @@ mod tests {
     fn a_frame_that_announces_more_than_it_carries_is_refused() {
         let mut lying = frame_runs(Some(&[1, 2]));
         lying[1..5].copy_from_slice(&64_i32.to_be_bytes());
-        assert!(matches!(read_framed(&lying), Err(RunError::TooLong { .. })));
+        assert_eq!(read_framed(&lying), Err(RunError::Truncated));
 
         let mut negative = frame_runs(Some(&[1, 2]));
         negative[1..5].copy_from_slice(&(-1_i32).to_be_bytes());
-        assert!(matches!(
-            read_framed(&negative),
-            Err(RunError::TooLong { .. })
-        ));
+        assert_eq!(read_framed(&negative), Err(RunError::Truncated));
 
         assert_eq!(read_framed(&[]), Err(RunError::Truncated));
         assert_eq!(read_framed(&[1, 0, 0]), Err(RunError::Truncated));
+    }
+
+    #[test]
+    fn reading_one_frame_does_not_interpret_following_bytes() {
+        let mut present = frame_runs(Some(&[1, 2]));
+        present.push(0xFF);
+        assert_eq!(read_framed(&present), Ok(Some(&[1, 2][..])));
+        assert_eq!(read_framed(&[0, 0xFF]), Ok(None));
     }
 
     #[test]

@@ -61,18 +61,6 @@ pub const PROPERTIES_KEY: &str = "properties";
 /// The key the named-tag form holds its tag name under.
 pub const TAG_KEY: &str = "group";
 
-/// The eight form words, in the order [`Condition`] declares them.
-pub const FORM_WORDS: [&str; 8] = [
-    "same_state",
-    "same_block",
-    "named_block",
-    "named_group",
-    "inverted",
-    "all_of",
-    "any_of",
-    "one_of_two",
-];
-
 /// One block state, as much of one as a connection decision needs.
 ///
 /// The original compares the game's own interned property values by reference.

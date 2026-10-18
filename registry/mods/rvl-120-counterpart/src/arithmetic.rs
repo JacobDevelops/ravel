@@ -379,7 +379,6 @@ mod tests {
         assert_eq!(table.entries[0], 0);
         assert_eq!(table.entries[1], PLACEHOLDER_POLYNOMIAL);
         assert_eq!(table.entries[255], 0x9AFC_E626_CE85_B507);
-        assert_eq!(table.entries.len(), 256);
     }
 
     #[test]

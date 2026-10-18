@@ -217,8 +217,8 @@ impl Preferences {
     /// # Errors
     ///
     /// Returns [`PreferencesRefused`] for a buffer that ends inside a field,
-    /// names a corner outside the four, or names a style this build does not
-    /// publish.
+    /// carries trailing bytes, contains invalid UTF-8, names a corner outside
+    /// the four, or names a style this build does not publish.
     pub fn from_wire(bytes: &[u8]) -> Result<Self, PreferencesRefused> {
         let (&ordinal, rest) = bytes.split_first().ok_or(PreferencesRefused::Truncated)?;
         let corner = Corner::from_ordinal(ordinal).ok_or(PreferencesRefused::Corner { ordinal })?;
@@ -231,10 +231,13 @@ impl Preferences {
         let (header, body) = rest.split_at(4);
         let announced = i32::from_be_bytes([header[0], header[1], header[2], header[3]]);
         let length = usize::try_from(announced).map_err(|_| PreferencesRefused::Truncated)?;
-        if length != body.len() {
+        if length > body.len() {
             return Err(PreferencesRefused::Truncated);
         }
-        let name = std::str::from_utf8(body).map_err(|_| PreferencesRefused::Truncated)?;
+        if length < body.len() {
+            return Err(PreferencesRefused::Trailing);
+        }
+        let name = std::str::from_utf8(body).map_err(|_| PreferencesRefused::NotText)?;
         if !STYLES.contains(&name) {
             return Err(PreferencesRefused::Style {
                 name: name.to_owned(),
@@ -253,8 +256,12 @@ impl Preferences {
 /// Why a preference record was not read back.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreferencesRefused {
-    /// The buffer ended inside a field or announced a length it does not carry.
+    /// The record is incomplete or announces a negative style length.
     Truncated,
+    /// The buffer carries bytes after the complete preference record.
+    Trailing,
+    /// The style field is not valid UTF-8.
+    NotText,
     /// The corner ordinal is outside the four the layout declares.
     Corner {
         /// What the buffer carried.
@@ -270,7 +277,10 @@ pub enum PreferencesRefused {
 impl fmt::Display for PreferencesRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Truncated => formatter.write_str("the preference record ended inside a field"),
+            Self::Truncated => formatter
+                .write_str("the preference record is incomplete or has a negative style length"),
+            Self::Trailing => formatter.write_str("the preference record carries trailing bytes"),
+            Self::NotText => formatter.write_str("the preference style is not valid UTF-8"),
             Self::Corner { ordinal } => {
                 write!(
                     formatter,
@@ -399,6 +409,26 @@ mod tests {
         assert!(
             !received.is_dirty(),
             "receiving what the other side already knows asks for no send back"
+        );
+    }
+
+    #[test]
+    fn a_complete_style_with_invalid_utf8_is_not_reported_as_truncated() {
+        let mut wire = Preferences::new().to_wire();
+        *wire.last_mut().expect("the style is nonempty") = 0xFF;
+        assert_eq!(
+            Preferences::from_wire(&wire),
+            Err(PreferencesRefused::NotText)
+        );
+    }
+
+    #[test]
+    fn surplus_bytes_are_not_reported_as_truncation() {
+        let mut wire = Preferences::new().to_wire();
+        wire.push(0);
+        assert_eq!(
+            Preferences::from_wire(&wire),
+            Err(PreferencesRefused::Trailing)
         );
     }
 

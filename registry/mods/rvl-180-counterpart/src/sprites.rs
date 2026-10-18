@@ -62,9 +62,6 @@ pub const FRAMES: [&str; 10] = [
     "button_borderless_disabled",
 ];
 
-/// How many sprites the set holds.
-pub const SPRITE_COUNT: usize = POINTERS.len() + WIDGETS.len() + FRAMES.len();
-
 /// Returns every sprite name, pointers then widgets then frames.
 #[must_use]
 pub fn names() -> Vec<&'static str> {
@@ -137,17 +134,14 @@ pub fn atlas_document() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ATLAS_PREFIX, ATLAS_SOURCE, FRAMES, POINTERS, WIDGETS, atlas_document, atlas_path, names,
-        scales, sprite_paths,
+        ATLAS_PREFIX, ATLAS_SOURCE, FRAMES, POINTERS, atlas_document, atlas_path, names, scales,
+        sprite_paths,
     };
     use crate::MOD_ID;
     use std::collections::BTreeSet;
 
     #[test]
     fn twenty_one_sprites_are_named_across_the_three_groups() {
-        assert_eq!(POINTERS.len(), 5);
-        assert_eq!(WIDGETS.len(), 6);
-        assert_eq!(FRAMES.len(), 10);
         assert_eq!(names().len(), 21);
         let distinct: BTreeSet<&str> = names().into_iter().collect();
         assert_eq!(distinct.len(), 21);

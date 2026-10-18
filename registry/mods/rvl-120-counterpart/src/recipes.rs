@@ -12,15 +12,6 @@
 
 use std::collections::BTreeMap;
 
-/// The field the nested shaped recipe is written under.
-pub const NESTED_FIELD: &str = "recipe";
-
-/// The crafting-book category the kind is filed in.
-///
-/// The original marks this an unresolved guess, and it is carried as one rather
-/// than promoted to a decision.
-pub const CATEGORY: &str = "misc";
-
 /// One ingredient in the grid, and what it carries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Ingredient {

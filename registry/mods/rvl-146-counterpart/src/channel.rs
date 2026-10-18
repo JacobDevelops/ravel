@@ -92,7 +92,14 @@ impl fmt::Display for ChannelRefused {
     }
 }
 
-impl std::error::Error for ChannelRefused {}
+impl std::error::Error for ChannelRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Path(source) => Some(source),
+            Self::Duplicate(_) | Self::Full => None,
+        }
+    }
+}
 
 /// A channel scoped to one namespace, holding the payloads a dependent declared.
 #[derive(Clone, Debug)]
@@ -363,6 +370,24 @@ mod tests {
             .declare("report", Direction::ToClient)
             .expect("a legal path");
         channel
+    }
+
+    #[test]
+    fn a_refused_path_exposes_its_validation_error() {
+        use std::error::Error;
+
+        let error = Channel::new(namespace(), 3)
+            .declare("not a path", Direction::ToServer)
+            .expect_err("an invalid content path");
+        let source = error.source().expect("the path validation error");
+        assert!(source.is::<ravel_sdk::content::ContentIdError>());
+        assert_eq!(source.to_string(), error.to_string());
+        assert!(
+            ChannelRefused::Duplicate("edit".to_owned())
+                .source()
+                .is_none()
+        );
+        assert!(ChannelRefused::Full.source().is_none());
     }
 
     #[test]

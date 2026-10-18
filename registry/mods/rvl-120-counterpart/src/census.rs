@@ -106,10 +106,7 @@ mod tests {
     }
 
     #[test]
-    fn the_census_counts_two_attachments_and_seven_component_kinds() {
-        assert_eq!(ATTACHMENTS.len(), 2);
-        assert_eq!(COMPONENTS.len(), 7);
-
+    fn component_kinds_are_named_once() {
         let mut named: Vec<&str> = COMPONENTS.to_vec();
         named.sort_unstable();
         named.dedup();

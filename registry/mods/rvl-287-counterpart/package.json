@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "62db41a3682f0f3c899e085a55eebd1991cda115f22b5af7e50b5b2b98919457"
+        "sha256": "2d8e8c1fd1bfb700fac5bc4b2b7526112b9f47abe9497da5f6ed730d68981915"
       },
       {
         "path": "aliases.json",
@@ -55,7 +55,7 @@
       },
       {
         "path": "src/conditions.rs",
-        "sha256": "ee53a83af3b38b41e688107e85713f84ffa4defdc6c06e3d1f8c7d6dbe6d4a48"
+        "sha256": "88d47680d9704b9014e3bc1afc07270c7f114ff675284f4139ee0345d65629cd"
       },
       {
         "path": "src/dumps.rs",
@@ -75,7 +75,7 @@
       },
       {
         "path": "src/lookup.rs",
-        "sha256": "e53bef57911ba81d82a05f1f29a827abd6147da6601a84eb1fcb7e49ab938fca"
+        "sha256": "94fb2cc42df5852349c759abcf4a5e56f74b2b69f3c8ba5bc6c9904bd877fb0a"
       },
       {
         "path": "src/neighbourhood.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/slots.rs",
-        "sha256": "e1a504e39660e66d1790d705618f745a44658cd97705319a26b44f0e3425e84a"
+        "sha256": "a476ff8db031f3c5fd1c161efa7ad38fed947de05e49935e771e1d89531b6e1e"
       }
     ]
   },

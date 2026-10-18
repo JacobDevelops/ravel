@@ -32,7 +32,7 @@
 //! # What this package declines outright
 //!
 //! Two things in the original are available in principle and are not implemented
-//! here at any Ravel revision. [`DECLINED`] names them and nothing stubs one:
+//! here at any Ravel revision. Both are documented here rather than stubbed:
 //!
 //! - **A reflection kit.** It locates a method or a field by trying several
 //!   candidate names in turn and makes it accessible, stripping the final
@@ -103,24 +103,6 @@ pub use crate::transport::{Action, Argument, ArgumentKind, TagNumbering};
 
 /// The identity this package is declared and validated under.
 pub const MOD_ID: &str = "rvl_146_counterpart";
-
-/// The two areas this package declines outright, by the role each plays.
-///
-/// Declined rather than host-blocked: each is available in principle and neither
-/// should be implemented at any Ravel revision. Nothing here is a stub.
-pub const DECLINED: [&str; 2] = ["reflection_kit", "direct_memory_access"];
-
-/// The areas Ravel publishes no seam for at the reviewed revision.
-///
-/// Each is declared rather than stubbed, and `NOTES.md` says what is implemented
-/// in each case and what is waiting on a seam.
-pub const HOST_BLOCKERS: [&str; 5] = [
-    "world_space_drawing",
-    "block_entity_type_registration",
-    "data_component_registration",
-    "capability_registration",
-    "packet_carriage",
-];
 
 /// How long one client tick is, in milliseconds.
 ///
@@ -531,9 +513,8 @@ mod tests {
     use ravel_sdk::save::SavedDataPlan;
 
     use super::{
-        __ravel_entry, AlreadyConstructed, DECLINED, Entry, EventCounts, HOST_BLOCKERS, ItemForm,
-        MAX_MEMORIES, MAX_MEMORY_NAME, MOD_ID, Memory, MemoryRefused, Moment, ReadFailure,
-        TICK_MILLIS,
+        __ravel_entry, AlreadyConstructed, Entry, EventCounts, ItemForm, MAX_MEMORIES,
+        MAX_MEMORY_NAME, MOD_ID, Memory, MemoryRefused, Moment, ReadFailure, TICK_MILLIS,
     };
     use crate::colour::Colour;
     use crate::highlights::{Bounds, Key, Place};
@@ -886,32 +867,6 @@ mod tests {
         assert_eq!(shared.sends().server(), None);
         shared.sends_mut().server_started("the running server");
         assert_eq!(shared.sends().server(), Some("the running server"));
-    }
-
-    #[test]
-    fn no_area_is_both_declined_and_host_blocked() {
-        // The two lists are what a reader is pointed at, and an area belongs to
-        // exactly one of them: a declined area is one no Ravel revision should
-        // carry, and a host-blocked one is waiting on a seam. Naming an area in
-        // both would be claiming both at once.
-        for declined in DECLINED {
-            assert_ne!(declined.len(), 0);
-            assert!(
-                !HOST_BLOCKERS.contains(&declined),
-                "`{declined}` is declined and cannot also be waiting on a seam"
-            );
-        }
-        for blocked in HOST_BLOCKERS {
-            assert_ne!(blocked.len(), 0);
-            assert_eq!(
-                HOST_BLOCKERS
-                    .iter()
-                    .filter(|held| **held == blocked)
-                    .count(),
-                1,
-                "`{blocked}` is named once"
-            );
-        }
     }
 
     #[test]

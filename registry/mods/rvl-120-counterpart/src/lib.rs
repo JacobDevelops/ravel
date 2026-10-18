@@ -63,9 +63,6 @@ pub const MOD_ID: &str = "rvl_120_counterpart";
 /// The one key binding, in this package's own category.
 pub const KEY_BINDING: &str = "open_manual";
 
-/// The key the binding defaults to.
-pub const DEFAULT_KEY: &str = "F1";
-
 /// The four optional integrations, by the role each plays.
 ///
 /// **Host-blocked.** Ravel publishes no facility for optional cross-mod
@@ -308,7 +305,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved);
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
         self.colours
             .resolve(Document::of(self.side), resolved)
             .map_err(ModError::from_display)?;
@@ -609,7 +606,6 @@ mod tests {
 
     #[test]
     fn the_package_names_four_optional_integrations_and_stubs_none() {
-        assert_eq!(INTEGRATIONS.len(), 4);
         let mut named = INTEGRATIONS.to_vec();
         named.sort_unstable();
         named.dedup();

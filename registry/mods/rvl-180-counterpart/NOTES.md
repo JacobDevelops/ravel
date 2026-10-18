@@ -27,7 +27,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
 | §4 the thirty-four groups | implemented | `src/grouping.rs` |
 | §4 the aggregate resolving through its leaves | implemented | `src/grouping.rs` |
 | §5 the three commands | implemented | `src/commands.rs`, `src/population.rs` |
-| §5 the permission level of each | declarable only | `src/commands.rs` |
+| §5 the permission level of each | declarable only; intended operator level recorded below | — |
 | §5 the eighteen translated lines | implemented | `src/presentation.rs` |
 | §5 the two read-only displays | implemented | `src/presentation.rs` |
 | §6 loading on both sides, the server half not stubbed | implemented | `src/lib.rs` |
@@ -132,10 +132,10 @@ and nothing carries a pretend implementation.
 - **The five client-side bytecode transformations (§3).** Bytecode manipulation is not a thing a
   Ravel mod does. The declaration is evidence about sides, which §6 and this package both use, and
   nothing else about it is carried.
-- **Each command's permission level (§5).** `Command::required_level` writes the level down as data.
-  Nothing enforces it, and nothing here can: a `CommandInvocation` carries the claimed key, the side
-  and the words a player typed, and names no invoker and no permission level, so there is nothing to
-  compare a level against. The side *is* enforced.
+- **Each command's permission level (§5).** The intended operator level is two, recorded here rather
+  than exposed by an unused constant and accessor. Nothing enforces it, and nothing here can:
+  a `CommandInvocation` carries the claimed key, side and words, but no invoker or permission level.
+  The side *is* enforced.
 - **Where the population comes from (§5).** Ravel publishes no entity surface, so the two
   world-acting commands read and change `population::Population` rather than a world. Every rule the commands
   decide — the totals, the per-kind lines, the empty case and the player refusal — is decided over
@@ -199,8 +199,7 @@ supplied line, the player refusal changing nothing, the empty case, the wrong-si
 units, the twenty-one sprites across three groups, the eight button states, the atlas declaring one
 source, the round trip, the short, long and appended payloads, the client that may not send and the
 server that may not receive, and every bound named above are all held to an assertion.
-`checks/verify-counterpart-build.sh` runs them: 70 tests, all passing, formatter clean and clippy's
-default set clean.
+`checks/verify-counterpart-build.sh` runs the package's inline tests and its formatter and clippy gates.
 
 Three documents under `generated/` are written by `src/dumps.rs` out of the same functions the rest
 of this package uses, and nothing in them is typed by hand. `generated/declarations.json` is the pack

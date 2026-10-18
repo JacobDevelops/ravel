@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "6834fef613e60890136747b51d9b638d039a83b30d4fd2c29d0533139ae91002"
+        "sha256": "d38d20f4a03e080b01d70cbd35439dd8b1a66332911a3a3410ba25e9d87b7d5a"
       },
       {
         "path": "aliases.json",
@@ -58,11 +58,11 @@
       },
       {
         "path": "src/arithmetic.rs",
-        "sha256": "0c81423e29a7b174e9c8f06ef4f1f03d6a6ceca74ed97d7fb666134217b9d050"
+        "sha256": "33ee3e79f74610c3aa7e234669ee2deeefc1d63e5a880a63e6921199d6427d7d"
       },
       {
         "path": "src/census.rs",
-        "sha256": "88e79e7b3533aa2943f9a5ad3b2a8e064f5c0e8dd38cb82d27111e4c77d409d0"
+        "sha256": "aa5ce8c54470a48b15877496968c1f4e011d5d4a0ed2babd053e78f00dfc194e"
       },
       {
         "path": "src/commands.rs",
@@ -82,23 +82,23 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "9b103d6cc974e6fa2a9dcd47890f92da854d665442f48eeaf28d19cf8629c4bd"
+        "sha256": "ed1312cfbb19fcd985a458673f106c074b86abfcf6c2ac64e8e08d51221399d2"
       },
       {
         "path": "src/network.rs",
-        "sha256": "52d72271635b08f209c144e9dede26590fab0ac68a2b814b01e3c246ce7d4d9f"
+        "sha256": "aa576eb658867d59dc168a83574bb9a4b79058cdd76fe8d2440080f13dcc4030"
       },
       {
         "path": "src/preferences.rs",
-        "sha256": "e943a22a4956887e0be6104379fb16cfd54f6e7f1c39ceb118e38d2e7d4bbff0"
+        "sha256": "f50e8035780ef5712a0d4da3625b031dcf529ffeabcd29fb0fd63190f7bf3b32"
       },
       {
         "path": "src/primitives.rs",
-        "sha256": "f6cd47b5c8fe28780f963ef71694115037de02c8214fc133b294b4e5bd25cd64"
+        "sha256": "9028548d854e40e1cf80a21e35ce06dba8205365f1fd184a72f1e7b7bc518577"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "a3c6d53ffee78cf9d02ca2ffa13cbf61d5091598e8b16c606631d5d78c42f3f7"
+        "sha256": "0d01a06ab1f892a16d659aa6da8202cda18ca2a3a2f9ae4017221bbd7987574c"
       },
       {
         "path": "src/save.rs",
@@ -106,7 +106,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "f6e89b72da817ba1223ff251de2aad05ac4a14e90397f826d95e7f0f1d953911"
+        "sha256": "928ba563425e118cfeeea0959abd58de4ac06da53c48b6f02297719912fc7c7a"
       },
       {
         "path": "src/values.rs",

@@ -16,7 +16,7 @@
 //! **A level that is not there is not a searched-and-empty recipe list.** The
 //! original's scan yields no match when its level supplier yields nothing, and
 //! the no-match path then sets the stuck flag as if every recipe had been
-//! examined. A block whose level is momentarily absent parks. [`Search::run`]
+//! examined. A block whose level is momentarily absent parks. [`Search::search`]
 //! answers [`Outcome::CouldNotSearch`] and leaves all four pieces of state
 //! exactly as they were.
 //!
@@ -104,7 +104,7 @@ impl Search {
 
     /// Records that the inputs changed: the block is no longer parked and the
     /// next failed search is the one it is forgiven.
-    pub const fn changed(&mut self) {
+    pub const fn mark_inputs_changed(&mut self) {
         self.stuck = false;
         self.changed = true;
     }
@@ -116,7 +116,7 @@ impl Search {
     }
 
     /// Runs one search against the level's catalogue, or against no level.
-    pub fn run(&mut self, level: Option<&dyn Catalogue>) -> Outcome {
+    pub fn search(&mut self, level: Option<&dyn Catalogue>) -> Outcome {
         let Some(catalogue) = level else {
             return Outcome::CouldNotSearch;
         };
@@ -209,8 +209,8 @@ mod tests {
     #[test]
     fn a_scan_that_matches_remembers_the_recipe_and_clears_both_flags() {
         let mut search = Search::idle();
-        search.changed();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
+        search.mark_inputs_changed();
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
         assert_eq!(search.current(), Some(&recipe("smelting")));
         assert_eq!(search.remembered(), Some(&recipe("smelting")));
         assert!(!search.is_stuck());
@@ -220,10 +220,13 @@ mod tests {
     #[test]
     fn the_fast_path_leaves_the_changed_flag_exactly_where_it_was() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
-        search.changed();
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
+        search.mark_inputs_changed();
         assert!(search.inputs_changed());
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Remembered);
+        assert_eq!(
+            search.search(Some(&holding("smelting"))),
+            Outcome::Remembered
+        );
         assert!(
             search.inputs_changed(),
             "the fast path returns without touching the changed flag"
@@ -234,9 +237,9 @@ mod tests {
     #[test]
     fn the_first_failed_search_after_an_input_change_does_not_park_the_block() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
-        search.changed();
-        assert_eq!(search.run(Some(&empty())), Outcome::Missed);
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
+        search.mark_inputs_changed();
+        assert_eq!(search.search(Some(&empty())), Outcome::Missed);
         assert!(!search.is_stuck(), "the first miss is forgiven");
         assert!(!search.inputs_changed());
         assert_eq!(
@@ -250,10 +253,10 @@ mod tests {
     #[test]
     fn the_second_failed_search_parks_the_block_and_clears_the_current_recipe() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
-        search.changed();
-        assert_eq!(search.run(Some(&empty())), Outcome::Missed);
-        assert_eq!(search.run(Some(&empty())), Outcome::Missed);
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
+        search.mark_inputs_changed();
+        assert_eq!(search.search(Some(&empty())), Outcome::Missed);
+        assert_eq!(search.search(Some(&empty())), Outcome::Missed);
         assert!(search.is_stuck());
         assert_eq!(search.current(), None);
         assert_eq!(search.remembered(), None);
@@ -263,9 +266,9 @@ mod tests {
     #[test]
     fn an_input_change_unparks_the_block_without_searching() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&empty())), Outcome::Missed);
+        assert_eq!(search.search(Some(&empty())), Outcome::Missed);
         assert!(search.is_stuck());
-        search.changed();
+        search.mark_inputs_changed();
         assert!(!search.is_stuck());
         assert!(search.should_tick());
     }
@@ -273,10 +276,10 @@ mod tests {
     #[test]
     fn no_level_is_not_a_searched_and_empty_recipe_list() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
-        search.changed();
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
+        search.mark_inputs_changed();
         let before = search.clone();
-        assert_eq!(search.run(None), Outcome::CouldNotSearch);
+        assert_eq!(search.search(None), Outcome::CouldNotSearch);
         assert_eq!(search, before, "nothing was concluded, so nothing moved");
         assert!(!search.is_stuck());
     }
@@ -284,12 +287,12 @@ mod tests {
     #[test]
     fn a_remembered_recipe_that_no_longer_matches_falls_through_to_a_scan() {
         let mut search = Search::idle();
-        assert_eq!(search.run(Some(&holding("smelting"))), Outcome::Matched);
+        assert_eq!(search.search(Some(&holding("smelting"))), Outcome::Matched);
         let stale = Fixed {
             matches: Some(recipe("blasting")),
             remembered_still_matches: false,
         };
-        assert_eq!(search.run(Some(&stale)), Outcome::Matched);
+        assert_eq!(search.search(Some(&stale)), Outcome::Matched);
         assert_eq!(search.current(), Some(&recipe("blasting")));
         assert_eq!(search.remembered(), Some(&recipe("blasting")));
     }

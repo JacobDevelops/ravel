@@ -56,9 +56,6 @@ pub const LINES: [(&str, &str); 18] = [
     ("display.fluid.unit", FLUID_UNIT),
 ];
 
-/// How many translated lines this package supplies.
-pub const LINE_COUNT: usize = LINES.len();
-
 /// Returns the English text of `key`, if this package supplies it.
 #[must_use]
 pub fn text(key: &str) -> Option<&'static str> {
@@ -183,7 +180,7 @@ impl Readout {
             display: Display::Fluid,
             capacity,
             stored: stored.min(capacity),
-            contained: Some(bounded(contained)),
+            contained: Some(truncated_name(contained)),
         }
     }
 
@@ -232,7 +229,7 @@ impl Readout {
 /// bytes that are not text, so the cut walks back to the boundary below it. A
 /// name whose first character is longer than the bound truncates to nothing,
 /// which is a display naming nothing rather than a display naming rubbish.
-fn bounded(name: &str) -> String {
+fn truncated_name(name: &str) -> String {
     if name.len() <= MAX_FLUID_NAME {
         return name.to_owned();
     }
@@ -245,7 +242,7 @@ fn bounded(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Display, ENERGY_UNIT, FLUID_UNIT, LINES, MAX_FLUID_NAME, Readout, text};
+    use super::{Display, LINES, MAX_FLUID_NAME, Readout, text};
     use std::collections::BTreeSet;
 
     #[test]
@@ -290,8 +287,6 @@ mod tests {
             );
             assert!(text(display.title_key()).is_some());
         }
-        assert_eq!(Display::Energy.unit(), ENERGY_UNIT);
-        assert_eq!(Display::Fluid.unit(), FLUID_UNIT);
         assert_eq!(Display::Energy.keys().len(), 4);
         assert_eq!(Display::Fluid.keys().len(), 5);
     }

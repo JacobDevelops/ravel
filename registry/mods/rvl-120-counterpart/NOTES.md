@@ -65,7 +65,7 @@ disabled multi-part block are the four areas §17 excludes and none of them is h
 | §12.5 the interner, the rounding helpers, the orientations | implemented | `src/primitives.rs` |
 | §13 the assembly rule, its grid order and its overwrite | implemented | `src/recipes.rs` |
 | §13 the recipe document and its matching | declarable only | — |
-| §14 the one binding, its category and its default key | implemented as data | `src/lib.rs` |
+| §14 the one binding and its category | implemented as data; default F1 recorded below | `src/lib.rs` |
 | §14 the poll with no edge detection | implemented as a press, with the declared change | `src/lib.rs` |
 | §14 the modal input interception | not carried, by the specification's own exclusion | — |
 | §15 the four optional integrations | host-blocked, recorded as pending | `src/lib.rs` |
@@ -185,9 +185,19 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   test written from §9's own census holds it to naming no login payload.
 - **The unreachable block-state document is not shipped (§4).** It names a model for a block nothing
   registers at the reviewed revision.
-- **A server setting outside its declared bounds keeps the shipped default (§3).** `Settings::read`
-  refuses an infusion ceiling outside one to the signed 32-bit maximum rather than clamping it. A
-  resolution is not a trusted input, and a ceiling of zero would refuse every infusion in silence.
+- **Configuration access failures are refused (§3).** `Settings::read` returns missing-key and
+  wrong-kind errors rather than replacing them with defaults. `Colours::resolve` preserves the same
+  typed errors through `ColourRefused::Value`; a refused client document changes no colours.
+  An infusion ceiling outside one to the signed 32-bit maximum still keeps the shipped default
+  rather than being clamped.
+- **Wire refusals identify the failed boundary (§5, §9, §12.4).** Negative or incomplete framed
+  lengths are truncation, not decoded-value limit breaches. A complete preference style containing
+  invalid UTF-8 is `NotText`, not truncation. A complete preference record followed by surplus
+  bytes is refused as `Trailing`. The framed-block reader reads only its first block and leaves
+  following bytes uninterpreted, preserving its existing one-block contract.
+- **Specification-only metadata stays in prose.** The manual binding defaults to F1, the original
+  channel version is `1.0`, and the nested recipe field and book category are `recipe` and `misc`.
+  None currently drives a host mechanism, so unused constants do not pretend to implement one.
 - **The manual latch may be re-read (§15).** The original latches presence once at common setup and
   never re-checks. Nothing depends on the latch being stable, and absence is not an error either way.
 
@@ -270,10 +280,11 @@ rotation cycling inside the group of four and returning after four, a fifth step
 twenty-four distinct names; three server settings and seventy colours declared, seventy roles named
 once across seven components, the alpha dropped on the way out, the alpha forced on the way in so no
 colour can be translucent, six ways a colour is refused, every shipped default round-tripping, the
-three defaults, a ceiling outside its bounds keeping the default, the shipped colours all opaque, a
-server document re-resolving nothing and a client document re-resolving everything, the document each
-side resolves, the three server settings reachable on both server sides, and a six-character colour
-the declaration admits still refused during resolution with every colour left as it was; the unowned
+three defaults, a resolved out-of-range ceiling keeping the default, missing setting keys and
+wrong declared kinds refused, the shipped colours all opaque, a server document re-resolving nothing
+and a client document re-resolving everything, the document each side resolves, the three server
+settings reachable on both server sides, and refused colour resolution leaving all colours unchanged
+even after a non-default earlier colour has been read; the unowned
 default at all four fields, a name without an identity being representable, the three ordinals in
 order, the placeholder words distinct and not the constant names, malformed supplied words refused
 six ways, the supplied words refused for absence and agreeing with whatever this build supplied, both
@@ -286,8 +297,9 @@ at the read; the fresh record's corner and offsets,
 its dirty flag at construction, one send clearing it and a clean record sending nothing, every
 mutation setting it, a refused change leaving it clean, reset anchoring top-left where construction
 anchors bottom-right, the style setter taking all three published names and refusing four others, the
-four corner ordinals, the record arriving clean over the wire, and four ways a record off the wire is
-refused; the five exempt element types needing no codec and a sixth needing one, a missing codec
+four corner ordinals, the record arriving clean over the wire, and malformed preference records
+refused for truncation, trailing bytes, invalid UTF-8, corner and style; the five exempt element types
+needing no codec and a sixth needing one, a missing codec
 filing nothing at all, shape and element having to agree, one key kept apart by the side it runs on, a
 duplicate key reporting what it replaced in the side table and in the shared element table, a list
 command filing its element type, an unknown key answering nothing on both sides, a declared handler
@@ -342,7 +354,7 @@ producing no envelope, a written record reaching one, the latch starting unset a
 binding as a press and gated on an open screen, the four integrations, a dependent's declaration
 being what a call runs, and the crate-root functions a dependent reaches for.
 
-`checks/verify-counterpart-build.sh` runs them: 192 tests.
+`checks/verify-counterpart-build.sh` runs the package's inline tests.
 
 Three of the tables above are also rendered to disk under `generated/`, by `src/dumps.rs` and out of
 the same functions the tests hold: `generated/census.json` is what `census::claimed` claims beside

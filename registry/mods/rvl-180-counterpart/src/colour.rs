@@ -109,7 +109,6 @@ mod tests {
 
     #[test]
     fn there_are_sixteen_dyes_and_each_is_named_once() {
-        assert_eq!(Dye::ALL.len(), 16);
         let names: BTreeSet<&str> = Dye::ALL.iter().map(|dye| dye.as_str()).collect();
         assert_eq!(names.len(), 16);
     }

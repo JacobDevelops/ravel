@@ -84,17 +84,6 @@ impl Kind {
             Self::Component => "component",
         }
     }
-
-    /// Returns the Ravel kind this registers as, and absent for the two Ravel
-    /// publishes no registration for.
-    #[must_use]
-    pub const fn published(self) -> Option<ContentKind> {
-        match self {
-            Self::Block => Some(ContentKind::Block),
-            Self::Item => Some(ContentKind::Item),
-            Self::BlockEntity | Self::Component => None,
-        }
-    }
 }
 
 impl fmt::Display for Kind {
@@ -226,7 +215,19 @@ impl fmt::Display for DeclareRefused {
     }
 }
 
-impl std::error::Error for DeclareRefused {}
+impl std::error::Error for DeclareRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Path(source) => Some(source),
+            Self::Duplicate { .. }
+            | Self::ClassDeclared(_)
+            | Self::Full(_)
+            | Self::ItemFormTaken { .. }
+            | Self::CapabilityDeclared { .. }
+            | Self::CapabilitiesFull => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 struct BlockDeclaration {
@@ -667,6 +668,57 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_path_exposes_its_validation_error() {
+        use std::error::Error;
+
+        let error = Collection::new(namespace())
+            .item("not a path", &[])
+            .expect_err("an invalid content path");
+        let source = error.source().expect("the path validation error");
+        assert!(source.is::<ravel_sdk::content::ContentIdError>());
+        assert_eq!(source.to_string(), error.to_string());
+        let leaf_errors = [
+            DeclareRefused::Duplicate {
+                kind: Kind::Item,
+                path: "held".to_owned(),
+            },
+            DeclareRefused::ClassDeclared("Furnace"),
+            DeclareRefused::Full(Kind::Item),
+            DeclareRefused::ItemFormTaken {
+                path: "held".to_owned(),
+            },
+            DeclareRefused::CapabilityDeclared {
+                name: "items".to_owned(),
+            },
+            DeclareRefused::CapabilitiesFull,
+        ];
+        assert!(leaf_errors.iter().all(|error| error.source().is_none()));
+    }
+
+    #[test]
+    fn declaration_refusals_identify_the_kind_and_conflicting_path() {
+        for (kind, spelling) in [
+            (Kind::Block, "block"),
+            (Kind::Item, "item"),
+            (Kind::BlockEntity, "block-entity"),
+            (Kind::Component, "component"),
+        ] {
+            let duplicate = DeclareRefused::Duplicate {
+                kind,
+                path: "crusher".to_owned(),
+            };
+            assert_eq!(
+                duplicate.to_string(),
+                format!("a {spelling} is already declared at `crusher`")
+            );
+            assert_eq!(
+                DeclareRefused::Full(kind).to_string(),
+                format!("at most {MAX_PER_KIND} of {spelling} are declared")
+            );
+        }
+    }
+
+    #[test]
     fn an_identifier_is_the_namespace_and_the_declared_path() {
         let mut collection = Collection::new(namespace());
         let id = collection
@@ -991,14 +1043,5 @@ mod tests {
             "attaching walks every capability against every declaration, so the \
              list a dependent grows in a loop is bounded"
         );
-    }
-
-    #[test]
-    fn the_two_kinds_ravel_publishes_map_to_ravels_own_and_the_other_two_do_not() {
-        assert_eq!(Kind::Block.published(), Some(ContentKind::Block));
-        assert_eq!(Kind::Item.published(), Some(ContentKind::Item));
-        assert_eq!(Kind::BlockEntity.published(), None);
-        assert_eq!(Kind::Component.published(), None);
-        assert_eq!(Kind::BlockEntity.to_string(), "block-entity");
     }
 }

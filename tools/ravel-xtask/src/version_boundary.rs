@@ -1,8 +1,10 @@
 //! Version data and common-source boundary checks.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use ravel_minecraft_generate::Eligibility;
 
 use crate::inventory::hook_counts;
 use crate::java_shape::REFLECTION_FILE;
@@ -48,12 +50,115 @@ pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<String>) {
+pub(crate) fn adapter_eligibility(
+    parsed: &toml::Table,
+    version: &str,
+) -> Result<Eligibility, String> {
+    let eligibility = parsed
+        .get("eligibility")
+        .map(|value| value.clone().try_into::<Eligibility>())
+        .transpose()
+        .map_err(|error| format!("Minecraft {version} has invalid eligibility: {error}"))?
+        .unwrap_or_default();
+    if eligibility == Eligibility::GenerationOnly && version != "1.12.2" {
+        return Err(format!(
+            "Minecraft {version} must retain live eligibility; generation-only is reserved \
+             for the unproven 1.12.2 port"
+        ));
+    }
+    Ok(eligibility)
+}
+
+pub(crate) type VersionEligibility = BTreeMap<String, Eligibility>;
+
+/// Reads each tracked adapter once, retaining diagnostics for invalid declarations.
+#[cfg(test)]
+pub(crate) fn version_eligibility(root: &Path, violations: &mut Vec<String>) -> VersionEligibility {
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
         Err(error) => {
             violations.push(error);
-            return;
+            return BTreeMap::new();
+        }
+    };
+    versions
+        .into_iter()
+        .filter_map(|version| {
+            match read_tracked_adapter(root, &version)
+                .and_then(|parsed| adapter_eligibility(&parsed, &version))
+            {
+                Ok(eligibility) => Some((version, eligibility)),
+                Err(error) => {
+                    violations.push(error);
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn read_adapter(root: &Path, version: &str) -> Result<toml::Table, String> {
+    if !tracked_versions(root)?
+        .iter()
+        .any(|tracked| tracked == version)
+    {
+        return Err(format!(
+            "Minecraft {version} has no tracked version directory"
+        ));
+    }
+    read_tracked_adapter(root, version)
+}
+
+pub(crate) fn read_tracked_adapter(root: &Path, version: &str) -> Result<toml::Table, String> {
+    let path = format!("{VERSION_DATA}/{version}/adapter.toml");
+    let text = fs::read_to_string(root.join(&path))
+        .map_err(|error| format!("cannot read {path}: {error}"))?;
+    let parsed: toml::Table =
+        toml::from_str(&text).map_err(|error| format!("cannot parse {path}: {error}"))?;
+    if parsed.get("minecraft").and_then(toml::Value::as_str) != Some(version) {
+        return Err(format!("{path} does not declare Minecraft {version}"));
+    }
+    Ok(parsed)
+}
+
+/// Reports matrix eligibility from typed manifest data and its actual mapping input.
+pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
+    let parsed = read_adapter(root, version)?;
+    let eligibility = adapter_eligibility(&parsed, version)?;
+    if let Some(path) = missing_mapping_input(root, &parsed) {
+        return Ok(format!("unavailable: {path} is absent"));
+    }
+    Ok(match eligibility {
+        Eligibility::Live => "live",
+        Eligibility::GenerationOnly => "generation-only",
+    }
+    .to_owned())
+}
+
+pub(crate) fn missing_mapping_input<'a>(root: &Path, parsed: &'a toml::Table) -> Option<&'a str> {
+    ["clientMappings", "mappingIoJar"]
+        .into_iter()
+        .find_map(|input| {
+            parsed
+                .get("inputs")
+                .and_then(|inputs| inputs.get(input))
+                .and_then(|input| input.get("path"))
+                .and_then(toml::Value::as_str)
+                .filter(|path| !root.join(path).is_file())
+        })
+}
+
+/// Validates version files and returns eligibility from their already-parsed adapters.
+pub(crate) fn verify_version_directories(
+    root: &Path,
+    violations: &mut Vec<String>,
+) -> VersionEligibility {
+    let mut eligibility = BTreeMap::new();
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => {
+            violations.push(error);
+            return eligibility;
         }
     };
     if versions.is_empty() {
@@ -61,7 +166,7 @@ pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<Strin
             "{VERSION_DATA} holds no version directory, so every check derived from version data \
              sweeps nothing and passes by having nothing to say"
         ));
-        return;
+        return eligibility;
     }
 
     for version in &versions {
@@ -107,9 +212,18 @@ pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<Strin
             }
             if file == "adapter.toml" {
                 verify_version_directories_adapter(&parsed, &relative, violations);
+                if parsed.get("minecraft").and_then(toml::Value::as_str) == Some(version) {
+                    match adapter_eligibility(&parsed, version) {
+                        Ok(value) => {
+                            eligibility.insert(version.clone(), value);
+                        }
+                        Err(error) => violations.push(format!("{relative}: {error}")),
+                    }
+                }
             }
         }
     }
+    eligibility
 }
 
 const RETIRED_HARNESS_TABLE: &str = "harness.notRun";
@@ -400,7 +514,7 @@ fn verify_version_directories_adapter(
     if parsed.contains_key(RETIRED_HARNESS_ROOT) {
         violations.push(format!(
             "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
-             `[{RETIRED_HARNESS_TABLE}]` is retired: every tracked version runs \
+             `[{RETIRED_HARNESS_TABLE}]` is retired: every live-eligible version runs \
              every harness section, so an absent one is a break rather than \
              something a version may write its way out of. A section a version \
              genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \

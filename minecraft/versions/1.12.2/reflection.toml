@@ -1,0 +1,28 @@
+# Explicit legacy classes for future adapters, not modern GameNames aliases.
+schemaVersion = 1
+minecraft = "1.12.2"
+
+[[reflected]]
+name = "LEGACY_SAVED_DATA"
+class = "net.minecraft.world.saveddata.SavedData"
+runtime = "bet"
+[[reflected.member]]
+name = "readNbt"
+descriptor = "(Lnet/minecraft/nbt/NbtCompound;)V"
+[[reflected.member]]
+name = "writeNbt"
+descriptor = "(Lnet/minecraft/nbt/NbtCompound;)Lnet/minecraft/nbt/NbtCompound;"
+[[reflected.member]]
+name = "markDirty"
+descriptor = "()V"
+
+[[reflected]]
+name = "LEGACY_MAP_STORAGE"
+class = "net.minecraft.world.storage.SavedDataStorage"
+runtime = "bfm"
+[[reflected.member]]
+name = "load"
+descriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lnet/minecraft/world/saveddata/SavedData;"
+[[reflected.member]]
+name = "set"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/world/saveddata/SavedData;)V"

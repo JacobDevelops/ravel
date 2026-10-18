@@ -55,6 +55,8 @@ struct Lock {
     mapping_source: MappingSource,
     extractor: String,
     client_jar_sha256: String,
+    #[serde(default)]
+    server_jar_sha256: Option<String>,
     /// The published mapping the linked names below were read from.
     ///
     /// Absent under a source that reads none, which is the same shape the
@@ -66,6 +68,8 @@ struct Lock {
 }
 
 /// Resolves every hook entry against the pinned jar's class files.
+///
+/// Abstract instance methods are refused: they have no body for a hook to instrument.
 pub(super) fn from_jar(
     archive: &jar::Archive,
     inventory: &Inventory,
@@ -88,8 +92,13 @@ pub(super) fn from_jar(
         // The inventory reviews a Mojang name and the class file declares a
         // linked one, so the two are compared in the class file's own name space
         // and never by hoping they coincide.
-        let (runtime_member, runtime_descriptor) =
-            mapping.runtime_member(&mojang_class, &hook.member, &hook.descriptor)?;
+        let (runtime_member, runtime_descriptor) = mapping.runtime_hook_member(
+            archive,
+            &mojang_class,
+            &hook.member,
+            &hook.descriptor,
+            hook.kind,
+        )?;
         let matches = members
             .iter()
             .filter(|member| {
@@ -114,6 +123,12 @@ pub(super) fn from_jar(
             return Err(GenerateError::Unresolved(format!(
                 "{} is declared {:?} but the jar disagrees about static",
                 hook.id, hook.kind
+            )));
+        }
+        if member.method && !member.is_static() && member.flags & classfile::ACC_ABSTRACT != 0 {
+            return Err(GenerateError::Unresolved(format!(
+                "{} targets an abstract instance method in {}",
+                hook.id, hook.class
             )));
         }
 
@@ -168,6 +183,17 @@ fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), G
                 "mappings.lock records {what} as {tracked} but the adapter inputs pin {pinned}"
             )));
         }
+    }
+    let server_hash = adapter
+        .inputs
+        .server_jar
+        .as_ref()
+        .and_then(|input| input.sha256.as_deref());
+    if lock.server_jar_sha256.as_deref() != server_hash {
+        return Err(GenerateError::Drift(format!(
+            "mappings.lock records the server jar hash as {:?} but the adapter inputs pin {server_hash:?}",
+            lock.server_jar_sha256
+        )));
     }
     if lock.schema_version != adapter.schema_version {
         return Err(GenerateError::Drift(format!(
@@ -259,7 +285,7 @@ mod tests {
     use super::super::inputs::{self, MappingSource, PinnedVersion};
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
-    use super::{from_jar, from_lock};
+    use super::{classfile, from_jar, from_lock};
 
     /// The mapping every reviewed name already agrees with.
     fn identity() -> Mapping {
@@ -281,6 +307,50 @@ mod tests {
     fn tracked_lock(pinned: &PinnedVersion) -> String {
         std::fs::read_to_string(pinned.directory.join("mappings.lock"))
             .expect("the tracked mapping lock should be readable")
+    }
+
+    #[test]
+    fn a_lock_from_another_minecraft_version_is_refused_before_targets() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        pinned.adapter.minecraft = "different-minecraft-version".to_owned();
+        let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
+            .expect_err("matching members and hashes cannot excuse cross-version metadata");
+        assert!(error.to_string().contains("the version"), "{error}");
+    }
+
+    #[test]
+    fn declaring_a_server_jar_requires_the_lock_to_pin_its_identity() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        pinned.adapter.inputs.server_jar = Some(inputs::Input {
+            path: "server.jar".to_owned(),
+            sha256: Some("b".repeat(64)),
+            bytes: None,
+            upstream: None,
+        });
+        let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
+            .expect_err("a client-only lock does not prove server hooks");
+        assert!(error.to_string().contains("the server jar hash"), "{error}");
+        let matching = tracked.replace(
+            "extractor = ",
+            &format!("serverJarSha256 = \"{}\"\nextractor = ", "b".repeat(64)),
+        );
+        from_lock(&matching, &pinned.adapter, &pinned.inventory)
+            .expect("the matching server identity is admitted");
+        let wrong = matching.replace(&"b".repeat(64), &"c".repeat(64));
+        let error = from_lock(&wrong, &pinned.adapter, &pinned.inventory)
+            .expect_err("a different server identity must be refused");
+        assert!(error.to_string().contains("the server jar hash"), "{error}");
+        pinned.adapter.inputs.server_jar = None;
+        for unexpected in [
+            matching,
+            tracked.replace("extractor = ", "serverJarSha256 = \"\"\nextractor = "),
+        ] {
+            let error = from_lock(&unexpected, &pinned.adapter, &pinned.inventory)
+                .expect_err("modern locks must omit server provenance when inputs omit the server");
+            assert!(error.to_string().contains("the server jar hash"), "{error}");
+        }
     }
 
     #[test]
@@ -451,6 +521,23 @@ mod tests {
 
         assert!(
             error.to_string().contains("disagrees about static"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_abstract_instance_method_is_refused_as_a_hook_target() {
+        let (mut inventory, bytes) = one_hook(classfile::ACC_PUBLIC | classfile::ACC_ABSTRACT);
+        inventory.hooks[0].kind = inputs::Kind::InstanceMethod;
+        let archive = fixture::parse(bytes).expect("a synthetic archive");
+
+        let error = from_jar(&archive, &inventory, &identity())
+            .expect_err("an abstract method has no body to instrument");
+
+        assert!(
+            error
+                .to_string()
+                .contains("targets an abstract instance method"),
             "{error}"
         );
     }

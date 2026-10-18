@@ -105,6 +105,37 @@ impl Archive {
             .map_err(|detail| GenerateError::Extraction(format!("{name}: {detail}")))
     }
 
+    /// Reads a fixed-size header without allocating or inflating the whole entry.
+    ///
+    /// This deliberately does not validate the unread body or its CRC.
+    pub(super) fn entry_prefix<const N: usize>(
+        &self,
+        name: &str,
+    ) -> Result<[u8; N], GenerateError> {
+        self.read_entry_prefix(name)
+            .map_err(|detail| GenerateError::Extraction(format!("{name}: {detail}")))
+    }
+
+    fn read_entry_prefix<const N: usize>(&self, name: &str) -> Result<[u8; N], String> {
+        let index = *self
+            .entries
+            .get(name)
+            .ok_or_else(|| "the jar has no such entry".to_owned())?;
+        let mut reader = self.reader.clone();
+        let mut file = reader.by_index(index).map_err(|error| error.to_string())?;
+        if file
+            .data_start()
+            .and_then(|start| start.checked_add(file.compressed_size()))
+            .is_none_or(|end| end > self.byte_len)
+        {
+            return Err("its bytes run past the archive".to_owned());
+        }
+        let mut bytes = [0; N];
+        file.read_exact(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        Ok(bytes)
+    }
+
     fn read_entry(&self, name: &str) -> Result<Vec<u8>, String> {
         let index = *self
             .entries
@@ -187,26 +218,33 @@ pub(super) mod fixture {
 
     /// Builds a one-entry archive, storing or deflating the content.
     pub(crate) fn archive(name: &str, content: &[u8], method: u16) -> Vec<u8> {
-        let compression = if method == 8 {
-            CompressionMethod::Deflated
-        } else {
-            CompressionMethod::Stored
-        };
-        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
-        writer
-            .start_file(
-                name,
-                SimpleFileOptions::default().compression_method(compression),
-            )
-            .expect("a valid fixture entry");
-        writer.write_all(content).expect("writing to memory");
-        let mut bytes = writer.finish().expect("a complete archive").into_inner();
+        let mut bytes = entries(&[(name, content)], method);
         if !matches!(method, 0 | 8) {
             bytes[8..10].copy_from_slice(&method.to_le_bytes());
             let central = central_offset(&bytes);
             bytes[central + 10..central + 12].copy_from_slice(&method.to_le_bytes());
         }
         bytes
+    }
+
+    /// Builds an archive with multiple entries, storing or deflating their contents.
+    pub(crate) fn entries(entries: &[(&str, &[u8])], method: u16) -> Vec<u8> {
+        let compression = if method == 8 {
+            CompressionMethod::Deflated
+        } else {
+            CompressionMethod::Stored
+        };
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        for &(name, content) in entries {
+            writer
+                .start_file(
+                    name,
+                    SimpleFileOptions::default().compression_method(compression),
+                )
+                .expect("a valid fixture entry");
+            writer.write_all(content).expect("writing to memory");
+        }
+        writer.finish().expect("a complete archive").into_inner()
     }
 
     /// Builds a one-entry archive that stores its content uncompressed.
@@ -231,6 +269,33 @@ pub(super) mod fixture {
 #[cfg(test)]
 mod tests {
     use super::fixture::{archive, deflated, parse, stored};
+
+    #[test]
+    fn entry_prefix_reads_only_the_requested_header() {
+        for method in [0, 8] {
+            let content = b"header!!body".repeat(4096);
+            let mut bytes = archive("Game.class", &content, method);
+            let central = super::fixture::central_offset(&bytes);
+            // An unread body must not be consumed just to validate its CRC.
+            bytes[14..18].fill(0);
+            bytes[central + 16..central + 20].fill(0);
+            let archive = parse(bytes).expect("an archive");
+
+            assert_eq!(
+                archive.entry_prefix::<8>("Game.class").expect("a header"),
+                *b"header!!"
+            );
+            assert!(archive.entry("Game.class").is_err());
+        }
+    }
+
+    #[test]
+    fn entry_prefix_rejects_missing_and_short_entries() {
+        let archive = parse(stored("short.class", b"short")).expect("an archive");
+
+        assert!(archive.entry_prefix::<8>("missing.class").is_err());
+        assert!(archive.entry_prefix::<8>("short.class").is_err());
+    }
 
     #[test]
     fn a_deflated_entry_reads_back_as_the_bytes_that_went_in() {
@@ -312,6 +377,7 @@ mod tests {
         bytes[central + 20..central + 24].copy_from_slice(&u32::MAX.to_le_bytes());
 
         let archive = parse(bytes).expect("the directory still indexes");
+        assert!(archive.entry_prefix::<8>("plain.txt").is_err());
 
         assert!(
             archive
@@ -379,19 +445,19 @@ mod tests {
 
     #[test]
     fn enumeration_is_sorted_independently_of_archive_order() {
-        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        for name in ["z.class", "a.class", "m.class"] {
-            writer
-                .start_file(name, zip::write::SimpleFileOptions::default())
-                .expect("an empty fixture entry");
-        }
-        let bytes = writer.finish().expect("a complete archive").into_inner();
-        let archive = parse(bytes).expect("a valid archive");
+        let archive = parse(super::fixture::entries(
+            &[("z.class", b"z"), ("a.class", b"a"), ("m.class", b"m")],
+            0,
+        ))
+        .expect("a valid archive");
 
         assert_eq!(
             archive.names().collect::<Vec<_>>(),
             ["a.class", "m.class", "z.class"]
         );
+        assert_eq!(archive.entry("a.class").expect("an entry"), b"a");
+        assert_eq!(archive.entry("m.class").expect("an entry"), b"m");
+        assert_eq!(archive.entry("z.class").expect("an entry"), b"z");
     }
 
     /// Adds central metadata without altering the local file or its payload.

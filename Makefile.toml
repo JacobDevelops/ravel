@@ -76,8 +76,27 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 actionlint .github/workflows/*.yml
 '''
 
+[tasks."ravel:prepare-normalizer"]
+description = "Acquire and verify the pinned mapping normalizer before version coverage is recorded."
+cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
+script_runner = "bash"
+script = '''
+set -euo pipefail
+cd "${CARGO_MAKE_WORKING_DIRECTORY}"
+normalizer_jar="tests/fixtures/local/tooling/mapping-io-0.9.1.jar"
+if [ ! -f "$normalizer_jar" ]; then
+  mkdir -p "$(dirname "$normalizer_jar")"
+  curl --fail --location --output "$normalizer_jar" \
+    https://maven.fabricmc.net/net/fabricmc/mapping-io/0.9.1/mapping-io-0.9.1.jar
+fi
+printf '%s  %s\n' \
+  aedc94b25a2fe7c09c898144ce33a1ef396680e984b07525d34916922d6ee3f4 \
+  "$normalizer_jar" | sha256sum --check
+'''
+
 [tasks."ravel:test"]
 description = "Run workspace and documentation tests."
+dependencies = ["ravel:prepare-normalizer"]
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
@@ -91,13 +110,9 @@ cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 # `compatibility.minecraft` was written against the selected one and
 # twelve tests failed the first time another version was named.
 #
-# A version is skipped when its declared client mapping is absent,
-# because `generate::run_rust` reads that file on every build under a
-# translating source, jars or no jars — see the comment above the
-# `mapping` call in `crates/ravel-minecraft-generate/src/lib.rs`.
-# `ravel_test_versions_agree_with_the_generator` holds this rule to that
-# one so the two cannot drift apart. A skip says so loudly, because a
-# skip that reads like a pass is how a half stays unexercised.
+# Matrix eligibility reads the typed adapter declaration and the real mapping
+# input (Tiny or ProGuard). Generation-only versions do not run modern adapter
+# tests or harnesses; the reconciliation gate reports those unmet obligations.
 # Persist per-version verdicts so the gate can reconcile coverage.
 tested="${CARGO_MAKE_WORKING_DIRECTORY}/target/ravel-jvm/tested-versions.txt"
 mkdir -p "$(dirname "$tested")"
@@ -106,10 +121,14 @@ selected_version="$RAVEL_MINECRAFT_VERSION"
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
   export RAVEL_MINECRAFT_VERSION="$version"
-  mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
-    "$version_directory/adapter.toml" | head -n 1)"
-  if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
-    verdict="SKIPPED: Minecraft $version was NOT tested; $mapping is absent"
+  eligibility="$(cargo run --quiet --locked -p ravel-xtask -- version-matrix "$version")"
+  if [ "$eligibility" = "generation-only" ]; then
+    cargo build --locked -p ravel-minecraft-adapter
+    echo "built: Minecraft $version; adapter tests not yet run" | tee -a "$tested"
+    continue
+  fi
+  if [ "$eligibility" != "live" ]; then
+    verdict="SKIPPED: Minecraft $version adapter tests were NOT run; $eligibility"
     echo "$verdict" >&2
     echo "$verdict" >>"$tested"
     continue
@@ -282,6 +301,7 @@ cargo run --locked -p ravel-xtask -- verify spikes
 # Persist skipped-version verdicts so the gate can reconcile actual coverage.
 [tasks."ravel:verify-java"]
 description = "Compile every tracked version's generated Java."
+dependencies = ["ravel:prepare-normalizer"]
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
@@ -319,10 +339,9 @@ jarsigner -keystore "$probe/keystore.p12" -storepass ravelprobe \
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
   export RAVEL_MINECRAFT_VERSION="$version"
-  mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
-    "$version_directory/adapter.toml" | head -n 1)"
-  if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
-    verdict="SKIPPED: Minecraft $version Java was NOT compiled; $mapping is absent"
+  eligibility="$(cargo run --quiet --locked -p ravel-xtask -- version-matrix "$version")"
+  if [[ "$eligibility" == unavailable:* ]]; then
+    verdict="SKIPPED: Minecraft $version Java was NOT compiled; $eligibility"
     echo "$verdict" >&2
     echo "$verdict" >>"$compiled"
     continue
@@ -331,6 +350,17 @@ for version_directory in minecraft/versions/*/; do
   # Generation is explicit: Cargo may restore build-script results from cache.
   RAVEL_MINECRAFT_VERSION="$version" \
     cargo run --locked -p ravel-xtask -- generate java
+  if [ "$eligibility" = "generation-only" ]; then
+    ./jvm/build/build-screen.sh >/dev/null
+    generated="target/ravel-jvm/generated/dev/ravel/jvm"
+    release="$(cat "$generated/java-release.txt")"
+    mapfile -d '' generated_sources < <(find target/ravel-jvm/generated -name '*.java' -print0 | sort -z)
+    javac --release "$release" -Xlint:all -Werror \
+      -cp target/ravel-jvm/screen-stubs -d target/ravel-jvm/screen-stubs \
+      "${generated_sources[@]}"
+    echo "compiled: Minecraft $version; generation-only, no harness run" | tee -a "$compiled"
+    continue
+  fi
   ./jvm/build/build-agent.sh >/dev/null
   ./jvm/build/build-screen.sh >/dev/null
 
@@ -388,6 +418,7 @@ cargo run --locked -p ravel-xtask -- verify gate-versions
 # Build the artifacts here so a clean checkout exercises the real launch path.
 [tasks."ravel:verify-jvm"]
 description = "Run Ravel's agent, transformer and native library against a real JVM."
+dependencies = ["ravel:prepare-normalizer"]
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
@@ -395,14 +426,6 @@ set -euo pipefail
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 
 normalizer_jar="tests/fixtures/local/tooling/mapping-io-0.9.1.jar"
-if [ ! -f "$normalizer_jar" ]; then
-  mkdir -p "$(dirname "$normalizer_jar")"
-  curl --fail --location --output "$normalizer_jar" \
-    https://maven.fabricmc.net/net/fabricmc/mapping-io/0.9.1/mapping-io-0.9.1.jar
-fi
-printf '%s  %s\n' \
-  aedc94b25a2fe7c09c898144ce33a1ef396680e984b07525d34916922d6ee3f4 \
-  "$normalizer_jar" | sha256sum --check
 mkdir -p target/mapping-io-tests
 "${JAVA_HOME:?JAVA_HOME must select the configured JDK}/bin/javac" \
   -Xlint:all -Werror -cp "$normalizer_jar" -d target/mapping-io-tests \
@@ -422,10 +445,13 @@ mkdir -p "$(dirname "$ran")"
 for version_directory in minecraft/versions/*/; do
   version="$(basename "$version_directory")"
   export RAVEL_MINECRAFT_VERSION="$version"
-  mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
-    "$version_directory/adapter.toml" | head -n 1)"
-  if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
-    verdict="SKIPPED: Minecraft $version was NOT run by the harness; $mapping is absent"
+  eligibility="$(cargo run --quiet --locked -p ravel-xtask -- version-matrix "$version")"
+  if [ "$eligibility" = "generation-only" ]; then
+    echo "NOT-YET-RUN: Minecraft $version harness obligations not yet met" | tee -a "$ran"
+    continue
+  fi
+  if [ "$eligibility" != "live" ]; then
+    verdict="SKIPPED: Minecraft $version was NOT run by the harness; $eligibility"
     echo "$verdict" >&2
     echo "$verdict" >>"$ran"
     continue

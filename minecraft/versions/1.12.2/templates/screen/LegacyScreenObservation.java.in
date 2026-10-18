@@ -1,0 +1,12 @@
+{{package}}
+
+{{import SCREEN}}
+
+/** Legacy GUI observation does not intercept drawing or extract render state. */
+public final class LegacyScreenObservation {
+    private LegacyScreenObservation() {}
+
+    public static boolean pausesGame({{SCREEN}} screen) {
+        return screen != null && screen.{{SCREEN#shouldPauseGame}}();
+    }
+}

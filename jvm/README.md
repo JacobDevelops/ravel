@@ -71,10 +71,13 @@ outside the launcher's managed natives directory.
 cargo make ravel:verify-jvm
 ```
 
-This gate starts a JVM and runs the harness for every tracked version. It is
-part of `ravel:verify`. It tests agent startup and the native crossings, but only
-a real game launch proves attachment to the official client; one is recorded
-in [`evidence/m2/prism-launch.json`](../evidence/m2/prism-launch.json).
+This gate starts a JVM and runs the harness for every live-eligible tracked
+version. It is part of `ravel:verify`. Minecraft 1.12.2 currently declares
+`eligibility = "generation-only"`: no modern stand-in harness is run for it,
+and reconciliation reports every live obligation as not yet run.
+The harness tests agent startup and native crossings, but only a real game
+launch proves attachment to the official client; one is recorded in
+[`evidence/m2/prism-launch.json`](../evidence/m2/prism-launch.json).
 
 The component commands are:
 
@@ -133,9 +136,31 @@ agent resolves. Guava and DataFixerUpper names are not mapped game names;
 
 ### What each version proves, and what it does not
 
-Every tracked version runs all thirteen sections. `cargo xtask verify
-gate-versions` rejects missing sections, and `cargo xtask verify scaffold`
-rejects the retired `[harness.notRun]` table.
+Every live-eligible version must run all thirteen sections. Eligibility defaults
+to `live`; 1.21.1 and 26.1.2 cannot downgrade to generation-only. The explicit
+1.12.2 generation-only declaration requires generated Java compilation and an
+adapter build, not adapter tests, harness coverage, playability, or live support.
+
+`cargo xtask version-matrix <minecraft>` prints `live`, `generation-only`, or
+`unavailable: <first absent path> is absent` for the selected version. Acquire
+the named pinned input and rerun to discover any next missing input. Matrix
+tasks report missing local fixtures loudly as `SKIPPED`, not as a successful
+compilation, test, or live run.
+
+The generation-only harness is explicitly recorded as `NOT-YET-RUN`; adapter
+tests and all thirteen live harness sections remain not-yet-met obligations.
+
+The legacy adapter uses the official client and dedicated-server jars with
+Feather build 31 mappings. `sourceJavaRelease = 8` describes the upstream
+bytecode; Ravel's generated code still compiles and runs on JDK 27 through
+`javaRelease = 27`. Legacy screen templates live under
+`minecraft/versions/1.12.2/templates/screen/`; generation does not render the
+modern game, driver, or sibling harness trees for that version.
+
+Lock-only generation requires every declared game and library jar to be absent.
+A partially available set is an error naming the missing jar, including a
+missing DataFixerUpper jar beside a modern client jar. Either acquire the full
+pinned set or remove all its local jars to use the tracked locks.
 
 - **Transformer sections** (initialization, hierarchy, refusal, members,
   transformation, load, and side) use hand-written targets and stand-ins. Neither

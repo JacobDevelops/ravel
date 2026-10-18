@@ -1,0 +1,256 @@
+# Feather named targets; locks resolve exact official descriptors and static flags.
+# These are observations, not implemented runtime ports. WP4 owns the registration
+# barrier, stable numeric IDs, 0..15 metadata, bounded payloads and saved-data policy.
+schemaVersion = 1
+minecraft = "1.12.2"
+
+[[hook]]
+id = "legacy.bootstrap"
+class = "net.minecraft.Bootstrap"
+member = "init"
+descriptor = "()V"
+kind = "static-method"
+capability = "Observe vanilla bootstrap before Ravel's separately controlled registration barrier; vanilla has no registry freeze."
+
+[[hook]]
+id = "legacy.block-register"
+class = "net.minecraft.block.Block"
+member = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/block/Block;)V"
+kind = "static-method"
+capability = "Observe numeric block ID, resource key and block identity; preserve ordering and serialized IDs without narrowing storage widths."
+
+[[hook]]
+id = "legacy.item-register"
+class = "net.minecraft.item.Item"
+member = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/item/Item;)V"
+kind = "static-method"
+capability = "Observe numeric item ID and key after block registration; do not flatten metadata variants or infer a modern freeze."
+
+[[hook]]
+id = "legacy.block-state-from-metadata"
+class = "net.minecraft.block.Block"
+member = "deserialize"
+descriptor = "(I)Lnet/minecraft/block/state/BlockState;"
+kind = "static-method"
+capability = "Observe packed legacy block-state ID decoding through the static dispatcher, including subclass metadata conversion; bits 0..11 select the numeric block ID and bits 12..15 carry metadata. Chunk palettes and block-update packets use the separate state registry and bypass this dispatcher."
+
+[[hook]]
+id = "legacy.block-metadata-from-state"
+class = "net.minecraft.block.Block"
+member = "serialize"
+descriptor = "(Lnet/minecraft/block/state/BlockState;)I"
+kind = "static-method"
+capability = "Observe packed legacy block-state ID encoding through the static dispatcher, including subclass metadata conversion; preserve both numeric block ID and metadata. Chunk palettes and block-update packets use the separate state registry and bypass this dispatcher."
+
+[[hook]]
+id = "legacy.item-metadata"
+class = "net.minecraft.item.ItemStack"
+member = "getMetadata"
+descriptor = "()I"
+kind = "instance-method"
+capability = "Observe item metadata independently of block metadata; do not truncate item variants to four bits."
+
+[[hook]]
+id = "legacy.client-tick"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe one client tick invocation, distinct from rendering and integrated-server simulation."
+
+[[hook]]
+id = "legacy.server-tick"
+class = "net.minecraft.server.MinecraftServer"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe the base server tick reached by dedicated and integrated execution; no has-time-left predicate exists. Integrated override delegation must be deduplicated by the runtime port."
+
+[[hook]]
+id = "legacy.integrated-server-tick"
+side = "client-only"
+class = "net.minecraft.server.integrated.IntegratedServer"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe the integrated-server override separately from its base delegation; the runtime port must deduplicate a logical tick and retain paused-world semantics."
+
+[[hook]]
+id = "legacy.server-world-tick"
+class = "net.minecraft.server.MinecraftServer"
+member = "tickWorlds"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe world updates separately from the outer server tick, not as a second once-per-tick callback."
+
+[[hook]]
+id = "legacy.payload-client"
+side = "client-only"
+class = "net.minecraft.client.network.handler.ClientPlayNetworkHandler"
+member = "handleCustomPayload"
+descriptor = "(Lnet/minecraft/network/packet/s2c/play/CustomPayloadS2CPacket;)V"
+kind = "instance-method"
+capability = "Observe method entry before PacketThreadUtil: an off-client-thread invocation is observed before requeue/exit and observed again when dispatched on the client thread. WP4 must select the client-thread invocation and bound payload bytes; no modern codec or Forge discriminator contract is implied."
+
+[[hook]]
+id = "legacy.payload-server"
+class = "net.minecraft.server.network.handler.ServerPlayNetworkHandler"
+member = "handleCustomPayload"
+descriptor = "(Lnet/minecraft/network/packet/c2s/play/CustomPayloadC2SPacket;)V"
+kind = "instance-method"
+capability = "Observe method entry before PacketThreadUtil: an off-server-thread invocation is observed before requeue/exit and observed again when dispatched on the server thread. WP4 must select the server-thread invocation and bound payload bytes; Forge wire compatibility is not implied."
+
+[[hook]]
+id = "legacy.resource-reload"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "reloadResources"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe the legacy client resource reload entry; WP4 must establish one generation barrier spanning resource listeners, models and atlas. This is not a server datapack reload."
+
+[[hook]]
+id = "legacy.atlas-reload"
+side = "client-only"
+class = "net.minecraft.client.render.texture.TextureAtlas"
+member = "loadAndStitch"
+descriptor = "(Lnet/minecraft/client/resource/manager/ResourceManager;)V"
+kind = "instance-method"
+capability = "Observe atlas loading and stitching within the legacy resource generation."
+
+[[hook]]
+id = "legacy.recipe-register"
+class = "net.minecraft.crafting.CraftingManager"
+member = "register"
+descriptor = "(Lnet/minecraft/resource/Identifier;Lnet/minecraft/crafting/recipe/Recipe;)V"
+kind = "static-method"
+capability = "Observe legacy recipe key registration, distinct from modern datapack recipe application."
+
+[[hook]]
+id = "legacy.saved-data-dirty"
+class = "net.minecraft.world.saveddata.SavedData"
+member = "markDirty"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe aggregate dirty marking without replacing the live saved-data identity."
+
+[[hook]]
+id = "legacy.saved-data-load"
+class = "net.minecraft.world.storage.SavedDataStorage"
+member = "load"
+descriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lnet/minecraft/world/saveddata/SavedData;"
+kind = "instance-method"
+capability = "Observe MapStorage get-or-load by class and key; WP4 must distinguish global and per-dimension storage and client/server instances."
+
+[[hook]]
+id = "legacy.saved-data-set"
+class = "net.minecraft.world.storage.SavedDataStorage"
+member = "set"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/world/saveddata/SavedData;)V"
+kind = "instance-method"
+capability = "Observe staged aggregate installation in MapStorage; failed replacements must retain the prior live identity."
+
+[[hook]]
+id = "legacy.saved-data-save"
+class = "net.minecraft.world.storage.SavedDataStorage"
+member = "save"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe MapStorage save independently for each storage scope."
+
+[[hook]]
+id = "legacy.world-save"
+class = "net.minecraft.server.MinecraftServer"
+member = "saveWorlds"
+descriptor = "(Z)V"
+kind = "instance-method"
+capability = "Observe server world saving shared by integrated and dedicated paths; the boolean is the legacy silent flag."
+
+[[hook]]
+id = "legacy.screen-open"
+side = "client-only"
+class = "net.minecraft.client.Minecraft"
+member = "openScreen"
+descriptor = "(Lnet/minecraft/client/gui/screen/Screen;)V"
+kind = "instance-method"
+capability = "Observe legacy GUI screen selection, including null when returning to the game; this does not extract render state."
+
+[[hook]]
+id = "legacy.screen-draw"
+side = "client-only"
+class = "net.minecraft.client.gui.screen.Screen"
+member = "render"
+descriptor = "(IIF)V"
+kind = "instance-method"
+capability = "Observe the base GuiScreen draw body only: subclass overrides that omit super are not observed. This is not complete draw-dispatch coverage, render-state extraction or permission to refuse a frame."
+
+[[nonGoal]]
+id = "screen.extract-render-state"
+reason = "Legacy GUI draws directly; no modern extraction phase exists. Screen observation remains separate from renderer replacement and cannot refuse a draw."
+
+[[nonGoal]]
+id = "screen.ravel-settings"
+reason = "The modern settings screen template depends on APIs absent here; the version-local output supports pause observation only until the reviewed legacy UI port lands."
+
+[[nonGoal]]
+id = "registry.freeze"
+reason = "Vanilla has no modern freeze. The essential Ravel-controlled barrier and stable numeric assignment policy belong to WP4, not a fake hook binding."
+
+[[nonGoal]]
+id = "resource.load-server-resources"
+reason = "There are no server datapacks or modern reload event. Legacy recipe and client resource targets are separately inventoried."
+
+[[nonGoal]]
+id = "resource.register-reload-listener"
+reason = "Legacy reload-listener registration is not instrumented by this generation-only dataset; WP4 must port listener installation and its resource-generation ordering explicitly."
+
+[[nonGoal]]
+id = "network.modern-codecs"
+reason = "Channel payloads use legacy packet buffers; no modern payload codec target exists. Forge wire compatibility is not promised."
+
+[[nonGoal]]
+id = "save.modern-codec-factory"
+reason = "WorldSavedData and MapStorage use NBT and class/key lookup, not modern saved-data codecs or factories."
+
+[[nonGoal]]
+id = "datafix.modern-dfu"
+reason = "Legacy data-fixer migrations are required at WP4; modern Mojang DataFixerUpper is not a runtime dependency or equivalent API."
+
+[[nonGoal]]
+id = "renderer.modern-chunk-pipeline"
+reason = "WP5 must replace legacy chunk/model/state rendering as a subsystem; binding a modern name cannot provide that capability."
+
+[[nonGoal]]
+id = "harness.live-runtime"
+reason = "Generation-only eligibility reports all unmet harness obligations. This dataset proves pinned resolution, not Java runtime or live play."
+
+[[nonGoal]]
+id = "chat.sanitization"
+reason = "Optional chat filtering and player-name validation interception is not reviewed for this generation-only target; no modern StringUtil binding is substituted."
+
+[[nonGoal]]
+id = "input.mouse-smoothing"
+reason = "Optional input smoothing observation is not reviewed for the legacy mouse implementation."
+
+[[nonGoal]]
+id = "command.dispatch"
+reason = "Optional command registration and dispatch interception requires the legacy ICommand/CommandHandler port, not Brigadier bindings."
+
+[[nonGoal]]
+id = "server.timing-metrics"
+reason = "Optional tick-counter, rolling timing, and average-tick-time observations are not reviewed; essential no-argument client/server tick targets are independently pinned."
+
+[[nonGoal]]
+id = "screen.modern-menu"
+reason = "Optional title-menu row injection, widget factories, screen tick and sized init interception are not reviewed; legacy open and draw targets remain independently pinned."
+
+[[nonGoal]]
+id = "world.modern-open-flow"
+reason = "Optional modern world-loader and pack-repository UI interception has no equivalent signature; legacy MapStorage and world-save targets supply the reviewed persistence seams."
+
+[[nonGoal]]
+id = "accessibility.narrator"
+reason = "Vanilla narrator/text-to-speech uses JNA/text2speech natives, but the legacy platform grants native access only to LWJGL modules; this unsupported optional feature fails closed and is logged once."

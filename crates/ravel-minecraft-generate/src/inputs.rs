@@ -11,6 +11,8 @@ use super::{GenerateError, SELECTION, jar};
 
 mod schema;
 
+pub use schema::Eligibility;
+
 pub(super) use schema::*;
 
 /// Every pinned version's data lives here, relative to the repository root.
@@ -121,6 +123,7 @@ fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
     ]
     .into_iter()
     .chain(adapter.inputs.client_mappings.as_ref())
+    .chain(adapter.inputs.server_jar.as_ref())
     .chain(adapter.inputs.data_fixer_jar.as_ref())
     .chain(adapter.inputs.mapping_io_jar.as_ref())
     {
@@ -178,7 +181,19 @@ fn verify_mapping_configuration(adapter: &Adapter) -> Result<(), GenerateError> 
 
 /// Legacy metadata is an explicit contract, not a guess from missing fields.
 fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
-    if adapter.capabilities.contains(&Capability::Legacy112) {
+    if adapter.eligibility == Eligibility::GenerationOnly && !adapter.is_legacy() {
+        return Err(GenerateError::Input(
+            "generation-only eligibility requires legacy-1-12".to_owned(),
+        ));
+    }
+    if let Some(server) = &adapter.inputs.server_jar
+        && server.sha256.is_none()
+    {
+        return Err(GenerateError::Input(
+            "serverJar must pin sha256, not only a byte length".to_owned(),
+        ));
+    }
+    if adapter.is_legacy() {
         let expected = PackFormat {
             resource: 3,
             resource_minor: 0,
@@ -187,13 +202,15 @@ fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
             spelling: Spelling::PackFormat,
         };
         if adapter.capabilities.len() != 1
-            || adapter.java_release != 8
+            || adapter.java_release != 27
+            || adapter.source_java_release != Some(8)
             || adapter.pack_format != expected
             || adapter.inputs.data_fixer_jar.is_some()
         {
             return Err(GenerateError::Input(
-                "legacy-1-12 requires Java 8, resource format 3, no data packs, pack-format \
-                 spelling, and no data fixer jar; declare the capability exactly once"
+                "legacy-1-12 requires sourceJavaRelease 8, javaRelease 27, resource format 3, \
+                 no data packs, pack-format spelling, and no data fixer jar; \
+                 declare the capability exactly once"
                     .to_owned(),
             ));
         }
@@ -218,18 +235,88 @@ fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateErr
     let text = fs::read_to_string(&path).map_err(|error| {
         GenerateError::Input(format!("{} is unreadable: {error}", path.display()))
     })?;
+    if major_version(&text).is_none() && adapter.is_legacy() {
+        let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+            GenerateError::Input(format!("invalid legacy version manifest: {error}"))
+        })?;
+        if manifest.get("javaVersion").is_none() && manifest.is_object() {
+            return Ok(());
+        }
+    }
     let declared = major_version(&text).ok_or_else(|| {
         GenerateError::Input(format!(
             "{} states no javaVersion.majorVersion, so nothing says what release this version runs",
             file_name(&adapter.inputs.version_manifest.path)
         ))
     })?;
-    if declared != adapter.java_release {
+    let source_release = adapter.effective_source_java_release();
+    if declared != source_release {
         return Err(GenerateError::Drift(format!(
-            "the adapter inputs declare javaRelease {} but {} states {declared}",
-            adapter.java_release,
+            "the adapter inputs declare effective source Java release {source_release} but {} states {declared}",
             file_name(&adapter.inputs.version_manifest.path)
         )));
+    }
+    Ok(())
+}
+
+/// Legacy manifests omit Java metadata; the pinned bytecode must prove Java 8.
+pub(super) fn verify_legacy_class_release(archive: &jar::Archive) -> Result<(), GenerateError> {
+    let mut maximum = None;
+    for name in archive.names().filter(|name| {
+        Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext == "class")
+    }) {
+        let bytes = archive.entry_prefix::<8>(name)?;
+        if bytes[..4] != [0xca, 0xfe, 0xba, 0xbe] {
+            return Err(GenerateError::Extraction(format!(
+                "{name} has no valid class-file version header"
+            )));
+        }
+        let major = u16::from_be_bytes([bytes[6], bytes[7]]);
+        maximum = Some(maximum.map_or(major, |previous: u16| previous.max(major)));
+    }
+    if maximum != Some(52) {
+        return Err(GenerateError::Drift(format!(
+            "legacy-1-12 sourceJavaRelease 8 requires maximum class-file major 52; \
+             pinned client jar states {maximum:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Checks shared targets against the official server using the shared runtime namespace.
+pub(super) fn verify_server_hooks(
+    archive: &jar::Archive,
+    inventory: &Inventory,
+    mapping: &super::mapping::Mapping,
+    client: &[super::resolve::Resolved],
+) -> Result<(), GenerateError> {
+    let shared = Inventory {
+        hooks: inventory
+            .hooks
+            .iter()
+            .filter(|hook| hook.side == HookSide::Shared)
+            .cloned()
+            .collect(),
+        schema_version: inventory.schema_version,
+        minecraft: inventory.minecraft.clone(),
+        non_goals: Vec::new(),
+    };
+    for target in super::resolve::from_jar(archive, &shared, mapping)? {
+        let matched = client.iter().any(|candidate| {
+            candidate.id == target.id
+                && candidate.runtime_class == target.runtime_class
+                && candidate.runtime_member == target.runtime_member
+                && candidate.runtime_descriptor == target.runtime_descriptor
+                && candidate.is_static == target.is_static
+        });
+        if !matched {
+            return Err(GenerateError::Drift(format!(
+                "server hook {} resolves to a different runtime target than the client",
+                target.id
+            )));
+        }
     }
     Ok(())
 }
@@ -243,8 +330,7 @@ pub(super) fn verify_pack_format(
     adapter: &Adapter,
     archive: &jar::Archive,
 ) -> Result<(), GenerateError> {
-    verify_capabilities(adapter)?;
-    if adapter.capabilities.contains(&Capability::Legacy112) {
+    if adapter.is_legacy() {
         return Ok(());
     }
     let text = jar_text(archive, JAR_VERSION)?;
@@ -810,6 +896,127 @@ pub(super) fn tracked_version_where(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn manifest_is_compared_with_source_release_not_adapter_target() {
+        let root =
+            std::env::temp_dir().join(format!("ravel-source-java-release-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("temporary manifest directory");
+        let mut adapter = legacy_adapter();
+        adapter.inputs.version_manifest.path = "version.json".to_owned();
+        let path = root.join("version.json");
+        std::fs::write(&path, r#"{"javaVersion":{"majorVersion":8}}"#)
+            .expect("legacy source manifest");
+        super::verify_java_release(&root, &adapter)
+            .expect("Java 8 source does not require a Java 8 adapter");
+        std::fs::write(&path, r#"{"javaVersion":{"majorVersion":27}}"#)
+            .expect("mismatched manifest");
+        let error = super::verify_java_release(&root, &adapter)
+            .expect_err("target release does not excuse source drift");
+        assert!(
+            error.to_string().contains("source Java release 8"),
+            "{error}"
+        );
+        adapter.source_java_release = None;
+        super::verify_java_release(&root, &adapter)
+            .expect("without override the manifest uses javaRelease");
+        adapter = legacy_adapter();
+        adapter.inputs.version_manifest.path = "version.json".to_owned();
+        adapter.inputs.client_jar.path = "client.jar".to_owned();
+        let jar_path = root.join("client.jar");
+        std::fs::write(&path, "{}").expect("legacy manifest omits javaVersion");
+        super::verify_java_release(&root, &adapter)
+            .expect("reviewed legacy source release permits offline generation");
+        for (major, accepted) in [(51_u16, false), (52, true), (53, false)] {
+            let mut header = vec![0xca, 0xfe, 0xba, 0xbe, 0, 0];
+            header.extend(major.to_be_bytes());
+            let bytes = super::jar::fixture::stored("Game.class", &header);
+            adapter.inputs.client_jar.sha256 = Some(sha256(&bytes));
+            std::fs::write(&jar_path, bytes).expect("pinned class version fixture");
+            let archive = super::jar::Archive::open(&jar_path).expect("class-version fixture");
+            assert_eq!(
+                super::verify_legacy_class_release(&archive).is_ok(),
+                accepted
+            );
+        }
+        adapter.capabilities.clear();
+        super::verify_java_release(&root, &adapter)
+            .expect_err("modern manifests cannot omit javaVersion");
+        adapter.capabilities.push(super::Capability::Legacy112);
+        std::fs::write(&path, r#"{"javaVersion":{}}"#).expect("malformed Java declaration");
+        super::verify_java_release(&root, &adapter)
+            .expect_err("malformed declarations are not historical omissions");
+        std::fs::remove_file(jar_path).expect("remove temporary client jar");
+        std::fs::remove_file(path).expect("remove temporary manifest");
+        std::fs::remove_dir(root).expect("remove temporary directory");
+    }
+
+    #[test]
+    fn source_release_defaults_to_modern_target_and_legacy_requires_explicit_eight() {
+        let modern: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("modern inputs");
+        assert_eq!(modern.effective_source_java_release(), modern.java_release);
+        let legacy = legacy_adapter();
+        assert_eq!(legacy.effective_source_java_release(), 8);
+        assert_eq!(legacy.java_release, 27);
+        for source in [None, Some(7), Some(27)] {
+            let mut wrong = legacy.clone();
+            wrong.source_java_release = source;
+            super::pinned_sources(&wrong).expect_err("legacy source release must be explicit");
+        }
+    }
+
+    #[test]
+    fn generation_only_is_an_explicit_legacy_admission() {
+        let mut legacy = legacy_adapter();
+        legacy.eligibility = super::Eligibility::GenerationOnly;
+        super::pinned_sources(&legacy).expect("legacy generation remains available");
+        let mut modern: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("modern inputs");
+        assert_eq!(modern.eligibility, super::Eligibility::Live);
+        modern.eligibility = super::Eligibility::GenerationOnly;
+        super::pinned_sources(&modern).expect_err("modern obligations cannot be opted out");
+    }
+
+    #[test]
+    fn server_jar_requires_hash_and_https_upstream() {
+        let mut adapter = legacy_adapter();
+        let mut server = adapter.inputs.client_jar.clone();
+        server.sha256 = None;
+        server.bytes = Some(100);
+        adapter.inputs.server_jar = Some(server.clone());
+        let error = super::pinned_sources(&adapter).expect_err("length is not identity");
+        assert!(
+            error.to_string().contains("serverJar must pin sha256"),
+            "{error}"
+        );
+        server.sha256 = Some("0".to_owned());
+        server.upstream = Some("http://example.invalid/server.jar".to_owned());
+        adapter.inputs.server_jar = Some(server);
+        let error = super::pinned_sources(&adapter).expect_err("insecure upstream");
+        assert!(
+            error.to_string().contains("not an https address"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn only_explicit_client_only_hooks_can_be_absent_from_the_server() {
+        let text = "schemaVersion = 1\nminecraft = \"test\"\n\
+                    [[hook]]\nid = \"test\"\nclass = \"example.Client\"\n\
+                    member = \"tick\"\ndescriptor = \"()V\"\n\
+                    kind = \"instance-method\"\ncapability = \"test\"\n";
+        let mut inventory: super::Inventory = toml::from_str(text).expect("shared default");
+        let archive = super::jar::fixture::parse(super::jar::fixture::stored("unused", b""))
+            .expect("server with no client class");
+        let mapping = super::super::mapping::Mapping::Identity;
+        super::verify_server_hooks(&archive, &inventory, &mapping, &[])
+            .expect_err("shared missing class is an error");
+        inventory.hooks[0].side = super::HookSide::ClientOnly;
+        super::verify_server_hooks(&archive, &inventory, &mapping, &[])
+            .expect("explicit client-only classification permits absence");
+        assert!(toml::from_str::<super::Inventory>(&format!("{text}side = \"client\"\n")).is_err());
+    }
+
     use std::path::Path;
 
     use super::{
@@ -1225,7 +1432,8 @@ bytes = 2
         let mut adapter: Adapter =
             toml::from_str(&document("unobfuscated-class-files", "")).expect("a modern adapter");
         adapter.capabilities = vec![super::Capability::Legacy112];
-        adapter.java_release = 8;
+        adapter.java_release = 27;
+        adapter.source_java_release = Some(8);
         adapter.pack_format.resource = 3;
         adapter.pack_format.data = 0;
         adapter.inputs.data_fixer_jar = None;

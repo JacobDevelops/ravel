@@ -318,6 +318,14 @@ pub(super) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
         adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
     )
     .expect("writing to a String cannot fail");
+    if let Some(server) = &adapter.inputs.server_jar {
+        writeln!(
+            text,
+            "serverJarSha256 = \"{}\"",
+            server.sha256.as_deref().unwrap_or("")
+        )
+        .expect("writing to a String cannot fail");
+    }
     // A source that reads no mapping has none to pin, so the key exists only
     // where one decided the linked names below.
     if let Some(mappings) = &adapter.inputs.client_mappings {
@@ -1213,6 +1221,20 @@ mod tests {
     };
     use super::{Mapping, stub_lock};
 
+    #[test]
+    fn mapping_provenance_pins_a_declared_server_without_changing_modern_locks() {
+        let mut adapter = adapter();
+        let modern = super::lock(&adapter, &[]);
+        assert!(!modern.contains("serverJarSha256"));
+        let mut server = adapter.inputs.client_jar.clone();
+        server.sha256 = Some("reviewed-server-hash".to_owned());
+        adapter.inputs.server_jar = Some(server);
+        let legacy = super::lock(&adapter, &[]);
+        let pin = "serverJarSha256 = \"reviewed-server-hash\"\n";
+        assert!(legacy.contains(pin));
+        assert_eq!(legacy.replace(pin, ""), modern);
+    }
+
     /// Adapter inputs standing in for the tracked ones.
     ///
     /// Rendering needs a version string and nothing else from them, and building
@@ -1229,10 +1251,12 @@ mod tests {
         Adapter {
             schema_version: 1,
             minecraft: "0.0.0-test".to_owned(),
+            eligibility: crate::inputs::Eligibility::Live,
             mapping_source: MappingSource::UnobfuscatedClassFiles,
             mapping_namespaces: None,
             capabilities: Vec::new(),
             java_release: 25,
+            source_java_release: None,
             pack_format: PackFormat {
                 resource: 7,
                 resource_minor: 0,
@@ -1242,6 +1266,7 @@ mod tests {
             },
             inputs: Inputs {
                 client_jar: unpinned(),
+                server_jar: None,
                 client_mappings: None,
                 mapping_io_jar: None,
                 data_fixer_jar: Some(unpinned()),
@@ -1319,6 +1344,7 @@ mod tests {
                 descriptor: (*descriptor).to_owned(),
                 kind: Kind::InstanceMethod,
                 capability: format!("A candidate {id} hook."),
+                side: crate::inputs::HookSide::Shared,
                 refuses: false,
                 title_menu_row: None,
             })

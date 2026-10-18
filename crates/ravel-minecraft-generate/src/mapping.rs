@@ -34,7 +34,9 @@ impl Mapping {
 
     /// Reads normalized mapping-io output, not the Tiny file grammar itself.
     pub(super) fn tiny(normalized: &str) -> Result<Self, GenerateError> {
-        NameMap::normalized(normalized).map(Self::NameMap)
+        let mut names = NameMap::normalized(normalized)?;
+        names.inherited_hooks = true;
+        Ok(Self::NameMap(names))
     }
 
     /// The internal name the JVM links for a reviewed internal name.
@@ -160,6 +162,105 @@ impl Mapping {
             Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
             Self::NameMap(proguard) => proguard.runtime_member(mojang_class, member, descriptor),
         }
+    }
+
+    /// Resolves an override whose reviewed name is recorded only on an ancestor.
+    /// All inherited candidates must agree; the caller verifies the concrete member.
+    pub(super) fn runtime_hook_member(
+        &self,
+        archive: &jar::Archive,
+        class: &str,
+        member: &str,
+        descriptor: &str,
+        kind: super::inputs::Kind,
+    ) -> Result<(String, String), GenerateError> {
+        let Self::NameMap(names) = self else {
+            return self.runtime_member(class, member, descriptor);
+        };
+        if !names.inherited_hooks || kind != super::inputs::Kind::InstanceMethod {
+            return self.runtime_member(class, member, descriptor);
+        }
+        if !names.classes.contains_key(class)
+            || names.members.get(class).is_some_and(|members| {
+                members.contains_key(&(member.to_owned(), descriptor.to_owned()))
+            })
+            || matches!(member, "<init>" | "<clinit>")
+        {
+            return self.runtime_member(class, member, descriptor);
+        }
+        let direct = Err(GenerateError::Unresolved(format!(
+            "the client mapping names {class} but not its {member}{descriptor}"
+        )));
+        let candidates =
+            self.inherited_hook_candidates(archive, names, class, member, descriptor)?;
+        if candidates.len() == 1 {
+            let pair = candidates
+                .into_iter()
+                .next()
+                .expect("one inherited candidate");
+            if names
+                .linked
+                .get(class)
+                .and_then(|members| members.get(&pair))
+                .is_some_and(|reviewed| reviewed != member)
+            {
+                return Err(GenerateError::Unresolved(format!(
+                    "{class}.{member}{descriptor} inherits a pair explicitly mapped to another name"
+                )));
+            }
+            return Ok(pair);
+        }
+        if candidates.is_empty() {
+            return direct;
+        }
+        Err(GenerateError::Unresolved(format!(
+            "{class}.{member}{descriptor} has conflicting inherited mappings"
+        )))
+    }
+
+    fn inherited_hook_candidates(
+        &self,
+        archive: &jar::Archive,
+        names: &NameMap,
+        class: &str,
+        member: &str,
+        descriptor: &str,
+    ) -> Result<std::collections::BTreeSet<(String, String)>, GenerateError> {
+        let mut pending = vec![self.runtime_class(class).to_owned()];
+        let mut visited = std::collections::BTreeSet::new();
+        let mut candidates = std::collections::BTreeSet::new();
+        while let Some(runtime) = pending.pop() {
+            if !visited.insert(runtime.clone()) {
+                continue;
+            }
+            let entry = format!("{runtime}.class");
+            if !archive.holds(&entry) {
+                continue;
+            }
+            let bytes = archive.entry(&entry)?;
+            if runtime != self.runtime_class(class)
+                && let Some(pair) = names
+                    .members
+                    .get(self.mojang_class(&runtime))
+                    .and_then(|members| members.get(&(member.to_owned(), descriptor.to_owned())))
+            {
+                let declared = classfile::members(&bytes)
+                    .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
+                if declared.iter().any(|target| {
+                    target.method
+                        && target.name == pair.0
+                        && target.descriptor == pair.1
+                        && !target.is_static()
+                        && target.flags & classfile::ACC_PRIVATE == 0
+                }) {
+                    candidates.insert(pair.clone());
+                }
+            }
+            let hierarchy = classfile::hierarchy(&bytes)
+                .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
+            pending.extend(hierarchy.supertypes().map(str::to_owned));
+        }
+        Ok(candidates)
     }
 
     /// The pair the JVM links for a reviewed member named by its width.
@@ -357,6 +458,8 @@ type Reviewed = BTreeMap<Member, String>;
 /// Validated names and descriptors, independent of the published mapping format.
 #[derive(Clone, Debug)]
 pub(super) struct NameMap {
+    /// Only Tiny mappings inherit reviewed method names across jar hierarchies.
+    inherited_hooks: bool,
     /// Reviewed internal name to linked internal name.
     classes: BTreeMap<String, String>,
     /// Linked internal name back to the reviewed one.
@@ -557,6 +660,7 @@ impl NameMap {
         }
 
         Ok(Self {
+            inherited_hooks: false,
             classes,
             mojang,
             members,
@@ -821,6 +925,7 @@ fn map_descriptor(classes: &BTreeMap<String, String>, descriptor: &str) -> Strin
 
 #[cfg(test)]
 mod tests {
+    use super::super::classfile;
     use super::super::inputs::{Reflected, ReflectedMember, Reflection};
     use super::super::jar::{self, fixture};
     use super::{Mapping, MappingSource, NameMap, verify_reflected_members, verify_reflection};
@@ -1256,15 +1361,21 @@ com.example.Plain -> com.example.Plain:
     /// Written out rather than reached for, because the point of every test
     /// below is a class file that declares something other than what the
     /// surface says, and no real jar holds one of those.
-    fn class_file(class: &str, members: &[(&str, &str, bool)]) -> Vec<u8> {
-        let mut pool = vec![class.to_owned(), "java/lang/Object".to_owned()];
+    fn class_file(
+        class: &str,
+        parent: &str,
+        interfaces: &[&str],
+        members: &[(&str, &str, bool, u16)],
+    ) -> Vec<u8> {
+        let mut pool = vec![class.to_owned(), parent.to_owned()];
+        pool.extend(interfaces.iter().map(|name| (*name).to_owned()));
         let mut fields = Vec::new();
         let mut methods = Vec::new();
-        for (name, descriptor, method) in members {
+        for (name, descriptor, method, flags) in members {
             pool.push((*name).to_owned());
             pool.push((*descriptor).to_owned());
             let index = u16::try_from(pool.len()).expect("a small pool");
-            let entry = (index - 1, index);
+            let entry = (index - 1, index, *flags);
             if *method {
                 methods.push(entry);
             } else {
@@ -1277,7 +1388,7 @@ com.example.Plain -> com.example.Plain:
         bytes.extend(0_u16.to_be_bytes()); // minor
         bytes.extend(69_u16.to_be_bytes()); // major
         bytes.extend(
-            u16::try_from(pool.len() + 3)
+            u16::try_from(pool.len() + interfaces.len() + 3)
                 .expect("a small pool")
                 .to_be_bytes(),
         );
@@ -1287,17 +1398,29 @@ com.example.Plain -> com.example.Plain:
             bytes.extend(text.as_bytes());
         }
         let this = u16::try_from(pool.len() + 1).expect("a small pool");
-        for name in [1_u16, 2] {
+        for name in 1..=interfaces.len() + 2 {
             bytes.push(7); // Class
-            bytes.extend(name.to_be_bytes());
+            bytes.extend(u16::try_from(name).expect("a small pool").to_be_bytes());
         }
-        for value in [0x0021_u16, this, this + 1, 0] {
-            bytes.extend(value.to_be_bytes()); // access, this, super, interfaces
+        let flags = if members
+            .iter()
+            .any(|(_, _, _, flags)| flags & classfile::ACC_ABSTRACT != 0)
+        {
+            0x0601
+        } else {
+            0x0021
+        };
+        for value in [flags, this, this + 1] {
+            bytes.extend(value.to_be_bytes()); // access, this, super
+        }
+        bytes.extend(u16::try_from(interfaces.len()).expect("few").to_be_bytes());
+        for index in 0..interfaces.len() {
+            bytes.extend((this + 2 + u16::try_from(index).expect("few")).to_be_bytes());
         }
         for table in [&fields, &methods] {
             bytes.extend(u16::try_from(table.len()).expect("few").to_be_bytes());
-            for (name, descriptor) in table {
-                for value in [0_u16, *name, *descriptor, 0] {
+            for (name, descriptor, flags) in table {
+                for value in [*flags, *name, *descriptor, 0] {
                     bytes.extend(value.to_be_bytes()); // flags, name, type, attributes
                 }
             }
@@ -1330,8 +1453,172 @@ com.example.Plain -> com.example.Plain:
     /// An archive holding one class file under the entry the mapping asks for.
     fn holding(entry: &str, members: &[(&str, &str, bool)]) -> jar::Archive {
         let class = entry.strip_suffix(".class").expect("a class entry");
-        fixture::parse(fixture::stored(entry, &class_file(class, members)))
-            .expect("a synthetic archive")
+        let members = members
+            .iter()
+            .map(|(name, descriptor, method)| (*name, *descriptor, *method, 0))
+            .collect::<Vec<_>>();
+        fixture::parse(fixture::stored(
+            entry,
+            &class_file(class, "java/lang/Object", &[], &members),
+        ))
+        .expect("a synthetic archive")
+    }
+
+    fn hierarchy_archive(entries: &[(&str, Vec<u8>)]) -> jar::Archive {
+        let entries = entries
+            .iter()
+            .map(|(name, bytes)| (*name, bytes.as_slice()))
+            .collect::<Vec<_>>();
+        fixture::parse(fixture::entries(&entries, 0)).expect("hierarchy archive")
+    }
+
+    fn inherited_fixture() -> (super::super::inputs::Inventory, Mapping, jar::Archive) {
+        let inventory: super::super::inputs::Inventory = toml::from_str(
+            "schemaVersion = 1\nminecraft = \"test\"\n\
+             [[hook]]\nid = \"tick\"\nclass = \"example.Child\"\n\
+             member = \"tick\"\ndescriptor = \"()V\"\n\
+             kind = \"instance-method\"\ncapability = \"test\"\n",
+        )
+        .expect("concrete hook");
+        let mapping = Mapping::tiny(INHERITED_RECORDS).expect("interface mapping");
+        let archive = hierarchy_archive(&[
+            (
+                "a.class",
+                class_file("a", "p", &[], &[("b", "()V", true, 1)]),
+            ),
+            ("p.class", class_file("p", "java/lang/Object", &["i"], &[])),
+            (
+                "i.class",
+                class_file("i", "java/lang/Object", &[], &[("b", "()V", true, 0x0401)]),
+            ),
+        ]);
+        (inventory, mapping, archive)
+    }
+
+    const INHERITED_RECORDS: &str = "C\texample/Child\ta\nC\texample/Parent\tp\n\
+        C\texample/Contract\ti\nM\texample/Contract\ttick\t()V\tb\n";
+
+    #[test]
+    fn tiny_instance_overrides_follow_multilevel_interface_declarations() {
+        let (inventory, mapping, archive) = inherited_fixture();
+        let resolved = super::super::resolve::from_jar(&archive, &inventory, &mapping)
+            .expect("multilevel interface override");
+        assert_eq!(resolved[0].runtime_member, "b");
+    }
+
+    #[test]
+    fn tiny_superclass_names_still_require_a_concrete_override() {
+        let (inventory, _, _) = inherited_fixture();
+        let parent_mapping = Mapping::tiny(
+            "C\texample/Child\ta\nC\texample/Parent\tp\nM\texample/Parent\ttick\t()V\tb\n",
+        )
+        .expect("parent mapping");
+        let parent_archive = hierarchy_archive(&[
+            (
+                "a.class",
+                class_file("a", "p", &[], &[("b", "()V", true, 1)]),
+            ),
+            (
+                "p.class",
+                class_file("p", "java/lang/Object", &[], &[("b", "()V", true, 1)]),
+            ),
+        ]);
+        super::super::resolve::from_jar(&parent_archive, &inventory, &parent_mapping)
+            .expect("a superclass can name a concrete override");
+        let wrong_concrete = hierarchy_archive(&[
+            (
+                "a.class",
+                class_file("a", "p", &[], &[("c", "()V", true, 1)]),
+            ),
+            (
+                "p.class",
+                class_file("p", "java/lang/Object", &[], &[("b", "()V", true, 1)]),
+            ),
+        ]);
+        super::super::resolve::from_jar(&wrong_concrete, &inventory, &parent_mapping)
+            .expect_err("an inherited name still requires the concrete declaration");
+    }
+
+    #[test]
+    fn inherited_names_are_tiny_instance_only_and_respect_explicit_child_names() {
+        let (inventory, mapping, archive) = inherited_fixture();
+        let records = INHERITED_RECORDS;
+        let resolve = |mapping: &Mapping, inventory: &super::super::inputs::Inventory| {
+            super::super::resolve::from_jar(&archive, inventory, mapping)
+        };
+        for kind in [
+            super::super::inputs::Kind::StaticMethod,
+            super::super::inputs::Kind::InstanceField,
+            super::super::inputs::Kind::StaticField,
+        ] {
+            let mut wrong = inventory.clone();
+            wrong.hooks[0].kind = kind;
+            resolve(&mapping, &wrong).expect_err("inheritance is instance-method only");
+        }
+        let explicit_other = Mapping::tiny(&format!("{records}M\texample/Child\tother\t()V\tb\n"))
+            .expect("explicit child name");
+        resolve(&explicit_other, &inventory)
+            .expect_err("explicit child names cannot be overridden");
+        let mut official = mapping;
+        let Mapping::NameMap(names) = &mut official else {
+            panic!("name map")
+        };
+        names.inherited_hooks = false;
+        resolve(&official, &inventory).expect_err("official mappings do not inherit names");
+    }
+
+    #[test]
+    fn inherited_names_require_accessible_unambiguous_ancestor_declarations() {
+        let (inventory, mapping, _) = inherited_fixture();
+        let records = INHERITED_RECORDS;
+        for flags in [
+            classfile::ACC_PRIVATE,
+            classfile::ACC_STATIC | classfile::ACC_PUBLIC,
+        ] {
+            let inaccessible = hierarchy_archive(&[
+                (
+                    "a.class",
+                    class_file("a", "java/lang/Object", &["i"], &[("b", "()V", true, 1)]),
+                ),
+                (
+                    "i.class",
+                    class_file("i", "java/lang/Object", &[], &[("b", "()V", true, flags)]),
+                ),
+            ]);
+            super::super::resolve::from_jar(&inaccessible, &inventory, &mapping)
+                .expect_err("private and static ancestor methods are not overrides");
+        }
+        let missing = hierarchy_archive(&[(
+            "a.class",
+            class_file("a", "java/lang/Object", &["i"], &[("b", "()V", true, 1)]),
+        )]);
+        super::super::resolve::from_jar(&missing, &inventory, &mapping)
+            .expect_err("a mapping without actual ancestor declaration proves nothing");
+        let conflict = Mapping::tiny(&format!(
+            "{records}C\texample/Other\tj\nM\texample/Other\ttick\t()V\tc\n"
+        ))
+        .expect("two inherited names");
+        let conflicting = hierarchy_archive(&[
+            (
+                "a.class",
+                class_file(
+                    "a",
+                    "java/lang/Object",
+                    &["i", "j"],
+                    &[("b", "()V", true, 1), ("c", "()V", true, 1)],
+                ),
+            ),
+            (
+                "i.class",
+                class_file("i", "java/lang/Object", &[], &[("b", "()V", true, 0x0401)]),
+            ),
+            (
+                "j.class",
+                class_file("j", "java/lang/Object", &[], &[("c", "()V", true, 0x0401)]),
+            ),
+        ]);
+        super::super::resolve::from_jar(&conflicting, &inventory, &conflict)
+            .expect_err("conflicting inherited pairs cannot choose a concrete declaration");
     }
 
     /// The identity is where this check has teeth: nothing translates, so
@@ -1441,9 +1728,11 @@ com.example.Plain -> com.example.Plain:
             parameters: 0,
         };
         assert!(wanted.is_method(), "argument counts always request methods");
-        let members = super::classfile::members(&class_file(
+        let members = classfile::members(&class_file(
             "com/example/Alpha",
-            &[("tick", "I", false), ("tick", "()V", true)],
+            "java/lang/Object",
+            &[],
+            &[("tick", "I", false, 0), ("tick", "()V", true, 0)],
         ))
         .expect("valid field and method tables decode independently");
         assert!(!members[0].method);

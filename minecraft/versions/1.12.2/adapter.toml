@@ -1,0 +1,72 @@
+# Official 1.12.2 source bytecode is Java 8; Ravel executes and compiles on JDK 27.
+# Feather build 31 is CC0; official means obfuscated, named means Feather names.
+schemaVersion = 1
+minecraft = "1.12.2"
+javaRelease = 27
+sourceJavaRelease = 8
+eligibility = "generation-only"
+capabilities = ["legacy-1-12"]
+mappingSource = "feather-tiny-mappings"
+
+[mappingNamespaces]
+runtime = "official"
+reviewed = "named"
+
+[packFormat]
+resource = 3
+resourceMinor = 0
+data = 0
+dataMinor = 0
+spelling = "pack-format"
+
+[inputs.clientJar]
+path = "tests/fixtures/local/tooling/minecraft-1.12.2/client.jar"
+sha256 = "8ada07da5ee77dad3527bd7278fbd05ee1fc8a597813b216a871a2d7d64cc64f"
+bytes = 10180113
+upstream = "https://launcher.mojang.com/v1/objects/0f275bc1547d01fa5f56ba34bdc87d981ee12daf/client.jar"
+
+[inputs.serverJar]
+path = "tests/fixtures/local/tooling/minecraft-1.12.2/server.jar"
+sha256 = "fe1f9274e6dad9191bf6e6e8e36ee6ebc737f373603df0946aafcded0d53167e"
+bytes = 30222121
+upstream = "https://launcher.mojang.com/v1/objects/886945bfb2b978778c3a0288fd7fab09d315b25f/server.jar"
+
+[inputs.clientMappings]
+path = "tests/fixtures/local/tooling/minecraft-1.12.2/feather-1.12.2+build.31-mergedv2.jar"
+sha256 = "0f7703e2b0b902a56e4e60d46740b3c023944fb7e4bd64b47485dcf39947e853"
+bytes = 435770
+upstream = "https://maven.ornithemc.net/releases/net/ornithemc/feather/1.12.2+build.31/feather-1.12.2+build.31-mergedv2.jar"
+
+[inputs.mappingIoJar]
+path = "tests/fixtures/local/tooling/mapping-io-0.9.1.jar"
+sha256 = "aedc94b25a2fe7c09c898144ce33a1ef396680e984b07525d34916922d6ee3f4"
+bytes = 262096
+upstream = "https://maven.fabricmc.net/net/fabricmc/mapping-io/0.9.1/mapping-io-0.9.1.jar"
+
+[inputs.versionManifest]
+path = "tests/fixtures/local/tooling/minecraft-1.12.2/version.json"
+sha256 = "827aaf8f97209f7747897e6c78875ae2c1bf732bb81ab85a298e6d22223cf385"
+bytes = 19110
+upstream = "https://piston-meta.mojang.com/v1/packages/6e69e85d0f85f4f4b9e12dd99d102092a6e15918/1.12.2.json"
+
+[inputs.hookInventory]
+path = "minecraft/versions/1.12.2/hooks.toml"
+sha256 = "8f5d1442215cebc20f9a253ed817fcf6a8c4666435570aeeceaf49d67245a27d"
+
+[inputs.stubSeeds]
+path = "minecraft/versions/1.12.2/stubs.toml"
+sha256 = "2ba7e4b2ea2ed617d9e0500f5594b6cb9d7fce394feea6679a83b3af07abea0d"
+
+[inputs.reflectiveSurface]
+path = "minecraft/versions/1.12.2/reflection.toml"
+sha256 = "243865889648b703bf80043beeefacf55b44c3a9bfa4a251fb10c967836267a8"
+
+[inputs.mappingsLock]
+path = "minecraft/versions/1.12.2/mappings.lock"
+sha256 = "44cc2d952da0c6d78bb7bb7ae04b753a548678f5d2c9d78f527f119118e8326e"
+bytes = 5497
+
+[inputs.stubsLock]
+path = "minecraft/versions/1.12.2/stubs.lock"
+sha256 = "b8069c640088b7be8086c00639df731f7a383e937cefd0d841c42627d508d3f1"
+bytes = 1647

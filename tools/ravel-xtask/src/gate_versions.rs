@@ -1,9 +1,15 @@
 //! Gate versions and recorded harness sections.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use crate::version_boundary::tracked_versions;
+use ravel_minecraft_generate::Eligibility;
+
+use crate::version_boundary::{
+    VersionEligibility, adapter_eligibility, missing_mapping_input, read_tracked_adapter,
+    tracked_versions,
+};
 
 struct Record {
     path: &'static str,
@@ -47,59 +53,150 @@ const REQUIRED_SECTIONS: [&str; 13] = [
     "transformation",
 ];
 
+/// Separates incomplete local proof from invalid coverage records.
+#[derive(Debug, Default)]
+pub struct GateVersionsReport {
+    /// Missing or contradictory records that fail the gate.
+    pub violations: Vec<String>,
+    /// Explicit skips and generation-only obligations, not live-support evidence.
+    pub notices: Vec<String>,
+}
+
 /// Holds every gate task that loops versions to having looped all of them.
 #[must_use]
-pub fn verify_gate_versions(root: &Path) -> Vec<String> {
-    let mut violations = Vec::new();
+pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
+    let mut report = GateVersionsReport::default();
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
-        Err(error) => return vec![error],
+        Err(error) => {
+            report.violations.push(error);
+            return report;
+        }
     };
-
-    for record in &GATE_RECORDS {
-        let Ok(text) = fs::read_to_string(root.join(record.path)) else {
-            violations.push(format!(
-                "{} is absent, so nothing says which versions {} covered; run it before this \
-                 check",
-                record.path, record.task
-            ));
-            continue;
-        };
-        let lines = text.lines().collect::<Vec<_>>();
-        let mut reached = 0;
-        for version in &versions {
-            let named = lines.iter().filter(|line| names_version(line, version));
-            let mut positive = false;
-            let mut mentioned = false;
-            for line in named {
-                mentioned = true;
-                if line.starts_with(&format!("{}: ", record.verb)) {
-                    positive = true;
-                }
-            }
-            if !mentioned {
-                violations.push(format!(
-                    "{} names no outcome for Minecraft {version}, so {} either stopped looping \
-                     the tracked versions or covered one without recording it",
-                    record.path, record.task
-                ));
-                continue;
-            }
-            if positive {
-                reached += 1;
-            }
-        }
-        if reached == 0 {
-            violations.push(format!(
-                "{} records no version {} actually reached, so the task exited zero having \
-                 proved nothing",
-                record.path, record.verb
-            ));
-        }
+    if versions.is_empty() {
+        report
+            .violations
+            .push("version matrix tracks no Minecraft version, so it proves nothing".to_owned());
+        return report;
     }
 
-    verify_harness_sections(root, &versions, &mut violations);
-    violations
+    let mut eligibility = VersionEligibility::new();
+    let mut unavailable = BTreeSet::new();
+    for version in &versions {
+        let parsed = match read_tracked_adapter(root, version) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                report.violations.push(error);
+                continue;
+            }
+        };
+        let value = match adapter_eligibility(&parsed, version) {
+            Ok(value) => value,
+            Err(error) => {
+                report.violations.push(error);
+                continue;
+            }
+        };
+        eligibility.insert(version.clone(), value);
+        if missing_mapping_input(root, &parsed).is_some() {
+            unavailable.insert(version.as_str());
+        }
+        let generation_only = value == Eligibility::GenerationOnly;
+        if generation_only {
+            report.notices.push(format!(
+                "Minecraft {version} is generation-only: adapter-test obligation not yet met"
+            ));
+            for section in REQUIRED_SECTIONS {
+                report.notices.push(format!(
+                    "Minecraft {version} is generation-only: harness {section} obligation \
+                     not yet met; generation is not live support"
+                ));
+            }
+        }
+    }
+    for record in &GATE_RECORDS {
+        verify_record(
+            root,
+            record,
+            &versions,
+            &eligibility,
+            &unavailable,
+            &mut report,
+        );
+    }
+
+    verify_harness_sections(root, &versions, &mut report.violations);
+    report
+}
+
+fn verify_record(
+    root: &Path,
+    record: &Record,
+    versions: &[String],
+    eligibility: &VersionEligibility,
+    unavailable: &BTreeSet<&str>,
+    report: &mut GateVersionsReport,
+) {
+    let Ok(text) = fs::read_to_string(root.join(record.path)) else {
+        report.violations.push(format!(
+            "{} is absent, so nothing says which versions {} covered; run it before this check",
+            record.path, record.task
+        ));
+        return;
+    };
+    let mut reached_live = false;
+    for version in versions {
+        let generation_only = eligibility.get(version) == Some(&Eligibility::GenerationOnly);
+        let verb = match (generation_only, record.verb) {
+            (true, "tested") => "built",
+            (true, "ran") => "NOT-YET-RUN",
+            _ => record.verb,
+        };
+        let prefix = format!("{verb}: ");
+        let mut named = text
+            .lines()
+            .filter(|line| names_version(line, version))
+            .peekable();
+        if generation_only && verb != record.verb {
+            let live_prefix = format!("{}: ", record.verb);
+            if named.clone().any(|line| line.starts_with(&live_prefix)) {
+                report.violations.push(format!(
+                    "{} falsely claims Minecraft {version} {} despite generation-only eligibility",
+                    record.path, record.verb
+                ));
+            }
+        }
+        if named.peek().is_none() {
+            report.violations.push(format!(
+                "{} names no outcome for Minecraft {version}, so {} either stopped looping \
+                 the tracked versions or covered one without recording it",
+                record.path, record.task
+            ));
+        } else if unavailable.contains(version.as_str())
+            && named.clone().any(|line| line.starts_with("SKIPPED: "))
+        {
+            report.notices.extend(
+                named
+                    .filter(|line| line.starts_with("SKIPPED: "))
+                    .map(str::to_owned),
+            );
+        } else if !named.any(|line| line.starts_with(&prefix)) {
+            report.violations.push(format!(
+                "{}: Minecraft {version} {} obligation not yet met by {}; no accepted \
+                 outcome was recorded",
+                record.path, verb, record.task
+            ));
+        } else if !generation_only {
+            reached_live = true;
+        }
+    }
+    if !reached_live {
+        report.violations.push(format!(
+            "{} records no live-eligible version {} actually reached, so no live coverage \
+             was demonstrated",
+            record.path, record.verb
+        ));
+    }
 }
 
 fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Vec<String>) {

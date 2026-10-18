@@ -114,6 +114,7 @@ pub(super) struct NameSpace {
 }
 
 /// Everything one version's sources from one template tree come to.
+#[derive(Default)]
 pub(super) struct Sources {
     /// Each source's path below the generated tree, with its Java.
     pub(super) java: Vec<(String, String)>,
@@ -376,10 +377,10 @@ fn in_template(template: &Template, error: GenerateError) -> GenerateError {
 ///
 /// Only stand-in trees permit additions; bindings handle class and member renames.
 fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
-    let overrides = &tree.overrides;
     let mut found = in_directory(tree.shared)?;
     let mut overridden = BTreeSet::new();
     let mut added = BTreeSet::new();
+    let overrides = &tree.overrides;
     if overrides.is_dir() {
         // A version's override directory holds templates and nothing else. A
         // directory inside it is refused rather than skipped, because
@@ -543,7 +544,7 @@ struct Template {
     placeholders: Vec<Placeholder>,
 }
 
-/// Derives the shared namespace from the stand-in game.
+/// Derives the namespace from game declarations or a standalone screen's references.
 ///
 /// # Errors
 ///
@@ -556,10 +557,23 @@ pub(super) fn name_space(
     let mut linked = Vec::new();
     for path in templates(tree)?.rendered {
         let template = template(&path)?;
-        let class = roles
-            .class(&template.name)
-            .map_err(|error| in_template(&template, error))?;
-        linked.push(mapping.runtime_class(&class).to_owned());
+        let declaration = (tree.purpose == Purpose::StandIn).then_some(template.name.as_str());
+        let references = template
+            .placeholders
+            .iter()
+            .filter(|_| tree.purpose != Purpose::StandIn)
+            .filter_map(|placeholder| match placeholder {
+                Placeholder::Class(role)
+                | Placeholder::Import(role)
+                | Placeholder::Member(role, _) => Some(role.as_str()),
+                Placeholder::Package | Placeholder::Ravel(_) => None,
+            });
+        for role in declaration.into_iter().chain(references) {
+            let class = roles
+                .class(role)
+                .map_err(|error| in_template(&template, error))?;
+            linked.push(mapping.runtime_class(&class).to_owned());
+        }
     }
     let names = || linked.iter().map(String::as_str);
     Ok(NameSpace {
@@ -965,6 +979,7 @@ com.example.util.Held -> com.example.util.Held:
                     .iter()
                     .map(|(id, class)| inputs::Hook {
                         id: (*id).to_owned(),
+                        side: inputs::HookSide::Shared,
                         class: (*class).to_owned(),
                         member: String::from("tick"),
                         descriptor: String::from("()V"),
@@ -986,6 +1001,23 @@ com.example.util.Held -> com.example.util.Held:
     fn proguard() -> Mapping {
         Mapping::read(MappingSource::OfficialProguardMappings, MAPPING)
             .expect("the invented mapping should parse")
+    }
+
+    #[test]
+    fn a_standalone_screen_derives_its_namespace_from_the_game_it_references() {
+        let root = staged_tree(
+            "standalone-namespace",
+            "Observation.java.in",
+            "{{package}}\npublic class Observation { {{Ticker}} held; }\n",
+        );
+        let bound = roles_over(&seeds(), &[("Ticker", "Held")], &[]);
+        let mapping =
+            Mapping::read(MappingSource::UnobfuscatedClassFiles, "").expect("identity mapping");
+        let namespace = name_space(&tree(&root, "none", Purpose::Screen), &bound, &mapping)
+            .expect("a standalone screen needs no stand-in game");
+        assert!(namespace.unnamed);
+        assert!(!namespace.split);
+        remove_staged(&root);
     }
 
     fn method(name: &str, descriptor: &str) -> Member {
@@ -1229,6 +1261,88 @@ com.example.util.Held -> com.example.util.Held:
             .expect("a mapping derived from the stub set should parse")
     }
 
+    /// Digests every source path and byte plus deterministic, root-relative metadata.
+    fn modern_snapshot(root: &Path, sources: &[Sources; 4]) -> String {
+        let mut snapshot = String::new();
+        for (index, tree) in sources.iter().enumerate() {
+            let templates: Vec<_> = tree
+                .templates
+                .iter()
+                .map(|path| {
+                    path.strip_prefix(root)
+                        .expect("a tracked template is under root")
+                })
+                .collect();
+            let added: Vec<_> = tree
+                .added
+                .iter()
+                .map(|(role, path)| {
+                    (
+                        role,
+                        path.strip_prefix(root)
+                            .expect("an added template is under root"),
+                    )
+                })
+                .collect();
+            writeln!(
+                snapshot,
+                "{index}:{:?}",
+                (
+                    &tree.java,
+                    &tree.names,
+                    &tree.origins,
+                    &tree.aliases,
+                    &tree.referenced,
+                    templates,
+                    added,
+                )
+            )
+            .expect("writing a snapshot to a String cannot fail");
+        }
+        inputs::sha256(snapshot.as_bytes())
+    }
+
+    #[test]
+    fn both_modern_versions_render_byte_identically_to_the_pre_legacy_baseline() {
+        let root = repository_root();
+        // Frozen after comparing all four rendered trees with the pre-legacy
+        // namespace algorithm from ymklsluq; ordered by tracked modern version.
+        let expected = [
+            "3d74a99ef71f52b931e15936a6332e59cdf243a5482f04ea24c8a6013febc8fa",
+            "5b24c82eb0addbaf3e4e777ce92306456b69b81ae9a931d63f36fe1437c19639",
+        ];
+        let mut compared = 0;
+        for version in inputs::tracked_versions(&root) {
+            let pinned = inputs::pinned(&root, Some(&version))
+                .expect("the tracked version data should parse");
+            if pinned.adapter.is_legacy() {
+                continue;
+            }
+            let lock = fs::read_to_string(pinned.directory.join("stubs.lock"))
+                .expect("the modern stub lock is tracked");
+            let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
+                .expect("the modern stub lock resolves");
+            let mapping = obfuscating(&stubs);
+            let bound = Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
+            let actual = super::super::sources(&root, &pinned, &bound, &stubs, &mapping)
+                .expect("the modern sources render");
+            assert_eq!(
+                modern_snapshot(&root, &actual),
+                *expected
+                    .get(compared)
+                    .expect("every modern version has a snapshot"),
+                "{version}: source paths, Java bytes and metadata"
+            );
+            assert!(actual.iter().all(|tree| !tree.java.is_empty()));
+            compared += 1;
+        }
+        assert_eq!(
+            compared,
+            expected.len(),
+            "both modern versions must be compared"
+        );
+    }
+
     /// The tracked templates, rendered against a mapping that renames everything.
     ///
     /// This is the half every earlier test of this generator left unproven: the
@@ -1249,60 +1363,82 @@ com.example.util.Held -> com.example.util.Held:
                 .expect("the tracked lock should resolve");
             let mapping = obfuscating(&stubs);
 
-            let shared = root.join(super::super::SCREEN_TEMPLATES);
+            let legacy = pinned.adapter.is_legacy();
+            let shared = if legacy {
+                pinned.directory.join("templates/screen")
+            } else {
+                root.join(super::super::SCREEN_TEMPLATES)
+            };
+            let selected = tree(&shared, &version, Purpose::Screen);
             let screens = render(
-                &tree(&shared, &version, Purpose::Screen),
+                &selected,
                 &pinned.adapter,
-                &roles(&pinned.seeds),
+                &Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory),
                 &stubs,
                 &mapping,
                 UNNAMED,
             )
             .expect("the tracked templates should render against an obfuscated mapping");
-
-            let reviewed = stubs
-                .iter()
-                .map(|stub| {
-                    stub.class
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(&stub.class)
-                        .to_owned()
-                })
-                .collect::<BTreeSet<_>>();
-
-            for (relative, source) in &screens.java {
-                assert!(
-                    !relative.contains('/'),
-                    "a mapping that puts the game in the unnamed package puts the screens there \
-                 too, and {relative} is in a package"
+            assert_ne!(screens.java, [], "{version} renders real screen support");
+            if legacy {
+                assert_eq!(
+                    pinned.adapter.eligibility,
+                    inputs::Eligibility::GenerationOnly
                 );
                 assert!(
-                    !source.contains("{{"),
-                    "every placeholder is rendered: {relative}"
-                );
-                for (number, line) in code_lines(source) {
-                    for name in &reviewed {
-                        assert!(
-                            !names(&line).contains(name),
-                            "{relative}:{number} names the reviewed class {name}, which this version \
-                         links nothing under: {line}"
-                        );
-                    }
-                }
-            }
-
-            for (_, binary) in &screens.names {
-                assert!(
-                    !binary.contains('.'),
-                    "the agent jar is told where the screens went, and they went to the unnamed \
-                 package: {binary}"
+                    screens.templates.iter().all(|path| {
+                        path.starts_with(pinned.directory.join("templates/screen"))
+                    })
                 );
             }
+
+            assert_unnamed_screen_references(&screens, &stubs);
         }
     }
 
-    /// Every tracked version's replacement is dirty before the storage sees it.
+    fn assert_unnamed_screen_references(screens: &Sources, stubs: &[Stub]) {
+        let reviewed = stubs
+            .iter()
+            .map(|stub| {
+                stub.class
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&stub.class)
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>();
+
+        for (relative, source) in &screens.java {
+            assert!(
+                !relative.contains('/'),
+                "a mapping that puts the game in the unnamed package puts the screens there \
+                 too, and {relative} is in a package"
+            );
+            assert!(
+                !source.contains("{{"),
+                "every placeholder is rendered: {relative}"
+            );
+            for (number, line) in code_lines(source) {
+                for name in &reviewed {
+                    assert!(
+                        !names(&line).contains(name),
+                        "{relative}:{number} names the reviewed class {name}, which this version \
+                         links nothing under: {line}"
+                    );
+                }
+            }
+        }
+
+        for (_, binary) in &screens.names {
+            assert!(
+                !binary.contains('.'),
+                "the agent jar is told where the screens went, and they went to the unnamed \
+                 package: {binary}"
+            );
+        }
+    }
+
+    /// Every live modern version's replacement is dirty before the storage sees it.
     ///
     /// Whether the game's own `set` marks it is a per-version fact and not a
     /// safe one to build on: one tracked version's does, another's only caches the object, and
@@ -1312,11 +1448,16 @@ com.example.util.Held -> com.example.util.Held:
     /// which is what the first obfuscated-version launch found. So the mark is Ravel's to
     /// make, in the one method that wraps replacement bytes, at every version.
     #[test]
-    fn every_versions_replacement_is_marked_dirty_before_the_storage_is_handed_it() {
+    fn every_modern_versions_replacement_is_marked_dirty_before_the_storage_is_handed_it() {
         let root = repository_root();
         for version in inputs::tracked_versions(&root) {
             let pinned = inputs::pinned(&root, Some(&version))
                 .expect("the tracked version data should parse");
+            if pinned.adapter.is_legacy() {
+                // Generation-only legacy support does not provide world-data replacement.
+                // Its real screen templates are exercised by the namespace test above.
+                continue;
+            }
             let lock = fs::read_to_string(pinned.directory.join("stubs.lock"))
                 .expect("the tracked stub lock should be readable");
             let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)

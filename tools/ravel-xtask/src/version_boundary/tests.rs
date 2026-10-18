@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::java_shape::REFLECTION_FILE;
 use crate::test_support::{temporary_root, version_directory};
@@ -9,34 +9,68 @@ use crate::version_boundary::{
 };
 
 #[test]
-fn ravel_test_versions_agree_with_the_generator() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let versions = root.join(VERSION_DATA);
-    let mut checked = 0;
-    for entry in fs::read_dir(&versions).expect("the version data should be readable") {
-        let directory = entry
-            .expect("a version directory should be readable")
-            .path();
-        if !directory.is_dir() {
-            continue;
-        }
-        let adapter = fs::read_to_string(directory.join("adapter.toml"))
-            .expect("every version declares adapter inputs");
-        let translating = adapter.contains("mappingSource = \"official-proguard-mappings\"");
+fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
+    let root = temporary_root("matrix-mappings");
+    version_directory(&root, "1.12.2", &[]);
+    let adapter = root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml"));
+    fs::write(
+        &adapter,
+        "minecraft = '1.12.2'\neligibility = 'generation-only'\n\
+         [inputs.clientMappings]\npath = 'mapping.tiny'\n\
+         [inputs.mappingIoJar]\npath = 'mapping-io.jar'\n",
+    )
+    .expect("adapter should be writable");
+    assert_eq!(
+        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        "unavailable: mapping.tiny is absent"
+    );
+    fs::write(root.join("mapping.tiny"), "pinned by generator")
+        .expect("mapping should be writable");
+    assert_eq!(
+        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        "unavailable: mapping-io.jar is absent"
+    );
+    fs::write(root.join("mapping-io.jar"), "pinned by generator")
+        .expect("normalizer should be writable");
+    assert_eq!(
+        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        "generation-only"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
 
-        let declares_mapping = adapter
-            .lines()
-            .any(|line| line.starts_with("path = \"") && line.ends_with("client.txt\""));
-        assert_eq!(
-            translating,
-            declares_mapping,
-            "{} reads a published mapping ({translating}) but declares a client.txt path \
-             ({declares_mapping}); ravel-test decides what to skip from that path",
-            directory.display()
-        );
-        checked += 1;
+#[test]
+fn modern_versions_cannot_downgrade_or_misspell_eligibility() {
+    for eligibility in ["generation-only", "not-run", ""] {
+        let parsed = toml::from_str::<toml::Table>(&format!("eligibility = '{eligibility}'"))
+            .expect("valid TOML");
+        assert!(super::adapter_eligibility(&parsed, "26.1.2").is_err());
     }
-    assert!(checked > 0, "the repository tracks a version");
+    assert_eq!(
+        super::adapter_eligibility(&toml::Table::new(), "26.1.2").expect("default eligibility"),
+        ravel_minecraft_generate::Eligibility::Live
+    );
+}
+
+#[test]
+fn a_scaffolded_modern_manifest_cannot_opt_out_of_live_coverage() {
+    let root = temporary_root("modern-downgrade");
+    version_directory(&root, "26.1.2", &[]);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml")),
+        "minecraft = '26.1.2'\neligibility = 'generation-only'\n",
+    )
+    .expect("adapter should be writable");
+    assert!(super::version_matrix(&root, "26.1.2").is_err());
+    let mut violations = Vec::new();
+    verify_version_directories(&root, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("generation-only")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]

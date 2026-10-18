@@ -5,7 +5,7 @@ use crate::scaffold::{
     declares_unsafe_prohibition, maintained_rust_roots, required_scaffold_paths,
     verify_ignored_boundaries, verify_production_fences, verify_scaffold, verify_testkit_fence,
 };
-use crate::test_support::temporary_root;
+use crate::test_support::{temporary_root, version_directory};
 
 #[test]
 fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
@@ -41,6 +41,44 @@ fn missing_files_are_reported_by_relative_path() {
             .any(|violation| violation == "missing required file: Cargo.toml")
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn invalid_adapters_are_reported_once_by_the_overall_scaffold_check() {
+    for (label, adapter, diagnostic) in [
+        (
+            "scaffold-invalid-toml",
+            "not valid TOML",
+            "cannot parse minecraft/versions/26.1.2/adapter.toml",
+        ),
+        (
+            "scaffold-invalid-eligibility",
+            "minecraft = '26.1.2'\neligibility = 'unsupported'\n",
+            "Minecraft 26.1.2 has invalid eligibility",
+        ),
+        (
+            "scaffold-reserved-eligibility",
+            "minecraft = '26.1.2'\neligibility = 'generation-only'\n",
+            "Minecraft 26.1.2 must retain live eligibility",
+        ),
+    ] {
+        let root = temporary_root(label);
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(root.join("minecraft/versions/26.1.2/adapter.toml"), adapter)
+            .expect("adapter should be writable");
+
+        let violations = verify_scaffold(&root);
+
+        assert_eq!(
+            violations
+                .iter()
+                .filter(|message| message.contains(diagnostic))
+                .count(),
+            1,
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 }
 
 #[test]

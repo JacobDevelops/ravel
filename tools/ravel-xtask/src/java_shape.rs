@@ -4,11 +4,14 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use ravel_minecraft_generate::Eligibility;
 use serde::Deserialize;
 
 use crate::inventory::hook_counts;
 use crate::tracked::collect_files;
-use crate::version_boundary::{HookInventory, VERSION_DATA, VERSION_PROSE_FILE, tracked_versions};
+use crate::version_boundary::{
+    HookInventory, VERSION_DATA, VERSION_PROSE_FILE, VersionEligibility, tracked_versions,
+};
 
 const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 
@@ -19,29 +22,31 @@ pub(crate) const REFLECTION_FILE: &str = "reflection.toml";
 struct ReflectiveSurface {
     path: String,
     roles: Vec<Reflected>,
+    eligibility: Eligibility,
 }
 
 struct Reflected {
     name: String,
     class: String,
+    runtime: String,
     descriptors: Vec<String>,
 }
 
-fn reflective_surfaces(root: &Path, violations: &mut Vec<String>) -> Vec<ReflectiveSurface> {
-    let versions = match tracked_versions(root) {
-        Ok(versions) => versions,
-        Err(error) => {
-            violations.push(error);
-            return Vec::new();
-        }
-    };
-
-    let mut surfaces = Vec::new();
-    for version in versions {
+fn reflective_surfaces(
+    root: &Path,
+    eligibility: &VersionEligibility,
+    violations: &mut Vec<String>,
+) -> Vec<ReflectiveSurface> {
+    let mut surfaces = Vec::with_capacity(eligibility.len());
+    for (version, &eligibility) in eligibility {
         let path = format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}");
         match fs::read_to_string(root.join(&path)) {
             Ok(text) => match declared_roles(&text, &path) {
-                Ok(roles) => surfaces.push(ReflectiveSurface { path, roles }),
+                Ok(roles) => surfaces.push(ReflectiveSurface {
+                    path,
+                    roles,
+                    eligibility,
+                }),
                 Err(violation) => violations.push(violation),
             },
             Err(error) => violations.push(format!("cannot read {path}: {error}")),
@@ -79,8 +84,7 @@ struct DeclaredReflection {
 struct ReflectedRole {
     name: String,
     class: String,
-    #[serde(rename = "runtime")]
-    _runtime: String,
+    runtime: String,
     #[serde(default)]
     member: Vec<ReflectedMember>,
 }
@@ -99,6 +103,7 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
         .map(|role| Reflected {
             name: role.name,
             class: role.class,
+            runtime: role.runtime,
             descriptors: role
                 .member
                 .into_iter()
@@ -108,8 +113,12 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
         .collect())
 }
 
-pub(crate) fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
-    let surfaces = reflective_surfaces(root, violations);
+pub(crate) fn verify_persistence_reflection(
+    root: &Path,
+    eligibility: &VersionEligibility,
+    violations: &mut Vec<String>,
+) {
+    let surfaces = reflective_surfaces(root, eligibility, violations);
 
     let sources = java_sources(&root.join(AGENT_JAR_SOURCES));
     if sources.is_empty() {
@@ -164,6 +173,10 @@ fn verify_persistence_reflection_roles(
     violations: &mut Vec<String>,
 ) {
     for surface in surfaces {
+        if surface.eligibility == Eligibility::GenerationOnly {
+            verify_generation_reflection(surface, violations);
+            continue;
+        }
         let declaring = &surface.path;
         let declared: Vec<&str> = surface
             .roles
@@ -220,6 +233,36 @@ fn verify_persistence_reflection_roles(
     }
 }
 
+fn verify_generation_reflection(surface: &ReflectiveSurface, violations: &mut Vec<String>) {
+    if surface.roles.is_empty() {
+        violations.push(format!(
+            "{} declares no generation-only reflected roles",
+            surface.path
+        ));
+    }
+    let mut names = BTreeSet::new();
+    for role in &surface.roles {
+        if role.name.is_empty()
+            || role.class.is_empty()
+            || role.runtime.is_empty()
+            || !names.insert(role.name.as_str())
+        {
+            violations.push(format!(
+                "{} has an empty or duplicate generation-only reflected role {}",
+                surface.path, role.name
+            ));
+        }
+        for descriptor in &role.descriptors {
+            if let Err(error) = ravel_minecraft_generate::descriptor_parameters(descriptor) {
+                violations.push(format!(
+                    "{} role {} declares invalid descriptor {descriptor}: {error}",
+                    surface.path, role.name
+                ));
+            }
+        }
+    }
+}
+
 fn java_sources(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
     collect_files(directory, &mut sources);
@@ -236,6 +279,7 @@ const HOOK_NAME_MATCH: &str = "hookMethod().equals(\"";
 pub(crate) fn verify_hook_name_literals(
     root: &Path,
     inventories: &[HookInventory],
+    eligibility: &VersionEligibility,
     violations: &mut Vec<String>,
 ) {
     let flattened = |name: &str| -> String {
@@ -247,7 +291,7 @@ pub(crate) fn verify_hook_name_literals(
     let parsed = inventories
         .iter()
         .filter_map(|inventory| match parse_hook_inventory(&inventory.text) {
-            Ok(hooks) => Some((inventory, hooks)),
+            Ok(hooks) => uses_bootstrap(eligibility, inventory).then_some((inventory, hooks)),
             Err(error) => {
                 violations.push(format!("{}: {error}", inventory.path));
                 None
@@ -289,6 +333,10 @@ pub(crate) fn verify_hook_name_literals(
             }
         }
     }
+}
+
+fn uses_bootstrap(eligibility: &VersionEligibility, inventory: &HookInventory) -> bool {
+    eligibility.get(&inventory.version) == Some(&Eligibility::Live)
 }
 
 const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
@@ -391,6 +439,7 @@ pub(crate) fn verify_menu_row_placement(root: &Path, violations: &mut Vec<String
 pub(crate) fn verify_transformer_shape(
     root: &Path,
     inventories: &[HookInventory],
+    eligibility: &VersionEligibility,
     violations: &mut Vec<String>,
 ) {
     let mut held = Vec::new();
@@ -403,6 +452,9 @@ pub(crate) fn verify_transformer_shape(
                 continue;
             }
         };
+        if !uses_bootstrap(eligibility, inventory) {
+            continue;
+        }
         let before = violations.len();
         let mut seams = 0;
         for seam in &TRANSFORMER_SEAMS {

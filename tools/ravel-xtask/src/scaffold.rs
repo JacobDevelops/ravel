@@ -130,15 +130,15 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     verify_ignored_boundaries(root, &mut violations);
-    verify_version_directories(root, &mut violations);
+    let eligibility = verify_version_directories(root, &mut violations);
     let inventories = hook_inventories(root);
     verify_hook_inventory_document(root, &inventories, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_review_blocking_counts(root, &mut violations);
     verify_manifest_percentages(root, &mut violations);
-    verify_persistence_reflection(root, &mut violations);
-    verify_hook_name_literals(root, &inventories, &mut violations);
-    verify_transformer_shape(root, &inventories, &mut violations);
+    verify_persistence_reflection(root, &eligibility, &mut violations);
+    verify_hook_name_literals(root, &inventories, &eligibility, &mut violations);
+    verify_transformer_shape(root, &inventories, &eligibility, &mut violations);
     verify_menu_row_placement(root, &mut violations);
     verify_screen_templates(root, &mut violations);
     verify_screen_overrides(root, &mut violations);

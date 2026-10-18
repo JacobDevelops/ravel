@@ -1,0 +1,8 @@
+# Only the legacy pause-observation template's genuine game dependency.
+schemaVersion = 1
+minecraft = "1.12.2"
+
+[[stub]]
+role = "SCREEN"
+class = "net.minecraft.client.gui.screen.Screen"
+members = ["shouldPauseGame"]

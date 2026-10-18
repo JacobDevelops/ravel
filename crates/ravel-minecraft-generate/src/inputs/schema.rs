@@ -2,6 +2,17 @@
 
 use serde::Deserialize;
 
+/// Which verification stages a version is ready to exercise, not a support claim.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum Eligibility {
+    /// Generation, adapter tests, and every harness section are required.
+    #[default]
+    Live,
+    /// Generation is available; adapter and harness obligations remain unmet.
+    GenerationOnly,
+}
+
 /// Where the names the generator resolves against come from.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -65,6 +76,17 @@ impl Kind {
     }
 }
 
+/// Whether a reviewed target is shared with the official dedicated server.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum HookSide {
+    /// Must resolve against both client and dedicated-server class files.
+    #[default]
+    Shared,
+    /// Only the client jar is expected to declare the target class.
+    ClientOnly,
+}
+
 /// One reviewed hook entry.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,6 +97,9 @@ pub(crate) struct Hook {
     pub(crate) descriptor: String,
     pub(crate) kind: Kind,
     pub(crate) capability: String,
+    /// Client-only targets are explicitly exempt from dedicated-server checks.
+    #[serde(default)]
+    pub(crate) side: HookSide,
     /// Whether this target's prologue may return from it before its body runs.
     #[serde(default)]
     pub(crate) refuses: bool,
@@ -289,6 +314,9 @@ pub(crate) struct MappingNamespaces {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Inputs {
     pub(crate) client_jar: Input,
+    /// Official dedicated-server jar used to verify shared hook targets.
+    #[serde(default)]
+    pub(crate) server_jar: Option<Input>,
     /// The version's published client mapping, where the source calls for one.
     #[serde(default)]
     pub(crate) client_mappings: Option<Input>,
@@ -314,6 +342,8 @@ pub(crate) struct Inputs {
 pub(crate) struct Adapter {
     pub(crate) schema_version: u8,
     pub(crate) minecraft: String,
+    #[serde(default)]
+    pub(crate) eligibility: Eligibility,
     pub(crate) mapping_source: MappingSource,
     #[serde(default)]
     pub(crate) mapping_namespaces: Option<MappingNamespaces>,
@@ -321,9 +351,24 @@ pub(crate) struct Adapter {
     pub(crate) capabilities: Vec<Capability>,
     /// The Java release every jar built for this version is compiled for.
     pub(crate) java_release: u16,
+    /// Release required by the upstream source jar; defaults to javaRelease.
+    #[serde(default)]
+    pub(crate) source_java_release: Option<u16>,
     /// The pack formats this version's own resource and data packs declare.
     pub(crate) pack_format: PackFormat,
     pub(crate) inputs: Inputs,
+}
+
+impl Adapter {
+    /// Whether this adapter uses the explicitly declared legacy game surface.
+    pub(crate) fn is_legacy(&self) -> bool {
+        self.capabilities.contains(&Capability::Legacy112)
+    }
+
+    /// Source-jar Java release, independent from the generated adapter target.
+    pub(crate) fn effective_source_java_release(&self) -> u16 {
+        self.source_java_release.unwrap_or(self.java_release)
+    }
 }
 
 /// The pack formats one Minecraft version declares, and how it spells them.

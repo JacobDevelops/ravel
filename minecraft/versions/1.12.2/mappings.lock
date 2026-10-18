@@ -1,0 +1,197 @@
+# Generated mapping provenance for Minecraft 1.12.2. Do not edit.
+#
+# Every line pins one resolved member. A change to the jar, the
+# inventory, or the extractor changes this file, which is how drift is
+# noticed before a build trusts a binding.
+
+schemaVersion = 1
+minecraft = "1.12.2"
+mappingSource = "feather-tiny-mappings"
+extractor = "classfile"
+clientJarSha256 = "8ada07da5ee77dad3527bd7278fbd05ee1fc8a597813b216a871a2d7d64cc64f"
+serverJarSha256 = "fe1f9274e6dad9191bf6e6e8e36ee6ebc737f373603df0946aafcded0d53167e"
+clientMappingsSha256 = "0f7703e2b0b902a56e4e60d46740b3c023944fb7e4bd64b47485dcf39947e853"
+
+[target."legacy.bootstrap"]
+class = "net/minecraft/Bootstrap"
+member = "init"
+descriptor = "()V"
+static = true
+runtimeClass = "ni"
+runtimeMember = "c"
+
+[target."legacy.block-register"]
+class = "net/minecraft/block/Block"
+member = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/block/Block;)V"
+static = true
+runtimeClass = "aow"
+runtimeMember = "a"
+runtimeDescriptor = "(ILnf;Laow;)V"
+
+[target."legacy.item-register"]
+class = "net/minecraft/item/Item"
+member = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/item/Item;)V"
+static = true
+runtimeClass = "ain"
+runtimeMember = "a"
+runtimeDescriptor = "(ILnf;Lain;)V"
+
+[target."legacy.block-state-from-metadata"]
+class = "net/minecraft/block/Block"
+member = "deserialize"
+descriptor = "(I)Lnet/minecraft/block/state/BlockState;"
+static = true
+runtimeClass = "aow"
+runtimeMember = "d"
+runtimeDescriptor = "(I)Lawt;"
+
+[target."legacy.block-metadata-from-state"]
+class = "net/minecraft/block/Block"
+member = "serialize"
+descriptor = "(Lnet/minecraft/block/state/BlockState;)I"
+static = true
+runtimeClass = "aow"
+runtimeMember = "j"
+runtimeDescriptor = "(Lawt;)I"
+
+[target."legacy.item-metadata"]
+class = "net/minecraft/item/ItemStack"
+member = "getMetadata"
+descriptor = "()I"
+static = false
+runtimeClass = "aip"
+runtimeMember = "j"
+
+[target."legacy.client-tick"]
+class = "net/minecraft/client/Minecraft"
+member = "tick"
+descriptor = "()V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "t"
+
+[target."legacy.server-tick"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tick"
+descriptor = "()V"
+static = false
+runtimeMember = "C"
+
+[target."legacy.integrated-server-tick"]
+class = "net/minecraft/server/integrated/IntegratedServer"
+member = "tick"
+descriptor = "()V"
+static = false
+runtimeClass = "chd"
+runtimeMember = "C"
+
+[target."legacy.server-world-tick"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tickWorlds"
+descriptor = "()V"
+static = false
+runtimeMember = "D"
+
+[target."legacy.payload-client"]
+class = "net/minecraft/client/network/handler/ClientPlayNetworkHandler"
+member = "handleCustomPayload"
+descriptor = "(Lnet/minecraft/network/packet/s2c/play/CustomPayloadS2CPacket;)V"
+static = false
+runtimeClass = "brz"
+runtimeMember = "a"
+runtimeDescriptor = "(Liw;)V"
+
+[target."legacy.payload-server"]
+class = "net/minecraft/server/network/handler/ServerPlayNetworkHandler"
+member = "handleCustomPayload"
+descriptor = "(Lnet/minecraft/network/packet/c2s/play/CustomPayloadC2SPacket;)V"
+static = false
+runtimeClass = "pa"
+runtimeMember = "a"
+runtimeDescriptor = "(Llh;)V"
+
+[target."legacy.resource-reload"]
+class = "net/minecraft/client/Minecraft"
+member = "reloadResources"
+descriptor = "()V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "f"
+
+[target."legacy.atlas-reload"]
+class = "net/minecraft/client/render/texture/TextureAtlas"
+member = "loadAndStitch"
+descriptor = "(Lnet/minecraft/client/resource/manager/ResourceManager;)V"
+static = false
+runtimeClass = "cdp"
+runtimeMember = "b"
+runtimeDescriptor = "(Lcep;)V"
+
+[target."legacy.recipe-register"]
+class = "net/minecraft/crafting/CraftingManager"
+member = "register"
+descriptor = "(Lnet/minecraft/resource/Identifier;Lnet/minecraft/crafting/recipe/Recipe;)V"
+static = true
+runtimeClass = "aku"
+runtimeMember = "a"
+runtimeDescriptor = "(Lnf;Lakt;)V"
+
+[target."legacy.saved-data-dirty"]
+class = "net/minecraft/world/saveddata/SavedData"
+member = "markDirty"
+descriptor = "()V"
+static = false
+runtimeClass = "bet"
+runtimeMember = "c"
+
+[target."legacy.saved-data-load"]
+class = "net/minecraft/world/storage/SavedDataStorage"
+member = "load"
+descriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lnet/minecraft/world/saveddata/SavedData;"
+static = false
+runtimeClass = "bfm"
+runtimeMember = "a"
+runtimeDescriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lbet;"
+
+[target."legacy.saved-data-set"]
+class = "net/minecraft/world/storage/SavedDataStorage"
+member = "set"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/world/saveddata/SavedData;)V"
+static = false
+runtimeClass = "bfm"
+runtimeMember = "a"
+runtimeDescriptor = "(Ljava/lang/String;Lbet;)V"
+
+[target."legacy.saved-data-save"]
+class = "net/minecraft/world/storage/SavedDataStorage"
+member = "save"
+descriptor = "()V"
+static = false
+runtimeClass = "bfm"
+runtimeMember = "a"
+
+[target."legacy.world-save"]
+class = "net/minecraft/server/MinecraftServer"
+member = "saveWorlds"
+descriptor = "(Z)V"
+static = false
+runtimeMember = "a"
+
+[target."legacy.screen-open"]
+class = "net/minecraft/client/Minecraft"
+member = "openScreen"
+descriptor = "(Lnet/minecraft/client/gui/screen/Screen;)V"
+static = false
+runtimeClass = "bib"
+runtimeMember = "a"
+runtimeDescriptor = "(Lblk;)V"
+
+[target."legacy.screen-draw"]
+class = "net/minecraft/client/gui/screen/Screen"
+member = "render"
+descriptor = "(IIF)V"
+static = false
+runtimeClass = "blk"
+runtimeMember = "a"

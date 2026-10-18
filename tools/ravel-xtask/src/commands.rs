@@ -12,6 +12,7 @@ const USAGE: &str = "usage:
   cargo xtask verify scaffold
   cargo xtask verify spikes
   cargo xtask verify gate-versions
+  cargo xtask version-matrix <minecraft>
   cargo xtask generate java
   cargo xtask generate locks
   cargo xtask verify milestone M<N>
@@ -23,6 +24,9 @@ const USAGE: &str = "usage:
 
 pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
     let (subject, violations) = match args {
+        [matrix, version] if matrix == "version-matrix" => {
+            return matrix_eligibility(root, version);
+        }
         [host, build, instance, cache, minecraft] if host == "host" && build == "build" => {
             return operation(build_host(
                 Path::new(instance),
@@ -72,7 +76,11 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
             ("spikes", ravel_xtask::verify_spikes(root))
         }
         [verify, versions] if verify == "verify" && versions == "gate-versions" => {
-            ("gate versions", ravel_xtask::verify_gate_versions(root))
+            let report = ravel_xtask::verify_gate_versions(root);
+            for notice in report.notices {
+                eprintln!("{notice}");
+            }
+            ("gate versions", report.violations)
         }
         [scan, instance, directory] if scan == "scan" && instance == "instance" => {
             ("instance scan", scan_instance(Path::new(directory)))
@@ -83,6 +91,19 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
         }
     };
     verification(subject, violations)
+}
+
+fn matrix_eligibility(root: &Path, version: &str) -> ExitCode {
+    match ravel_xtask::version_matrix(root, version) {
+        Ok(eligibility) => {
+            println!("{eligibility}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn verification(subject: &str, violations: Vec<String>) -> ExitCode {

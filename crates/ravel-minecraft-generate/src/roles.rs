@@ -242,6 +242,7 @@ mod tests {
                     descriptor: String::from("()V"),
                     kind: Kind::InstanceMethod,
                     capability: String::from("test"),
+                    side: crate::inputs::HookSide::Shared,
                     refuses: false,
                     title_menu_row: None,
                 })

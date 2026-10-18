@@ -23,6 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use error::GenerateError;
+pub use inputs::Eligibility;
 
 /// The reading of the jar this generator performs, as recorded in the lock.
 const EXTRACTOR: &str = "classfile";
@@ -235,6 +236,7 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
     let pinned = inputs::pinned(root, selected)?;
     for input in std::iter::once(&pinned.adapter.inputs.client_jar)
         .chain(pinned.adapter.inputs.data_fixer_jar.as_ref())
+        .chain(pinned.adapter.inputs.server_jar.as_ref())
     {
         let path = root.join(&input.path);
         if !path.is_file() {
@@ -365,17 +367,19 @@ fn compose(
     inputs::verify_input(root, &pinned.adapter.inputs.mappings_lock)?;
     inputs::verify_input(root, &pinned.adapter.inputs.stubs_lock)?;
 
-    let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
-    // Every declared stub source must be available before resolving any of them.
-    let jars = jar_path.is_file()
-        && pinned
-            .adapter
-            .inputs
-            .data_fixer_jar
-            .as_ref()
-            .is_none_or(|input| root.join(&input.path).is_file());
+    let jars = std::iter::once(&pinned.adapter.inputs.client_jar)
+        .chain(pinned.adapter.inputs.data_fixer_jar.as_ref())
+        .chain(pinned.adapter.inputs.server_jar.as_ref());
+    let available = jars.clone().any(|input| root.join(&input.path).is_file());
+    if available && let Some(missing) = jars.clone().find(|input| !root.join(&input.path).is_file())
+    {
+        return Err(GenerateError::Input(format!(
+            "{} is missing from an incomplete pinned jar set; lock-only generation requires all jars absent",
+            missing.path
+        )));
+    }
 
-    let (resolved, stubbed) = if jars {
+    let (resolved, stubbed) = if available {
         resolve_jars(root, pinned, mapping)?
     } else {
         (
@@ -411,6 +415,15 @@ fn resolve_jars(
     }
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
     let archive = jar::Archive::open(&root.join(&pinned.adapter.inputs.client_jar.path))?;
+    if pinned.adapter.is_legacy() {
+        inputs::verify_legacy_class_release(&archive)?;
+    }
+    let resolved = resolve::from_jar(&archive, &pinned.inventory, mapping)?;
+    if let Some(input) = &pinned.adapter.inputs.server_jar {
+        inputs::verify_input(root, input)?;
+        let server = jar::Archive::open(&root.join(&input.path))?;
+        inputs::verify_server_hooks(&server, &pinned.inventory, mapping, &resolved)?;
+    }
     let library = pinned
         .adapter
         .inputs
@@ -426,10 +439,7 @@ fn resolve_jars(
     } else {
         stubs::from_jar(&[&archive], &pinned.seeds, mapping)?
     };
-    Ok((
-        resolve::from_jar(&archive, &pinned.inventory, mapping)?,
-        stubbed,
-    ))
+    Ok((resolved, stubbed))
 }
 
 fn compose_render(
@@ -519,46 +529,53 @@ fn sources(
     stubs: &[stubs::Stub],
     mapping: &mapping::Mapping,
 ) -> Result<[screen::Sources; 4], GenerateError> {
+    let render = |tree: &screen::Tree<'_>, name_space| {
+        screen::render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
+    };
+    let legacy = pinned.adapter.is_legacy();
+    let screens = if legacy {
+        pinned.directory.join("templates/screen")
+    } else {
+        root.join(SCREEN_TEMPLATES)
+    };
+    let screen_tree = screen::Tree {
+        shared: &screens,
+        overrides: screens.join(&pinned.adapter.minecraft),
+        purpose: screen::Purpose::Screen,
+        stand_ins: false,
+    };
+    if legacy {
+        let name_space = screen::name_space(&screen_tree, roles, mapping)?;
+        let screens = render(&screen_tree, name_space)?;
+        return Ok([
+            screens,
+            screen::Sources::default(),
+            screen::Sources::default(),
+            screen::Sources::default(),
+        ]);
+    }
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
-    let screens = root.join(SCREEN_TEMPLATES);
+    let game = root.join(HARNESS_STAND_IN_TEMPLATES);
+    let driver = root.join(HARNESS_DRIVER_TEMPLATES);
+    let sibling = root.join(HARNESS_SIBLING_TEMPLATES);
     let stand_ins = screen::Tree {
-        shared: &root.join(HARNESS_STAND_IN_TEMPLATES),
+        shared: &game,
         overrides: harness.join("game"),
         purpose: screen::Purpose::StandIn,
         stand_ins: true,
     };
-    // One answer for every tree, read from the stand-in game: the harness
-    // compiles three of them together, and the fourth publishes the constants
-    // the agent jar opens the sibling by, so a tree that reached its own answer
-    // would name a class under a name nothing beside it carries.
     let name_space = screen::name_space(&stand_ins, roles, mapping)?;
     let trees = [
-        // The screen jar's own sources, whose per-version half predates the
-        // layout below and still sits beside the shared tree. It compiles
-        // against the generated stubs rather than beside the stand-ins, so the
-        // game classes it names are the ones the version links.
-        screen::Tree {
-            shared: &screens,
-            overrides: screens.join(&pinned.adapter.minecraft),
-            purpose: screen::Purpose::Screen,
-            stand_ins: false,
-        },
+        screen_tree,
         stand_ins,
         screen::Tree {
-            shared: &root.join(HARNESS_DRIVER_TEMPLATES),
+            shared: &driver,
             overrides: harness.join("driver"),
             purpose: screen::Purpose::Driver,
             stand_ins: true,
         },
-        // The sibling artifact's stand-in half is rendered the way the real one
-        // is, because the agent jar opens both by the constants it holds: the
-        // same name, the same package, and the unnamed package under a version
-        // that leaves nothing in one. It compiles against the stand-in game
-        // beside it, but every role it names is one the screen jar's own sources
-        // name too, so asking for the stub costs it nothing and the two halves
-        // cannot drift apart.
         screen::Tree {
-            shared: &root.join(HARNESS_SIBLING_TEMPLATES),
+            shared: &sibling,
             overrides: harness.join("sibling"),
             purpose: screen::Purpose::Screen,
             stand_ins: true,
@@ -566,14 +583,7 @@ fn sources(
     ];
     let mut rendered = Vec::with_capacity(trees.len());
     for tree in &trees {
-        rendered.push(screen::render(
-            tree,
-            &pinned.adapter,
-            roles,
-            stubs,
-            mapping,
-            name_space,
-        )?);
+        rendered.push(render(tree, name_space)?);
     }
     screen::every_added_template_is_reached(&rendered.iter().collect::<Vec<_>>())?;
     rendered
@@ -688,6 +698,7 @@ fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendere
     watched.extend(
         pins.data_fixer_jar
             .iter()
+            .chain(pins.server_jar.iter())
             .map(|input| root.join(&input.path)),
     );
     watched.push(root.join(&pins.version_manifest.path));
@@ -939,6 +950,40 @@ mod tests {
         }
     }
 
+    #[test]
+    fn legacy_sources_render_the_local_screen_without_inheriting_a_modern_harness() {
+        let (root, directory) = staged("legacy-template-selection");
+        let mut pinned = inputs::pinned(&root, None).expect("the staged inputs are pinned");
+        pinned.adapter.capabilities = vec![inputs::Capability::Legacy112];
+        std::fs::remove_dir_all(directory.join(super::HARNESS_OVERRIDES))
+            .expect("remove the staged modern harness overrides");
+        let screen = directory.join("templates/screen");
+        std::fs::create_dir_all(&screen).expect("create the legacy screen tree");
+        let template = screen.join("LegacySupport.java.in");
+        std::fs::write(
+            &template,
+            "{{package}}\npublic final class LegacySupport {}\n",
+        )
+        .expect("write the version-local support source");
+        let roles = super::roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
+        let mapping =
+            super::mapping::Mapping::read(inputs::MappingSource::UnobfuscatedClassFiles, "")
+                .expect("class-file names need no mapping text");
+        let [screens, game, driver, sibling] =
+            super::sources(&root, &pinned, &roles, &[], &mapping)
+                .expect("local support renders without a harness");
+        assert_eq!(screens.templates, [template]);
+        assert_eq!(screens.java.len(), 1);
+        assert_eq!(screens.java[0].0, "dev/ravel/jvm/screen/LegacySupport.java");
+        for tree in [game, driver, sibling] {
+            assert_eq!(tree.java, []);
+            assert_eq!(tree.templates, Vec::<PathBuf>::new());
+        }
+        std::fs::remove_dir_all(&screen).expect("remove the required screen tree");
+        assert!(super::sources(&root, &pinned, &roles, &[], &mapping).is_err());
+        cleanup(&root);
+    }
+
     /// The harness's three trees land under three directories of their own.
     ///
     /// The run script sweeps each of them whole rather than naming the files it
@@ -1175,6 +1220,29 @@ mod tests {
 
         cleanup(&root);
         cleanup(&out);
+    }
+
+    #[test]
+    fn partial_pinned_jar_sets_do_not_fall_back_to_the_locks() {
+        let (root, _) = staged("partial-pinned-jars");
+        let mut pinned = inputs::pinned(&root, None).expect("staged inputs");
+        pinned.adapter.inputs.data_fixer_jar = None;
+        pinned.adapter.inputs.client_jar.path = "client.jar".to_owned();
+        let mut server = pinned.adapter.inputs.client_jar.clone();
+        server.path = "server.jar".to_owned();
+        pinned.adapter.inputs.server_jar = Some(server);
+        let mapping =
+            super::mapping::Mapping::read(inputs::MappingSource::UnobfuscatedClassFiles, "")
+                .expect("identity mapping");
+        for (present, missing) in [("client.jar", "server.jar"), ("server.jar", "client.jar")] {
+            let path = root.join(present);
+            std::fs::write(&path, []).expect("present jar marker");
+            let error = super::compose(&root, &pinned, &mapping)
+                .expect_err("a partial fixture is not an offline fixture");
+            assert!(error.to_string().contains(missing), "{error}");
+            std::fs::remove_file(path).expect("remove present jar marker");
+        }
+        cleanup(&root);
     }
 
     #[test]

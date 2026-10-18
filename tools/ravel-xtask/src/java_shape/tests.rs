@@ -8,7 +8,7 @@ use crate::java_shape::{
     verify_transformer_shape,
 };
 use crate::test_support::{temporary_root, version_directory};
-use crate::version_boundary::{VERSION_DATA, hook_inventories};
+use crate::version_boundary::{VERSION_DATA, hook_inventories, version_eligibility};
 
 #[test]
 fn inventories_follow_toml_string_and_comment_rules() {
@@ -48,7 +48,8 @@ fn malformed_hooks_and_missing_ids_are_reported_by_both_consumers() {
         let root = seam_root(label, text);
         let inventories = hook_inventories(&root);
         let mut violations = Vec::new();
-        verify_hook_name_literals(&root, &inventories, &mut violations);
+        let eligibility = version_eligibility(&root, &mut violations);
+        verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
         assert!(
             violations
                 .iter()
@@ -56,7 +57,7 @@ fn malformed_hooks_and_missing_ids_are_reported_by_both_consumers() {
             "{violations:?}"
         );
         violations.clear();
-        verify_transformer_shape(&root, &inventories, &mut violations);
+        verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
         assert!(
             violations
                 .iter()
@@ -74,7 +75,8 @@ fn the_agent_jars_game_class_names_are_the_declared_and_the_pinned_ones() {
         .join("../..");
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert_eq!(violations, Vec::<String>::new());
 }
@@ -89,6 +91,34 @@ fn reflection_root(label: &str, source: &str) -> PathBuf {
 }
 
 #[test]
+fn generation_only_reflection_does_not_invent_modern_bootstrap_roles() {
+    let root = reflection_root("generation-reflection", "String one = GameNames.ONE;\n");
+    version_directory(&root, "1.12.2", &[]);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
+        "minecraft = '1.12.2'\neligibility = 'generation-only'\n",
+    )
+    .expect("adapter should be writable");
+    let reflection = root.join(format!("{VERSION_DATA}/1.12.2/{REFLECTION_FILE}"));
+    let valid = "[[reflected]]\nname = 'LEGACY_STORAGE'\nclass = 'legacy.Storage'\n\
+                 runtime = 'abc'\n[[reflected.member]]\ndescriptor = '()V'\n";
+    fs::write(&reflection, valid).expect("reflection should be writable");
+    let mut violations = Vec::new();
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::write(&reflection, valid.replace("()V", "not-a-descriptor"))
+        .expect("reflection should be writable");
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("invalid descriptor"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_hand_written_game_literal_in_the_agent_sources_is_refused() {
     let root = reflection_root(
         "version-reflection-literal",
@@ -97,7 +127,8 @@ fn a_hand_written_game_literal_in_the_agent_sources_is_refused() {
     );
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -116,7 +147,8 @@ fn a_role_a_version_does_not_declare_is_refused() {
     );
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -131,7 +163,8 @@ fn a_declared_role_no_source_resolves_is_refused() {
     let root = reflection_root("version-reflection-unused", "String nothing = null;\n");
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -154,7 +187,8 @@ fn a_role_named_only_inside_an_unreached_members_descriptor_is_refused() {
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -178,7 +212,8 @@ fn a_reflected_table_missing_a_name_is_refused_rather_than_skipped() {
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert!(
         violations
@@ -196,7 +231,8 @@ fn a_version_without_a_reflection_file_disarms_no_check_silently() {
     version_directory(&root, "26.1.2", &[REFLECTION_FILE]);
     let mut violations = Vec::new();
 
-    verify_persistence_reflection(&root, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
 
     assert!(
         violations
@@ -218,7 +254,8 @@ fn a_hook_name_no_version_declares_is_refused() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_hook_name_literals(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -238,10 +275,125 @@ fn a_hook_name_every_version_declares_is_accepted() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_hook_name_literals(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations, Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn generation_only_hooks_are_not_modern_transformer_seams() {
+    let root = reflection_root(
+        "legacy-not-bootstrap",
+        "boolean seam = target.hookMethod().equals(\"worldOpenPersistence\");\n",
+    );
+    fs::write(
+        root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+        declared_seams(),
+    )
+    .expect("modern hooks should be writable");
+    version_directory(&root, "1.12.2", &[]);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
+        "minecraft = '1.12.2'\neligibility = 'generation-only'\n",
+    )
+    .expect("legacy adapter should be writable");
+    let hooks = root.join(format!("{VERSION_DATA}/1.12.2/hooks.toml"));
+    fs::write(
+        &hooks,
+        seam("world.open-persistence", "instance-method", "()I"),
+    )
+    .expect("legacy hooks should be writable");
+    let mut violations = Vec::new();
+    let inventories = hook_inventories(&root);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    let held = fs::read_to_string(root.join("target/ravel-jvm/transformer-shape.txt"))
+        .expect("transformer shape record should exist");
+    assert!(held.contains("Minecraft 26.1.2"));
+    assert!(!held.contains("Minecraft 1.12.2"));
+
+    fs::write(&hooks, "[[hook]\n").expect("legacy hooks should be writable");
+    let inventories = hook_inventories(&root);
+    verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(
+        violations
+            .iter()
+            .all(|violation| violation.contains("cannot parse"))
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn shape_checks_share_validated_eligibility_without_rereading_adapters() {
+    let root = reflection_root("shared-eligibility", "String one = GameNames.ONE;\n");
+    fs::write(
+        root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+        declared_seams(),
+    )
+    .expect("hooks should be writable");
+    let inventories = hook_inventories(&root);
+    let mut violations = Vec::new();
+    let eligibility = version_eligibility(&root, &mut violations);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml")),
+        "not valid TOML",
+    )
+    .expect("adapter should be writable");
+
+    verify_persistence_reflection(&root, &eligibility, &mut violations);
+    verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
+
+    assert!(violations.is_empty(), "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn invalid_adapters_are_reported_once_before_all_shape_checks() {
+    for (label, adapter, diagnostic) in [
+        ("malformed-adapter", "not valid TOML", "cannot parse"),
+        (
+            "invalid-eligibility",
+            "minecraft = '1.12.2'\neligibility = 'unsupported'\n",
+            "has invalid eligibility",
+        ),
+        (
+            "wrong-adapter-version",
+            "minecraft = '26.1.2'\neligibility = 'generation-only'\n",
+            "does not declare Minecraft 1.12.2",
+        ),
+    ] {
+        let root = reflection_root(label, "String one = GameNames.ONE;\n");
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+            declared_seams(),
+        )
+        .expect("hooks should be writable");
+        version_directory(&root, "1.12.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
+            adapter,
+        )
+        .expect("adapter should be writable");
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+        let eligibility = version_eligibility(&root, &mut violations);
+
+        verify_persistence_reflection(&root, &eligibility, &mut violations);
+        verify_hook_name_literals(&root, &inventories, &eligibility, &mut violations);
+        verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(violations[0].contains(diagnostic), "{violations:?}");
+        assert!(!eligibility.contains_key("1.12.2"));
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 }
 
 fn seam_root(label: &str, seams: &str) -> PathBuf {
@@ -285,7 +437,8 @@ fn a_seam_whose_loaded_parameter_moved_is_refused() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_transformer_shape(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -313,7 +466,8 @@ fn a_seam_returning_what_no_sequence_is_written_for_is_refused() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_transformer_shape(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -337,7 +491,8 @@ fn a_seam_declared_static_where_the_receiver_is_loaded_is_refused() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_transformer_shape(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -353,7 +508,8 @@ fn the_shapes_the_transformer_injects_against_are_recorded_by_version() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_transformer_shape(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations, Vec::<String>::new());
     let record = fs::read_to_string(root.join(TRANSFORMER_SHAPE_RECORD))
@@ -374,7 +530,8 @@ fn a_run_no_version_names_a_seam_in_is_refused() {
     let inventories = hook_inventories(&root);
     let mut violations = Vec::new();
 
-    verify_transformer_shape(&root, &inventories, &mut violations);
+    let eligibility = version_eligibility(&root, &mut violations);
+    verify_transformer_shape(&root, &inventories, &eligibility, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(

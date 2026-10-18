@@ -23,11 +23,12 @@ pub use error::FixtureError;
 pub use evidence::manifest::{verify_evidence_manifest, verify_milestone};
 pub use evidence::records::verify_evidence_records;
 pub use evidence::spikes::verify_spikes;
-pub use gate_versions::verify_gate_versions;
+pub use gate_versions::{GateVersionsReport, verify_gate_versions};
 pub use instance_scan::{Finding, InstanceScan, scan_instance};
 pub use package_digests::{DigestOutcome, StaleDigest, refresh_digests};
 pub use scaffold::{required_scaffold_paths, verify_scaffold};
 pub use tracked::{verify_tracked_contents, verify_tracked_paths};
+pub use version_boundary::version_matrix;
 
 const EXAMPLE_NAMES: &[&str] = &[
     "content-mod",

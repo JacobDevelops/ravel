@@ -17,10 +17,20 @@ Those three ship a `package.json` and a `provenance.json`, so each is a package
 rather than only a crate: copy the directory whole into an instance's
 `ravel/mods`, then run `cargo make ravel:host-build <instance> <cache> <minecraft>`
 to compile it into that instance's host.
-The two below are not packages and cannot be installed.
+The guide snippets are not an installable package:
 
-- [`pack-module`](pack-module) — where M4-W5's pack example lives, and why it is not
-  a crate in this directory.
 - [`guide-snippets`](guide-snippets) — every Rust block in
   [`docs/guide/`](../docs/guide), compiled and driven so the author's
   documentation cannot drift from what the SDK does.
+
+Pack authors use
+[`crates/ravel-pack/examples/example_pack.rs`](../crates/ravel-pack/examples/example_pack.rs).
+It declares a two-mod pack with exact versions, configuration, a recipe, a texture
+and progression, validates its closures, then writes the pack:
+
+```console
+cargo run -p ravel-pack --example example_pack -- <output directory>
+```
+
+That example lives with `ravel-pack` because the crates here model mod-author
+manifests and depend only on `ravel-sdk`; pack declarations have a different owner.

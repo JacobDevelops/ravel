@@ -2,8 +2,10 @@
 
 Ravel is an experimental Minecraft: Java Edition mod loader and SDK for safe,
 natively compiled Rust mods, hosted by the official game runtime.
-The default build target is 26.1.2; the ATM10 To the Sky proof workload is pinned to 1.21.1.
-Both versions have pinned version data. Ravel does not load Java mods
+The default build target is 26.1.2; the forward proof workload is native behavioural parity
+with SevTech: Ages 3.2.3 / Minecraft 1.12.2 on pinned JDK 27.
+Historical M0–M5 records measured ATM11 0.2.1 (26.1.2); M6 measured ATM10 To the Sky 2.0.2 (1.21.1).
+Forward proof is planned, not a claim of playable SevTech support. Ravel does not load Java mods
 and does not use NeoForge, Fabric, Forge, Quilt, or another mod loader as its bootstrap.
 
 Ravel exists to make a large modpack cost significantly less RAM and CPU than
@@ -41,7 +43,7 @@ and [`examples/`](examples/) holds the worked mods.
 ## Development
 
 Run `mise install` once, then activate mise in your shell or prefix commands with
-`mise exec --`. Rustup provisions the undated nightly in `rust-toolchain.toml`.
+`mise exec --`. Rustup provisions Rust 1.95.0 from `rust-toolchain.toml`.
 The development and CI gate is:
 
 ```console
@@ -81,9 +83,9 @@ cargo test --workspace --doc
 cargo deny check
 ```
 
-GitHub Actions provides the Linux gate. M0 through M10 are
-Linux-first; Apple Silicon verification is deferred until Linux M10 has already
-passed. When the post-Linux-M10 Mac phase begins, native verification runs on an
+GitHub Actions provides the Linux gate. Forward Linux completion is WP9;
+historical M0–M10 criteria remain available for explicit replay.
+Apple Silicon verification follows forward Linux completion and runs on an
 actual `aarch64-darwin` host using
 [`docs/runbooks/darwin-verification.md`](docs/runbooks/darwin-verification.md).
 

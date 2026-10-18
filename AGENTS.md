@@ -7,7 +7,8 @@ version or a semver range, and per-version hooks, mappings and stubs live under 
 The build default is `26.1.2`, and `1.21.1` support remains. Forward proof targets immutable SevTech:
 Ages 3.2.3 on Minecraft `1.12.2` and pinned JDK 27; this is planned native behavioural parity through
 Rust counterparts, not hosted Forge jars or a claim of live support. Historical evidence retains its
-recorded workload and explicit replay; M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 remains open.
+recorded workload and explicit replay; M0–M5 measured ATM11 0.2.1, M6 measured ATM10 To the Sky 2.0.2,
+and M7 remains open.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.

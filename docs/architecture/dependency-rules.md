@@ -35,10 +35,12 @@ stable contracts toward concrete host internals.
   Artifact admission, descriptor validation and mapping uniqueness remain ours.
   JVM names and descriptor tokens live in its classfile module, shared by source
   rendering, hook-shape classification and tooling inventory counts.
-  Xtask consumes its typed adapter admission facts for eligibility and mapping
-  availability instead of maintaining a second adapter schema. Shared hook parsing
-  and counts live in xtask's hooks module; version and Java checks both depend on
-  that module rather than on one another.
+  Xtask consumes typed adapter admission and hook inventory facts instead of
+  maintaining a second schema. Its hooks module derives counts from those facts.
+  Java-shape checks read version listing and eligibility from version_boundary;
+  that dependency runs in one direction only.
+  Shared text loading, diagnostic paths and prose counts live in xtask's text
+  module, independent of JSON schema checks and milestone accounting rules.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's

@@ -3,6 +3,10 @@
 Audit date: 2026-10-15. Repository: `ravel`; ripwire snapshot `3d68f96cf`. Read-only investigation; no source changes,
 builds, tests, or dependency installation.
 
+Historical research only: its implementation inventory describes that snapshot,
+not the current tree. The classfile, ZIP and mapping parser migrations are complete;
+current contracts live in `docs/architecture/dependency-rules.md`.
+
 ## Executive verdict
 
 The JNI migration and Java bytecode-library migration have **already happened**: Ravel uses `jni 0.22.4` and

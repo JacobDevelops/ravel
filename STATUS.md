@@ -6,15 +6,24 @@ This file summarizes the current state and the distance to the goal. Trust
 
 ## The goal
 
-Play All the Mods 10: To the Sky 2.0.2 with a Rust mod loader instead of Java.
-The default build target is 26.1.2; the ATM10 To the Sky proof workload is pinned to 1.21.1.
+Native behavioural parity with SevTech: Ages 3.2.3 / Minecraft 1.12.2 on pinned JDK 27,
+through Rust counterparts rather than hosted Forge jars.
+The default build target remains 26.1.2; 1.21.1 support remains.
 
 ## Where we are
 
-Both versions have pinned version data.
+All tracked versions have pinned version data.
 Version-specific bindings, hooks and screen sources are generated from each version's pinned inputs.
-The JVM harness runs all thirteen sections at every tracked version; `ravel:verify-gate-versions`
-holds the recorded runs to that set.
+The JVM harness covers the executable `26.1.2` and `1.21.1` adapters;
+`1.12.2` remains generation-only with its harness recorded as `NOT-YET-RUN`.
+`ravel:verify-gate-versions` checks the records against each adapter's eligibility.
+
+### Historical milestone evidence
+
+M0–M5 measured ATM11 0.2.1 (Minecraft 26.1.2); M6 measured ATM10 To the Sky 2.0.2
+(Minecraft 1.21.1). Neither substitutes for forward SevTech proof.
+
+### Current player path
 
 **Ravel has run inside a real Minecraft 1.21.1 client.** Private launch captures under
 `evidence/private/launch-1.21.1/` prove source-distributed examples compiled into the instance's host,
@@ -37,10 +46,10 @@ historical evidence, not current capture or budget gates.
 
 ## What is not true yet
 
-**The full TTS pack is not playable through Ravel yet.** M6 records twelve accepted foundation
-counterparts in `evidence/m6/counterpart-summary.json`; that is not full-pack coverage. Completing
-the remaining counterparts and proving the pack still stand between the current loader and the
-goal. Running Ravel's own Rust mods inside a TTS instance is not the same thing as playing TTS.
+**The full SevTech pack is not playable through Ravel yet.** The forward WP1–WP9 gates in
+[`ROADMAP.md`](ROADMAP.md#forward-sevtech-work-packages) separate version admission,
+native counterparts, compatibility, performance and live progression proof.
+M6's twelve accepted foundation counterparts are historical evidence, not SevTech coverage.
 
 Installed examples are digest-bound source packages. Refresh an installed copy when changing the
 checkout: an old package can verify and compile correctly while lacking a new declaration.
@@ -49,9 +58,10 @@ has no in-game call that changes its journal; the saved-data test mod supplies t
 
 ## Open decisions
 
-- **How does a player's machine obtain the pinned version inputs?** Both tracked versions pin the
-  client jar under `tests/fixtures/local/`; `1.21.1` also needs Mojang's `client.txt`, while `26.1.2`
-  reads unobfuscated class files. The adapter generates bindings from these untracked local inputs,
+- **How does a player's machine obtain the pinned version inputs?** Tracked adapters pin the
+  official jars under `tests/fixtures/local/`; translating versions also pin their mappings:
+  Mojang's `client.txt` for `1.21.1`, Feather for `1.12.2`. `26.1.2` reads unobfuscated classes.
+  The adapter generates bindings from these untracked local inputs,
   so a checkout alone cannot build the host on another machine. Options are shipping generated
   bindings, deriving them from the launcher's jar and the hash-pinned mapping URL where needed,
   or explicitly staying checkout-only.

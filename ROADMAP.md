@@ -229,9 +229,9 @@ M12 and M13 require separately approved post-initial scope
 
 This sequence supersedes ATM10 as the forward workload, not as historical
 evidence. Preserve each record's actual inputs, results, counts, digests and
-verdicts: M1–M4 retain their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs),
-and M7 is still open. Explicit replay selects the record's fixture:
-`atm10-tts-2.0.2` remains available, but M5/M6 use `atm11-0.2.1`.
+verdicts: M0–M5 measured ATM11 0.2.1 (235 inputs), M6 measured ATM10 To the Sky
+2.0.2, and M7 is still open. Explicit replay selects the record's fixture:
+M0–M5 use `atm11-0.2.1`; M6 uses `atm10-tts-2.0.2`.
 Historical unclosed M7–M10 retain their original criteria and protocols for
 replay, separate from forward WP closure. WP9 is forward initial completion.
 WP IDs do not imply that `verify-milestone` implements WP closure commands.
@@ -288,122 +288,20 @@ The selected runtime mechanisms are described in the
 
 ```text
 ravel/
-├── .cargo/
-│   └── config.toml                 # aliases and target-neutral Cargo policy
-├── .config/
-│   └── nextest.toml                # deterministic test profiles and retries policy
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # GitHub Actions verification gate
-├── crates/
-│   ├── ravel-core/                 # IDs, versions, sides, capability and lifecycle types
-│   ├── ravel-package/              # package/manifest schemas and integrity contract
-│   ├── ravel-resolve/              # dependency graph, compatibility, deterministic order
-│   ├── ravel-loader/               # discovery pipeline and lifecycle orchestration
-│   ├── ravel-sdk/                  # safe public mod-author facade
-│   ├── ravel-sdk-macros/           # derives/attributes that generate SDK declarations
-│   ├── ravel-host-api/             # provisional loader-to-mod execution contract
-│   ├── ravel-bootstrap-runtime/    # safe JNI integration rlib linked into host cdylibs
-│   ├── ravel-host-runtime/         # shared instance composition and host lifecycle
-│   ├── ravel-composed-host/        # JVM harness host composing the fixed test-mod set
-│   ├── ravel-build/                # player-local host planning and compilation
-│   ├── ravel-minecraft/            # version-neutral Minecraft capability traits
-│   ├── ravel-minecraft-adapter/    # generated per-version hook targets and lookup
-│   ├── ravel-minecraft-generate/   # Rust bindings, Java sources and pinned locks
-│   ├── ravel-config/               # schema, validation, overrides, restart/side semantics
-│   ├── ravel-data/                 # resources, recipes, tags, loot, progression data
-│   ├── ravel-save/                 # versioned saved data and fail-closed migrations
-│   ├── ravel-network/              # Ravel networking abstractions; later wire adapters
-│   ├── ravel-observability/        # diagnostics, redaction, metrics and opt-in profiling
-│   ├── ravel-pack/                 # pack manifest, composition and validation library
-│   ├── ravel-acceptance/           # declarative game acceptance scenarios and transcripts
-│   └── ravel-testkit/              # deterministic mod, loader and process test APIs
-├── tools/
-│   └── ravel-xtask/                # codegen, host/fixture tools, policy and evidence gates
-├── jvm/                            # agent jar sources; screen is a separate artifact
-│   ├── bootstrap/                  # generated/minimal classes, never a Java mod API
-│   └── build/                      # reproducible JVM artifact build description
-├── minecraft/
-│   └── versions/
-│       └── <version>/
-│           ├── README.md            # M0 boundary; no guessed mapping data
-│           ├── adapter.toml         # inputs and exact upstream hashes
-│           ├── hooks.toml           # reviewed hook capability inventory
-│           └── mappings.lock        # mapping provenance and pinned inputs
-├── registry/                      # in-tree compatibility sources, not the M13 service
-│   ├── mods/                      # counterpart crates in the root Cargo workspace
-│   ├── packs/                     # pinned pack declarations and authored data
-│   ├── inventory/                 # pinned inventories and implementation plans
-│   ├── specifications/            # behaviour specifications
-│   ├── provenance/                # source and rights records
-│   ├── proposals/                 # general SDK capability proposals
-│   ├── resolutions/               # capability dispositions
-│   ├── policies/                  # authorized source-access policy
-│   ├── records/                   # counterpart authoring and review records
-│   ├── waves/                     # wave selection and routing
-│   ├── fixtures/                  # original counterpart/alias test fixtures
-│   └── checks/                    # registry validation entry points
-├── schemas/
-│   ├── package.schema.json
-│   ├── pack.schema.json
-│   ├── configuration.schema.json
-│   ├── saved-data.schema.json
-│   ├── provenance.schema.json
-│   └── evidence.schema.json
-├── test-mods/
-│   ├── audio/
-│   ├── client-only/
-│   ├── commands/
-│   ├── configuration/
-│   ├── events/
-│   ├── inter-mod-service/
-│   ├── interception/
-│   ├── networking/
-│   ├── noop/
-│   ├── optional-service/
-│   ├── provision/
-│   ├── registries/
-│   ├── render-stages/
-│   ├── resources/
-│   ├── saved-data/
-│   ├── server-data/
-│   ├── server-only/
-│   ├── waystone-ledger/
-│   └── world-shaping/
-├── tests/
-│   ├── conformance/                 # package, graph, lifecycle and SDK contract suites
-│   ├── minecraft-process/           # real official-Minecraft process harness
-│   ├── save-reload/                 # world persistence and migration scenarios
-│   ├── fixtures/
-│   │   ├── public/                  # shared test inputs
-│   │   └── local/                   # machine-local test inputs
-├── examples/
-│   ├── minimal-mod/
-│   ├── content-mod/
-│   └── pack-module/
-├── docs/
-│   ├── architecture/
-│   │   ├── overview.md
-│   │   ├── dependency-rules.md
-│   │   ├── safety-boundary.md
-│   │   └── public-private-boundary.md
-│   ├── guide/                       # mod and pack author guides
-│   └── runbooks/                    # Prism, baseline, release and recovery procedures
-├── evidence/
-│   └── m0/ ... m11/                 # sanitized manifests and small summaries
-├── .gitignore
-├── Cargo.lock
-├── Cargo.toml
-├── LICENSE-APACHE
-├── LICENSE-MIT
-├── README.md
-├── ROADMAP.md
-├── SPEC.md
-├── deny.toml
-├── mise.toml                       # pinned tools and development environment
-├── Makefile.toml                   # cargo-make tasks
-├── rust-toolchain.toml
-└── rustfmt.toml
+├── .cargo/                        # Cargo aliases and target policy
+├── .config/                       # nextest profiles
+├── .github/                       # Linux CI gate
+├── crates/                        # runtime, SDK, version adapter and build libraries
+├── tools/                         # xtask verification, code generation and host tools
+├── jvm/                           # agent, screen templates, harness and legacy platform
+├── minecraft/                     # pinned per-version adapters and reviewed hook inputs
+├── registry/                      # counterparts, packs, workload gates and source records
+├── schemas/                       # public document schemas
+├── test-mods/                     # executable SDK capability fixtures
+├── tests/                         # conformance suites and public/local fixture inputs
+├── examples/                      # minimal, content, stateful and compiled guide examples
+├── docs/                          # architecture, author guides and operating runbooks
+└── evidence/                      # sanitized milestone manifests and summaries
 ```
 
 ### Crate responsibilities and dependency rules
@@ -420,7 +318,7 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy and world-access gate |
 | `ravel-sdk` | Safe public mod-author facade and author-facing types |
 | `ravel-sdk-macros` | Compile-time SDK declaration generation |
-| `ravel-host-api` | Source-compiled package execution boundary, including config/data/save/network contracts |
+| `ravel-host-api` | Source-compiled package execution boundary composing the config/data/save/network contracts |
 | `ravel-bootstrap-runtime` | Safe JNI integration, hook observer dispatch, outward-action queue, persistence and settings crossings |
 | `ravel-host-runtime` | Shared instance composition and host lifecycle |
 | `ravel-composed-host` | JVM harness host composing the fixed test-mod set with the `ravel_bootstrap` library name |
@@ -521,8 +419,8 @@ mechanism nor authorizes publication. See the
 `mise.toml` pins development tools and sets the default Minecraft selection,
 Cargo colour, and backtraces. Run `mise install` once, then activate mise in
 the shell or use `mise exec -- <command>`. Rust remains rustup-managed:
-`rust-toolchain.toml` selects undated `nightly`, with rustfmt, clippy, and
-llvm-tools. Cargo remains the Rust build system.
+`rust-toolchain.toml` selects Rust `1.95.0`, matching the workspace's minimum Rust
+version, with rustfmt, clippy, and llvm-tools. Cargo remains the Rust build system.
 
 `Makefile.toml` is the canonical task surface: `cargo make ravel:verify` runs
 the code-policy graph locally and in `.github/workflows/ci.yml`.
@@ -556,7 +454,7 @@ only with the single M9 comparison pair.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M0-W1 | Initialize Cargo and mise roots | none | root manifests, pinned tools, rustup nightly | `cargo make ravel:verify` passes on Linux |
+| M0-W1 | Initialize Cargo and mise roots | none | root manifests, pinned tools, rustup toolchain | `cargo make ravel:verify` passes on Linux |
 | M0-W2 | Create verification and evidence skeleton | M0-W1 | `ravel-xtask`, evidence/schema contract, base CI | a deliberately incomplete M0 bundle is rejected; a synthetic complete bundle passes |
 | M0-W3 | Define fixture manifest and secret protection | M0-W1 | pinned metadata, source descriptors, secret rules | secret canaries are rejected from the tracked tree |
 | M0-W4 | Implement fixture reconstruction and hashing | M0-W3 | CLI command and local-only fixture output | exact MC/NeoForge/ATM versions, expected reference count, and all recorded hashes verify |
@@ -1043,9 +941,9 @@ progression in a fresh world and preserve Ravel save compatibility.
 | M10-W4 | Verify save compatibility sequence | M10-W1..W3 | migration reports across declared builds | worlds open only with compatible required mods/data and preserve expected state |
 | M10-W5 | Final independent audit | M0..M10 | complete evidence index and review | all manifests pass; secrets and sensitive logs are absent; no blocker remains; M10 gate passes |
 
-Passing M10-W5 is **Linux initial completion**: the loader, SDK, counterpart
-library, complete pack, Linux performance, and progression goal are all
-accepted before macOS work begins.
+Passing M10-W5 is historical Linux initial completion for its recorded workload.
+Forward Linux completion requires WP9; historical replay does not substitute
+for the SevTech performance and progression contract.
 
 The final security audit proves that the tracked tree and evidence contain no
 credential, launcher token, or unredacted sensitive log.
@@ -1053,8 +951,8 @@ credential, launcher token, or unredacted sensitive log.
 ### Post-Linux-M10 — Apple Silicon platform expansion
 
 No macOS build, launch, capture, packaging, signing, or verification work starts
-before M10-W5 passes. Afterward, a separately reviewed plan ports the already
-complete Linux loader and mod set to `macos-aarch64`, proves packaging and
+before forward Linux completion at WP9. Afterward, a separately reviewed plan
+ports the complete Linux loader and mod set to `macos-aarch64`, proves packaging and
 signing, runs the native Apple Silicon process matrix, and evaluates the
 constrained M1 Pro performance contract. Linux cross-evaluation never
 substitutes for that later native evidence.

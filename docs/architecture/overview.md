@@ -123,8 +123,8 @@ Ravel into a Java mod host.
   provenance. Verification requires complete repository history: shallow Git
   clones and source archives without repository metadata fail explicitly rather
   than substituting the current tree for unreachable inventory history.
-  Historical evidence stays frozen under its recorded workload: M1–M4 retain
-  their ATM10 context, M5/M6 measured ATM11 0.2.1 (235 inputs), and M7 is open.
+  Historical evidence stays frozen under its recorded workload: M0–M5 measured
+  ATM11 0.2.1, M6 measured ATM10 To the Sky 2.0.2, and M7 is open.
   Replay uses the recorded fixture, never a blanket ATM10 substitution.
   New workload findings belong to new records. SevTech's 254 manifest references,
   5 bundled jars and 259 total jar inputs are distinct metrics; loaded containers

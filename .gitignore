@@ -50,3 +50,4 @@ secrets.json
 /.claude/settings.local.json
 /.codex/
 /.kiro/
+__pycache__/

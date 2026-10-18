@@ -163,6 +163,7 @@ struct Held {
     refuses_interception_declaration: AtomicBool,
     opened_with: Mutex<Option<SavedDataPlan>>,
     declaration_owner: Mutex<Option<ModId>>,
+    envelope_owner: Mutex<Option<ModId>>,
     refuses_declaration: AtomicBool,
 }
 
@@ -268,7 +269,12 @@ impl HostMod for Owning {
             return Err(ModError::refused("this mod cannot produce an envelope"));
         }
         Ok(Some(SavedDataEnvelope::new(
-            self.id.clone(),
+            self.held
+                .envelope_owner
+                .lock()
+                .expect("test lock")
+                .clone()
+                .unwrap_or_else(|| self.id.clone()),
             version(2),
             Vec::new(),
             None,
@@ -681,6 +687,76 @@ fn a_foreign_saved_data_declaration_fails_its_producer_without_opening_another_o
         );
         drop(inner);
         assert!(other.opened_with.lock().expect("test lock").is_none());
+    }
+}
+
+#[test]
+fn foreign_envelopes_cannot_overwrite_live_or_failed_owners() {
+    for (victim_failed, next_world) in [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let (runtime, held) = owners_running_with_requirement(
+            &[OWNER, OTHER_OWNER],
+            crate::runtime::pre_world_report(),
+            Requirement::Optional,
+        );
+        let [_, writer] = held.as_slice() else {
+            panic!("the fixture has two owners");
+        };
+        if victim_failed {
+            runtime
+                .inner
+                .lock()
+                .expect("test lock")
+                .machine
+                .fail(&id(OWNER), attribution())
+                .expect("optional owner failed before mutation");
+        }
+        let stored = stored_owning(&[(OWNER, version(2), 7), (OTHER_OWNER, version(2), 11)]);
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
+            .expect("existing world");
+        let SaveOutcome::Replacement(baseline) = runtime.save_world(&WorldIdentity::of(FIRST))
+        else {
+            panic!("the honest snapshot can be saved");
+        };
+        *writer.envelope_owner.lock().expect("test lock") = Some(id(OWNER));
+        writer.visits.store(99, Ordering::SeqCst);
+
+        if next_world {
+            assert_eq!(
+                runtime.stage_world(WorldIdentity::of(SECOND), None, true),
+                Err(super::PersistenceError::Admission(
+                    ravel_loader::SaveRefused::ForeignEnvelope {
+                        mod_id: id(OTHER_OWNER),
+                        owner: id(OWNER),
+                    },
+                )),
+            );
+        } else {
+            let SaveOutcome::Failed(detail) = runtime.save_world(&WorldIdentity::of(FIRST)) else {
+                panic!("a foreign envelope must never become a durable replacement");
+            };
+            assert!(detail.contains(OTHER_OWNER), "{detail}");
+            assert!(detail.contains(OWNER), "{detail}");
+        }
+        let inner = runtime.inner.lock().expect("test lock");
+        let live = inner.persistence.live.as_ref().expect("live checkpoint");
+        assert_eq!(live.aggregate.to_bytes().expect("bounded"), baseline);
+        assert!(!live.dirty);
+        assert_eq!(
+            inner.machine.state(&id(OTHER_OWNER)),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(
+            inner
+                .machine
+                .failure(&id(OTHER_OWNER))
+                .expect("owner")
+                .expect("failure")
+                .mod_id,
+            Some(id(OTHER_OWNER)),
+        );
+        drop(inner);
     }
 }
 

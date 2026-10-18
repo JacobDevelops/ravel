@@ -209,7 +209,7 @@ fn loads_here(machine: &LifecycleMachine, mod_id: &ModId) -> bool {
         .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
 }
 
-/// Why no world's saved data was opened.
+/// Why a world's saved data could not be opened or written.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SaveRefused {
     /// The aggregate, a version, or a migration was refused.
@@ -228,6 +228,13 @@ pub enum SaveRefused {
         /// What it said.
         source: HostError,
     },
+    /// A mod produced an envelope owned by another identity.
+    ForeignEnvelope {
+        /// The mod that produced the envelope.
+        mod_id: ModId,
+        /// The identity the envelope names as its owner.
+        owner: ModId,
+    },
 }
 
 impl SaveRefused {
@@ -236,7 +243,9 @@ impl SaveRefused {
     pub const fn owner(&self) -> Option<&ModId> {
         match self {
             Self::Data(error) => error.owner(),
-            Self::ForeignDeclaration { mod_id, .. } | Self::Owner { mod_id, .. } => Some(mod_id),
+            Self::ForeignDeclaration { mod_id, .. }
+            | Self::ForeignEnvelope { mod_id, .. }
+            | Self::Owner { mod_id, .. } => Some(mod_id),
         }
     }
 }
@@ -250,6 +259,11 @@ impl fmt::Display for SaveRefused {
                 "`{mod_id}` declared saved data owned by `{owner}`, and a mod owns only its own \
                  world data"
             ),
+            Self::ForeignEnvelope { mod_id, owner } => write!(
+                formatter,
+                "`{mod_id}` produced saved data owned by `{owner}`, and a mod writes only its own \
+                 world data"
+            ),
             Self::Owner { mod_id, source } => {
                 write!(formatter, "`{mod_id}` refused its saved data: {source}")
             }
@@ -261,7 +275,7 @@ impl std::error::Error for SaveRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Data(error) => Some(error),
-            Self::ForeignDeclaration { .. } => None,
+            Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => None,
             Self::Owner { source, .. } => Some(source),
         }
     }
@@ -276,13 +290,14 @@ impl StructuredFailure for SaveRefused {
         match self {
             Self::Owner { source, .. } => source.state(),
             Self::Data(_) | Self::ForeignDeclaration { .. } => LifecycleState::Registered,
+            Self::ForeignEnvelope { .. } => LifecycleState::Running,
         }
     }
 
     fn quotes_untrusted_text(&self) -> bool {
         match self {
             Self::Data(error) => error.quotes_untrusted_text(),
-            Self::ForeignDeclaration { .. } => false,
+            Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => false,
             Self::Owner { .. } => true,
         }
     }

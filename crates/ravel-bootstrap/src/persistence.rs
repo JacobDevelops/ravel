@@ -199,7 +199,17 @@ impl LoaderRuntime {
                 .map_err(PersistenceError::Lifecycle)?;
             let saved = ravel_loader::callback(host.id(), state, || host.save_saved_data());
             match saved {
-                Ok(Some(envelope)) => aggregate.replace(envelope),
+                Ok(Some(envelope)) => {
+                    if envelope.owner() != host.id() {
+                        let refused = ravel_loader::SaveRefused::ForeignEnvelope {
+                            mod_id: host.id().clone(),
+                            owner: envelope.owner().clone(),
+                        };
+                        Self::record_admission_failure(inner, &refused)?;
+                        return Err(PersistenceError::Admission(refused));
+                    }
+                    aggregate.replace(envelope);
+                }
                 Ok(None) => {}
                 Err(error) => {
                     let owner = host.id().clone();
@@ -340,6 +350,7 @@ impl LoaderRuntime {
                     .map_err(PersistenceError::Lifecycle)?;
             }
             ravel_loader::SaveRefused::ForeignDeclaration { mod_id, .. }
+            | ravel_loader::SaveRefused::ForeignEnvelope { mod_id, .. }
             | ravel_loader::SaveRefused::Data(
                 SavedDataError::MigrationFailed { owner: mod_id, .. }
                 | SavedDataError::MissingMigration { owner: mod_id, .. }

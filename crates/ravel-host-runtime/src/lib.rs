@@ -21,8 +21,8 @@ use ravel_host_api::HostMod;
 pub use ravel_loader::Written;
 use ravel_loader::{
     ConfigRefused, DiscoveryRefused, DriveError, Half, LifecycleEntry, LifecycleError,
-    LifecycleMachine, PACK_DIRECTORY, PackError, RESOURCE_PACKS, ResourceRefused, Supplied,
-    admitted, discover, drive, open_configuration, open_resources, write_pack,
+    LifecycleMachine, LoadedMods, PACK_DIRECTORY, PackError, RESOURCE_PACKS, ResourceRefused,
+    Supplied, admitted, discover, drive_loaded, open_configuration, open_resources, write_pack,
 };
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
@@ -75,33 +75,23 @@ pub fn compose(
 
     let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
 
-    let mut composed = admit(side, members)?;
-    let configurations = {
-        let (entries, mut hosts): (Vec<_>, Vec<&mut (dyn HostMod + '_)>) = composed
-            .iter_mut()
-            .map(|(entry, host)| (&*entry, &mut **host))
-            .unzip();
-        open_configuration(side, entries, &mut hosts, &packs, |owner| {
-            file::read(game_directory, owner)
-        })
-        .map_err(LaunchError::Config)?
-        .into_resolved()
-    };
-
-    let (machine, mut mods) =
-        drive(side, &environment(), composed).map_err(|error| match error {
-            DriveError::Services(error) => LaunchError::Services(error),
-            error @ (DriveError::Identity { .. }
-            | DriveError::MissingMod { .. }
-            | DriveError::Lifecycle(_)
-            | DriveError::Host { .. }) => LaunchError::Drive(error),
-        })?;
-    // Resource declarations are available only after registration in `drive`.
-    let resources = {
-        let mut hosts: Vec<&mut (dyn HostMod + '_)> =
-            mods.iter_mut().map(|host| &mut **host).collect();
-        open_resources(&machine, &mut hosts).map_err(LaunchError::Resources)?
-    };
+    let (entries, mut mods): (Vec<_>, Vec<_>) = admit(side, members)?.into_iter().unzip();
+    let mut machine = LifecycleMachine::new(side, entries).map_err(LaunchError::Lifecycle)?;
+    let mut loaded = LoadedMods::new(&mut machine, &mut mods)
+        .map_err(|error| LaunchError::Composition(error.mod_id().clone()))?;
+    let configurations = open_configuration(&mut loaded, &packs, |owner| {
+        file::read(game_directory, owner)
+    })
+    .map_err(LaunchError::Config)?
+    .into_resolved();
+    drive_loaded(&mut loaded, &environment()).map_err(|error| match error {
+        DriveError::Services(error) => LaunchError::Services(error),
+        error @ (DriveError::Identity { .. }
+        | DriveError::Lifecycle(_)
+        | DriveError::Host { .. }) => LaunchError::Drive(error),
+    })?;
+    // Resource declarations are available only after registration in `drive_loaded`.
+    let resources = open_resources(&mut loaded).map_err(LaunchError::Resources)?;
 
     Ok(Composition {
         machine,
@@ -402,7 +392,6 @@ mod tests {
 
     use ravel_core::{LifecycleState, ModId, Side};
     use ravel_host_api::HostMod;
-    use ravel_loader::drive;
 
     use super::{Member, admit, environment};
 
@@ -807,7 +796,7 @@ mod tests {
                 })
                 .collect();
 
-            let (machine, _) = drive(
+            let (machine, _) = ravel_loader::drive(
                 side,
                 &environment(),
                 admit(side, members).expect("a compatible set"),

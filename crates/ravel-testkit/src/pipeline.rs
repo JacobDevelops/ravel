@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::{
-    DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, ServiceRefused, admitted,
-    drive_borrowed, executes_mod_code, stop_all,
+    DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
+    MissingHost, ServiceRefused, admitted, drive_loaded, executes_mod_code, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -137,9 +137,10 @@ pub fn run(
         platform: std::env::consts::OS.to_owned(),
         architecture: std::env::consts::ARCH.to_owned(),
     };
-    let mut machine =
-        drive_borrowed(side, &environment, entries, mods).map_err(PipelineError::from)?;
-    stop_all(&mut machine, &environment, mods).map_err(PipelineError::from)?;
+    let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;
+    let mut loaded = LoadedMods::new(&mut machine, mods).map_err(PipelineError::MissingHost)?;
+    drive_loaded(&mut loaded, &environment).map_err(PipelineError::from)?;
+    stop_all(&mut loaded, &environment).map_err(PipelineError::from)?;
 
     Ok(PipelineRun {
         plan,
@@ -205,13 +206,8 @@ pub enum PipelineError {
     Host(HostError),
     /// The production service barrier refused the set.
     Services(ServiceRefused),
-    /// The plan ordered a mod the caller supplied no value for.
-    MissingMod {
-        /// The mod the plan named.
-        mod_id: ModId,
-        /// The state it would have entered.
-        state: LifecycleState,
-    },
+    /// An active lifecycle member has no supplied host.
+    MissingHost(MissingHost),
     /// The caller supplied a value for a mod the package set does not contain.
     UnexpectedMod {
         /// The mod that is not in the set.
@@ -232,11 +228,7 @@ impl fmt::Display for PipelineError {
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
             Self::Host(error) => write!(formatter, "the run failed: {error}"),
             Self::Services(error) => write!(formatter, "the run failed: {error}"),
-            Self::MissingMod { mod_id, state } => write!(
-                formatter,
-                "the plan orders `{mod_id}`, but no mod was supplied to enter `{}`",
-                state.as_str()
-            ),
+            Self::MissingHost(error) => write!(formatter, "the run failed: {error}"),
             Self::UnexpectedMod { mod_id } => write!(
                 formatter,
                 "`{mod_id}` was supplied to the run, but the package set does not contain it"
@@ -264,7 +256,8 @@ impl PipelineError {
             Self::Lifecycle(error) => Some(error),
             Self::Host(error) => Some(error),
             Self::Services(error) => Some(error),
-            Self::Unreadable { .. } | Self::MissingMod { .. } | Self::UnexpectedMod { .. } => None,
+            Self::MissingHost(error) => Some(error),
+            Self::Unreadable { .. } | Self::UnexpectedMod { .. } => None,
         }
     }
 }
@@ -274,7 +267,6 @@ impl From<DriveError> for PipelineError {
             DriveError::Lifecycle(error) => Self::Lifecycle(error),
             DriveError::Host { source, .. } => Self::Host(source),
             DriveError::Services(error) => Self::Services(error),
-            DriveError::MissingMod { mod_id, state } => Self::MissingMod { mod_id, state },
             DriveError::Identity { constructed, .. } => Self::UnexpectedMod {
                 mod_id: constructed,
             },

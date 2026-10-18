@@ -66,13 +66,15 @@ fn running() -> LifecycleMachine {
         saved_data_versions: std::collections::BTreeSet::new(),
     };
     let mut host = Quiet(id("example_mod"));
-    ravel_loader::drive_borrowed(
-        Side::Client,
+    let mut machine =
+        LifecycleMachine::new(Side::Client, vec![entry]).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+            .expect("all active mods have hosts"),
         &ravel_host_runtime::environment(),
-        vec![entry],
-        &mut [&mut host],
     )
-    .expect("the production driver starts the quiet mod")
+    .expect("the production driver starts the quiet mod");
+    machine
 }
 
 #[test]
@@ -268,16 +270,20 @@ fn the_recorded_evidence_names_no_path_and_no_secret() {
 
 #[test]
 fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_delivers() {
-    let machine = running();
+    let mut machine = running();
     let mut plain = Quiet(id("example_mod"));
     let mut profiled = Quiet(id("example_mod"));
 
-    let unprofiled =
-        broadcast(&machine, &mut [&mut plain], GameEvent::ClientTick).expect("the set is running");
+    let unprofiled = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut plain])
+            .expect("all active mods have hosts"),
+        GameEvent::ClientTick,
+    )
+    .expect("the set is running");
     let mut off = Profiler::off();
     let observed = broadcast_profiled(
-        &machine,
-        &mut [&mut profiled],
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut profiled])
+            .expect("all active mods have hosts"),
         GameEvent::ClientTick,
         &mut off,
     )
@@ -293,14 +299,14 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
 
 #[test]
 fn a_profiled_dispatch_attributes_the_delivery_to_the_mod_that_received_it() {
-    let machine = running();
+    let mut machine = running();
     let mut host = Quiet(id("example_mod"));
     let mut profiler = Profiler::on(std::time::Duration::from_secs(1));
 
     for _ in 0..3 {
         broadcast_profiled(
-            &machine,
-            &mut [&mut host],
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("all active mods have hosts"),
             GameEvent::ClientTick,
             &mut profiler,
         )

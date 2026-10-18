@@ -82,8 +82,13 @@ fn running(
     entries: Vec<LifecycleEntry>,
     mods: &mut [&mut dyn Mod],
 ) -> LifecycleMachine {
-    ravel_loader::drive_borrowed(side, &environment(), entries, mods)
-        .expect("the production driver starts the set")
+    let mut machine = LifecycleMachine::new(side, entries).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
+        &environment(),
+    )
+    .expect("the production driver starts the set");
+    machine
 }
 
 #[test]
@@ -328,7 +333,7 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
         let mut client = ClientOnlyMod::new(side, &log);
         let mut server = NetworkingMod::new();
         // Keep the recipient running so only packet direction can refuse delivery.
-        let machine = running(
+        let mut machine = running(
             side,
             vec![
                 entry("client_only", &EVERY_SIDE),
@@ -343,8 +348,15 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
             side,
             encode(&Overlay::new(vec!["drawn".to_owned()])),
         );
-        let refusal = deliver_packet(&machine, &mut [&mut client, &mut server], &arriving)
-            .expect_err("a server side is not an end of a client-bound link");
+        let refusal = deliver_packet(
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut client, &mut server],
+            )
+            .expect("all active mods have hosts"),
+            &arriving,
+        )
+        .expect_err("a server side is not an end of a client-bound link");
 
         assert_eq!(
             refusal,
@@ -370,15 +382,19 @@ fn the_same_packet_on_the_client_round_trips_into_the_overlay_the_server_sent() 
 
     let log = work_log();
     let mut client = ClientOnlyMod::new(Side::Client, &log);
-    let machine = running(
+    let mut machine = running(
         Side::Client,
         vec![entry("client_only", &ClientOnlyMod::SIDES)],
         &mut [&mut client],
     );
 
     let arriving = PacketDelivery::new(overlay_id(), Direction::ToClient, Side::Client, payload);
-    let delivered = deliver_packet(&machine, &mut [&mut client], &arriving)
-        .expect("the client is the receiving end");
+    let delivered = deliver_packet(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut client])
+            .expect("all active mods have hosts"),
+        &arriving,
+    )
+    .expect("the client is the receiving end");
 
     assert_eq!(delivered.received(), [ClientOnlyMod::declared_id().clone()]);
     assert!(delivered.is_complete());
@@ -401,7 +417,7 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
     let log = work_log();
     let mut client = ClientOnlyMod::new(Side::DedicatedServer, &log);
     let mut server = NetworkingMod::new();
-    let machine = running(
+    let mut machine = running(
         Side::DedicatedServer,
         vec![
             entry("client_only", &ClientOnlyMod::SIDES),
@@ -416,8 +432,15 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
         Side::DedicatedServer,
         payload,
     );
-    let delivered = deliver_packet(&machine, &mut [&mut client, &mut server], &arriving)
-        .expect("the server half owns the contract and is running");
+    let delivered = deliver_packet(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(
+            &mut machine,
+            &mut [&mut client, &mut server],
+        )
+        .expect("all active mods have hosts"),
+        &arriving,
+    )
+    .expect("the server half owns the contract and is running");
 
     assert_eq!(delivered.received(), [NetworkingMod::declared_id().clone()]);
     assert_eq!(
@@ -443,7 +466,7 @@ fn a_side_that_may_not_send_a_contract_encodes_nothing_for_either_direction() {
 
 fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, NetworkingMod) {
     let mut server = NetworkingMod::new();
-    let machine = running(
+    let mut machine = running(
         Side::DedicatedServer,
         vec![entry("networking", &server_sides())],
         &mut [&mut server],
@@ -455,8 +478,12 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
         Side::DedicatedServer,
         payload,
     );
-    let delivered = deliver_packet(&machine, &mut [&mut server], &arriving)
-        .expect("the routing reached the owner");
+    let delivered = deliver_packet(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut server])
+            .expect("all active mods have hosts"),
+        &arriving,
+    )
+    .expect("the routing reached the owner");
     let failure = delivered.failure().map(ToString::to_string);
     (failure, server)
 }

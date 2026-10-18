@@ -32,8 +32,13 @@ fn running(
     side: Side,
     mods: &mut [&mut dyn HostMod],
 ) -> LifecycleMachine {
-    ravel_loader::drive_borrowed(side, &ravel_host_runtime::environment(), entries, mods)
-        .expect("the production driver starts the set")
+    let mut machine = LifecycleMachine::new(side, entries).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
+        &ravel_host_runtime::environment(),
+    )
+    .expect("the production driver starts the set");
+    machine
 }
 
 fn three_mod_plan() -> Vec<LifecycleEntry> {
@@ -50,7 +55,7 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
     let mut events = EventsMod::new();
     let mut resources = ResourcesMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
-    let machine = running(three_mod_plan(), Side::Client, &mut mods);
+    let mut machine = running(three_mod_plan(), Side::Client, &mut mods);
 
     for key in CommandsMod::new().claims() {
         assert_eq!(machine.owner_of(&key), Some(&id("commands")));
@@ -61,7 +66,12 @@ fn a_running_set_owns_its_commands_and_routes_one_to_the_mod_that_claimed_it() {
         Side::Client,
         vec!["set".to_owned(), "base".to_owned()],
     );
-    let delivery = route(&machine, &mut mods, &invocation).expect("the owner is running");
+    let delivery = route(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        &invocation,
+    )
+    .expect("the owner is running");
     assert_eq!(delivery.received(), [id("commands")]);
     assert!(delivery.is_complete());
 
@@ -77,10 +87,14 @@ fn a_broadcast_reaches_every_mod_and_each_one_acts_on_what_it_cares_about() {
     let mut events = EventsMod::new();
     let mut resources = ResourcesMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
-    let machine = running(three_mod_plan(), Side::Client, &mut mods);
+    let mut machine = running(three_mod_plan(), Side::Client, &mut mods);
 
-    let delivery =
-        broadcast(&machine, &mut mods, GameEvent::ResourcesReloaded).expect("the set is running");
+    let delivery = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        GameEvent::ResourcesReloaded,
+    )
+    .expect("the set is running");
     assert_eq!(
         delivery.received(),
         [id("commands"), id("events"), id("resources")]
@@ -122,11 +136,15 @@ fn a_broadcast_arrives_in_the_plans_order_and_the_reversed_plan_reverses_it() {
         if reversed {
             plan.reverse();
         }
-        let machine = running(plan, Side::Client, &mut mods);
-        broadcast(&machine, &mut mods, GameEvent::ClientTick)
-            .expect("the set is running")
-            .received()
-            .to_vec()
+        let mut machine = running(plan, Side::Client, &mut mods);
+        broadcast(
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active mods have hosts"),
+            GameEvent::ClientTick,
+        )
+        .expect("the set is running")
+        .received()
+        .to_vec()
     };
 
     assert_eq!(observed_order(false), [id("events"), id("commands")]);
@@ -140,12 +158,16 @@ fn the_same_set_broadcast_twice_delivers_to_the_same_mods_in_the_same_order() {
         let mut events = EventsMod::new();
         let mut resources = ResourcesMod::new();
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
-        let machine = running(three_mod_plan(), Side::Client, &mut mods);
+        let mut machine = running(three_mod_plan(), Side::Client, &mut mods);
         let audience = machine.audience(GameEvent::ClientTick);
-        let received = broadcast(&machine, &mut mods, GameEvent::ClientTick)
-            .expect("the set is running")
-            .received()
-            .to_vec();
+        let received = broadcast(
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active mods have hosts"),
+            GameEvent::ClientTick,
+        )
+        .expect("the set is running")
+        .received()
+        .to_vec();
         (audience, received)
     };
 
@@ -158,7 +180,7 @@ fn the_same_set_broadcast_twice_delivers_to_the_same_mods_in_the_same_order() {
 fn a_mod_sees_repeated_ticks_in_the_order_they_were_broadcast() {
     let mut events = EventsMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut events];
-    let machine = running(
+    let mut machine = running(
         vec![entry("events", &[Side::Client])],
         Side::Client,
         &mut mods,
@@ -169,7 +191,12 @@ fn a_mod_sees_repeated_ticks_in_the_order_they_were_broadcast() {
         GameEvent::ResourcesReloaded,
         GameEvent::ClientTick,
     ] {
-        broadcast(&machine, &mut mods, event).expect("the set is running");
+        broadcast(
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active mods have hosts"),
+            event,
+        )
+        .expect("the set is running");
     }
 
     drop(mods);
@@ -190,13 +217,23 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
     let mut events = EventsMod::new();
     let mut resources = ResourcesMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
-    let machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
+    let mut machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
 
     assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
-    let ignored = broadcast(&machine, &mut mods, GameEvent::ClientTick).expect("an empty audience");
+    let ignored = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        GameEvent::ClientTick,
+    )
+    .expect("an empty audience");
     assert_eq!(ignored.received(), []);
 
-    let ticked = broadcast(&machine, &mut mods, GameEvent::ServerTick).expect("the set is running");
+    let ticked = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        GameEvent::ServerTick,
+    )
+    .expect("the set is running");
     assert_eq!(
         ticked.received(),
         [id("commands"), id("events"), id("resources")]
@@ -238,14 +275,14 @@ fn a_command_owned_by_a_mod_that_does_not_load_here_is_refused_rather_than_swall
     let owned = CommandsMod::new().key("warp");
     assert_eq!(machine.owner_of(&owned), Some(&id("commands")));
 
-    let elsewhere = LifecycleMachine::new(
+    let mut elsewhere = LifecycleMachine::new(
         Side::DedicatedServer,
         vec![entry("commands", &[Side::Client])],
     )
     .expect("a legal plan");
     let refused = route(
-        &elsewhere,
-        &mut mods,
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut elsewhere, &mut mods)
+            .expect("all active mods have hosts"),
         &CommandInvocation::new(owned.clone(), Side::DedicatedServer, vec!["set".to_owned()]),
     )
     .expect_err("nothing claimed it on this side");
@@ -325,15 +362,15 @@ fn two_mods_cannot_claim_the_same_command_root() {
 fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() {
     let mut commands = CommandsMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands];
-    let machine = running(
+    let mut machine = running(
         vec![entry("commands", &[Side::Client])],
         Side::Client,
         &mut mods,
     );
 
     let delivery = route(
-        &machine,
-        &mut mods,
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
         &CommandInvocation::new(CommandsMod::new().key("warp"), Side::Client, Vec::new()),
     )
     .expect("routing found the owner");
@@ -347,8 +384,8 @@ fn a_command_its_owner_refuses_reports_the_refusal_and_leaves_the_set_running() 
     }
 
     let accepted = route(
-        &machine,
-        &mut mods,
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
         &CommandInvocation::new(
             CommandsMod::new().key("warp"),
             Side::Client,
@@ -368,7 +405,7 @@ fn a_mod_that_fails_on_an_event_ends_the_broadcast_and_the_ones_after_it_never_s
     let mut second = EventsMod::refusing(GameEvent::ResourcesReloaded);
     let mut third = CommandsMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut first, &mut second, &mut third];
-    let machine = running(
+    let mut machine = running(
         vec![
             entry("resources", &[Side::Client]),
             entry("events", &[Side::Client]),
@@ -378,8 +415,12 @@ fn a_mod_that_fails_on_an_event_ends_the_broadcast_and_the_ones_after_it_never_s
         &mut mods,
     );
 
-    let delivery =
-        broadcast(&machine, &mut mods, GameEvent::ResourcesReloaded).expect("the set is running");
+    let delivery = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        GameEvent::ResourcesReloaded,
+    )
+    .expect("the set is running");
     assert_eq!(delivery.received(), [id("resources")]);
     assert!(!delivery.is_complete());
     match delivery.failure() {
@@ -416,8 +457,12 @@ fn nothing_is_delivered_before_the_set_reaches_running() {
         machine.advance_all(state).expect("a legal step");
     }
 
-    let refused =
-        broadcast(&machine, &mut mods, GameEvent::ClientTick).expect_err("the set has not started");
+    let refused = broadcast(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        GameEvent::ClientTick,
+    )
+    .expect_err("the set has not started");
     assert_eq!(
         refused,
         DispatchRefused::NotReacting {
@@ -434,7 +479,7 @@ fn nothing_is_delivered_before_the_set_reaches_running() {
 fn a_command_nobody_claimed_is_refused_by_name() {
     let mut commands = CommandsMod::new();
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands];
-    let machine = running(
+    let mut machine = running(
         vec![entry("commands", &[Side::Client])],
         Side::Client,
         &mut mods,
@@ -447,8 +492,8 @@ fn a_command_nobody_claimed_is_refused_by_name() {
             .expect("a legal content id"),
     );
     let refused = route(
-        &machine,
-        &mut mods,
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
         &CommandInvocation::new(orphan.clone(), Side::Client, vec!["x".to_owned()]),
     )
     .expect_err("nothing claimed it");
@@ -463,7 +508,7 @@ fn a_set_missing_a_mod_the_plan_names_delivers_to_nobody() {
     let mut commands = CommandsMod::new();
     let mut events = EventsMod::new();
     let mut both: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events];
-    let machine = running(
+    let mut machine = running(
         vec![
             entry("commands", &[Side::Client]),
             entry("events", &[Side::Client]),
@@ -474,14 +519,9 @@ fn a_set_missing_a_mod_the_plan_names_delivers_to_nobody() {
     drop(both);
 
     let mut short: Vec<&mut dyn HostMod> = vec![&mut commands];
-    let refused = broadcast(&machine, &mut short, GameEvent::ClientTick)
+    let refused = ravel_loader::LoadedMods::new(&mut machine, &mut short)
         .expect_err("the plan names a mod that was not supplied");
-    assert_eq!(
-        refused,
-        DispatchRefused::Absent {
-            mod_id: id("events")
-        }
-    );
+    assert_eq!(refused.mod_id(), &id("events"));
 
     drop(short);
     assert_eq!(events.observed(), []);
@@ -542,11 +582,15 @@ fn calls_for(pack_size: usize, ticks: usize) -> usize {
         .iter()
         .map(|name| entry(name, &[Side::Client, Side::DedicatedServer]))
         .collect();
-    let machine = running(plan, Side::DedicatedServer, &mut mods);
+    let mut machine = running(plan, Side::DedicatedServer, &mut mods);
 
     for _ in 0..ticks {
-        let delivery =
-            broadcast(&machine, &mut mods, GameEvent::ServerTick).expect("the set is running");
+        let delivery = broadcast(
+            &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active mods have hosts"),
+            GameEvent::ServerTick,
+        )
+        .expect("the set is running");
         assert_eq!(delivery.received().len(), pack_size);
     }
 

@@ -29,14 +29,20 @@ fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
 fn an_installed_optional_provider_is_composed_before_the_mod_that_may_use_it() {
     let mut compass = CompassMod::new();
     let mut survey = SurveyMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(CompassMod::declared_id(), &[SIDE]),
         entry(SurveyMod::declared_id(), &[SIDE]),
     ]);
 
     // Supply the consumer first so slice order cannot satisfy the dependency.
-    let opened =
-        open_services(&machine, &mut [&mut compass, &mut survey]).expect("the graph resolves");
+    let opened = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut compass, &mut survey],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect("the graph resolves");
 
     assert_eq!(
         opened.order(),
@@ -57,10 +63,16 @@ fn an_installed_optional_provider_is_composed_before_the_mod_that_may_use_it() {
 #[test]
 fn the_same_compass_alone_loads_and_records_doing_without() {
     let mut compass = CompassMod::new();
-    let machine = machine(vec![entry(CompassMod::declared_id(), &[SIDE])]);
+    let mut machine = machine(vec![entry(CompassMod::declared_id(), &[SIDE])]);
 
-    let opened =
-        open_services(&machine, &mut [&mut compass]).expect("an absent provider refuses nothing");
+    let opened = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut compass],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect("an absent provider refuses nothing");
 
     assert_eq!(opened.order(), [CompassMod::declared_id().clone()]);
     assert_eq!(
@@ -74,13 +86,19 @@ fn the_same_compass_alone_loads_and_records_doing_without() {
 fn an_optional_provider_this_side_parks_is_absence_rather_than_a_refusal() {
     let mut compass = CompassMod::new();
     let mut survey = SurveyMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(CompassMod::declared_id(), &[SIDE]),
         entry(SurveyMod::declared_id(), &[Side::Client]),
     ]);
 
-    let opened = open_services(&machine, &mut [&mut compass, &mut survey])
-        .expect("a parked provider refuses no optional consumer");
+    let opened = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut compass, &mut survey],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect("a parked provider refuses no optional consumer");
 
     assert_eq!(opened.order(), [CompassMod::declared_id().clone()]);
     assert_eq!(compass.bearings(), &Bearings::Alone);
@@ -91,13 +109,19 @@ fn an_optional_provider_this_side_parks_is_absence_rather_than_a_refusal() {
 fn a_survey_that_was_reached_and_refused_refuses_the_set() {
     let mut compass = CompassMod::new();
     let mut survey = SurveyMod::refusing();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(CompassMod::declared_id(), &[SIDE]),
         entry(SurveyMod::declared_id(), &[SIDE]),
     ]);
 
-    let refusal = open_services(&machine, &mut [&mut compass, &mut survey])
-        .expect_err("the public path reports the provider's refusal");
+    let refusal = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut compass, &mut survey],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect_err("the public path reports the provider's refusal");
 
     assert!(matches!(
         refusal,
@@ -111,10 +135,16 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
 #[test]
 fn a_required_service_nothing_answers_still_refuses_the_whole_set() {
     let mut shop = ShopMod::new();
-    let machine = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
+    let mut machine = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
 
     assert_eq!(
-        open_services(&machine, &mut [&mut shop]),
+        open_services(
+            &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+                &mut machine,
+                &mut [&mut shop],
+            )
+            .expect("all active mods have hosts"),
+        ),
         Err(ServiceRefused::NoProvider {
             consumer: ShopMod::declared_id().clone(),
             service: prices(),
@@ -127,13 +157,19 @@ fn a_required_service_nothing_answers_still_refuses_the_whole_set() {
 fn a_required_and_an_optional_consumer_of_the_same_absent_provider_disagree() {
     let mut compass = CompassMod::new();
     let mut shop = ShopMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(CompassMod::declared_id(), &[SIDE]),
         entry(ShopMod::declared_id(), &[SIDE]),
     ]);
 
-    let refusal = open_services(&machine, &mut [&mut compass, &mut shop])
-        .expect_err("the shop's provider is missing");
+    let refusal = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut compass, &mut shop],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect_err("the shop's provider is missing");
 
     assert_eq!(
         refusal,

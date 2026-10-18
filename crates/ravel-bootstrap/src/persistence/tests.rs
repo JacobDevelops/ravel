@@ -156,6 +156,7 @@ fn version(raw: u32) -> SavedDataVersion {
 #[derive(Debug, Default)]
 struct Held {
     visits: AtomicU32,
+    callbacks: AtomicU32,
     refuses_production: AtomicBool,
     panics_production: AtomicBool,
     refuses_open: AtomicBool,
@@ -192,6 +193,7 @@ impl HostMod for Owning {
     }
 
     fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         if self
             .held
             .refuses_interception_declaration
@@ -205,6 +207,7 @@ impl HostMod for Owning {
     }
 
     fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         if self.held.refuses_interception.load(Ordering::SeqCst) {
             return Err(ModError::Unsupported);
         }
@@ -212,6 +215,7 @@ impl HostMod for Owning {
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         if self.held.refuses_declaration.load(Ordering::SeqCst) {
             return Err(ModError::Unsupported);
         }
@@ -228,6 +232,7 @@ impl HostMod for Owning {
     }
 
     fn saved_data_migrations(&self) -> Result<Option<ravel_save::MigrationChain>, ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         Ok(Some(
             ravel_save::MigrationChain::new(self.id.clone()).reaching(version(2), |payload| {
                 let visits = payload["visits"]
@@ -243,6 +248,7 @@ impl HostMod for Owning {
         envelope: Option<&SavedDataEnvelope>,
         plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         if self.held.refuses_open.load(Ordering::SeqCst) {
             return Err(ModError::refused(
                 "this mod cannot read what the world stored",
@@ -261,6 +267,7 @@ impl HostMod for Owning {
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
+        self.held.callbacks.fetch_add(1, Ordering::SeqCst);
         assert!(
             !self.held.panics_production.load(Ordering::SeqCst),
             "the owner panicked with private data: token=ghp_private"
@@ -372,6 +379,111 @@ fn owners_running_with_requirement(
         LoaderRuntime::with_observers(machine, hosts, ravel_observability::Profiler::off(), report),
         held,
     )
+}
+
+#[test]
+fn incomplete_stage_refuses_before_snapshot_or_admission_callbacks() {
+    for prior_live in [false, true] {
+        let (runtime, first, second) = running_pair();
+        if prior_live {
+            runtime
+                .stage_world(WorldIdentity::of(FIRST), None, true)
+                .expect("complete hosts admit the first world");
+            replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        }
+        let (prior, transcript) = {
+            let mut inner = runtime.inner.lock().expect("test lock");
+            inner.mods.retain(|host| host.id() != &id(OTHER_OWNER));
+            (
+                inner.persistence.live.clone(),
+                inner.machine.transcript().to_vec(),
+            )
+        };
+        first.callbacks.store(0, Ordering::SeqCst);
+        second.callbacks.store(0, Ordering::SeqCst);
+        first.visits.store(42, Ordering::SeqCst);
+        let refusal = runtime
+            .stage_world(WorldIdentity::of(SECOND), None, true)
+            .expect_err("the incomplete set cannot stage another world");
+        assert!(matches!(
+            &refusal,
+            super::PersistenceError::MissingHost(missing)
+                if missing.mod_id() == &id(OTHER_OWNER)
+        ));
+        assert_eq!(first.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(second.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(first.visits.load(Ordering::SeqCst), 42);
+        let inner = runtime.inner.lock().expect("test lock");
+        assert!(inner.persistence.staged.is_none());
+        assert_eq!(inner.machine.transcript(), transcript);
+        for owner in [OWNER, OTHER_OWNER] {
+            assert_eq!(inner.machine.state(&id(owner)), Ok(LifecycleState::Running));
+            assert_eq!(inner.machine.failure(&id(owner)), Ok(None));
+        }
+        assert_eq!(
+            inner.persistence.live.as_ref().map(|live| (
+                &live.identity,
+                &live.aggregate,
+                live.dirty
+            )),
+            prior
+                .as_ref()
+                .map(|live| (&live.identity, &live.aggregate, live.dirty)),
+        );
+    }
+}
+
+#[test]
+fn incomplete_save_refuses_before_callbacks_and_preserves_checkpoints() {
+    for live in [false, true] {
+        let (runtime, first, second) = running_pair();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("complete hosts admit the world");
+        if live {
+            replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        }
+        let (prior, transcript) = {
+            let mut inner = runtime.inner.lock().expect("test lock");
+            inner.mods.retain(|host| host.id() != &id(OTHER_OWNER));
+            let checkpoint = if live {
+                &inner.persistence.live
+            } else {
+                &inner.persistence.staged
+            };
+            (checkpoint.clone(), inner.machine.transcript().to_vec())
+        };
+        first.callbacks.store(0, Ordering::SeqCst);
+        second.callbacks.store(0, Ordering::SeqCst);
+        first.visits.store(42, Ordering::SeqCst);
+        let SaveOutcome::Failed(refusal) = runtime.save_world(&WorldIdentity::of(FIRST)) else {
+            panic!("an incomplete host set cannot save");
+        };
+        assert!(refusal.contains(OTHER_OWNER), "{refusal}");
+        assert_eq!(first.callbacks.load(Ordering::SeqCst), 0);
+        assert_eq!(second.callbacks.load(Ordering::SeqCst), 0);
+        let inner = runtime.inner.lock().expect("test lock");
+        let checkpoint = if live {
+            assert!(inner.persistence.staged.is_none());
+            &inner.persistence.live
+        } else {
+            assert!(inner.persistence.live.is_none());
+            &inner.persistence.staged
+        };
+        assert_eq!(
+            checkpoint
+                .as_ref()
+                .map(|value| (&value.identity, &value.aggregate, value.dirty)),
+            prior
+                .as_ref()
+                .map(|value| (&value.identity, &value.aggregate, value.dirty)),
+        );
+        assert_eq!(inner.machine.transcript(), transcript);
+        for owner in [OWNER, OTHER_OWNER] {
+            assert_eq!(inner.machine.state(&id(owner)), Ok(LifecycleState::Running));
+            assert_eq!(inner.machine.failure(&id(owner)), Ok(None));
+        }
+    }
 }
 
 const GUARD: &str = "zephyr_guard";
@@ -737,7 +849,7 @@ fn foreign_envelopes_cannot_overwrite_live_or_failed_owners() {
                 panic!("a foreign envelope must never become a durable replacement");
             };
             assert!(detail.contains(OTHER_OWNER), "{detail}");
-            assert!(detail.contains(OWNER), "{detail}");
+            assert!(detail.contains(&format!("`{OWNER}`")), "{detail}");
         }
         let inner = runtime.inner.lock().expect("test lock");
         let live = inner.persistence.live.as_ref().expect("live checkpoint");

@@ -13,7 +13,8 @@ use ravel_core::{
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
 use ravel_loader::{
-    Delivery, LifecycleMachine, ModSurface, Supplied, broadcast_profiled, route_profiled,
+    Delivery, LifecycleMachine, LoadedMods, ModSurface, Supplied, broadcast_profiled,
+    route_profiled,
 };
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
@@ -75,6 +76,8 @@ pub(crate) struct Inner {
     pub(crate) machine: LifecycleMachine,
     pub(crate) mods: Vec<Box<dyn HostMod>>,
     profiler: Profiler,
+    pairing_refused: bool,
+    outward_order: Vec<usize>,
     pub(crate) persistence: crate::persistence::PersistenceState,
     /// Pre-world failures absent from the lifecycle machine's admitted set.
     pub(crate) report: PreWorldReport,
@@ -106,12 +109,19 @@ impl LoaderRuntime {
         profiler: Profiler,
         report: PreWorldReport,
     ) -> Self {
+        let outward_order = machine
+            .entries()
+            .filter(|entry| entry.sides.loads_on(machine.side()))
+            .filter_map(|entry| mods.iter().position(|host| host.id() == &entry.mod_id))
+            .collect();
         Self {
             launch: None,
             inner: Mutex::new(Inner {
                 machine,
                 mods,
                 profiler,
+                pairing_refused: false,
+                outward_order,
                 persistence: crate::persistence::PersistenceState::default(),
                 report,
                 outward: Vec::new(),
@@ -295,15 +305,26 @@ impl Inner {
     }
 
     fn deliver(&mut self, work: &Work) {
+        if self.pairing_refused {
+            return;
+        }
         let delivered = {
-            let mut borrowed: Vec<&mut dyn HostMod> =
-                self.mods.iter_mut().map(|host| &mut **host).collect();
-            match work {
-                Work::Event(event) => {
-                    broadcast_profiled(&self.machine, &mut borrowed, *event, &mut self.profiler)
+            let mut loaded = match LoadedMods::new(&mut self.machine, &mut self.mods) {
+                Ok(loaded) => loaded,
+                Err(error) => {
+                    // Installed hosts cannot be replaced, so an incomplete set cannot recover.
+                    self.pairing_refused = true;
+                    self.report.refuse(
+                        &ravel_observability::Subject::of(error.mod_id().clone()),
+                        &error,
+                    );
+                    return;
                 }
+            };
+            match work {
+                Work::Event(event) => broadcast_profiled(&mut loaded, *event, &mut self.profiler),
                 Work::Command(invocation) => {
-                    route_profiled(&self.machine, &mut borrowed, invocation, &mut self.profiler)
+                    route_profiled(&mut loaded, invocation, &mut self.profiler)
                 }
             }
         };
@@ -318,8 +339,8 @@ impl Inner {
     // Failed owners are never called again; discard server audio to bound pending requests.
     fn carry_outward(&mut self) {
         let plays = !self.machine.side().is_server();
-        for index in 0..self.mods.len() {
-            let host = &mut self.mods[index];
+        for slot in 0..self.outward_order.len() {
+            let host = &mut self.mods[self.outward_order[slot]];
             let Ok(state) = self.machine.state(host.id()) else {
                 continue;
             };

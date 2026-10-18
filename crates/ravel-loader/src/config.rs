@@ -2,39 +2,39 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_config::{LayerError, LayeredConfiguration, Rejection, ValueDocument, file};
-use ravel_core::{FailureKind, LifecycleState, ModId, Side, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_host_api::{HostError, HostMod};
 
-use crate::lifecycle::LifecycleEntry;
+use crate::loaded::LoadedMods;
 
 /// Resolves settings in load order for mods on this side that declare them.
 ///
 /// Rejected player values fall back to lower layers and are reported in [`Configured`].
 /// A refusal stops configuration; the caller must not start the set.
-/// Entries must be supplied in admitted load order. Player documents are read only
-/// after the mod's single declaration has passed the ownership check.
+/// The paired view has already refused missing hosts before any declarations or player reads.
+/// Player documents are read only after the mod's declaration has passed the ownership check.
 ///
 /// # Errors
 ///
 /// Returns a [`ConfigRefused`] for foreign ownership, unreadable player documents,
 /// invalid layers, or a mod's refusal.
-pub fn open_configuration<'a>(
-    side: Side,
-    entries: impl IntoIterator<Item = &'a LifecycleEntry>,
-    mods: &mut [&mut (dyn HostMod + '_)],
+pub fn open_configuration<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
     packs: &BTreeMap<ModId, ValueDocument>,
     mut players: impl FnMut(&ModId) -> Result<Option<ValueDocument>, file::FileError>,
 ) -> Result<Configured, ConfigRefused> {
+    let (machine, mods) = loaded.parts();
     let mut configured = Configured::default();
 
-    for entry in entries {
+    for entry in machine.entries() {
         let mod_id = entry.mod_id.clone();
-        if !entry.sides.loads_on(side) {
+        if !entry.sides.loads_on(machine.side()) {
             continue;
         }
-        let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) else {
-            continue;
-        };
+        let host = mods
+            .iter_mut()
+            .find(|host| host.id() == &mod_id)
+            .expect("the paired view checked every loading owner");
         let Some(declaration) = crate::callback(&mod_id, LifecycleState::Constructed, || {
             host.configuration_declaration()
         })
@@ -221,24 +221,20 @@ mod tests {
     use crate::tests::entry;
 
     fn open_configuration(
-        machine: &LifecycleMachine,
-        mods: &mut [&mut (dyn HostMod + '_)],
+        loaded: &mut crate::LoadedMods<'_, &mut dyn HostMod>,
         packs: &BTreeMap<ModId, ValueDocument>,
         players: &BTreeMap<ModId, ValueDocument>,
     ) -> Result<super::Configured, ConfigRefused> {
-        super::open_configuration(machine.side(), machine.entries(), mods, packs, |owner| {
-            Ok(players.get(owner).cloned())
-        })
+        super::open_configuration(loaded, packs, |owner| Ok(players.get(owner).cloned()))
     }
 
     #[test]
     fn foreign_declarations_never_select_a_player_document() {
         let mut host = Settled::new("thief_mod").declaring_for("other_mod");
-        let entries = [entry("thief_mod", &[Side::DedicatedServer])];
+        let mut machine = machine(vec![entry("thief_mod", &[Side::DedicatedServer])]);
         let refused = super::open_configuration(
-            Side::DedicatedServer,
-            &entries,
-            &mut [&mut host],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
             &BTreeMap::new(),
             |_| panic!("foreign ownership must be refused before reading player files"),
         )
@@ -249,11 +245,10 @@ mod tests {
     #[test]
     fn unreadable_player_documents_stop_configuration() {
         let mut host = Settled::new("first_mod");
-        let entries = [entry("first_mod", &[Side::DedicatedServer])];
+        let mut machine = machine(vec![entry("first_mod", &[Side::DedicatedServer])]);
         let refused = super::open_configuration(
-            Side::DedicatedServer,
-            &entries,
-            &mut [&mut host],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
             &BTreeMap::new(),
             |_| {
                 Err(ravel_config::file::FileError::Io {
@@ -379,10 +374,10 @@ mod tests {
     fn configuration_declaration_refusal_stops_admission() {
         let mut host = Settled::new("refusing_mod");
         host.refuses_declaration = true;
-        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
         let refused = open_configuration(
-            &machine,
-            &mut [&mut host],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
             &BTreeMap::new(),
             &BTreeMap::new(),
         )
@@ -404,15 +399,18 @@ mod tests {
     fn every_mod_that_declares_settings_is_handed_the_values_in_force() {
         let mut first = Settled::new("first_mod");
         let mut second = Settled::new("second_mod");
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("first_mod", &[Side::DedicatedServer]),
             entry("second_mod", &[Side::DedicatedServer]),
         ]);
         let packs = BTreeMap::from([(id("second_mod"), document("second_mod", "9"))]);
 
         let configured = open_configuration(
-            &machine,
-            &mut [&mut first, &mut second],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut first, &mut second],
+            )
+            .expect("complete host set"),
             &packs,
             &BTreeMap::new(),
         )
@@ -428,14 +426,17 @@ mod tests {
     fn a_mod_that_declares_settings_and_never_reads_them_refuses_the_whole_set() {
         let mut deaf = Settled::new("deaf_mod").deaf();
         let mut later = Settled::new("later_mod");
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("deaf_mod", &[Side::DedicatedServer]),
             entry("later_mod", &[Side::DedicatedServer]),
         ]);
 
         let refused = open_configuration(
-            &machine,
-            &mut [&mut deaf, &mut later],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut deaf, &mut later],
+            )
+            .expect("complete host set"),
             &BTreeMap::new(),
             &BTreeMap::new(),
         )
@@ -458,11 +459,11 @@ mod tests {
     #[test]
     fn a_mod_that_declares_no_settings_is_not_asked_and_the_set_still_opens() {
         let mut silent = Settled::new("silent_mod").declaring_nothing();
-        let machine = machine(vec![entry("silent_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("silent_mod", &[Side::DedicatedServer])]);
 
         let configured = open_configuration(
-            &machine,
-            &mut [&mut silent],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut silent])
+                .expect("complete host set"),
             &BTreeMap::new(),
             &BTreeMap::new(),
         )
@@ -475,11 +476,11 @@ mod tests {
     #[test]
     fn a_mod_this_side_parks_is_never_handed_settings() {
         let mut client = Settled::new("client_mod");
-        let machine = machine(vec![entry("client_mod", &[Side::Client])]);
+        let mut machine = machine(vec![entry("client_mod", &[Side::Client])]);
 
         let configured = open_configuration(
-            &machine,
-            &mut [&mut client],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut client])
+                .expect("complete host set"),
             &BTreeMap::new(),
             &BTreeMap::new(),
         )
@@ -492,11 +493,16 @@ mod tests {
     #[test]
     fn an_illegal_player_value_is_reported_and_the_layer_below_applies() {
         let mut host = Settled::new("first_mod");
-        let machine = machine(vec![entry("first_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("first_mod", &[Side::DedicatedServer])]);
         let players = BTreeMap::from([(id("first_mod"), document("first_mod", "\"twelve\""))]);
 
-        let configured = open_configuration(&machine, &mut [&mut host], &BTreeMap::new(), &players)
-            .expect("a dropped value is not a refusal");
+        let configured = open_configuration(
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
+            &BTreeMap::new(),
+            &players,
+        )
+        .expect("a dropped value is not a refusal");
 
         assert_eq!(host.applied, Some(4), "the author's default still applies");
         let dropped = configured.dropped();
@@ -508,11 +514,11 @@ mod tests {
     #[test]
     fn a_mod_declaring_another_mods_settings_is_refused_before_anything_is_layered() {
         let mut thief = Settled::new("thief_mod").declaring_for("first_mod");
-        let machine = machine(vec![entry("thief_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("thief_mod", &[Side::DedicatedServer])]);
 
         let refused = open_configuration(
-            &machine,
-            &mut [&mut thief],
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut thief])
+                .expect("complete host set"),
             &BTreeMap::new(),
             &BTreeMap::new(),
         )
@@ -534,11 +540,16 @@ mod tests {
     #[test]
     fn a_pack_document_written_for_another_mod_refuses_the_set() {
         let mut host = Settled::new("first_mod");
-        let machine = machine(vec![entry("first_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("first_mod", &[Side::DedicatedServer])]);
         let packs = BTreeMap::from([(id("first_mod"), document("second_mod", "9"))]);
 
-        let refused = open_configuration(&machine, &mut [&mut host], &packs, &BTreeMap::new())
-            .expect_err("a document belongs to one mod");
+        let refused = open_configuration(
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
+            &packs,
+            &BTreeMap::new(),
+        )
+        .expect_err("a document belongs to one mod");
 
         assert!(matches!(refused, ConfigRefused::Layer { .. }));
         assert!(std::error::Error::source(&refused).is_some());

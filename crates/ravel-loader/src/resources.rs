@@ -5,17 +5,17 @@ use ravel_core::{FailureKind, LifecycleState, ModId, RelativePath, StructuredFai
 use ravel_data::{GeneratedData, GeneratedFile, ResourceSet};
 use ravel_host_api::{HostError, HostMod};
 
-use crate::lifecycle::LifecycleMachine;
+use crate::loaded::LoadedMods;
 
 /// Layers files from mods on this side in load order; later suppliers win contested paths.
 ///
 /// # Errors
 ///
 /// Returns [`ResourceRefused`] for a mod's declaration refusal or a declaration owned by another mod.
-pub fn open_resources(
-    machine: &LifecycleMachine,
-    mods: &mut [&mut (dyn HostMod + '_)],
+pub fn open_resources<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
 ) -> Result<Supplied, ResourceRefused> {
+    let (machine, mods) = loaded.parts();
     let mut generated: Vec<(ModId, GeneratedData)> = Vec::new();
 
     for mod_id in machine.order() {
@@ -25,9 +25,10 @@ pub fn open_resources(
         {
             continue;
         }
-        let Some(host) = mods.iter().find(|host| host.id() == mod_id) else {
-            continue;
-        };
+        let host = mods
+            .iter()
+            .find(|host| host.id() == mod_id)
+            .expect("the paired view checked every loading owner");
         let Some(declaration) = crate::callback(mod_id, LifecycleState::Registered, || {
             host.content_declaration()
         })
@@ -160,7 +161,7 @@ mod tests {
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{HostError, HostMod};
 
-    use super::ResourceRefused;
+    use super::{ResourceRefused, open_resources};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine};
     use crate::tests::entry;
 
@@ -244,21 +245,19 @@ mod tests {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
     }
 
-    fn open_resources(
-        machine: &LifecycleMachine,
-        mods: &mut [Box<dyn HostMod>],
-    ) -> Result<super::Supplied, ResourceRefused> {
-        let mut borrowed: Vec<&mut dyn HostMod> = mods.iter_mut().map(|host| &mut **host).collect();
-        super::open_resources(machine, &mut borrowed)
-    }
-
     #[test]
     fn content_declaration_refusal_is_not_absence() {
         let mut host = Supplying::new("refusing_mod", &[]);
         host.refuses_declaration = true;
-        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
         assert_eq!(
-            open_resources(&machine, &mut [Box::new(host)]),
+            open_resources(
+                &mut crate::LoadedMods::<Box<dyn HostMod>>::new(
+                    &mut machine,
+                    &mut [Box::new(host)]
+                )
+                .expect("complete host set")
+            ),
             Err(ResourceRefused::Mod {
                 mod_id: id("refusing_mod"),
                 source: HostError::Unsupported {
@@ -275,12 +274,16 @@ mod tests {
             Box::new(Supplying::new("first_mod", &[("assets/first.json", "1")])),
             Box::new(Silent { id: id("mute_mod") }),
         ];
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("first_mod", &[Side::DedicatedServer]),
             entry("mute_mod", &[Side::DedicatedServer]),
         ]);
 
-        let supplied = open_resources(&machine, &mut mods).expect("both mods are legal");
+        let supplied = open_resources(
+            &mut crate::LoadedMods::<Box<dyn HostMod>>::new(&mut machine, &mut mods)
+                .expect("complete host set"),
+        )
+        .expect("both mods are legal");
 
         assert_eq!(
             supplied.set().supplier(&path("assets/first.json")),
@@ -308,12 +311,16 @@ mod tests {
                 Box::new(Supplying::new(first, &[(shared, first)])),
                 Box::new(Supplying::new(second, &[(shared, second)])),
             ];
-            let machine = machine(vec![
+            let mut machine = machine(vec![
                 entry(first, &[Side::DedicatedServer]),
                 entry(second, &[Side::DedicatedServer]),
             ]);
 
-            let supplied = open_resources(&machine, &mut mods).expect("both mods are legal");
+            let supplied = open_resources(
+                &mut crate::LoadedMods::<Box<dyn HostMod>>::new(&mut machine, &mut mods)
+                    .expect("complete host set"),
+            )
+            .expect("both mods are legal");
 
             assert_eq!(
                 supplied.set().supplier(&contested),
@@ -338,9 +345,13 @@ mod tests {
             "client_mod",
             &[("assets/client.json", "c")],
         ))];
-        let machine = machine(vec![entry("client_mod", &[Side::Client])]);
+        let mut machine = machine(vec![entry("client_mod", &[Side::Client])]);
 
-        let supplied = open_resources(&machine, &mut mods).expect("a parked mod refuses nothing");
+        let supplied = open_resources(
+            &mut crate::LoadedMods::<Box<dyn HostMod>>::new(&mut machine, &mut mods)
+                .expect("complete host set"),
+        )
+        .expect("a parked mod refuses nothing");
 
         assert_eq!(supplied.generated(), []);
         assert_eq!(supplied.bytes(&path("assets/client.json")), None);
@@ -351,10 +362,12 @@ mod tests {
         let mut mods: Vec<Box<dyn HostMod>> = vec![Box::new(
             Supplying::new("thief_mod", &[("assets/taken.json", "t")]).declaring_for("owner_mod"),
         )];
-        let machine = machine(vec![entry("thief_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("thief_mod", &[Side::DedicatedServer])]);
 
         assert_eq!(
-            open_resources(&machine, &mut mods),
+            open_resources(
+                &mut crate::LoadedMods::new(&mut machine, &mut mods).expect("complete host set")
+            ),
             Err(ResourceRefused::ForeignDeclaration {
                 mod_id: id("thief_mod"),
                 owner: id("owner_mod"),

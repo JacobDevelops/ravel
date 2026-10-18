@@ -426,15 +426,12 @@ fn the_plan_cannot_reach_a_mod_the_caller_did_not_supply() {
 
     let error = run(&packages, &host(), Side::Client, &mut []).expect_err("no mod was supplied");
 
-    assert_eq!(
-        error,
-        PipelineError::MissingMod {
-            mod_id: id("example_mod"),
-            state: LifecycleState::Loaded,
-        },
-        "the plan first needs a value where mod code starts running"
+    assert!(
+        matches!(&error, PipelineError::MissingHost(missing) if missing.mod_id() == &id("example_mod")),
+        "the paired set refuses the missing host before any lifecycle callbacks"
     );
-    assert!(error.to_string().contains("no mod was supplied to enter"));
+    assert!(error.to_string().contains("example_mod"));
+    assert!(error.stage().is_some(), "the loader owns this refusal");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
@@ -487,6 +484,22 @@ fn a_package_is_read_from_its_manifest_file_or_reported_by_name() {
     fs::remove_dir_all(&parent).expect("cleanup");
 }
 
+fn missing_host() -> PipelineError {
+    let entry = ravel_loader::LifecycleEntry {
+        mod_id: id("example_mod"),
+        sides: ravel_core::SideSet::new([Side::Client]).expect("one side"),
+        requirement: ravel_loader::Requirement::Required,
+        saved_data_versions: std::collections::BTreeSet::new(),
+    };
+    let mut machine =
+        ravel_loader::LifecycleMachine::new(Side::Client, vec![entry]).expect("a legal plan");
+    let mut hosts: [&mut dyn HostMod; 0] = [];
+    let Err(refused) = ravel_loader::LoadedMods::new(&mut machine, &mut hosts) else {
+        panic!("the active member has no host");
+    };
+    PipelineError::MissingHost(refused)
+}
+
 #[test]
 fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() {
     use std::error::Error;
@@ -527,6 +540,7 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
             ),
             "the run failed: ",
         ),
+        (missing_host(), "the run failed: "),
     ] {
         let source = error
             .source()
@@ -538,10 +552,6 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
         PipelineError::Unreadable {
             file: "package.json".to_owned(),
             detail: "No such file or directory (os error 2)".to_owned(),
-        },
-        PipelineError::MissingMod {
-            mod_id: id("example_mod"),
-            state: LifecycleState::Loaded,
         },
         PipelineError::UnexpectedMod {
             mod_id: id("other_mod"),
@@ -561,10 +571,7 @@ fn no_refusal_this_harness_writes_names_a_path_or_a_directory() {
             file: "package.json".to_owned(),
             detail: "No such file or directory (os error 2)".to_owned(),
         },
-        PipelineError::MissingMod {
-            mod_id: id("example_mod"),
-            state: LifecycleState::Loaded,
-        },
+        missing_host(),
         PipelineError::UnexpectedMod {
             mod_id: id("example_mod"),
         },

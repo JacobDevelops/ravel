@@ -239,6 +239,8 @@ impl StructuredFailure for HostError {
 /// The safe Rust contract the loader drives for a statically composed mod.
 pub trait HostMod: Send {
     /// The canonical identity this mod was validated under.
+    ///
+    /// This identity must remain unchanged for the lifetime of the mod.
     fn id(&self) -> &ModId;
 
     /// Takes the mod into `state`.

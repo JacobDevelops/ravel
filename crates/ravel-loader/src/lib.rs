@@ -9,10 +9,13 @@ mod driver;
 mod events;
 mod interception;
 mod lifecycle;
+mod loaded;
 mod pack;
 mod registry;
 mod resources;
 mod saves;
+#[cfg(test)]
+mod saves_snapshot_tests;
 mod services;
 mod surface;
 mod world;
@@ -22,7 +25,7 @@ pub use config::{ConfigRefused, Configured, open_configuration};
 pub use discovery::{
     Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, PACKAGES_DIRECTORY, discover,
 };
-pub use driver::{DriveError, drive, drive_borrowed, stop_all};
+pub use driver::{DriveError, drive, drive_loaded, stop_all};
 pub use events::{
     Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route, route_profiled,
 };
@@ -31,12 +34,13 @@ pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,
 };
+pub use loaded::{LoadedMods, MissingHost};
 pub use pack::{
     Half, PACK_DIRECTORY, PackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id, write_pack,
 };
 pub use registry::Registration;
 pub use resources::{ResourceRefused, Supplied, open_resources};
-pub use saves::{SaveRefused, open_saved_data};
+pub use saves::{SaveRefused, open_saved_data, produce_saved_data};
 pub use services::{ServiceOrder, ServiceRefused, open_services};
 pub use surface::{ModEntry, ModSurface};
 pub use world::WorldRefused;

@@ -41,6 +41,7 @@ fn target(hook: &'static str) -> HookTarget {
 struct Log {
     seen: Vec<GameEvent>,
     ran: Vec<CommandInvocation>,
+    drained: Vec<ModId>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -98,6 +99,15 @@ impl HostMod for Recording {
             .ran
             .push(invocation.clone());
         Ok(())
+    }
+
+    fn take_play_requests(&mut self) -> Vec<PlayRequest> {
+        self.log
+            .lock()
+            .expect("nothing panicked")
+            .drained
+            .push(self.id.clone());
+        Vec::new()
     }
 }
 
@@ -268,6 +278,14 @@ fn the_same_mod_on_a_client_does_fill_it() {
 }
 
 fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
+    let (machine, mods) = driven_pair(behaviour, log);
+    LoaderRuntime::new(machine, mods)
+}
+
+fn driven_pair(
+    behaviour: Behaviour,
+    log: &Arc<Mutex<Log>>,
+) -> (LifecycleMachine, Vec<Box<dyn HostMod>>) {
     let mut machine = LifecycleMachine::new(
         Side::Client,
         [MOD, "innocent"]
@@ -315,7 +333,52 @@ fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
     for state in [LifecycleState::Registered, LifecycleState::Running] {
         machine.advance_all(state).expect("step");
     }
-    LoaderRuntime::new(machine, mods)
+    (machine, mods)
+}
+
+#[test]
+fn outward_drains_follow_lifecycle_order_after_service_slot_reordering() {
+    let log = Arc::new(Mutex::new(Log::default()));
+    let (machine, mut mods) = driven_pair(Behaviour::Records, &log);
+    mods.swap(0, 1);
+    let runtime = LoaderRuntime::new(machine, mods);
+
+    runtime.observe(&target("client.tick"), &[]);
+
+    assert_eq!(
+        log.lock().expect("nothing panicked").drained,
+        [id(MOD), id("innocent")]
+    );
+}
+
+#[test]
+fn a_missing_host_refuses_once_before_any_callback_on_later_ticks() {
+    let log = Arc::new(Mutex::new(Log::default()));
+    let runtime = failing_pair(Behaviour::Records, &log);
+    runtime
+        .inner
+        .lock()
+        .expect("nothing panicked")
+        .mods
+        .retain(|host| host.id().as_str() != "innocent");
+
+    for _ in 0..3 {
+        assert_eq!(
+            runtime.observe(&target("client.tick"), &[]),
+            HookOutcome::Proceed
+        );
+    }
+
+    assert_eq!(log.lock().expect("nothing panicked").seen, []);
+    assert_eq!(log.lock().expect("nothing panicked").drained, []);
+    let inner = runtime.inner.lock().expect("nothing panicked");
+    let [refusal] = inner.report.refusals() else {
+        panic!("the incomplete set produces one refusal");
+    };
+    assert_eq!(refusal.attribution().mod_id, Some(id("innocent")));
+    assert_eq!(refusal.attribution().state, LifecycleState::Running);
+    assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Running));
+    drop(inner);
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::fmt;
 use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_host_api::{HostError, HostMod, InterceptionRefused, Occasion, Point, Points, Round};
 
-use crate::lifecycle::LifecycleMachine;
+use crate::loaded::LoadedMods;
 
 /// Asks eligible mods at `point` in declared order, skipping parked or inactive mods.
 ///
@@ -16,23 +16,28 @@ use crate::lifecycle::LifecycleMachine;
 /// # Panics
 ///
 /// Never: ordered owners were found in `mods` while collecting declarations.
-pub fn intercept(
-    machine: &LifecycleMachine,
-    mods: &mut [&mut (dyn HostMod + '_)],
+pub fn intercept<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut LoadedMods<'_, H>,
     point: Point,
 ) -> Result<Round, InterceptRefused> {
+    let (machine, mods) = loaded.parts();
     crate::events::ensure_active(machine).map_err(InterceptRefused::Inactive)?;
     let mut points = Points::default();
     for mod_id in machine.order() {
         let Ok(state) = machine.state(mod_id) else {
             continue;
         };
-        if !crate::executes_mod_code(state) {
+        if !machine
+            .entry(mod_id)
+            .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
+            || !crate::executes_mod_code(state)
+        {
             continue;
         }
-        let Some(host) = mods.iter().find(|host| host.id() == mod_id) else {
-            continue;
-        };
+        let host = mods
+            .iter()
+            .find(|host| host.id() == mod_id)
+            .expect("LoadedMods checked every loading owner");
         let Some(declaration) = crate::callback(mod_id, state, || host.interception_declaration())
             .map_err(|source| InterceptRefused::Mod {
                 mod_id: mod_id.clone(),
@@ -159,6 +164,7 @@ mod tests {
 
     use super::{InterceptRefused, intercept};
     use crate::lifecycle::LifecycleMachine;
+    use crate::loaded::LoadedMods;
     use crate::tests::entry;
 
     // Reverse lexical order ensures ordering assertions depend on the declared edge.
@@ -293,6 +299,7 @@ mod tests {
 
     #[test]
     fn halted_sets_refuse_interception_before_any_mod_callback() {
+        let mut ledger = Quiet { id: id(LEDGER) };
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
         guard.panic_at = PanicAt::Declaration;
         let mut machine = running(&[GUARD, LEDGER]);
@@ -319,8 +326,12 @@ mod tests {
                 },
             )
             .expect("a running required mod can fail");
-        let refusal = intercept(&machine, &mut [&mut guard], Point::WorldIsSaved)
-            .expect_err("a halted set asks no callbacks");
+        let refusal = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut guard, &mut ledger])
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect_err("a halted set asks no callbacks");
         assert_eq!(
             refusal,
             InterceptRefused::Inactive(crate::DispatchRefused::NotReacting {
@@ -339,8 +350,11 @@ mod tests {
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
         ledger.panic_at = PanicAt::Answer;
         let round = intercept(
-            &running(&[GUARD, LEDGER]),
-            &mut [&mut ledger, &mut guard],
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut running(&[GUARD, LEDGER]),
+                &mut [&mut ledger, &mut guard],
+            )
+            .expect("all active hosts are supplied"),
             Point::WorldIsSaved,
         )
         .expect("declarations are legal");
@@ -356,7 +370,11 @@ mod tests {
         let mut host = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
         host.refuses_declaration = true;
         assert_eq!(
-            intercept(&running(&[GUARD]), &mut [&mut host], Point::WorldIsSaved),
+            intercept(
+                &mut LoadedMods::<&mut dyn HostMod>::new(&mut running(&[GUARD]), &mut [&mut host])
+                    .expect("all active hosts are supplied"),
+                Point::WorldIsSaved
+            ),
             Err(InterceptRefused::Mod {
                 mod_id: id(GUARD),
                 source: HostError::Unsupported {
@@ -373,9 +391,14 @@ mod tests {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut ledger, &mut guard];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.asked(), [id(GUARD), id(LEDGER)]);
         assert_eq!(round.outcome(), Outcome::Proceed);
@@ -387,9 +410,14 @@ mod tests {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse);
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut ledger, &mut guard];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.outcome(), Outcome::Refuse);
         assert_eq!(round.asked(), [id(GUARD)]);
@@ -407,9 +435,14 @@ mod tests {
         let mut elsewhere = Answering::new(GUARD, Point::BlockIsBroken, Outcome::Refuse);
         let mut here = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut elsewhere, &mut here];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.asked(), [id(LEDGER)]);
         assert_eq!(round.outcome(), Outcome::Proceed);
@@ -421,9 +454,14 @@ mod tests {
         let mut quiet = Quiet { id: id(GUARD) };
         let mut answering = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut quiet, &mut answering];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.asked(), [id(LEDGER)]);
     }
@@ -444,7 +482,12 @@ mod tests {
             .advance_all(LifecycleState::Validated)
             .expect("a legal step");
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.asked(), []);
         assert_eq!(round.outcome(), Outcome::Proceed);
@@ -455,10 +498,14 @@ mod tests {
     fn a_mod_declaring_interceptions_for_another_mod_is_refused() {
         let mut liar = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse).owned_by(LEDGER);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut liar];
-        let machine = running(&[GUARD]);
+        let mut machine = running(&[GUARD]);
 
-        let refused = intercept(&machine, &mut mods, Point::WorldIsSaved)
-            .expect_err("a mod answers for itself");
+        let refused = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect_err("a mod answers for itself");
 
         assert_eq!(
             refused,
@@ -480,9 +527,14 @@ mod tests {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed).failing();
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut ledger, &mut guard];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(
             round.outcome(),
@@ -521,9 +573,14 @@ mod tests {
 
         let mut silent = Silent { id: id(GUARD) };
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut silent];
-        let machine = running(&[GUARD]);
+        let mut machine = running(&[GUARD]);
 
-        let round = intercept(&machine, &mut mods, Point::WorldIsSaved).expect("a legal set");
+        let round = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect("a legal set");
 
         assert_eq!(round.outcome(), Outcome::Refuse);
         let failure = round.failure().expect("the default refuses loudly");
@@ -564,10 +621,14 @@ mod tests {
         let mut first = Replacing { id: id(GUARD) };
         let mut second = Replacing { id: id(LEDGER) };
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut first, &mut second];
-        let machine = running(&[GUARD, LEDGER]);
+        let mut machine = running(&[GUARD, LEDGER]);
 
-        let refused = intercept(&machine, &mut mods, Point::WorldIsSaved)
-            .expect_err("two replacements are a conflict");
+        let refused = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect_err("two replacements are a conflict");
 
         assert!(
             matches!(
@@ -583,8 +644,12 @@ mod tests {
     fn declaration_panics_are_attributed_to_the_declaring_host() {
         let mut host = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
         host.panic_at = PanicAt::Declaration;
-        let refused = intercept(&running(&[GUARD]), &mut [&mut host], Point::WorldIsSaved)
-            .expect_err("a declaration panic refuses admission");
+        let refused = intercept(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut running(&[GUARD]), &mut [&mut host])
+                .expect("all active hosts are supplied"),
+            Point::WorldIsSaved,
+        )
+        .expect_err("a declaration panic refuses admission");
         assert_eq!(refused.owner(), Some(&id(GUARD)));
         let InterceptRefused::Mod { source, .. } = refused else {
             panic!("expected an attributed callback failure");
@@ -599,8 +664,11 @@ mod tests {
         guard.panic_at = PanicAt::Answer;
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
         let round = intercept(
-            &running(&[GUARD, LEDGER]),
-            &mut [&mut guard, &mut ledger],
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut running(&[GUARD, LEDGER]),
+                &mut [&mut guard, &mut ledger],
+            )
+            .expect("all active hosts are supplied"),
             Point::WorldIsSaved,
         )
         .expect("declarations are legal");

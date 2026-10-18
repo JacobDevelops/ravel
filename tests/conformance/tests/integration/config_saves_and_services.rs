@@ -72,9 +72,12 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let aggregate = open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&bytes),
         &BTreeMap::new(),
     )
@@ -128,9 +131,12 @@ fn a_world_already_at_the_current_version_is_read_without_a_step() {
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&bytes),
         &BTreeMap::new(),
     )
@@ -148,9 +154,12 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let refusal = open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&bytes),
         &BTreeMap::new(),
     )
@@ -167,13 +176,20 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
 fn a_provider_is_started_before_the_mod_that_requires_it() {
     let mut shop = ShopMod::new();
     let mut stock = StockMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(ShopMod::declared_id(), &[SIDE]),
         entry(StockMod::declared_id(), &[SIDE]),
     ]);
 
     // Supply the consumer first so slice order cannot satisfy the dependency.
-    let opened = open_services(&machine, &mut [&mut shop, &mut stock]).expect("the graph resolves");
+    let opened = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut shop, &mut stock],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect("the graph resolves");
 
     assert_eq!(
         opened.order(),
@@ -193,10 +209,16 @@ fn a_provider_is_started_before_the_mod_that_requires_it() {
 #[test]
 fn a_service_nothing_answers_names_the_mod_that_wanted_it_and_starts_nothing() {
     let mut shop = ShopMod::new();
-    let machine = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
+    let mut machine = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
 
-    let refusal =
-        open_services(&machine, &mut [&mut shop]).expect_err("nothing answers the service");
+    let refusal = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut shop],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect_err("nothing answers the service");
 
     assert_eq!(
         refusal,
@@ -221,13 +243,19 @@ fn a_service_nothing_answers_names_the_mod_that_wanted_it_and_starts_nothing() {
 fn a_provider_this_side_parks_is_a_service_nothing_answers() {
     let mut shop = ShopMod::new();
     let mut stock = StockMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(ShopMod::declared_id(), &[SIDE]),
         entry(StockMod::declared_id(), &[Side::Client]),
     ]);
 
     assert_eq!(
-        open_services(&machine, &mut [&mut shop, &mut stock]),
+        open_services(
+            &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+                &mut machine,
+                &mut [&mut shop, &mut stock],
+            )
+            .expect("all active mods have hosts"),
+        ),
         Err(ServiceRefused::NoProvider {
             consumer: ShopMod::declared_id().clone(),
             service: prices(),
@@ -291,13 +319,19 @@ impl Mod for Bolt {
 fn two_mods_that_require_each_other_are_refused_and_both_are_named() {
     let mut latch = Latch;
     let mut bolt = Bolt;
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(Latch::declared_id(), &[SIDE]),
         entry(Bolt::declared_id(), &[SIDE]),
     ]);
 
-    let refusal = open_services(&machine, &mut [&mut latch, &mut bolt])
-        .expect_err("no order starts either of them");
+    let refusal = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut latch, &mut bolt],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect_err("no order starts either of them");
 
     assert_eq!(
         refusal,
@@ -331,9 +365,12 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
     let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
     let refusal = open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&bytes),
         &BTreeMap::new(),
     )
@@ -359,18 +396,24 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "count": 12 }))),
         &BTreeMap::new(),
     )
     .expect_err("the first step cannot read this shape");
 
     open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 5 }))),
         &BTreeMap::new(),
     )
@@ -412,15 +455,17 @@ impl Mod for Deaf {
 fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_ignored() {
     let mut deaf = Deaf;
     let mut shop = ShopMod::new();
-    let pair = machine(vec![
+    let mut pair = machine(vec![
         entry(Deaf::declared_id(), &[SIDE]),
         entry(ShopMod::declared_id(), &[SIDE]),
     ]);
 
     let refused = open_configuration(
-        pair.side(),
-        pair.entries(),
-        &mut [&mut deaf, &mut shop],
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut pair,
+            &mut [&mut deaf, &mut shop],
+        )
+        .expect("all active mods have hosts"),
         &BTreeMap::new(),
         |_| Ok(None),
     )
@@ -433,11 +478,13 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     );
 
     let mut shop = ShopMod::new();
-    let alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
+    let mut alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
     let configured = open_configuration(
-        alone.side(),
-        alone.entries(),
-        &mut [&mut shop],
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut alone,
+            &mut [&mut shop],
+        )
+        .expect("all active mods have hosts"),
         &BTreeMap::new(),
         |_| Ok(None),
     )
@@ -449,7 +496,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
 fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost() {
     let owner = StockMod::declared_id();
     let mut stock = StockMod::new();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
     let pack = ValueDocument::parse(
         r#"{
           "schemaVersion": 1,
@@ -468,9 +515,11 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
     .expect("a legal player document");
 
     let configured = open_configuration(
-        machine.side(),
-        machine.entries(),
-        &mut [&mut stock],
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &BTreeMap::from([(owner.clone(), pack)]),
         |_| Ok(Some(player.clone())),
     )
@@ -582,14 +631,20 @@ fn a_consumer_that_refuses_its_answer_refuses_the_whole_set_rather_than_starting
     let mut fussy = Fussy::default();
     let mut shop = ShopMod::new();
     let mut stock = StockMod::new();
-    let machine = machine(vec![
+    let mut machine = machine(vec![
         entry(Fussy::declared_id(), &[SIDE]),
         entry(ShopMod::declared_id(), &[SIDE]),
         entry(StockMod::declared_id(), &[SIDE]),
     ]);
 
-    let refusal = open_services(&machine, &mut [&mut shop, &mut fussy, &mut stock])
-        .expect_err("`fussy` refuses");
+    let refusal = open_services(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut shop, &mut fussy, &mut stock],
+        )
+        .expect("all active mods have hosts"),
+    )
+    .expect_err("`fussy` refuses");
 
     assert!(matches!(
         refusal,
@@ -609,9 +664,12 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut stock],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 9 }))),
         &BTreeMap::new(),
     )
@@ -627,9 +685,12 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
 
     let mut reopened = StockMod::new();
     open_saved_data(
-        &mut machine,
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [&mut reopened],
+        )
+        .expect("all active mods have hosts"),
         &environment(),
-        &mut [&mut reopened],
         Some(&bytes),
         &BTreeMap::new(),
     )

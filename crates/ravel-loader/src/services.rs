@@ -33,19 +33,22 @@ impl ServiceOrder {
 /// # Errors
 ///
 /// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or callback failure.
-pub fn open_services(
-    mut machine: &LifecycleMachine,
-    mods: &mut [&mut (dyn HostMod + '_)],
+pub fn open_services<H: std::ops::DerefMut<Target: HostMod>>(
+    loaded: &mut crate::LoadedMods<'_, H>,
 ) -> Result<ServiceOrder, ServiceRefused> {
-    open_with_context(&mut machine, mods)
+    let (machine, mods) = loaded.parts();
+    open_with_context(&mut &*machine, mods)
 }
 
 /// Opens each callback at most once, allowing the driver to fail optional owners and continue.
-pub(crate) fn open_services_with_failure_handler<E: From<ServiceRefused>>(
-    machine: &mut LifecycleMachine,
-    mods: &mut [&mut (dyn HostMod + '_)],
+pub(crate) fn open_services_with_failure_handler<
+    E: From<ServiceRefused>,
+    H: std::ops::DerefMut<Target: HostMod>,
+>(
+    loaded: &mut crate::LoadedMods<'_, H>,
     on_failure: impl FnMut(&mut LifecycleMachine, HostError) -> Result<(), E>,
 ) -> Result<ServiceOrder, E> {
+    let (machine, mods) = loaded.parts();
     open_with_context(
         &mut Tracked {
             machine,
@@ -91,15 +94,15 @@ where
     }
 }
 
-fn open_with_context<E: From<ServiceRefused>>(
+fn open_with_context<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: HostMod>>(
     context: &mut impl ServiceContext<E>,
-    mods: &mut [&mut (dyn HostMod + '_)],
+    mods: &mut [H],
 ) -> Result<ServiceOrder, E> {
     let declarations = declared(context, mods)?;
     let providers = providers(&declarations);
     let mut order = dependency_order(&declarations, &providers).map_err(E::from)?;
 
-    arrange(mods, &order);
+    crate::loaded::arrange(mods, &order);
     for position in 0..mods.len() {
         let (started, remaining) = mods.split_at_mut(position);
         let consumer = &mut remaining[0];
@@ -142,9 +145,9 @@ fn open_with_context<E: From<ServiceRefused>>(
 /// # Errors
 ///
 /// Returns [`ServiceRefused::ForeignDeclaration`] naming both identities.
-fn declared<E: From<ServiceRefused>>(
+fn declared<E: From<ServiceRefused>, H: std::ops::DerefMut<Target: HostMod>>(
     context: &mut impl ServiceContext<E>,
-    mods: &[&mut (dyn HostMod + '_)],
+    mods: &[H],
 ) -> Result<BTreeMap<ModId, ServiceDeclaration>, E> {
     let mut declarations = BTreeMap::new();
     for host in mods {
@@ -226,27 +229,18 @@ fn dependency_order(
     })
 }
 
-/// Moves declared mods into `order`, leaving undeclared mods after them.
-fn arrange(mods: &mut [&mut (dyn HostMod + '_)], order: &[ModId]) {
-    let mut placed = 0;
-    for mod_id in order {
-        if let Some(found) = mods[placed..].iter().position(|host| host.id() == mod_id) {
-            mods.swap(placed, placed + found);
-            placed += 1;
-        }
-    }
-}
-
 /// A directory over the mods already started.
-struct Started<'a, 'm, 'h, E, C> {
+struct Started<'a, H: std::ops::DerefMut<Target: HostMod>, E, C> {
     caller: ModId,
     declaration: &'a ServiceDeclaration,
-    mods: &'a mut [&'m mut (dyn HostMod + 'h)],
+    mods: &'a mut [H],
     context: &'a mut C,
     failure: Option<E>,
 }
 
-impl<E, C: ServiceContext<E>> ServiceDirectory for Started<'_, '_, '_, E, C> {
+impl<H: std::ops::DerefMut<Target: HostMod>, E, C: ServiceContext<E>> ServiceDirectory
+    for Started<'_, H, E, C>
+{
     fn call(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ServiceCallFailed> {
         if !self.declaration.calls(&request.id) {
             return Err(ServiceCallFailed::Unavailable(
@@ -395,6 +389,7 @@ mod tests {
 
     use super::{ServiceRefused, open_services};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::loaded::LoadedMods;
     use crate::tests::entry;
 
     struct Failing {
@@ -440,12 +435,18 @@ mod tests {
                 phase,
             };
             let mut provider = Wired::new("provider", &[service("provider", "answer")], &[]);
-            let machine = machine(vec![
+            let mut machine = machine(vec![
                 entry("actual", &[Side::DedicatedServer]),
                 entry("provider", &[Side::DedicatedServer]),
             ]);
-            let refusal = open_services(&machine, &mut [&mut host, &mut provider])
-                .expect_err("callback failure stays contained");
+            let refusal = open_services(
+                &mut LoadedMods::<&mut dyn HostMod>::new(
+                    &mut machine,
+                    &mut [&mut host, &mut provider],
+                )
+                .expect("all active hosts are supplied"),
+            )
+            .expect_err("callback failure stays contained");
             let ServiceRefused::Consumer { mod_id, source } = refusal else {
                 panic!("expected a consumer refusal");
             };
@@ -504,8 +505,11 @@ mod tests {
         ]);
         let mut refusals = Vec::new();
         super::open_services_with_failure_handler(
-            &mut machine,
-            &mut [&mut healthy, &mut refusing, &mut provider],
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut healthy, &mut refusing, &mut provider],
+            )
+            .expect("all active hosts are supplied"),
             |_, source| {
                 refusals.push(source);
                 Ok::<(), ServiceRefused>(())
@@ -618,9 +622,12 @@ mod tests {
     fn service_declaration_refusal_is_not_absence() {
         let mut host = Wired::new("refusing_mod", &[], &[]);
         host.refuses_declaration = true;
-        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
         assert_eq!(
-            open_services(&machine, &mut [&mut host]),
+            open_services(
+                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                    .expect("all active hosts are supplied")
+            ),
             Err(ServiceRefused::Consumer {
                 mod_id: id("refusing_mod"),
                 source: HostError::Unsupported {
@@ -636,7 +643,7 @@ mod tests {
     fn a_provider_is_offered_its_services_before_the_mod_that_requires_them() {
         let mut consumer = Wired::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
@@ -647,10 +654,20 @@ mod tests {
         // implementation that only sorted would fail here too. It is worth saying
         // because it was not true — the pair used to be `base` and `consumer`, and
         // deleting the ordering edge left this test passing.
-        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
-            .expect("the graph resolves");
+        let mut mods: [&mut dyn HostMod; 2] = [&mut consumer, &mut warehouse];
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+        )
+        .expect("the graph resolves");
 
         assert_eq!(opened.order(), [id("warehouse"), id("consumer")]);
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            [id("warehouse"), id("consumer")]
+        );
         assert_eq!(consumer.reached, ["warehouse"]);
         assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
     }
@@ -665,13 +682,19 @@ mod tests {
         let mut thief =
             Wired::new("thief", &[], &[]).answering_for("warehouse", std::slice::from_ref(&prices));
         let mut consumer = Wired::new("consumer", &[], std::slice::from_ref(&prices));
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("thief", &[Side::DedicatedServer]),
             entry("consumer", &[Side::DedicatedServer]),
         ]);
 
-        let refused = open_services(&machine, &mut [&mut thief, &mut consumer])
-            .expect_err("a mod declares only its own services");
+        let refused = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut thief, &mut consumer],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect_err("a mod declares only its own services");
 
         assert_eq!(
             refused,
@@ -702,16 +725,26 @@ mod tests {
             &[service("warehouse", "prices")],
         );
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("anvil", &[Side::DedicatedServer]),
             entry("mill", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let opened = open_services(&machine, &mut [&mut anvil, &mut mill, &mut warehouse])
-            .expect("the chain resolves");
+        let mut mods: [&mut dyn HostMod; 3] = [&mut anvil, &mut mill, &mut warehouse];
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+        )
+        .expect("the chain resolves");
 
         assert_eq!(opened.order(), [id("warehouse"), id("mill"), id("anvil")]);
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            [id("warehouse"), id("mill"), id("anvil")]
+        );
         assert_eq!(mill.reached, ["warehouse"]);
         assert_eq!(anvil.reached, ["mill"]);
     }
@@ -728,13 +761,16 @@ mod tests {
             &[service("second", "right")],
             &[service("first", "left")],
         );
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("first", &[Side::DedicatedServer]),
             entry("second", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut first, &mut second])
-            .expect_err("no order starts either");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+                .expect("all active hosts are supplied"),
+        )
+        .expect_err("no order starts either");
         assert_eq!(
             refusal,
             ServiceRefused::Cycle {
@@ -751,10 +787,13 @@ mod tests {
     #[test]
     fn a_missing_provider_names_the_mod_that_wanted_it_and_the_service() {
         let mut consumer = Wired::new("consumer", &[], &[service("absent", "prices")]);
-        let machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
 
-        let refusal = open_services(&machine, &mut [&mut consumer])
-            .expect_err("nothing answers `absent:prices`");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
+                .expect("all active hosts are supplied"),
+        )
+        .expect_err("nothing answers `absent:prices`");
         assert_eq!(
             refusal,
             ServiceRefused::NoProvider {
@@ -773,13 +812,19 @@ mod tests {
         // a mod that will not run is the deadlock this rule avoids.
         let mut consumer = Wired::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::Client]),
         ]);
 
         assert_eq!(
-            open_services(&machine, &mut [&mut consumer, &mut warehouse]),
+            open_services(
+                &mut LoadedMods::<&mut dyn HostMod>::new(
+                    &mut machine,
+                    &mut [&mut consumer, &mut warehouse]
+                )
+                .expect("all active hosts are supplied")
+            ),
             Err(ServiceRefused::NoProvider {
                 consumer: id("consumer"),
                 service: service("warehouse", "prices"),
@@ -804,14 +849,20 @@ mod tests {
         )
         .refusing();
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("anvil", &[Side::DedicatedServer]),
             entry("mill", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut anvil, &mut mill, &mut warehouse])
-            .expect_err("the mod in the mill of the chain refuses");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut anvil, &mut mill, &mut warehouse],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect_err("the mod in the mill of the chain refuses");
         assert!(matches!(
             refusal,
             ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("mill")
@@ -880,13 +931,19 @@ mod tests {
             ],
             &[],
         );
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut sneaking, &mut warehouse])
-            .expect_err("the call was not declared");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut sneaking, &mut warehouse],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect_err("the call was not declared");
         assert!(
             refusal.to_string().contains("does not require"),
             "{refusal}"
@@ -914,9 +971,12 @@ mod tests {
         }
 
         let mut plain = Plain { id: id("plain") };
-        let machine = machine(vec![entry("plain", &[Side::DedicatedServer])]);
-        let opened =
-            open_services(&machine, &mut [&mut plain]).expect("nothing to resolve resolves");
+        let mut machine = machine(vec![entry("plain", &[Side::DedicatedServer])]);
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut plain])
+                .expect("all active hosts are supplied"),
+        )
+        .expect("nothing to resolve resolves");
         assert_eq!(opened.order(), []);
     }
 
@@ -1038,16 +1098,26 @@ mod tests {
         // so the order and the answer are both checked here.
         let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
         // Supplied consumer-first, so a slice order would have called it too early.
-        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
-            .expect("the graph resolves");
+        let mut mods: [&mut dyn HostMod; 2] = [&mut consumer, &mut warehouse];
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+                .expect("all active hosts are supplied"),
+        )
+        .expect("the graph resolves");
 
         assert_eq!(opened.order(), [id("warehouse"), id("consumer")]);
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            [id("warehouse"), id("consumer")]
+        );
         assert_eq!(consumer.reached, ["warehouse"]);
         assert!(
             consumer.absent.is_empty(),
@@ -1060,10 +1130,13 @@ mod tests {
     fn a_set_whose_optional_provider_is_not_installed_loads_and_the_call_reports_absence() {
         // The same declaration as a requirement would refuse the whole set here.
         let mut consumer = Hedging::new("consumer", &[], &[service("absent", "prices")]);
-        let machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
 
-        let opened =
-            open_services(&machine, &mut [&mut consumer]).expect("an absent provider refuses none");
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
+                .expect("all active hosts are supplied"),
+        )
+        .expect("an absent provider refuses none");
 
         assert_eq!(opened.order(), [id("consumer")]);
         assert_eq!(consumer.absent, [service("absent", "prices")]);
@@ -1082,10 +1155,13 @@ mod tests {
             [service("absent", "prices")],
         )
         .expect("a legal declaration");
-        let machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
 
         assert_eq!(
-            open_services(&machine, &mut [&mut consumer]),
+            open_services(
+                &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut consumer])
+                    .expect("all active hosts are supplied")
+            ),
             Err(ServiceRefused::NoProvider {
                 consumer: id("consumer"),
                 service: service("gone", "clock"),
@@ -1097,13 +1173,19 @@ mod tests {
     fn a_public_provider_refusal_is_attributed_to_its_owner() {
         let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Grudging::new("warehouse", &[service("warehouse", "prices")]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut consumer, &mut warehouse])
-            .expect_err("the provider said no");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut consumer, &mut warehouse],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect_err("the provider said no");
 
         assert!(matches!(
             refusal,
@@ -1181,13 +1263,16 @@ mod tests {
             &[service("second", "right")],
             &[service("first", "left")],
         );
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("first", &[Side::DedicatedServer]),
             entry("second", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut first, &mut second])
-            .expect_err("no order starts either");
+        let refusal = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first, &mut second])
+                .expect("all active hosts are supplied"),
+        )
+        .expect_err("no order starts either");
         assert_eq!(
             refusal,
             ServiceRefused::Cycle {
@@ -1207,9 +1292,13 @@ mod tests {
             &[service("first", "left")],
             &[service("second", "right")],
         );
-        let machine = machine(vec![entry("first", &[Side::DedicatedServer])]);
+        let mut machine = machine(vec![entry("first", &[Side::DedicatedServer])]);
 
-        let opened = open_services(&machine, &mut [&mut first]).expect("no edge, no cycle");
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut first])
+                .expect("all active hosts are supplied"),
+        )
+        .expect("no edge, no cycle");
         assert_eq!(opened.order(), [id("first")]);
         assert_eq!(first.absent, [service("second", "right")]);
     }
@@ -1218,13 +1307,19 @@ mod tests {
     fn an_optional_provider_this_side_parks_is_absent_rather_than_a_refusal_or_a_wait() {
         let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::Client]),
         ]);
 
-        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
-            .expect("a parked provider refuses no optional consumer");
+        let opened = open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut consumer, &mut warehouse],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect("a parked provider refuses no optional consumer");
 
         assert_eq!(opened.order(), [id("consumer")]);
         assert_eq!(consumer.absent, [service("warehouse", "prices")]);
@@ -1250,18 +1345,32 @@ mod tests {
         ];
 
         let (mut warehouse, mut consumer, mut other) = build();
+        let mut mods: [&mut dyn HostMod; 3] = [&mut warehouse, &mut consumer, &mut other];
         let forward = open_services(
-            &machine(entries.clone()),
-            &mut [&mut warehouse, &mut consumer, &mut other],
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries.clone()), &mut mods)
+                .expect("all active hosts are supplied"),
         )
         .expect("resolves");
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            forward.order()
+        );
 
         let (mut warehouse, mut consumer, mut other) = build();
+        let mut mods: [&mut dyn HostMod; 3] = [&mut other, &mut consumer, &mut warehouse];
         let reversed = open_services(
-            &machine(entries),
-            &mut [&mut other, &mut consumer, &mut warehouse],
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries), &mut mods)
+                .expect("all active hosts are supplied"),
         )
         .expect("resolves");
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            reversed.order()
+        );
 
         assert_eq!(forward, reversed);
         assert_eq!(
@@ -1279,12 +1388,19 @@ mod tests {
         // is indistinguishable from a working absent branch until a provider exists.
         let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
-        let machine = machine(vec![
+        let mut machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
             entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        open_services(&machine, &mut [&mut warehouse, &mut consumer]).expect("resolves");
+        open_services(
+            &mut LoadedMods::<&mut dyn HostMod>::new(
+                &mut machine,
+                &mut [&mut warehouse, &mut consumer],
+            )
+            .expect("all active hosts are supplied"),
+        )
+        .expect("resolves");
         assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
         assert_eq!(consumer.reached, ["warehouse"]);
     }
@@ -1305,18 +1421,32 @@ mod tests {
         ];
 
         let (mut warehouse, mut consumer, mut other) = build();
+        let mut mods: [&mut dyn HostMod; 3] = [&mut warehouse, &mut consumer, &mut other];
         let forward = open_services(
-            &machine(entries.clone()),
-            &mut [&mut warehouse, &mut consumer, &mut other],
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries.clone()), &mut mods)
+                .expect("all active hosts are supplied"),
         )
         .expect("resolves");
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            forward.order()
+        );
 
         let (mut warehouse, mut consumer, mut other) = build();
+        let mut mods: [&mut dyn HostMod; 3] = [&mut other, &mut consumer, &mut warehouse];
         let reversed = open_services(
-            &machine(entries),
-            &mut [&mut other, &mut consumer, &mut warehouse],
+            &mut LoadedMods::<&mut dyn HostMod>::new(&mut machine(entries), &mut mods)
+                .expect("all active hosts are supplied"),
         )
         .expect("resolves");
+        assert_eq!(
+            mods.iter()
+                .map(|host| host.id().clone())
+                .collect::<Vec<_>>(),
+            reversed.order()
+        );
 
         assert_eq!(forward, reversed);
         // Not identity order, and that is the point of these three names: sorted

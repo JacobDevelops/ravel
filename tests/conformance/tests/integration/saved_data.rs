@@ -92,13 +92,18 @@ fn entry(saved: &SavedDataMod) -> LifecycleEntry {
 }
 
 fn running(saved: &mut SavedDataMod) -> LifecycleMachine {
-    ravel_loader::drive_borrowed(
-        Side::Client,
+    let mut machine =
+        LifecycleMachine::new(Side::Client, vec![entry(saved)]).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::<&mut dyn ravel_host_api::HostMod>::new(
+            &mut machine,
+            &mut [saved],
+        )
+        .expect("all active mods have hosts"),
         &ravel_host_runtime::environment(),
-        vec![entry(saved)],
-        &mut [saved],
     )
-    .expect("the production driver starts the saved-data mod")
+    .expect("the production driver starts the saved-data mod");
+    machine
 }
 
 // A version gap belongs to the mod declaration and cannot be a world fixture.

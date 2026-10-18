@@ -42,13 +42,14 @@ fn entry(mod_id: &ModId) -> LifecycleEntry {
 // Exercise the real registration barrier even though these mods declare no content.
 fn drive(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
     let entries: Vec<LifecycleEntry> = mods.iter().map(|host| entry(host.id())).collect();
-    ravel_loader::drive_borrowed(
-        Side::DedicatedServer,
+    let mut machine =
+        LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &ravel_host_runtime::environment(),
-        entries,
-        mods,
     )
-    .expect("the production driver starts the set")
+    .expect("the production driver starts the set");
+    machine
 }
 
 #[test]
@@ -308,9 +309,14 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         asked: false,
     };
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut follower, &mut guard];
-    let machine = interception_machine(&mut mods);
+    let mut machine = interception_machine(&mut mods);
 
-    let round = ravel_loader::intercept(&machine, &mut mods, POINT).expect("a legal set");
+    let round = ravel_loader::intercept(
+        &mut ravel_loader::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut mods)
+            .expect("all active mods have hosts"),
+        POINT,
+    )
+    .expect("a legal set");
     assert_eq!(
         follower.asked,
         round.asked().contains(&id("alpha_follower")),
@@ -329,13 +335,14 @@ fn interception_machine(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
             saved_data_versions: BTreeSet::new(),
         })
         .collect();
-    ravel_loader::drive_borrowed(
-        Side::IntegratedServer,
+    let mut machine =
+        LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal lifecycle plan");
+    ravel_loader::drive_loaded(
+        &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
         &ravel_host_runtime::environment(),
-        entries,
-        mods,
     )
-    .expect("the production driver starts the interception mods")
+    .expect("the production driver starts the interception mods");
+    machine
 }
 
 #[test]

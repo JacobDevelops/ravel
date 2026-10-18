@@ -353,10 +353,12 @@ mod tests {
                 saved_data_versions: BTreeSet::new(),
             })
             .collect();
-        let machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
-        let mut borrowed: Vec<&mut dyn HostMod> =
-            hosts.iter_mut().map(|host| &mut **host).collect();
-        open_resources(&machine, &mut borrowed).expect("every declaration is its own")
+        let mut machine =
+            LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
+        open_resources(
+            &mut crate::LoadedMods::new(&mut machine, &mut hosts).expect("complete host set"),
+        )
+        .expect("every declaration is its own")
     }
 
     fn timestamps(root: &std::path::Path) -> Vec<(String, std::time::SystemTime)> {

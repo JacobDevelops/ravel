@@ -209,7 +209,7 @@ class SummaryTests(unittest.TestCase):
             self.write_csv(root, "events.csv", events[0], events[1:])
             self.assertEqual(summary.summarize_trial(root)["metrics"]["cpu_percent.steady_last30s_mean"], 100)
 
-    def make_trial(self, root):
+    def make_trial(self, root: Path) -> None:
         (root / "complete").touch()
         (root / "gc.log").write_text("")
         (root / "game.log").write_text("[12:00:00] [Client/INFO]: Loading mods\n")

@@ -14,7 +14,7 @@ REFERENCES_SHA256 = "eddb27d0cbcb6be2eb02a6895e960d8ad2af9d7e1394cbe379d594142b9
 FIXTURE = "sevtech-ages-3.2.3"
 
 
-def produce(root):
+def produce(root: Path) -> None:
     inventory = root / "registry/inventory" / FIXTURE
     documents = {name: (inventory / (name + ".json")).read_bytes()
                  for name in ("references", "graph", "graph-evidence")}

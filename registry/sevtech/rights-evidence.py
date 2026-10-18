@@ -7,19 +7,20 @@ from pathlib import Path
 import re
 import sys
 from urllib.parse import quote
+from typing import Any, NoReturn
 import zipfile
 
 
-def refuse(message):
+def refuse(message: str) -> NoReturn:
     raise SystemExit("rights evidence refused: " + message)
 
 
-def digest(value, length=64):
+def digest(value: object, length: int = 64) -> re.Match[str] | bool | None:
     return isinstance(value, str) and re.fullmatch("[0-9a-f]{" + str(length) + "}", value)
 
 
-def cached_bytes(cache, sha256):
-    if not digest(sha256):
+def cached_bytes(cache: Path, sha256: object) -> bytes:
+    if not isinstance(sha256, str) or not digest(sha256):
         refuse("missing cached response SHA256")
     path = cache / sha256
     if not path.is_file():
@@ -30,7 +31,7 @@ def cached_bytes(cache, sha256):
     return data
 
 
-def exact_file_grant(cache, artifact, citation, declared):
+def exact_file_grant(cache: Path, artifact: bytes, citation: dict[str, Any], declared: str) -> dict[str, Any]:
     sha1 = hashlib.sha1(artifact).hexdigest()
     receipt_path = cache / ("modrinth-" + sha1 + ".json")
     if not receipt_path.is_file():
@@ -65,7 +66,7 @@ def exact_file_grant(cache, artifact, citation, declared):
     return receipt
 
 
-def grant_text_matches(text, declared):
+def grant_text_matches(text: str, declared: str) -> bool:
     text = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower().replace("licence", "license")).split())
     normal = " ".join(re.sub(r"[^a-z0-9]+", " ", declared.lower().replace("licence", "license")).split())
     restriction_text = re.sub(r"\bcommercial or non ?commercial\b", "commercial", text)
@@ -119,7 +120,8 @@ def grant_text_matches(text, declared):
     return " " + normal + " " in " " + text + " "
 
 
-def observed_host(archive, host, name, cache, project_id=None):
+def observed_host(archive: zipfile.ZipFile, host: dict[str, Any], name: str, cache: Path,
+                  project_id: str | None = None) -> tuple[list[str], bool]:
     observations = {e["source"].split("!", 1)[1]: e for e in host["evidence"] if e["kind"] == "jar-entry"}
     required = {p for p in ("mcmod.info", "META-INF/MANIFEST.MF") if p in archive.namelist()}
     if not required <= observations.keys():
@@ -195,13 +197,14 @@ LICENCE_STATUS = {
 }
 
 
-def code_status(family):
+def code_status(family: str) -> str:
     if family not in LICENCE_STATUS:
         refuse("unrecognised licence status policy: " + family)
     return LICENCE_STATUS[family]
 
 
-def verify_recorded_rights(path, grants, acquisition, evidence, branding):
+def verify_recorded_rights(path: Path, grants: list[str], acquisition: list[str],
+                          evidence: dict[str, Any], branding: dict[str, bool]) -> None:
     records = json.loads(path.read_text())
     rows = {row["artifact"]: row for row in records["artifacts"]}
     decisions = {row.split("\t")[0]: row.split("\t")[1:] for row in grants}
@@ -222,7 +225,8 @@ def verify_recorded_rights(path, grants, acquisition, evidence, branding):
         refuse("recorded surface permissions, publication, source-use or totals differ from acquired evidence")
 
 
-def derived_rights(original, grants, acquisition, evidence, branding):
+def derived_rights(original: dict[str, Any], grants: list[str], acquisition: list[str],
+                   evidence: dict[str, Any], branding: dict[str, bool]) -> dict[str, Any]:
     document = json.loads(json.dumps(original))
     observations = {r["artifact"]: r for r in evidence["artifacts"].values()}
     decisions = {line.split("\t")[0]: line.split("\t")[1:] for line in grants}
@@ -256,14 +260,15 @@ def derived_rights(original, grants, acquisition, evidence, branding):
     return document
 
 
-def regenerate(path, grants, acquisition, evidence, branding):
+def regenerate(path: Path, grants: list[str], acquisition: list[str],
+               evidence: dict[str, Any], branding: dict[str, bool]) -> None:
     original = json.loads(path.read_text())
     document = derived_rights(original, grants, acquisition, evidence, branding)
     print("WP0 source-use correction: " + json.dumps({"before": original["totals"]["sourceUse"], "after": document["totals"]["sourceUse"]}, sort_keys=True))
     path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
 
 
-def reconcile_provenance(path, records, evidence, rebuild):
+def reconcile_provenance(path: Path, records: dict[str, Any], evidence: dict[str, Any], rebuild: bool) -> None:
     original = json.loads(path.read_text())
     updated = json.loads(json.dumps(original))
     suffix = " Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
@@ -299,7 +304,8 @@ def reconcile_provenance(path, records, evidence, rebuild):
         refuse("provenance rights summaries differ from acquired evidence")
 
 
-def observe_artifact(name, record, path, cache, ledger, rebuild):
+def observe_artifact(name: str, record: dict[str, Any], path: str, cache: Path,
+                     ledger: dict[str, list[str]] | None, rebuild: bool) -> tuple[bytes, list[str], bool]:
     artifact = Path(path).read_bytes()
     if hashlib.sha256(artifact).hexdigest() != record["artifactSha256"]:
         refuse("artifact SHA256 differs: " + name)
@@ -334,7 +340,7 @@ def observe_artifact(name, record, path, cache, ledger, rebuild):
     return artifact, sources, logos
 
 
-def repository_linked(repository, sources):
+def repository_linked(repository: dict[str, Any], sources: list[str]) -> bool:
     # A recorded redirect name alone does not byte-bind the old repository to
     # its new owner. Redirect-only attempts remain unresolved without that proof.
     url = repository.get("url", "")
@@ -344,7 +350,7 @@ def repository_linked(repository, sources):
     return any(re.search(r"https?://(?:www\.)?github\.com/" + re.escape(path) + r"(?:[/'\"#?\s]|$)", text, re.IGNORECASE) for text in sources)
 
 
-def commit_path_observation(cache, repository, citation, rebuild):
+def commit_path_observation(cache: Path, repository: dict[str, Any], citation: dict[str, Any], rebuild: bool) -> None:
     project = repository["url"].removeprefix("https://github.com/")
     endpoint = "https://api.github.com/repos/" + project + "/contents/" + quote(citation["path"], safe="/") + "?ref=" + repository["commit"]
     key = hashlib.sha256(endpoint.encode()).hexdigest()
@@ -363,7 +369,8 @@ def commit_path_observation(cache, repository, citation, rebuild):
         refuse("commit/path grant observation differs from admitted record")
 
 
-def repository_grant(name, resolution, sources, cache, rebuild=False):
+def repository_grant(name: str, resolution: dict[str, Any], sources: list[str], cache: Path,
+                     rebuild: bool = False) -> None:
     repository = resolution["repository"]
     citation = repository.get("licenceFile" if resolution["basis"] == "licence-file" else "readme")
     if not (digest(repository.get("commit"), 40) and citation and digest(citation.get("sha256")) and citation.get("path")):
@@ -391,7 +398,8 @@ def repository_grant(name, resolution, sources, cache, rebuild=False):
         commit_path_observation(cache, repository, citation, rebuild)
 
 
-def resolve_grant(name, record, sources, artifact, cache, policies, rebuild):
+def resolve_grant(name: str, record: dict[str, Any], sources: list[str], artifact: bytes, cache: Path,
+                  policies: set[tuple[str, ...]], rebuild: bool) -> tuple[str, str, str]:
     host = record["hostDeclaration"]
     resolution = record.get("resolution", {})
     previous = (resolution.get("trail") or [{}])[-1].get("result", "")
@@ -444,7 +452,7 @@ def resolve_grant(name, record, sources, artifact, cache, policies, rebuild):
     return declared, family, reserved
 
 
-def main():
+def main() -> None:
     evidence_path, paths_path, families_path, grants_path, acquisition_path, cache_path, *rest = sys.argv[1:]
     cache = Path(cache_path)
     evidence = json.loads(Path(evidence_path).read_text())

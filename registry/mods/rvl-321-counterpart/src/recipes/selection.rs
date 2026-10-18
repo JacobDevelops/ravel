@@ -152,3 +152,90 @@ fn crafted_ingredient(crafted: &Crafted, resolves: &dyn Fn(&str) -> usize) -> Op
         Crafted::Nothing => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{DerivedRecipe, derive};
+    use crate::model::{Crafted, Crop, CropKind, Derived, Tier};
+
+    fn declared() -> (Crop, Tier, CropKind) {
+        let mut tier = Tier::new("test:tier".parse().expect("tier id"), 1);
+        tier.material = Some("test:material".parse().expect("material id"));
+        let mut kind = CropKind::new("test:kind".parse().expect("kind id"), "stem");
+        kind.base_seed = Some("test:base".parse().expect("base id"));
+        let crop = Crop::new(
+            "test:crop".parse().expect("crop id"),
+            tier.id.clone(),
+            kind.id.clone(),
+            Crafted::Tag("test:crafted".parse().expect("tag id")),
+        );
+        (crop, tier, kind)
+    }
+
+    #[test]
+    fn each_crop_recipe_switch_independently_removes_its_recipe() {
+        let (mut crop, tier, kind) = declared();
+        for (switches, expected) in [
+            (
+                Derived {
+                    ritual_seed: true,
+                    grid_seed: false,
+                    conversion: false,
+                },
+                "_seed_ritual",
+            ),
+            (
+                Derived {
+                    ritual_seed: false,
+                    grid_seed: true,
+                    conversion: false,
+                },
+                "_seed_grid",
+            ),
+            (
+                Derived {
+                    ritual_seed: false,
+                    grid_seed: false,
+                    conversion: true,
+                },
+                "_seed_conversion",
+            ),
+        ] {
+            crop.derived = switches;
+            let recipes = derive(&crop, &tier, &kind, true, &|tag| {
+                assert_eq!(tag, "test:crafted");
+                1
+            });
+            assert_eq!(recipes.len(), 1);
+            assert_eq!(recipes[0].id(), format!("{}:crop{expected}", crate::MOD_ID));
+        }
+        crop.derived = Derived {
+            ritual_seed: false,
+            grid_seed: false,
+            conversion: false,
+        };
+        assert_eq!(
+            derive(&crop, &tier, &kind, true, &|_| 1),
+            Vec::<DerivedRecipe>::new()
+        );
+    }
+
+    #[test]
+    fn nothing_keeps_conversion_and_disabled_crops_never_resolve() {
+        let (mut crop, tier, kind) = declared();
+        crop.crafted = Crafted::Nothing;
+        let recipes = derive(&crop, &tier, &kind, true, &|_| {
+            panic!("Nothing must not resolve crafting materials")
+        });
+        assert_eq!(recipes.len(), 1);
+        assert!(matches!(recipes[0], DerivedRecipe::Conversion { .. }));
+        crop.enabled = false;
+        crop.crafted = Crafted::Tag("test:crafted".parse().expect("tag id"));
+        assert_eq!(
+            derive(&crop, &tier, &kind, true, &|_| {
+                panic!("disabled crops must not resolve crafting materials")
+            }),
+            Vec::<DerivedRecipe>::new()
+        );
+    }
+}

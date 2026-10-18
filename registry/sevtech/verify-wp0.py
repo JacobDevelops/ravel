@@ -9,30 +9,31 @@ import re
 import subprocess
 import sys
 import zipfile
+from typing import Any
 
 FIXTURE = "sevtech-ages-3.2.3"
 
 
-def require(condition, message):
+def require(condition: object, message: str) -> None:
     if not condition:
         raise ValueError(message)
 
 
-def load(path):
+def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def unique(rows, key, label):
+def unique(rows: list[dict[str, Any]], key: str, label: str) -> dict[str, dict[str, Any]]:
     result = {row[key]: row for row in rows}
     require(len(result) == len(rows), "duplicate " + label)
     return result
 
 
-def digest(path):
+def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def validate(root, fixture, mode):
+def validate(root: Path, fixture: str, mode: str) -> None:
     require(fixture == FIXTURE, "WP0 phase requires fixture " + FIXTURE)
     require(mode in ("--offline", "--fixture"), "invalid WP0 mode")
     inventory = root / "registry/inventory" / fixture
@@ -52,7 +53,7 @@ def validate(root, fixture, mode):
     validate_frozen_pins(root, inventory, graph, evidence)
 
 
-def validate_frozen_pins(root, inventory, graph, evidence):
+def validate_frozen_pins(root: Path, inventory: Path, graph: dict[str, Any], evidence: dict[str, Any]) -> None:
     pins = load(root / "registry/sevtech/evidence-pins.json")
     require(pins["fixture"] == FIXTURE, "frozen evidence pin fixture differs")
     require(pins["edges"] == len(graph["edges"]) == len(evidence["edges"]) == 743,
@@ -64,7 +65,9 @@ def validate_frozen_pins(root, inventory, graph, evidence):
         require(digest(inventory / (name + ".json")) == expected, "frozen evidence bytes differ: " + name)
 
 
-def validate_bindings(root, refs_path, refs, graph, evidence, rights, descriptor):
+def validate_bindings(root: Path, refs_path: Path, refs: dict[str, Any], graph: dict[str, Any],
+                      evidence: dict[str, Any], rights: dict[str, Any],
+                      descriptor: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for field, pin in (("archive", descriptor["source"]), ("manifest", descriptor["manifest"])):
         require(refs["fixture"][field]["sha256"] == pin["sha256"], field + " descriptor hash differs")
     require(refs["fixture"]["minecraft"] == descriptor["manifest"]["minecraft"], "Minecraft pin differs")
@@ -101,7 +104,8 @@ def validate_bindings(root, refs_path, refs, graph, evidence, rights, descriptor
     return inputs
 
 
-def validate_artifacts(root, fixture, mode, inputs, evidence, acquired):
+def validate_artifacts(root: Path, fixture: str, mode: str, inputs: dict[str, dict[str, Any]],
+                       evidence: dict[str, Any], acquired: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     top = unique([row for row in evidence["artifacts"] if not row["nested"]], "artifact", "evidence artifact")
     nested = [row for row in evidence["artifacts"] if row["nested"]]
     require(set(top) == set(inputs), "graph evidence/input artifact identities differ")
@@ -122,7 +126,8 @@ def validate_artifacts(root, fixture, mode, inputs, evidence, acquired):
     return top
 
 
-def validate_nodes(graph, evidence, top):
+def validate_nodes(graph: dict[str, Any], evidence: dict[str, Any],
+                   top: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     nodes = unique(graph["nodes"], "id", "graph node")
     node_evidence = unique(evidence["nodes"], "id", "evidence node")
     require(len(nodes) == 273 and nodes.keys() == node_evidence.keys(), "declared node identities differ")
@@ -144,7 +149,7 @@ def validate_nodes(graph, evidence, top):
     return nodes
 
 
-def validate_declarations(graph, evidence, top):
+def validate_declarations(graph: dict[str, Any], evidence: dict[str, Any], top: dict[str, dict[str, Any]]) -> None:
     require(len(graph["edges"]) == len(evidence["edges"]), "edge evidence count differs")
     declarations = evidence["edges"] + evidence["excludedDeclarations"]
     for declaration in evidence["excludedDeclarations"]:
@@ -166,7 +171,8 @@ def validate_declarations(graph, evidence, top):
     require(evidence["totals"]["excludedDeclarations"] == len(evidence["excludedDeclarations"]), "excluded declaration total differs")
 
 
-def validate_edges(graph, evidence, top, nodes):
+def validate_edges(graph: dict[str, Any], evidence: dict[str, Any], top: dict[str, dict[str, Any]],
+                   nodes: dict[str, dict[str, Any]]) -> tuple[dict[str, set[str]], set[str]]:
     platforms = {"minecraft", "forge", "fml", "java", "neoforge"}
     adjacency = {identity: set() for identity in nodes}
     blocked = set()
@@ -189,7 +195,8 @@ def validate_edges(graph, evidence, top, nodes):
     return adjacency, blocked
 
 
-def validate_components(graph, evidence, nodes, adjacency, blocked):
+def validate_components(graph: dict[str, Any], evidence: dict[str, Any], nodes: dict[str, dict[str, Any]],
+                        adjacency: dict[str, set[str]], blocked: set[str]) -> None:
     components, unseen = [], set(nodes)
     while unseen:
         pending, component = [unseen.pop()], set()
@@ -218,7 +225,7 @@ def validate_components(graph, evidence, nodes, adjacency, blocked):
         require(evidence["totals"][key] == value, "graph evidence total differs: " + key)
 
 
-def public_collision_decisions(root):
+def public_collision_decisions(root: Path) -> tuple[dict[str, str], set[str]]:
     decisions = {}
     selected = set()
     for relative in ("registry/checks/public-word-collisions.tsv",
@@ -234,7 +241,8 @@ def public_collision_decisions(root):
     return decisions, selected
 
 
-def validate_public_boundary(root, identities, tracked_paths=None):
+def validate_public_boundary(root: Path, identities: list[str] | set[str],
+                             tracked_paths: list[str] | None = None) -> None:
     """Apply historical whole-word/path refusal to the selected declared ids."""
     if tracked_paths is None:
         command = (["jj", "--no-pager", "file", "list", "-T", 'path ++ "\\0"']
@@ -263,7 +271,7 @@ def validate_public_boundary(root, identities, tracked_paths=None):
             + ", ".join(sorted(observed - decisions.keys())))
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("offline", "fixture"))
     parser.add_argument("--fixture-id", default=FIXTURE)

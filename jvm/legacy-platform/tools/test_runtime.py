@@ -142,7 +142,8 @@ class AcquireTests(unittest.TestCase):
 
 
 class ServerTests(unittest.TestCase):
-    def run_server(self, lines, libraries='', result=0, timed_out=False):
+    def run_server(self, lines: str, libraries: str = '', result: int = 0,
+                   timed_out: bool = False) -> tuple[Path, unittest.mock.Mock]:
         root = self.enterContext(tempfile.TemporaryDirectory())
         game = Path(root) / 'game'
         game.mkdir()

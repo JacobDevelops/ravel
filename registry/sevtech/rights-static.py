@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+from typing import Any, NoReturn
 
 SURFACES = ("code", "textures", "models", "sounds", "names", "branding", "behaviour")
 SOURCE_USE = {"cleared": "permitted", "permission-required": "conditional",
@@ -12,11 +13,11 @@ SOURCE_USE = {"cleared": "permitted", "permission-required": "conditional",
 RANK = {"not-applicable": 0, "cleared": 1, "permission-required": 2, "unresolved": 3, "prohibited": 4}
 
 
-def refuse(message):
+def refuse(message: str) -> NoReturn:
     raise SystemExit("static rights refused: " + message)
 
 
-def table(path, width):
+def table(path: Path, width: int) -> list[list[str]]:
     rows = []
     for number, line in enumerate(path.read_text().splitlines(), 1):
         fields = line.split("\t")
@@ -26,7 +27,7 @@ def table(path, width):
     return rows
 
 
-def policies(root, fixture_id):
+def policies(root: Path, fixture_id: str) -> dict[str, tuple[str, str]]:
     combined = {}
     paths = (root / "registry/checks/licence-families.tsv",
              root / "registry/inventory" / fixture_id / "licence-families.tsv")
@@ -42,7 +43,7 @@ def policies(root, fixture_id):
     return combined
 
 
-def load_vocabulary(root):
+def load_vocabulary(root: Path) -> tuple[set[str], dict[str, str]]:
     schema = json.loads((root / "schemas/provenance.schema.json").read_text())
     item = schema["properties"]["rights"]["items"]["properties"]
     statuses, surfaces = set(item["status"]["enum"]), set(item["surface"]["enum"])
@@ -56,7 +57,7 @@ def load_vocabulary(root):
     return statuses, family_status
 
 
-def load_inputs(root, fixture_id):
+def load_inputs(root: Path, fixture_id: str) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     inventory = root / "registry/inventory" / fixture_id
     ledger = json.loads((inventory / "references.json").read_text())
     rights = json.loads((inventory / "rights.json").read_text())
@@ -77,7 +78,8 @@ def load_inputs(root, fixture_id):
     return inputs, rights
 
 
-def validate_records(rights, inputs, statuses, family_status, policy):
+def validate_records(rights: dict[str, Any], inputs: dict[str, dict[str, Any]], statuses: set[str],
+                     family_status: dict[str, str], policy: dict[str, tuple[str, str]]) -> None:
     names = [row["artifact"] for row in rights["artifacts"]]
     if len(names) != len(set(names)) or set(names) != set(inputs):
         refuse("rights records do not cover each ledger artifact exactly once")
@@ -85,7 +87,8 @@ def validate_records(rights, inputs, statuses, family_status, policy):
         validate_record(row, inputs[row["artifact"]], statuses, family_status, policy)
 
 
-def validate_record(row, record, statuses, family_status, policy):
+def validate_record(row: dict[str, Any], record: dict[str, Any], statuses: set[str],
+                    family_status: dict[str, str], policy: dict[str, tuple[str, str]]) -> None:
     name = row["artifact"]
     bundled = "archiveEntry" in record
     reference = None if bundled else {"projectId": record["projectId"], "fileId": record["fileId"]}
@@ -111,7 +114,7 @@ def validate_record(row, record, statuses, family_status, policy):
     validate_derived(row, got, code, reserved, name)
 
 
-def validate_derived(row, got, code, reserved, name):
+def validate_derived(row: dict[str, Any], got: dict[str, str], code: str, reserved: str, name: str) -> None:
     asset = "prohibited" if reserved == "true" else code
     for surface in ("textures", "models", "sounds"):
         if got[surface] not in ("not-applicable", asset):
@@ -128,7 +131,7 @@ def validate_derived(row, got, code, reserved, name):
         refuse("publication differs from the worst surface: " + name)
 
 
-def validate_totals(rights):
+def validate_totals(rights: dict[str, Any]) -> None:
     records = rights["artifacts"]
     source_use = dict(sorted(Counter(r["sourceUse"] for r in records).items()))
     totals = {
@@ -145,7 +148,7 @@ def validate_totals(rights):
         refuse("totals differ from the records")
 
 
-def main():
+def main() -> None:
     root, fixture_id = Path(sys.argv[1]).resolve(), sys.argv[2]
     statuses, family_status = load_vocabulary(root)
     policy = policies(root, fixture_id)

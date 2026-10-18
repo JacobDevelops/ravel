@@ -16,6 +16,12 @@ generated worlds, screenshots and logs remain under ignored
 only client launch requests the pinned asset set.
 Acquisition publishes verified manifest, native-library and class-path outputs
 atomically; server completion is published only after acceptance succeeds.
+The server implementation streams and flushes its log during execution to retain
+diagnostic output even when no completion record is published.
+Offline regression tests in `jvm/legacy-platform/tools/test_runtime.py` use
+temporary fixtures and a mocked server process to exercise startup, save, seed,
+exit and native-library acceptance conditions without launching Java or
+downloading game inputs. These tests do not assert server-log retention.
 
 The legacy class loader rewrites constant-pool class/descriptor references
 according to the single `adapter-owners.txt` inventory into Ravel's

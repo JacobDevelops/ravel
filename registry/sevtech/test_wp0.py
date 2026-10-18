@@ -30,7 +30,7 @@ PIN_SPEC.loader.exec_module(PIN)
 
 
 class WP0EvidenceTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.workspace = tempfile.TemporaryDirectory()
         self.addCleanup(self.workspace.cleanup)
         self.root = Path(self.workspace.name)

@@ -5,6 +5,7 @@ description = "Ravel counterpart for RVL-002: sixth-tier crops, ground, fuels, f
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/JacobDevelops/ravel"
+keywords = ["minecraft", "ravel", "crops"]
 
 [dependencies]
 ravel-sdk.workspace = true

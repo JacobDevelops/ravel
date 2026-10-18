@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from typing import Any
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -37,7 +38,8 @@ class RightsHelpersTests(unittest.TestCase):
         (self.root / digest).write_bytes(data)
         return digest
 
-    def derived(self, family="permissive", reserved="false", branding=False):
+    def derived(self, family: str = "permissive", reserved: str = "false",
+                branding: bool = False) -> dict[str, Any]:
         original = {"artifacts": [{"artifact": "example.jar", "rights": [
             {"surface": surface, "status": "unresolved"} for surface in STATIC.SURFACES
         ]}]}

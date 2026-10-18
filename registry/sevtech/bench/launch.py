@@ -114,7 +114,8 @@ def allowed(row: dict[str, Any]) -> bool:
     return result
 
 
-def library_key(row: dict[str, Any]) -> tuple:
+def library_key(row: dict[str, Any]) -> tuple[str, str, tuple[str, ...], bool]:
+    """Identify a Maven library independently of its version."""
     parts = row['name'].split(':')
     return (*parts[:2], tuple(parts[3:]), bool(row.get('natives')))
 

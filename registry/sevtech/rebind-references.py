@@ -12,7 +12,7 @@ WP0 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WP0)
 
 
-def rebind(root):
+def rebind(root: Path) -> None:
     fixture = WP0.FIXTURE
     inventory = root / "registry/inventory" / fixture
     refs_path = inventory / "references.json"

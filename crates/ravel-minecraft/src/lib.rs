@@ -317,7 +317,7 @@ pub enum PackFormatSpelling {
 ///
 /// # Panics
 ///
-/// Panics if the constructed map of strings and integers cannot be serialized.
+/// Panics if JSON display formatting violates the infallible `String` writer contract.
 #[must_use]
 pub fn pack_metadata(
     format: PackFormat,
@@ -344,9 +344,14 @@ pub fn pack_metadata(
     let mut document = serde_json::Map::new();
     document.insert("pack".to_owned(), serde_json::Value::Object(declared));
 
-    let mut text = serde_json::to_string_pretty(&serde_json::Value::Object(document))
-        .expect("a map of strings and numbers always serializes");
-    text.push('\n');
+    let mut text = String::with_capacity(128);
+    fmt::write(
+        &mut text,
+        format_args!("{:#}\n", serde_json::Value::Object(document)),
+    )
+    .unwrap_or_else(|error| {
+        unreachable!("formatting a JSON value into a String cannot fail: {error}")
+    });
     text
 }
 

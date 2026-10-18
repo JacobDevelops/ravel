@@ -102,7 +102,7 @@
       },
       {
         "path": "src/recipes/selection.rs",
-        "sha256": "1e07aeea087dc9da792f4cb7c8be62e6bbb956d5a4dea52d499e98637df4313e"
+        "sha256": "796e0d07369fc9350be032ae4a404d4f228f081b6df893de7c1a61f6cb8a5376"
       },
       {
         "path": "src/registries.rs",

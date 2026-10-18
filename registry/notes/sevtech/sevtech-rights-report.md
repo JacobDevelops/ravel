@@ -1,5 +1,22 @@
 # SevTech: Ages 3.2.3 — rights resolution of the WP0 `absent` inputs
 
+## WP7 correction of mutable WP0 inputs
+
+The original triage below is retained as a dated investigation, not current clearance. Rechecking the cited raw
+commit bytes found two Windows-1252 licence files whose original SHA-256 values had been computed after UTF-8
+transcoding: Blood Magic and Nature's Compass. The corrected receipts hash the raw response bytes and bind the
+Git blob identity. Repository links without artifact-specific attribution are unresolved rather than inferred.
+Ten Modrinth observations are fresh receipts, not reconstructed historical responses.
+Licence-file grants additionally require fresh commit-and-path GitHub contents receipts whose raw response,
+path and Git blob identity match the cited bytes. Restrictive clauses absent from a claimed licence declaration
+refuse clearance; a repository redirect alone is not artifact attribution.
+
+The producer also recounts surface evidence from actual jar entries and rebinds graph evidence to the recorded
+reference ledger bytes. These are corrections to open WP0 inputs; no closed milestone results are rewritten.
+Regenerated source-use totals are **31 permitted, 38 conditional, 18 prohibited and 172 unresolved (259 total)**.
+Full byte reconciliation requires the acquired fixtures; the offline gate checks vocabulary, policy, ledger
+identity and derived totals only.
+
 ## Files changed
 
 - `registry/inventory/sevtech-ages-3.2.3/rights.json`: rewritten to the ATM10 rights-triage shape. Each entry has
@@ -87,15 +104,15 @@ For each of the 235 inputs whose jar declares no licence:
 Of the 163 resolved inputs: 91 permissive, 30 weak-copyleft, 16 strong-copyleft, 9 all-rights-reserved, 7
 noncommercial-or-noderivatives, 7 custom, 2 attribution-required, 1 reference-only.
 
-|                              | Before                                                       | After                                                                     |
-| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| sourceUse                    | 0 permitted, 16 conditional, 6 prohibited, 237 unresolved    | **91 permitted, 64 conditional, 22 prohibited, 82 unresolved**            |
-| code                         | 16 permission-required, 6 prohibited, 237 unresolved         | 91 cleared, 64 permission-required, 22 prohibited, 82 unresolved          |
-| textures                     | 96 n/a, 6 permission-required, 5 prohibited, 152 unresolved  | 64 cleared, 96 n/a, 38 permission-required, 18 prohibited, 43 unresolved  |
-| models                       | 121 n/a, 4 permission-required, 3 prohibited, 131 unresolved | 52 cleared, 121 n/a, 32 permission-required, 13 prohibited, 41 unresolved |
-| sounds                       | 208 n/a, 3 prohibited, 48 unresolved                         | 22 cleared, 208 n/a, 8 permission-required, 6 prohibited, 15 unresolved   |
-| names / branding / behaviour | 259 unresolved / 199 n/a, 60 prohibited / 259 cleared        | unchanged                                                                 |
-| publication                  | 0 cleared, 64 blocked:prohibited, 195 blocked:unresolved     | 0 cleared, **75 blocked:prohibited, 184 blocked:unresolved**              |
+| Category | Before | After |
+| --- | --- | --- |
+| sourceUse | 0 permitted, 16 conditional, 6 prohibited, 237 unresolved | **31 permitted, 38 conditional, 18 prohibited, 172 unresolved** |
+| code | 16 permission-required, 6 prohibited, 237 unresolved | 31 permitted, 38 conditional, 18 prohibited, 172 unresolved |
+| textures | 96 n/a, 6 permission-required, 5 prohibited, 152 unresolved | 64 cleared, 96 n/a, 38 permission-required, 18 prohibited, 43 unresolved |
+| models | 121 n/a, 4 permission-required, 3 prohibited, 131 unresolved | 52 cleared, 121 n/a, 32 permission-required, 13 prohibited, 41 unresolved |
+| sounds | 208 n/a, 3 prohibited, 48 unresolved | 22 cleared, 208 n/a, 8 permission-required, 6 prohibited, 15 unresolved |
+| names / branding / behaviour | 259 unresolved / 199 n/a, 60 prohibited / 259 cleared | unchanged |
+| publication | 0 cleared, 64 blocked:prohibited, 195 blocked:unresolved | 0 cleared, **75 blocked:prohibited, 184 blocked:unresolved** |
 
 Publication stays 0 cleared because `names` is unresolved for every input, which is the inherited rule.
 

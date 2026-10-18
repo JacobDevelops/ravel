@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Run one native-display comparator trial; invoke under numen run."""
+"""Run one native-display comparator trial; invoke under numen run.
+
+Hardware probes and Java tooling are bounded; GPU queries share the explicit
+trial deadline. Preparation and matrix lock acquisition remain operator-owned.
+"""
 import argparse
 import csv
+from typing import Any
 import hashlib
 import json
 import os
@@ -21,7 +26,7 @@ ASM_URL = 'https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.6/asm-9.6.jar'
 ASM_SHA256 = '3c6fac2424db3d4a853b669f4e3d1d9c3c552235e19a319673f887083c2303a1'
 
 
-def pinned_asm(version, checksum):
+def pinned_asm(version: str, checksum: str) -> Path:
     asm = LOCAL / ('asm-' + version + '.jar')
     url = ASM_URL.replace('/9.6/asm-9.6.jar', '/' + version + '/asm-' + version + '.jar')
     if not asm.exists():
@@ -37,7 +42,7 @@ def pinned_asm(version, checksum):
     return asm
 
 
-def build():
+def build() -> Path:
     LOCAL.mkdir(parents=True, exist_ok=True, mode=0o700)
     asm = pinned_asm('9.6', ASM_SHA256)
     runtime = pinned_asm('9.9.1', '6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd')
@@ -45,9 +50,11 @@ def build():
     if classes.exists():
         shutil.rmtree(classes)
     classes.mkdir(exist_ok=True)
-    java_home = subprocess.check_output(['mise', 'where', 'java@temurin-8.0.504+1'], text=True).strip()
+    java_home = subprocess.check_output(['mise', 'where', 'java@temurin-8.0.504+1'],
+                                        text=True, timeout=60).strip()
     subprocess.run([str(Path(java_home) / 'bin/javac'), '-Xlint:all', '-Werror', '-cp', str(asm),
-                    '-d', str(classes), str(Path(__file__).with_name('BenchmarkAgent.java'))], check=True)
+                    '-d', str(classes), str(Path(__file__).with_name('BenchmarkAgent.java'))],
+                   check=True, timeout=300)
     agent = LOCAL / 'observer.jar'
     with zipfile.ZipFile(agent, 'w', zipfile.ZIP_DEFLATED) as out:
         out.writestr(zipfile.ZipInfo('META-INF/MANIFEST.MF'),
@@ -62,7 +69,7 @@ def build():
     return agent
 
 
-def java_process(directory):
+def java_process(directory: Path) -> Path | None:
     expected = f'-javaagent:{(LOCAL / "observer.jar").resolve()}={directory.resolve()}'.encode()
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():
@@ -76,22 +83,22 @@ def java_process(directory):
     return None
 
 
-def sample(proc):
+def sample(proc: Path) -> list[int | str]:
     status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
     stat = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
     return [time.monotonic_ns(), proc.name, int(status['VmRSS'].split()[0]),
             int(status['VmHWM'].split()[0]), int(stat[11]) + int(stat[12])]
 
 
-def hardware(out):
+def hardware(out: Path) -> None:
     commands = {'gpu': ['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv'],
                 'gl': ['glxinfo', '-B'], 'cpu': ['lscpu'], 'kernel': ['uname', '-srmo']}
     for name, command in commands.items():
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         (out / (name + '.txt')).write_text(result.stdout)
 
 
-def evict_inputs(instance, out):
+def evict_inputs(instance: Path, out: Path) -> None:
     paths = list((instance / '.minecraft/mods').glob('*.jar'))
     paths += list((LOCAL / 'prism/libraries').rglob('*.jar'))
     command = json.loads((out / 'command.json').read_text())['argv']
@@ -106,7 +113,7 @@ def evict_inputs(instance, out):
     (out / 'cache-advice.json').write_text(json.dumps(evicted, indent=2) + '\n')
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     if os.environ.get('DISPLAY') != ':0':
         raise ValueError('native measurement requires DISPLAY=:0')
     out = LOCAL / 'runs' / args.trial
@@ -136,7 +143,7 @@ def run(args):
         failure = None
         try:
             monitor(process, writer, out, args.timeout)
-        except (OSError, subprocess.CalledProcessError, TimeoutError) as error:
+        except (OSError, subprocess.SubprocessError, TimeoutError) as error:
             failure = str(error)
         finally:
             if process.poll() is None:
@@ -159,7 +166,7 @@ def run(args):
         raise RuntimeError('trial did not complete; inspect private trial logs')
 
 
-def monitor(process, writer, out, timeout):
+def monitor(process: subprocess.Popen, writer: Any, out: Path, timeout: float) -> None:
     deadline = time.monotonic() + timeout
     observed_jvm = False
     with (out / 'gpu.csv').open('w') as gpu:
@@ -174,8 +181,12 @@ def monitor(process, writer, out, timeout):
                     pass
             elif observed_jvm:
                 return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             result = subprocess.run(['nvidia-smi', '--id=0', '--query-gpu=memory.used,utilization.gpu',
-                                     '--format=csv,noheader,nounits'], capture_output=True, text=True, check=True)
+                                     '--format=csv,noheader,nounits'], capture_output=True, text=True,
+                                    check=True, timeout=remaining)
             gpu.write(str(time.monotonic_ns()) + ',' + result.stdout.strip() + '\n')
             gpu.flush()
             if (out / 'complete').exists() or (out / 'error.txt').exists():
@@ -186,7 +197,7 @@ def monitor(process, writer, out, timeout):
     raise TimeoutError('benchmark exceeded explicit trial deadline')
 
 
-def update_runtime_status(out, launcher_exit):
+def update_runtime_status(out: Path, launcher_exit: int | None) -> None:
     path = out / 'cleanroom-settings.json'
     if path.exists():
         settings = json.loads(path.read_text())
@@ -195,7 +206,7 @@ def update_runtime_status(out, launcher_exit):
         settings['launcher_exit'] = launcher_exit
         path.write_text(json.dumps(settings, indent=2) + '\n')
 
-def prepare_candidate(out):
+def prepare_candidate(out: Path) -> None:
     import prepare
     fixture = LOCAL.parent
     archive, artifacts, pins = prepare.verify_inputs(ROOT, fixture)
@@ -213,7 +224,7 @@ def prepare_candidate(out):
 
 
 
-def matrix(args):
+def matrix(args: argparse.Namespace) -> None:
     if '/' in args.matrix or args.matrix in ('.', '..'):
         raise ValueError('matrix prefix must be a simple identifier')
     for repetition in range(1, 4):
@@ -227,7 +238,7 @@ def matrix(args):
             subprocess.run(command, check=True)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('trial', nargs='?')
     parser.add_argument('--build', action='store_true')

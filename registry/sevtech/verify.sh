@@ -72,6 +72,8 @@ check-jsonschema --schemafile "$here/../../schemas/provenance.schema.json" \
   "$here/../provenance/$fixture.json" || status=1
 env RAVEL_FIXTURE_ID="$fixture" bash "$here/verify-rights.sh" "$mode" || status=1
 python3 -B "$here/verify-wp0.py" "${mode#--}" --fixture-id "$fixture" || status=1
+# Exercise evidence refusal paths as well as benchmark reconstruction.
+python3 -B -m unittest discover -s "$here" -p 'test_*.py' || status=1
 python3 -B -m unittest discover -s "$here/bench" -p 'test_*.py' || status=1
 if [ "$mode" = "--fixture" ]; then
   # Reuse standalone acquisition binding, including publisher override bytes

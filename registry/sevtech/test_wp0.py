@@ -1,4 +1,5 @@
 """Regression coverage for the real frozen WP0 evidence and phase boundary."""
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -7,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+import zipfile
 
 sys.dont_write_bytecode = True
 
@@ -21,6 +24,9 @@ ACQUISITION_SPEC.loader.exec_module(ACQUISITION)
 REBIND_SPEC = importlib.util.spec_from_file_location("rebind_references", MODULE_PATH.with_name("rebind-references.py"))
 REBIND = importlib.util.module_from_spec(REBIND_SPEC)
 REBIND_SPEC.loader.exec_module(REBIND)
+PIN_SPEC = importlib.util.spec_from_file_location("pin_evidence", MODULE_PATH.with_name("pin-evidence.py"))
+PIN = importlib.util.module_from_spec(PIN_SPEC)
+PIN_SPEC.loader.exec_module(PIN)
 
 
 class WP0EvidenceTests(unittest.TestCase):
@@ -102,6 +108,59 @@ class WP0EvidenceTests(unittest.TestCase):
             REBIND.rebind(self.root)
         self.assertEqual((self.inventory / "graph-evidence.json").read_bytes(), before)
 
+    def test_pin_evidence_records_frozen_hashes_and_preserves_matching_pins(self):
+        path = self.root / "registry/sevtech/evidence-pins.json"
+        original = path.read_bytes()
+        path.unlink()
+        PIN.produce(self.root)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+        PIN.produce(self.root)
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_pin_evidence_refuses_changed_references_without_rewriting_pins(self):
+        path = self.root / "registry/sevtech/evidence-pins.json"
+        original = path.read_bytes()
+        references = self.inventory / "references.json"
+        references.write_bytes(references.read_bytes() + b"\n")
+        with self.assertRaisesRegex(ValueError, "references bytes differ"):
+            PIN.produce(self.root)
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_pin_evidence_refuses_changed_existing_pins(self):
+        path = self.root / "registry/sevtech/evidence-pins.json"
+        original = '{"fixture": "different"}\n'
+        path.write_text(original)
+        with self.assertRaisesRegex(ValueError, "existing frozen evidence pins differ"):
+            PIN.produce(self.root)
+        self.assertEqual(path.read_text(), original)
+
+    def test_pin_evidence_failed_publish_leaves_no_partial_output(self):
+        path = self.root / "registry/sevtech/evidence-pins.json"
+        path.unlink()
+        before = set(path.parent.iterdir())
+        with patch.object(PIN.os, "link", side_effect=OSError("publish refused")):
+            with self.assertRaisesRegex(OSError, "publish refused"):
+                PIN.produce(self.root)
+        self.assertFalse(path.exists())
+        self.assertEqual(set(path.parent.iterdir()), before)
+
+    def test_pin_evidence_does_not_overwrite_concurrent_publication(self):
+        path = self.root / "registry/sevtech/evidence-pins.json"
+        path.unlink()
+        before = set(path.parent.iterdir())
+        original_link = PIN.os.link
+
+        def competing_publish(source, destination):
+            destination.write_text('{"fixture": "different"}\n')
+            original_link(source, destination)
+
+        with patch.object(PIN.os, "link", side_effect=competing_publish):
+            with self.assertRaises(FileExistsError):
+                PIN.produce(self.root)
+        self.assertEqual(json.loads(path.read_text()), {"fixture": "different"})
+        self.assertEqual(set(path.parent.iterdir()), before | {path})
+
     def test_missing_node_is_rejected(self):
         self.mutate("graph", lambda data: data["nodes"].pop())
         with self.assertRaisesRegex(ValueError, "declared node identities"):
@@ -109,7 +168,7 @@ class WP0EvidenceTests(unittest.TestCase):
 
     def test_wrong_phase_is_rejected_before_registry_checks(self):
         result = subprocess.run(["bash", str(MODULE_PATH.with_name("verify.sh")),
-                                 "--offline", "--phase", "invented"], capture_output=True, text=True, check=False)
+                                 "--offline", "--phase", "invented"], capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(result.returncode, 2)
         self.assertIn("unknown registry phase", result.stderr)
 
@@ -117,7 +176,7 @@ class WP0EvidenceTests(unittest.TestCase):
         import os
         result = subprocess.run(["bash", str(MODULE_PATH.with_name("verify.sh")), "--phase", "wp0"],
                                 env={**os.environ, "RAVEL_FIXTURE_ID": "atm10-tts-2.0.2"},
-                                capture_output=True, text=True, check=False)
+                                capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(result.returncode, 2)
         self.assertIn("WP0 phase requires", result.stderr)
 
@@ -126,7 +185,7 @@ class WP0EvidenceTests(unittest.TestCase):
         result = subprocess.run(["bash", str(MODULE_PATH.with_name("verify.sh")),
                                  "--offline", "--phase", "full"],
                                 env={**os.environ, "RAVEL_FIXTURE_ID": WP0.FIXTURE},
-                                capture_output=True, text=True, check=False)
+                                capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(result.returncode, 1)
         for obligation in ("reproducible legacy graph derivation (mcmod.info / @Mod extraction)",
                            "surfaces inventory", "implementation plans", "observed reads reconciliation"):
@@ -173,6 +232,42 @@ class WP0EvidenceTests(unittest.TestCase):
         for field, value in (("required", False), ("isLocked", True)):
             with self.subTest(field=field), self.assertRaisesRegex(SystemExit, "required or isLocked differs"):
                 ACQUISITION.validate_manifest_references({"files": [{**row, field: value}]}, references)
+
+    def test_acquisition_writes_verified_byte_ledger_and_rejects_changed_bytes(self):
+        local = self.root / "tests/fixtures/local" / WP0.FIXTURE
+        jar = local / "jars/example.jar"
+        jar.parent.mkdir(parents=True)
+        data = b"acquired jar bytes"
+        jar.write_bytes(data)
+        archive = local / "pack.zip"
+        with zipfile.ZipFile(archive, "w"):
+            pass
+        manifest = local / "manifest.json"
+        manifest.write_text(json.dumps({"files": [{"projectID": 1, "fileID": 2, "required": True}]}))
+
+        def pin(path):
+            return {"path": str(path.relative_to(self.root)),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+        document = {
+            "fixture": {"id": WP0.FIXTURE, "archive": pin(archive), "manifest": pin(manifest)},
+            "references": [{"projectId": 1, "fileId": 2, "required": True, "locked": None}],
+            "acquiredArtifacts": [{"artifact": jar.name, **pin(jar), "projectId": 1, "fileId": 2,
+                                   "status": "fetched", "size": len(data),
+                                   "sha1": hashlib.sha1(data).hexdigest()}],
+            "bundledArtifacts": [],
+        }
+        references = local / "references.json"
+        references.write_text(json.dumps(document))
+        table, paths = local / "table.tsv", local / "paths.tsv"
+        args = ["artifact-set.py", str(self.root), WP0.FIXTURE, str(references), str(table), str(paths)]
+        with patch.object(sys, "argv", args):
+            ACQUISITION.main()
+            self.assertEqual(table.read_text(), "mod\texample.jar\t" + pin(jar)["sha256"] + "\t1\t2\treference-sha256\n")
+            self.assertEqual(paths.read_text(), "example.jar\t" + str(jar.resolve()) + "\n")
+            jar.write_bytes(b"changed")
+            with self.assertRaisesRegex(SystemExit, "acquired artifact bytes differ"):
+                ACQUISITION.main()
 
     def test_registry_is_excluded_and_substrings_are_not_words(self):
         (self.root / "public.txt").write_text("synthetic_mod_suffix")

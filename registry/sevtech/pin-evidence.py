@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Record frozen WP0 evidence bytes; this does not derive legacy graph declarations."""
+"""Publish frozen WP0 evidence pins atomically; matching pins remain untouched.
+
+This records approved bytes, not derived legacy graph declarations.
+"""
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
+import tempfile
 
 REFERENCES_SHA256 = "eddb27d0cbcb6be2eb02a6895e960d8ad2af9d7e1394cbe379d594142b9be9f4"
 FIXTURE = "sevtech-ages-3.2.3"
@@ -24,9 +29,20 @@ def produce(root):
     pins = {"fixture": FIXTURE, "edges": 743, "excludedDeclarations": 3,
             "sha256": {name: hashlib.sha256(data).hexdigest() for name, data in documents.items()}}
     path = root / "registry/sevtech/evidence-pins.json"
-    if path.exists() and json.loads(path.read_text()) != pins:
-        raise ValueError("existing frozen evidence pins differ; refusing to bless changed evidence")
-    path.write_text(json.dumps(pins, indent=2) + "\n")
+    if path.exists():
+        if json.loads(path.read_text()) != pins:
+            raise ValueError("existing frozen evidence pins differ; refusing to bless changed evidence")
+    else:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as output:
+            temporary = Path(output.name)
+            try:
+                output.write(json.dumps(pins, indent=2) + "\n")
+                output.close()
+                # Public evidence stays readable; a competing publication must not be replaced.
+                temporary.chmod(0o644)
+                os.link(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
     print("Recorded frozen WP0 input hashes and declaration counts: " + str(path.relative_to(root)))
     print("NOT-YET-MET: reproducible legacy graph derivation (mcmod.info / @Mod extraction)")
 

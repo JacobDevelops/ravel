@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Prepare the byte-pinned original pack in a private Prism data directory."""
+"""Prepare the byte-pinned original pack in a private Prism data directory.
+
+Java location lookup is limited to 60 seconds; acquired fixture bytes and
+recorded benchmark settings remain pinned independently of that lookup.
+"""
 import argparse
+from collections.abc import Iterator, Mapping
+from typing import Any
 import configparser
 import hashlib
 import io
@@ -32,12 +38,12 @@ COMPONENTS = [
 ]
 
 
-def require(condition, message):
+def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
 
 
-def digest(path, algorithm="sha256"):
+def digest(path: Path, algorithm: str = "sha256") -> str:
     value = hashlib.new(algorithm)
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -45,18 +51,18 @@ def digest(path, algorithm="sha256"):
     return value.hexdigest()
 
 
-def write_json(path, value):
+def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def resolve_input(root, fixture, raw):
+def resolve_input(root: Path, fixture: Path, raw: str) -> Path:
     path = (root / raw.replace("${FIXTURE_ID}", FIXTURE)).resolve()
     require(path.is_relative_to(fixture.resolve()), "input escapes fixture: " + raw)
     require(path.is_file(), "missing acquired input: " + str(path))
     return path
 
 
-def verify_inputs(root, fixture):
+def verify_inputs(root: Path, fixture: Path) -> tuple[Path, dict[str, tuple[Path, str]], dict[str, str]]:
     ledger = root / "registry/inventory" / FIXTURE / "references.json"
     refs = json.loads(ledger.read_text())
     require(refs["fixture"]["id"] == FIXTURE, "wrong fixture ledger")
@@ -97,7 +103,7 @@ def verify_inputs(root, fixture):
     return archive, artifacts, pins
 
 
-def verify_mods(game, artifacts):
+def verify_mods(game: Path, artifacts: Mapping[str, tuple[Path, str]]) -> None:
     mods = game / "mods"
     require(mods.is_dir() and not mods.is_symlink(), "instance mods directory is missing or linked")
     entries = {p.name for p in mods.iterdir()}
@@ -111,7 +117,7 @@ def verify_mods(game, artifacts):
                 "existing instance mod differs: " + name)
 
 
-def verify_extracted_repository(repository, artifacts):
+def verify_extracted_repository(repository: Path, artifacts: Mapping[str, tuple[Path, str]]) -> None:
     """Forge extracts ContainedDeps to memory_repo or its legacy version directory."""
     require(repository.is_dir() and not repository.is_symlink(), "invalid Forge extracted repository")
     expected = {".jar": set(), ".meta": set()}
@@ -142,7 +148,7 @@ def verify_extracted_repository(repository, artifacts):
         seen.add((path.suffix, value))
 
 
-def archive_overrides(source):
+def archive_overrides(source: zipfile.ZipFile) -> Iterator[tuple[zipfile.ZipInfo, PurePosixPath]]:
     for entry in source.infolist():
         if not entry.filename.startswith("overrides/"):
             continue
@@ -153,7 +159,7 @@ def archive_overrides(source):
             yield entry, relative
 
 
-def unpack_overrides(archive, game, preserve=()):
+def unpack_overrides(archive: Path, game: Path, preserve: tuple[str, ...] | set[str] = ()) -> None:
     with zipfile.ZipFile(archive) as source:
         for entry, relative in archive_overrides(source):
             if relative.parts[0] in preserve:
@@ -172,7 +178,7 @@ def unpack_overrides(archive, game, preserve=()):
         snapshot.write_bytes(baseline)
 
 
-def reset_overrides(archive, game):
+def reset_overrides(archive: Path, game: Path) -> None:
     require(game.is_dir() and not game.is_symlink(), "instance game directory must be private")
     preserve = {"mods", "saves"}
     with zipfile.ZipFile(archive) as source:
@@ -187,7 +193,8 @@ def reset_overrides(archive, game):
     unpack_overrides(archive, game, preserve)
 
 
-def prepare_instance(prism, archive, artifacts, name="original"):
+def prepare_instance(prism: Path, archive: Path, artifacts: Mapping[str, tuple[Path, str]],
+                     name: str = "original") -> Path:
     instances = prism / "instances"
     instances.mkdir(parents=True, exist_ok=True)
     require(not instances.is_symlink(), "instance directory must not be a symlink")
@@ -212,7 +219,7 @@ def prepare_instance(prism, archive, artifacts, name="original"):
     return instance
 
 
-def configure_caches(prism, cache_root):
+def configure_caches(prism: Path, cache_root: Path) -> None:
     require(prism.is_dir() and not prism.is_symlink(), "Prism root must be private")
     for name in ("libraries", "assets", "meta"):
         target = prism / name
@@ -234,7 +241,7 @@ def configure_caches(prism, cache_root):
                 "private cache contains an external link: " + name)
 
 
-def update_ini(path, values):
+def update_ini(path: Path, values: Mapping[str, Any]) -> None:
     config = configparser.ConfigParser(interpolation=None)
     config.optionxform = str
     if path.exists():
@@ -246,7 +253,7 @@ def update_ini(path, values):
         config.write(stream, space_around_delimiters=False)
 
 
-def configure_options(game):
+def configure_options(game: Path) -> dict[str, str]:
     values = {
         "overrideWidth": "1280", "overrideHeight": "720", "fullscreen": "false",
         "enableVsync": "false", "renderDistance": "12", "maxFps": "0",
@@ -264,13 +271,13 @@ def configure_options(game):
     return values
 
 
-def mutable_cache_metadata(key):
+def mutable_cache_metadata(key: str) -> bool:
     return (key.startswith(("prism/meta/", "prism/assets/indexes/")) or
             key.startswith("prism/libraries/") and Path(key).suffix.lower() in
             {".json", ".xml", ".sha1", ".md5", ".lastupdated"})
 
 
-def pin_downloads(baseline, prism, pins):
+def pin_downloads(baseline: Path, prism: Path, pins: Mapping[str, str]) -> None:
     path = baseline / "inputs.toml"
     previous = tomllib.loads(path.read_text()).get("sha256", {}) if path.exists() else {}
     immutable, metadata, urls = dict(pins), {}, {}
@@ -300,7 +307,7 @@ def pin_downloads(baseline, prism, pins):
     temporary.replace(path)
 
 
-def configure_instance(instance, java, agent, output):
+def configure_instance(instance: Path, java: str | Path, agent: Path, output: Path) -> list[str]:
     args = PACK_ARGS + ["-javaagent:" + str(agent) + "=" + str(output),
                         "-Xloggc:" + str(output / "gc.log"), "-XX:+PrintGCDetails",
                         "-XX:+PrintGCDateStamps", "-XX:+PrintGCTimeStamps"]
@@ -317,7 +324,7 @@ def configure_instance(instance, java, agent, output):
     return args
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", type=Path, required=True, help="Java 8 observer agent JAR")
     parser.add_argument("--output", type=Path, required=True, help="observer and GC output directory")
@@ -332,7 +339,7 @@ def main():
     require(not any(c in str(agent) + str(output) for c in "\n\r="), "invalid agent/output path")
     archive, artifacts, pins = verify_inputs(root, fixture)
     java_home = subprocess.run(["mise", "where", JAVA], cwd=root, check=True,
-                               text=True, capture_output=True).stdout.strip()
+                               text=True, capture_output=True, timeout=60).stdout.strip()
     java = Path(java_home) / "bin/java"
     require(java.is_file(), "Temurin 8 executable missing: " + str(java))
     cache_root = args.cache_root or fixture.resolve().parent / ("prism-" + "approot-headless")
@@ -357,5 +364,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         sys.exit("baseline preparation refused: " + str(error))

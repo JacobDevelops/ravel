@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize completed private benchmark trials without pooling trial distributions."""
+"""Summarize private trials without pooling distributions; reports are regenerable."""
 import argparse
 from collections import defaultdict
 import csv
@@ -10,36 +10,37 @@ from pathlib import Path
 import re
 import statistics
 import sys
+from typing import Any, Iterable, Sequence
 
 SCENES = ("spawn_idle", "square_exploration", "loaded_chunk_stress")
 LOCAL = Path(__file__).resolve().parents[3] / "tests/fixtures/local/sevtech-ages-3.2.3/baseline"
 
 
-def require(condition, message):
+def require(condition: Any, message: str) -> None:
     if not condition:
         raise ValueError(message)
 
 
-def quantile(values, fraction):
+def quantile(values: Iterable[float], fraction: float) -> float:
     ordered = sorted(values)
     require(bool(ordered) and 0 < fraction <= 1, "quantile requires samples and 0 < fraction <= 1")
     require(all(math.isfinite(value) for value in ordered), "nonfinite sample")
     return ordered[math.ceil(len(ordered) * fraction) - 1]
 
 
-def distribution(values):
+def distribution(values: Sequence[float]) -> dict[str, float]:
     return {"p50": quantile(values, 0.50), "p95": quantile(values, 0.95),
             "p99": quantile(values, 0.99)}
 
 
-def rows(directory, name):
+def rows(directory: Path, name: str) -> list[dict[str, str]]:
     with (directory / name).open(newline="") as stream:
         result = list(csv.DictReader(stream))
     require(bool(result), "empty measurement: " + name)
     return result
 
 
-def gc_pauses(text):
+def gc_pauses(text: str) -> list[float]:
     """Read root stop-the-world durations, not concurrent phases or Times details."""
     pauses, seen = [], set()
     starts = re.finditer(r"\[(?:Full GC\b|GC (?:pause|remark|cleanup)\b|GC\s*\()", text)
@@ -72,7 +73,7 @@ def gc_pauses(text):
     return pauses
 
 
-def event_metrics(events):
+def event_metrics(events: list[dict[str, str]]) -> dict[str, float]:
     result = {}
     for event, field, metric in (("menu_ready", "startup_ns", "agent_startup_ms"),
                                   ("world_ready", "world_creation_ns", "world_creation_ms")):
@@ -106,7 +107,7 @@ STARTUP_ANCHORS = (
 )
 
 
-def startup_phases(text):
+def startup_phases(text: str) -> dict[str, Any]:
     """Retain ordered Forge lifecycle anchors; intervals are gaps between observed anchors."""
     markers, day, last, start = [], 0, None, 0
     lines = text.splitlines()
@@ -136,7 +137,8 @@ def startup_phases(text):
                        "absent anchors are not inferred."}
 
 
-def timing_metrics(directory, filename, field, label):
+def timing_metrics(directory: Path, filename: str, field: str,
+                   label: str) -> tuple[dict[str, float], dict[str, int]]:
     measurements = rows(directory, filename)
     metrics, counts = {}, {}
     for scene in SCENES:
@@ -148,7 +150,8 @@ def timing_metrics(directory, filename, field, label):
     return metrics, counts
 
 
-def sampled_metrics(measurements, fields, end):
+def sampled_metrics(measurements: list[dict[str, str]], fields: dict[str, tuple[str, float]],
+                    end: int) -> dict[str, float]:
     ordered = sorted(measurements, key=lambda row: int(row["monotonic_ns"]))
     ordered = [row for row in ordered if int(row["monotonic_ns"]) <= end]
     require(bool(ordered), "samples do not precede completion")
@@ -168,7 +171,8 @@ def sampled_metrics(measurements, fields, end):
     return metrics
 
 
-def process_metrics(measurements, end, ticks_per_second):
+def process_metrics(measurements: list[dict[str, str]], end: int,
+                    ticks_per_second: int) -> dict[str, float]:
     metrics = sampled_metrics(measurements, {"rss_kib": ("rss_mib", 1 / 1024)}, end)
     metrics["rss_mib.peak"] = max(float(row["peak_rss_kib"]) / 1024 for row in measurements)
     ordered = sorted((row for row in measurements if int(row["monotonic_ns"]) <= end),
@@ -188,7 +192,7 @@ def process_metrics(measurements, end, ticks_per_second):
     return metrics
 
 
-def workload_protocol(settings):
+def workload_protocol(settings: dict[str, Any]) -> dict[str, Any]:
     require(isinstance(settings, dict), "missing workload provenance")
     agent = settings.get("agentSha256")
     require(isinstance(agent, str) and re.fullmatch(r"[0-9a-f]{64}", agent),
@@ -205,7 +209,7 @@ def workload_protocol(settings):
             "fixture": fixture}
 
 
-def runtime_cohort(directory):
+def runtime_cohort(directory: Path) -> dict[str, Any]:
     command = json.loads((directory / "command.json").read_text())
     provenance = command.get("provenance", {})
     version = provenance.get("javaVersion")
@@ -234,7 +238,7 @@ def runtime_cohort(directory):
             "argv": [value.replace(str(directory.resolve()), "<trial>") for value in argv]}
 
 
-def summarize_trial(directory):
+def summarize_trial(directory: Path) -> dict[str, Any]:
     result = json.loads((directory / "result.json").read_text())
     require(result.get("complete") is True and (directory / "complete").is_file() and
             not (directory / "error.txt").exists(), "trial is incomplete")
@@ -284,7 +288,7 @@ def summarize_trial(directory):
                                    "includes": "Final 30 seconds before shutdown_requested or loaded_chunk_stress scene_end; excludes saving"}}
 
 
-def aggregate(trials):
+def aggregate(trials: list[dict[str, Any]]) -> list[dict[str, Any]]:
     groups = defaultdict(list)
     protocol = None
     for trial in trials:
@@ -315,11 +319,11 @@ def aggregate(trials):
     return output
 
 
-def display(value):
+def display(value: float | None) -> str:
     return "n/a" if value is None else format(value, ".4g")
 
 
-def markdown(trials, groups):
+def markdown(trials: list[dict[str, Any]], groups: list[dict[str, Any]]) -> str:
     lines = ["# Benchmark summary", "", "Nearest-rank quantiles; no interpolation or pooled trial samples.",
              "Aggregate p50/p95/p99 describe trial-level metrics, not a pooled frame/tick distribution.",
              "Metrics with fewer than three nonmissing trial values have no aggregate quantiles (n/a).",
@@ -356,7 +360,7 @@ def markdown(trials, groups):
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trials", nargs="*", type=Path, help="completed trial directories; default: local runs")
     parser.add_argument("--output", type=Path, default=LOCAL / "report", help="private summary output directory")

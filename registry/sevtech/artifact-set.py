@@ -19,7 +19,7 @@ def validate_manifest_references(manifest, references):
         refuse("manifest reference identity, required or isLocked differs")
 
 
-def main():
+def main() -> None:
     root, fixture_id, references_path, table_path, paths_path = sys.argv[1:]
     root = Path(root).resolve()
     local = (root / "tests/fixtures/local" / fixture_id).resolve()

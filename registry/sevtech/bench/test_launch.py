@@ -20,7 +20,7 @@ class LaunchTests(unittest.TestCase):
             with patch.object(launch.subprocess, 'run', return_value=result) as invoked:
                 self.assertIn(version, launch.validate_java('/actual/java', major))
                 invoked.assert_called_once_with(
-                    ['/actual/java', '-version'], capture_output=True, text=True, check=True)
+                    ['/actual/java', '-version'], capture_output=True, text=True, check=True, timeout=30)
             with patch.object(launch.subprocess, 'run', return_value=result):
                 with self.assertRaisesRegex(ValueError, 'actual Java'):
                     launch.validate_java('/actual/java', 27 if major == 8 else 8)

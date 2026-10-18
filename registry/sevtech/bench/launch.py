@@ -3,6 +3,7 @@
 
 This module never starts Minecraft. prepare_command returns an argv and cwd for
 Popen; its only account is the deterministic, unauthenticated BenchOffline user.
+Java version probes are bounded to 30 seconds and finish before measurement.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +19,7 @@ import stat
 import subprocess
 import tempfile
 import tomllib
+from typing import Any, Iterable
 import urllib.request
 import uuid
 import zipfile
@@ -33,7 +35,7 @@ COMPONENT_PINS = {
 }
 
 
-def private_path(root, relative):
+def private_path(root: Path, relative: str) -> Path:
     name = PurePosixPath(relative)
     require(not name.is_absolute() and name.parts and '..' not in name.parts and
             '\\' not in relative, 'unsafe artifact path: ' + relative)
@@ -47,7 +49,7 @@ def private_path(root, relative):
     return target
 
 
-def remember(path, url, root, records):
+def remember(path: Path, url: str, root: Path, records: dict[str, Any]) -> Path:
     key = str(path.relative_to(root))
     record = {'url': url, 'sha256': digest(path), 'size': path.stat().st_size}
     previous = records.get(key)
@@ -56,7 +58,8 @@ def remember(path, url, root, records):
     return path
 
 
-def fetch(path, spec, root, records, source=None):
+def fetch(path: Path, spec: dict[str, Any], root: Path, records: dict[str, Any],
+          source: Path | None = None) -> Path:
     spec = dict(spec)
     if spec['url'].startswith('http://'):
         spec['url'] = 'https://' + spec['url'][7:]
@@ -84,7 +87,7 @@ def fetch(path, spec, root, records, source=None):
     return remember(path, spec['url'], root, records)
 
 
-def verify_download(path, spec):
+def verify_download(path: Path, spec: dict[str, Any]) -> None:
     if 'size' in spec:
         require(path.stat().st_size == spec['size'], 'download size differs: ' + str(path))
     for algorithm in ('sha1', 'sha256'):
@@ -92,7 +95,7 @@ def verify_download(path, spec):
             require(digest(path, algorithm) == spec[algorithm], algorithm.upper() + ' differs: ' + str(path))
 
 
-def allowed(row):
+def allowed(row: dict[str, Any]) -> bool:
     if 'rules' not in row:
         return True
     result = False
@@ -111,12 +114,12 @@ def allowed(row):
     return result
 
 
-def library_key(row):
+def library_key(row: dict[str, Any]) -> tuple:
     parts = row['name'].split(':')
     return (*parts[:2], tuple(parts[3:]), bool(row.get('natives')))
 
 
-def merge_components(components):
+def merge_components(components: list[dict[str, Any]]) -> dict[str, Any]:
     result = {'libraries': [], 'tweakers': []}
     for component in sorted(components, key=lambda row: row.get('order', 0)):
         for key in ('mainClass', 'mainJar', 'minecraftArguments', 'assetIndex', 'logging'):
@@ -137,7 +140,7 @@ def merge_components(components):
     return result
 
 
-def maven_path(name, classifier=None):
+def maven_path(name: str, classifier: str | None = None) -> str:
     coordinate, _, extension = name.partition('@')
     parts = coordinate.split(':')
     require(len(parts) in (3, 4), 'unsupported Maven coordinate: ' + name)
@@ -147,7 +150,7 @@ def maven_path(name, classifier=None):
     return '/'.join((group.replace('.', '/'), artifact, version, filename))
 
 
-def verify_overlay(path, instance):
+def verify_overlay(path: Path, instance: Path) -> None:
     import cleanroom
     archive = LOCAL / ('cleanroom-' + cleanroom.VERSION + '.zip')
     require(archive.is_file() and digest(archive) == cleanroom.SHA256,
@@ -158,7 +161,7 @@ def verify_overlay(path, instance):
             'Cleanroom overlay entry differs: ' + str(path))
 
 
-def read_components(instance, records):
+def read_components(instance: Path, records: dict[str, Any]) -> list[dict[str, Any]]:
     pack = json.loads((instance / 'mmc-pack.json').read_text())
     rows = pack['components']
     versions = {r['uid']: r['version'] for r in rows}
@@ -192,7 +195,7 @@ def read_components(instance, records):
     return components
 
 
-def official_metadata(records):
+def official_metadata(records: dict[str, Any]) -> tuple[dict[str, Any], Path]:
     inputs = ROOT / 'tests/fixtures/local/tooling/minecraft-1.12.2/inputs.toml'
     require(inputs.is_file(), 'missing pinned official Minecraft inputs: ' + str(inputs))
     pins = tomllib.loads(inputs.read_text())['inputs']
@@ -207,7 +210,8 @@ def official_metadata(records):
     return official, ROOT / client['path']
 
 
-def resolve_library(row, instance, records, classifier=None):
+def resolve_library(row: dict[str, Any], instance: Path, records: dict[str, Any],
+                    classifier: str | None = None) -> Path:
     relative = maven_path(row['name'], classifier)
     downloads = row.get('downloads', {})
     spec = downloads.get('classifiers', {}).get(classifier) if classifier else downloads.get('artifact')
@@ -223,7 +227,7 @@ def resolve_library(row, instance, records, classifier=None):
     return fetch(path, spec, LOCAL, records)
 
 
-def extract_natives(archive, destination, exclude=()):
+def extract_natives(archive: Path, destination: Path, exclude: Iterable[str] = ()) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as source:
         for entry in source.infolist():
@@ -240,7 +244,8 @@ def extract_natives(archive, destination, exclude=()):
                     shutil.copyfileobj(incoming, out)
 
 
-def resolve_libraries(profile, instance, records):
+def resolve_libraries(profile: dict[str, Any], instance: Path,
+                      records: dict[str, Any]) -> tuple[list[Path], Path]:
     classpath = []
     natives = private_path(instance, 'natives-direct')
     if natives.exists():
@@ -260,7 +265,7 @@ def resolve_libraries(profile, instance, records):
     return classpath, natives
 
 
-def resolve_assets(index, game, records):
+def resolve_assets(index: dict[str, Any], game: Path, records: dict[str, Any]) -> Path:
     assets = LOCAL / 'prism/assets'
     path = private_path(assets, 'indexes/' + index['id'] + '.json')
     fetch(path, index, LOCAL, records)
@@ -292,7 +297,8 @@ def resolve_assets(index, game, records):
     return assets
 
 
-def java_command(settings, profile, classpath, game, assets, natives, asset_index):
+def java_command(settings: dict[str, Any], profile: dict[str, Any], classpath: list[Path],
+                 game: Path, assets: Path, natives: Path, asset_index: str) -> list[str]:
     offline = uuid.UUID(bytes=hashlib.md5(b'OfflinePlayer:BenchOffline').digest(), version=3).hex
     values = {'auth_player_name': 'BenchOffline', 'version_name': '1.12.2',
               'game_directory': str(game), 'assets_root': str(assets),
@@ -315,7 +321,7 @@ def java_command(settings, profile, classpath, game, assets, natives, asset_inde
     return command
 
 
-def read_settings(instance, output):
+def read_settings(instance: str, output: Path) -> dict[str, Any]:
     if instance == 'cleanroom':
         path = output / 'cleanroom-settings.json'
         require(path.is_file(), 'Cleanroom settings missing: run cleanroom.py for this trial first')
@@ -337,8 +343,8 @@ def read_settings(instance, output):
     return settings
 
 
-def validate_java(java, major):
-    result = subprocess.run([java, '-version'], capture_output=True, text=True, check=True)
+def validate_java(java: str, major: int) -> str:
+    result = subprocess.run([java, '-version'], capture_output=True, text=True, check=True, timeout=30)
     version = result.stderr + result.stdout
     prefix = '1.8' if major == 8 else str(major)
     require(re.search(r'version "' + re.escape(prefix) + r'(?:[.\-+\"]|$)', version) is not None,
@@ -346,7 +352,8 @@ def validate_java(java, major):
     return version.strip()
 
 
-def candidate_command(candidate, game, assets, natives, agent, output):
+def candidate_command(candidate: dict[str, Any], game: Path, assets: Path, natives: Path,
+                      agent: Path, output: Path) -> list[str]:
     paths = [Path(value).resolve() for value in candidate['classpath']]
     require(paths, 'candidate classpath is empty')
     for path in paths:
@@ -386,7 +393,8 @@ def candidate_command(candidate, game, assets, natives, agent, output):
             os.pathsep.join(map(str, paths)), candidate['mainClass'], *tokens('gameArgs')]
 
 
-def prepare_candidate(candidate, instance, output, records):
+def prepare_candidate(candidate: Path | str | None, instance: Path, output: Path,
+                      records: dict[str, Any]) -> tuple[list[str], Path, dict[str, Any]]:
     require(candidate is not None, 'ravel requires an explicit real candidate JSON')
     path = Path(candidate).resolve()
     data = json.loads(path.read_text())
@@ -407,7 +415,8 @@ def prepare_candidate(candidate, instance, output, records):
     return command, game, provenance
 
 
-def prepare_command(instance, output, candidate=None):
+def prepare_command(instance: str, output: Path | str,
+                    candidate: Path | str | None = None) -> tuple[list[str], Path]:
     """Finish all resolver I/O, then return (Java argv, .minecraft cwd)."""
     require(instance in ('original', 'cleanroom', 'ravel'), 'unknown instance: ' + instance)
     require(platform.system() == 'Linux' and platform.machine() in ('x86_64', 'amd64'),
@@ -454,7 +463,7 @@ def prepare_command(instance, output, candidate=None):
     return command, game
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--instance', choices=('original', 'cleanroom', 'ravel'), default='original')
     parser.add_argument('--output', type=Path, required=True)

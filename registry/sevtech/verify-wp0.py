@@ -218,15 +218,7 @@ def validate_components(graph, evidence, nodes, adjacency, blocked):
         require(evidence["totals"][key] == value, "graph evidence total differs: " + key)
 
 
-def validate_public_boundary(root, identities, tracked_paths=None):
-    """Apply historical whole-word/path refusal to the selected declared ids."""
-    if tracked_paths is None:
-        command = (["jj", "--no-pager", "file", "list", "-T", 'path ++ "\\0"']
-                   if (root / ".jj").is_dir() else ["git", "ls-files", "-z"])
-        result = subprocess.run(command, cwd=root, capture_output=True, check=True)
-        tracked_paths = result.stdout.decode().split("\0")
-    public = [path for path in tracked_paths if path and not path.startswith("registry/")]
-    require(bool(public) and bool(identities), "public boundary has no paths or graph identities")
+def public_collision_decisions(root):
     decisions = {}
     selected = set()
     for relative in ("registry/checks/public-word-collisions.tsv",
@@ -239,6 +231,19 @@ def validate_public_boundary(root, identities, tracked_paths=None):
             decisions[identity] = fields[1]
             if relative.startswith("registry/sevtech/"):
                 selected.add(identity)
+    return decisions, selected
+
+
+def validate_public_boundary(root, identities, tracked_paths=None):
+    """Apply historical whole-word/path refusal to the selected declared ids."""
+    if tracked_paths is None:
+        command = (["jj", "--no-pager", "file", "list", "-T", 'path ++ "\\0"']
+                   if (root / ".jj").is_dir() else ["git", "ls-files", "-z"])
+        result = subprocess.run(command, cwd=root, capture_output=True, check=True, timeout=60)
+        tracked_paths = result.stdout.decode().split("\0")
+    public = [path for path in tracked_paths if path and not path.startswith("registry/")]
+    require(bool(public) and bool(identities), "public boundary has no paths or graph identities")
+    decisions, selected = public_collision_decisions(root)
     patterns = {identity.lower(): re.compile(
         r"(?<![A-Za-z0-9_])" + re.escape(identity) + r"(?![A-Za-z0-9_])", re.IGNORECASE | re.ASCII)
                 for identity in identities}
@@ -268,7 +273,7 @@ def main():
         validate(root, args.fixture_id, "--" + args.mode)
         graph = load(root / "registry/inventory" / args.fixture_id / "graph.json")
         validate_public_boundary(root, [node["id"] for node in graph["nodes"]])
-    except (ValueError, KeyError, TypeError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
+    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
         print("WP0 validation failed: " + str(error), file=sys.stderr)
         return 1
     print("WP0 declaration evidence bound: 254 references + 5 bundled = 259 input jars; 4 nested jars; 273 declared identities (not runtime containers)")

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Prepare the optional exact-pack Cleanroom comparator; never launch Minecraft."""
+"""Prepare the optional exact-pack Cleanroom comparator; never launch Minecraft.
+
+Java location lookup is limited to 60 seconds and release metadata must match
+the repository's complete JDK pin before comparator settings are produced.
+"""
 import argparse
+from collections.abc import Iterable, Mapping
+from typing import Any
 import json
 from pathlib import Path, PurePosixPath
 import shlex
@@ -28,7 +34,7 @@ WARNINGS = {
 }
 
 
-def fetch_overlay(baseline):
+def fetch_overlay(baseline: Path) -> Path:
     archive = baseline / ("cleanroom-" + VERSION + ".zip")
     prepare.require(not archive.is_symlink(), "overlay archive must not be linked")
     if not archive.exists():
@@ -44,7 +50,7 @@ def fetch_overlay(baseline):
     return archive
 
 
-def write_pins(baseline, archive, artifacts):
+def write_pins(baseline: Path, archive: Path, artifacts: Mapping[str, tuple[Path, str]]) -> None:
     values = {"schema_version": 1, "version": VERSION, "url": URL, "sha256": SHA256}
     path = baseline / "cleanroom-inputs.toml"
     mods = {name: value[1] for name, value in sorted(artifacts.items())}
@@ -60,7 +66,7 @@ def write_pins(baseline, archive, artifacts):
     temporary.replace(path)
 
 
-def ignore_private(directory, names):
+def ignore_private(directory: str, names: Iterable[str]) -> list[str]:
     ignored = []
     for name in names:
         path = Path(directory) / name
@@ -71,7 +77,7 @@ def ignore_private(directory, names):
     return ignored
 
 
-def apply_overlay(archive, instance):
+def apply_overlay(archive: Path, instance: Path) -> dict[str, Any]:
     with zipfile.ZipFile(archive) as source:
         pack = json.loads(source.read("mmc-pack.json"))
         components = {row["uid"]: row["version"] for row in pack["components"]}
@@ -95,7 +101,8 @@ def apply_overlay(archive, instance):
         return json.loads(source.read("patches/net.minecraftforge.json"))
 
 
-def clone_instance(prism, archive, artifacts):
+def clone_instance(prism: Path, archive: Path, artifacts: Mapping[str, tuple[Path, str]]
+                   ) -> tuple[Path, dict[str, Any]]:
     original = prism / "instances/original"
     target = prism / "instances/cleanroom"
     prepare.require(original.is_dir() and not original.is_symlink(),
@@ -115,11 +122,11 @@ def clone_instance(prism, archive, artifacts):
     return target, component
 
 
-def resolve_java(root):
+def resolve_java(root: Path) -> tuple[str, str, str]:
     pin = tomllib.loads((root / "mise.toml").read_text())["tools"]["java"]
     prepare.require(isinstance(pin, str) and "27." in pin, "repository Java pin must select JDK 27")
     result = subprocess.run(["mise", "which", "java"], cwd=root, check=True,
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, timeout=60)
     java = Path(result.stdout.strip()).resolve()
     prepare.require(java.is_file(), "mise Java executable missing")
     release = java.parent.parent / "release"
@@ -136,7 +143,8 @@ def resolve_java(root):
     return str(java), pin, version
 
 
-def configure_instance(instance, java, version, agent, output):
+def configure_instance(instance: Path, java: str, version: str, agent: Path,
+                       output: Path) -> tuple[list[str], dict[str, str]]:
     prepare.require(":" not in str(output), "GC output path must not contain ':'")
     args = ["-javaagent:" + str(agent) + "=" + str(output),
             "-Xlog:gc*,safepoint:file=" + str(output / "gc.log") + ":time,uptime,level,tags"]
@@ -152,7 +160,7 @@ def configure_instance(instance, java, version, agent, output):
     return args, prepare.configure_options(instance / ".minecraft")
 
 
-def setup(root, baseline, agent, output):
+def setup(root: Path, baseline: Path, agent: Path, output: Path) -> dict[str, Any]:
     fixture = baseline.parent
     _, artifacts, _ = prepare.verify_inputs(root, fixture)
     java, pin, version = resolve_java(root)
@@ -180,7 +188,7 @@ def setup(root, baseline, agent, output):
     }
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="observer and GC output directory")
     parser.add_argument("--agent", type=Path, required=True, help="existing observer agent JAR")

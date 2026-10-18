@@ -26,8 +26,9 @@ must come from the integration owner's results for the current tree, not old cou
   and a replacement renderer are the selected direction. Keep the other supported
   version targets and historical ATM10 evidence.
 - The placeholder test mods (`dependency-base`, `dependency-consumer`, `failure-cases`)
-  were retained because M4 binds their inventory. The rvl-146 singleton was retained
-  because its removal would alter M6-bound counts. SDK crate-root reexports remain.
+  were deleted; the M4 inventory is checked at its record's last-amendment revision.
+  The rvl-146 singleton was retained because its removal would alter M6-bound counts.
+  SDK crate-root reexports remain.
 - Historical evidence results and package source digests have producer-specific binding
   rules; consult their manifests and producer before changing them. Rejected historical
   changes are not new deletion opportunities.
@@ -105,5 +106,6 @@ must come from the integration owner's results for the current tree, not old cou
 - `registry/notes/sevtech/sevtech-plan.md`: work-package design and dependencies.
 - `registry/notes/sevtech/sevtech-wp0-report.md` and `sevtech-rights-report.md` in that
   directory: input-specific provenance, rights research, and disposition history.
-- `jvm-crate-audit.md`: dated JVM/library research at its stated snapshot, not current
-  implementation status or an instruction to repeat already completed migrations.
+- `registry/notes/jvm-crate-audit-2026-10-15.md`: dated JVM/library research at its
+  stated snapshot, not current implementation status or an instruction to repeat
+  already completed migrations.

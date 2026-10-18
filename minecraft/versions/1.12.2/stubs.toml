@@ -1,8 +1,93 @@
-# Only the legacy pause-observation template's genuine game dependency.
+# Version-local sibling dependencies, resolved from the reviewed legacy artifacts.
 schemaVersion = 1
 minecraft = "1.12.2"
 
 [[stub]]
 role = "SCREEN"
 class = "net.minecraft.client.gui.screen.Screen"
-members = ["shouldPauseGame"]
+members = [
+  "<init>",
+  "shouldPauseGame",
+  { role = "init", member = "init", parameters = [
+  ] },
+  "resize",
+  "render",
+  "keyPressed",
+  "mouseClicked",
+  "mouseDragged",
+  "mouseReleased",
+  "removed",
+  "width",
+  "height",
+  "textRenderer",
+  "minecraft",
+  "buttons",
+]
+
+[[stub]]
+role = "LEGACY_SAVED_DATA"
+class = "net.minecraft.world.saveddata.SavedData"
+members = ["<init>", "readNbt", "writeNbt", "markDirty"]
+
+[[stub]]
+role = "LEGACY_NBT"
+class = "net.minecraft.nbt.NbtCompound"
+members = [
+  "getByteArray",
+  "putByteArray",
+  { role = "contains", member = "contains", parameters = [
+    "java.lang.String",
+    "int",
+  ] },
+  "getCompound",
+]
+
+[[stub]]
+role = "LEGACY_NBT_IO"
+class = "net.minecraft.nbt.NbtIo"
+members = ["read"]
+
+[[stub]]
+role = "LEGACY_NBT_LIMITER"
+class = "net.minecraft.nbt.NbtReadLimiter"
+members = ["<init>"]
+
+[[stub]]
+role = "LEGACY_GUI"
+class = "net.minecraft.client.gui.GuiElement"
+members = ["fill", "drawString", "drawCenteredString"]
+
+[[stub]]
+role = "LEGACY_FONT"
+class = "net.minecraft.client.render.TextRenderer"
+members = []
+
+[[stub]]
+role = "LEGACY_CLIENT"
+class = "net.minecraft.client.Minecraft"
+members = ["getInstance", "openScreen", "screen"]
+
+[[stub]]
+role = "LEGACY_BUTTON"
+class = "net.minecraft.client.gui.widget.ButtonWidget"
+members = ["<init>", "mouseClicked"]
+
+[[stub]]
+role = "LEGACY_TITLE"
+class = "net.minecraft.client.gui.screen.TitleScreen"
+members = ["<init>"]
+
+[[stub]]
+role = "LEGACY_BLOCK"
+class = "net.minecraft.block.Block"
+members = ["<init>", "setStrength", "setBlastResistance", "setTicksRandomly"]
+
+[[stub]]
+role = "LEGACY_MATERIAL"
+class = "net.minecraft.block.material.Material"
+members = ["<init>", "getColor", "setRequiresTool", "STONE"]
+
+[[stub]]
+role = "LEGACY_MAP_COLOR"
+class = "net.minecraft.block.material.MapColor"
+members = []

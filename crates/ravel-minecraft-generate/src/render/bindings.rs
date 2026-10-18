@@ -19,10 +19,14 @@ pub(crate) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
      use ravel_minecraft::{{HookId, HookKind, HookTarget, PackFormat, PackFormatSpelling}};\n\
      \n\
      /// The Minecraft version every target below was resolved against.\n\
-     pub const MINECRAFT_VERSION: &str = \"{}\";\n",
+     pub const MINECRAFT_VERSION: &str = \"{}\";\n\
+     \n\
+     /// Whether the declared adapter capabilities select the legacy game surface.\n\
+     pub const LEGACY_ADAPTER: bool = {};\n",
         adapter.minecraft,
         adapter.mapping_source.as_str(),
-        adapter.minecraft
+        adapter.minecraft,
+        adapter.is_legacy()
     )
     .expect("writing to a String cannot fail");
 
@@ -103,4 +107,26 @@ fn bindings_formats(text: &mut String, adapter: &Adapter) {
         }
     )
     .expect("writing to a String cannot fail");
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::inputs::Inventory;
+    use crate::test_fixtures::legacy_adapter;
+
+    #[test]
+    fn adapter_selection_follows_capabilities_not_the_version_label() {
+        let mut adapter = legacy_adapter();
+        let inventory = Inventory {
+            schema_version: 1,
+            minecraft: adapter.minecraft.clone(),
+            hooks: Vec::new(),
+            non_goals: Vec::new(),
+        };
+        let legacy = super::bindings(&adapter, &inventory, &[]);
+        assert!(legacy.contains("pub const LEGACY_ADAPTER: bool = true;"));
+        adapter.capabilities.clear();
+        let modern = super::bindings(&adapter, &inventory, &[]);
+        assert!(modern.contains("pub const LEGACY_ADAPTER: bool = false;"));
+    }
 }

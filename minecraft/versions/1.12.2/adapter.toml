@@ -51,22 +51,22 @@ upstream = "https://piston-meta.mojang.com/v1/packages/6e69e85d0f85f4f4b9e12dd99
 
 [inputs.hookInventory]
 path = "minecraft/versions/1.12.2/hooks.toml"
-sha256 = "8f5d1442215cebc20f9a253ed817fcf6a8c4666435570aeeceaf49d67245a27d"
+sha256 = "00c9e92ac0141aa4786631ab7e921235544af80ff3830f6ecffd571b0fec02c2"
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.12.2/stubs.toml"
-sha256 = "2ba7e4b2ea2ed617d9e0500f5594b6cb9d7fce394feea6679a83b3af07abea0d"
+sha256 = "98526209edda16b783d7c0386474163eb510078e2e1d3d35078a2b660d0875ca"
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.12.2/reflection.toml"
-sha256 = "243865889648b703bf80043beeefacf55b44c3a9bfa4a251fb10c967836267a8"
+sha256 = "570bdb83292a358fdc89c51671d6a05649a971d7b80fccf2ff005d1c6ab9c3cb"
 
 [inputs.mappingsLock]
 path = "minecraft/versions/1.12.2/mappings.lock"
-sha256 = "44cc2d952da0c6d78bb7bb7ae04b753a548678f5d2c9d78f527f119118e8326e"
-bytes = 5497
+sha256 = "e0379cae6cdcbbc11f951a45f7073795b73e81b647000f7fb28fff18e4541c44"
+bytes = 7338
 
 [inputs.stubsLock]
 path = "minecraft/versions/1.12.2/stubs.lock"
-sha256 = "b8069c640088b7be8086c00639df731f7a383e937cefd0d841c42627d508d3f1"
-bytes = 1647
+sha256 = "aa3216f902820eaf818a6180b912a92c9ccd0fa5dc1ad1d585a76d59332060ea"
+bytes = 7623

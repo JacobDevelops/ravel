@@ -210,9 +210,11 @@ const SCREEN_PACKAGE: &str = "dev.ravel.jvm.screen";
 struct Rendered {
     bindings: String,
     exports: String,
+    has_refusable_hooks: bool,
     hook_java: String,
     game_names_java: String,
     game_members_java: String,
+    legacy_names_java: String,
     menu_layout_java: String,
     /// The Java release the screen jar for this version is compiled for.
     java_release: String,
@@ -275,6 +277,8 @@ pub struct RustGenerated {
     pub watched: Vec<PathBuf>,
     pub bindings: PathBuf,
     pub exports: PathBuf,
+    /// Whether the selected hook inventory contains a refusable hook.
+    pub has_refusable_hooks: bool,
 }
 
 /// Returns exact parameter descriptors after validating the complete method signature.
@@ -316,6 +320,7 @@ pub fn generate_rust(
         watched: write_watched(root, &pinned, &rendered),
         bindings,
         exports,
+        has_refusable_hooks: rendered.has_refusable_hooks,
     })
 }
 
@@ -481,9 +486,11 @@ fn compose_render(
     Ok(Rendered {
         bindings: render::bindings::bindings(&pinned.adapter, &pinned.inventory, resolved),
         exports: render::exports::exports(&shapes),
+        has_refusable_hooks: shapes.iter().any(render::shape::Shape::refuses),
         hook_java: render::hooks::hook_java(&pinned.adapter, &shapes),
         game_names_java: render::names::game_names(&pinned.adapter, &pinned.surface),
         game_members_java: render::names::game_members(&pinned.adapter, &pinned.surface, mapping)?,
+        legacy_names_java: render::names::legacy_names(&pinned.surface, mapping)?,
         menu_layout_java: render::names::menu_layout(&pinned.adapter, &pinned.inventory),
         java_release: format!("{}\n", pinned.adapter.java_release),
         agent_release: format!("{}\n", pinned.adapter.java_release.max(AGENT_RELEASE_FLOOR)),
@@ -641,6 +648,7 @@ fn write_java(
     let java = java_directory.join("Hook.java");
     let game_names = java_directory.join("GameNames.java");
     let game_members = java_directory.join("GameMembers.java");
+    let legacy_names = java_directory.join("LegacyNames.java");
     let menu_layout = java_directory.join("MenuLayout.java");
     // Consumers compile for the release of these generated sources.
     let java_release = java_directory.join("java-release.txt");
@@ -653,6 +661,7 @@ fn write_java(
         (&java, &rendered.hook_java),
         (&game_names, &rendered.game_names_java),
         (&game_members, &rendered.game_members_java),
+        (&legacy_names, &rendered.legacy_names_java),
         (&menu_layout, &rendered.menu_layout_java),
         (&java_release, &rendered.java_release),
         (&agent_release, &rendered.agent_release),
@@ -1003,6 +1012,34 @@ mod tests {
         let first = super::compose_checked(&root, &pinned).expect("first composition");
         let second = super::compose_checked(&root, &pinned).expect("second composition");
         assert_eq!(first, second, "every composed output must be deterministic");
+        cleanup(&root);
+    }
+
+    #[test]
+    fn rendered_refusable_capability_follows_the_reviewed_hook_inventory() {
+        let (root, _) = staged("refusable-hook-capability");
+        let mut pinned = inputs::pinned(&root, None).expect("the staged inputs are pinned");
+
+        for hook in &mut pinned.inventory.hooks {
+            hook.refuses = false;
+        }
+        assert!(
+            !super::compose_checked(&root, &pinned)
+                .expect("ordinary hooks compose")
+                .has_refusable_hooks
+        );
+        pinned
+            .inventory
+            .hooks
+            .iter_mut()
+            .find(|hook| hook.descriptor.ends_with(")V"))
+            .expect("the reviewed inventory has a void hook")
+            .refuses = true;
+        assert!(
+            super::compose_checked(&root, &pinned)
+                .expect("an opted-in void hook composes")
+                .has_refusable_hooks
+        );
         cleanup(&root);
     }
 

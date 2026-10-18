@@ -504,10 +504,14 @@ fn above(
             continue;
         }
         let hierarchy = hierarchy_of(archives, mapping, &current, hierarchies)?;
+        implements.extend(
+            hierarchy
+                .interfaces
+                .iter()
+                .filter(|interface| set.contains(*interface))
+                .cloned(),
+        );
         for supertype in hierarchy.supertypes() {
-            if set.contains(supertype) && Some(supertype) != extends.as_deref() {
-                implements.insert(supertype.to_owned());
-            }
             if held(archives, mapping, supertype) {
                 pending.push(supertype.to_owned());
             }
@@ -995,25 +999,39 @@ mod tests {
 
     #[test]
     fn tiny_mapped_inheritance_keeps_the_reviewed_superclass() {
-        let mapping = Mapping::tiny("C\tcom/example/Base\ta\nC\tcom/example/Child\tb\n")
-            .expect("normalized Tiny classes");
+        let mapping = Mapping::tiny(
+            "C\tcom/example/Base\ta\nC\tcom/example/Child\tb\nC\tcom/example/Grandchild\tc\n",
+        )
+        .expect("normalized Tiny classes");
         let seeds: Seeds = toml::from_str(
             "schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
              [[stub]]\nrole = \"Base\"\nclass = \"com.example.Base\"\nmembers = []\n\
-             [[stub]]\nrole = \"Child\"\nclass = \"com.example.Child\"\nmembers = []\n",
+             [[stub]]\nrole = \"Child\"\nclass = \"com.example.Child\"\nmembers = []\n\
+             [[stub]]\nrole = \"Grandchild\"\nclass = \"com.example.Grandchild\"\nmembers = []\n",
         )
         .expect("empty seeded classes");
         let base = fixture::parse(fixture::stored("a.class", &empty_class("a", None)))
             .expect("the base archive");
         let child = fixture::parse(fixture::stored("b.class", &empty_class("b", Some("a"))))
             .expect("the child archive");
-        let stubs = from_jar(&[&base, &child], &seeds, &mapping)
+        let grandchild = fixture::parse(fixture::stored("c.class", &empty_class("c", Some("b"))))
+            .expect("the grandchild archive");
+        let stubs = from_jar(&[&base, &child, &grandchild], &seeds, &mapping)
             .expect("Tiny names resolve both linked classes");
         let child = stubs
             .iter()
             .find(|stub| stub.class == "com/example/Child")
             .expect("the reviewed child");
         assert_eq!(child.extends.as_deref(), Some("com/example/Base"));
+        let grandchild = stubs
+            .iter()
+            .find(|stub| stub.class == "com/example/Grandchild")
+            .expect("the reviewed grandchild");
+        assert_eq!(grandchild.extends.as_deref(), Some("com/example/Child"));
+        assert!(
+            grandchild.implements.is_empty(),
+            "a more distant stubbed superclass is not an implemented interface"
+        );
     }
 
     /// An invented obfuscated version: a seed list, its mapping, and its jars.

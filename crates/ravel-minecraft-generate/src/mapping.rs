@@ -164,6 +164,23 @@ impl Mapping {
         }
     }
 
+    /// Resolves an explicitly declared reflective member before exact class-file verification.
+    ///
+    /// JVM initializer names cannot be remapped and Tiny may omit them. Only their descriptors
+    /// need translation; ordinary members retain strict published-mapping resolution.
+    pub(super) fn reflected_member(
+        &self,
+        class: &str,
+        member: &str,
+        descriptor: &str,
+    ) -> Result<(String, String), GenerateError> {
+        if matches!(member, "<init>" | "<clinit>") {
+            let (_, linked) = self.linked_member(class, member, descriptor);
+            return Ok((member.to_owned(), linked));
+        }
+        self.runtime_member(class, member, descriptor)
+    }
+
     /// Resolves an override whose reviewed name is recorded only on an ancestor.
     /// All inherited candidates must agree; the caller verifies the concrete member.
     pub(super) fn runtime_hook_member(
@@ -174,6 +191,9 @@ impl Mapping {
         descriptor: &str,
         kind: super::inputs::Kind,
     ) -> Result<(String, String), GenerateError> {
+        if matches!(member, "<init>" | "<clinit>") {
+            return self.reflected_member(class, member, descriptor);
+        }
         let Self::NameMap(names) = self else {
             return self.runtime_member(class, member, descriptor);
         };
@@ -184,7 +204,6 @@ impl Mapping {
             || names.members.get(class).is_some_and(|members| {
                 members.contains_key(&(member.to_owned(), descriptor.to_owned()))
             })
-            || matches!(member, "<init>" | "<clinit>")
         {
             return self.runtime_member(class, member, descriptor);
         }
@@ -404,7 +423,7 @@ fn verify_member(
     let linked = match &member.lookup {
         Lookup::Descriptor(descriptor) => {
             let (name, descriptor) =
-                mapping.runtime_member(mojang_class, &member.name, descriptor)?;
+                mapping.reflected_member(mojang_class, &member.name, descriptor)?;
             Linked::Exact { name, descriptor }
         }
         Lookup::Parameters(parameters) => {
@@ -1676,6 +1695,56 @@ com.example.Plain -> com.example.Plain:
 
         assert!(error.to_string().contains("com.example.Alpha"), "{error}");
         assert!(error.to_string().contains("allowed(C)Z"), "{error}");
+    }
+
+    #[test]
+    fn tiny_omitted_initializers_still_require_exact_linked_classfile_declarations() {
+        let mapping = Mapping::tiny("C\tcom/example/Alpha\ta\nC\tcom/example/Beta\tb\n")
+            .expect("Feather-style class-only mappings omit constructors");
+        let archive = holding(
+            "a.class",
+            &[("<init>", "(Lb;)V", true), ("<clinit>", "()V", true)],
+        );
+        for (name, descriptor) in [("<init>", "(Lcom/example/Beta;)V"), ("<clinit>", "()V")] {
+            verify_reflected_members(
+                &declaring("com.example.Alpha", name, Some(descriptor), None),
+                &mapping,
+                &archive,
+            )
+            .expect("initializer names remain invariant and descriptors translate");
+        }
+        verify_reflected_members(
+            &declaring("com.example.Alpha", "<init>", Some("()V"), None),
+            &mapping,
+            &archive,
+        )
+        .expect_err("a constructor omitted from the class file is not invented");
+        assert!(
+            mapping
+                .runtime_member("com/example/Alpha", "unknown", "()V")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn tiny_omitted_constructor_hooks_require_the_exact_declared_body() {
+        let mut inventory: super::super::inputs::Inventory = toml::from_str(
+            "schemaVersion = 1\nminecraft = \"test\"\n\
+             [[hook]]\nid = \"construct\"\nclass = \"example.Alpha\"\n\
+             member = \"<init>\"\ndescriptor = \"(Lexample/Beta;)V\"\n\
+             kind = \"instance-method\"\ncapability = \"test\"\n",
+        )
+        .expect("reviewed constructor hook");
+        let mapping = Mapping::tiny("C\texample/Alpha\ta\nC\texample/Beta\tb\n")
+            .expect("constructors are absent from Feather mappings");
+        let archive = holding("a.class", &[("<init>", "(Lb;)V", true)]);
+        let resolved = super::super::resolve::from_jar(&archive, &inventory, &mapping)
+            .expect("the class file declares the translated constructor");
+        assert_eq!(resolved[0].runtime_member, "<init>");
+        assert_eq!(resolved[0].runtime_descriptor, "(Lb;)V");
+        inventory.hooks[0].descriptor = "()V".to_owned();
+        super::super::resolve::from_jar(&archive, &inventory, &mapping)
+            .expect_err("a different constructor body is not a match");
     }
 
     #[test]

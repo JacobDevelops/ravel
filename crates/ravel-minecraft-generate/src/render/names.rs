@@ -83,7 +83,7 @@ pub(crate) fn game_members(
             let Lookup::Descriptor(descriptor) = lookup else {
                 continue;
             };
-            let (name, linked) = mapping.runtime_member(&owner, &member.name, descriptor)?;
+            let (name, linked) = mapping.reflected_member(&owner, &member.name, descriptor)?;
             let constant = member_constant(&reflected.name, &member.name);
             if !written.insert(constant.clone()) {
                 return Err(GenerateError::Drift(format!(
@@ -127,6 +127,67 @@ fn member_constant(role: &str, member: &str) -> String {
         previous = character;
     }
     text
+}
+
+/// Resolves descriptor-bound legacy reflection roles; never supplies undeclared modern aliases.
+pub(crate) fn legacy_names(
+    surface: &Reflection,
+    mapping: &Mapping,
+) -> Result<String, GenerateError> {
+    let mut text = String::from(
+        "// Generated from the reviewed reflective surface. Do not edit.\n\
+         package dev.ravel.jvm;\n\n\
+         final class LegacyNames {\n\
+         \x20   private LegacyNames() {}\n\n\
+         \x20   static String className(String role) {\n\
+         \x20       return switch (role) {\n",
+    );
+    for reflected in surface
+        .classes
+        .iter()
+        .filter(|role| role.name.starts_with("LEGACY_"))
+    {
+        writeln!(
+            text,
+            "            case \"{}\" -> \"{}\";",
+            reflected.name,
+            reflected.runtime.replace('/', ".")
+        )
+        .expect("writing to a String cannot fail");
+    }
+    text.push_str(
+        "            default -> throw new IllegalArgumentException(\"Undeclared legacy class role: \" + role);\n\
+         \x20       };\n\
+         \x20   }\n\n\
+         \x20   static String member(String role, String reviewed) {\n\
+         \x20       return switch (role + \"#\" + reviewed) {\n",
+    );
+    for reflected in surface
+        .classes
+        .iter()
+        .filter(|role| role.name.starts_with("LEGACY_"))
+    {
+        let owner = reflected.class.replace('.', "/");
+        for member in &reflected.members {
+            let Lookup::Descriptor(descriptor) = &member.lookup else {
+                continue;
+            };
+            let (name, linked) = mapping.reflected_member(&owner, &member.name, descriptor)?;
+            writeln!(
+                text,
+                "            case \"{}#{}\" -> \"{name}:{linked}\";",
+                reflected.name, member.name
+            )
+            .expect("writing to a String cannot fail");
+        }
+    }
+    text.push_str(
+        "            default -> throw new IllegalArgumentException(\"Undeclared legacy member: \" + role + \"#\" + reviewed);\n\
+         \x20       };\n\
+         \x20   }\n\
+         }\n",
+    );
+    Ok(text)
 }
 
 /// Renders the title-menu placement this version's column cannot supply.

@@ -369,7 +369,7 @@ mod tests {
     use super::fixtures::{document, legacy_adapter, repository_root};
     use super::{Adapter, Kind, MappingSource, file_name, pinned};
 
-    fn bootstrap_sources(root: &Path) -> String {
+    fn runtime_sources(root: &Path) -> String {
         fn walk(directory: &Path, read: &mut String) {
             let mut entries: Vec<_> = std::fs::read_dir(directory)
                 .expect("the agent jar's source tree is readable")
@@ -387,7 +387,28 @@ mod tests {
 
         let mut read = String::new();
         walk(&root.join("jvm/bootstrap"), &mut read);
+        walk(&root.join("jvm/harness"), &mut read);
         read
+    }
+
+    fn source_reaches_role(sources: &str, role: &str) -> bool {
+        sources.contains(&format!("GameNames.{role}"))
+            || (role.starts_with("LEGACY_")
+                && sources.contains(&format!("LegacyNames.className(\"{role}\")")))
+    }
+
+    #[test]
+    fn role_reachability_requires_a_runtime_class_lookup() {
+        assert!(source_reaches_role("GameNames.SERVER", "SERVER"));
+        assert!(source_reaches_role(
+            "LegacyNames.className(\"LEGACY_STORAGE\")",
+            "LEGACY_STORAGE"
+        ));
+        assert!(!source_reaches_role("\"LEGACY_STORAGE\"", "LEGACY_STORAGE"));
+        assert!(!source_reaches_role(
+            "LegacyNames.className(\"LEGACY_OTHER\")",
+            "LEGACY_STORAGE"
+        ));
     }
 
     #[test]
@@ -431,18 +452,17 @@ mod tests {
                     super::Lookup::Parameters(_) => None,
                 })
                 .collect::<Vec<_>>();
-            let agent = bootstrap_sources(root);
+            let agent = runtime_sources(root);
             for reflected in &pinned.surface.classes {
                 if reflected.members.is_empty() {
                     let named = format!("L{};", reflected.class.replace('.', "/"));
-                    let resolved = format!("GameNames.{}", reflected.name);
                     assert!(
                         descriptors
                             .iter()
                             .any(|descriptor| descriptor.contains(&named))
-                            || agent.contains(&resolved),
-                        "{} is reflected, declares no member the agent jar reaches, and is \
-                         named by neither a member's descriptor nor the agent jar itself",
+                            || source_reaches_role(&agent, &reflected.name),
+                        "{} is reflected, declares no member the runtime reaches, and is \
+                         named by neither a member's descriptor nor the runtime sources",
                         reflected.class
                     );
                 }

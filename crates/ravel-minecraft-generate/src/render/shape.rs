@@ -141,6 +141,13 @@ pub(crate) struct Shape {
 }
 
 impl Shape {
+    /// Whether this hook returns a veto verdict to its Java caller.
+    pub(crate) const fn refuses(&self) -> bool {
+        self.refuses
+    }
+}
+
+impl Shape {
     /// The descriptor of the generated hook method.
     ///
     /// An ordinary hook returns nothing, because the injected call site then

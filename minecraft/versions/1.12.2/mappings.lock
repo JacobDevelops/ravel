@@ -179,6 +179,39 @@ descriptor = "(Z)V"
 static = false
 runtimeMember = "a"
 
+[target."legacy.world-open"]
+class = "net/minecraft/server/MinecraftServer"
+member = "loadWorld"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;JLnet/minecraft/world/gen/WorldGeneratorType;Ljava/lang/String;)V"
+static = false
+runtimeMember = "a"
+runtimeDescriptor = "(Ljava/lang/String;Ljava/lang/String;JLamz;Ljava/lang/String;)V"
+
+[target."legacy.world-open-integrated"]
+class = "net/minecraft/server/integrated/IntegratedServer"
+member = "loadWorld"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;JLnet/minecraft/world/gen/WorldGeneratorType;Ljava/lang/String;)V"
+static = false
+runtimeClass = "chd"
+runtimeMember = "a"
+runtimeDescriptor = "(Ljava/lang/String;Ljava/lang/String;JLamz;Ljava/lang/String;)V"
+
+[target."legacy.command-install"]
+class = "net/minecraft/server/command/handler/CommandManager"
+member = "<init>"
+descriptor = "(Lnet/minecraft/server/MinecraftServer;)V"
+static = false
+runtimeClass = "dh"
+
+[target."legacy.command-execute"]
+class = "net/minecraft/server/command/handler/CommandRegistry"
+member = "run"
+descriptor = "(Lnet/minecraft/server/command/source/CommandSource;Ljava/lang/String;)I"
+static = false
+runtimeClass = "bj"
+runtimeMember = "a"
+runtimeDescriptor = "(Lbn;Ljava/lang/String;)I"
+
 [target."legacy.screen-open"]
 class = "net/minecraft/client/Minecraft"
 member = "openScreen"
@@ -195,3 +228,28 @@ descriptor = "(IIF)V"
 static = false
 runtimeClass = "blk"
 runtimeMember = "a"
+
+[target."legacy.title-init"]
+class = "net/minecraft/client/gui/screen/TitleScreen"
+member = "init"
+descriptor = "()V"
+static = false
+runtimeClass = "blr"
+runtimeMember = "b"
+
+[target."legacy.item-fire-damage"]
+class = "net/minecraft/entity/ItemEntity"
+member = "takeDamage"
+descriptor = "(Lnet/minecraft/entity/damage/DamageSource;F)Z"
+static = false
+runtimeClass = "acl"
+runtimeMember = "a"
+runtimeDescriptor = "(Lur;F)Z"
+
+[target."legacy.global-palette-size"]
+class = "net/minecraft/world/chunk/PalettedContainer"
+member = "setBits"
+descriptor = "(I)V"
+static = false
+runtimeClass = "axp"
+runtimeMember = "b"

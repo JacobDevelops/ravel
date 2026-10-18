@@ -268,6 +268,104 @@ mod tests {
         assert!(java.contains("SURFACE = \"a\";"), "{java}");
     }
 
+    #[test]
+    fn legacy_callbacks_preserve_native_hooks_and_select_only_the_legacy_adapter() {
+        let (inventory, resolved) = reviewed(&[
+            ("legacy.bootstrap", "example.Bootstrap", "init", "()V"),
+            ("legacy.item-metadata", "example.Stack", "metadata", "()I"),
+            (
+                "legacy.command-install",
+                "example.Commands",
+                "<init>",
+                "()V",
+            ),
+        ]);
+        let shapes = shapes(&inventory, &resolved).expect("representable legacy hooks");
+        let java = hook_java(&adapter(), &shapes);
+        assert!(java.contains("LEGACY_ADAPTER = true;"));
+        assert!(java.contains("public static native void legacyBootstrap();"));
+        assert!(java.contains("public static native void legacyItemMetadata();"));
+        assert!(java.contains("LegacyRuntime.enter(id, receiver, first, second, number);"));
+        assert!(java.contains(
+            "LegacyRuntime.exit(id, receiver, first, second, number, result, resultNumber);"
+        ));
+        assert!(java.contains("LegacyPersistence.loaded(receiver);"));
+        assert!(java.contains("public static native void legacyCommandInstall();"));
+        assert!(java.contains("native boolean ravelLegacyPacketOwner(String channel);"));
+        assert!(java.contains("LegacyRuntime.refuse(id, receiver, source);"));
+        assert!(java.contains("LegacyScreens.onOpened(first);"));
+        assert!(
+            java.contains("if (id.equals(\"legacyTitleInit\")) LegacyScreens.onOpened(receiver);")
+        );
+        assert!(java.contains("LegacyRuntime.observe(id);"));
+        assert!(java.contains("id.equals(\"legacyWorldOpenIntegrated\")"));
+        assert!(java.contains("native void ravelInitializeIntegratedServer();"));
+        assert!(java.contains("native String ravelLegacyResourcePaths();"));
+        assert!(java.contains("native byte[] ravelLegacyResource(String path);"));
+    }
+
+    #[test]
+    fn modern_hooks_do_not_link_legacy_runtime_classes() {
+        let (inventory, resolved) = reviewed(&[("client.tick", "example.Client", "tick", "()V")]);
+        let shapes = shapes(&inventory, &resolved).expect("representable modern hook");
+        let java = hook_java(&adapter(), &shapes);
+        assert!(java.contains("LEGACY_ADAPTER = false;"));
+        assert!(!java.contains("LegacyRuntime."));
+        assert!(!java.contains("LegacyCommand."));
+        assert!(!java.contains("LegacyPersistence."));
+        assert!(!java.contains("native void ravelLegacyEvent"));
+    }
+
+    #[test]
+    fn legacy_palette_callback_matches_only_reviewed_global_state_members() {
+        let (inventory, resolved) = reviewed(&[(
+            "legacy.global-palette-size",
+            "example.Palette",
+            "setBits",
+            "(I)V",
+        )]);
+        let shapes = shapes(&inventory, &resolved).expect("reviewed palette seam");
+        let java = hook_java(&adapter(), &shapes);
+        assert!(java.contains("native void legacyGlobalPaletteSize(int argument0)"));
+        assert!(java.contains("LegacyRuntime.paletteSize(count)"));
+        assert!(java.contains("LegacyNames.className(\"LEGACY_STATE_IDS\")"));
+        assert!(java.contains("LegacyNames.member(\"LEGACY_STATE_IDS\", \"size\")"));
+        assert!(java.contains("LegacyNames.member(\"LEGACY_BLOCK\", \"STATE_REGISTRY\")"));
+        let (inventory, resolved) = reviewed(&[("client.tick", "example.Client", "tick", "()V")]);
+        let shapes = super::shape::shapes(&inventory, &resolved).expect("modern hook");
+        let modern = hook_java(&adapter(), &shapes);
+        assert!(modern.contains("legacyPaletteSize(int count) { return count; }"));
+        assert!(!modern.contains("LegacyNames."));
+    }
+
+    #[test]
+    fn legacy_names_emit_only_declared_roles_and_resolved_members() {
+        let surface = toml::from_str(
+            "schemaVersion = 1\nminecraft = \"test\"\n\
+             [[reflected]]\nname = \"LEGACY_SERVER\"\nclass = \"example.Server\"\n\
+             runtime = \"example/Server\"\n\
+             [[reflected.member]]\nname = \"tick\"\ndescriptor = \"()V\"\n\
+             [[reflected]]\nname = \"SERVER\"\nclass = \"example.Modern\"\n\
+             runtime = \"example/Modern\"\n",
+        )
+        .expect("a descriptor-bearing reflected role");
+        let java = super::names::legacy_names(&surface, &Mapping::Identity)
+            .expect("identity-resolved members");
+        assert!(java.contains("case \"LEGACY_SERVER\" -> \"example.Server\";"));
+        assert!(java.contains("case \"LEGACY_SERVER#tick\" -> \"tick:()V\";"));
+        assert!(java.contains("Undeclared legacy class role"));
+        assert!(java.contains("Undeclared legacy member"));
+        assert!(!java.contains("case \"SERVER\""));
+        let mapping = Mapping::tiny("C\texample/Server\ta\nM\texample/Server\ttick\t()V\tb\n")
+            .expect("a split runtime namespace");
+        let mut surface = surface;
+        surface.classes[0].runtime = "a".to_owned();
+        let linked =
+            super::names::legacy_names(&surface, &mapping).expect("mapped legacy runtime roles");
+        assert!(linked.contains("case \"LEGACY_SERVER\" -> \"a\";"));
+        assert!(linked.contains("case \"LEGACY_SERVER#tick\" -> \"b:()V\";"));
+    }
+
     /// An inventory and its resolution, from entries written the same way the
     /// tracked ones are.
     fn reviewed(entries: &[(&str, &str, &str, &str)]) -> (Inventory, Vec<Resolved>) {

@@ -174,7 +174,7 @@ fn verify_generation_reflection(surface: &ReflectiveSurface, violations: &mut Ve
             ));
         }
         for descriptor in &role.descriptors {
-            if let Err(error) = ravel_minecraft_generate::descriptor_parameters(descriptor) {
+            if let Err(error) = validate_member_descriptor(descriptor) {
                 violations.push(format!(
                     "{} role {} declares invalid descriptor {descriptor}: {error}",
                     surface.path, role.name
@@ -182,6 +182,26 @@ fn verify_generation_reflection(surface: &ReflectiveSurface, violations: &mut Ve
             }
         }
     }
+}
+
+/// Reflection descriptors name either a method or exactly one non-void field type.
+fn validate_member_descriptor(
+    descriptor: &str,
+) -> Result<(), ravel_minecraft_generate::GenerateError> {
+    use ravel_minecraft_generate::{GenerateError, descriptor_parameters};
+
+    if descriptor.starts_with('(') {
+        return descriptor_parameters(descriptor).map(|_| ());
+    }
+    // A single method parameter uses the field grammar, including its ban on void.
+    let signature = format!("({descriptor})V");
+    let parameters = descriptor_parameters(&signature)?;
+    if parameters.len() != 1 {
+        return Err(GenerateError::Unsupported(format!(
+            "{descriptor} must declare exactly one field type"
+        )));
+    }
+    Ok(())
 }
 
 pub(super) const GAME_NAMES: &str = "GameNames";

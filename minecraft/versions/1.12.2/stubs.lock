@@ -29,11 +29,346 @@ extractor = "classfile"
 clientJarSha256 = "8ada07da5ee77dad3527bd7278fbd05ee1fc8a597813b216a871a2d7d64cc64f"
 
 [[stub]]
+class = "net/minecraft/block/Block"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/material/Material;)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/material/Material;Lnet/minecraft/block/material/MapColor;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setBlastResistance"
+descriptor = "(F)Lnet/minecraft/block/Block;"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "setStrength"
+descriptor = "(F)Lnet/minecraft/block/Block;"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "setTicksRandomly"
+descriptor = "(Z)Lnet/minecraft/block/Block;"
+flags = 4
+method = true
+
+[[stub]]
+class = "net/minecraft/block/material/MapColor"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/block/material/Material"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/material/MapColor;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "STONE"
+descriptor = "Lnet/minecraft/block/material/Material;"
+flags = 25
+method = false
+
+[[stub.member]]
+name = "getColor"
+descriptor = "()Lnet/minecraft/block/material/MapColor;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setRequiresTool"
+descriptor = "()Lnet/minecraft/block/material/Material;"
+flags = 4
+method = true
+
+[[stub]]
+class = "net/minecraft/client/Minecraft"
+flags = 33
+
+[[stub.member]]
+name = "getInstance"
+descriptor = "()Lnet/minecraft/client/Minecraft;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "openScreen"
+descriptor = "(Lnet/minecraft/client/gui/screen/Screen;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "screen"
+descriptor = "Lnet/minecraft/client/gui/screen/Screen;"
+flags = 1
+method = false
+
+[[stub]]
+class = "net/minecraft/client/gui/GuiElement"
+flags = 33
+
+[[stub.member]]
+name = "drawCenteredString"
+descriptor = "(Lnet/minecraft/client/render/TextRenderer;Ljava/lang/String;III)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "drawString"
+descriptor = "(Lnet/minecraft/client/render/TextRenderer;Ljava/lang/String;III)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "fill"
+descriptor = "(IIIII)V"
+flags = 9
+method = true
+
+[[stub]]
 class = "net/minecraft/client/gui/screen/Screen"
 flags = 1057
+extends = "net/minecraft/client/gui/GuiElement"
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "buttons"
+descriptor = "Ljava/util/List;"
+flags = 4
+method = false
+returns = "Lnet/minecraft/client/gui/widget/ButtonWidget;"
+
+[[stub.member]]
+name = "height"
+descriptor = "I"
+flags = 1
+method = false
+
+[[stub.member]]
+name = "init"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "init"
+descriptor = "(Lnet/minecraft/client/Minecraft;II)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "keyPressed"
+descriptor = "(CI)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "minecraft"
+descriptor = "Lnet/minecraft/client/Minecraft;"
+flags = 4
+method = false
+
+[[stub.member]]
+name = "mouseClicked"
+descriptor = "(III)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "mouseDragged"
+descriptor = "(IIIJ)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "mouseReleased"
+descriptor = "(III)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "removed"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "render"
+descriptor = "(IIF)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "resize"
+descriptor = "(Lnet/minecraft/client/Minecraft;II)V"
+flags = 1
+method = true
 
 [[stub.member]]
 name = "shouldPauseGame"
 descriptor = "()Z"
 flags = 1
+method = true
+
+[[stub.member]]
+name = "textRenderer"
+descriptor = "Lnet/minecraft/client/render/TextRenderer;"
+flags = 4
+method = false
+
+[[stub.member]]
+name = "width"
+descriptor = "I"
+flags = 1
+method = false
+
+[[stub]]
+class = "net/minecraft/client/gui/screen/TitleScreen"
+flags = 33
+extends = "net/minecraft/client/gui/screen/Screen"
+superConstructor = "()V"
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/widget/ButtonWidget"
+flags = 33
+extends = "net/minecraft/client/gui/GuiElement"
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IIIIILjava/lang/String;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IIILjava/lang/String;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "mouseClicked"
+descriptor = "(Lnet/minecraft/client/Minecraft;II)Z"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/render/TextRenderer"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/nbt/NbtCompound"
+flags = 33
+
+[[stub.member]]
+name = "contains"
+descriptor = "(Ljava/lang/String;)Z"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "contains"
+descriptor = "(Ljava/lang/String;I)Z"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "getByteArray"
+descriptor = "(Ljava/lang/String;)[B"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "getCompound"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/nbt/NbtCompound;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "putByteArray"
+descriptor = "(Ljava/lang/String;[B)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/nbt/NbtIo"
+flags = 33
+
+[[stub.member]]
+name = "read"
+descriptor = "(Ljava/io/DataInput;Lnet/minecraft/nbt/NbtReadLimiter;)Lnet/minecraft/nbt/NbtCompound;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "read"
+descriptor = "(Ljava/io/DataInputStream;)Lnet/minecraft/nbt/NbtCompound;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "read"
+descriptor = "(Ljava/io/File;)Lnet/minecraft/nbt/NbtCompound;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/nbt/NbtReadLimiter"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(J)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/world/saveddata/SavedData"
+flags = 1057
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Ljava/lang/String;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "markDirty"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "readNbt"
+descriptor = "(Lnet/minecraft/nbt/NbtCompound;)V"
+flags = 1025
+method = true
+
+[[stub.member]]
+name = "writeNbt"
+descriptor = "(Lnet/minecraft/nbt/NbtCompound;)Lnet/minecraft/nbt/NbtCompound;"
+flags = 1025
 method = true

@@ -93,7 +93,7 @@ class = "net.minecraft.client.network.handler.ClientPlayNetworkHandler"
 member = "handleCustomPayload"
 descriptor = "(Lnet/minecraft/network/packet/s2c/play/CustomPayloadS2CPacket;)V"
 kind = "instance-method"
-capability = "Observe method entry before PacketThreadUtil: an off-client-thread invocation is observed before requeue/exit and observed again when dispatched on the client thread. WP4 must select the client-thread invocation and bound payload bytes; no modern codec or Forge discriminator contract is implied."
+capability = "Observe method entry before `PacketThreadUtil`: an off-client-thread invocation is observed before requeue/exit and observed again when dispatched on the client thread. WP4 must select the client-thread invocation and bound payload bytes; no modern codec or Forge discriminator contract is implied."
 
 [[hook]]
 id = "legacy.payload-server"
@@ -101,7 +101,7 @@ class = "net.minecraft.server.network.handler.ServerPlayNetworkHandler"
 member = "handleCustomPayload"
 descriptor = "(Lnet/minecraft/network/packet/c2s/play/CustomPayloadC2SPacket;)V"
 kind = "instance-method"
-capability = "Observe method entry before PacketThreadUtil: an off-server-thread invocation is observed before requeue/exit and observed again when dispatched on the server thread. WP4 must select the server-thread invocation and bound payload bytes; Forge wire compatibility is not implied."
+capability = "Observe method entry before `PacketThreadUtil`: an off-server-thread invocation is observed before requeue/exit and observed again when dispatched on the server thread. WP4 must select the server-thread invocation and bound payload bytes; Forge wire compatibility is not implied."
 
 [[hook]]
 id = "legacy.resource-reload"
@@ -143,7 +143,7 @@ class = "net.minecraft.world.storage.SavedDataStorage"
 member = "load"
 descriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lnet/minecraft/world/saveddata/SavedData;"
 kind = "instance-method"
-capability = "Observe MapStorage get-or-load by class and key; WP4 must distinguish global and per-dimension storage and client/server instances."
+capability = "Observe `MapStorage` get-or-load by class and key; WP4 must distinguish global and per-dimension storage and client/server instances."
 
 [[hook]]
 id = "legacy.saved-data-set"
@@ -151,7 +151,7 @@ class = "net.minecraft.world.storage.SavedDataStorage"
 member = "set"
 descriptor = "(Ljava/lang/String;Lnet/minecraft/world/saveddata/SavedData;)V"
 kind = "instance-method"
-capability = "Observe staged aggregate installation in MapStorage; failed replacements must retain the prior live identity."
+capability = "Observe staged aggregate installation in `MapStorage`; failed replacements must retain the prior live identity."
 
 [[hook]]
 id = "legacy.saved-data-save"
@@ -159,7 +159,7 @@ class = "net.minecraft.world.storage.SavedDataStorage"
 member = "save"
 descriptor = "()V"
 kind = "instance-method"
-capability = "Observe MapStorage save independently for each storage scope."
+capability = "Observe `MapStorage` save independently for each storage scope."
 
 [[hook]]
 id = "legacy.world-save"
@@ -168,6 +168,39 @@ member = "saveWorlds"
 descriptor = "(Z)V"
 kind = "instance-method"
 capability = "Observe server world saving shared by integrated and dedicated paths; the boolean is the legacy silent flag."
+
+[[hook]]
+id = "legacy.world-open"
+class = "net.minecraft.server.MinecraftServer"
+member = "loadWorld"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;JLnet/minecraft/world/gen/WorldGeneratorType;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Admit the bounded staged aggregate before vanilla world creation, then bind global live storage on successful return."
+
+[[hook]]
+id = "legacy.world-open-integrated"
+side = "client-only"
+class = "net.minecraft.server.integrated.IntegratedServer"
+member = "loadWorld"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;JLnet/minecraft/world/gen/WorldGeneratorType;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Admit and bind integrated-server persistence on the owning server thread; this override does not invoke the base world-load method."
+
+[[hook]]
+id = "legacy.command-install"
+class = "net.minecraft.server.command.handler.CommandManager"
+member = "<init>"
+descriptor = "(Lnet/minecraft/server/MinecraftServer;)V"
+kind = "instance-method"
+capability = "Observe successful vanilla command manager construction; Ravel installation waits for the owning server thread at world-open."
+
+[[hook]]
+id = "legacy.command-execute"
+class = "net.minecraft.server.command.handler.CommandRegistry"
+member = "run"
+descriptor = "(Lnet/minecraft/server/command/source/CommandSource;Ljava/lang/String;)I"
+kind = "instance-method"
+capability = "Dispatch Ravel-owned legacy command roots with the actual source permission method and text response."
 
 [[hook]]
 id = "legacy.screen-open"
@@ -185,15 +218,36 @@ class = "net.minecraft.client.gui.screen.Screen"
 member = "render"
 descriptor = "(IIF)V"
 kind = "instance-method"
-capability = "Observe the base GuiScreen draw body only: subclass overrides that omit super are not observed. This is not complete draw-dispatch coverage, render-state extraction or permission to refuse a frame."
+capability = "Observe the base `GuiScreen` draw body only: subclass overrides that omit super are not observed. This is not complete draw-dispatch coverage, render-state extraction or permission to refuse a frame."
+
+[[hook]]
+id = "legacy.title-init"
+side = "client-only"
+class = "net.minecraft.client.gui.screen.TitleScreen"
+member = "init"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Restore the Ravel title-menu entry after successful initialization, including resize-driven button rebuilds."
+
+[[hook]]
+id = "legacy.item-fire-damage"
+class = "net.minecraft.entity.ItemEntity"
+member = "takeDamage"
+descriptor = "(Lnet/minecraft/entity/damage/DamageSource;F)Z"
+kind = "instance-method"
+capability = "Refuse only fire damage for Ravel-declared fire-resistant dropped items, preserving vanilla and other damage."
+
+[[hook]]
+id = "legacy.global-palette-size"
+class = "net.minecraft.world.chunk.PalettedContainer"
+member = "setBits"
+descriptor = "(I)V"
+kind = "instance-method"
+capability = "Widen only the global state-registry size used for palette bit capacity, preserving sparse packed block-state IDs through the full legacy block-ID range."
 
 [[nonGoal]]
 id = "screen.extract-render-state"
 reason = "Legacy GUI draws directly; no modern extraction phase exists. Screen observation remains separate from renderer replacement and cannot refuse a draw."
-
-[[nonGoal]]
-id = "screen.ravel-settings"
-reason = "The modern settings screen template depends on APIs absent here; the version-local output supports pause observation only until the reviewed legacy UI port lands."
 
 [[nonGoal]]
 id = "registry.freeze"
@@ -213,11 +267,11 @@ reason = "Channel payloads use legacy packet buffers; no modern payload codec ta
 
 [[nonGoal]]
 id = "save.modern-codec-factory"
-reason = "WorldSavedData and MapStorage use NBT and class/key lookup, not modern saved-data codecs or factories."
+reason = "`WorldSavedData` and `MapStorage` use NBT and class/key lookup, not modern saved-data codecs or factories."
 
 [[nonGoal]]
 id = "datafix.modern-dfu"
-reason = "Legacy data-fixer migrations are required at WP4; modern Mojang DataFixerUpper is not a runtime dependency or equivalent API."
+reason = "Legacy data-fixer migrations are required at WP4; modern Mojang `DataFixerUpper` is not a runtime dependency or equivalent API."
 
 [[nonGoal]]
 id = "renderer.modern-chunk-pipeline"
@@ -229,15 +283,11 @@ reason = "Generation-only eligibility reports all unmet harness obligations. Thi
 
 [[nonGoal]]
 id = "chat.sanitization"
-reason = "Optional chat filtering and player-name validation interception is not reviewed for this generation-only target; no modern StringUtil binding is substituted."
+reason = "Optional chat filtering and player-name validation interception is not reviewed for this generation-only target; no modern `StringUtil` binding is substituted."
 
 [[nonGoal]]
 id = "input.mouse-smoothing"
 reason = "Optional input smoothing observation is not reviewed for the legacy mouse implementation."
-
-[[nonGoal]]
-id = "command.dispatch"
-reason = "Optional command registration and dispatch interception requires the legacy ICommand/CommandHandler port, not Brigadier bindings."
 
 [[nonGoal]]
 id = "server.timing-metrics"
@@ -249,7 +299,7 @@ reason = "Optional title-menu row injection, widget factories, screen tick and s
 
 [[nonGoal]]
 id = "world.modern-open-flow"
-reason = "Optional modern world-loader and pack-repository UI interception has no equivalent signature; legacy MapStorage and world-save targets supply the reviewed persistence seams."
+reason = "Optional modern world-loader and pack-repository UI interception has no equivalent signature; legacy `MapStorage` and world-save targets supply the reviewed persistence seams."
 
 [[nonGoal]]
 id = "accessibility.narrator"

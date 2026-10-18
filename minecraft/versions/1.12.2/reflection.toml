@@ -2,6 +2,17 @@
 schemaVersion = 1
 minecraft = "1.12.2"
 
+# Distribution launch classes compared by Agent; the server owns main in 1.12.2.
+[[reflected]]
+name = "CLIENT_ENTRY_POINT"
+class = "net.minecraft.client.main.Main"
+runtime = "net.minecraft.client.main.Main"
+
+[[reflected]]
+name = "SERVER_ENTRY_POINT"
+class = "net.minecraft.server.MinecraftServer"
+runtime = "net.minecraft.server.MinecraftServer"
+
 [[reflected]]
 name = "LEGACY_SAVED_DATA"
 class = "net.minecraft.world.saveddata.SavedData"
@@ -26,3 +37,571 @@ descriptor = "(Ljava/lang/Class;Ljava/lang/String;)Lnet/minecraft/world/saveddat
 [[reflected.member]]
 name = "set"
 descriptor = "(Ljava/lang/String;Lnet/minecraft/world/saveddata/SavedData;)V"
+[[reflected.member]]
+name = "save"
+descriptor = "()V"
+
+[[reflected]]
+name = "LEGACY_SERVER"
+class = "net.minecraft.server.MinecraftServer"
+runtime = "net.minecraft.server.MinecraftServer"
+[[reflected.member]]
+name = "getWorld"
+descriptor = "(I)Lnet/minecraft/server/world/ServerWorld;"
+[[reflected.member]]
+name = "getWorldStorageSource"
+descriptor = "()Lnet/minecraft/world/storage/WorldStorageSource;"
+[[reflected.member]]
+name = "getCommandHandler"
+descriptor = "()Lnet/minecraft/server/command/handler/CommandHandler;"
+[[reflected.member]]
+name = "getPlayerManager"
+descriptor = "()Lnet/minecraft/server/PlayerManager;"
+
+[[reflected]]
+name = "LEGACY_WORLD"
+class = "net.minecraft.world.World"
+runtime = "amu"
+[[reflected.member]]
+name = "getStorage"
+descriptor = "()Lnet/minecraft/world/storage/WorldStorage;"
+[[reflected.member]]
+name = "getSavedDataStorage"
+descriptor = "()Lnet/minecraft/world/storage/SavedDataStorage;"
+
+[[reflected]]
+name = "LEGACY_WORLD_STORAGE"
+class = "net.minecraft.world.storage.WorldStorage"
+runtime = "bfe"
+[[reflected.member]]
+name = "getDirectory"
+descriptor = "()Ljava/io/File;"
+
+[[reflected]]
+name = "LEGACY_WORLD_STORAGE_SOURCE"
+class = "net.minecraft.world.storage.WorldStorageSource"
+runtime = "bfg"
+[[reflected.member]]
+name = "getFile"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;)Ljava/io/File;"
+
+[[reflected]]
+name = "LEGACY_NBT"
+class = "net.minecraft.nbt.NbtCompound"
+runtime = "fy"
+[[reflected.member]]
+name = "getByteArray"
+descriptor = "(Ljava/lang/String;)[B"
+[[reflected.member]]
+name = "putByteArray"
+descriptor = "(Ljava/lang/String;[B)V"
+[[reflected.member]]
+name = "contains"
+descriptor = "(Ljava/lang/String;I)Z"
+[[reflected.member]]
+name = "getCompound"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/nbt/NbtCompound;"
+
+[[reflected]]
+name = "LEGACY_NBT_IO"
+class = "net.minecraft.nbt.NbtIo"
+runtime = "gi"
+[[reflected.member]]
+name = "read"
+descriptor = "(Ljava/io/DataInput;Lnet/minecraft/nbt/NbtReadLimiter;)Lnet/minecraft/nbt/NbtCompound;"
+
+[[reflected]]
+name = "LEGACY_NBT_LIMITER"
+class = "net.minecraft.nbt.NbtReadLimiter"
+runtime = "gh"
+
+[[reflected]]
+name = "LEGACY_BLOCK"
+class = "net.minecraft.block.Block"
+runtime = "aow"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/material/Material;)V"
+[[reflected.member]]
+name = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/block/Block;)V"
+[[reflected.member]]
+name = "getId"
+descriptor = "(Lnet/minecraft/block/Block;)I"
+[[reflected.member]]
+name = "setStrength"
+descriptor = "(F)Lnet/minecraft/block/Block;"
+[[reflected.member]]
+name = "setBlastResistance"
+descriptor = "(F)Lnet/minecraft/block/Block;"
+[[reflected.member]]
+name = "setTicksRandomly"
+descriptor = "(Z)Lnet/minecraft/block/Block;"
+[[reflected.member]]
+name = "deserialize"
+descriptor = "(I)Lnet/minecraft/block/state/BlockState;"
+[[reflected.member]]
+name = "serialize"
+descriptor = "(Lnet/minecraft/block/state/BlockState;)I"
+[[reflected.member]]
+name = "stateDefinition"
+descriptor = "()Lnet/minecraft/block/state/StateDefinition;"
+[[reflected.member]]
+name = "getMetadataFromState"
+descriptor = "(Lnet/minecraft/block/state/BlockState;)I"
+[[reflected.member]]
+name = "STATE_REGISTRY"
+descriptor = "Lnet/minecraft/util/Id2ObjectBiMap;"
+
+[[reflected]]
+name = "LEGACY_ITEM"
+class = "net.minecraft.item.Item"
+runtime = "ain"
+[[reflected.member]]
+name = "<init>"
+descriptor = "()V"
+[[reflected.member]]
+name = "register"
+descriptor = "(ILnet/minecraft/resource/Identifier;Lnet/minecraft/item/Item;)V"
+[[reflected.member]]
+name = "getId"
+descriptor = "(Lnet/minecraft/item/Item;)I"
+[[reflected.member]]
+name = "setMaxStackSize"
+descriptor = "(I)Lnet/minecraft/item/Item;"
+[[reflected.member]]
+name = "BLOCK_ITEMS"
+descriptor = "Ljava/util/Map;"
+
+[[reflected]]
+name = "LEGACY_BLOCK_ITEM"
+class = "net.minecraft.item.BlockItem"
+runtime = "ahb"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/Block;)V"
+
+[[reflected]]
+name = "LEGACY_MATERIAL"
+class = "net.minecraft.block.material.Material"
+runtime = "bcz"
+[[reflected.member]]
+name = "STONE"
+descriptor = "Lnet/minecraft/block/material/Material;"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/block/material/MapColor;)V"
+[[reflected.member]]
+name = "getColor"
+descriptor = "()Lnet/minecraft/block/material/MapColor;"
+[[reflected.member]]
+name = "setRequiresTool"
+descriptor = "()Lnet/minecraft/block/material/Material;"
+
+[[reflected]]
+name = "LEGACY_MAP_COLOR"
+class = "net.minecraft.block.material.MapColor"
+runtime = "bda"
+
+[[reflected]]
+name = "LEGACY_IDENTIFIER"
+class = "net.minecraft.resource.Identifier"
+runtime = "nf"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;)V"
+[[reflected.member]]
+name = "getPath"
+descriptor = "()Ljava/lang/String;"
+[[reflected.member]]
+name = "getNamespace"
+descriptor = "()Ljava/lang/String;"
+
+[[reflected]]
+name = "LEGACY_STATE_DEFINITION"
+class = "net.minecraft.block.state.StateDefinition"
+runtime = "awu"
+[[reflected.member]]
+name = "all"
+descriptor = "()Lcom/google/common/collect/ImmutableList;"
+
+[[reflected]]
+name = "LEGACY_STATE_IDS"
+class = "net.minecraft.util.Id2ObjectBiMap"
+runtime = "fd"
+[[reflected.member]]
+name = "put"
+descriptor = "(Ljava/lang/Object;I)V"
+[[reflected.member]]
+name = "size"
+descriptor = "()I"
+
+[[reflected]]
+name = "LEGACY_PACKET_CLIENT"
+class = "net.minecraft.network.packet.s2c.play.CustomPayloadS2CPacket"
+runtime = "iw"
+[[reflected.member]]
+name = "getChannel"
+descriptor = "()Ljava/lang/String;"
+[[reflected.member]]
+name = "getData"
+descriptor = "()Lnet/minecraft/network/PacketByteBuf;"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/network/PacketByteBuf;)V"
+
+[[reflected]]
+name = "LEGACY_PACKET_SERVER"
+class = "net.minecraft.network.packet.c2s.play.CustomPayloadC2SPacket"
+runtime = "lh"
+[[reflected.member]]
+name = "getChannel"
+descriptor = "()Ljava/lang/String;"
+[[reflected.member]]
+name = "getData"
+descriptor = "()Lnet/minecraft/network/PacketByteBuf;"
+[[reflected.member]]
+name = "<init>"
+descriptor = "()V"
+
+[[reflected]]
+name = "LEGACY_PACKET"
+class = "net.minecraft.network.packet.Packet"
+runtime = "ht"
+[[reflected.member]]
+name = "read"
+descriptor = "(Lnet/minecraft/network/PacketByteBuf;)V"
+
+[[reflected]]
+name = "LEGACY_CLIENT_HANDLER"
+class = "net.minecraft.client.network.handler.ClientPlayNetworkHandler"
+runtime = "brz"
+[[reflected.member]]
+name = "minecraft"
+descriptor = "Lnet/minecraft/client/Minecraft;"
+[[reflected.member]]
+name = "sendPacket"
+descriptor = "(Lnet/minecraft/network/packet/Packet;)V"
+
+[[reflected]]
+name = "LEGACY_SERVER_HANDLER"
+class = "net.minecraft.server.network.handler.ServerPlayNetworkHandler"
+runtime = "pa"
+[[reflected.member]]
+name = "server"
+descriptor = "Lnet/minecraft/server/MinecraftServer;"
+[[reflected.member]]
+name = "sendPacket"
+descriptor = "(Lnet/minecraft/network/packet/Packet;)V"
+
+[[reflected]]
+name = "LEGACY_EVENT_LOOP"
+class = "net.minecraft.util.BlockableEventLoop"
+runtime = "tr"
+[[reflected.member]]
+name = "isOnSameThread"
+descriptor = "()Z"
+
+[[reflected]]
+name = "LEGACY_BUFFER"
+class = "net.minecraft.network.PacketByteBuf"
+runtime = "gy"
+[[reflected.member]]
+name = "readableBytes"
+descriptor = "()I"
+[[reflected.member]]
+name = "readerIndex"
+descriptor = "()I"
+[[reflected.member]]
+name = "getBytes"
+descriptor = "(I[B)Lio/netty/buffer/ByteBuf;"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lio/netty/buffer/ByteBuf;)V"
+
+[[reflected]]
+name = "LEGACY_COMMAND"
+class = "net.minecraft.server.command.Command"
+runtime = "bk"
+[[reflected.member]]
+name = "getName"
+descriptor = "()Ljava/lang/String;"
+[[reflected.member]]
+name = "getUsage"
+descriptor = "(Lnet/minecraft/server/command/source/CommandSource;)Ljava/lang/String;"
+[[reflected.member]]
+name = "getAliases"
+descriptor = "()Ljava/util/List;"
+[[reflected.member]]
+name = "canUse"
+descriptor = "(Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/server/command/source/CommandSource;)Z"
+[[reflected.member]]
+name = "run"
+descriptor = "(Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/server/command/source/CommandSource;[Ljava/lang/String;)V"
+[[reflected.member]]
+name = "getSuggestions"
+descriptor = "(Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/server/command/source/CommandSource;[Ljava/lang/String;Lnet/minecraft/util/math/BlockPos;)Ljava/util/List;"
+[[reflected.member]]
+name = "hasTargetSelectorAt"
+descriptor = "([Ljava/lang/String;I)Z"
+
+[[reflected]]
+name = "LEGACY_COMMAND_SOURCE"
+class = "net.minecraft.server.command.source.CommandSource"
+runtime = "bn"
+[[reflected.member]]
+name = "canUseCommand"
+descriptor = "(ILjava/lang/String;)Z"
+[[reflected.member]]
+name = "sendMessage"
+descriptor = "(Lnet/minecraft/text/Text;)V"
+[[reflected.member]]
+name = "getServer"
+descriptor = "()Lnet/minecraft/server/MinecraftServer;"
+
+[[reflected]]
+name = "LEGACY_COMMAND_REGISTRY"
+class = "net.minecraft.server.command.handler.CommandRegistry"
+runtime = "bj"
+[[reflected.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/server/command/Command;)Lnet/minecraft/server/command/Command;"
+
+[[reflected]]
+name = "LEGACY_COMMAND_HANDLER"
+class = "net.minecraft.server.command.handler.CommandHandler"
+runtime = "bl"
+[[reflected.member]]
+name = "getCommands"
+descriptor = "()Ljava/util/Map;"
+[[reflected.member]]
+name = "run"
+descriptor = "(Lnet/minecraft/server/command/source/CommandSource;Ljava/lang/String;)I"
+
+[[reflected]]
+name = "LEGACY_LITERAL_TEXT"
+class = "net.minecraft.text.LiteralText"
+runtime = "ho"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Ljava/lang/String;)V"
+
+[[reflected]]
+name = "LEGACY_INTEGRATED_SERVER"
+class = "net.minecraft.server.integrated.IntegratedServer"
+runtime = "chd"
+
+[[reflected]]
+name = "LEGACY_ITEM_ENTITY"
+class = "net.minecraft.entity.ItemEntity"
+runtime = "acl"
+[[reflected.member]]
+name = "getItem"
+descriptor = "()Lnet/minecraft/item/ItemStack;"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/World;DDDLnet/minecraft/item/ItemStack;)V"
+
+[[reflected]]
+name = "LEGACY_ENTITY"
+class = "net.minecraft.entity.Entity"
+runtime = "vg"
+[[reflected.member]]
+name = "takeDamage"
+descriptor = "(Lnet/minecraft/entity/damage/DamageSource;F)Z"
+
+[[reflected]]
+name = "LEGACY_ITEM_STACK"
+class = "net.minecraft.item.ItemStack"
+runtime = "aip"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/item/Item;II)V"
+[[reflected.member]]
+name = "getItem"
+descriptor = "()Lnet/minecraft/item/Item;"
+[[reflected.member]]
+name = "getMetadata"
+descriptor = "()I"
+
+[[reflected]]
+name = "LEGACY_DAMAGE_SOURCE"
+class = "net.minecraft.entity.damage.DamageSource"
+runtime = "ur"
+[[reflected.member]]
+name = "isFire"
+descriptor = "()Z"
+[[reflected.member]]
+name = "FIRE"
+descriptor = "Lnet/minecraft/entity/damage/DamageSource;"
+[[reflected.member]]
+name = "GENERIC"
+descriptor = "Lnet/minecraft/entity/damage/DamageSource;"
+
+[[reflected]]
+name = "LEGACY_COMMAND_SOURCE_STACK"
+class = "net.minecraft.server.command.source.CommandSourceStack"
+runtime = "bo"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/server/command/source/CommandSource;Lnet/minecraft/util/math/Vec3d;Lnet/minecraft/util/math/BlockPos;Ljava/lang/Integer;Lnet/minecraft/entity/Entity;Ljava/lang/Boolean;)V"
+
+[[reflected]]
+name = "LEGACY_ALPHA_WORLD_STORAGE"
+class = "net.minecraft.world.storage.AlphaWorldStorage"
+runtime = "bfb"
+
+[[reflected]]
+name = "LEGACY_DATA_FIXER"
+class = "net.minecraft.util.datafix.DataFixerUpper"
+runtime = "ry"
+
+[[reflected]]
+name = "LEGACY_CLIENT"
+class = "net.minecraft.client.Minecraft"
+runtime = "bib"
+[[reflected.member]]
+name = "getInstance"
+descriptor = "()Lnet/minecraft/client/Minecraft;"
+[[reflected.member]]
+name = "getSoundManager"
+descriptor = "()Lnet/minecraft/client/sound/system/SoundManager;"
+[[reflected.member]]
+name = "getNetworkHandler"
+descriptor = "()Lnet/minecraft/client/network/handler/ClientPlayNetworkHandler;"
+[[reflected.member]]
+name = "getServer"
+descriptor = "()Lnet/minecraft/server/integrated/IntegratedServer;"
+[[reflected.member]]
+name = "world"
+descriptor = "Lnet/minecraft/client/world/ClientWorld;"
+[[reflected.member]]
+name = "defaultResourcePacks"
+descriptor = "Ljava/util/List;"
+
+[[reflected]]
+name = "LEGACY_SOUND_EVENT"
+class = "net.minecraft.sound.SoundEvent"
+runtime = "qe"
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/resource/Identifier;)V"
+
+[[reflected]]
+name = "LEGACY_SIMPLE_SOUND"
+class = "net.minecraft.client.sound.instance.SimpleSoundInstance"
+runtime = "cgp"
+[[reflected.member]]
+name = "of"
+descriptor = "(Lnet/minecraft/sound/SoundEvent;FF)Lnet/minecraft/client/sound/instance/SimpleSoundInstance;"
+
+[[reflected]]
+name = "LEGACY_SOUND_MANAGER"
+class = "net.minecraft.client.sound.system.SoundManager"
+runtime = "cho"
+[[reflected.member]]
+name = "get"
+descriptor = "(Lnet/minecraft/resource/Identifier;)Lnet/minecraft/client/sound/SoundPool;"
+[[reflected.member]]
+name = "play"
+descriptor = "(Lnet/minecraft/client/sound/instance/SoundInstance;)V"
+
+[[reflected]]
+name = "LEGACY_BOOTSTRAP"
+class = "net.minecraft.Bootstrap"
+runtime = "ni"
+[[reflected.member]]
+name = "init"
+descriptor = "()V"
+
+[[reflected]]
+name = "LEGACY_SOUND_INSTANCE"
+class = "net.minecraft.client.sound.instance.SoundInstance"
+runtime = "cgt"
+[[reflected.member]]
+name = "getLocation"
+descriptor = "()Lnet/minecraft/resource/Identifier;"
+
+[[reflected]]
+name = "LEGACY_PLAYER_MANAGER"
+class = "net.minecraft.server.PlayerManager"
+runtime = "pl"
+[[reflected.member]]
+name = "getAll"
+descriptor = "()Ljava/util/List;"
+
+[[reflected]]
+name = "LEGACY_SERVER_PLAYER"
+class = "net.minecraft.server.entity.living.player.ServerPlayerEntity"
+runtime = "oq"
+[[reflected.member]]
+name = "networkHandler"
+descriptor = "Lnet/minecraft/server/network/handler/ServerPlayNetworkHandler;"
+
+[[reflected]]
+name = "LEGACY_RESOURCE_PACK"
+class = "net.minecraft.client.resource.pack.ResourcePack"
+runtime = "cer"
+[[reflected.member]]
+name = "getIcon"
+descriptor = "()Ljava/awt/image/BufferedImage;"
+[[reflected.member]]
+name = "getMetadataSection"
+descriptor = "(Lnet/minecraft/client/resource/metadata/ResourceMetadataSerializerRegistry;Ljava/lang/String;)Lnet/minecraft/client/resource/metadata/ResourceMetadataSection;"
+[[reflected.member]]
+name = "getResource"
+descriptor = "(Lnet/minecraft/resource/Identifier;)Ljava/io/InputStream;"
+[[reflected.member]]
+name = "getName"
+descriptor = "()Ljava/lang/String;"
+[[reflected.member]]
+name = "hasResource"
+descriptor = "(Lnet/minecraft/resource/Identifier;)Z"
+[[reflected.member]]
+name = "getNamespaces"
+descriptor = "()Ljava/util/Set;"
+
+[[reflected]]
+name = "LEGACY_CRAFTING_MANAGER"
+class = "net.minecraft.crafting.CraftingManager"
+runtime = "aku"
+[[reflected.member]]
+name = "parseRecipe"
+descriptor = "(Lcom/google/gson/JsonObject;)Lnet/minecraft/crafting/recipe/Recipe;"
+[[reflected.member]]
+name = "getRecipe"
+descriptor = "(Lnet/minecraft/resource/Identifier;)Lnet/minecraft/crafting/recipe/Recipe;"
+[[reflected.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/resource/Identifier;Lnet/minecraft/crafting/recipe/Recipe;)V"
+
+[[reflected]]
+name = "LEGACY_PALETTED_CONTAINER"
+class = "net.minecraft.world.chunk.PalettedContainer"
+runtime = "axp"
+[[reflected.member]]
+name = "<init>"
+descriptor = "()V"
+[[reflected.member]]
+name = "setBits"
+descriptor = "(I)V"
+[[reflected.member]]
+name = "set"
+descriptor = "(IIILnet/minecraft/block/state/BlockState;)V"
+[[reflected.member]]
+name = "get"
+descriptor = "(III)Lnet/minecraft/block/state/BlockState;"
+[[reflected.member]]
+name = "write"
+descriptor = "([BLnet/minecraft/world/chunk/ChunkNibbleStorage;)Lnet/minecraft/world/chunk/ChunkNibbleStorage;"
+[[reflected.member]]
+name = "read"
+descriptor = "([BLnet/minecraft/world/chunk/ChunkNibbleStorage;Lnet/minecraft/world/chunk/ChunkNibbleStorage;)V"
+
+[[reflected]]
+name = "LEGACY_NIBBLE_STORAGE"
+class = "net.minecraft.world.chunk.ChunkNibbleStorage"
+runtime = "axs"
+[[reflected.member]]
+name = "<init>"
+descriptor = "()V"

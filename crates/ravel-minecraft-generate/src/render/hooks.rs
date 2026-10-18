@@ -76,15 +76,12 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
      /**\n\
      \x20* Hook surface the agent injects calls to.\n\
      \x20*\n\
-     \x20* <p>Every method here is static, and all but the opted-in ones return\n\
-     \x20* void: the injected call site loads the target's own arguments, calls one\n\
-     \x20* of these, and continues. A hook that has to stop the call throws, which\n\
-     \x20* needs no bytecode of its own at the call site.\n\
-     \x20*\n\
-     \x20* <p>A target the reviewed inventory opts in answers a boolean instead,\n\
-     \x20* and the call site returns from the host method when it is true. The\n\
-     \x20* verdict says only whether to return, never what to return, so a target\n\
-     \x20* that returns anything but void cannot opt in at all.\n\
+     \x20* <p>Each reviewed native observation receives the target's arguments.\n\
+     \x20* Inventory-opted void seams additionally return a boolean refusal verdict.\n\
+     \x20* Legacy semantic callbacks are separate: command dispatch may return an\n\
+     \x20* integer result, and the reviewed item-fire seam may return false early.\n\
+     \x20* Completion observers run only before normal returns, preserving the\n\
+     \x20* target's original value. Observer failures propagate to the caller.\n\
      \x20*/\n\
      public final class Hook {{\n\n\
     {load}\
@@ -127,6 +124,8 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     )
     .expect("writing to a String cannot fail");
 
+    text.push_str(&adapter_callbacks(shapes));
+
     for shape in shapes {
         let declared = shape
             .parameters
@@ -152,6 +151,115 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     // a screen with natives of its own would be a second one.
     writeln!(text, "{}", written_declarations()).expect("writing to a String cannot fail");
     text
+}
+
+/// Keeps adapter policy in Java while preserving the generated native observations.
+fn adapter_callbacks(shapes: &[Shape]) -> String {
+    let legacy = shapes
+        .iter()
+        .any(|shape| shape.java_method.starts_with("legacy"));
+    let enter = if legacy {
+        "LegacyRuntime.enter(id, receiver, first, second, number);\n\
+         \x20       if (id.equals(\"legacyWorldOpen\") || id.equals(\"legacyWorldOpenIntegrated\")) LegacyPersistence.open(receiver, (String) first);\n\
+         \x20       if (id.equals(\"legacyWorldSave\")) LegacyPersistence.save(receiver);"
+    } else {
+        ""
+    };
+    let exit = if legacy {
+        "if (id.equals(\"legacyScreenOpen\")) LegacyScreens.onOpened(first);\n\
+         \x20       if (id.equals(\"legacyTitleInit\")) LegacyScreens.onOpened(receiver);\n\
+         \x20       LegacyRuntime.exit(id, receiver, first, second, number, result, resultNumber);\n\
+         \x20       if (id.equals(\"legacyWorldOpen\") || id.equals(\"legacyWorldOpenIntegrated\")) LegacyPersistence.loaded(receiver);"
+    } else {
+        ""
+    };
+    let command = if legacy {
+        "return LegacyCommand.execute(handler, sender, text);"
+    } else {
+        "return null;"
+    };
+    let refusal = if legacy {
+        "return LegacyRuntime.refuse(id, receiver, source);"
+    } else {
+        "return false;"
+    };
+    let natives = if legacy { legacy_declarations() } else { "" };
+    let observe = if legacy {
+        "LegacyRuntime.observe(id);"
+    } else {
+        ""
+    };
+    let palette = palette_callbacks(legacy);
+    format!(
+        "    /** Whether the reviewed inventory uses the legacy adapter. */\n\
+         \x20   public static final boolean LEGACY_ADAPTER = {legacy};\n\n\
+         \x20   /** Receiver-aware adapter entry; native observations remain separate. */\n\
+         \x20   public static void legacyEnter(String id, Object receiver, Object first, Object second, int number) {{\n\
+         \x20       {enter}\n\
+         \x20   }}\n\n\
+         \x20   /** Successful-return seam with selected original arguments and separate reference/int results. */\n\
+         \x20   public static void legacyExit(String id, Object receiver, Object first, Object second, int number, Object result, int resultNumber) {{\n\
+         \x20       {exit}\n\
+         \x20   }}\n\n\
+         \x20   /** Null leaves non-Ravel commands to vanilla. */\n\
+         \x20   public static Integer legacyCommand(Object handler, Object sender, String text) {{\n\
+         \x20       {command}\n\
+         \x20   }}\n\n\
+         \x20   /** Refuses only an explicitly supported legacy boolean seam. */\n\
+         \x20   public static boolean legacyRefuse(String id, Object receiver, Object source) {{\n\
+         \x20       {refusal}\n\
+         \x20   }}\n\n\
+         \x20   /** Optional proof accounting, separate from native observations and semantics. */\n\
+         \x20   public static void legacyObserve(String id) {{\n\
+         \x20       {observe}\n\
+         \x20   }}\n{palette}{natives}"
+    )
+}
+
+/// Matches only the reviewed global state registry in the reviewed palette resize body.
+fn palette_callbacks(legacy: bool) -> String {
+    let size = if legacy {
+        "LegacyRuntime.paletteSize(count)"
+    } else {
+        "count"
+    };
+    let call = if legacy {
+        "owner.equals(LegacyNames.className(\"LEGACY_STATE_IDS\").replace('.', '/'))\n\
+         \x20               && (name + \":\" + descriptor).equals(LegacyNames.member(\"LEGACY_STATE_IDS\", \"size\"))"
+    } else {
+        "false"
+    };
+    let field = if legacy {
+        "owner.equals(LegacyNames.className(\"LEGACY_BLOCK\").replace('.', '/'))\n\
+         \x20               && (name + \":\" + descriptor).equals(LegacyNames.member(\"LEGACY_BLOCK\", \"STATE_REGISTRY\"))"
+    } else {
+        "false"
+    };
+    format!(
+        "    /** Expands only the global palette's addressable state-id range. */\n\
+         \x20   public static int legacyPaletteSize(int count) {{ return {size}; }}\n\n\
+         \x20   /** Exact reviewed global state registry size invocation. */\n\
+         \x20   public static boolean legacyPaletteSizeCall(String owner, String name, String descriptor) {{\n\
+         \x20       return {call};\n\
+         \x20   }}\n\n\
+         \x20   /** Exact reviewed global state registry field read. */\n\
+         \x20   public static boolean legacyPaletteField(String owner, String name, String descriptor) {{\n\
+         \x20       return {field};\n\
+         \x20   }}\n"
+    )
+}
+
+/// Semantic crossings are separate from the generated target observations.
+fn legacy_declarations() -> &'static str {
+    "    /** Checked semantic events emitted by the legacy Java adapter. */\n\
+     \x20   public static native void ravelLegacyEvent(String kind);\n\
+     \x20   public static native void ravelLegacyPacket(String channel, byte[] bytes, boolean toServer);\n\
+     \x20   public static native boolean ravelLegacyPacketOwner(String channel);\n\
+     \x20   public static native String ravelLegacyCommand(String typed);\n\
+     \x20   public static native String ravelLegacyCommands();\n\
+     \x20   public static native void ravelInitializeIntegratedServer();\n\
+     \x20   public static native String ravelLegacyResourcePaths();\n\
+     \x20   public static native byte[] ravelLegacyResource(String path);\n"
 }
 
 /// The declarations that belong to the bootstrap rather than to a hook surface.

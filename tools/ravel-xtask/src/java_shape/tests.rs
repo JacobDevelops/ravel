@@ -119,6 +119,70 @@ fn generation_only_reflection_does_not_invent_modern_bootstrap_roles() {
 }
 
 #[test]
+fn generation_only_reflection_validates_fields_as_single_non_void_types() {
+    let root = reflection_root(
+        "generation-reflection-fields",
+        "String one = GameNames.ONE;\n",
+    );
+    version_directory(&root, "1.12.2", &[]);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/1.12.2/adapter.toml")),
+        adapter_document("1.12.2", "generation-only", None),
+    )
+    .expect("adapter should be writable");
+    let reflection = root.join(format!("{VERSION_DATA}/1.12.2/{REFLECTION_FILE}"));
+    let mut violations = Vec::new();
+    let (eligibility, _) = verify_version_directories(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    for (descriptor, valid) in [
+        ("Lnet/minecraft/util/Id2ObjectBiMap;", true),
+        ("Z", true),
+        ("B", true),
+        ("C", true),
+        ("S", true),
+        ("I", true),
+        ("J", true),
+        ("F", true),
+        ("D", true),
+        ("[I", true),
+        ("[[Lnet/minecraft/block/Block;", true),
+        ("", false),
+        ("V", false),
+        ("II", false),
+        ("Lnet/minecraft/util/Id2ObjectBiMap", false),
+        ("L;", false),
+        ("[", false),
+        ("[[", false),
+        ("[V", false),
+        ("[Lnet/minecraft/block/Block", false),
+        ("Ljava/lang/Object;I", false),
+        ("I)V", false),
+    ] {
+        fs::write(
+            &reflection,
+            format!(
+                "minecraft = '1.12.2'\n[[reflected]]\nname = 'LEGACY_BLOCK'\n\
+                 class = 'net.minecraft.block.Block'\nruntime = 'aow'\n\
+                 [[reflected.member]]\nname = 'STATE_REGISTRY'\ndescriptor = '{descriptor}'\n"
+            ),
+        )
+        .expect("reflection should be writable");
+        violations.clear();
+        verify_persistence_reflection(&root, &eligibility, &mut violations);
+        if valid {
+            assert!(violations.is_empty(), "{descriptor}: {violations:?}");
+        } else {
+            assert_eq!(violations.len(), 1, "{descriptor}: {violations:?}");
+            assert!(
+                violations[0].contains("invalid descriptor"),
+                "{descriptor}: {violations:?}"
+            );
+        }
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_hand_written_game_literal_in_the_agent_sources_is_refused() {
     let root = reflection_root(
         "version-reflection-literal",

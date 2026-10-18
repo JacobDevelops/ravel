@@ -533,6 +533,21 @@ mod tests {
     }
 
     #[test]
+    fn tiny_namespaces_resolve_against_class_bytes() {
+        let (inventory, _, bytes) = obfuscated("a");
+        let archive = fixture::parse(bytes).expect("a synthetic archive");
+        let mapping =
+            Mapping::tiny("C\tcom/example/Alpha\ta\nM\tcom/example/Alpha\tallowed\t(C)Z\ta\n")
+                .expect("the normalized mapping");
+
+        let resolved = from_jar(&archive, &inventory, &mapping).expect("a mapped declaration");
+
+        assert_eq!(resolved[0].runtime_class, "a");
+        assert_eq!(resolved[0].runtime_member, "a");
+        assert_eq!(resolved[0].descriptor, "(C)Z");
+    }
+
+    #[test]
     fn a_mapped_member_the_class_file_does_not_declare_is_refused() {
         let (inventory, mapping, bytes) = obfuscated("b");
         let archive = fixture::parse(bytes).expect("a synthetic archive");

@@ -10,6 +10,8 @@ pub(crate) enum MappingSource {
     UnobfuscatedClassFiles,
     /// The version's own published mapping file relates the two name spaces.
     OfficialProguardMappings,
+    /// A Tiny v2 mapping with explicitly declared namespaces.
+    FeatherTinyMappings,
 }
 
 impl MappingSource {
@@ -18,12 +20,16 @@ impl MappingSource {
         match self {
             Self::UnobfuscatedClassFiles => "unobfuscated-class-files",
             Self::OfficialProguardMappings => "official-proguard-mappings",
+            Self::FeatherTinyMappings => "feather-tiny-mappings",
         }
     }
 
     /// Whether this source needs a published mapping file to be read.
     pub(crate) const fn needs_mappings(self) -> bool {
-        matches!(self, Self::OfficialProguardMappings)
+        matches!(
+            self,
+            Self::OfficialProguardMappings | Self::FeatherTinyMappings
+        )
     }
 }
 
@@ -263,6 +269,21 @@ pub(crate) struct Input {
     pub(crate) upstream: Option<String>,
 }
 
+/// An explicitly reviewed exception to modern version metadata.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub(crate) enum Capability {
+    #[serde(rename = "legacy-1-12")]
+    Legacy112,
+}
+
+/// The namespaces a published mapping translates between.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct MappingNamespaces {
+    pub(crate) runtime: String,
+    pub(crate) reviewed: String,
+}
+
 /// Inputs the generator is allowed to read.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -271,8 +292,11 @@ pub(crate) struct Inputs {
     /// The version's published client mapping, where the source calls for one.
     #[serde(default)]
     pub(crate) client_mappings: Option<Input>,
+    #[serde(default)]
+    pub(crate) mapping_io_jar: Option<Input>,
     /// Library jar declaring serialization types absent from the client jar.
-    pub(crate) data_fixer_jar: Input,
+    #[serde(default)]
+    pub(crate) data_fixer_jar: Option<Input>,
     pub(crate) version_manifest: Input,
     pub(crate) hook_inventory: Input,
     pub(crate) stub_seeds: Input,
@@ -291,6 +315,10 @@ pub(crate) struct Adapter {
     pub(crate) schema_version: u8,
     pub(crate) minecraft: String,
     pub(crate) mapping_source: MappingSource,
+    #[serde(default)]
+    pub(crate) mapping_namespaces: Option<MappingNamespaces>,
+    #[serde(default)]
+    pub(crate) capabilities: Vec<Capability>,
     /// The Java release every jar built for this version is compiled for.
     pub(crate) java_release: u16,
     /// The pack formats this version's own resource and data packs declare.

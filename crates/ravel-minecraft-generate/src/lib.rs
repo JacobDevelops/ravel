@@ -15,6 +15,7 @@ mod roles;
 mod screen;
 mod stub_render;
 mod stubs;
+mod tiny;
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -232,12 +233,10 @@ struct Rendered {
 /// Returns an error for missing or drifted inputs, an absent jar, or unresolved members.
 pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), GenerateError> {
     let pinned = inputs::pinned(root, selected)?;
-    let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
-    let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
-    for (path, input) in [
-        (&jar_path, &pinned.adapter.inputs.client_jar),
-        (&library_path, &pinned.adapter.inputs.data_fixer_jar),
-    ] {
+    for input in std::iter::once(&pinned.adapter.inputs.client_jar)
+        .chain(pinned.adapter.inputs.data_fixer_jar.as_ref())
+    {
+        let path = root.join(&input.path);
         if !path.is_file() {
             return Err(GenerateError::Input(format!(
                 "the pinned jar is absent at {}; a lock cannot be rewritten from another lock",
@@ -332,8 +331,12 @@ fn generate_java_and_inspect<T>(
 }
 
 fn compose_checked(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, GenerateError> {
-    let rendered = compose(root, pinned)?;
-    if rendered != compose(root, pinned)? {
+    // Mapping selection is shared by both renders, including the Java normalizer
+    // when required. Lock-only builds must still validate their runtime names.
+    let mapping = mapping(root, &pinned.adapter)?;
+    mapping::verify_reflection(&pinned.surface, &mapping)?;
+    let rendered = compose(root, pinned, &mapping)?;
+    if rendered != compose(root, pinned, &mapping)? {
         return Err(GenerateError::Drift(
             "generating twice produced different bytes".to_owned(),
         ));
@@ -342,7 +345,11 @@ fn compose_checked(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Render
 }
 
 /// Resolves the pinned version and renders every artefact from it.
-fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, GenerateError> {
+fn compose(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    mapping: &mapping::Mapping,
+) -> Result<Rendered, GenerateError> {
     let lock_path = pinned.directory.join("mappings.lock");
     let tracked = fs::read_to_string(&lock_path)
         .map_err(|error| GenerateError::Input(format!("cannot read mappings.lock: {error}")))?;
@@ -359,27 +366,17 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     inputs::verify_input(root, &pinned.adapter.inputs.stubs_lock)?;
 
     let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
-    let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
-    // Both jars or neither: a stub set read from half its sources would resolve
-    // some seeds and not others, which is a different answer rather than a
-    // fallback, and the lock is the one answer a machine without them trusts.
-    let jars = jar_path.is_file() && library_path.is_file();
-
-    // The mapping decides which entry every name below asks an archive for, and
-    // which name every generated source writes down, so it is read and verified
-    // before an archive is opened at all. It is read on a jar-less build too:
-    // the declared runtime names are re-derived from the mapping that decides
-    // them on every build rather than only on one that opens a jar. An identity
-    // source needs no file for that; a translating source needs its published
-    // mapping, which is a pinned input of its own, and a machine that cannot
-    // read it is refused by `mapping` naming the missing file, because a
-    // lock-only build under an obfuscated version is the one case where a stale
-    // runtime name is both possible and invisible.
-    let mapping = mapping(root, &pinned.adapter)?;
-    mapping::verify_reflection(&pinned.surface, &mapping)?;
+    // Every declared stub source must be available before resolving any of them.
+    let jars = jar_path.is_file()
+        && pinned
+            .adapter
+            .inputs
+            .data_fixer_jar
+            .as_ref()
+            .is_none_or(|input| root.join(&input.path).is_file());
 
     let (resolved, stubbed) = if jars {
-        resolve_jars(root, pinned, &mapping)?
+        resolve_jars(root, pinned, mapping)?
     } else {
         (
             resolve::from_lock(&tracked, &pinned.adapter, &pinned.inventory)?,
@@ -400,7 +397,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
                 .to_owned(),
         ));
     }
-    compose_render(root, pinned, &mapping, &resolved, &stubbed, lock, stub_lock)
+    compose_render(root, pinned, mapping, &resolved, &stubbed, lock, stub_lock)
 }
 
 fn resolve_jars(
@@ -409,16 +406,29 @@ fn resolve_jars(
     mapping: &mapping::Mapping,
 ) -> Result<(Vec<resolve::Resolved>, Vec<stubs::Stub>), GenerateError> {
     inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
-    inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
+    if let Some(input) = &pinned.adapter.inputs.data_fixer_jar {
+        inputs::verify_input(root, input)?;
+    }
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
     let archive = jar::Archive::open(&root.join(&pinned.adapter.inputs.client_jar.path))?;
-    let library = jar::Archive::open(&root.join(&pinned.adapter.inputs.data_fixer_jar.path))?;
+    let library = pinned
+        .adapter
+        .inputs
+        .data_fixer_jar
+        .as_ref()
+        .map(|input| jar::Archive::open(&root.join(&input.path)))
+        .transpose()?;
     mapping::verify_reflected_members(&pinned.surface, mapping, &archive)?;
     inputs::verify_pack_format(&pinned.adapter, &archive)?;
     // Hook targets are game members; only stubs may resolve against the library.
+    let stubbed = if let Some(library) = &library {
+        stubs::from_jar(&[&archive, library], &pinned.seeds, mapping)?
+    } else {
+        stubs::from_jar(&[&archive], &pinned.seeds, mapping)?
+    };
     Ok((
         resolve::from_jar(&archive, &pinned.inventory, mapping)?,
-        stubs::from_jar(&[&archive, &library], &pinned.seeds, mapping)?,
+        stubbed,
     ))
 }
 
@@ -674,14 +684,22 @@ fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendere
         root.join(&pins.stub_seeds.path),
         root.join(&pins.reflective_surface.path),
         root.join(&pins.client_jar.path),
-        root.join(&pins.data_fixer_jar.path),
-        root.join(&pins.version_manifest.path),
     ];
     watched.extend(
-        pins.client_mappings
-            .as_ref()
+        pins.data_fixer_jar
+            .iter()
             .map(|input| root.join(&input.path)),
     );
+    watched.push(root.join(&pins.version_manifest.path));
+    watched.extend(
+        pins.client_mappings
+            .iter()
+            .chain(pins.mapping_io_jar.iter())
+            .map(|input| root.join(&input.path)),
+    );
+    if pinned.adapter.mapping_source == inputs::MappingSource::FeatherTinyMappings {
+        watched.push(root.join(tiny::NORMALIZER_SOURCE));
+    }
     watched.extend(rendered.templates.iter().cloned());
     watched
 }
@@ -703,6 +721,9 @@ fn empty(directories: &[&Path]) -> Result<(), GenerateError> {
 
 /// Checks the mapping hash before parsing names or opening archives.
 fn mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, GenerateError> {
+    if adapter.mapping_source == inputs::MappingSource::FeatherTinyMappings {
+        return tiny::read(root, adapter);
+    }
     let Some(input) = &adapter.inputs.client_mappings else {
         return mapping::Mapping::read(adapter.mapping_source, "");
     };

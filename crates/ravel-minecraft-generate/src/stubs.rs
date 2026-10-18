@@ -102,7 +102,7 @@ struct Lock {
     minecraft: String,
     extractor: String,
     client_jar_sha256: String,
-    data_fixer_jar_sha256: String,
+    data_fixer_jar_sha256: Option<String>,
     #[serde(rename = "stub")]
     stubs: Vec<Stub>,
 }
@@ -361,22 +361,23 @@ pub(super) fn from_lock(
             lock.client_jar_sha256.as_str(),
             adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
         ),
-        (
-            "the data fixer jar hash",
-            lock.data_fixer_jar_sha256.as_str(),
-            adapter
-                .inputs
-                .data_fixer_jar
-                .sha256
-                .as_deref()
-                .unwrap_or(""),
-        ),
     ] {
         if recorded != pinned {
             return Err(GenerateError::Drift(format!(
                 "stubs.lock records {what} as {recorded} but the adapter inputs pin {pinned}"
             )));
         }
+    }
+    let library_hash = adapter
+        .inputs
+        .data_fixer_jar
+        .as_ref()
+        .map(|input| input.sha256.as_deref().unwrap_or(""));
+    if lock.data_fixer_jar_sha256.as_deref() != library_hash {
+        return Err(GenerateError::Drift(format!(
+            "stubs.lock records the data fixer jar hash as {:?} but the adapter inputs pin {:?}",
+            lock.data_fixer_jar_sha256, library_hash
+        )));
     }
     if lock.schema_version != adapter.schema_version {
         return Err(GenerateError::Drift(format!(
@@ -706,6 +707,31 @@ mod tests {
     }
 
     #[test]
+    fn an_absent_library_hash_is_omitted_and_cannot_match_a_declared_library() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        let stubs =
+            from_lock(&tracked, &pinned.adapter, &pinned.seeds).expect("the modern lock resolves");
+        assert_eq!(
+            super::super::render::stub_lock(&pinned.adapter, &stubs),
+            tracked
+        );
+        let modern = pinned.adapter.clone();
+        pinned.adapter.inputs.data_fixer_jar = None;
+        let absent = super::super::render::stub_lock(&pinned.adapter, &stubs);
+        assert!(!absent.contains("dataFixerJarSha256"));
+        from_lock(&absent, &pinned.adapter, &pinned.seeds)
+            .expect("a library-free lock matches a library-free adapter");
+        from_lock(&absent, &modern, &pinned.seeds)
+            .expect_err("a modern adapter cannot omit its library hash");
+        from_lock(&tracked, &pinned.adapter, &pinned.seeds)
+            .expect_err("a library-free adapter cannot accept a recorded library hash");
+        let empty = format!("dataFixerJarSha256 = \"\"\n{absent}");
+        from_lock(&empty, &pinned.adapter, &pinned.seeds)
+            .expect_err("an empty hash is present, not absent");
+    }
+
+    #[test]
     fn the_tracked_lock_carries_every_seeded_class_and_member() {
         let pinned = pinned();
 
@@ -817,6 +843,8 @@ mod tests {
             .adapter
             .inputs
             .data_fixer_jar
+            .as_ref()
+            .expect("a modern data fixer jar")
             .sha256
             .as_deref()
             .expect("a pinned hash");
@@ -940,6 +968,62 @@ mod tests {
         }
         bytes.extend(0_u16.to_be_bytes()); // class attributes
         bytes
+    }
+
+    /// An empty class with its real linked name and an optional superclass.
+    fn empty_class(name: &str, parent: Option<&str>) -> Vec<u8> {
+        let capacity = 30 + name.len() + parent.map_or(0, |name| 6 + name.len());
+        let mut bytes = Vec::with_capacity(capacity);
+        bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes());
+        bytes.extend(52_u16.to_be_bytes());
+        bytes.extend(if parent.is_some() { 5_u16 } else { 3_u16 }.to_be_bytes());
+        for (index, text) in std::iter::once((1_u16, name)).chain(parent.map(|text| (3, text))) {
+            bytes.push(1); // UTF8
+            bytes.extend(
+                u16::try_from(text.len())
+                    .expect("a short class name")
+                    .to_be_bytes(),
+            );
+            bytes.extend(text.as_bytes());
+            bytes.push(7); // Class
+            bytes.extend(index.to_be_bytes());
+        }
+        for value in [
+            ACC_PUBLIC,
+            2,
+            if parent.is_some() { 4 } else { 0 },
+            0,
+            0,
+            0,
+            0,
+        ] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn tiny_mapped_inheritance_keeps_the_reviewed_superclass() {
+        let mapping = Mapping::tiny("C\tcom/example/Base\ta\nC\tcom/example/Child\tb\n")
+            .expect("normalized Tiny classes");
+        let seeds: Seeds = toml::from_str(
+            "schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
+             [[stub]]\nrole = \"Base\"\nclass = \"com.example.Base\"\nmembers = []\n\
+             [[stub]]\nrole = \"Child\"\nclass = \"com.example.Child\"\nmembers = []\n",
+        )
+        .expect("empty seeded classes");
+        let base = fixture::parse(fixture::stored("a.class", &empty_class("a", None)))
+            .expect("the base archive");
+        let child = fixture::parse(fixture::stored("b.class", &empty_class("b", Some("a"))))
+            .expect("the child archive");
+        let stubs = from_jar(&[&base, &child], &seeds, &mapping)
+            .expect("Tiny names resolve both linked classes");
+        let child = stubs
+            .iter()
+            .find(|stub| stub.class == "com/example/Child")
+            .expect("the reviewed child");
+        assert_eq!(child.extends.as_deref(), Some("com/example/Base"));
     }
 
     /// An invented obfuscated version: a seed list, its mapping, and its jars.

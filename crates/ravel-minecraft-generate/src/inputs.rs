@@ -91,6 +91,8 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 }
 
 fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
+    verify_capabilities(adapter)?;
+    verify_mapping_configuration(adapter)?;
     match (
         adapter.mapping_source.needs_mappings(),
         adapter.inputs.client_mappings.is_some(),
@@ -112,7 +114,6 @@ fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
 
     for input in [
         &adapter.inputs.client_jar,
-        &adapter.inputs.data_fixer_jar,
         &adapter.inputs.version_manifest,
         &adapter.inputs.hook_inventory,
         &adapter.inputs.stub_seeds,
@@ -120,6 +121,8 @@ fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
     ]
     .into_iter()
     .chain(adapter.inputs.client_mappings.as_ref())
+    .chain(adapter.inputs.data_fixer_jar.as_ref())
+    .chain(adapter.inputs.mapping_io_jar.as_ref())
     {
         if let Some(upstream) = &input.upstream
             && !upstream.starts_with("https://")
@@ -129,6 +132,75 @@ fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
                 file_name(&input.path)
             )));
         }
+    }
+    Ok(())
+}
+
+fn verify_mapping_configuration(adapter: &Adapter) -> Result<(), GenerateError> {
+    let feather = adapter.mapping_source == MappingSource::FeatherTinyMappings;
+    let namespaces = adapter.mapping_namespaces.is_some();
+    let normalizer = adapter.inputs.mapping_io_jar.is_some();
+    if (feather && (!namespaces || !normalizer)) || (!feather && (namespaces || normalizer)) {
+        return Err(GenerateError::Input(
+            "feather-tiny-mappings requires mappingNamespaces and mappingIoJar; other sources \
+             must not declare either"
+                .to_owned(),
+        ));
+    }
+    if let Some(namespaces) = &adapter.mapping_namespaces
+        && (namespaces.runtime.is_empty()
+            || namespaces.reviewed.is_empty()
+            || namespaces.runtime == namespaces.reviewed
+            || namespaces
+                .runtime
+                .chars()
+                .any(|value| value.is_whitespace() || value.is_control())
+            || namespaces
+                .reviewed
+                .chars()
+                .any(|value| value.is_whitespace() || value.is_control()))
+    {
+        return Err(GenerateError::Input(
+            "mappingNamespaces must name distinct, nonempty runtime and reviewed namespaces \
+             without whitespace or control characters"
+                .to_owned(),
+        ));
+    }
+    if let Some(normalizer) = &adapter.inputs.mapping_io_jar
+        && normalizer.sha256.is_none()
+    {
+        return Err(GenerateError::Input(
+            "mappingIoJar executes code and must pin sha256, not only a byte length".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Legacy metadata is an explicit contract, not a guess from missing fields.
+fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
+    if adapter.capabilities.contains(&Capability::Legacy112) {
+        let expected = PackFormat {
+            resource: 3,
+            resource_minor: 0,
+            data: 0,
+            data_minor: 0,
+            spelling: Spelling::PackFormat,
+        };
+        if adapter.capabilities.len() != 1
+            || adapter.java_release != 8
+            || adapter.pack_format != expected
+            || adapter.inputs.data_fixer_jar.is_some()
+        {
+            return Err(GenerateError::Input(
+                "legacy-1-12 requires Java 8, resource format 3, no data packs, pack-format \
+                 spelling, and no data fixer jar; declare the capability exactly once"
+                    .to_owned(),
+            ));
+        }
+    } else if adapter.inputs.data_fixer_jar.is_none() {
+        return Err(GenerateError::Input(
+            "modern adapter inputs require dataFixerJar; omission requires legacy-1-12".to_owned(),
+        ));
     }
     Ok(())
 }
@@ -171,6 +243,10 @@ pub(super) fn verify_pack_format(
     adapter: &Adapter,
     archive: &jar::Archive,
 ) -> Result<(), GenerateError> {
+    verify_capabilities(adapter)?;
+    if adapter.capabilities.contains(&Capability::Legacy112) {
+        return Ok(());
+    }
     let text = jar_text(archive, JAR_VERSION)?;
     let declared = adapter.pack_format;
     let stated = pack_versions(&text).ok_or_else(|| {
@@ -1021,7 +1097,6 @@ class = \"net/minecraft/Unreferenced\"
 
             for input in [
                 &inputs.client_jar,
-                &inputs.data_fixer_jar,
                 &inputs.version_manifest,
                 &inputs.hook_inventory,
                 &inputs.stub_seeds,
@@ -1030,6 +1105,8 @@ class = \"net/minecraft/Unreferenced\"
             ]
             .into_iter()
             .chain(inputs.client_mappings.as_ref())
+            .chain(inputs.data_fixer_jar.as_ref())
+            .chain(inputs.mapping_io_jar.as_ref())
             {
                 assert!(
                     input.sha256.is_some() || input.bytes.is_some(),
@@ -1144,6 +1221,186 @@ bytes = 2
         )
     }
 
+    fn legacy_adapter() -> Adapter {
+        let mut adapter: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("a modern adapter");
+        adapter.capabilities = vec![super::Capability::Legacy112];
+        adapter.java_release = 8;
+        adapter.pack_format.resource = 3;
+        adapter.pack_format.data = 0;
+        adapter.inputs.data_fixer_jar = None;
+        adapter
+    }
+
+    #[test]
+    fn legacy_capability_is_explicit_and_unknown_or_malformed_values_are_refused() {
+        let document = document("unobfuscated-class-files", "");
+        for value in [
+            "[\"legacy\"]",
+            "[\"legacy-1-12-typo\"]",
+            "\"legacy-1-12\"",
+            "[1]",
+        ] {
+            let text = format!("capabilities = {value}\n{document}");
+            assert!(toml::from_str::<Adapter>(&text).is_err(), "{value}");
+        }
+        let text = format!("capabilities = [\"legacy-1-12\"]\n{document}");
+        let adapter: Adapter = toml::from_str(&text).expect("the named capability parses");
+        assert_eq!(adapter.capabilities, [super::Capability::Legacy112]);
+        assert!(toml::from_str::<Adapter>(&format!("unknown = true\n{document}")).is_err());
+    }
+
+    #[test]
+    fn modern_dfu_omission_is_refused_and_legacy_omission_is_accepted() {
+        let text = document("unobfuscated-class-files", "")
+            .replace("[inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n", "");
+        let modern: Adapter = toml::from_str(&text).expect("an optional library parses");
+        let error = super::pinned_sources(&modern).expect_err("modern inputs require DFU");
+        assert!(
+            error.to_string().contains("require dataFixerJar"),
+            "{error}"
+        );
+        super::pinned_sources(&legacy_adapter()).expect("legacy declares no DFU");
+    }
+
+    #[test]
+    fn only_explicit_legacy_capability_accepts_a_jar_without_pack_version_metadata() {
+        let archive = super::jar::fixture::parse(super::jar::fixture::stored("unused", b""))
+            .expect("an archive without version metadata");
+        super::verify_pack_format(&legacy_adapter(), &archive)
+            .expect("legacy pack constants do not pretend to come from jar metadata");
+        let modern: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("a modern adapter");
+        super::verify_pack_format(&modern, &archive)
+            .expect_err("modern jars must declare their pack formats");
+        assert_eq!(
+            super::major_version(r#"{"javaVersion":{"component":"jre-legacy","majorVersion":8}}"#),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn legacy_capability_refuses_inconsistent_metadata_and_a_dfu_pin() {
+        let legacy = legacy_adapter();
+        let mut wrong = Vec::new();
+        let mut adapter = legacy.clone();
+        adapter.java_release = 21;
+        wrong.push(adapter);
+        let mut adapter = legacy.clone();
+        adapter.pack_format.data = 1;
+        wrong.push(adapter);
+        let mut adapter = legacy.clone();
+        adapter.pack_format.resource_minor = 1;
+        wrong.push(adapter);
+        let mut adapter = legacy.clone();
+        adapter.pack_format.resource = 4;
+        wrong.push(adapter);
+        let mut adapter = legacy.clone();
+        adapter.pack_format.spelling = super::Spelling::MinMaxFormat;
+        wrong.push(adapter);
+        let mut adapter = legacy.clone();
+        adapter.inputs.data_fixer_jar = Some(adapter.inputs.client_jar.clone());
+        wrong.push(adapter);
+        let mut adapter = legacy;
+        adapter.capabilities.push(super::Capability::Legacy112);
+        wrong.push(adapter);
+        for adapter in wrong {
+            super::pinned_sources(&adapter).expect_err("legacy metadata is exact");
+        }
+    }
+
+    #[test]
+    fn optional_mapping_io_upstreams_obey_input_admission() {
+        let mut adapter = legacy_adapter();
+        let mut input = adapter.inputs.client_jar.clone();
+        input.upstream = Some("http://example.invalid/input.jar".to_owned());
+        adapter.inputs.mapping_io_jar = Some(input);
+        adapter.mapping_source = MappingSource::FeatherTinyMappings;
+        adapter.inputs.client_mappings = Some(adapter.inputs.client_jar.clone());
+        adapter.mapping_namespaces = Some(super::MappingNamespaces {
+            runtime: "official".to_owned(),
+            reviewed: "named".to_owned(),
+        });
+        let error = super::pinned_sources(&adapter).expect_err("upstreams require https");
+        assert!(
+            error.to_string().contains("not an https address"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn mapping_configuration_is_required_only_for_the_tiny_source() {
+        for source in [
+            MappingSource::UnobfuscatedClassFiles,
+            MappingSource::OfficialProguardMappings,
+            MappingSource::FeatherTinyMappings,
+        ] {
+            for namespaces in [false, true] {
+                for normalizer in [false, true] {
+                    let mut adapter = legacy_adapter();
+                    adapter.mapping_source = source;
+                    adapter.mapping_namespaces = namespaces.then(|| super::MappingNamespaces {
+                        runtime: "official".to_owned(),
+                        reviewed: "named".to_owned(),
+                    });
+                    adapter.inputs.mapping_io_jar =
+                        normalizer.then(|| adapter.inputs.client_jar.clone());
+                    assert_eq!(
+                        super::verify_mapping_configuration(&adapter).is_ok(),
+                        if source == MappingSource::FeatherTinyMappings {
+                            namespaces && normalizer
+                        } else {
+                            !namespaces && !normalizer
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tiny_namespaces_must_be_nonempty_and_distinct_even_without_artifacts() {
+        for (runtime, reviewed) in [
+            ("", "named"),
+            ("official", ""),
+            ("named", "named"),
+            ("off icial", "named"),
+            ("official", " named"),
+            ("official\n", "named"),
+            ("official", "named\u{7f}"),
+        ] {
+            let mut adapter = legacy_adapter();
+            adapter.mapping_source = MappingSource::FeatherTinyMappings;
+            adapter.inputs.client_mappings = Some(adapter.inputs.client_jar.clone());
+            adapter.inputs.mapping_io_jar = Some(adapter.inputs.client_jar.clone());
+            adapter.mapping_namespaces = Some(super::MappingNamespaces {
+                runtime: runtime.to_owned(),
+                reviewed: reviewed.to_owned(),
+            });
+            let error = super::pinned_sources(&adapter)
+                .expect_err("namespace validity does not depend on available artifacts");
+            assert!(error.to_string().contains("distinct, nonempty"), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_normalizer_without_a_hash_is_refused_even_when_its_length_is_pinned() {
+        let mut adapter = legacy_adapter();
+        adapter.mapping_source = MappingSource::FeatherTinyMappings;
+        adapter.inputs.client_mappings = Some(adapter.inputs.client_jar.clone());
+        adapter.mapping_namespaces = Some(super::MappingNamespaces {
+            runtime: "official".to_owned(),
+            reviewed: "named".to_owned(),
+        });
+        let mut normalizer = adapter.inputs.client_jar.clone();
+        normalizer.sha256 = None;
+        normalizer.bytes = Some(100);
+        adapter.inputs.mapping_io_jar = Some(normalizer);
+        let error = super::pinned_sources(&adapter)
+            .expect_err("equal length cannot establish executable jar identity");
+        assert!(error.to_string().contains("must pin sha256"), "{error}");
+    }
+
     #[test]
     fn a_mapping_source_nothing_implements_is_refused_where_it_is_written() {
         let error = toml::from_str::<Adapter>(&document("community-mappings", ""))
@@ -1161,6 +1418,7 @@ bytes = 2
         for source in [
             MappingSource::UnobfuscatedClassFiles,
             MappingSource::OfficialProguardMappings,
+            MappingSource::FeatherTinyMappings,
         ] {
             let mappings = if source.needs_mappings() {
                 "[inputs.clientMappings]\npath = \"m\"\nsha256 = \"0\"\n"

@@ -235,6 +235,34 @@ and parses ProGuard records with `proguard`. Ravel retains exact descriptors,
 member selection and bijective namespace checks. `cafebabe` was evaluated but
 cannot expose the raw descriptors needed to reject trailing malformed text.
 
+Feather Tiny v2 artifacts are normalized at build time by the pinned Fabric
+`mapping-io` JAR into the same validated class/member resolver. Runtime and
+reviewed namespaces are explicit; missing or repeated names are refused.
+Only a manifest declaring the legacy capability may omit DataFixerUpper;
+modern versions still require their pinned DataFixerUpper input.
+The normalizer executes `JAVA_HOME/bin/java`; `mise` supplies the pinned JDK 27.
+An absent Java home or a runtime older than Java 11 is refused explicitly.
+
+The normalizer pin is `net.fabricmc:mapping-io:0.9.1` (Apache-2.0),
+262096 bytes, SHA-256
+`aedc94b25a2fe7c09c898144ce33a1ef396680e984b07525d34916922d6ee3f4`,
+from <https://maven.fabricmc.net/net/fabricmc/mapping-io/0.9.1/mapping-io-0.9.1.jar>.
+
+`ravel:verify-jvm` verifies the normalizer pin and runs its regression harness
+before any game-version harness. It can also run independently of game downloads:
+
+```sh
+mkdir -p target/mapping-io-tests
+mise exec -- javac -Xlint:all -Werror \
+  -cp tests/fixtures/local/tooling/mapping-io-0.9.1.jar \
+  -d target/mapping-io-tests \
+  crates/ravel-minecraft-generate/java/NormalizeMappings.java \
+  crates/ravel-minecraft-generate/java/NormalizeMappingsTest.java
+mise exec -- java \
+  -cp tests/fixtures/local/tooling/mapping-io-0.9.1.jar:target/mapping-io-tests \
+  NormalizeMappingsTest
+```
+
 JAR entry lookup uses `zip` with default features disabled and only the Rust
 DEFLATE backend enabled. Entries are read without extraction, and decompression
 is bounded by each entry's declared size and the original 32-bit size ceiling.

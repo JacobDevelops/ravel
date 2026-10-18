@@ -394,6 +394,22 @@ script = '''
 set -euo pipefail
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 
+normalizer_jar="tests/fixtures/local/tooling/mapping-io-0.9.1.jar"
+if [ ! -f "$normalizer_jar" ]; then
+  mkdir -p "$(dirname "$normalizer_jar")"
+  curl --fail --location --output "$normalizer_jar" \
+    https://maven.fabricmc.net/net/fabricmc/mapping-io/0.9.1/mapping-io-0.9.1.jar
+fi
+printf '%s  %s\n' \
+  aedc94b25a2fe7c09c898144ce33a1ef396680e984b07525d34916922d6ee3f4 \
+  "$normalizer_jar" | sha256sum --check
+mkdir -p target/mapping-io-tests
+"${JAVA_HOME:?JAVA_HOME must select the configured JDK}/bin/javac" \
+  -Xlint:all -Werror -cp "$normalizer_jar" -d target/mapping-io-tests \
+  crates/ravel-minecraft-generate/java/NormalizeMappings.java \
+  crates/ravel-minecraft-generate/java/NormalizeMappingsTest.java
+"$JAVA_HOME/bin/java" -cp "$normalizer_jar:target/mapping-io-tests" NormalizeMappingsTest
+
 # One line per tracked version, and each is written after the harness
 # returned rather than before it ran. `ravel-test` and `ravel-verify-java`
 # write the same shape beside it, and one xtask verb holds all three to

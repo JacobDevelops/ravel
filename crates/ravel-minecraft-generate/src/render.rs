@@ -1139,20 +1139,21 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
      schemaVersion = {}\n\
      minecraft = \"{}\"\n\
      extractor = \"{EXTRACTOR}\"\n\
-     clientJarSha256 = \"{}\"\n\
-     dataFixerJarSha256 = \"{}\"",
+     clientJarSha256 = \"{}\"",
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
-        adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
-        adapter
-            .inputs
-            .data_fixer_jar
-            .sha256
-            .as_deref()
-            .unwrap_or("")
+        adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
     )
     .expect("writing to a String cannot fail");
+    if let Some(library) = &adapter.inputs.data_fixer_jar {
+        writeln!(
+            text,
+            "dataFixerJarSha256 = \"{}\"",
+            library.sha256.as_deref().unwrap_or("")
+        )
+        .expect("writing to a String cannot fail");
+    }
 
     stub_lock_entries(&mut text, stubs);
     text
@@ -1229,6 +1230,8 @@ mod tests {
             schema_version: 1,
             minecraft: "0.0.0-test".to_owned(),
             mapping_source: MappingSource::UnobfuscatedClassFiles,
+            mapping_namespaces: None,
+            capabilities: Vec::new(),
             java_release: 25,
             pack_format: PackFormat {
                 resource: 7,
@@ -1240,7 +1243,8 @@ mod tests {
             inputs: Inputs {
                 client_jar: unpinned(),
                 client_mappings: None,
-                data_fixer_jar: unpinned(),
+                mapping_io_jar: None,
+                data_fixer_jar: Some(unpinned()),
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
                 stub_seeds: unpinned(),

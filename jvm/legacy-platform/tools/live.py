@@ -11,8 +11,7 @@ import tempfile
 import time
 import tomllib
 
-ROOT = Path(__file__).resolve().parents[3]
-WORK = ROOT / 'tests/fixtures/local/legacy-platform'
+from acquire import ROOT, WORK, atomic_write
 SECTIONS = {'cluster', 'content', 'hierarchy', 'initialization', 'load', 'members',
             'outward', 'persistence', 'refusal', 'screens', 'settings', 'side', 'transformation'}
 SUPPLEMENTAL = {'legacy.world-open', 'legacy.world-open-integrated', 'legacy.command-install',
@@ -20,7 +19,7 @@ SUPPLEMENTAL = {'legacy.world-open', 'legacy.world-open-integrated', 'legacy.com
                 'legacy.global-palette-size'}
 
 
-def launch(action, connected=False, suffix=''):
+def launch(action: str, connected: bool = False, suffix: str = '') -> dict[str, object]:
     environment = os.environ.copy()
     environment['RAVEL_LEGACY_PROBES'] = str(WORK / 'evidence-harness-agent/classes')
     environment['RAVEL_PACKET_LIVE'] = tempfile.mkdtemp(prefix='packets-', dir=WORK)
@@ -34,7 +33,7 @@ def launch(action, connected=False, suffix=''):
             'exit': result.returncode, 'durationMs': round((time.monotonic() - began) * 1000)}
 
 
-def counts(path):
+def counts(path: Path) -> dict[str, int]:
     text = path.read_text()
     if re.search(r'\[ravel\] (failed|no distribution|the distribution)', text):
         raise RuntimeError(f'Agent installation/transformation failed in {path}')
@@ -46,7 +45,7 @@ def counts(path):
         r'\[ravel-legacy\] hook (legacy\.[a-z-]+)=([0-9]+)', text)}
 
 
-def saved_visits(path=None):
+def saved_visits(path: Path | None = None) -> int:
     if path is None:
         path = WORK / 'dedicated-agent/ravel-legacy/data/ravel_mods.dat'
     raw = gzip.decompress(path.read_bytes())
@@ -63,7 +62,7 @@ def saved_visits(path=None):
     return entry['payload']['visits']
 
 
-def collect(started, inventory):
+def collect(started: float, inventory: dict) -> tuple[dict[str, int], list[str]]:
     hooks = {hook['id']: 0 for hook in inventory['hook']}
     errors = []
     for label in ('xvfb-agent', 'xvfb-agent-dedicated', 'server-agent', 'server-agent-restart'):
@@ -79,7 +78,7 @@ def collect(started, inventory):
     return hooks, errors
 
 
-def main():
+def main() -> None:
     output = WORK / 'evidence-agent-acceptance'
     output.mkdir(parents=True, exist_ok=True)
     record = output / 'result.json'
@@ -123,12 +122,12 @@ def main():
     missing_sections = sorted(SECTIONS - sections)
     passed = (not errors and not missing_hooks and not missing_sections and harness.returncode == 0
               and all(process['exit'] == 0 for process in processes))
-    record.write_text(json.dumps({'processes': processes, 'harnessExit': harness.returncode,
-                                 'reviewedHooks': {k: v for k, v in hooks.items() if k not in SUPPLEMENTAL},
-                                 'supplementalHooks': {k: v for k, v in hooks.items() if k in SUPPLEMENTAL},
-                                 'sections': sorted(sections), 'persistence': persistence,
-                                 'missingHooks': missing_hooks, 'missingSections': missing_sections,
-                                 'errors': errors, 'passed': passed}, indent=2) + '\n')
+    atomic_write(record, (json.dumps({'processes': processes, 'harnessExit': harness.returncode,
+                                     'reviewedHooks': {k: v for k, v in hooks.items() if k not in SUPPLEMENTAL},
+                                     'supplementalHooks': {k: v for k, v in hooks.items() if k in SUPPLEMENTAL},
+                                     'sections': sorted(sections), 'persistence': persistence,
+                                     'missingHooks': missing_hooks, 'missingSections': missing_sections,
+                                     'errors': errors, 'passed': passed}, indent=2) + '\n').encode())
     if not passed:
         raise SystemExit(f'Legacy acceptance incomplete; actual results: {record}')
 

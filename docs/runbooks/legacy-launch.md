@@ -127,6 +127,8 @@ Presence of a hook alone is not a replacement for its semantic assertions.
 
 The complete verdict is ignored local
 `tests/fixtures/local/legacy-platform/evidence-agent-acceptance/result.json`.
+The previous verdict is removed before launching; the new JSON is published
+atomically only after all process results and obligations have been collected.
 Additional local records include `evidence-harness-agent/`,
 `evidence-xvfb-agent-dedicated/`, `evidence-server-agent-restart/` and unique
 `packets-*` directories. The JSON distinguishes original/supplemental hooks,

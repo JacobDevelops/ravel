@@ -5,7 +5,7 @@ import sys
 import zipfile
 
 
-def main():
+def main() -> None:
     agent = Path(sys.argv[1])
     with zipfile.ZipFile(agent) as archive:
         manifest = archive.read('META-INF/MANIFEST.MF').decode('utf-8')

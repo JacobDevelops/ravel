@@ -10,6 +10,8 @@ from unittest.mock import patch
 import zipfile
 
 import acquire
+import agent
+import live
 import server
 
 
@@ -202,6 +204,63 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, 'client native library'):
                     self.run_server('Done (1s)!\nSeed: 8675309\nSaved the world\n', libraries=library)
                 self.assertFalse((self.evidence / 'server.complete').exists())
+
+
+class AgentTests(unittest.TestCase):
+    def test_requires_legacy_marker_named_module_and_runtime_classes(self):
+        manifest = ('Ravel-Legacy-Adapter: true\n'
+                    'Automatic-Module-Name: dev.ravel.agent\n')
+        entries = ('dev/ravel/jvm/Hook.class', 'dev/ravel/jvm/LegacyRuntime.class')
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'agent.jar'
+            for missing in (None, *manifest.splitlines(), *entries):
+                with self.subTest(missing=missing):
+                    with zipfile.ZipFile(archive, 'w') as output:
+                        output.writestr('META-INF/MANIFEST.MF',
+                                        '\n'.join(line for line in manifest.splitlines() if line != missing))
+                        for entry in entries:
+                            if entry != missing:
+                                output.writestr(entry, b'')
+                    with patch.object(agent.sys, 'argv', ['agent.py', str(archive)]):
+                        if missing is None:
+                            agent.main()
+                        else:
+                            with self.assertRaises(SystemExit):
+                                agent.main()
+
+
+class LiveTests(unittest.TestCase):
+    def test_counts_requires_native_crossing_named_module_and_no_agent_failure(self):
+        lines = ('1 hook invocations reached native code',
+                 'nativeAccess agent=dev.ravel.agent:true platform=false',
+                 '[ravel-legacy] hook legacy.title-init=2')
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'client.log'
+            log.write_text('\n'.join(lines))
+            self.assertEqual(live.counts(log), {'legacy.title-init': 2})
+            for text in ('\n'.join(lines[1:]), '\n'.join((lines[0], lines[2])),
+                         '\n'.join(lines) + '\n[ravel] failed'):
+                with self.subTest(text=text):
+                    log.write_text(text)
+                    with self.assertRaises(RuntimeError):
+                        live.counts(log)
+
+    def test_collect_requires_fresh_logs_and_sums_only_inventory_hooks(self):
+        text = ('1 hook invocations reached native code\n'
+                'nativeAccess agent=dev.ravel.agent:true platform=false\n'
+                '[ravel-legacy] hook legacy.title-init=2\n'
+                '[ravel-legacy] hook legacy.unknown=9\n')
+        inventory = {'hook': [{'id': 'legacy.title-init'}]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(live, 'WORK', Path(directory)):
+            for label in ('xvfb-agent', 'xvfb-agent-dedicated', 'server-agent', 'server-agent-restart'):
+                log = Path(directory) / f'evidence-{label}'
+                log.mkdir()
+                (log / ('client.log' if label.startswith('xvfb') else 'server.log')).write_text(text)
+            hooks, errors = live.collect(float('inf'), inventory)
+            self.assertEqual(hooks, {'legacy.title-init': 0})
+            self.assertEqual(len(errors), 4)
+            self.assertTrue(all('No fresh process evidence' in error for error in errors))
+            self.assertEqual(live.collect(0, inventory), ({'legacy.title-init': 8}, []))
 
 
 if __name__ == '__main__':

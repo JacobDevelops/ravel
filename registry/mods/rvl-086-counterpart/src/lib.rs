@@ -259,7 +259,8 @@ impl Entry {
     }
 
     fn rebuild(&mut self) -> Result<(), ModError> {
-        settings::publish(&mut self.flags, &self.settings, FLAG_NAMESPACE);
+        settings::publish(&mut self.flags, &self.settings, FLAG_NAMESPACE)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.grouping = census::grouping(FLAG_NAMESPACE)
             .map_err(|error| ModError::refused(error.to_string()))?;
         self.configured = true;

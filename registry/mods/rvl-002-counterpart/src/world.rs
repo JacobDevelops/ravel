@@ -11,6 +11,7 @@
 //! deposit needs a portable predicate, which is the difference between this
 //! section and the dependency's.
 
+use ravel_sdk::Declared;
 use ravel_sdk::world_shaping::WorldShaping;
 
 use crate::settings::{self, Settings};
@@ -159,14 +160,8 @@ pub fn admits(deposit: &Deposit, tagged: Dimension, in_set: bool, settings: &Set
 }
 
 /// This entry declared into a world's shaping set.
-///
-/// # Errors
-///
-/// Returns [`ravel_sdk::ModIdError`] when the entry's own identity is not a
-/// legal mod id, which for a constant is a packaging failure.
-pub fn shaping(into: &mut WorldShaping) -> Result<(), ravel_sdk::ModIdError> {
-    into.declare(crate::MOD_ID.parse()?);
-    Ok(())
+pub fn shaping(into: &mut WorldShaping) {
+    into.declare(crate::Entry::declared_id().clone());
 }
 
 #[cfg(test)]
@@ -313,8 +308,8 @@ mod tests {
     fn a_world_this_entry_deposited_into_names_it_in_its_shaping_set() {
         let mut declared = WorldShaping::default();
         assert!(declared.is_empty());
-        shaping(&mut declared).expect("a legal mod id");
-        shaping(&mut declared).expect("a legal mod id");
+        shaping(&mut declared);
+        shaping(&mut declared);
         assert_eq!(declared.mods().len(), 1, "a set holds a member once");
         assert_eq!(declared.mods()[0].as_str(), crate::MOD_ID);
     }

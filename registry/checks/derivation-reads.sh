@@ -17,7 +17,7 @@ set -euo pipefail
 
 derivation_reads() {
   local start="$1"
-  local dir vocab pending name child
+  local dir vocab name child
   dir="$(cd "$(dirname "$start")" && pwd)"
   vocab="$dir/derivation-vocabulary.json"
 

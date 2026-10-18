@@ -7,7 +7,7 @@
 //! new fact; every value comes out of the function that already decides it, so a
 //! change to the table is a change to the document.
 //!
-//! [`all`] is the whole set, and the test beside it holds the bytes on disk to
+//! [`documents`] is the whole set, and the test beside it holds the bytes on disk to
 //! what these functions render.
 
 use std::collections::BTreeMap;

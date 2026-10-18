@@ -206,21 +206,7 @@ mod tests {
     use crate::model::Crafted;
 
     fn tiers() -> Vec<Tier> {
-        (1..=5)
-            .map(|value| {
-                let mut tier = Tier::new(
-                    format!("test:tier_{value}")
-                        .parse()
-                        .expect("a legal tier identity"),
-                    value,
-                );
-                tier.adjust(
-                    &format!("test:ground_{value}"),
-                    &format!("test:material_{value}"),
-                );
-                tier
-            })
-            .collect()
+        (1..=5).map(crate::ground::tests::tier).collect()
     }
 
     fn crop() -> Crop {

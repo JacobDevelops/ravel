@@ -14,12 +14,13 @@ is not rederived here.
 
 import hashlib
 import json
-import os
+from collections.abc import Iterable
 import pathlib
 import sys
+from typing import Any
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-FIXTURE = os.environ.get("RAVEL_FIXTURE_ID", "atm10-tts-2.0.2")
+from wave_common import FIXTURE, ROOT, write_json
+
 INV = ROOT / "inventory" / FIXTURE
 OUT = ROOT / "waves" / "m6-foundation.json"
 
@@ -28,12 +29,43 @@ GAMEPLAY_OWNERS = ("client-presentation", "content-data", "integration-runtime")
 SEED_OWNER = "sdk-platform"
 SEED_MIN_FOUNDATION_VALUE = 3
 
+# The manifest carries the full selection policy alongside its computed result.
+RULES = {
+    "R0-rights": (
+        "An entry whose sourceUse is prohibited or unresolved is excluded"
+        " outright. A counterpart whose rights position is unresolved is"
+        " not foundation work."
+    ),
+    "R1-closure": (
+        "Each part is dependency-closed: if an entry is in a part, every"
+        " id in its dependencies is in that part."
+    ),
+    "F1-seed": (
+        "A foundation seed is an admissible entry owned by sdk-platform"
+        " whose rubric foundationValue is 3 or more, which is two or more"
+        " dependent entries. This rule is exhaustive: every entry in the"
+        " inventory satisfying it is in the foundation part."
+    ),
+    "F2-closure": "Anything a foundation seed depends on joins the foundation part.",
+    "C1-candidate": (
+        "A cluster candidate is a pair of admissible entries in the"
+        " client-presentation, content-data or integration-runtime lanes"
+        " that share a dependency, closed over dependencies, with every"
+        " member admissible."
+    ),
+    "C2-choice": (
+        "Among candidates, fewest members outside the foundation set"
+        " wins; then most distinct owner lanes spanned; then lowest"
+        " summed riskScore over the new members; then lowest leaf ids."
+    ),
+}
 
-def digest(path):
+
+def digest(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def closure(seeds, deps):
+def closure(seeds: Iterable[str], deps: dict[str, list[str]]) -> set[str]:
     seen, stack = set(), list(seeds)
     while stack:
         node = stack.pop()
@@ -44,7 +76,46 @@ def closure(seeds, deps):
     return seen
 
 
-def main():
+def cluster_candidates(
+    by_id: dict[str, Any], deps: dict[str, list[str]], admissible: set[str]
+) -> list[tuple[frozenset[str], tuple[str, str]]]:
+    """Admissible gameplay pairs sharing a dependency, including their closure."""
+    candidates = []
+    gameplay = sorted(k for k in admissible if by_id[k]["owner"] in GAMEPLAY_OWNERS)
+    for i, a in enumerate(gameplay):
+        for b in gameplay[i + 1 :]:
+            if not set(deps[a]) & set(deps[b]):
+                continue
+            members = closure({a, b}, deps)
+            if members <= admissible:
+                candidates.append((frozenset(members), (a, b)))
+    return candidates
+
+
+def admissions(
+    cid: str, seeds: list[str], foundation: set[str],
+    cluster_members: frozenset[str], cluster_leaves: tuple[str, str],
+    deps: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    out = []
+    for part, members, leaves, leaf_rule in (
+        ("foundation", foundation, seeds, "foundation-seed"),
+        ("cluster", cluster_members, cluster_leaves, "cluster-leaf"),
+    ):
+        if cid not in members:
+            continue
+        if cid in leaves:
+            out.append({"part": part, "rule": leaf_rule})
+        else:
+            out.append({
+                "part": part,
+                "rule": f"{part}-closure",
+                "requiredBy": sorted(k for k in members if cid in deps[k]),
+            })
+    return out
+
+
+def main() -> int:
     plans_path, rights_path = INV / "plans.json", INV / "rights.json"
     plans = json.loads(plans_path.read_text())
     rights = json.loads(rights_path.read_text())
@@ -72,16 +143,7 @@ def main():
     # that share a dependency, taken with its closure, with every member
     # admissible. Two entries hanging off one library is the smallest shape that
     # is a cluster rather than a leaf and its prerequisite.
-    candidates = []
-    gameplay = sorted(k for k in admissible if by_id[k]["owner"] in GAMEPLAY_OWNERS)
-    for i, a in enumerate(gameplay):
-        for b in gameplay[i + 1 :]:
-            if not set(deps[a]) & set(deps[b]):
-                continue
-            members = closure({a, b}, deps)
-            if not members <= admissible:
-                continue
-            candidates.append((frozenset(members), (a, b)))
+    candidates = cluster_candidates(by_id, deps, admissible)
 
     # Rule C2. Order candidates by cost, then by what they exercise, then by
     # risk, then by id. Smallest first: entries the foundation set already pays
@@ -91,7 +153,7 @@ def main():
     # authoring process than one that does not; then to the lowest summed
     # riskScore over the new entries; then to the lowest leaf ids, which is
     # arbitrary and is there only so the answer is single-valued.
-    def order(entry):
+    def order(entry: tuple[frozenset[str], tuple[str, str]]) -> tuple[int, int, int, tuple[str, str]]:
         members, leaves = entry
         new = sorted(members - foundation)
         return (
@@ -106,36 +168,6 @@ def main():
         return 1
     cluster_members, cluster_leaves = min(candidates, key=order)
 
-    def admissions(cid):
-        out = []
-        if cid in foundation:
-            if cid in seeds:
-                out.append({"part": "foundation", "rule": "foundation-seed"})
-            else:
-                out.append(
-                    {
-                        "part": "foundation",
-                        "rule": "foundation-closure",
-                        "requiredBy": sorted(
-                            k for k in foundation if cid in deps[k]
-                        ),
-                    }
-                )
-        if cid in cluster_members:
-            if cid in cluster_leaves:
-                out.append({"part": "cluster", "rule": "cluster-leaf"})
-            else:
-                out.append(
-                    {
-                        "part": "cluster",
-                        "rule": "cluster-closure",
-                        "requiredBy": sorted(
-                            k for k in cluster_members if cid in deps[k]
-                        ),
-                    }
-                )
-        return out
-
     wave = sorted(foundation | cluster_members)
     manifest = {
         "schemaVersion": 1,
@@ -148,35 +180,7 @@ def main():
         },
         "producedBy": "waves/select.py",
         "verifiedBy": "checks/verify-wave.sh",
-        "rules": {
-            "R0-rights": (
-                "An entry whose sourceUse is prohibited or unresolved is excluded"
-                " outright. A counterpart whose rights position is unresolved is"
-                " not foundation work."
-            ),
-            "R1-closure": (
-                "Each part is dependency-closed: if an entry is in a part, every"
-                " id in its dependencies is in that part."
-            ),
-            "F1-seed": (
-                "A foundation seed is an admissible entry owned by sdk-platform"
-                " whose rubric foundationValue is 3 or more, which is two or more"
-                " dependent entries. This rule is exhaustive: every entry in the"
-                " inventory satisfying it is in the foundation part."
-            ),
-            "F2-closure": "Anything a foundation seed depends on joins the foundation part.",
-            "C1-candidate": (
-                "A cluster candidate is a pair of admissible entries in the"
-                " client-presentation, content-data or integration-runtime lanes"
-                " that share a dependency, closed over dependencies, with every"
-                " member admissible."
-            ),
-            "C2-choice": (
-                "Among candidates, fewest members outside the foundation set"
-                " wins; then most distinct owner lanes spanned; then lowest"
-                " summed riskScore over the new members; then lowest leaf ids."
-            ),
-        },
+        "rules": RULES,
         "arithmetic": {
             "plans": len(by_id),
             "excludedByRights": len(by_id) - len(admissible),
@@ -217,7 +221,7 @@ def main():
                 "foundationValue": by_id[cid]["rubric"]["foundationValue"],
                 "dependencies": sorted(deps[cid]),
                 "tests": by_id[cid]["tests"],
-                "admission": admissions(cid),
+                "admission": admissions(cid, seeds, foundation, cluster_members, cluster_leaves, deps),
             }
             for cid in wave
         ],
@@ -232,7 +236,7 @@ def main():
             return 1
 
     OUT.parent.mkdir(exist_ok=True)
-    OUT.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    write_json(OUT, manifest)
     return 0
 
 

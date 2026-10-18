@@ -54,7 +54,6 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
-use ravel_sdk::world_shaping::WorldShaping;
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_321_counterpart::model::{Crop, Tier};
 
@@ -208,16 +207,6 @@ impl Entry {
         self.adjusted = true;
     }
 
-    /// This entry declared into the world-shaping set of a world it deposits in.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ModError::Refused`] when the entry's own identity is not a
-    /// legal mod id, which for a constant is a packaging failure.
-    pub fn shape_world(shaping: &mut WorldShaping) -> Result<(), ModError> {
-        world::shaping(shaping).map_err(|error| ModError::refused(error.to_string()))
-    }
-
     /// What this entry claims at the registration barrier.
     ///
     /// # Errors
@@ -287,13 +276,8 @@ impl Mod for Entry {
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         self.settings = Settings::read(resolved);
-        let published = settings::publish(&mut self.flags, &self.settings);
-        let declared = settings::published_flags().len();
-        if published != declared {
-            return Err(ModError::refused(format!(
-                "{published} of the {declared} flags this entry publishes reached the table"
-            )));
-        }
+        settings::publish(&mut self.flags, &self.settings)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         Ok(())
     }
 
@@ -650,7 +634,7 @@ mod tests {
     #[test]
     fn a_world_this_entry_deposited_into_carries_its_name() {
         let mut shaping = WorldShaping::default();
-        Entry::shape_world(&mut shaping).expect("a legal mod id");
+        world::shaping(&mut shaping);
         assert_eq!(shaping.mods().len(), 1);
         assert_eq!(shaping.mods()[0].as_str(), MOD_ID);
     }

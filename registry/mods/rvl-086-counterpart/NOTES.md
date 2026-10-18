@@ -10,6 +10,9 @@ damage, and nothing else: `Entry::saved_data_declaration` answers nothing, and a
 What survives as counterpart work is §6 through §8 and §11 through §13, which is where most of the
 code and most of the tests are.
 
+Flag publication returns the shared library's typed identity error instead of silently omitting
+an invalid binding. Rebuilding the configured entry propagates that failure.
+
 ## What each section became
 
 | Section | Here | Where |

@@ -18,7 +18,7 @@ use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
 };
 use ravel_sdk::{JsonValue, Side};
-use rvl_042_counterpart::flags::{FlagId, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
 
 pub const DROPS_CREATURE_MATERIAL_CHANCE: &str = "drops.creature_material_chance";
 pub const RITUAL_CATALYST_USES: &str = "ritual.catalyst_uses";
@@ -624,22 +624,25 @@ pub fn published_flags() -> Vec<&'static str> {
 /// A flag is published as a constant rather than a live predicate, because the
 /// shared library binds a reference once and a value that moved afterwards
 /// would not be seen by an already-bound reference anyway.
-pub fn publish(table: &mut FlagTable, settings: &Settings) -> usize {
-    let mut published = 0;
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when a declared flag binding has an invalid identity.
+pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), FlagIdError> {
     for key in published_flags() {
-        let Some(id) = flag_id(key) else {
-            continue;
-        };
+        let id = flag_id(key)?;
         table.publish_constant(id, flag_value(settings, key));
-        published += 1;
     }
-    published
+    Ok(())
 }
 
 /// The flag identity a setting key is published under.
-#[must_use]
-pub fn flag_id(key: &str) -> Option<FlagId> {
-    FlagId::new(crate::MOD_ID, &key.replace('.', "_")).ok()
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when the setting key cannot form a legal flag identity.
+pub fn flag_id(key: &str) -> Result<FlagId, FlagIdError> {
+    FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
 fn flag_value(settings: &Settings, key: &str) -> bool {
@@ -814,7 +817,8 @@ mod tests {
         );
         let mut table = FlagTable::new();
         let settings = Settings::default();
-        assert_eq!(publish(&mut table, &settings), 14);
+        publish(&mut table, &settings).expect("legal flag bindings");
+        assert_eq!(table.published().count(), 14);
 
         let on = flag_id(DROPS_SECOND_SEED).expect("a legal flag identity");
         let off = flag_id(RECIPES_PLAIN_GRID_SEEDS).expect("a legal flag identity");

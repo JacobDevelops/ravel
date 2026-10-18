@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "11d7302c4d9413d51acb315c2593a828cba5dcbdb694384e3bced67e9aa6f602"
+        "sha256": "d66ae717bef038317befaa906cbb95afe725d26a858ddd9d079f76496fa7182d"
       },
       {
         "path": "aliases.json",
@@ -74,7 +74,7 @@
       },
       {
         "path": "src/ground.rs",
-        "sha256": "fea88eb1156c777b2dfae7783484baa86f99b622e8b0a3194f5dc4830d2bd35d"
+        "sha256": "950da3edb65f7bcbc7f4b523fe54631fdb191baec2dbd673cf8224e6b8c3e688"
       },
       {
         "path": "src/growth.rs",
@@ -82,15 +82,15 @@
       },
       {
         "path": "src/harvest.rs",
-        "sha256": "5ec054334faa1778adc9a3f9ea977e431dd9adb3deecb95d1f79fb192da28fc1"
+        "sha256": "fe1a57d97f7c2597f1df34f850bcad1e97c60659f13777d6412e00f94c721754"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "ff5054fc2c1ee2acc3716d31bc0efb7ab3f959c522596ad691819704dc1b8d06"
+        "sha256": "e9008ad1c8e45b2804e063a56b96333ae5e64ed5247b3d07f4d9690e653e0ab5"
       },
       {
         "path": "src/machines.rs",
-        "sha256": "c5a94b56777398f760517a572ba5f8596d52baa427fa3c4eaec1839126661eee"
+        "sha256": "a7621de47271734bfe8915cdce92e5dec25673072b896994eac4965865796b7d"
       },
       {
         "path": "src/model.rs",
@@ -106,11 +106,11 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "ea3320217dd09aeb21cef2bd2588f5a9ec7f01458e57b04e6c7acf0887061b78"
+        "sha256": "7fde0713066cf6a23002c796264302a7c1dc552aaad3ff206867ac86a138ec17"
       },
       {
         "path": "src/world.rs",
-        "sha256": "e71250870a78807c6763d28cd0f54e9df9d9b06da61dbbf5f80712f677575bd3"
+        "sha256": "1cea559b23a8b636bf467749e8fa0f7aea4ac8260475ea61582038cc5e362362"
       }
     ]
   },

@@ -647,8 +647,6 @@ pub fn split_variant(identifier: &str) -> (&str, Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use ravel_sdk::{JsonValue, json};
 
     use super::{
@@ -657,7 +655,8 @@ mod tests {
     };
     use crate::conditions::{BlockState, Condition, Groups, Vocabulary};
     use crate::geometry::{Continuation, Sheet, SheetFlags};
-    use crate::neighbourhood::{Axis, Face, Neighbourhood, Neighbours, Offset, Probe};
+    use crate::neighbourhood::tests::Written;
+    use crate::neighbourhood::{Axis, Face, Neighbours, Offset, Probe};
     use crate::quadrant::Quadrant;
     use crate::slots::{ColumnSlot, Slot, TextureId};
 
@@ -930,34 +929,6 @@ mod tests {
         }
     }
 
-    /// A neighbourhood written out position by position.
-    #[derive(Default)]
-    struct Written {
-        centre: BlockState,
-        around: BTreeMap<Offset, BlockState>,
-    }
-
-    impl Neighbourhood for Written {
-        fn appearance(&self, offset: Offset) -> BlockState {
-            if offset == Offset::ZERO {
-                return self.centre.clone();
-            }
-            self.around
-                .get(&offset)
-                .cloned()
-                .unwrap_or_else(BlockState::nothing)
-        }
-    }
-
-    fn surrounded(centre: BlockState, face: Face, neighbour: &BlockState) -> Written {
-        let mut around = BTreeMap::new();
-        for index in 0..4 {
-            around.insert(face.orthogonal(index), neighbour.clone());
-            around.insert(face.diagonal(index), neighbour.clone());
-        }
-        Written { centre, around }
-    }
-
     fn pane_state(across: bool) -> BlockState {
         let along = if across { "false" } else { "true" };
         let perpendicular = if across { "true" } else { "false" };
@@ -984,7 +955,7 @@ mod tests {
         // §9.3's rule connects none of them, and only the pane model may use
         // §9.3's rule.
         let own = pane_state(true);
-        let written = surrounded(own.clone(), Face::North, &pane_state(false));
+        let written = Written::of(own.clone()).all_around(Face::North, &pane_state(false));
         let groups = Groups::new();
 
         let context = pane.context(Face::North, &groups, &written);
@@ -1006,8 +977,9 @@ mod tests {
     fn a_condition_reading_model_is_handed_its_samples_even_where_the_face_is_culled() {
         let vocabulary = vocabulary();
         let own = BlockState::new("base:mat");
-        let mut written = surrounded(own.clone(), Face::Up, &own);
-        written.around.insert(Face::Up.normal(), own);
+        let written = Written::of(own.clone())
+            .all_around(Face::Up, &own)
+            .at(Face::Up.normal(), own);
 
         let groups = Groups::new();
         let carpet = Model::parse(

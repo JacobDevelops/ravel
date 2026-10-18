@@ -15,6 +15,7 @@
 //! biomes are constructed, so switching one off affects chunks generated
 //! afterwards and leaves generated chunks alone.
 
+use ravel_sdk::Declared;
 use ravel_sdk::world_shaping::WorldShaping;
 
 /// Which decoration step a deposit generates at.
@@ -125,14 +126,8 @@ pub fn place(bound: bool, chance: f64, draw: f64) -> Placed {
 }
 
 /// This entry declared into a world's shaping set.
-///
-/// # Errors
-///
-/// Returns [`ravel_sdk::ModIdError`] when the entry's own identity is not a
-/// legal mod id, which for a constant is a packaging failure.
-pub fn shaping(into: &mut WorldShaping) -> Result<(), ravel_sdk::ModIdError> {
-    into.declare(crate::MOD_ID.parse()?);
-    Ok(())
+pub fn shaping(into: &mut WorldShaping) {
+    into.declare(crate::Entry::declared_id().clone());
 }
 
 #[cfg(test)]
@@ -190,7 +185,7 @@ mod tests {
         use ravel_sdk::world_shaping::ShapingRecord;
 
         let mut at_creation = WorldShaping::default();
-        shaping(&mut at_creation).expect("the entry's own identity is a legal mod id");
+        shaping(&mut at_creation);
         assert_eq!(at_creation.mods().len(), 1);
         let written = ShapingRecord::at_creation(&at_creation);
         written
@@ -203,7 +198,7 @@ mod tests {
         assert_eq!(refusal.missing().len(), 1);
         assert_eq!(refusal.missing()[0].as_str(), crate::MOD_ID);
 
-        shaping(&mut at_creation).expect("a legal mod id");
+        shaping(&mut at_creation);
         assert_eq!(at_creation.mods().len(), 1, "declaring twice declares once");
     }
 }

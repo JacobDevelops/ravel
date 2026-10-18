@@ -53,7 +53,7 @@ pub fn landed_on(fall_damage: f64) -> (f64, bool) {
 /// a flag nobody declared.
 #[must_use]
 pub fn conversion_enabled(flags: &FlagTable) -> bool {
-    depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL).is_some_and(|flag| flags.enabled(&flag))
+    depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL).is_ok_and(|flag| flags.enabled(&flag))
 }
 
 /// Converts ground with this tier's material held.
@@ -172,7 +172,7 @@ mod tests {
             crops_fertilisable: true,
             ..crate::settings::Settings::default()
         };
-        crate::settings::publish(&mut flags, &settings);
+        crate::settings::publish(&mut flags, &settings).expect("legal flag bindings");
         assert!(!conversion_enabled(&flags));
         assert!(convert(&flags, None, true, &held, 4, 0).passed_through());
 

@@ -26,7 +26,7 @@ use ravel_sdk::network::{
     Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
 use ravel_sdk::{Declared, Side};
-use rvl_042_counterpart::flags::{FlagId, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
 
 use crate::matching::Matcher;
 use crate::overrides::Table;
@@ -910,16 +910,20 @@ pub fn to_bytes(write: &dyn Fn(&mut PacketWriter)) -> Vec<u8> {
 /// which is what section four's one-time scan wants: the switches are
 /// restart-scoped and a flag that changed under a data pack would leave a
 /// creative listing disagreeing with the recipes beside it.
-pub fn publish(table: &mut FlagTable, settings: &Settings, namespace: &str) -> usize {
-    let mut published = 0;
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when the namespace or a declared flag name is invalid.
+pub fn publish(
+    table: &mut FlagTable,
+    settings: &Settings,
+    namespace: &str,
+) -> Result<(), FlagIdError> {
     for (flag, key) in FLAG_BINDINGS {
-        let Ok(id) = FlagId::new(namespace, flag) else {
-            continue;
-        };
+        let id = FlagId::new(namespace, flag)?;
         table.publish_constant(id, settings.switch(key));
-        published += 1;
     }
-    published
+    Ok(())
 }
 
 /// Whether any shipped setting would have to travel for a side to have a value.
@@ -1100,12 +1104,20 @@ mod tests {
         settings.switches[light] = false;
 
         let mut table = FlagTable::default();
-        assert_eq!(publish(&mut table, &settings, "rvl_086_counterpart"), 17);
+        publish(&mut table, &settings, "rvl_086_counterpart").expect("legal flag bindings");
+        assert_eq!(table.published().count(), 17);
         let named = FlagId::new("rvl_086_counterpart", "light_block").expect("a legal identity");
         let unrelated =
             FlagId::new("rvl_086_counterpart", "watering_tools").expect("a legal identity");
         assert!(!table.enabled(&named));
         assert!(table.enabled(&unrelated));
+    }
+
+    #[test]
+    fn an_invalid_flag_namespace_is_returned_instead_of_silently_skipped() {
+        let mut table = FlagTable::default();
+        assert!(publish(&mut table, &Settings::default(), "invalid namespace").is_err());
+        assert_eq!(table.published().count(), 0);
     }
 
     #[test]
@@ -1118,7 +1130,7 @@ mod tests {
         settings.switches[watering] = false;
 
         let mut table = FlagTable::default();
-        publish(&mut table, &settings, "rvl_086_counterpart");
+        publish(&mut table, &settings, "rvl_086_counterpart").expect("legal flag bindings");
         let light = FlagId::new("rvl_086_counterpart", "light_block").expect("a legal identity");
         assert!(table.enabled(&light));
     }

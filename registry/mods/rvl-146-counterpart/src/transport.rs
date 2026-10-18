@@ -633,7 +633,7 @@ pub fn write(action: &Action, numbering: &TagNumbering) -> Result<Vec<u8>, Write
     Ok(bytes)
 }
 
-/// Reads an action written by [`write`].
+/// Reads an action written by [`write()`].
 ///
 /// # Errors
 ///

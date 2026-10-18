@@ -550,8 +550,13 @@ args = ["run", "--locked", "-p", "ravel-xtask", "--", "host", "build", "${@}"]
 [tasks."ravel:registry-verify"]
 description = "Verify the in-repository registry counterparts and contracts."
 cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-command = "bash"
-args = ["registry/checks/verify.sh"]
+script_runner = "bash"
+script = '''
+set -euo pipefail
+cd "${CARGO_MAKE_WORKING_DIRECTORY}"
+python3 -B -m unittest discover -s registry/waves
+bash registry/checks/verify.sh
+'''
 
 [tasks."ravel:registry-verify-fixture"]
 description = "Verify registry contracts including local fixture evidence."

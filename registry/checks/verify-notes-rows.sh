@@ -112,11 +112,11 @@ fi
 # The verdict table, flattened for awk: one line per verdict, longest first, so
 # the first match is the longest match and "declarable only" is never read as a
 # cell that merely starts with a word.
-verdict_lines=""
-for verdict in "${!class_of[@]}"; do
-  verdict_lines+="${#verdict}\t$verdict\t${class_of[$verdict]}\n"
-done
-sorted_verdicts="$(printf "$verdict_lines" | LC_ALL=C sort -t$'\t' -k1,1nr -k2,2 | cut -f2,3)"
+sorted_verdicts="$(
+  for verdict in "${!class_of[@]}"; do
+    printf '%s\t%s\t%s\n' "${#verdict}" "$verdict" "${class_of[$verdict]}"
+  done | LC_ALL=C sort -t$'\t' -k1,1nr -k2,2 | cut -f2,3
+)"
 
 rows_total=0
 outside_total=0

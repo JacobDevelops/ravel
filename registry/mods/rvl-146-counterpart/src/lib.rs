@@ -230,8 +230,8 @@ pub struct Entry {
 impl Entry {
     /// Builds the library on a side.
     ///
-    /// This does not claim the process-wide slot: [`Entry::sole`] does, and it
-    /// is what a host calls.
+    /// Hosts call this constructor; [`Entry::sole`] additionally claims an
+    /// optional process-wide slot.
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {

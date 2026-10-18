@@ -20,7 +20,7 @@ use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
 };
 use ravel_sdk::{JsonValue, Side};
-use rvl_042_counterpart::flags::{FlagId, FlagTable};
+use rvl_042_counterpart::flags::{FlagId, FlagIdError, FlagTable};
 use rvl_321_counterpart::settings as depended;
 
 pub const DROPS_SOUL_CHANCE: &str = "drops.soul_chance";
@@ -298,22 +298,25 @@ pub fn published_flags() -> Vec<&'static str> {
 }
 
 /// Publishes those flags into the shared table under this entry's namespace.
-pub fn publish(table: &mut FlagTable, settings: &Settings) -> usize {
-    let mut published = 0;
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when a declared flag binding has an invalid identity.
+pub fn publish(table: &mut FlagTable, settings: &Settings) -> Result<(), FlagIdError> {
     for key in published_flags() {
-        let Some(id) = flag_id(key) else {
-            continue;
-        };
+        let id = flag_id(key)?;
         table.publish_constant(id, flag_value(settings, key));
-        published += 1;
     }
-    published
+    Ok(())
 }
 
 /// The flag identity a setting key of this entry's is published under.
-#[must_use]
-pub fn flag_id(key: &str) -> Option<FlagId> {
-    FlagId::new(crate::MOD_ID, &key.replace('.', "_")).ok()
+///
+/// # Errors
+///
+/// Returns [`FlagIdError`] when the setting key cannot form a legal flag identity.
+pub fn flag_id(key: &str) -> Result<FlagId, FlagIdError> {
+    FlagId::new(crate::MOD_ID, &key.replace('.', "_"))
 }
 
 /// The two flags this entry reads and never publishes.
@@ -330,7 +333,7 @@ pub fn consumed_flags() -> Vec<FlagId> {
         depended::GROUND_CONVERT_BY_MATERIAL,
     ]
     .into_iter()
-    .filter_map(depended::flag_id)
+    .filter_map(|key| depended::flag_id(key).ok())
     .collect()
 }
 
@@ -455,7 +458,8 @@ mod tests {
     fn five_flags_are_published_and_the_two_consumed_ones_are_not_in_this_namespace() {
         let mut table = FlagTable::new();
         let settings = Settings::default();
-        assert_eq!(publish(&mut table, &settings), 5);
+        publish(&mut table, &settings).expect("legal flag bindings");
+        assert_eq!(table.published().count(), 5);
         assert_eq!(published_flags().len(), 5);
 
         let published: Vec<String> = table.published().map(ToString::to_string).collect();
@@ -492,7 +496,7 @@ mod tests {
             },
             ..Settings::default()
         };
-        publish(&mut table, &settings);
+        publish(&mut table, &settings).expect("legal flag bindings");
         let fertilisable = flag_id(CROPS_FERTILISABLE).expect("a legal flag name");
         let deposit = flag_id(WORLD_OUTER_SHARD_DEPOSIT).expect("a legal flag name");
         assert!(table.holds(&fertilisable));

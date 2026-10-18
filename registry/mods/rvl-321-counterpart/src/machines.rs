@@ -13,7 +13,7 @@
 //! spellings across five machines, both of which produce the same integer.
 
 use ravel_sdk::save::{SavedDataEnvelope, SavedDataVersion};
-use ravel_sdk::{JsonValue, json};
+use ravel_sdk::{Declared, JsonValue, json};
 use rvl_042_counterpart::arithmetic::insert;
 use rvl_042_counterpart::inventory::{Store, StoreRefused};
 use rvl_042_counterpart::{Position, Stack};
@@ -876,20 +876,13 @@ impl Persisted {
     }
 
     /// This machine's payload inside the shared envelope, at [`DATA_VERSION`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ravel_sdk::ModIdError`] when the entry's own identity is not a
-    /// legal mod id, which for a constant is a packaging failure.
-    pub fn envelope(
-        &self,
-        inventory: JsonValue,
-    ) -> Result<SavedDataEnvelope, ravel_sdk::ModIdError> {
-        Ok(SavedDataEnvelope::current(
-            crate::MOD_ID.parse()?,
+    #[must_use]
+    pub fn envelope(&self, inventory: JsonValue) -> SavedDataEnvelope {
+        SavedDataEnvelope::current(
+            crate::Entry::declared_id().clone(),
             DATA_VERSION,
             self.save(inventory),
-        ))
+        )
     }
 
     /// Reads a machine back out of an envelope written at a version this build
@@ -1565,9 +1558,7 @@ mod tests {
             upgrade: Some(6),
             cursor: Some(9),
         };
-        let envelope = held
-            .envelope(json!({"slots": 16}))
-            .expect("the entry's own identity is a legal mod id");
+        let envelope = held.envelope(json!({"slots": 16}));
         assert_eq!(envelope.data_version(), DATA_VERSION);
         assert_eq!(envelope.owner().as_str(), crate::MOD_ID);
 

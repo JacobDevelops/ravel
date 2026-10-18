@@ -63,11 +63,11 @@
       },
       {
         "path": "src/geometry.rs",
-        "sha256": "d6dcbb6d42c764404e4c1694bc77ffdf16073213295a8b349fa865eeaa467403"
+        "sha256": "5f3ae27e7caa4b151a9415cd95214ccf32ccd534bb8805df299c6b78b1480e8c"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "16f601611cd9bf7de541597bb9af020994fd2aae48f9726077abb2f4ddd75917"
+        "sha256": "0d122fe6cc1cd5fd038e42fd3923697682b4bb8ab9a73a7496ab59912d7ca163"
       },
       {
         "path": "src/lib.rs",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/neighbourhood.rs",
-        "sha256": "5d5dd5d62e1061eab78f56e2ba6877628320cb18f88ee05ec4ed7e71deb6f79e"
+        "sha256": "1831613c6c19235bd29e25adf18d82a77a18f9622a6ebce9a7214fc0ecf91acc"
       },
       {
         "path": "src/quadrant.rs",

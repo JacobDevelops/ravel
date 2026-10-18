@@ -12,6 +12,11 @@ declaration, side isolation — is expressed through Ravel. Everything the share
 — the persistence envelope, the flag table, the withheld-seed rule — is consumed from
 `rvl-042-counterpart` rather than rewritten.
 
+Flag publication and `settings::flag_id` return the shared library's typed identity error instead
+of silently omitting an invalid binding; configuration propagates publication failures. World
+shaping and machine envelopes reuse the entry's already-declared identity, so neither operation
+reparses the package constant or reports an impossible identity failure.
+
 ## What each section became
 
 | Section | Here | Where |

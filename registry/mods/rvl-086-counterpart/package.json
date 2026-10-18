@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "829d816061931249b2ad87e919749f760bebfed24a8cc60e2239c94a750b257b"
+        "sha256": "a555b57bc2649cc40636f916bf2525ded9bb3354875ae952fa3d865c110e56c3"
       },
       {
         "path": "aliases.json",
@@ -83,7 +83,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "08a17da223a7358edbc1e5713bac764605848b27f32ee2b43ae48e868782ab7f"
+        "sha256": "1957c201eea0154804e563ef1e8f08eed13c286529f336c6eb58228aaafc61be"
       },
       {
         "path": "src/matching.rs",
@@ -99,11 +99,11 @@
       },
       {
         "path": "src/repair.rs",
-        "sha256": "39d25b00ceca5793b39281f2bc025cace8ade452979bb28ea6a733d6b1874676"
+        "sha256": "8a4ff4a23dd26b8efcd1231f654331fe88624812a7fb972aeaf4a9dfb539672a"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "e8c060e172ae367fab0ef576674371feb950c4ce61e8a2e9cad92d993a7ddb9e"
+        "sha256": "9c1206b212ea58e2fe9252ab507f8b5f868519247a16752f10dbc9b0604e5c58"
       },
       {
         "path": "src/tooltip.rs",

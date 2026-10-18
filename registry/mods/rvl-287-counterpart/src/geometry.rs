@@ -782,61 +782,19 @@ pub fn quadrant_edges(index: usize, inner: f32) -> Option<Edges> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::{
         Continuation, Edges, PANE_INSET, PART, Quad, Rotation, SHEET_HEIGHT, Sheet, SheetFlags,
         arm_edges, connected_block, connected_carpet, connected_pane, pane_column, pane_sample,
         pane_sheet, perpendicular, rotating_column, tiled, tiled_coordinate, upright_column,
     };
     use crate::conditions::BlockState;
-    use crate::neighbourhood::{Axis, Face, Neighbourhood, Neighbours, Offset, Probe};
+    use crate::neighbourhood::tests::Written;
+    use crate::neighbourhood::{Axis, Face, Neighbours, Offset, Probe};
     use crate::quadrant::Quadrant;
     use crate::slots::{ColumnSlot, Grid, PaneEdge, Slot, TextureId};
 
     fn drawn(neighbours: Neighbours) -> Probe {
         Probe::Drawn(neighbours)
-    }
-
-    /// A neighbourhood written out position by position.
-    #[derive(Default)]
-    struct Written {
-        centre: BlockState,
-        around: BTreeMap<Offset, BlockState>,
-    }
-
-    impl Written {
-        fn of(centre: BlockState) -> Self {
-            Self {
-                centre,
-                around: BTreeMap::new(),
-            }
-        }
-
-        fn at(mut self, offset: Offset, state: BlockState) -> Self {
-            self.around.insert(offset, state);
-            self
-        }
-
-        fn all_around(mut self, face: Face, state: &BlockState) -> Self {
-            for index in 0..4 {
-                self.around.insert(face.orthogonal(index), state.clone());
-                self.around.insert(face.diagonal(index), state.clone());
-            }
-            self
-        }
-    }
-
-    impl Neighbourhood for Written {
-        fn appearance(&self, offset: Offset) -> BlockState {
-            if offset == Offset::ZERO {
-                return self.centre.clone();
-            }
-            self.around
-                .get(&offset)
-                .cloned()
-                .unwrap_or_else(BlockState::nothing)
-        }
     }
 
     fn pane(north: &str, south: &str, west: &str, east: &str) -> BlockState {

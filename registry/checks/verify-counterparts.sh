@@ -387,7 +387,7 @@ scan_root() {
   # Rule L1: every name the package gives itself is a name the lexicon
   # publishes. The package directory, the directories under it and every file
   # stem, split on the separators a Rust tree uses.
-  local names="$work/names.$$" pkg
+  local names="$work/names.$$"
   : >"$names"
   for f in "${named_text[@]}"; do
     rel="${f#"$root/"}"

@@ -163,10 +163,10 @@ pub fn convert(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn tier(value: u32) -> Tier {
+    pub(crate) fn tier(value: u32) -> Tier {
         let mut tier = Tier::new(
             format!("test:tier_{value}")
                 .parse()

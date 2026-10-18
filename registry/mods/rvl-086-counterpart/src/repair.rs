@@ -4,7 +4,7 @@
 //! crafting grid beside valid repair materials comes out mended. The rule
 //! declares no ingredients, no result and no shape, and it answers "does this
 //! grid match?" by running the whole assembly and asking whether the answer is
-//! non-empty. [`matches`] is written as exactly that call, so the preview a grid
+//! non-empty. [`matches()`] is written as exactly that call, so the preview a grid
 //! draws and the craft it performs cannot disagree.
 //!
 //! Every number here is integer arithmetic and both truncations are the

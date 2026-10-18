@@ -435,7 +435,7 @@ fn connects(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::collections::BTreeMap;
 
     use super::{Axis, Face, Neighbourhood, Neighbours, Offset, Probe, probe, sample};
@@ -443,22 +443,30 @@ mod tests {
 
     /// A neighbourhood written out position by position.
     #[derive(Default)]
-    struct Written {
+    pub(crate) struct Written {
         centre: BlockState,
         around: BTreeMap<Offset, BlockState>,
         presented: BTreeMap<Offset, BlockState>,
     }
 
     impl Written {
-        fn of(block: &str) -> Self {
+        pub(crate) fn of(centre: BlockState) -> Self {
             Self {
-                centre: BlockState::new(block),
+                centre,
                 ..Self::default()
             }
         }
 
-        fn at(mut self, offset: Offset, state: BlockState) -> Self {
+        pub(crate) fn at(mut self, offset: Offset, state: BlockState) -> Self {
             self.around.insert(offset, state);
+            self
+        }
+
+        pub(crate) fn all_around(mut self, face: Face, state: &BlockState) -> Self {
+            for index in 0..4 {
+                self.around.insert(face.orthogonal(index), state.clone());
+                self.around.insert(face.diagonal(index), state.clone());
+            }
             self
         }
 
@@ -560,7 +568,7 @@ mod tests {
 
     #[test]
     fn a_face_whose_front_presents_the_same_block_is_culled_before_anything_is_sampled() {
-        let neighbourhood = Written::of("base:panel")
+        let neighbourhood = Written::of(BlockState::new("base:panel"))
             .at(Face::North.normal(), BlockState::new("base:panel"))
             .at(Face::North.orthogonal(0), BlockState::new("base:panel"));
         assert_eq!(
@@ -587,7 +595,7 @@ mod tests {
 
     #[test]
     fn an_empty_position_in_front_does_not_cull_and_an_empty_sample_never_connects() {
-        let neighbourhood = Written::of("base:panel");
+        let neighbourhood = Written::of(BlockState::new("base:panel"));
         let Probe::Drawn(neighbours) = probe(
             Face::North,
             // A condition that would connect anything, so only the emptiness
@@ -604,7 +612,7 @@ mod tests {
     #[test]
     fn all_eight_samples_are_taken_and_each_lands_in_its_own_slot() {
         let face = Face::Up;
-        let mut neighbourhood = Written::of("base:panel");
+        let mut neighbourhood = Written::of(BlockState::new("base:panel"));
         neighbourhood = neighbourhood.at(face.orthogonal(1), BlockState::new("base:panel"));
         neighbourhood = neighbourhood.at(face.diagonal(2), BlockState::new("base:panel"));
 
@@ -621,7 +629,8 @@ mod tests {
     fn a_neighbour_that_presents_another_block_connects_as_that_other_block() {
         let face = Face::Up;
         let offset = face.orthogonal(0);
-        let neighbourhood = Written::of("base:panel").at(offset, BlockState::new("base:beam"));
+        let neighbourhood =
+            Written::of(BlockState::new("base:panel")).at(offset, BlockState::new("base:beam"));
         let condition = Condition::SameBlock;
 
         let raw = sample(face, &condition, &Groups::new(), &neighbourhood);
@@ -629,7 +638,7 @@ mod tests {
 
         // The block being drawn presents itself as the neighbour's block when
         // looked at from there, so the same-block test now holds.
-        let presenting = Written::of("base:panel")
+        let presenting = Written::of(BlockState::new("base:panel"))
             .at(offset, BlockState::new("base:beam"))
             .presenting(offset, BlockState::new("base:beam"));
         let overridden = sample(face, &condition, &Groups::new(), &presenting);

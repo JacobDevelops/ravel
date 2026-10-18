@@ -17,12 +17,10 @@ which is mechanical, and it says so in its output rather than implying more.
 """
 
 import json
-import os
-import pathlib
+from typing import Any
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-FIXTURE = os.environ.get("RAVEL_FIXTURE_ID", "atm10-tts-2.0.2")
+from wave_common import FIXTURE, ROOT, write_json
 
 # Which SDK module answers a demand, and whether that module can carry it into a
 # running game today. The second column is the whole point: a module that only
@@ -48,7 +46,7 @@ CAPABILITIES = {
 }
 
 
-def demands(record):
+def demands(record: dict[str, Any]) -> set[str]:
     """The capabilities one entry needs, from its own surface record."""
     data = record.get("data", {})
     resources = record.get("resources", {})
@@ -65,33 +63,16 @@ def demands(record):
         wanted.add("content-behaviour")
         wanted.add("config")
 
-    if data.get("recipes", 0) > 0:
-        wanted.add("recipes")
-    if data.get("lootTables", 0) > 0:
-        wanted.add("loot")
-    if data.get("advancements", 0) > 0:
-        wanted.add("advancements")
-    if data.get("worldgen", 0) > 0:
-        wanted.add("worldgen")
-    if data.get("tags", 0) > 0:
-        wanted.add("tags")
-
-    if resources.get("models", 0) > 0 or resources.get("textures", 0) > 0:
-        wanted.add("resources")
-    if resources.get("shaders", 0) > 0:
-        wanted.add("shaders")
-    if resources.get("sounds", 0) > 0:
-        wanted.add("audio")
-
-    if indicative.get("networkingClasses", 0) > 0:
-        wanted.add("network")
-    if indicative.get("persistenceClasses", 0) > 0:
-        wanted.add("persistence")
-
-    if integration.get("mixinConfigs", 0) > 0 or integration.get("accessTransformers", 0) > 0:
-        wanted.add("interception")
-    if integration.get("serviceProviders", 0) > 0:
-        wanted.add("services")
+    for counts, fields in (
+        (data, {
+            "recipes": "recipes", "lootTables": "loot", "advancements": "advancements",
+            "worldgen": "worldgen", "tags": "tags",
+        }),
+        (resources, {"models": "resources", "textures": "resources", "shaders": "shaders", "sounds": "audio"}),
+        (indicative, {"networkingClasses": "network", "persistenceClasses": "persistence"}),
+        (integration, {"mixinConfigs": "interception", "accessTransformers": "interception", "serviceProviders": "services"}),
+    ):
+        wanted.update(capability for field, capability in fields.items() if counts.get(field, 0) > 0)
 
     # A client-side mod with models is drawing something, and nothing in the SDK
     # draws a screen. This is the closest the inventory gets to naming that.
@@ -101,7 +82,7 @@ def demands(record):
     return wanted
 
 
-def main():
+def main() -> int:
     surfaces = json.loads((ROOT / f"inventory/{FIXTURE}/surfaces.json").read_text())
     plans = json.loads((ROOT / f"inventory/{FIXTURE}/plans.json").read_text())
 
@@ -176,7 +157,7 @@ def main():
     }
 
     path = ROOT / "waves/routing.json"
-    path.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+    write_json(path, out)
 
     print(f"routed {len(entries)} entries; {runnable} could run today, {len(entries) - runnable} could not")
     for name, count in out["totals"]["demandByCapability"].items():

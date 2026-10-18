@@ -21,6 +21,11 @@ whose `shard` and `essence` fields replace the four flat world-generation fields
 keys, defaults, flag publication and generation rules remain unchanged. Debug output retains
 the original eight flat field names and their order.
 
+Flag publication and `settings::flag_id` return the shared library's typed identity error instead
+of silently omitting an invalid binding; configuration propagates publication failures. World
+shaping uses the entry's already-declared identity and is infallible rather than parsing the
+package constant again.
+
 ## What each section became
 
 | Section | Here | Where |

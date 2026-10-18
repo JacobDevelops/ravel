@@ -54,6 +54,9 @@ import io
 import sys
 import tomllib
 import zipfile
+from collections.abc import Iterator
+from typing import Any, TextIO
+from zipfile import ZipFile
 
 DECLARATION_NAMES = ("META-INF/neoforge.mods.toml", "META-INF/mods.toml")
 
@@ -114,10 +117,10 @@ class Parsed:
     """
 
     def __init__(self) -> None:
-        self.rows: list[tuple] = []
+        self.rows: list[tuple[str, ...]] = []
         self.produced = 0
 
-    def make(self, *row) -> None:
+    def make(self, *row: str) -> None:
         self.produced += 1
         self.rows.append(tuple(row))
 
@@ -131,7 +134,7 @@ def declaration(archive: zipfile.ZipFile) -> bytes | None:
     return None
 
 
-def field(table: dict, name: str):
+def field(table: dict[str, Any], name: str) -> Any:
     """A declared key, matched the way a loader matches it: without case."""
     wanted = name.lower()
     for key, value in table.items():
@@ -140,7 +143,7 @@ def field(table: dict, name: str):
     return None
 
 
-def scalar(value) -> str:
+def scalar(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -148,7 +151,7 @@ def scalar(value) -> str:
     return str(value)
 
 
-def dependency_rows(parsed: dict, mod_ids: list[str], where: str, out: Parsed) -> None:
+def dependency_rows(parsed: dict[str, Any], mod_ids: list[str], where: str, out: Parsed) -> None:
     """Every declared dependency, in every spelling the grammar admits.
 
     `[[dependencies.<modid>]]` and `[dependencies]` with an inline array value
@@ -194,20 +197,8 @@ def dependency_rows(parsed: dict, mod_ids: list[str], where: str, out: Parsed) -
             )
 
 
-def records(raw: bytes, where: str) -> Parsed:
-    try:
-        parsed = tomllib.loads(raw.decode("utf-8", "surrogateescape"))
-    except tomllib.TOMLDecodeError as error:
-        raise Unreadable(f"{where}: declaration is not valid TOML: {error}") from error
-
-    out = Parsed()
-    loader = field(parsed, "modLoader")
-    if loader is not None:
-        out.make("LOADER", scalar(loader), "", "", "", "")
-    licence = field(parsed, "license")
-    if licence is not None:
-        out.make("LICENSE", scalar(licence), "", "", "", "")
-
+def mod_rows(parsed: dict[str, Any], where: str, out: Parsed) -> list[str]:
+    """Read every mod identity and retain the owners for dependency attribution."""
     mods = field(parsed, "mods") or []
     if isinstance(mods, dict):
         mods = [mods]
@@ -227,6 +218,23 @@ def records(raw: bytes, where: str) -> Parsed:
             scalar(field(mod, "logoFile")),
             "",
         )
+    return mod_ids
+
+
+def records(raw: bytes, where: str) -> Parsed:
+    try:
+        parsed = tomllib.loads(raw.decode("utf-8", "surrogateescape"))
+    except tomllib.TOMLDecodeError as error:
+        raise Unreadable(f"{where}: declaration is not valid TOML: {error}") from error
+
+    out = Parsed()
+    loader = field(parsed, "modLoader")
+    if loader is not None:
+        out.make("LOADER", scalar(loader), "", "", "", "")
+    licence = field(parsed, "license")
+    if licence is not None:
+        out.make("LICENSE", scalar(licence), "", "", "", "")
+    mod_ids = mod_rows(parsed, where, out)
 
     for mixin in field(parsed, "mixins") or []:
         if isinstance(mixin, dict):
@@ -238,16 +246,16 @@ def records(raw: bytes, where: str) -> Parsed:
     return out
 
 
-def emit(out, filename: str, row: tuple) -> None:
+def emit(out: TextIO, filename: str, row: tuple[str, ...]) -> None:
     out.write("\t".join((filename,) + tuple(row)) + "\n")
 
 
-def parsed(ledger, filename: str, site: str, rows: int) -> None:
+def parsed(ledger: TextIO, filename: str, site: str, rows: int) -> None:
     """How many rows the parser built for a site, counted as it built them."""
     ledger.write(f"PARSED\t{filename}\t{site}\t{rows}\n")
 
 
-def site(ledger, filename: str, where: str) -> None:
+def site(ledger: TextIO, filename: str, where: str) -> None:
     """A nested archive this reader found and descended into.
 
     Written after the archive opens and never before. Round 4's review found
@@ -261,17 +269,17 @@ def site(ledger, filename: str, where: str) -> None:
     ledger.write(f"SITE\t{filename}\t{where}\tREAD\t\n")
 
 
-def declined(ledger, filename: str, where: str, kind: str) -> None:
+def declined(ledger: TextIO, filename: str, where: str, kind: str) -> None:
     """A nested archive this reader found and did not descend into."""
     ledger.write(f"SITE\t{filename}\t{where}\t{kind}\t{DECLINED_KINDS.get(kind, '')}\n")
 
 
-def synthesised(ledger, filename: str, site: str, why: str) -> None:
+def synthesised(ledger: TextIO, filename: str, site: str, why: str) -> None:
     """A row this reader emitted that no parsed declaration is behind."""
     ledger.write(f"SYNTH\t{filename}\t{site}\t1\t{why}\n")
 
 
-def refused(ledger, filename: str, site: str, row: tuple) -> None:
+def refused(ledger: TextIO, filename: str, site: str, row: tuple[str, ...]) -> None:
     """A parsed row this reader declines to emit, written out one row at a time.
 
     The kind is taken off the row rather than passed in, and the row itself is
@@ -300,7 +308,7 @@ def is_archive(archive: zipfile.ZipFile, info: zipfile.ZipInfo, where: str) -> b
         raise Unreadable(f"{where}: an entry could not be read far enough to tell what it is: {error}") from error
 
 
-def nested_sites(archive: zipfile.ZipFile, where: str):
+def nested_sites(archive: zipfile.ZipFile, where: str) -> Iterator[tuple[str, str | None]]:
     """Every nested archive this archive holds, from its table of contents.
 
     No manifest is consulted. A library is an entry in a jar-in-jar directory,
@@ -321,7 +329,10 @@ def nested_sites(archive: zipfile.ZipFile, where: str):
             yield name, "CARGO"
 
 
-def descend(archive, filename: str, prefix: str, meta, ledger, nested_entries) -> None:
+def descend(
+    archive: ZipFile, filename: str, prefix: str,
+    meta: TextIO, ledger: TextIO, nested_entries: TextIO,
+) -> None:
     for name, decline in nested_sites(archive, f"{filename}!{prefix}" if prefix else filename):
         path = f"{prefix}!{name}" if prefix else name
         where = f"{filename}!{path}"
@@ -331,7 +342,10 @@ def descend(archive, filename: str, prefix: str, meta, ledger, nested_entries) -
         read_nested(archive, name, path, filename, meta, ledger, nested_entries)
 
 
-def read_nested(container, name: str, path: str, filename: str, meta, ledger, nested_entries) -> None:
+def read_nested(
+    container: ZipFile, name: str, path: str, filename: str,
+    meta: TextIO, ledger: TextIO, nested_entries: TextIO,
+) -> None:
     """One nested library, and everything it ships in turn.
 
     The walk recurses rather than stopping at the first level, because a library
@@ -377,30 +391,36 @@ def read_nested(container, name: str, path: str, filename: str, meta, ledger, ne
             # inside it and loads with it; what it says about its own loader,
             # licence and mixins is its own and is refused by name rather than
             # attributed to the artifact around it.
-            out = records(inner_raw, where)
-            parsed(ledger, filename, where, out.produced)
-            wrote = False
-            for row in out.rows:
-                if row[0] == "MOD":
-                    emit(meta, filename, ("NESTED", path, row[1], row[2], "", ""))
-                    wrote = True
-                elif row[0] == "DEP":
-                    emit(meta, filename, ("NESTEDDEP",) + tuple(row[1:]))
-                elif row[0] in NESTED_REFUSALS:
-                    refused(ledger, filename, where, row)
-                else:
-                    raise Unreadable(
-                        f"{where}: the reader has no disposition for a {row[0]} record"
-                    )
-            if not wrote:
-                emit(meta, filename, ("NESTED", path, "", "", "", ""))
-                synthesised(ledger, filename, where, "the nested declaration names no mod")
+            emit_nested_declaration(inner_raw, where, filename, path, meta, ledger)
 
         descend(inner, filename, path, meta, ledger, nested_entries)
 
 
-def read_mod(instance_root: str, filename: str, meta, entries, ledger, nested_entries) -> None:
-    path = f"{instance_root}/mods/{filename}"
+def emit_nested_declaration(
+    raw: bytes, where: str, filename: str, path: str, meta: TextIO, ledger: TextIO,
+) -> None:
+    out = records(raw, where)
+    parsed(ledger, filename, where, out.produced)
+    wrote = False
+    for row in out.rows:
+        if row[0] == "MOD":
+            emit(meta, filename, ("NESTED", path, row[1], row[2], "", ""))
+            wrote = True
+        elif row[0] == "DEP":
+            emit(meta, filename, ("NESTEDDEP",) + tuple(row[1:]))
+        elif row[0] in NESTED_REFUSALS:
+            refused(ledger, filename, where, row)
+        else:
+            raise Unreadable(f"{where}: the reader has no disposition for a {row[0]} record")
+    if not wrote:
+        emit(meta, filename, ("NESTED", path, "", "", "", ""))
+        synthesised(ledger, filename, where, "the nested declaration names no mod")
+
+
+def read_mod(
+    path: str, filename: str, meta: TextIO, entries: TextIO,
+    ledger: TextIO, nested_entries: TextIO,
+) -> None:
     with zipfile.ZipFile(path) as archive:
         for name in archive.namelist():
             entries.write(f"{filename}\t{name}\n")
@@ -418,8 +438,11 @@ def read_mod(instance_root: str, filename: str, meta, entries, ledger, nested_en
         descend(archive, filename, "", meta, ledger, nested_entries)
 
 
-def read_shaderpack(instance_root: str, filename: str, entries, ledger, nested_entries, meta) -> None:
-    """A shaderpack is catalogued rather than read, and censused all the same.
+def read_shaderpack(
+    path: str, filename: str, meta: TextIO, entries: TextIO,
+    ledger: TextIO, nested_entries: TextIO,
+) -> None:
+    """A shaderpack is catalogued rather than read.
 
     It declares no mod, so nothing here parses one. What it ships is still walked
     on the same terms as a mod's, because "which archives does this artifact
@@ -427,25 +450,47 @@ def read_shaderpack(instance_root: str, filename: str, entries, ledger, nested_e
     only of the ones that answer it interestingly. Two shaderpacks in this
     fixture ship an archive under a `.placebo` extension.
     """
-    with zipfile.ZipFile(f"{instance_root}/shaderpacks/{filename}") as archive:
+    with zipfile.ZipFile(path) as archive:
         for name in archive.namelist():
             entries.write(f"{filename}\t{name}\n")
         descend(archive, filename, "", meta, ledger, nested_entries)
 
 
-def read_resourcepack(instance_root: str, filename: str, entries, ledger, nested_entries, meta) -> None:
-    """A resource pack is a pinned bundled resource, catalogued exactly as a
-    shaderpack is.
+def read_resourcepack(
+    path: str, filename: str, meta: TextIO, entries: TextIO,
+    ledger: TextIO, nested_entries: TextIO,
+) -> None:
+    """Resource packs declare no mods but still belong in the artifact census.
 
-    It declares no mod, so nothing here parses one; what it ships is walked on
-    the same terms as every other acquired artifact so the census answers "which
-    archives does this artifact carry" of it too. This pack pins two resource
-    packs (SmoothFont, ClassicMekTextures).
+    This pack pins SmoothFont and ClassicMekTextures. Their archive listings
+    and nested sites are accounted on the same terms as the other artifacts.
     """
-    with zipfile.ZipFile(f"{instance_root}/resourcepacks/{filename}") as archive:
+    with zipfile.ZipFile(path) as archive:
         for name in archive.namelist():
             entries.write(f"{filename}\t{name}\n")
         descend(archive, filename, "", meta, ledger, nested_entries)
+
+
+def read_table(path: str) -> list[list[str]]:
+    """Read the workspace-owned artifact TSV, ignoring blank lines."""
+    with open(path, encoding="utf-8") as handle:
+        return [line.rstrip("\n").split("\t") for line in handle if line.rstrip("\n")]
+
+
+def read_artifacts(
+    rows: list[list[str]], instance_root: str,
+    meta: TextIO, entries: TextIO, ledger: TextIO, nested_entries: TextIO,
+) -> None:
+    # Keep the historical mod, shaderpack, resourcepack emission order.
+    for kind, reader in (
+        ("mod", read_mod), ("shaderpack", read_shaderpack), ("resourcepack", read_resourcepack),
+    ):
+        for row in rows:
+            if row[0] != kind:
+                continue
+            filename = row[1]
+            path = f"{instance_root}/{kind}s/{filename}"
+            reader(path, filename, meta, entries, ledger, nested_entries)
 
 
 def main(argv: list[str]) -> int:
@@ -457,13 +502,7 @@ def main(argv: list[str]) -> int:
         )
         return 2
     artifact_tsv, instance_root, meta_path, entries_path, ledger_path, nested_path = argv[1:]
-
-    rows = []
-    with open(artifact_tsv, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.rstrip("\n")
-            if line:
-                rows.append(line.split("\t"))
+    rows = read_table(artifact_tsv)
     if not rows:
         print("no acquired artifacts to read declared metadata from", file=sys.stderr)
         return 1
@@ -475,15 +514,7 @@ def main(argv: list[str]) -> int:
             open(ledger_path, "w", encoding="utf-8") as ledger,
             open(nested_path, "w", encoding="utf-8") as nested_entries,
         ):
-            for row in rows:
-                if row[0] == "mod":
-                    read_mod(instance_root, row[1], meta, entries, ledger, nested_entries)
-            for row in rows:
-                if row[0] == "shaderpack":
-                    read_shaderpack(instance_root, row[1], entries, ledger, nested_entries, meta)
-            for row in rows:
-                if row[0] == "resourcepack":
-                    read_resourcepack(instance_root, row[1], entries, ledger, nested_entries, meta)
+            read_artifacts(rows, instance_root, meta, entries, ledger, nested_entries)
     except Unreadable as error:
         print(f"declared metadata could not be read: {error}", file=sys.stderr)
         return 1

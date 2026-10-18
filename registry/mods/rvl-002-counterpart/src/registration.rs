@@ -8,7 +8,8 @@ use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_321_counterpart::model::{Crop, Tier};
 
-use crate::{MOD_ID, Settings, census, crops, data, settings, tier};
+use crate::settings::Settings;
+use crate::{MOD_ID, census, crops, data, settings, tier};
 
 /// The entry, as the loader drives it.
 #[derive(Debug)]

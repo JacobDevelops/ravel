@@ -68,14 +68,20 @@ def validate_candidate(data: dict[str, Any]) -> list[Path]:
     return paths
 
 
+def lwjgl_pins() -> dict[str, str]:
+    pins = {}
+    for line in (launch.ROOT / 'jvm/legacy-platform/dependencies.sha256').read_text().splitlines():
+        if line.strip() and not line.startswith('#'):
+            checksum, filename = line.split()
+            pins[filename] = checksum
+    return pins
+
+
 def write_candidate(path: Path, java: Path, host: Path | None = None) -> None:
     require(path.resolve().is_relative_to(launch.LOCAL.resolve()), 'candidate must remain private')
     work = launch.ROOT / 'tests/fixtures/local/legacy-platform'
     lwjgl = []
-    for line in (launch.ROOT / 'jvm/legacy-platform/dependencies.sha256').read_text().splitlines():
-        if not line.strip() or line.startswith('#'):
-            continue
-        checksum, filename = line.split()
+    for filename, checksum in lwjgl_pins().items():
         source = work / filename
         require(source.is_file() and digest(source) == checksum, 'pinned LWJGL input differs: ' + filename)
         lwjgl.append(str(snapshot(source)))
@@ -110,6 +116,19 @@ def instance_directory(instance: str) -> Path:
     return launch.private_path(launch.LOCAL, 'prism/instances/' + name)
 
 
+def retain_agent_bundle(agent: Path, screen: Path) -> tuple[Path, Path]:
+    bundle = launch.private_path(launch.LOCAL, 'resolved/vanilla-runtime/agent-' + digest(agent) + '-' + digest(screen))
+    bundle.mkdir(parents=True, exist_ok=True)
+    retained = []
+    for artifact, name in ((agent, 'ravel-agent.jar'), (screen, 'ravel-screen.jar')):
+        target = launch.private_path(bundle, name)
+        if not target.exists():
+            shutil.copyfile(artifact, target)
+        require(digest(target) == digest(artifact), 'retained agent bundle SHA256 differs: ' + str(target))
+        retained.append(target)
+    return retained[0], retained[1]
+
+
 def ravel_command(candidate: Path | str | None, settings: dict[str, Any], directory: Path,
                   out: Path, observer: Path, classpath: list[Path], natives: Path,
                   args: list[str]) -> tuple[list[str], list[Path], dict[str, Any]]:
@@ -120,24 +139,12 @@ def ravel_command(candidate: Path | str | None, settings: dict[str, Any], direct
     require(data['javaPath'] == settings['javaPath'], 'candidate Java differs from prepared settings')
     retained = [snapshot(path) for path in paths]
     platform, agent, host, screen, *lwjgl = retained
-    bundle = launch.private_path(launch.LOCAL, 'resolved/vanilla-runtime/agent-' + digest(agent) + '-' + digest(screen))
-    bundle.mkdir(parents=True, exist_ok=True)
-    for index, artifact, name in ((1, agent, 'ravel-agent.jar'), (3, screen, 'ravel-screen.jar')):
-        target = launch.private_path(bundle, name)
-        if not target.exists():
-            shutil.copyfile(artifact, target)
-        require(digest(target) == digest(artifact), 'retained agent bundle SHA256 differs: ' + str(target))
-        retained[index] = target
+    retained[1], retained[3] = retain_agent_bundle(agent, screen)
     agent = retained[1]
     validate_agent(agent)
     modules = [path for path in lwjgl if '-natives-' not in path.name]
     native_jars = [path for path in lwjgl if '-natives-' in path.name]
-    expected = {}
-    for line in (launch.ROOT / 'jvm/legacy-platform/dependencies.sha256').read_text().splitlines():
-        if line.strip() and not line.startswith('#'):
-            value, name = line.split()
-            expected[name] = value
-    require({path.name: digest(path) for path in lwjgl} == expected, 'exact pinned LWJGL3 runtime set differs')
+    require({path.name: digest(path) for path in lwjgl} == lwjgl_pins(), 'exact pinned LWJGL3 runtime set differs')
     child = launch.private_path(directory, 'benchmark-child-classpath.txt')
     child.write_text(''.join(str(path) + '\n' for path in classpath))
     logging_args = [value for value in settings['jvmArgs'] if value.startswith('-Dlog4j')]

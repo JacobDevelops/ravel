@@ -366,7 +366,7 @@ pub fn declare_tags(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Entry;
+    use crate::registration::Entry;
     use ravel_sdk::Declared;
 
     fn declared() -> (ContentDeclaration, usize) {

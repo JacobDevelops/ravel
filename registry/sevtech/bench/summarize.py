@@ -174,8 +174,8 @@ def frame_stalls(directory: Path, events: list[dict[str, str]]) -> dict[str, flo
     return metrics
 
 
-def chunk_metrics(directory: Path, events: list[dict[str, str]], required: bool
-                  ) -> tuple[dict[str, Any], dict[str, int]]:
+def chunk_samples(directory: Path, events: list[dict[str, str]], required: bool
+                  ) -> list[dict[str, str]]:
     kinds = ("compile", "upload")
     if required:
         hooks = {row["detail"] for row in events if row["event"] == "renderer_probe_hook"}
@@ -183,17 +183,33 @@ def chunk_metrics(directory: Path, events: list[dict[str, str]], required: bool
     path = directory / "chunks.csv"
     require(not required or path.is_file(), "missing chunk samples")
     if not path.is_file():
-        return {}, {}
+        return []
     with path.open(newline="") as stream:
         measurements = list(csv.DictReader(stream))
     require(not required or bool(measurements), "missing chunk samples")
-    if not measurements:
-        return {}, {}
     for row in measurements:
         require(row["scene"] in (*SCENES, "startup", "menu_wait", "world_creation", "settle", "complete")
                 and row["kind"] in kinds and
                 int(row["monotonic_ns"]) > 0 and int(row["duration_ns"]) > 0,
                 "invalid chunk sample")
+    return measurements
+
+
+def chunk_distribution(label: str, values: list[float]) -> dict[str, Any]:
+    percentiles = distribution(values) if values else dict.fromkeys(("p50", "p95", "p99"))
+    metrics = {label + "." + percentile + "_ms": value
+               for percentile, value in percentiles.items()}
+    metrics[label + ".max_ms"] = max(values) if values else None
+    metrics[label + ".total_ms"] = sum(values) if values else None
+    return metrics
+
+
+def chunk_metrics(directory: Path, events: list[dict[str, str]], required: bool
+                  ) -> tuple[dict[str, Any], dict[str, int]]:
+    kinds = ("compile", "upload")
+    measurements = chunk_samples(directory, events, required)
+    if not measurements:
+        return {}, {}
     measurements = [row for row in measurements if row["scene"] in SCENES]
     require(not required or all(any(row["kind"] == kind for row in measurements) for kind in kinds),
             "missing chunk compile/upload samples")
@@ -204,11 +220,7 @@ def chunk_metrics(directory: Path, events: list[dict[str, str]], required: bool
                       if row["scene"] == scene and row["kind"] == kind]
             label = "chunks." + kind + "." + scene
             counts[label] = len(values)
-            percentiles = distribution(values) if values else dict.fromkeys(("p50", "p95", "p99"))
-            for percentile, value in percentiles.items():
-                metrics[label + "." + percentile + "_ms"] = value
-            metrics[label + ".max_ms"] = max(values) if values else None
-            metrics[label + ".total_ms"] = sum(values) if values else None
+            metrics.update(chunk_distribution(label, values))
     return metrics, counts
 
 
@@ -294,14 +306,7 @@ def workload_protocol(settings: dict[str, Any]) -> dict[str, Any]:
             "fixture": fixture, "rendererProbes": probes}
 
 
-def runtime_cohort(directory: Path) -> dict[str, Any]:
-    command = json.loads((directory / "command.json").read_text())
-    provenance = command.get("provenance", {})
-    version = provenance.get("javaVersion")
-    require(isinstance(version, str) and bool(version), "missing actual Java version provenance")
-    argv = command.get("argv")
-    require(isinstance(argv, list) and argv and all(isinstance(value, str) for value in argv),
-            "missing effective launch command")
+def classpath_hashes(provenance: dict[str, Any]) -> list[str]:
     hashes = []
     for entry in provenance.get("classpath", []):
         if isinstance(entry, dict):
@@ -315,6 +320,30 @@ def runtime_cohort(directory: Path) -> dict[str, Any]:
                 "invalid classpath build provenance")
         hashes.append(value)
     require(bool(hashes), "missing runtime build provenance")
+    return hashes
+
+
+def runtime_inputs(inputs: Any, directory: Path) -> list[dict[str, str]]:
+    require(isinstance(inputs, list) and bool(inputs), "missing runtime input provenance")
+    records = []
+    for entry in inputs:
+        require(isinstance(entry, dict), "invalid runtime input provenance")
+        path, value = entry.get("path"), entry.get("sha256")
+        require(isinstance(path, str) and bool(path) and isinstance(value, str) and
+                re.fullmatch(r"[0-9a-f]{64}", value), "invalid runtime input provenance")
+        records.append({"path": path.replace(str(directory.resolve()), "<trial>"), "sha256": value})
+    return records
+
+
+def runtime_cohort(directory: Path) -> dict[str, Any]:
+    command = json.loads((directory / "command.json").read_text())
+    provenance = command.get("provenance", {})
+    version = provenance.get("javaVersion")
+    require(isinstance(version, str) and bool(version), "missing actual Java version provenance")
+    argv = command.get("argv")
+    require(isinstance(argv, list) and argv and all(isinstance(value, str) for value in argv),
+            "missing effective launch command")
+    hashes = classpath_hashes(provenance)
     candidate = provenance.get("candidateSha256")
     require(command.get("instance") != "ravel" or
             isinstance(candidate, str) and re.fullmatch(r"[0-9a-f]{64}", candidate),
@@ -322,16 +351,7 @@ def runtime_cohort(directory: Path) -> dict[str, Any]:
     cohort = {"javaVersion": version, "candidateSha256": candidate, "classpathSha256": hashes,
               "argv": [value.replace(str(directory.resolve()), "<trial>") for value in argv]}
     if "runtimeInputs" in provenance:
-        inputs = provenance["runtimeInputs"]
-        require(isinstance(inputs, list) and bool(inputs), "missing runtime input provenance")
-        records = []
-        for entry in inputs:
-            require(isinstance(entry, dict), "invalid runtime input provenance")
-            path, value = entry.get("path"), entry.get("sha256")
-            require(isinstance(path, str) and bool(path) and isinstance(value, str) and
-                    re.fullmatch(r"[0-9a-f]{64}", value), "invalid runtime input provenance")
-            records.append({"path": path.replace(str(directory.resolve()), "<trial>"), "sha256": value})
-        cohort["runtimeInputs"] = records
+        cohort["runtimeInputs"] = runtime_inputs(provenance["runtimeInputs"], directory)
     return cohort
 
 
@@ -360,6 +380,17 @@ def validate_ravel_runtime(directory: Path) -> None:
             "missing or duplicate positive Ravel runtime report")
 
 
+def trial_endpoint(events: list[dict[str, str]]) -> int:
+    completion = [int(row["monotonic_ns"]) for row in events if row["event"] == "benchmark_complete"]
+    require(len(completion) == 1, "missing or duplicate completion event")
+    stops = [int(row["monotonic_ns"]) for row in events if row["event"] == "shutdown_requested"]
+    if not stops:
+        stops = [int(row["monotonic_ns"]) for row in events if row["event"] == "scene_end" and
+                 row["detail"].split(";", 1)[0] == "loaded_chunk_stress"]
+    require(len(stops) == 1 and stops[0] <= completion[0], "missing or invalid measurement endpoint")
+    return stops[0]
+
+
 def summarize_trial(directory: Path) -> dict[str, Any]:
     result = json.loads((directory / "result.json").read_text())
     require(result.get("complete") is True and (directory / "complete").is_file() and
@@ -372,14 +403,7 @@ def summarize_trial(directory: Path) -> dict[str, Any]:
     if result["instance"] == "ravel" and protocol["fixture"] == "vanilla-1.12.2":
         validate_ravel_runtime(directory)
     events = rows(directory, "events.csv")
-    completion = [int(row["monotonic_ns"]) for row in events if row["event"] == "benchmark_complete"]
-    require(len(completion) == 1, "missing or duplicate completion event")
-    stops = [int(row["monotonic_ns"]) for row in events if row["event"] == "shutdown_requested"]
-    if not stops:
-        stops = [int(row["monotonic_ns"]) for row in events if row["event"] == "scene_end" and
-                 row["detail"].split(";", 1)[0] == "loaded_chunk_stress"]
-    require(len(stops) == 1 and stops[0] <= completion[0], "missing or invalid measurement endpoint")
-    end = stops[0]
+    end = trial_endpoint(events)
     metrics = event_metrics(events)
     menu = next(row for row in events if row["event"] == "menu_ready")
     wall_to_menu = int(menu["monotonic_ns"]) - int(result["start_monotonic_ns"])

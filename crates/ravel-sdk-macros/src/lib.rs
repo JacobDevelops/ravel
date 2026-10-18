@@ -58,7 +58,7 @@ fn expand(attribute: Tokens, item: Tokens) -> Result<Tokens> {
     let mut block: ItemImpl =
         parse2(item).map_err(|_| Error::new(Span::call_site(), NOT_AN_IMPL))?;
 
-    let Some((implemented, _)) = block.trait_.as_ref() else {
+    let Some((_, implemented, _)) = block.trait_.as_ref() else {
         return Err(Error::new(block.self_ty.span(), INHERENT_IMPL));
     };
     // Reject unrelated traits before generating an invalid `id` method.

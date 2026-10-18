@@ -15,18 +15,6 @@ import launch
 
 
 class LaunchTests(unittest.TestCase):
-    def _host_library(self, path: Path, *, fixture_mods: bool = False,
-                      composed: bool = True, legacy: bool = True) -> None:
-        symbols = ['Java_dev_ravel_jvm_Hook_ravelInitialize',
-                   'Java_dev_ravel_jvm_Hook_ravelInitializeIntegratedServer'] if composed else ['unrelated']
-        if composed and legacy:
-            symbols.append('Java_dev_ravel_jvm_Hook_legacyBootstrap')
-        if fixture_mods:
-            symbols.append('Java_dev_ravel_jvm_LegacyPacketLive_receipts')
-        source = '\n'.join('void ' + symbol + '(void) {}' for symbol in symbols)
-        subprocess.run(['cc', '-shared', '-fPIC', '-x', 'c', '-', '-o', str(path)],
-                       input=source, text=True, capture_output=True, check=True, timeout=30)
-
     def test_java_version_requires_the_actual_profile_major(self):
         for major, version in ((8, '1.8.0_504'), (27, '27-ea')):
             result = launch.subprocess.CompletedProcess(
@@ -189,6 +177,20 @@ class LaunchTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'SHA256'):
                 launch.candidate_command(candidate, root / 'game', root / 'assets',
                                          root / 'natives', root / 'observer.jar', root / 'trial')
+
+
+class VanillaLaunchTests(unittest.TestCase):
+    def _host_library(self, path: Path, *, fixture_mods: bool = False,
+                      composed: bool = True, legacy: bool = True) -> None:
+        symbols = ['Java_dev_ravel_jvm_Hook_ravelInitialize',
+                   'Java_dev_ravel_jvm_Hook_ravelInitializeIntegratedServer'] if composed else ['unrelated']
+        if composed and legacy:
+            symbols.append('Java_dev_ravel_jvm_Hook_legacyBootstrap')
+        if fixture_mods:
+            symbols.append('Java_dev_ravel_jvm_LegacyPacketLive_receipts')
+        source = '\n'.join('void ' + symbol + '(void) {}' for symbol in symbols)
+        subprocess.run(['cc', '-shared', '-fPIC', '-x', 'c', '-', '-o', str(path)],
+                       input=source, text=True, capture_output=True, check=True, timeout=30)
 
     def test_vanilla_dispatch_is_explicit_and_preserves_sevtech_default(self):
         import vanilla

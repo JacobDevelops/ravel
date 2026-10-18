@@ -72,10 +72,10 @@ rvl-120-counterpart = { path = "registry/mods/rvl-120-counterpart", version = "0
 rvl-210-counterpart = { path = "registry/mods/rvl-210-counterpart", version = "0.1.0" }
 rvl-321-counterpart = { path = "registry/mods/rvl-321-counterpart", version = "0.1.0" }
 semver = { version = "1.0.28", features = ["serde"] }
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-syn = { version = "3.0.3", features = ["full"] }
+syn = { version = "2.0.119", features = ["full"] }
 toml = "1.1.4"
 zip = { version = "=9.0.3", default-features = false, features = [
   "deflate-flate2-zlib-rs",

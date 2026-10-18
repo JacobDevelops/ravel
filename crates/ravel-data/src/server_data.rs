@@ -64,7 +64,7 @@ impl fmt::Display for ServerDataKind {
 mod tests {
     use ravel_core::{ContentKind, ModId, RelativePath};
 
-    use crate::{ContentDeclaration, ContentDeclarationError};
+    use crate::declare::{ContentDeclaration, ContentDeclarationError};
 
     use super::ServerDataKind;
 

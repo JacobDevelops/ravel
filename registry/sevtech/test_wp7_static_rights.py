@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from typing import Any
 
 from wp7_test_support import CHECK_TIMEOUT_SECONDS, ROOT
 
@@ -44,7 +45,7 @@ class StaticRightsTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(message, result.stderr)
 
-    def surface(self, row: dict, name: str) -> dict:
+    def surface(self, row: dict[str, Any], name: str) -> dict[str, Any]:
         return next(r for r in row["rights"] if r["surface"] == name)
 
     def test_committed_rights_pass(self):

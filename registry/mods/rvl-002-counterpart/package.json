@@ -77,7 +77,7 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "0e3a463c1a34a599230258259b38306d5857f1342db56a0da1aee3cae5503712"
+        "sha256": "e4cc7046b7817660bdf898e3241c3f018649c4eaa2f8a228264ac0063cec7ade"
       },
       {
         "path": "src/drops.rs",
@@ -109,7 +109,7 @@
       },
       {
         "path": "src/registration.rs",
-        "sha256": "153df3680308a90bc039e7589bc7e4cb662addda61aace1318fc057912f1c78b"
+        "sha256": "f0804395b5559b703c827942b6f13180c0fe83a8e928dec485bdcd28d4e08553"
       },
       {
         "path": "src/registration/conditions.rs",

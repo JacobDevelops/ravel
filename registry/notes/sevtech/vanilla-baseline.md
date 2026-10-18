@@ -133,6 +133,11 @@ Choose fresh trial prefixes when reproducing. Incomplete diagnostic attempts
 must not be globbed into the strict reducer. Its private JSON contains all
 per-trial metrics and aggregate distributions over trial-level metrics.
 
+Offline regression checks run with
+`python3 -m unittest discover -s registry/sevtech/bench -p 'test_*.py'`.
+Preparation isolation checks live in `test_prepare.py`; synthetic summary
+fixtures live in `summary_test_support.py`. Neither requires a game launch.
+
 ## Recorded matched trials
 
 Six fresh, independently locked warm-filesystem trials completed with exit 0;

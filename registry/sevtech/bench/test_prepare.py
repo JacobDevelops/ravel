@@ -5,8 +5,8 @@ import tempfile
 import unittest
 import zipfile
 
-HERE = Path(__file__).resolve().parent
-SPEC = importlib.util.spec_from_file_location("bench_prepare", HERE / "prepare.py")
+SPEC = importlib.util.spec_from_file_location(
+    "bench_prepare", Path(__file__).resolve().with_name("prepare.py"))
 prepare = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(prepare)
 

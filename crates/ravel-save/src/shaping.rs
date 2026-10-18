@@ -1,7 +1,7 @@
 use std::fmt;
 
 use ravel_core::{ModId, ModIdError};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 const SHAPING_FORMAT_VERSION: u8 = 1;
 
@@ -63,8 +63,8 @@ pub struct ShapingRecord {
     mods: Vec<ModId>,
 }
 
-/// The record as it is written, and the only shape [`ShapingRecord::read`] takes.
-#[derive(Deserialize, Serialize)]
+/// The stored shape accepted by [`ShapingRecord::read`].
+#[derive(Deserialize)]
 struct StoredShaping {
     format: u8,
     shaping: Vec<String>,
@@ -87,16 +87,20 @@ impl ShapingRecord {
 
     /// Serializes the record deterministically in declaration order.
     ///
-    /// # Panics
-    ///
-    /// Panics if the format number and mod-id strings cannot be serialized.
+    /// Validated mod ids contain no JSON quoting or escaping characters.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        serde_json::to_vec(&StoredShaping {
-            format: SHAPING_FORMAT_VERSION,
-            shaping: self.mods.iter().map(|id| id.as_str().to_owned()).collect(),
-        })
-        .expect("a number and a list of strings always serialize")
+        let mut text = format!(r#"{{"format":{SHAPING_FORMAT_VERSION},"shaping":["#);
+        for (index, id) in self.mods.iter().enumerate() {
+            if index != 0 {
+                text.push(',');
+            }
+            text.push('"');
+            text.push_str(id.as_str());
+            text.push('"');
+        }
+        text.push_str("]}");
+        text.into_bytes()
     }
 
     /// Reads a record a world stored.

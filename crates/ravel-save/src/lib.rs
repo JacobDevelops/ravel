@@ -30,7 +30,8 @@ pub type SavedDataVersion = NonZero<u32>;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SavedDataDeclaration {
     owner: ModId,
-    versions: BTreeSet<SavedDataVersion>,
+    older: BTreeSet<SavedDataVersion>,
+    current: SavedDataVersion,
 }
 
 impl SavedDataDeclaration {
@@ -43,11 +44,17 @@ impl SavedDataDeclaration {
         owner: ModId,
         versions: impl IntoIterator<Item = SavedDataVersion>,
     ) -> Result<Self, SavedDataError> {
-        let versions: BTreeSet<SavedDataVersion> = versions.into_iter().collect();
-        if versions.is_empty() {
-            return Err(SavedDataError::NoVersionsDeclared { owner });
-        }
-        Ok(Self { owner, versions })
+        let mut versions: BTreeSet<SavedDataVersion> = versions.into_iter().collect();
+        let current = versions
+            .pop_last()
+            .ok_or_else(|| SavedDataError::NoVersionsDeclared {
+                owner: owner.clone(),
+            })?;
+        Ok(Self {
+            owner,
+            older: versions,
+            current,
+        })
     }
     /// Returns the mod that owns this data.
     #[must_use]
@@ -56,19 +63,12 @@ impl SavedDataDeclaration {
     }
     /// Returns every version this build can read, in ascending order.
     pub fn versions(&self) -> impl Iterator<Item = SavedDataVersion> + '_ {
-        self.versions.iter().copied()
+        self.older.iter().copied().chain([self.current])
     }
     /// Returns the version this build writes.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the declaration has no versions, which [`Self::new`] prevents.
     #[must_use]
-    pub fn current(&self) -> SavedDataVersion {
-        *self
-            .versions
-            .last()
-            .expect("a declaration holds at least one version")
+    pub const fn current(&self) -> SavedDataVersion {
+        self.current
     }
 }
 
@@ -102,7 +102,7 @@ impl SavedDataPlan {
             .collect();
         if let Some(missing) = crossed
             .iter()
-            .find(|version| !declaration.versions.contains(version))
+            .find(|version| **version != current && !declaration.older.contains(version))
         {
             return Err(SavedDataError::NoMigrationPath {
                 owner: declaration.owner.clone(),
@@ -639,6 +639,30 @@ mod tests {
             SavedDataAggregate::open(Some(&oversized), &[declaration()], &BTreeMap::new()),
             Err(SavedDataError::AggregateTooLarge { .. })
         ));
+    }
+    #[test]
+    fn declared_versions_are_nonempty_sorted_and_unique() {
+        let owner = id("saved_data");
+        assert!(matches!(
+            SavedDataDeclaration::new(owner.clone(), []),
+            Err(SavedDataError::NoVersionsDeclared { owner: rejected }) if rejected == owner
+        ));
+        for raw in [[3, 1, 3], [1, 1, 1]] {
+            let declaration =
+                SavedDataDeclaration::new(owner.clone(), raw.map(version)).expect("a nonempty set");
+            let expected = raw.into_iter().collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                declaration
+                    .versions()
+                    .map(SavedDataVersion::get)
+                    .collect::<Vec<_>>(),
+                expected.iter().copied().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                declaration.current().get(),
+                raw.into_iter().max().expect("three versions")
+            );
+        }
     }
     #[test]
     fn future_and_gapped_versions_fail_closed() {

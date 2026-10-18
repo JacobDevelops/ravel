@@ -105,7 +105,7 @@ impl<'bytes> PacketReader<'bytes> {
     ///
     /// Returns [`WireError::Truncated`] when the buffer ends inside the field.
     pub fn bytes_field(&mut self) -> Result<&'bytes [u8], WireError> {
-        let length = usize::try_from(self.u32()?).expect("packet lengths fit the address space");
+        let length = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
         self.take(length)
     }
 

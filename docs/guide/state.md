@@ -104,7 +104,9 @@ own signatures as well as report it.
 ## World data is versioned, and the loader crosses the versions
 
 Declare every version this build can read. The oldest is what still opens; the
-highest is what you write.
+highest is what you write. `SavedDataDeclaration::new` rejects an empty set and
+deduplicates versions. `versions()` yields them in ascending order, and
+`current()` always returns the highest declared version.
 
 Declaring saved data requires both `open_saved_data` and `save_saved_data`.
 Their defaults refuse unsupported callbacks rather than silently dropping a

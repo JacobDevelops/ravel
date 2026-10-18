@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Deterministic stdlib checks; no game, launcher, network, or compiler execution."""
-import importlib.util
 import csv
 import json
 from pathlib import Path
 import tempfile
 import unittest
+import summarize as summary
 
 from summary_test_support import SummaryFixture
 
 HERE = Path(__file__).resolve().parent
-SPEC = importlib.util.spec_from_file_location("bench_summary", HERE / "summarize.py")
-summary = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(summary)
 
 
 class SummaryTests(SummaryFixture, unittest.TestCase):

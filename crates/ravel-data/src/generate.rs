@@ -79,8 +79,7 @@ impl GeneratedData {
 
 /// Renders sorted-key, pretty JSON with a trailing newline.
 fn document(value: &Value) -> Vec<u8> {
-    let mut text = serde_json::to_string_pretty(value)
-        .expect("a map of strings and arrays of strings always serializes");
+    let mut text = format!("{value:#}");
     text.push('\n');
     text.into_bytes()
 }
@@ -128,10 +127,7 @@ pub(crate) fn loot_table_document(namespace: &str, path: &str) -> Vec<u8> {
         Value::String(format!("{namespace}:{path}")),
     );
     let mut pool = Map::new();
-    pool.insert(
-        "bonus_rolls".to_owned(),
-        Value::Number(serde_json::Number::from_f64(0.0).expect("zero is a number")),
-    );
+    pool.insert("bonus_rolls".to_owned(), Value::from(0.0));
     pool.insert(
         "conditions".to_owned(),
         Value::Array(vec![Value::Object(condition)]),
@@ -140,10 +136,7 @@ pub(crate) fn loot_table_document(namespace: &str, path: &str) -> Vec<u8> {
         "entries".to_owned(),
         Value::Array(vec![Value::Object(entry)]),
     );
-    pool.insert(
-        "rolls".to_owned(),
-        Value::Number(serde_json::Number::from_f64(1.0).expect("one is a number")),
-    );
+    pool.insert("rolls".to_owned(), Value::from(1.0));
     let mut object = Map::new();
     object.insert("pools".to_owned(), Value::Array(vec![Value::Object(pool)]));
     object.insert(

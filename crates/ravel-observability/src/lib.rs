@@ -9,5 +9,5 @@ mod report;
 pub use profiling::{
     CallKind, DEFAULT_SLOW_CALLBACK, Metric, ModCost, ModReport, Profiler, ProfilingReport, Support,
 };
-pub use redaction::{Redactor, redact};
+pub use redaction::{Redactor, contains_credential, redact};
 pub use report::{PreWorldReport, Refusal, Subject, WorldAccessRefused};

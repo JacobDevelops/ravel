@@ -57,6 +57,21 @@ pub fn redact(text: &str) -> DiagnosticMessage {
     DiagnosticMessage::redacted(&Redactor, text)
 }
 
+/// Returns whether text contains a credential label or credential-shaped value.
+#[must_use]
+pub fn contains_credential(text: &str) -> bool {
+    text.split_whitespace().any(|word| {
+        let (_, core, _) = undecorate(word);
+        let value = file_name_of(core).unwrap_or(core);
+        names_a_credential(core)
+            || value.split_once('=').is_some_and(|(name, value)| {
+                !value.is_empty() && contains_a_credential_word(name)
+            })
+            || starts_with_a_credential_prefix(value)
+            || has_the_shape_of_a_token(value)
+    })
+}
+
 fn split_word(rest: &str) -> (&str, &str) {
     let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
     rest.split_at(end)
@@ -119,7 +134,7 @@ fn redact_word(core: &str, value_follows: bool) -> String {
     {
         return format!("{name}={REDACTED}");
     }
-    if value_follows || starts_with_a_credential_prefix(core) || has_the_shape_of_a_token(core) {
+    if value_follows || contains_credential(core) {
         return REDACTED.to_owned();
     }
     core.to_owned()
@@ -329,6 +344,23 @@ mod tests {
             ("/home/player/ghp_0123456789", "[redacted]"),
         ] {
             assert_eq!(applied(raw), expected, "{raw}");
+        }
+    }
+
+    #[test]
+    fn credential_detection_uses_the_publication_rules() {
+        for text in [
+            "Bearer",
+            "authorization:",
+            "access_token=abc",
+            "`ghp_0123456789`",
+            "abcdefgh.ijklmnop.qrstuvwx",
+            "/home/player/password=secret",
+        ] {
+            assert!(super::contains_credential(text), "{text}");
+        }
+        for text in ["1.2.3", "https://example.test", "assets/token.txt", "hello"] {
+            assert!(!super::contains_credential(text), "{text}");
         }
     }
 

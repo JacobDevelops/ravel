@@ -57,8 +57,12 @@ a host. You cannot yet drop it into an instance and see it run.
 One thing to plan around while that is true: a generated workspace supplies
 `ravel-sdk`, `serde` and `serde_json` for mod dependencies. Inheriting any other
 `ravel-*` crate is refused: author code uses the SDK facade, not loader internals.
-Other dependencies must name their own versions rather than inherit one:
-`rand.workspace = true` builds nowhere but in a workspace that declares `rand`.
+Other dependencies must name their own versions rather than inherit one, and their exact
+name, version, source and checksum must already be pinned by the Ravel installation's
+`Cargo.lock`. For example, `num-traits = { version = "0.2.19", default-features = false }`
+uses a vetted dependency. Anything outside that lock is refused as
+`resolved external dependency … is not pinned by the Ravel installation`, even if Cargo
+has cached it locally. See the [build contract](../architecture/overview.md).
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side, and it no longer runs at `premain` either.

@@ -5,7 +5,7 @@ use ravel_minecraft_generate::{Eligibility, Kind};
 
 use super::reflection::{declared_roles, game_class_literals, verify_persistence_reflection};
 use crate::hooks::hook_inventory;
-use crate::java_shape::{
+use crate::scaffold::java_shape::{
     AGENT_JAR_SOURCES, REFLECTION_FILE, SCREEN_JAR_SOURCES, TRANSFORMER_SHAPE_RECORD,
     declared_hook, verify_hook_name_literals, verify_screen_templates, verify_transformer_shape,
 };
@@ -45,7 +45,7 @@ fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
     ] {
         assert!(agent_source_manifest(malformed).is_err(), "{malformed}");
     }
-    let build = include_str!("../../../../jvm/build/build-agent.sh");
+    let build = include_str!("../../../../../jvm/build/build-agent.sh");
     assert!(build.contains("jvm/build/agent-sources.txt"));
     assert!(build.contains("-maxdepth 1 -name 'Legacy*.java'"));
     Ok(())
@@ -175,9 +175,7 @@ fn malformed_hooks_and_missing_ids_are_reported_before_consumers() {
 
 #[test]
 fn the_agent_jars_game_class_names_are_the_declared_and_the_pinned_ones() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
+    let root = crate::test_support::repository_root();
     let mut violations = Vec::new();
 
     let (eligibility, _) = verify_version_directories(&root, &mut violations);
@@ -903,4 +901,17 @@ fn a_game_class_name_counts_from_a_literal_and_not_from_prose() {
             "net.minecraft.client.Minecraft"
         ]
     );
+}
+
+#[test]
+fn screen_overrides_preserve_version_discovery_errors() {
+    let root = temporary_root("screen-version-error");
+    let mut violations = Vec::new();
+    super::verify_screen_overrides(&root, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with("cannot read minecraft/versions:"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }

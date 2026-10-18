@@ -6,8 +6,8 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use crate::{ENTRY_FUNCTION, HOST_LIBRARY, PlannedMember};
-use ravel_core::paths::{HOST_DIRECTORY, INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
+use crate::{ENTRY_FUNCTION, PlannedMember};
+use ravel_core::paths::{HOST_DIRECTORY, HOST_LIBRARY, INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 
 pub(super) fn workspace_manifest(
     members: &[PlannedMember],

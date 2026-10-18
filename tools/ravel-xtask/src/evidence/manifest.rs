@@ -73,7 +73,7 @@ pub fn verify_milestone(root: &Path, milestone: &str) -> Vec<String> {
     };
     let mut violations = verify_document(root, &path, milestone, &document);
     verify_admitted_manifest(&document, milestone, &mut violations);
-    super::accounting::verify_milestone_accounting(root, milestone, &mut violations);
+    super::accounting::verify_accounting(root, Some(milestone), &mut violations);
     violations
 }
 

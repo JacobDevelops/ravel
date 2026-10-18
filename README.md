@@ -68,6 +68,9 @@ cargo run -p ravel-xtask -- generate java
 
 `RAVEL_MINECRAFT_VERSION` selects the version, as it does for Rust builds. Rust build
 scripts write only their Cargo `OUT_DIR`; Java generation is an explicit step.
+Generator inputs must pin the client jar, client mappings, and every declared
+auxiliary artifact with a 64-digit hexadecimal SHA-256 hash; a byte-length-only
+pin is not admitted.
 
 Performance/resource capture and budget tooling are retired. Closed measurements
 and their manifest-bound inputs remain historical evidence.
@@ -91,6 +94,9 @@ actual `aarch64-darwin` host using
 
 Ravel-maintained Rust and public mod-author code forbid unsafe code. Audited
 dependencies may encapsulate unavoidable operating-system or JVM boundaries.
+The scaffold gate discovers Cargo members under `crates`, `test-mods`,
+`registry/mods` and `examples`; adding a member does not require a second
+inventory in the gate.
 
 ## Fixtures and evidence
 

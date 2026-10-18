@@ -3,14 +3,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use ravel_core::paths::{INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
+use ravel_core::paths::{HOST_LIBRARY, INSTANCE_DIRECTORY, PACKAGES_DIRECTORY};
 use ravel_core::{LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
 use ravel_loader::{MANIFEST_FILE, discover};
 use ravel_package::{NonEmptyText, PackageManifest, Sha256Digest};
 use sha2::{Digest as _, Sha256};
 
 use super::generate::crate_ident;
-use super::{BuildRefused, HOST_LIBRARY, build, plan};
+use super::{BuildRefused, build, plan};
 
 const ENTRY_SYMBOL: &str = "Java_dev_ravel_jvm_Hook_ravelInitialize";
 
@@ -764,6 +764,12 @@ fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() 
         fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock")
     );
     assert!(!plan.files().contains_key("Cargo.lock"));
+    assert_eq!(
+        plan.files()["rust-toolchain.toml"],
+        fs::read_to_string(ravel_root().join("rust-toolchain.toml"))
+            .expect("installation toolchain")
+    );
+    assert_eq!(host["lib"]["name"].as_str(), Some(HOST_LIBRARY));
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 
@@ -775,6 +781,11 @@ fn changing_the_installation_lock_changes_the_plan_fingerprint() {
     fs::copy(ravel_root().join("Cargo.toml"), root.join("Cargo.toml")).expect("manifest copy");
     let lock = fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock");
     fs::write(root.join("Cargo.lock"), &lock).expect("lock copy");
+    fs::copy(
+        ravel_root().join("rust-toolchain.toml"),
+        root.join("rust-toolchain.toml"),
+    )
+    .expect("toolchain copy");
     let discovered = discover(&instance).expect("empty instance");
     let first = plan(&discovered, &root).expect("first plan");
     fs::write(
@@ -784,6 +795,129 @@ fn changing_the_installation_lock_changes_the_plan_fingerprint() {
     .expect("changed lock");
     let second = plan(&discovered, &root).expect("second plan");
     assert_ne!(first.fingerprint(), second.fingerprint());
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
+    let instance = instance("toolchain-fingerprint");
+    let root = instance.join("installation");
+    fs::create_dir(&root).expect("installation directory");
+    for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
+        fs::copy(ravel_root().join(file), root.join(file)).expect("installation input copy");
+    }
+    let discovered = discover(&instance).expect("empty instance");
+    let first = plan(&discovered, &root).expect("first plan");
+    let changed = format!(
+        "{}\n# changed installation\n",
+        first.files()["rust-toolchain.toml"]
+    );
+    fs::write(root.join("rust-toolchain.toml"), &changed).expect("changed toolchain");
+    let second = plan(&discovered, &root).expect("second plan");
+    assert_eq!(second.files()["rust-toolchain.toml"], changed);
+    assert_ne!(first.fingerprint(), second.fingerprint());
+    fs::remove_file(root.join("rust-toolchain.toml")).expect("toolchain removed");
+    let refused = plan(&discovered, &root).expect_err("the installation must pin a toolchain");
+    assert!(matches!(refused, BuildRefused::InstallationIo { file, .. }
+            if file == "rust-toolchain.toml"));
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn missing_offline_dependencies_are_policy_refusals_without_a_cargo_cache() {
+    let instance = instance("offline-refusal");
+    install(
+        &instance,
+        "installed",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    let plan = planned(&instance);
+    for (message, version, expected_mods) in [
+        (
+            "error: no matching package named `unvetted` found\n\
+             location searched: crates.io index\n\
+             required by package `installed-mod v1.0.0 (/private/instance)`",
+            "<unresolved>",
+            &["installed_mod"][..],
+        ),
+        (
+            "error: failed to select a version for the requirement `unvetted = \"^2\"`\n\
+             candidate versions found which didn't match: 1.0.0\n\
+             required by package `installed-mod v1.0.0 (/private/instance)`",
+            "^2",
+            &["installed_mod"][..],
+        ),
+        (
+            "error: failed to download `unvetted v2.0.0`\n\
+             Caused by:\n\
+               attempting to make an HTTP request, but --offline was specified",
+            "2.0.0",
+            &[][..],
+        ),
+    ] {
+        let refused = super::compile::metadata_refusal(&plan, message, &instance);
+        assert!(matches!(refused, BuildRefused::UnpinnedDependency {
+                package, version: actual, mods,
+            } if package == "unvetted" && actual == version
+                && mods.iter().map(String::as_str).eq(expected_mods.iter().copied())));
+    }
+    let refused = super::compile::metadata_refusal(
+        &plan,
+        &format!("error: invalid manifest at {}", instance.display()),
+        &instance,
+    );
+    assert!(matches!(refused, BuildRefused::Compile { detail }
+            if detail == "error: invalid manifest at <instance>"));
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn an_uncached_but_pinned_dependency_is_not_reported_as_unvetted() {
+    let instance = instance("pinned-offline");
+    let mut plan = planned(&instance);
+    plan.installation_lock = "[[package]]\nname = \"vetted\"\nversion = \"1.0.0\"\n".to_owned();
+    for message in [
+        "error: no matching package named `vetted` found",
+        "error: failed to download `vetted v1.0.0`\n\
+         attempting to make an HTTP request, but --offline was specified",
+        "error: failed to select a version for the requirement `vetted = \"^1\"`",
+        "error: failed to select a version for the requirement `vetted = \"=1.0.0\"`",
+    ] {
+        assert!(matches!(
+            super::compile::metadata_refusal(&plan, message, &instance),
+            BuildRefused::Compile { .. }
+        ));
+    }
+    for message in [
+        "error: failed to select a version for the requirement `vetted = \"^2\"`",
+        "error: failed to download `vetted v1.1.0`\n\
+         attempting to make an HTTP request, but --offline was specified",
+    ] {
+        assert!(matches!(
+            super::compile::metadata_refusal(&plan, message, &instance),
+            BuildRefused::UnpinnedDependency { .. }
+        ));
+    }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn relative_instance_inputs_redact_absolute_cargo_paths() {
+    let relative = Path::new("relative-player-instance");
+    let absolute = std::path::absolute(relative).expect("absolute instance path");
+    let instance = instance("relative-redaction");
+    let plan = planned(&instance);
+    let message = format!(
+        "error: manifest at {}/ravel/host/Cargo.toml",
+        absolute.display()
+    );
+    assert!(matches!(
+        super::compile::metadata_refusal(&plan, &message, relative),
+        BuildRefused::Compile { detail }
+            if detail == "error: manifest at <instance>/ravel/host/Cargo.toml"
+    ));
     fs::remove_dir_all(&instance).expect("cleanup");
 }
 

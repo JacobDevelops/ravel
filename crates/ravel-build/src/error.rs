@@ -76,11 +76,11 @@ pub enum BuildRefused {
         /// The original operating-system failure reading `ravel/Cargo.lock`.
         source: std::io::Error,
     },
-    /// Resolution selected an external package the installation did not vet.
+    /// Resolution requires an external package the installation did not vet.
     UnpinnedDependency {
         /// The external package's name.
         package: String,
-        /// The resolved version.
+        /// The resolved version, requested requirement, or `<unresolved>` if Cargo found no package.
         version: String,
         /// Installed mods whose dependency graph reaches it.
         mods: Vec<String>,

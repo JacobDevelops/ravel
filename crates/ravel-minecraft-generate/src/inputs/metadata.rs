@@ -18,10 +18,7 @@ pub(super) fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), 
         return Ok(());
     }
     let text = fs::read_to_string(&path).map_err(|error| {
-        GenerateError::Input(format!(
-            "{} is unreadable: {error}",
-            file_name(&adapter.inputs.version_manifest.path)
-        ))
+        GenerateError::io(file_name(&adapter.inputs.version_manifest.path), error)
     })?;
     if major_version(&text).is_none() && adapter.is_legacy() {
         let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
@@ -67,6 +64,32 @@ fn major_version(text: &str) -> Option<u16> {
 mod tests {
     use super::super::Capability;
     use crate::test_fixtures::legacy_adapter;
+
+    #[test]
+    fn unreadable_manifest_retains_io_source_and_path() {
+        use std::error::Error as _;
+        let root = std::env::temp_dir().join(format!(
+            "ravel-manifest-invalid-utf8-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create temporary manifest directory");
+        let path = root.join("version.json");
+        std::fs::write(&path, [0xff]).expect("write invalid UTF-8 manifest");
+        let mut adapter = legacy_adapter();
+        adapter.inputs.version_manifest.path = "version.json".to_owned();
+        let error = super::verify_java_release(&root, &adapter)
+            .expect_err("an invalid UTF-8 manifest must be refused");
+        let source = error
+            .source()
+            .expect("the manifest error must retain its I/O source")
+            .downcast_ref::<std::io::Error>()
+            .expect("the manifest error source must be an std::io::Error");
+        assert_eq!(source.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("version.json"));
+        assert!(!error.to_string().contains("ravel-manifest-invalid-utf8"));
+        std::fs::remove_dir_all(root).expect("remove temporary manifest directory");
+    }
+
     #[test]
     fn manifest_is_compared_with_source_release_not_adapter_target() {
         let root =

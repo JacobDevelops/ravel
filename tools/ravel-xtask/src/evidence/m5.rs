@@ -10,7 +10,7 @@ use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation,
 };
-use crate::json::{array, nonempty, number};
+use crate::json::{array, nonempty, number, sum};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::rules::{
@@ -19,7 +19,6 @@ use crate::evidence::rules::{
 };
 
 fn inventory_record(v: &Value) -> Result<(), String> {
-    require(v["milestone"] == "M5", "/milestone must be M5")?;
     require(v["workPackage"] == "M5-W8", "/workPackage must be M5-W8")?;
     require(
         v["protocol"] == "m5-inventory-v1",
@@ -149,13 +148,14 @@ fn inventory_numbers(v: &Value) -> Result<(), String> {
     )
 }
 
-const M5_RECORDS: &[(&str, RecordRule, &str)] = &[(
+const M5_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
     "inventory-summary.json",
     inventory_record,
     "an inventory summary carrying every aggregate as a number, a digest over every \
-     registry file it binds with the class that digest freezes, its trail of machinery \
-     amendments, and its own disclosure of what the read observation watches and \
-     which of its claims rest on judgement",
+ registry file it binds with the class that digest freezes, its trail of machinery \
+ amendments, and its own disclosure of what the read observation watches and \
+ which of its claims rest on judgement",
+    false,
 )];
 
 pub(crate) fn verify_m5_manifest(
@@ -222,9 +222,7 @@ pub(crate) fn verify_m5_manifest(
 pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     (
         |v| {
-            ["/artifacts/catalogued", "/artifacts/uncatalogued"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/artifacts/catalogued", "/artifacts/uncatalogued"])
                 .zip(number(v, "/artifacts/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -249,9 +247,7 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/plans/readingSource", "/plans/notReadingSource"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/plans/readingSource", "/plans/notReadingSource"])
                 .zip(number(v, "/artifacts/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -267,14 +263,15 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            [
-                "/rights/sourceUse/permitted",
-                "/rights/sourceUse/conditional",
-                "/rights/sourceUse/prohibited",
-                "/rights/sourceUse/unresolved",
-            ]
-            .iter()
-            .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(
+                v,
+                &[
+                    "/rights/sourceUse/permitted",
+                    "/rights/sourceUse/conditional",
+                    "/rights/sourceUse/prohibited",
+                    "/rights/sourceUse/unresolved",
+                ],
+            )
             .zip(number(v, "/artifacts/total"))
             .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -282,9 +279,7 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/surfaces/catalogued", "/surfaces/unclassified"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/surfaces/catalogued", "/surfaces/unclassified"])
                 .zip(number(v, "/artifacts/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -292,9 +287,7 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/graph/resolvedNodes", "/graph/blockedNodes"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/graph/resolvedNodes", "/graph/blockedNodes"])
                 .zip(number(v, "/graph/nodes"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -302,9 +295,7 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/graph/resolvedEdges", "/graph/blockedEdges"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/graph/resolvedEdges", "/graph/blockedEdges"])
                 .zip(number(v, "/graph/edges"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -335,9 +326,7 @@ pub(crate) const M5_ARITHMETIC: &[(Rule, &str)] = &[
 
 const M5_CARRIED_FIGURES: &[(&str, Figure)] = &[
     ("/environment/settings/inventory/artifacts", |v| {
-        ["/artifacts/catalogued", "/artifacts/uncatalogued"]
-            .iter()
-            .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+        sum(v, &["/artifacts/catalogued", "/artifacts/uncatalogued"])
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),
@@ -345,16 +334,12 @@ const M5_CARRIED_FIGURES: &[(&str, Figure)] = &[
         v.pointer("/artifacts/planned").cloned()
     }),
     ("/environment/settings/inventory/graphNodes", |v| {
-        ["/graph/resolvedNodes", "/graph/blockedNodes"]
-            .iter()
-            .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+        sum(v, &["/graph/resolvedNodes", "/graph/blockedNodes"])
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),
     ("/environment/settings/inventory/graphEdges", |v| {
-        ["/graph/resolvedEdges", "/graph/blockedEdges"]
-            .iter()
-            .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+        sum(v, &["/graph/resolvedEdges", "/graph/blockedEdges"])
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),

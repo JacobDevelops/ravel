@@ -162,8 +162,7 @@ impl Archive {
     /// Reads an archive and indexes its central directory.
     pub(super) fn open(path: &Path) -> Result<Self, GenerateError> {
         let name = super::inputs::file_name(&path.to_string_lossy()).to_owned();
-        let bytes = fs::read(path)
-            .map_err(|error| GenerateError::Extraction(format!("cannot read {name}: {error}")))?;
+        let bytes = fs::read(path).map_err(|error| GenerateError::io(&name, error))?;
         Self::read(bytes).map_err(|detail| GenerateError::Extraction(format!("{name}: {detail}")))
     }
 

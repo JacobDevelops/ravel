@@ -94,7 +94,7 @@ pub(crate) fn verify_m2_manifest(
     verify_closure_records(Milestone::M2, records, M2_RECORDS, violations);
 }
 
-const M2_RECORDS: &[(&str, RecordRule, &str)] = &[
+const M2_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
     (
         "noop-pipeline.json",
         |value| {
@@ -106,6 +106,7 @@ const M2_RECORDS: &[(&str, RecordRule, &str)] = &[
             })
         },
         "a no-op pipeline record whose run is identical when repeated",
+        false,
     ),
     (
         "pre-world-gate.json",
@@ -117,19 +118,22 @@ const M2_RECORDS: &[(&str, RecordRule, &str)] = &[
             require(value["gate"]["ranModCode"] == false, "/gate/ranModCode")
         },
         "a pre-world gate record showing invalid packages refused before any mod code ran",
+        false,
     ),
     (
         "loader-overhead.json",
         m2_budget_limits,
         "a loader overhead record whose budget lines each name one metric and a unit, and set an \
-         upper limit above the positive measurement that limit was derived from",
+     upper limit above the positive measurement that limit was derived from",
+        true,
     ),
     (
         "prism-launch.json",
         m2_prism_launch,
         "a launch record showing the official client reaching Ravel from an attested stock Prism, \
-         with the transformer's own count of what it rewrote inside that process and of the hook \
-         invocations that reached native code, and no other loader present",
+     with the transformer's own count of what it rewrote inside that process and of the hook \
+     invocations that reached native code, and no other loader present",
+        false,
     ),
 ];
 

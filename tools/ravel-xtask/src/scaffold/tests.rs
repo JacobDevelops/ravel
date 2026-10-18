@@ -1,23 +1,25 @@
 use std::fs;
 
 use crate::scaffold::{
-    declares_unsafe_prohibition, maintained_rust_roots, required_scaffold_paths,
-    verify_ignored_boundaries, verify_production_fences, verify_scaffold, verify_testkit_fence,
+    declares_unsafe_prohibition, maintained_members, maintained_rust_roots,
+    required_scaffold_paths, verify_ignored_boundaries, verify_production_fences, verify_scaffold,
+    verify_testkit_fence,
 };
 use crate::test_support::{adapter_document, temporary_root, version_directory};
-use crate::{CRATE_NAMES, REGISTRY_MOD_NAMES};
 
 #[test]
 fn unreadable_optional_example_directory_is_not_silently_skipped() {
     let root = temporary_root("example-directory-unreadable");
-    let directory = root.join("crates").join(CRATE_NAMES[0]);
+    seed_production_manifests(&root);
+    let directory = root.join("crates/ravel-loader");
     fs::create_dir_all(&directory).expect("crate directory should be creatable");
     fs::write(directory.join("examples"), "not a directory").expect("file should be writable");
     let mut violations = Vec::new();
-    maintained_rust_roots(&root, &mut violations);
+    let members = maintained_members(&root, &mut violations);
+    maintained_rust_roots(&root, &members, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
-        violations[0].starts_with(&format!("cannot read crates/{}/examples:", CRATE_NAMES[0])),
+        violations[0].starts_with("cannot read crates/ravel-loader/examples:"),
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -36,7 +38,8 @@ fn unsafe_code_cannot_be_permitted_in_maintained_crates() {
     .expect("source should be writable");
     let mut violations = Vec::new();
 
-    verify_production_fences(&root, &mut violations);
+    let members = maintained_members(&root, &mut violations);
+    verify_production_fences(&root, &members, &mut violations);
 
     assert_eq!(
         violations,
@@ -126,7 +129,7 @@ fn malformed_hook_inventories_reach_the_final_scaffold_violations_once() {
     );
     assert!(
         !root
-            .join(crate::java_shape::TRANSFORMER_SHAPE_RECORD)
+            .join(crate::scaffold::java_shape::TRANSFORMER_SHAPE_RECORD)
             .exists()
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -183,8 +186,9 @@ fn malformed_inventories_do_not_hide_other_versions_seam_checks_or_records() {
         )),
         "{violations:?}"
     );
-    let record = fs::read_to_string(root.join(crate::java_shape::TRANSFORMER_SHAPE_RECORD))
-        .expect("valid inventory should retain its transformer record");
+    let record =
+        fs::read_to_string(root.join(crate::scaffold::java_shape::TRANSFORMER_SHAPE_RECORD))
+            .expect("valid inventory should retain its transformer record");
     assert_eq!(
         record,
         "held: Minecraft 26.1.2 against 1 transformer seams\n"
@@ -203,7 +207,8 @@ fn unreadable_production_text_reports_the_read_failure() {
     ] {
         fs::write(&path, [0xff]).expect("invalid UTF-8 fixture should be writable");
         let mut violations = Vec::new();
-        verify_production_fences(&root, &mut violations);
+        let members = maintained_members(&root, &mut violations);
+        verify_production_fences(&root, &members, &mut violations);
         let relative = crate::text::relative_label(&root, &path);
         assert!(
             violations
@@ -277,7 +282,8 @@ fn production_crates_cannot_depend_on_the_test_harness() {
     .expect("manifest should be writable");
     let mut violations = Vec::new();
 
-    verify_testkit_fence(&root, &mut violations);
+    let members = maintained_members(&root, &mut violations);
+    verify_testkit_fence(&root, &members, &mut violations);
 
     assert_eq!(
         violations,
@@ -289,15 +295,14 @@ fn production_crates_cannot_depend_on_the_test_harness() {
 #[test]
 fn registry_roots_require_an_unsafe_prohibition() {
     let root = temporary_root("registry-roots");
-    let maintained = maintained_rust_roots(&root, &mut Vec::new());
-
-    for name in REGISTRY_MOD_NAMES {
-        let relative = format!("registry/mods/{name}/src/lib.rs");
-        assert!(
-            maintained.contains(&relative),
-            "{relative} must require an unsafe prohibition"
-        );
-    }
+    seed_production_manifests(&root);
+    let members = maintained_members(&root, &mut Vec::new());
+    let maintained = maintained_rust_roots(&root, &members, &mut Vec::new());
+    let relative = "registry/mods/discovered-registry-mod/src/lib.rs";
+    assert!(
+        maintained.iter().any(|path| path == relative),
+        "{relative} must require an unsafe prohibition"
+    );
 
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -305,45 +310,41 @@ fn registry_roots_require_an_unsafe_prohibition() {
 #[test]
 fn every_registry_mod_obeys_production_fences() {
     let root = temporary_root("registry-fences");
+    seed_production_manifests(&root);
 
-    for name in REGISTRY_MOD_NAMES {
-        seed_production_manifests(&root);
-        let directory = format!("registry/mods/{name}");
-        let manifest = format!("{directory}/Cargo.toml");
-        let source = format!("{directory}/src/lib.rs");
-        fs::create_dir_all(root.join(&directory).join("src"))
-            .expect("crate directory should be creatable");
-        fs::write(
-            root.join(&manifest),
-            "[dependencies]\nravel-testkit.workspace = true\n\
-             [lints.rust]\nunsafe_code = \"allow\"\n",
-        )
-        .expect("manifest should be writable");
-        fs::write(
-            root.join(&source),
-            "#![allow(unsafe_code)]\npub fn boundary() {}\n",
-        )
-        .expect("source should be writable");
-        let mut violations = Vec::new();
-
-        verify_production_fences(&root, &mut violations);
-
-        assert_eq!(
-            violations,
-            [
-                format!("unsafe code is permitted in a maintained crate: {manifest}"),
-                format!("production crate depends on the test harness: {manifest}"),
-                format!("unsafe code is permitted in a maintained crate: {source}"),
-            ]
-        );
-        fs::remove_dir_all(root.join(directory)).expect("crate directory should be removable");
-    }
+    let directory = "registry/mods/discovered-registry-mod";
+    let manifest = format!("{directory}/Cargo.toml");
+    let source = format!("{directory}/src/lib.rs");
+    fs::create_dir_all(root.join(directory).join("src"))
+        .expect("crate directory should be creatable");
+    fs::write(
+        root.join(&manifest),
+        "[dependencies]\nravel-testkit.workspace = true\n\
+         [lints.rust]\nunsafe_code = \"allow\"\n",
+    )
+    .expect("manifest should be writable");
+    fs::write(
+        root.join(&source),
+        "#![allow(unsafe_code)]\npub fn boundary() {}\n",
+    )
+    .expect("source should be writable");
+    let mut violations = Vec::new();
+    let members = maintained_members(&root, &mut violations);
+    verify_production_fences(&root, &members, &mut violations);
+    assert_eq!(
+        violations,
+        [
+            format!("unsafe code is permitted in a maintained crate: {manifest}"),
+            format!("production crate depends on the test harness: {manifest}"),
+            format!("unsafe code is permitted in a maintained crate: {source}"),
+        ]
+    );
 
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
 #[test]
-fn unlisted_crates_and_registry_mods_cannot_escape_inventory_checks() {
+fn discovered_members_require_unsafe_prohibitions_without_a_second_inventory() {
     let root = temporary_root("unlisted-members");
     for directory in ["crates/unlisted", "registry/mods/unlisted"] {
         fs::create_dir_all(root.join(directory)).expect("member directory should be creatable");
@@ -357,19 +358,79 @@ fn unlisted_crates_and_registry_mods_cannot_escape_inventory_checks() {
     let violations = verify_scaffold(&root);
 
     for expected in [
-        "crates/unlisted is not listed in CRATE_NAMES",
-        "registry/mods/unlisted is not listed in REGISTRY_MOD_NAMES",
+        "cannot read crates/unlisted/src/lib.rs:",
+        "cannot read registry/mods/unlisted/src/lib.rs:",
     ] {
         assert!(
-            violations.iter().any(|violation| violation == expected),
+            violations
+                .iter()
+                .any(|violation| violation.starts_with(expected)),
             "{violations:?}"
         );
     }
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
+#[test]
+fn newly_discovered_members_obey_the_same_roots_and_dependency_fences() {
+    let root = temporary_root("discovered-members");
+    seed_production_manifests(&root);
+    for directory in ["crates", "registry/mods", "test-mods", "examples"] {
+        let member = root.join(directory).join("new-member");
+        fs::create_dir_all(&member).expect("member directory should be creatable");
+        fs::write(
+            member.join("Cargo.toml"),
+            "[dependencies]\nravel-testkit.workspace = true\n",
+        )
+        .expect("manifest should be writable");
+    }
+    let mut violations = Vec::new();
+    let members = maintained_members(&root, &mut violations);
+    let roots = maintained_rust_roots(&root, &members, &mut violations);
+    verify_testkit_fence(&root, &members, &mut violations);
+    for directory in ["crates", "registry/mods", "test-mods", "examples"] {
+        assert!(roots.contains(&format!("{directory}/new-member/src/lib.rs")));
+        assert!(violations.contains(&format!(
+            "production crate depends on the test harness: {directory}/new-member/Cargo.toml"
+        )));
+    }
+    assert_eq!(violations.len(), 4, "{violations:?}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn member_directory_discovery_errors_are_reported_once() {
+    let root = temporary_root("member-discovery-error");
+    seed_production_manifests(&root);
+    fs::remove_dir(root.join("examples")).expect("empty examples should be removable");
+    let violations = verify_scaffold(&root);
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|error| error.starts_with("cannot read examples:"))
+            .count(),
+        1,
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
 fn seed_production_manifests(root: &std::path::Path) {
-    for relative in required_scaffold_paths() {
+    for directory in [
+        "crates",
+        "registry/mods",
+        "test-mods",
+        "examples",
+        "tools",
+        "tests",
+    ] {
+        fs::create_dir_all(root.join(directory)).expect("member root should be creatable");
+    }
+    for relative in required_scaffold_paths().into_iter().chain([
+        "crates/ravel-loader/Cargo.toml".to_owned(),
+        "crates/ravel-testkit/Cargo.toml".to_owned(),
+        "registry/mods/discovered-registry-mod/Cargo.toml".to_owned(),
+    ]) {
         if !relative.ends_with("/Cargo.toml") {
             continue;
         }

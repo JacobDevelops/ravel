@@ -10,9 +10,10 @@ use crate::text::{read_text, relative_label};
 use crate::tracked::collect_files;
 use crate::version_boundary::{VERSION_DATA, VersionAdapters, tracked_versions};
 
-pub(crate) mod reflection;
+mod reflection;
 
 use reflection::GAME_PACKAGES;
+pub(crate) use reflection::verify_persistence_reflection;
 
 const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 
@@ -166,7 +167,7 @@ fn uses_modern_bootstrap(adapters: &VersionAdapters, inventory: &HookInventory) 
         .is_some_and(|facts| !facts.legacy_adapter)
 }
 
-const AGENT_SOURCE_MANIFEST: &str = include_str!("../../../jvm/build/agent-sources.txt");
+const AGENT_SOURCE_MANIFEST: &str = include_str!("../../../../jvm/build/agent-sources.txt");
 
 fn agent_source_manifest(text: &str) -> Result<Vec<(&str, &str)>, String> {
     let mut sources = Vec::with_capacity(text.lines().count());
@@ -480,9 +481,12 @@ pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>)
 
 pub(crate) fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>) {
     let directory = root.join(SCREEN_JAR_SOURCES);
-    let Ok(versions) = tracked_versions(root) else {
-        violations.push(format!("cannot read {VERSION_DATA}"));
-        return;
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
     };
     let entries = match fs::read_dir(&directory) {
         Ok(entries) => entries,

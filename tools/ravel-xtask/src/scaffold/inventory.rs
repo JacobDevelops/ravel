@@ -1,14 +1,12 @@
 //! Documentation and generated-inventory consistency.
 
-use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
+use std::{collections::BTreeSet, fs};
 
 use crate::hooks::{HookCounts, HookInventory, hook_counts};
 use crate::text::{Side, read_text, stated_counts};
 use crate::tracked::collect_files;
 use crate::version_boundary::VERSION_DATA;
-use crate::{EXAMPLE_NAMES, TEST_MOD_NAMES};
 
 const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";
 
@@ -289,53 +287,6 @@ pub(crate) fn verify_game_type_claims(root: &Path, paths: &[String], violations:
                     index + 1
                 ));
             }
-        }
-    }
-}
-
-pub(crate) fn verify_example_inventory(root: &Path, violations: &mut Vec<String>) {
-    verify_inventory(root, "examples", EXAMPLE_NAMES, "EXAMPLE_NAMES", violations);
-}
-
-pub(crate) fn verify_test_mod_inventory(root: &Path, violations: &mut Vec<String>) {
-    verify_inventory(
-        root,
-        "test-mods",
-        TEST_MOD_NAMES,
-        "TEST_MOD_NAMES",
-        violations,
-    );
-}
-
-pub(crate) fn verify_inventory(
-    root: &Path,
-    directory: &str,
-    listed: &[&str],
-    list: &str,
-    violations: &mut Vec<String>,
-) {
-    let entries = match fs::read_dir(root.join(directory)) {
-        Ok(entries) => entries,
-        Err(error) => {
-            violations.push(format!("cannot read {directory}: {error}"));
-            return;
-        }
-    };
-
-    for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(error) => {
-                violations.push(format!("cannot read {directory} entry: {error}"));
-                continue;
-            }
-        };
-        if !entry.path().join("Cargo.toml").is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if !listed.contains(&name.as_str()) {
-            violations.push(format!("{directory}/{name} is not listed in {list}"));
         }
     }
 }

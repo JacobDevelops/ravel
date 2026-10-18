@@ -79,10 +79,8 @@ Judge the gate by its exit status, not an individual task's test summary.
   Registry source in this checkout is not the deferred M13 publication service.
 - `tests/fixtures/local/` is ignored, authorized local material.
   Never track fixture contents, credentials, launcher tokens, or raw captures.
-- Adding or removing a crate, test mod, or registry counterpart means updating `CRATE_NAMES`,
-  `TEST_MOD_NAMES`, or `REGISTRY_MOD_NAMES` in
-  [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and, if another member depends on it,
-  its `[workspace.dependencies]` entry in `Cargo.toml`.
+- Scaffold checks discover maintained Cargo members from their directories. Adding or removing a
+  member only requires its Cargo workspace wiring, including `[workspace.dependencies]` when used.
 
 ## Version control
 

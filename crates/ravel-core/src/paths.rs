@@ -10,6 +10,8 @@ pub const PACKAGES_DIRECTORY: &str = "ravel/mods";
 pub const PACK_CONFIG_DIRECTORY: &str = "ravel/config";
 /// Generated host crate, relative to the instance-private root.
 pub const HOST_DIRECTORY: &str = "host";
+/// The library name the generated host produces and the JVM loads.
+pub const HOST_LIBRARY: &str = "ravel_bootstrap";
 /// Seeded-pack record, relative to the instance-private root.
 pub const SEEDED_PACKS_FILE: &str = "seeded-packs";
 

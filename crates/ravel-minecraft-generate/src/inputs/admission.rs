@@ -24,6 +24,7 @@ pub(super) fn verify_pinned_sources(adapter: &Adapter) -> Result<(), GenerateErr
         }
         (true, true) | (false, false) => {}
     }
+    verify_hash_pins(adapter)?;
 
     for input in [
         &adapter.inputs.client_jar,
@@ -44,6 +45,26 @@ pub(super) fn verify_pinned_sources(adapter: &Adapter) -> Result<(), GenerateErr
             return Err(GenerateError::Input(format!(
                 "{} names an upstream that is not an https address",
                 file_name(&input.path)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn verify_hash_pins(adapter: &Adapter) -> Result<(), GenerateError> {
+    for (name, input) in [
+        ("clientJar", Some(&adapter.inputs.client_jar)),
+        ("clientMappings", adapter.inputs.client_mappings.as_ref()),
+        ("serverJar", adapter.inputs.server_jar.as_ref()),
+        ("dataFixerJar", adapter.inputs.data_fixer_jar.as_ref()),
+        ("mappingIoJar", adapter.inputs.mapping_io_jar.as_ref()),
+    ] {
+        let Some(input) = input else { continue };
+        if !input.sha256.as_deref().is_some_and(|digest| {
+            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        }) {
+            return Err(GenerateError::Input(format!(
+                "{name} must pin sha256 as 64 ASCII hex digits, not only a byte length"
             )));
         }
     }
@@ -80,13 +101,6 @@ fn verify_mapping_configuration(adapter: &Adapter) -> Result<(), GenerateError> 
                 .to_owned(),
         ));
     }
-    if let Some(normalizer) = &adapter.inputs.mapping_io_jar
-        && normalizer.sha256.is_none()
-    {
-        return Err(GenerateError::Input(
-            "mappingIoJar executes code and must pin sha256, not only a byte length".to_owned(),
-        ));
-    }
     Ok(())
 }
 
@@ -95,13 +109,6 @@ fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
     if adapter.eligibility == Eligibility::GenerationOnly && !adapter.is_legacy() {
         return Err(GenerateError::Input(
             "generation-only eligibility requires legacy-1-12".to_owned(),
-        ));
-    }
-    if let Some(server) = &adapter.inputs.server_jar
-        && server.sha256.is_none()
-    {
-        return Err(GenerateError::Input(
-            "serverJar must pin sha256, not only a byte length".to_owned(),
         ));
     }
     if adapter.is_legacy() {
@@ -138,6 +145,75 @@ mod tests {
     use super::super::{Capability, MappingNamespaces};
     use super::{Adapter, MappingSource};
     use crate::test_fixtures::{document, legacy_adapter};
+
+    #[test]
+    fn artifact_identity_requires_a_complete_ascii_sha256_digest() {
+        let mut base: Adapter = toml::from_str(&document("unobfuscated-class-files", ""))
+            .expect("the complete modern adapter fixture must parse");
+        base.mapping_source = MappingSource::FeatherTinyMappings;
+        base.mapping_namespaces = Some(MappingNamespaces {
+            runtime: "official".to_owned(),
+            reviewed: "named".to_owned(),
+        });
+        base.inputs.client_mappings = Some(base.inputs.client_jar.clone());
+        base.inputs.server_jar = Some(base.inputs.client_jar.clone());
+        base.inputs.mapping_io_jar = Some(base.inputs.client_jar.clone());
+        let invalid = [
+            None,
+            Some(String::new()),
+            Some("0".to_owned()),
+            Some(" ".repeat(64)),
+            Some("a".repeat(63)),
+            Some("g".repeat(64)),
+            Some("é".repeat(32)),
+        ];
+        for name in [
+            "clientJar",
+            "clientMappings",
+            "serverJar",
+            "dataFixerJar",
+            "mappingIoJar",
+        ] {
+            for hash in &invalid {
+                let mut adapter = base.clone();
+                let input = match name {
+                    "clientJar" => &mut adapter.inputs.client_jar,
+                    "clientMappings" => adapter
+                        .inputs
+                        .client_mappings
+                        .as_mut()
+                        .expect("the complete fixture must include client mappings"),
+                    "serverJar" => adapter
+                        .inputs
+                        .server_jar
+                        .as_mut()
+                        .expect("the complete fixture must include a server jar"),
+                    "dataFixerJar" => adapter
+                        .inputs
+                        .data_fixer_jar
+                        .as_mut()
+                        .expect("the complete fixture must include a data fixer jar"),
+                    _ => adapter
+                        .inputs
+                        .mapping_io_jar
+                        .as_mut()
+                        .expect("the complete fixture must include a mapping I/O jar"),
+                };
+                input.sha256 = hash.clone();
+                input.bytes = Some(1);
+                let error = super::verify_pinned_sources(&adapter)
+                    .expect_err("an incomplete hash must be refused");
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("{name} must pin sha256")),
+                    "{error}"
+                );
+            }
+        }
+        base.inputs.client_jar.sha256 = Some("AB".repeat(32));
+        super::verify_pinned_sources(&base).expect("a complete ASCII SHA-256 fixture must pass");
+    }
     #[test]
     fn source_release_defaults_to_modern_target_and_legacy_requires_explicit_eight() {
         let modern: Adapter =
@@ -178,7 +254,7 @@ mod tests {
             error.to_string().contains("serverJar must pin sha256"),
             "{error}"
         );
-        server.sha256 = Some("0".to_owned());
+        server.sha256 = Some("0".repeat(64));
         server.upstream = Some("http://example.invalid/server.jar".to_owned());
         adapter.inputs.server_jar = Some(server);
         let error = super::verify_pinned_sources(&adapter).expect_err("insecure upstream");

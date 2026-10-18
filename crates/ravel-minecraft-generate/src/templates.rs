@@ -298,7 +298,7 @@ fn render_roles(
 /// # Errors
 ///
 /// Returns an error naming an unreachable addition and its role.
-pub(super) fn every_added_template_is_reached(
+pub(super) fn verify_added_templates_reached(
     root: &Path,
     rendered: &[&Sources],
 ) -> Result<(), GenerateError> {
@@ -375,6 +375,7 @@ fn in_template(template: &Template<'_>, error: GenerateError) -> GenerateError {
         )
     };
     match error {
+        GenerateError::Io { file, source } => GenerateError::io(named(file), source),
         GenerateError::Input(detail) => GenerateError::Input(named(detail)),
         GenerateError::Drift(detail) => GenerateError::Drift(named(detail)),
         GenerateError::Unresolved(detail) => GenerateError::Unresolved(named(detail)),
@@ -398,16 +399,11 @@ fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
         // into nothing at all while saying nothing. The shared directory is
         // where these directories legitimately live, which is why this is here
         // rather than in the read.
-        for entry in fs::read_dir(overrides).map_err(|error| {
-            GenerateError::Input(format!(
-                "cannot read the screen templates at {}: {error}",
-                diagnostic_path(tree.root, overrides)
-            ))
-        })? {
+        for entry in fs::read_dir(overrides)
+            .map_err(|error| GenerateError::io(diagnostic_path(tree.root, overrides), error))?
+        {
             let path = entry
-                .map_err(|error| {
-                    GenerateError::Input(format!("cannot read a screen template: {error}"))
-                })?
+                .map_err(|error| GenerateError::io(diagnostic_path(tree.root, overrides), error))?
                 .path();
             if path.is_dir() {
                 return Err(GenerateError::Input(format!(
@@ -469,17 +465,11 @@ struct Templates {
 /// Every template directly inside one directory, in a stable order.
 fn in_directory(root: &Path, directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
     let mut found = Vec::new();
-    let entries = fs::read_dir(directory).map_err(|error| {
-        GenerateError::Input(format!(
-            "cannot read the screen templates at {}: {error}",
-            diagnostic_path(root, directory)
-        ))
-    })?;
+    let entries = fs::read_dir(directory)
+        .map_err(|error| GenerateError::io(diagnostic_path(root, directory), error))?;
     for entry in entries {
         let path = entry
-            .map_err(|error| {
-                GenerateError::Input(format!("cannot read a screen template: {error}"))
-            })?
+            .map_err(|error| GenerateError::io(diagnostic_path(root, directory), error))?
             .path();
         if path
             .to_str()
@@ -596,12 +586,8 @@ pub(super) fn name_space(
 
 /// Reads one template and everything its placeholders ask for.
 fn template<'a>(root: &'a Path, path: &Path) -> Result<Template<'a>, GenerateError> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        GenerateError::Input(format!(
-            "cannot read {}: {error}",
-            diagnostic_path(root, path)
-        ))
-    })?;
+    let text = fs::read_to_string(path)
+        .map_err(|error| GenerateError::io(diagnostic_path(root, path), error))?;
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -691,7 +677,7 @@ fn linked_classes(
 /// # Errors
 ///
 /// Returns an error when a seeded member has zero or multiple linked names.
-pub(super) fn every_seeded_member_resolves(
+pub(super) fn verify_seeded_members_resolve(
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
@@ -798,11 +784,14 @@ fn member_name(
     let class = roles.class(role)?;
     let reviewed = classfile::source_name(&class);
     let seeded = seeded_member_name(&class, role, member_role, roles, stubs, mapping)?;
-    let declared = roles.declared_member(role, member_role)?.map(|declared| {
-        mapping
-            .linked_member(&class, &declared.member, &declared.descriptor)
-            .0
-    });
+    let declared = roles
+        .declared_member(role, member_role)?
+        .map(|declared| {
+            mapping
+                .linked_member(&class, &declared.member, &declared.descriptor)
+                .map(|linked| linked.0)
+        })
+        .transpose()?;
     match (seeded, declared) {
         (Some(seeded), Some(declared)) if seeded != declared => {
             Err(GenerateError::Unsupported(format!(
@@ -874,9 +863,9 @@ fn seeded_member_name(
         .map(|declared| {
             mapping
                 .linked_member(class, &declared.name, &declared.descriptor)
-                .0
+                .map(|linked| linked.0)
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
     names.sort();
     names.dedup();
     match names.as_slice() {
@@ -1724,12 +1713,12 @@ com.example.util.Held -> com.example.util.Held:
     fn a_seeded_member_no_template_names_is_still_required_to_resolve() {
         let ambiguous = seeds_binding("scale", None);
 
-        let error = every_seeded_member_resolves(&roles(&ambiguous), &stubs(), &proguard())
+        let error = verify_seeded_members_resolve(&roles(&ambiguous), &stubs(), &proguard())
             .expect_err("an ambiguous seed is a defect whether or not a template names it");
 
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
         let bound = seeds_binding("scale", Some(inputs::Overload::Count(0)));
-        every_seeded_member_resolves(&roles(&bound), &stubs(), &proguard())
+        verify_seeded_members_resolve(&roles(&bound), &stubs(), &proguard())
             .expect("a bound overload resolves");
     }
 
@@ -2340,7 +2329,7 @@ com.example.util.Held -> com.example.util.Held:
             "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n}\n",
         );
         let drivers = version_only_stand_in_driver(&naming);
-        every_added_template_is_reached(game.root, &[&render_game(), &drivers])
+        verify_added_templates_reached(game.root, &[&render_game(), &drivers])
             .expect("the driver in the other tree reaches the stand-in");
 
         let silent = staged_tree(
@@ -2350,7 +2339,7 @@ com.example.util.Held -> com.example.util.Held:
         );
         let quiet = version_only_stand_in_driver(&silent);
 
-        let Err(error) = every_added_template_is_reached(game.root, &[&render_game(), &quiet])
+        let Err(error) = verify_added_templates_reached(game.root, &[&render_game(), &quiet])
         else {
             panic!("nothing this version renders names the added stand-in");
         };

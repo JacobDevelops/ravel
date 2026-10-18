@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::{numbers_before, read_text, redacted_path, relative_label};
+use super::{numbers_after, numbers_before, read_text, redacted_path, relative_label};
 use crate::test_support::temporary_root;
 
 #[test]
@@ -128,4 +128,46 @@ fn a_count_spelled_above_twenty_is_read_up_to_ninety_nine() {
         Vec::<usize>::new()
     );
     assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
+}
+
+#[test]
+fn a_following_count_starts_immediately_after_its_noun() {
+    assert_eq!(
+        numbers_after(
+            "Blocking findings: 3 across two rounds.",
+            &["blocking", "findings"]
+        ),
+        [3]
+    );
+    assert_eq!(numbers_after("rounds: 5", &["rounds"]), [5]);
+    assert_eq!(
+        numbers_after("rounds: one two three four 5", &["rounds"]),
+        [1]
+    );
+    assert_eq!(
+        numbers_after("rounds: no count is stated 5", &["rounds"]),
+        Vec::<usize>::new()
+    );
+}
+
+#[test]
+fn a_count_before_a_noun_excludes_unrelated_following_numbers() {
+    let summary = "raised four blocking findings, three of which were sentences";
+    assert_eq!(numbers_before(summary, &["blocking", "findings"]), [4]);
+    assert_eq!(
+        numbers_after(summary, &["blocking", "findings"]),
+        Vec::<usize>::new()
+    );
+    assert_eq!(
+        numbers_after("it reviews 12 crates", &["reviews"]),
+        Vec::<usize>::new()
+    );
+    assert_eq!(
+        numbers_after(
+            "four blocking findings were addressed, and after another complete review \
+             Blocking findings: 3",
+            &["blocking", "findings"]
+        ),
+        [3]
+    );
 }

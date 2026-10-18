@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 
 use crate::evidence::spikes::verify_spikes;
 use crate::test_support::temporary_root;
@@ -42,7 +41,7 @@ fn spike_results_must_cover_every_failure_scenario() {
 #[test]
 fn a_spike_result_does_not_require_a_historical_change_identifier() {
     let root = temporary_root("spikes-no-change-id");
-    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repository = crate::test_support::repository_root();
     fs::create_dir_all(root.join("schemas")).expect("schema directory should be creatable");
     fs::copy(
         repository.join("schemas/spike-result.schema.json"),
@@ -77,15 +76,15 @@ fn a_claimed_stock_launch_without_the_redacted_log_hash_is_refused() {
     let root = temporary_root("spikes-launch-log");
     fs::create_dir_all(root.join("schemas")).expect("schema directory should be creatable");
     fs::copy(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas/spike-result.schema.json"),
+        crate::test_support::repository_root().join("schemas/spike-result.schema.json"),
         root.join("schemas/spike-result.schema.json"),
     )
     .expect("spike schema should be copied");
     let gate = root.join("evidence/m1/spikes/adg-5");
     fs::create_dir_all(&gate).expect("spike directory should be creatable");
     let recorded = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"),
+        crate::test_support::repository_root()
+            .join("evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"),
     )
     .expect("the recorded ADG-5 result should be readable");
     let target = gate.join("candidate.json");

@@ -201,11 +201,17 @@ mod tests {
                 spelling: Spelling::PackFormat,
             },
             inputs: Inputs {
-                client_jar: unpinned(),
+                client_jar: Input {
+                    sha256: Some("a".repeat(64)),
+                    ..unpinned()
+                },
                 server_jar: None,
                 client_mappings: None,
                 mapping_io_jar: None,
-                data_fixer_jar: Some(unpinned()),
+                data_fixer_jar: Some(Input {
+                    sha256: Some("b".repeat(64)),
+                    ..unpinned()
+                }),
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
                 stub_seeds: unpinned(),
@@ -1063,7 +1069,8 @@ mod tests {
             "the header has to say what the lock is worth: {lock}"
         );
         assert!(
-            lock.contains("dataFixerJarSha256 = "),
+            lock.contains(&format!("clientJarSha256 = \"{}\"\n", "a".repeat(64)))
+                && lock.contains(&format!("dataFixerJarSha256 = \"{}\"\n", "b".repeat(64))),
             "the lock records both sources' provenance: {lock}"
         );
         assert!(

@@ -3,26 +3,24 @@
 use std::fs;
 use std::path::Path;
 
-use crate::evidence::accounting::{
-    verify_manifest_percentages, verify_review_blocking_counts, verify_review_round_counts,
-};
+mod inventory;
+pub(crate) mod java_shape;
+
+use crate::evidence::accounting::verify_accounting;
 use crate::evidence::manifest::verify_evidence_records;
-use crate::inventory::{
-    verify_example_inventory, verify_game_type_claims, verify_guide_enumerations,
-    verify_hook_inventory_document, verify_inventory, verify_test_mod_inventory,
-};
-use crate::java_shape::reflection::verify_persistence_reflection;
-use crate::java_shape::{
-    verify_hook_name_literals, verify_menu_row_placement, verify_screen_overrides,
-    verify_screen_templates, verify_transformer_shape,
-};
 use crate::json::read_json;
 use crate::text::{read_text, relative_label};
 use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
     verify_version_boundary, verify_version_directories, verify_version_readmes,
 };
-use crate::{CRATE_NAMES, EXAMPLE_NAMES, REGISTRY_MOD_NAMES, TEST_MOD_NAMES};
+use inventory::{
+    verify_game_type_claims, verify_guide_enumerations, verify_hook_inventory_document,
+};
+use java_shape::{
+    verify_hook_name_literals, verify_menu_row_placement, verify_persistence_reflection,
+    verify_screen_overrides, verify_screen_templates, verify_transformer_shape,
+};
 
 const ROOT_FILES: &[&str] = &[
     ".cargo/config.toml",
@@ -84,37 +82,14 @@ const ROOT_FILES: &[&str] = &[
 /// Returns the files that define the minimum public repository scaffold.
 #[must_use]
 pub fn required_scaffold_paths() -> Vec<String> {
-    ROOT_FILES
-        .iter()
-        .map(|path| (*path).to_owned())
-        .chain(
-            CRATE_NAMES
-                .iter()
-                .map(|name| format!("crates/{name}/Cargo.toml")),
-        )
-        .chain(REGISTRY_MOD_NAMES.iter().flat_map(|name| {
-            [
-                format!("registry/mods/{name}/Cargo.toml"),
-                format!("registry/mods/{name}/src/lib.rs"),
-            ]
-        }))
-        .chain(
-            TEST_MOD_NAMES
-                .iter()
-                .map(|name| format!("test-mods/{name}/Cargo.toml")),
-        )
-        .chain(
-            EXAMPLE_NAMES
-                .iter()
-                .map(|name| format!("examples/{name}/Cargo.toml")),
-        )
-        .collect()
+    ROOT_FILES.iter().map(|path| (*path).to_owned()).collect()
 }
 
 /// Checks the repository's initial public scaffold and tracked-file policy.
 #[must_use]
 pub fn verify_scaffold(root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
+    let members = maintained_members(root, &mut violations);
 
     for relative in required_scaffold_paths() {
         if !root.join(&relative).is_file() {
@@ -122,7 +97,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
         }
     }
 
-    for relative in maintained_rust_roots(root, &mut violations) {
+    for relative in maintained_rust_roots(root, &members, &mut violations) {
         match read_text(root, Path::new(&relative)) {
             Ok(source) if declares_unsafe_prohibition(&source) => {}
             Ok(_) => violations.push(format!("missing unsafe prohibition: {relative}")),
@@ -133,9 +108,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_ignored_boundaries(root, &mut violations);
     let (adapters, inventories) = verify_version_directories(root, &mut violations);
     verify_hook_inventory_document(root, &inventories, &mut violations);
-    verify_review_round_counts(root, &mut violations);
-    verify_review_blocking_counts(root, &mut violations);
-    verify_manifest_percentages(root, &mut violations);
+    verify_accounting(root, None, &mut violations);
     verify_persistence_reflection(root, &adapters, &mut violations);
     verify_hook_name_literals(root, &inventories, &adapters, &mut violations);
     verify_transformer_shape(root, &inventories, &adapters, &mut violations);
@@ -146,17 +119,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &inventories, &mut violations);
-    verify_example_inventory(root, &mut violations);
-    verify_test_mod_inventory(root, &mut violations);
-    verify_inventory(root, "crates", CRATE_NAMES, "CRATE_NAMES", &mut violations);
-    verify_inventory(
-        root,
-        "registry/mods",
-        REGISTRY_MOD_NAMES,
-        "REGISTRY_MOD_NAMES",
-        &mut violations,
-    );
-    verify_production_fences(root, &mut violations);
+    verify_production_fences(root, &members, &mut violations);
     violations.extend(verify_evidence_records(root));
 
     match tracked_paths(root) {
@@ -178,25 +141,10 @@ fn declares_unsafe_prohibition(source: &str) -> bool {
         .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
 }
 
-fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
-    let production_manifests = CRATE_NAMES
+fn verify_production_fences(root: &Path, members: &[String], violations: &mut Vec<String>) {
+    let production_manifests = members
         .iter()
-        .map(|name| format!("crates/{name}/Cargo.toml"))
-        .chain(
-            REGISTRY_MOD_NAMES
-                .iter()
-                .map(|name| format!("registry/mods/{name}/Cargo.toml")),
-        )
-        .chain(
-            TEST_MOD_NAMES
-                .iter()
-                .map(|name| format!("test-mods/{name}/Cargo.toml")),
-        )
-        .chain(
-            EXAMPLE_NAMES
-                .iter()
-                .map(|name| format!("examples/{name}/Cargo.toml")),
-        )
+        .map(|member| format!("{member}/Cargo.toml"))
         .chain([
             "tests/conformance/Cargo.toml".to_owned(),
             "tools/ravel-xtask/Cargo.toml".to_owned(),
@@ -217,7 +165,7 @@ fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
         }
     }
 
-    verify_testkit_fence(root, violations);
+    verify_testkit_fence(root, members, violations);
 
     let mut sources = Vec::new();
     for directory in ["crates", "registry/mods", "test-mods", "tools", "tests"] {
@@ -251,26 +199,11 @@ fn verify_production_fences(root: &Path, violations: &mut Vec<String>) {
     }
 }
 
-fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
-    let fenced = CRATE_NAMES
+fn verify_testkit_fence(root: &Path, members: &[String], violations: &mut Vec<String>) {
+    let fenced = members
         .iter()
-        .filter(|name| **name != "ravel-testkit")
-        .map(|name| format!("crates/{name}/Cargo.toml"))
-        .chain(
-            REGISTRY_MOD_NAMES
-                .iter()
-                .map(|name| format!("registry/mods/{name}/Cargo.toml")),
-        )
-        .chain(
-            TEST_MOD_NAMES
-                .iter()
-                .map(|name| format!("test-mods/{name}/Cargo.toml")),
-        )
-        .chain(
-            EXAMPLE_NAMES
-                .iter()
-                .map(|name| format!("examples/{name}/Cargo.toml")),
-        );
+        .filter(|member| member.as_str() != "crates/ravel-testkit")
+        .map(|member| format!("{member}/Cargo.toml"));
 
     for relative in fenced {
         let manifest = match read_text(root, Path::new(&relative)) {
@@ -288,43 +221,66 @@ fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
     }
 }
 
-fn maintained_rust_roots(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
-    CRATE_NAMES
+fn maintained_rust_roots(
+    root: &Path,
+    members: &[String],
+    violations: &mut Vec<String>,
+) -> Vec<String> {
+    members
         .iter()
-        .map(|name| format!("crates/{name}/src/lib.rs"))
-        .chain(
-            REGISTRY_MOD_NAMES
-                .iter()
-                .map(|name| format!("registry/mods/{name}/src/lib.rs")),
-        )
+        .map(|member| format!("{member}/src/lib.rs"))
         .chain([
             "tests/conformance/src/lib.rs".to_owned(),
             "tools/ravel-xtask/src/lib.rs".to_owned(),
             "tools/ravel-xtask/src/main.rs".to_owned(),
         ])
-        .chain(
-            TEST_MOD_NAMES
-                .iter()
-                .map(|name| format!("test-mods/{name}/src/lib.rs")),
-        )
-        .chain(
-            EXAMPLE_NAMES
-                .iter()
-                .map(|name| format!("examples/{name}/src/lib.rs")),
-        )
-        .chain(crate_example_roots(root, violations))
+        .chain(crate_example_roots(root, members, violations))
         .collect()
 }
 
-fn crate_example_roots(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+fn maintained_members(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+    let mut members = Vec::new();
+    for directory in ["crates", "registry/mods", "test-mods", "examples"] {
+        let entries = match fs::read_dir(root.join(directory)) {
+            Ok(entries) => entries,
+            Err(error) => {
+                violations.push(format!("cannot read {directory}: {error}"));
+                continue;
+            }
+        };
+        for entry in entries {
+            match entry {
+                Ok(entry) if entry.path().join("Cargo.toml").is_file() => {
+                    members.push(format!(
+                        "{directory}/{}",
+                        entry.file_name().to_string_lossy()
+                    ));
+                }
+                Ok(_) => {}
+                Err(error) => violations.push(format!("cannot read {directory} entry: {error}")),
+            }
+        }
+    }
+    members.sort();
+    members
+}
+
+fn crate_example_roots(
+    root: &Path,
+    members: &[String],
+    violations: &mut Vec<String>,
+) -> Vec<String> {
     let mut roots = Vec::new();
-    for name in CRATE_NAMES {
-        let directory = root.join("crates").join(name).join("examples");
+    for member in members
+        .iter()
+        .filter(|member| member.starts_with("crates/"))
+    {
+        let directory = root.join(member).join("examples");
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
-                violations.push(format!("cannot read crates/{name}/examples: {error}"));
+                violations.push(format!("cannot read {member}/examples: {error}"));
                 continue;
             }
         };
@@ -332,14 +288,14 @@ fn crate_example_roots(root: &Path, violations: &mut Vec<String>) -> Vec<String>
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(error) => {
-                    violations.push(format!("cannot read crates/{name}/examples entry: {error}"));
+                    violations.push(format!("cannot read {member}/examples entry: {error}"));
                     continue;
                 }
             };
             let path = entry.path();
             if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
                 let file = entry.file_name().to_string_lossy().into_owned();
-                roots.push(format!("crates/{name}/examples/{file}"));
+                roots.push(format!("{member}/examples/{file}"));
             }
         }
     }

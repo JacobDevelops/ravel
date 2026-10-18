@@ -118,7 +118,19 @@ pub(crate) fn numbers_after(document: &str, noun: &[&str]) -> Vec<usize> {
         if !window_is_noun(noun, window) {
             continue;
         }
-        let from = at + noun.len() + 1;
+        if words[at.saturating_sub(COUNT_LOOKBACK)..at]
+            .iter()
+            .any(|word| numeral(word).is_some())
+        {
+            continue;
+        }
+        let from = at + noun.len();
+        if noun.len() == 1
+            && !window[0].ends_with(':')
+            && words.get(from).is_some_and(|word| numeral(word).is_some())
+        {
+            continue;
+        }
         let to = (at + noun.len() + COUNT_LOOKBACK).min(words.len());
         if from >= to {
             continue;

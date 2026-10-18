@@ -7,6 +7,16 @@ use crate::inputs::Adapter;
 use crate::resolve::Resolved;
 use crate::stubs::Stub;
 
+/// Leaves an absent hash absent instead of recording an empty-string identity.
+fn hash_pin(text: &mut String, name: &str, digest: Option<&str>) {
+    if let Some(digest) = digest {
+        text.push_str(name);
+        text.push_str(" = \"");
+        text.push_str(digest);
+        text.push_str("\"\n");
+    }
+}
+
 /// Renders the mapping provenance lock.
 pub(crate) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
     let mut text = String::with_capacity(resolved.len() * 192 + 512);
@@ -21,32 +31,30 @@ pub(crate) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
      schemaVersion = {}\n\
      minecraft = \"{}\"\n\
      mappingSource = \"{}\"\n\
-     extractor = \"{EXTRACTOR}\"\n\
-     clientJarSha256 = \"{}\"",
+     extractor = \"{EXTRACTOR}\"",
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
-        adapter.mapping_source.as_str(),
-        adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
+        adapter.mapping_source.as_str()
     )
     .expect("writing to a String cannot fail");
-    if let Some(server) = &adapter.inputs.server_jar {
-        writeln!(
-            text,
-            "serverJarSha256 = \"{}\"",
-            server.sha256.as_deref().unwrap_or("")
-        )
-        .expect("writing to a String cannot fail");
-    }
-    // A source that reads no mapping has none to pin, so the key exists only
-    // where one decided the linked names below.
-    if let Some(mappings) = &adapter.inputs.client_mappings {
-        writeln!(
-            text,
-            "clientMappingsSha256 = \"{}\"",
-            mappings.sha256.as_deref().unwrap_or("")
-        )
-        .expect("writing to a String cannot fail");
+    hash_pin(
+        &mut text,
+        "clientJarSha256",
+        adapter.inputs.client_jar.sha256.as_deref(),
+    );
+    for (name, input) in [
+        ("serverJarSha256", adapter.inputs.server_jar.as_ref()),
+        (
+            "clientMappingsSha256",
+            adapter.inputs.client_mappings.as_ref(),
+        ),
+    ] {
+        hash_pin(
+            &mut text,
+            name,
+            input.and_then(|input| input.sha256.as_deref()),
+        );
     }
     for target in resolved {
         writeln!(
@@ -107,22 +115,24 @@ pub(crate) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
      \n\
      schemaVersion = {}\n\
      minecraft = \"{}\"\n\
-     extractor = \"{EXTRACTOR}\"\n\
-     clientJarSha256 = \"{}\"",
-        adapter.minecraft,
-        adapter.schema_version,
-        adapter.minecraft,
-        adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
+     extractor = \"{EXTRACTOR}\"",
+        adapter.minecraft, adapter.schema_version, adapter.minecraft
     )
     .expect("writing to a String cannot fail");
-    if let Some(library) = &adapter.inputs.data_fixer_jar {
-        writeln!(
-            text,
-            "dataFixerJarSha256 = \"{}\"",
-            library.sha256.as_deref().unwrap_or("")
-        )
-        .expect("writing to a String cannot fail");
-    }
+    hash_pin(
+        &mut text,
+        "clientJarSha256",
+        adapter.inputs.client_jar.sha256.as_deref(),
+    );
+    hash_pin(
+        &mut text,
+        "dataFixerJarSha256",
+        adapter
+            .inputs
+            .data_fixer_jar
+            .as_ref()
+            .and_then(|input| input.sha256.as_deref()),
+    );
 
     stub_lock_entries(&mut text, stubs);
     text
@@ -163,5 +173,17 @@ fn stub_lock_entries(text: &mut String, stubs: &[Stub]) {
                 writeln!(text, "returns = \"{element}\"").expect("writing to a String cannot fail");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod hash_tests {
+    #[test]
+    fn absent_hashes_are_not_rendered_as_empty_identities() {
+        let mut text = String::new();
+        super::hash_pin(&mut text, "clientJarSha256", None);
+        assert_eq!(text, "");
+        super::hash_pin(&mut text, "clientJarSha256", Some("abc"));
+        assert_eq!(text, "clientJarSha256 = \"abc\"\n");
     }
 }

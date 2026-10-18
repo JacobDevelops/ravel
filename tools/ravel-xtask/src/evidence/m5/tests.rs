@@ -27,6 +27,22 @@ fn a_balanced_inventory_summary_closes_its_own_arithmetic() {
 }
 
 #[test]
+fn missing_sum_operands_cannot_match_a_missing_total() {
+    let (rule, _) = M5_ARITHMETIC[0];
+    for record in [
+        serde_json::json!({}),
+        serde_json::json!({"artifacts": {"catalogued": 2}}),
+        serde_json::json!({"artifacts": {"catalogued": 2, "total": 2}}),
+        serde_json::json!({"artifacts": {"catalogued": 2, "uncatalogued": 0}}),
+    ] {
+        assert!(!rule(&record), "{record}");
+    }
+    assert!(rule(&serde_json::json!({
+        "artifacts": {"catalogued": 2, "uncatalogued": 0, "total": 2}
+    })));
+}
+
+#[test]
 fn moving_one_part_of_an_inventory_total_stops_it_summing() {
     let root = summary_root(
         "m5-arithmetic-drift",

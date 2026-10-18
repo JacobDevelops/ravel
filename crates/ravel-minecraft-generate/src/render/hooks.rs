@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use crate::inputs::Adapter;
-use crate::{LIBRARY, LIBRARY_PROPERTY};
+use crate::{HOST_LIBRARY, LIBRARY_PROPERTY};
 
 use super::shape::Shape;
 
@@ -14,7 +14,7 @@ fn library_load_java() -> String {
     format!(
         "\
         \x20   /** Native library carrying the generated exports. */\n\
-         \x20   public static final String LIBRARY = \"{LIBRARY}\";\n\n\
+         \x20   public static final String LIBRARY = \"{HOST_LIBRARY}\";\n\n\
          \x20   /** System property naming the file to load the library from. */\n\
          \x20   public static final String LIBRARY_PROPERTY = \"{LIBRARY_PROPERTY}\";\n\n\
          \x20   static {{\n\

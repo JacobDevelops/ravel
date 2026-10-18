@@ -18,7 +18,14 @@ pub(super) struct DescriptorType<'a> {
     pub(super) descriptor: &'a str,
 }
 
-impl DescriptorType<'_> {
+impl<'a> DescriptorType<'a> {
+    pub(super) fn class_name(self) -> Option<&'a str> {
+        self.descriptor
+            .trim_start_matches('[')
+            .starts_with('L')
+            .then_some(self.name)
+    }
+
     fn source(self) -> String {
         let mut name = source_name(self.name);
         for _ in 0..self.dimensions {
@@ -29,7 +36,10 @@ impl DescriptorType<'_> {
 }
 
 /// Tokenizes exactly one JVM type; void is accepted only as a return type.
-fn descriptor_type(descriptor: &str, returns: bool) -> Result<(DescriptorType<'_>, &str), String> {
+pub(super) fn descriptor_type(
+    descriptor: &str,
+    returns: bool,
+) -> Result<(DescriptorType<'_>, &str), String> {
     let dimensions = descriptor.bytes().take_while(|byte| *byte == b'[').count();
     let rest = &descriptor[dimensions..];
     let first = rest

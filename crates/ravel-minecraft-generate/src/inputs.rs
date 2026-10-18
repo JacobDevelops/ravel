@@ -175,6 +175,7 @@ pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, Generat
 fn in_context(error: GenerateError, label: &str) -> GenerateError {
     let context = |detail| format!("{label}: {detail}");
     match error {
+        GenerateError::Io { file, source } => GenerateError::io(context(file), source),
         GenerateError::Input(detail) => GenerateError::Input(context(detail)),
         GenerateError::Drift(detail) => GenerateError::Drift(context(detail)),
         GenerateError::Unresolved(detail) => GenerateError::Unresolved(context(detail)),
@@ -203,12 +204,9 @@ fn read_adapter_at(directory: &Path, version: &str) -> Result<Adapter, GenerateE
 pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersion, GenerateError> {
     let versions = root.join(VERSIONS);
     let mut names = Vec::new();
-    let entries = fs::read_dir(&versions)
-        .map_err(|error| GenerateError::Input(format!("cannot read the version data: {error}")))?;
+    let entries = fs::read_dir(&versions).map_err(|error| GenerateError::io(VERSIONS, error))?;
     for entry in entries {
-        let entry = entry.map_err(|error| {
-            GenerateError::Input(format!("cannot read a version data entry: {error}"))
-        })?;
+        let entry = entry.map_err(|error| GenerateError::io(VERSIONS, error))?;
         if entry.path().is_dir() {
             names.push(entry.file_name().to_string_lossy().into_owned());
         }
@@ -326,8 +324,7 @@ fn listed(names: &[String]) -> String {
 pub(super) fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, GenerateError> {
     let displayed = path.to_string_lossy();
     let name = file_name(&displayed);
-    let text = fs::read_to_string(path)
-        .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+    let text = fs::read_to_string(path).map_err(|error| GenerateError::io(name, error))?;
     toml::from_str(&text)
         .map_err(|error| GenerateError::Input(format!("cannot parse {name}: {error}")))
 }
@@ -371,6 +368,55 @@ mod tests {
 
     use super::fixtures::{document, legacy_adapter, repository_root};
     use super::{Adapter, Kind, MappingSource, file_name, pinned};
+
+    #[test]
+    fn contextual_io_errors_preserve_version_label_and_source() {
+        use std::error::Error as _;
+        let error = super::GenerateError::io(
+            "hooks.toml",
+            std::io::Error::from(std::io::ErrorKind::NotFound),
+        );
+        let error = super::in_context(error, "minecraft/versions/1.2.3/adapter.toml");
+        let source = error
+            .source()
+            .expect("the contextual I/O error must retain its source")
+            .downcast_ref::<std::io::Error>()
+            .expect("the contextual error source must be an std::io::Error");
+        assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            error
+                .to_string()
+                .contains("minecraft/versions/1.2.3/adapter.toml")
+        );
+        assert!(error.to_string().contains("hooks.toml"));
+    }
+
+    #[test]
+    fn parsed_input_io_failures_keep_version_context_without_machine_paths() {
+        use std::error::Error as _;
+        let path = std::env::temp_dir()
+            .join(format!("ravel-private-input-path-{}", std::process::id()))
+            .join("hooks.toml");
+        let error = super::parse::<toml::Value>(&path).expect_err("the input file is absent");
+        let error = super::in_context(error, "version 1.2.3, minecraft/versions/1.2.3/hooks.toml");
+        let detail = error.to_string();
+        assert!(detail.contains("version 1.2.3"));
+        assert!(detail.contains("minecraft/versions/1.2.3/hooks.toml"));
+        assert!(!detail.contains("ravel-private-input-path"), "{detail}");
+        assert!(
+            !detail.contains(&std::env::temp_dir().to_string_lossy().into_owned()),
+            "{detail}"
+        );
+        assert_eq!(
+            error
+                .source()
+                .expect("retain the I/O source")
+                .downcast_ref::<std::io::Error>()
+                .expect("retain the original I/O error")
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
 
     fn runtime_sources(root: &Path) -> String {
         fn walk(directory: &Path, read: &mut String) {
@@ -523,7 +569,7 @@ class = \"net/minecraft/Unreferenced\"
         let error =
             pinned(Path::new("/nonexistent-ravel-root"), None).expect_err("this must not parse");
 
-        assert!(error.to_string().contains("cannot read the version data"));
+        assert!(matches!(error, super::GenerateError::Io { .. }));
     }
 
     #[test]
@@ -606,7 +652,7 @@ class = \"net/minecraft/Unreferenced\"
     #[test]
     fn modern_dfu_omission_is_refused_and_legacy_omission_is_accepted() {
         let text = document("unobfuscated-class-files", "")
-            .replace("[inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n", "");
+            .replace("[inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n", "");
         let modern: Adapter = toml::from_str(&text).expect("an optional library parses");
         let error = super::verify_pinned_sources(&modern).expect_err("modern inputs require DFU");
         assert!(
@@ -636,7 +682,7 @@ class = \"net/minecraft/Unreferenced\"
             MappingSource::FeatherTinyMappings,
         ] {
             let mappings = if source.needs_mappings() {
-                "[inputs.clientMappings]\npath = \"m\"\nsha256 = \"0\"\n"
+                "[inputs.clientMappings]\npath = \"m\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n"
             } else {
                 ""
             };

@@ -85,7 +85,7 @@ mod tests {
             .ancestors()
             .nth(2)
             .expect("xtask must remain under tools/ravel-xtask");
-        for file in ["Cargo.toml", "Cargo.lock"] {
+        for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
             fs::copy(installation.join(file), root.join(file))
                 .expect("installation input should be copied");
         }

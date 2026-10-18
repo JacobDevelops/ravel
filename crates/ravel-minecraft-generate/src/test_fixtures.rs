@@ -46,8 +46,8 @@ pub(crate) fn document(source: &str, mappings: &str) -> String {
          [packFormat]\nresource = 7\nresourceMinor = 0\ndata = 11\ndataMinor = 0\n\
          spelling = \"pack-format\"\n\
          {mappings}\
-         [inputs.clientJar]\npath = \"a\"\nsha256 = \"0\"\n\
-         [inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n\
+         [inputs.clientJar]\npath = \"a\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n\
+         [inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n\
          [inputs.versionManifest]\npath = \"c\"\nsha256 = \"0\"\n\
          [inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"\n\
          [inputs.stubSeeds]\npath = \"e\"\nsha256 = \"0\"\n\

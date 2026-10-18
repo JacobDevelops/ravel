@@ -23,7 +23,8 @@ pub(super) fn read(root: &Path, adapter: &inputs::Adapter) -> Result<Mapping, Ge
     inputs::verify_input(root, artifact)?;
     inputs::verify_input(root, tool)?;
     let source = root.join(NORMALIZER_SOURCE);
-    let output = Command::new(java_executable()?)
+    let java = java_executable()?;
+    let output = Command::new(&java)
         .arg("--class-path")
         .arg(root.join(&tool.path))
         .arg(source)
@@ -31,7 +32,15 @@ pub(super) fn read(root: &Path, adapter: &inputs::Adapter) -> Result<Mapping, Ge
         .arg(&names.runtime)
         .arg(&names.reviewed)
         .output()
-        .map_err(|error| GenerateError::Input(format!("cannot run mapping-io: {error}")))?;
+        .map_err(|error| {
+            GenerateError::io(
+                format!(
+                    "mapping-io using {}",
+                    inputs::file_name(&java.to_string_lossy())
+                ),
+                error,
+            )
+        })?;
     if !output.status.success() {
         return Err(GenerateError::Input(format!(
             "mapping-io refused the Tiny mapping: {}",
@@ -58,10 +67,13 @@ fn java_executable() -> Result<PathBuf, GenerateError> {
         .arg("-version")
         .output()
         .map_err(|error| {
-            GenerateError::Input(format!(
-                "cannot run mapping-io Java executable {}: {error}",
-                inputs::file_name(&java.to_string_lossy())
-            ))
+            GenerateError::io(
+                format!(
+                    "mapping-io Java executable {}",
+                    inputs::file_name(&java.to_string_lossy())
+                ),
+                error,
+            )
         })?;
     let diagnostic = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {

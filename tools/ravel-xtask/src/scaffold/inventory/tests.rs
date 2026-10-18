@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::hooks::{HookCounts, hook_counts, hook_inventory};
-use crate::inventory::{
+use crate::scaffold::inventory::{
     GUIDE_DIRECTORY, HOOK_DOCUMENT, NETWORK_SOURCE, documented_versions, hook_document_violations,
     verify_guide_enumerations, verify_hook_inventory_document,
 };
@@ -197,9 +197,7 @@ fn a_hook_document_naming_an_untracked_version_is_refused() {
 
 #[test]
 fn the_tracked_hook_document_agrees_with_the_tracked_inventory() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
+    let root = crate::test_support::repository_root();
     let mut violations = Vec::new();
 
     verify_hook_inventory_document(

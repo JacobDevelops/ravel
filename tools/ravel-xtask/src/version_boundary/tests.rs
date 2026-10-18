@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::java_shape::REFLECTION_FILE;
+use crate::scaffold::java_shape::REFLECTION_FILE;
 use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{
     SWEPT_SCOPE, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
@@ -17,26 +17,26 @@ fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
         &adapter,
         format!(
             "{}\n[mappingNamespaces]\nruntime = 'official'\nreviewed = 'named'\n\
-             [inputs.mappingIoJar]\npath = 'mapping-io.jar'\nsha256 = '0'\n",
+             [inputs.mappingIoJar]\npath = 'mapping-io.jar'\nsha256 = '0000000000000000000000000000000000000000000000000000000000000000'\n",
             adapter_document("1.12.2", "generation-only", Some("mapping.tiny"))
                 .replace("official-proguard-mappings", "feather-tiny-mappings")
         ),
     )
     .expect("adapter should be writable");
     assert_eq!(
-        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
         "unavailable: mapping.tiny is absent"
     );
     fs::write(root.join("mapping.tiny"), "pinned by generator")
         .expect("mapping should be writable");
     assert_eq!(
-        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
         "unavailable: mapping-io.jar is absent"
     );
     fs::write(root.join("mapping-io.jar"), "pinned by generator")
         .expect("normalizer should be writable");
     assert_eq!(
-        super::version_matrix(&root, "1.12.2").expect("valid eligibility"),
+        super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
         "generation-only"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -54,12 +54,12 @@ fn modern_versions_cannot_downgrade_or_misspell_eligibility() {
             valid.replace("'live'", &format!("'{eligibility}'")),
         )
         .expect("adapter should be writable");
-        assert!(super::version_matrix(&root, "26.1.2").is_err());
+        assert!(super::matrix_eligibility(&root, "26.1.2").is_err());
     }
     fs::write(&adapter, valid.replace("eligibility = 'live'\n", ""))
         .expect("adapter should be writable");
     assert_eq!(
-        super::version_matrix(&root, "26.1.2").expect("default eligibility"),
+        super::matrix_eligibility(&root, "26.1.2").expect("default eligibility"),
         "live"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -74,7 +74,7 @@ fn a_scaffolded_modern_manifest_cannot_opt_out_of_live_coverage() {
         adapter_document("26.1.2", "live", None).replace("'live'", "'generation-only'"),
     )
     .expect("adapter should be writable");
-    assert!(super::version_matrix(&root, "26.1.2").is_err());
+    assert!(super::matrix_eligibility(&root, "26.1.2").is_err());
     let mut violations = Vec::new();
     verify_version_directories(&root, &mut violations);
     assert!(
@@ -369,7 +369,11 @@ fn unreadable_and_malformed_class_inventory_files_are_reported() {
     fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
     version_class_names(&root, &[directory], &inventories, &mut violations);
     assert_eq!(violations.len(), 2, "{violations:?}");
-    assert!(violations[0].contains("cannot read") && violations[0].contains("hooks.toml"));
+    assert!(
+        violations[0].contains("cannot access")
+            && violations[0].contains("minecraft/versions/26.1.2/hooks.toml"),
+        "{violations:?}"
+    );
     assert!(violations[1].contains("cannot parse") && violations[1].contains("stubs.toml"));
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -640,7 +644,7 @@ fn boundary_classes_follow_the_admitted_inventory_not_stray_default_hooks() {
         assert!(
             !violations
                 .iter()
-                .any(|message| message.contains("cannot read") && message.contains("hooks.toml")),
+                .any(|message| message.contains("cannot access") && message.contains("hooks.toml")),
             "{violations:?}"
         );
         violations.clear();
@@ -687,7 +691,7 @@ fn public_fixture_inventory_paths_supply_the_classes_the_boundary_sweeps() {
     assert!(
         !violations
             .iter()
-            .any(|message| message.contains("cannot read") || message.contains("cannot parse")),
+            .any(|message| message.contains("cannot access") || message.contains("cannot parse")),
         "{violations:?}"
     );
     violations.clear();
@@ -742,4 +746,18 @@ fn hook_only_public_fixture(root: &Path, fixture: &Path, relocated: &Path) {
         "const FIXTURE_CLASS: &str = \"org.exampleengine.HookOnlyAdmission\";\n",
     )
     .expect("production source should be writable");
+}
+
+#[test]
+fn version_references_use_complete_descriptor_tokens() {
+    let value = toml::Value::Array(vec![
+        toml::Value::String("([[Lgame/Level;[I)Lgame/Screen;".to_owned()),
+        toml::Value::String("[Lgame/Widget;".to_owned()),
+        toml::Value::String("prose mentioning Lgame/NotAType;".to_owned()),
+        toml::Value::String("Lgame/Incomplete".to_owned()),
+    ]);
+    let mut classes = std::collections::BTreeSet::new();
+    let mut references = Vec::new();
+    super::collect_version_classes(&value, &mut classes, &mut references);
+    assert_eq!(references, ["game/Level", "game/Screen", "game/Widget"]);
 }

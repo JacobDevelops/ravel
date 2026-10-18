@@ -452,15 +452,15 @@ fn every_platform_record_requires_its_own_versions_and_settings() {
 const VALID_M2_RECORDS: &[(&str, &str)] = &[
     (
         "noop-pipeline.json",
-        r#"{"runs": [{"repeatedRunIsIdentical": true}]}"#,
+        r#"{"milestone": "M2", "runs": [{"repeatedRunIsIdentical": true}]}"#,
     ),
     (
         "pre-world-gate.json",
-        r#"{"gate": {"refusesWorldAccess": true, "ranModCode": false}}"#,
+        r#"{"milestone": "M2", "gate": {"refusesWorldAccess": true, "ranModCode": false}}"#,
     ),
     (
         "loader-overhead.json",
-        r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+        r#"{"milestone": "M2", "budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
                                    "unit": "nanoseconds",
                                    "operator": "less-than-or-equal",
                                    "measured": 7084.0,
@@ -468,7 +468,7 @@ const VALID_M2_RECORDS: &[(&str, &str)] = &[
     ),
     (
         "prism-launch.json",
-        r#"{"launch": {"provesStockLaunch": true,
+        r#"{"milestone": "M2", "launch": {"provesStockLaunch": true,
                        "objection": null,
                        "attestation": {"stockLauncher": true, "derived": false}},
             "ravel": {"reachedGameProcess": true,

@@ -17,8 +17,7 @@ pub(crate) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
             "{name} pins neither a hash nor a length, so nothing about it is verified"
         )));
     }
-    let bytes = fs::read(root.join(&input.path))
-        .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+    let bytes = fs::read(root.join(&input.path)).map_err(|error| GenerateError::io(name, error))?;
     if let Some(expected) = &input.sha256 {
         let actual = sha256(&bytes);
         if &actual != expected {
@@ -46,19 +45,19 @@ pub(crate) fn repin_locks(
 ) -> Result<(), GenerateError> {
     let path = directory.join("adapter.toml");
     let mut document = fs::read_to_string(&path)
-        .map_err(|error| GenerateError::Input(format!("cannot read adapter.toml: {error}")))?;
+        .map_err(|error| GenerateError::io(file_name(&path.to_string_lossy()), error))?;
     for (table, input) in [
         ("[inputs.mappingsLock]", &inputs.mappings_lock),
         ("[inputs.stubsLock]", &inputs.stubs_lock),
     ] {
         let name = file_name(&input.path);
-        let bytes = fs::read(root.join(&input.path))
-            .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+        let bytes =
+            fs::read(root.join(&input.path)).map_err(|error| GenerateError::io(name, error))?;
         let length = u64::try_from(bytes.len()).expect("lock length fits in u64");
         document = replace_pin(&document, table, &sha256(&bytes), length)?;
     }
     fs::write(&path, document)
-        .map_err(|error| GenerateError::Input(format!("cannot write adapter.toml: {error}")))
+        .map_err(|error| GenerateError::io(file_name(&path.to_string_lossy()), error))
 }
 
 /// Replaces one table's hash and length without discarding TOML comments.
@@ -174,12 +173,12 @@ mod tests {
                 .to_string()
                 .contains("bytes but the adapter inputs pin")
         );
-        assert!(
-            verify_input(root, &missing)
-                .expect_err("a missing input must be refused")
-                .to_string()
-                .contains("cannot read absent.toml")
-        );
+        let error = verify_input(root, &missing).expect_err("a missing input must be refused");
+        let crate::GenerateError::Io { source, file } = error else {
+            panic!("a missing file must retain its I/O error");
+        };
+        assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(file, "absent.toml");
     }
 
     #[test]

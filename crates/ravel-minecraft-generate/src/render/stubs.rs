@@ -46,7 +46,7 @@ pub(crate) fn stub_java(
     for member in &stub.members {
         let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
         let (name, descriptor) =
-            mapping.linked_member(&stub.class, &member.name, &member.descriptor);
+            mapping.linked_member(&stub.class, &member.name, &member.descriptor)?;
         let rendered = if member.method {
             stub_method(
                 stub,
@@ -196,7 +196,9 @@ fn chained_super(stub: &Stub, mapping: &Mapping) -> Result<String, String> {
     let Some(recorded) = stub.super_constructor.as_ref() else {
         return Ok(String::new());
     };
-    let (_, linked) = mapping.linked_member(&stub.class, "<init>", recorded);
+    let (_, linked) = mapping
+        .linked_member(&stub.class, "<init>", recorded)
+        .map_err(|error| error.to_string())?;
     let (parameters, _) = signature(&linked)?;
     Ok(format!("        super({});\n", placeholders(&parameters)))
 }

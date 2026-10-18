@@ -73,11 +73,10 @@ pub(crate) fn verify_m4_manifest(
     verify_closure_records(Milestone::M4, records, M4_RECORDS, violations);
 }
 
-const M4_RECORDS: &[(&str, RecordRule, &str)] = &[
+const M4_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
     (
         "linux-process-matrix.json",
         |value| {
-            require(value["milestone"] == "M4", "/milestone must be M4")?;
             require(
                 value["workPackage"] == "M4-W8",
                 "/workPackage must be M4-W8",
@@ -125,8 +124,9 @@ const M4_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "a Linux process matrix in which every recorded gate process exited zero and says what it \
-         does not prove, and which states in a field rather than in prose that no game process \
-         was launched for it",
+     does not prove, and which states in a field rather than in prose that no game process \
+     was launched for it",
+        false,
     ),
     (
         "sdk-surface.json",
@@ -136,7 +136,7 @@ const M4_RECORDS: &[(&str, RecordRule, &str)] = &[
                 .filter_map(|row| row["id"].as_str())
                 .collect::<Vec<_>>();
             packages.sort_unstable();
-            require(value["milestone"] == "M4", "/milestone must be M4")?;
+
             require(
                 value["workPackage"] == "M4-W8",
                 "/workPackage must be M4-W8",
@@ -173,7 +173,8 @@ const M4_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "an SDK surface record inventorying what each of M4-W1 through M4-W7 shipped, what proves \
-         it, and what it does not prove",
+     it, and what it does not prove",
+        false,
     ),
 ];
 

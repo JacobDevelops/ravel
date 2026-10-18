@@ -119,7 +119,7 @@ pub(super) fn from_jar(
     for seed in &seeds.stubs {
         let class = seed.class.replace('.', "/");
         let read = read_members(archives, mapping, &class)?;
-        let declared = from_jar_declared(&read, mapping, &class);
+        let declared = from_jar_declared(&read, mapping, &class)?;
         let mut selected = Vec::new();
         for seeded in &seed.members {
             let name = seeded.member();
@@ -190,22 +190,22 @@ fn from_jar_declared<'a>(
     read: &'a [classfile::Member],
     mapping: &Mapping,
     class: &str,
-) -> Vec<(&'a classfile::Member, Member)> {
+) -> Result<Vec<(&'a classfile::Member, Member)>, GenerateError> {
     read.iter()
         .filter(|member| member.is_visible())
         .map(|member| {
-            (
+            Ok((
                 member,
                 Member {
                     name: mapping
                         .mojang_member(class, &member.name, &member.descriptor)
                         .to_owned(),
-                    descriptor: mapping.mojang_descriptor(&member.descriptor),
+                    descriptor: mapping.mojang_descriptor(&member.descriptor)?,
                     flags: member.flags,
                     method: member.method,
                     returns: None,
                 },
-            )
+            ))
         })
         .collect()
 }
@@ -353,18 +353,18 @@ pub(super) fn from_lock(
     for (what, recorded, pinned) in [
         (
             "the version",
-            lock.minecraft.as_str(),
-            adapter.minecraft.as_str(),
+            Some(lock.minecraft.as_str()),
+            Some(adapter.minecraft.as_str()),
         ),
         (
             "the client jar hash",
-            lock.client_jar_sha256.as_str(),
-            adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+            Some(lock.client_jar_sha256.as_str()),
+            adapter.inputs.client_jar.sha256.as_deref(),
         ),
     ] {
         if recorded != pinned {
             return Err(GenerateError::Drift(format!(
-                "stubs.lock records {what} as {recorded} but the adapter inputs pin {pinned}"
+                "stubs.lock records {what} as {recorded:?} but the adapter inputs pin {pinned:?}"
             )));
         }
     }
@@ -372,7 +372,7 @@ pub(super) fn from_lock(
         .inputs
         .data_fixer_jar
         .as_ref()
-        .map(|input| input.sha256.as_deref().unwrap_or(""));
+        .and_then(|input| input.sha256.as_deref());
     if lock.data_fixer_jar_sha256.as_deref() != library_hash {
         return Err(GenerateError::Drift(format!(
             "stubs.lock records the data fixer jar hash as {:?} but the adapter inputs pin {:?}",

@@ -5,7 +5,10 @@ use crate::evidence::closure::verify_milestone_figures;
 use crate::evidence::m4::{M4_FIGURES, verify_m4_process_matrix, verify_m4_surface};
 use crate::json::read_json;
 use crate::test_support::temporary_root;
-use crate::{CRATE_NAMES, EXAMPLE_NAMES, TEST_MOD_NAMES};
+
+const CRATE_NAMES: &[&str] = &["sample-crate", "another-crate"];
+const TEST_MOD_NAMES: &[&str] = &["sample-test-mod"];
+const EXAMPLE_NAMES: &[&str] = &["sample-example"];
 
 fn surface_root(label: &str, guide: &[&str], suites: &[&str], record: &str) -> PathBuf {
     let root = temporary_root(label);

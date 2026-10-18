@@ -191,36 +191,35 @@ fn verify_lock_header(
     for (what, tracked, pinned) in [
         (
             "the version",
-            lock.minecraft.as_str(),
-            adapter.minecraft.as_str(),
+            Some(lock.minecraft.as_str()),
+            Some(adapter.minecraft.as_str()),
         ),
         (
             "the mapping source",
-            lock.mapping_source.as_str(),
-            adapter.mapping_source.as_str(),
+            Some(lock.mapping_source.as_str()),
+            Some(adapter.mapping_source.as_str()),
         ),
         (
             "the client jar hash",
-            lock.client_jar_sha256.as_str(),
-            adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+            Some(lock.client_jar_sha256.as_str()),
+            adapter.inputs.client_jar.sha256.as_deref(),
         ),
         // Nothing on this path opens the mapping file, so its hash is the only
         // thing that can say the lock's linked names came from the mapping the
         // inputs now pin.
         (
             "the client mapping hash",
-            lock.client_mappings_sha256.as_deref().unwrap_or(""),
+            lock.client_mappings_sha256.as_deref(),
             adapter
                 .inputs
                 .client_mappings
                 .as_ref()
-                .and_then(|input| input.sha256.as_deref())
-                .unwrap_or(""),
+                .and_then(|input| input.sha256.as_deref()),
         ),
     ] {
         if tracked != pinned {
             return Err(GenerateError::Drift(format!(
-                "mappings.lock records {what} as {tracked} but the adapter inputs pin {pinned}"
+                "mappings.lock records {what} as {tracked:?} but the adapter inputs pin {pinned:?}"
             )));
         }
     }
@@ -346,6 +345,23 @@ mod tests {
     fn tracked_lock(pinned: &PinnedVersion) -> String {
         std::fs::read_to_string(pinned.directory.join("mappings.lock"))
             .expect("the tracked mapping lock should be readable")
+    }
+
+    #[test]
+    fn absent_client_hash_does_not_match_an_empty_lock_hash() {
+        let mut pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        let digest = pinned
+            .adapter
+            .inputs
+            .client_jar
+            .sha256
+            .take()
+            .expect("the pinned fixture must include a client jar hash");
+        let tracked = tracked.replace(&digest, "");
+        let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
+            .expect_err("an empty client jar lock hash must be refused");
+        assert!(error.to_string().contains("the client jar hash"), "{error}");
     }
 
     #[test]

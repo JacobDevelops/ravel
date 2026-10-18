@@ -94,7 +94,7 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
 }
 
 fn matrix_eligibility(root: &Path, version: &str) -> ExitCode {
-    match ravel_xtask::version_matrix(root, version) {
+    match ravel_xtask::matrix_eligibility(root, version) {
         Ok(eligibility) => {
             println!("{eligibility}");
             ExitCode::SUCCESS

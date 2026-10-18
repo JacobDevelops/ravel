@@ -26,7 +26,8 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
     let mut violations = Vec::new();
     for relative in paths {
         let path = root.join(relative);
-        let read = if path.is_symlink() {
+        let read = if path.is_symlink() && path.file_name().is_none_or(|name| name != "Cargo.toml")
+        {
             fs::read_link(&path).map(|target| target.to_string_lossy().into_owned())
         } else {
             fs::read(&path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -55,53 +56,66 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
         }
 
         if relative.rsplit('/').next() == Some("Cargo.toml") {
-            for value in escaping_path_dependencies(relative, &source) {
-                violations.push(format!(
-                    "tracked manifest depends on a path outside this repository: {relative} -> {value}"
-                ));
+            match escaping_path_dependencies(relative, &source) {
+                Ok(paths) => violations.extend(paths.into_iter().map(|value| {
+                    format!(
+                        "tracked manifest depends on a path outside this repository: {relative} -> {value}"
+                    )
+                })),
+                Err(error) => violations.push(error),
             }
         }
     }
     violations
 }
 
-fn escaping_path_dependencies<'a>(relative_manifest: &str, source: &'a str) -> Vec<&'a str> {
+fn escaping_path_dependencies(
+    relative_manifest: &str,
+    source: &str,
+) -> Result<Vec<String>, String> {
+    let manifest = toml::from_str::<toml::Value>(source).map_err(|error| {
+        let context = error.span().map_or_else(String::new, |span| {
+            let prefix = &source[..span.start];
+            let line = prefix.split('\n').count();
+            let column = prefix
+                .rfind('\n')
+                .map_or(prefix.len() + 1, |index| prefix.len() - index);
+            format!(" at line {line}, byte column {column}")
+        });
+        format!("cannot parse tracked manifest {relative_manifest}: invalid TOML{context}")
+    })?;
     let directory = relative_manifest
         .rsplit_once('/')
         .map_or("", |(head, _)| head);
-    source
-        .lines()
-        .flat_map(manifest_path_values)
-        .filter(|value| resolves_outside_root(directory, value))
-        .collect()
+    let mut paths = Vec::new();
+    collect_escaping_paths(&manifest, directory, &mut paths);
+    Ok(paths)
 }
 
-fn manifest_path_values(line: &str) -> Vec<&str> {
-    let mut values = Vec::new();
-    let mut cursor = 0;
-    while let Some(offset) = line[cursor..].find("path") {
-        let at = cursor + offset;
-        cursor = at + "path".len();
-
-        if line[..at]
-            .chars()
-            .next_back()
-            .is_some_and(|character| character.is_alphanumeric() || matches!(character, '_' | '-'))
-        {
-            continue;
+fn collect_escaping_paths(value: &toml::Value, directory: &str, paths: &mut Vec<String>) {
+    match value {
+        toml::Value::Table(table) => {
+            for (key, value) in table {
+                if key == "path"
+                    && let Some(path) = value.as_str()
+                    && resolves_outside_root(directory, path)
+                {
+                    paths.push(path.to_owned());
+                }
+                collect_escaping_paths(value, directory, paths);
+            }
         }
-        let Some(rest) = line[cursor..].trim_start().strip_prefix('=') else {
-            continue;
-        };
-        let Some(rest) = rest.trim_start().strip_prefix('"') else {
-            continue;
-        };
-        let Some(end) = rest.find('"') else {
-            continue;
-        };
-        values.push(&rest[..end]);
+        toml::Value::Array(values) => {
+            for value in values {
+                collect_escaping_paths(value, directory, paths);
+            }
+        }
+        toml::Value::String(_)
+        | toml::Value::Integer(_)
+        | toml::Value::Float(_)
+        | toml::Value::Boolean(_)
+        | toml::Value::Datetime(_) => {}
     }
-    values
 }
 
 fn resolves_outside_root(directory: &str, value: &str) -> bool {
@@ -137,7 +151,10 @@ pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
             .output()
             .map_err(|error| format!("cannot list tracked files with jj: {error}"))?;
         if !output.status.success() {
-            return Err("cannot list tracked files with jj".to_owned());
+            return Err(format!(
+                "cannot list tracked files with jj: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
         }
         return Ok(parse_tracked_paths(&output.stdout));
     }

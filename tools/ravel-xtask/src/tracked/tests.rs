@@ -367,3 +367,85 @@ fn broken_git_metadata_is_an_error_instead_of_a_directory_fallback() {
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
+
+#[test]
+fn manifest_paths_follow_toml_strings_tables_and_arrays() {
+    let source = r#"
+        [dependencies]
+        literal = { path = '../../../outside' }
+        escaped = { path = "\u002foutside" }
+        internal = { path = '../internal' }
+        # ignored = { path = "/comment" }
+        [target.'cfg(unix)'.dependencies.nested]
+        path = '../../../nested'
+        [[bin]]
+        path = '../../../binary'
+    "#;
+    let mut paths = super::escaping_path_dependencies("crates/member/Cargo.toml", source)
+        .expect("valid TOML should parse");
+    paths.sort();
+    assert_eq!(
+        paths,
+        [
+            "../../../binary",
+            "../../../nested",
+            "../../../outside",
+            "/outside"
+        ]
+    );
+}
+
+#[test]
+fn invalid_tracked_manifest_reports_the_parse_error() {
+    let root = temporary_root("invalid-manifest");
+    fs::write(root.join("Cargo.toml"), "[dependencies").expect("manifest should be writable");
+    let violations = verify_tracked_contents(&root, &["Cargo.toml".to_owned()]);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with("cannot parse tracked manifest Cargo.toml:"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn broken_jj_metadata_reports_the_underlying_error() {
+    let root = temporary_root("broken-jj");
+    fs::create_dir(root.join(".jj")).expect("jj marker should be creatable");
+    let error = super::tracked_paths(&root).expect_err("broken metadata should fail");
+    let detail = error
+        .strip_prefix("cannot list tracked files with jj: ")
+        .expect("jj context should be preserved");
+    assert!(!detail.is_empty(), "{error}");
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn manifest_parse_diagnostics_never_include_source_contents() {
+    let error =
+        super::escaping_path_dependencies("Cargo.toml", "[package]\nname = \"diagnostic-canary")
+            .expect_err("unterminated strings should fail");
+    assert!(error.contains("at line 2, byte column"), "{error}");
+    assert!(!error.contains("diagnostic-canary"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_manifests_are_read_with_paths_anchored_to_the_tracked_name() {
+    let root = temporary_root("symlink-manifest");
+    fs::create_dir_all(root.join("crates/member")).expect("member should be creatable");
+    fs::write(
+        root.join("manifest.toml"),
+        "[dependencies]\noutside = { path = '../../../outside' }\n",
+    )
+    .expect("manifest should be writable");
+    std::os::unix::fs::symlink("../../manifest.toml", root.join("crates/member/Cargo.toml"))
+        .expect("manifest symlink should be creatable");
+    assert_eq!(
+        verify_tracked_contents(&root, &["crates/member/Cargo.toml".to_owned()]),
+        [
+            "tracked manifest depends on a path outside this repository: crates/member/Cargo.toml -> ../../../outside"
+        ]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}

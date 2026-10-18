@@ -21,9 +21,6 @@ pub use error::BuildRefused;
 
 use generate::{host_manifest, host_source, workspace_manifest};
 
-/// The library name the generated host produces, and the JVM loads.
-pub const HOST_LIBRARY: &str = "ravel_bootstrap";
-
 /// The entry function `ravel_sdk::export_mod!` writes into a package.
 pub const ENTRY_FUNCTION: &str = "__ravel_entry";
 
@@ -108,6 +105,10 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
         detail,
     })?;
     let mut files = BTreeMap::new();
+    files.insert(
+        "rust-toolchain.toml".to_owned(),
+        installation_file(ravel_root, "rust-toolchain.toml")?,
+    );
     files.insert(
         "Cargo.toml".to_owned(),
         workspace_manifest(&members, ravel_root, &author_dependencies),

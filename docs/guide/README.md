@@ -12,8 +12,8 @@ records. What it cannot do is admit what it found: the mods a launch runs are th
 ones this binary was compiled from, so an installed package the composition does
 not name refuses the launch rather than joining it. A mod you write can be built,
 tested and held to every criterion in this guide as a library, and cannot be
-dropped into an instance and watched run. Nor can it send a declared packet —
-nothing carries one yet. Both limits, and the rest, are in
+dropped into an instance and watched run. Nor can it send a declared packet;
+only the 1.12.2 adapter delivers inbound custom payloads. Both limits, and the rest, are in
 [What does not work yet](limits.md); read that document before you plan anything,
 not after.
 

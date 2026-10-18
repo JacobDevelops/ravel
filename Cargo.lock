@@ -338,6 +338,7 @@ dependencies = [
  "ravel-host-runtime",
  "ravel-loader",
  "ravel-package",
+ "semver",
  "sha2",
  "toml",
 ]

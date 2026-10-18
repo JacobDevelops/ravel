@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
-use crate::json::{array, nonempty, number, read_json};
+use crate::json::{array, column_sum, nonempty, number, read_json, sum};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::rules::{
@@ -63,7 +63,6 @@ fn library_protocol(v: &Value) -> Result<(), String> {
 }
 
 fn library_record(v: &Value) -> Result<(), String> {
-    require(v["milestone"] == "M7", "/milestone must be M7")?;
     require(v["workPackage"] == "M7-W5", "/workPackage must be M7-W5")?;
     library_protocol(v)?;
     require(v["result"] == "pass", "/result must be pass")?;
@@ -132,24 +131,26 @@ fn library_counts(v: &Value) -> Result<(), String> {
     Ok(())
 }
 
-const M7_RECORDS: &[(&str, RecordRule, &str)] = &[(
+const M7_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
     "library-summary.json",
     library_record,
     "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
-     depends on, any evidence correction with the figure it replaced and its reason, and the \
-     dependency, registry, provenance, routing and suite figures M7-W5 audits",
+ depends on, any evidence correction with the figure it replaced and its reason, and the \
+ dependency, registry, provenance, routing and suite figures M7-W5 audits",
+    false,
 )];
 
 const M7_ARITHMETIC: &[(Rule, &str)] = &[
     (
         |v| {
-            [
-                "/entries/accepted",
-                "/entries/blocked",
-                "/entries/unstarted",
-            ]
-            .iter()
-            .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(
+                v,
+                &[
+                    "/entries/accepted",
+                    "/entries/blocked",
+                    "/entries/unstarted",
+                ],
+            )
             .zip(number(v, "/entries/total"))
             .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -208,9 +209,7 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            array(v, "/waves")
-                .iter()
-                .try_fold(0.0, |sum, row| Some(sum + number(row, "/entries")?))
+            column_sum(v, "/waves", "/entries")
                 .zip(number(v, "/entries/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -253,9 +252,7 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/routing/absorbed", "/routing/remaining"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/routing/absorbed", "/routing/remaining"])
                 .zip(number(v, "/entries/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -263,9 +260,7 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/routing/runnableToday", "/routing/blocked"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/routing/runnableToday", "/routing/blocked"])
                 .zip(number(v, "/entries/total"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -295,13 +290,14 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
 
 const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
     ("/environment/settings/library/entries", |v| {
-        [
-            "/entries/accepted",
-            "/entries/blocked",
-            "/entries/unstarted",
-        ]
-        .iter()
-        .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+        sum(
+            v,
+            &[
+                "/entries/accepted",
+                "/entries/blocked",
+                "/entries/unstarted",
+            ],
+        )
         .and_then(serde_json::Number::from_f64)
         .map(Value::Number)
     }),

@@ -91,8 +91,9 @@ has no in-game call that changes its journal; the saved-data test mod supplies t
   is first resolved rather than when a screen class is defined. The stub tree does not model
   nestmate access; launch proof, not compilation alone, closes those questions.
 - Seven drifted non-persistence hooks are retargeted but not written.
-- Packet delivery remains unimplemented. M4's recorded launch-discovery and pack-read limits describe
-  its measured tree, not the player path now proven above.
+- The SDK has no outbound packet send; inbound delivery exists only on the 1.12.2 adapter
+  (see [current limits](docs/guide/limits.md)). M4's recorded launch-discovery and pack-read
+  limits describe its measured tree, not the player path now proven above.
 - M7's `provision` resolves libraries, but no launch builds a `Provision` from composed packages.
 - `profilingCommandCounter` needs a command-claiming mod and a namespaced root typed in a client;
   `profilingTickCounter` needs a boundary wired on the game's tick path.

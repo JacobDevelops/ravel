@@ -85,9 +85,9 @@ impl Mapping {
     /// A class file names its own types the way the JVM links them, so a
     /// descriptor read out of one has to come back to the reviewed name space
     /// before it is compared with anything the inventory or the seed list says.
-    pub(super) fn mojang_descriptor(&self, descriptor: &str) -> String {
+    pub(super) fn mojang_descriptor(&self, descriptor: &str) -> Result<String, GenerateError> {
         match self {
-            Self::Identity => descriptor.to_owned(),
+            Self::Identity => Ok(descriptor.to_owned()),
             Self::NameMap(proguard) => map_descriptor(&proguard.mojang, descriptor),
         }
     }
@@ -133,9 +133,9 @@ impl Mapping {
         mojang_class: &str,
         member: &str,
         descriptor: &str,
-    ) -> (String, String) {
+    ) -> Result<(String, String), GenerateError> {
         match self {
-            Self::Identity => (member.to_owned(), descriptor.to_owned()),
+            Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
             Self::NameMap(proguard) => proguard.linked_member(mojang_class, member, descriptor),
         }
     }
@@ -175,7 +175,7 @@ impl Mapping {
         descriptor: &str,
     ) -> Result<(String, String), GenerateError> {
         if matches!(member, "<init>" | "<clinit>") {
-            let (_, linked) = self.linked_member(class, member, descriptor);
+            let (_, linked) = self.linked_member(class, member, descriptor)?;
             return Ok((member.to_owned(), linked));
         }
         self.runtime_member(class, member, descriptor)
@@ -642,7 +642,7 @@ impl NameMap {
             let mut forward = BTreeMap::new();
             let mut backward = BTreeMap::new();
             for entry in entries {
-                let runtime = map_descriptor(&classes, &entry.descriptor);
+                let runtime = map_descriptor(&classes, &entry.descriptor)?;
                 // Refusing a second member on one linked pair is what makes the
                 // backward direction a function: it is the same refusal the
                 // forward direction needs, and it now owns the map it guards.
@@ -726,12 +726,18 @@ impl NameMap {
         mojang_class: &str,
         member: &str,
         descriptor: &str,
-    ) -> (String, String) {
-        self.members
+    ) -> Result<(String, String), GenerateError> {
+        if let Some(linked) = self
+            .members
             .get(mojang_class)
             .and_then(|declared| declared.get(&(member.to_owned(), descriptor.to_owned())))
-            .cloned()
-            .unwrap_or_else(|| (member.to_owned(), map_descriptor(&self.classes, descriptor)))
+        {
+            return Ok(linked.clone());
+        }
+        Ok((
+            member.to_owned(),
+            map_descriptor(&self.classes, descriptor)?,
+        ))
     }
 
     fn runtime_member(
@@ -843,7 +849,7 @@ fn unusable(number: usize, detail: &str) -> GenerateError {
 }
 
 /// Validates an internal class name without treating a descriptor as a name.
-fn verify_internal_class_name(name: &str) -> Result<(), String> {
+pub(crate) fn verify_internal_class_name(name: &str) -> Result<(), String> {
     if name.split('/').any(str::is_empty)
         || name.chars().any(|character| {
             character.is_whitespace()
@@ -873,21 +879,20 @@ fn verify_member_name(name: &str) -> Result<(), String> {
 /// Uses the shared JVM tokenizer rather than accepting malformed descriptors.
 fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
     if method {
-        classfile::method_types(descriptor)?;
+        let (parameters, returns) = classfile::method_types(descriptor)?;
+        for kind in parameters.into_iter().chain(std::iter::once(returns)) {
+            if let Some(name) = kind.class_name() {
+                verify_internal_class_name(name)?;
+            }
+        }
     } else {
-        let (kind, after) = classfile::java_type(descriptor)?;
-        if kind == "void" || !after.is_empty() {
+        let (kind, after) = classfile::descriptor_type(descriptor, false)?;
+        if !after.is_empty() {
             return Err(format!("{descriptor} is not a field descriptor"));
         }
-    }
-    let mut rest = descriptor;
-    while let Some(start) = rest.find('L') {
-        let after = &rest[start + 1..];
-        let end = after
-            .find(';')
-            .ok_or_else(|| format!("{descriptor} has an unterminated class name"))?;
-        verify_internal_class_name(&after[..end])?;
-        rest = &after[end + 1..];
+        if let Some(name) = kind.class_name() {
+            verify_internal_class_name(name)?;
+        }
     }
     Ok(())
 }
@@ -927,24 +932,48 @@ fn descriptor_of(source: &str) -> Result<String, String> {
 }
 
 /// Rewrites every class a descriptor names into the name the JVM links.
-fn map_descriptor(classes: &BTreeMap<String, String>, descriptor: &str) -> String {
+fn map_descriptor(
+    classes: &BTreeMap<String, String>,
+    descriptor: &str,
+) -> Result<String, GenerateError> {
     let mut mapped = String::with_capacity(descriptor.len());
-    let mut rest = descriptor;
-    while let Some(index) = rest.find('L') {
-        mapped.push_str(&rest[..index]);
-        let after = &rest[index + 1..];
-        let Some(end) = after.find(';') else {
-            mapped.push_str(&rest[index..]);
-            return mapped;
-        };
-        let class = &after[..end];
+    if descriptor.starts_with('(') {
+        let (parameters, returns) =
+            classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+        mapped.push('(');
+        for kind in parameters {
+            map_type(&mut mapped, classes, kind);
+        }
+        mapped.push(')');
+        map_type(&mut mapped, classes, returns);
+    } else {
+        let (kind, after) =
+            classfile::descriptor_type(descriptor, false).map_err(GenerateError::Unsupported)?;
+        if !after.is_empty() {
+            return Err(GenerateError::Unsupported(format!(
+                "{descriptor} is not a field descriptor"
+            )));
+        }
+        map_type(&mut mapped, classes, kind);
+    }
+    Ok(mapped)
+}
+
+fn map_type(
+    mapped: &mut String,
+    classes: &BTreeMap<String, String>,
+    kind: classfile::DescriptorType<'_>,
+) {
+    if let Some(class) = kind.class_name() {
+        for _ in 0..kind.dimensions {
+            mapped.push('[');
+        }
         mapped.push('L');
         mapped.push_str(classes.get(class).map_or(class, String::as_str));
         mapped.push(';');
-        rest = &after[end + 1..];
+    } else {
+        mapped.push_str(kind.descriptor);
     }
-    mapped.push_str(rest);
-    mapped
 }
 
 #[cfg(test)]
@@ -1961,11 +1990,15 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
             "read"
         );
         assert_eq!(
-            mapping.linked_member("reviewed/Alpha", "value", "[Lreviewed/Beta;"),
+            mapping
+                .linked_member("reviewed/Alpha", "value", "[Lreviewed/Beta;")
+                .expect("the reviewed field must have an obfuscated counterpart"),
             ("f".to_owned(), "[Lb;".to_owned())
         );
         assert_eq!(
-            mapping.mojang_descriptor("(Lb;)Lb;"),
+            mapping
+                .mojang_descriptor("(Lb;)Lb;")
+                .expect("the reviewed descriptor must have a Mojang form"),
             "(Lreviewed/Beta;)Lreviewed/Beta;"
         );
         assert!(
@@ -2034,5 +2067,62 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
                 .expect("unmapped library member"),
             ("tick".to_owned(), "()V".to_owned())
         );
+    }
+}
+
+#[cfg(test)]
+mod descriptor_tests {
+    use super::{BTreeMap, map_descriptor, verify_descriptor};
+
+    #[test]
+    fn descriptor_tokens_map_arrays_parameters_and_returns() {
+        let classes = BTreeMap::from([("game/Level".to_owned(), "a".to_owned())]);
+        let descriptor = "([[Lgame/Level;[I)Lgame/Level;";
+        assert_eq!(
+            map_descriptor(&classes, descriptor).expect("the valid descriptor must map"),
+            "([[La;[I)La;"
+        );
+        assert_eq!(
+            map_descriptor(&classes, "[[Lgame/Level;")
+                .expect("the valid array descriptor must map"),
+            "[[La;"
+        );
+        assert_eq!(
+            crate::descriptor_classes(descriptor).expect("the valid descriptor must list classes"),
+            ["game/Level", "game/Level"]
+        );
+        assert!(verify_descriptor("(I)V", true).is_ok());
+        assert_eq!(
+            crate::descriptor_classes("([I)V").expect("the valid primitive descriptor must parse"),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn malformed_descriptors_are_refused_instead_of_copied() {
+        for descriptor in ["Lgame/Level", "Lgame/Level;I", "(Lgame/Level;)Vx", "[V"] {
+            assert!(
+                map_descriptor(&BTreeMap::new(), descriptor).is_err(),
+                "{descriptor}"
+            );
+            assert!(
+                crate::descriptor_classes(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
+        assert!(verify_descriptor("Lgame/bad.name;", false).is_err());
+        assert!(verify_descriptor("(Lgame/bad.name;)V", true).is_err());
+        for descriptor in [
+            "(Lgame/a)V;)V",
+            "Lgame/bad.name;",
+            "(Lgame/bad.name;)V",
+            "Lgame//Level;",
+            "Lgame/;",
+        ] {
+            assert!(
+                crate::descriptor_classes(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
     }
 }

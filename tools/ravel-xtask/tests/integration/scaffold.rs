@@ -33,110 +33,13 @@ fn scaffold_contract_does_not_require_decision_records() {
 }
 
 #[test]
-fn scaffold_contract_covers_every_planned_crate() {
-    let required = required_scaffold_paths();
-
-    for crate_name in [
-        "ravel-core",
-        "ravel-package",
-        "ravel-resolve",
-        "ravel-loader",
-        "ravel-sdk",
-        "ravel-sdk-macros",
-        "ravel-host-api",
-        "ravel-bootstrap-runtime",
-        "ravel-composed-host",
-        "ravel-minecraft",
-        "ravel-minecraft-adapter",
-        "ravel-minecraft-generate",
-        "ravel-config",
-        "ravel-data",
-        "ravel-save",
-        "ravel-network",
-        "ravel-observability",
-        "ravel-pack",
-        "ravel-testkit",
-    ] {
-        let manifest = format!("crates/{crate_name}/Cargo.toml");
-        assert!(
-            required.contains(&manifest),
-            "missing contract for {manifest}"
-        );
-    }
-}
-
-#[test]
-fn scaffold_contract_covers_every_maintained_test_mod() {
-    let required = required_scaffold_paths();
-
-    for test_mod in [
-        "audio",
-        "client-only",
-        "commands",
-        "configuration",
-        "events",
-        "inter-mod-service",
-        "interception",
-        "networking",
-        "noop",
-        "optional-service",
-        "provision",
-        "registries",
-        "render-stages",
-        "resources",
-        "saved-data",
-        "server-data",
-        "server-only",
-        "waystone-ledger",
-        "world-shaping",
-    ] {
-        let manifest = format!("test-mods/{test_mod}/Cargo.toml");
-        assert!(
-            required.contains(&manifest),
-            "missing contract for {manifest}"
-        );
-    }
-    // M4 reads the historical amendment tree, not placeholder crates in the current tree.
+fn retired_test_mods_stay_absent() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for retired in ["dependency-base", "dependency-consumer", "failure-cases"] {
-        let manifest = format!("test-mods/{retired}/Cargo.toml");
         assert!(
-            !required.contains(&manifest),
-            "retired contract: {manifest}"
+            !root.join("test-mods").join(retired).exists(),
+            "retired test mod returned: {retired}"
         );
-        assert!(
-            !Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../..")
-                .join(manifest)
-                .exists()
-        );
-    }
-}
-
-#[test]
-fn scaffold_contract_covers_every_registry_mod() {
-    let required = required_scaffold_paths();
-
-    for name in [
-        "rvl-002-counterpart",
-        "rvl-025-counterpart",
-        "rvl-042-counterpart",
-        "rvl-060-counterpart",
-        "rvl-086-counterpart",
-        "rvl-120-counterpart",
-        "rvl-132-counterpart",
-        "rvl-146-counterpart",
-        "rvl-180-counterpart",
-        "rvl-210-counterpart",
-        "rvl-287-counterpart",
-        "rvl-321-counterpart",
-    ] {
-        for file in ["Cargo.toml", "src/lib.rs"] {
-            let relative = format!("registry/mods/{name}/{file}");
-            assert!(
-                required.contains(&relative),
-                "missing contract for {relative}"
-            );
-        }
     }
 }
 

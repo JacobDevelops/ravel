@@ -22,6 +22,7 @@ mod tiny;
 #[cfg(test)]
 mod test_fixtures;
 
+use ravel_core::paths::HOST_LIBRARY;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
@@ -57,9 +58,6 @@ pub fn selection(raw: Option<OsString>) -> Result<Option<String>, GenerateError>
 
 /// Java class holding the generated native declarations.
 const HOOK_CLASS: &str = "dev.ravel.jvm.Hook";
-
-/// Library name the generated exports are compiled into, without decoration.
-const LIBRARY: &str = "ravel_bootstrap";
 
 /// Absolute library path property, avoiding launcher-managed `java.library.path`.
 const LIBRARY_PROPERTY: &str = "ravel.host";
@@ -102,10 +100,12 @@ impl OutputLock {
             match fs::File::create_new(&path) {
                 Ok(_) => return Ok(Self { path }),
                 Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
-                    return Err(GenerateError::Input(format!(
-                        "{} could not be taken: {error}",
-                        inputs::file_name(&path.to_string_lossy())
-                    )));
+                    return Err(GenerateError::io(
+                        format!(
+                            "output lock {OUTPUT_LOCK} (creation failed; check the directory permissions)"
+                        ),
+                        error,
+                    ));
                 }
                 Err(_) => {}
             }
@@ -124,10 +124,12 @@ impl OutputLock {
                     // Another waiter may already have removed the same stale lock.
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => {
-                        return Err(GenerateError::Input(format!(
-                            "{} could not be removed after becoming stale: {error}",
-                            inputs::file_name(&path.to_string_lossy())
-                        )));
+                        return Err(GenerateError::io(
+                            format!(
+                                "stale output lock {OUTPUT_LOCK} (removal failed; if no build is running, delete it)"
+                            ),
+                            error,
+                        ));
                     }
                 }
                 continue;
@@ -143,15 +145,15 @@ impl OutputLock {
             .open(&self.path)
             .and_then(|file| file.set_modified(std::time::SystemTime::now()))
             .map_err(|error| {
-                GenerateError::Input(format!(
-                    "{} could not be re-dated: {error}",
-                    inputs::file_name(&self.path.to_string_lossy())
-                ))
+                GenerateError::io(
+                    format!("output lock {OUTPUT_LOCK} (could not be re-dated; keep the held lock in place)"),
+                    error,
+                )
             })
     }
 
     /// Refuses a lock covering another root.
-    fn guards(&self, root: &Path) -> Result<(), GenerateError> {
+    fn verify_guards(&self, root: &Path) -> Result<(), GenerateError> {
         if self.path == root.join(OUTPUT_LOCK) {
             return Ok(());
         }
@@ -288,6 +290,36 @@ pub fn descriptor_parameters(descriptor: &str) -> Result<Vec<&str>, GenerateErro
     Ok(parameters.into_iter().map(|kind| kind.descriptor).collect())
 }
 
+/// Returns the internal class names in a complete method or field descriptor.
+///
+/// # Errors
+///
+/// Returns an error for incomplete types, invalid internal class names, or trailing input.
+pub fn descriptor_classes(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
+    let classes: Vec<_> = if descriptor.starts_with('(') {
+        let (parameters, returns) =
+            classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+        parameters
+            .into_iter()
+            .chain(std::iter::once(returns))
+            .filter_map(classfile::DescriptorType::class_name)
+            .collect()
+    } else {
+        let (kind, after) =
+            classfile::descriptor_type(descriptor, false).map_err(GenerateError::Unsupported)?;
+        if !after.is_empty() {
+            return Err(GenerateError::Unsupported(format!(
+                "{descriptor} is not a field descriptor"
+            )));
+        }
+        kind.class_name().into_iter().collect()
+    };
+    for name in &classes {
+        mapping::verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
+    }
+    Ok(classes)
+}
+
 /// Counts borrowed opaque handles, excluding copied strings and byte payloads.
 pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError> {
     let (parameters, _) =
@@ -359,12 +391,20 @@ fn compose(
     mapping: &mapping::Mapping,
 ) -> Result<Rendered, GenerateError> {
     let lock_path = pinned.directory.join("mappings.lock");
-    let tracked = fs::read_to_string(&lock_path)
-        .map_err(|error| GenerateError::Input(format!("cannot read mappings.lock: {error}")))?;
+    let tracked = fs::read_to_string(&lock_path).map_err(|error| {
+        GenerateError::io(
+            format!("version {}, mappings.lock", pinned.adapter.minecraft),
+            error,
+        )
+    })?;
 
     let stub_path = pinned.directory.join("stubs.lock");
-    let tracked_stubs = fs::read_to_string(&stub_path)
-        .map_err(|error| GenerateError::Input(format!("cannot read stubs.lock: {error}")))?;
+    let tracked_stubs = fs::read_to_string(&stub_path).map_err(|error| {
+        GenerateError::io(
+            format!("version {}, stubs.lock", pinned.adapter.minecraft),
+            error,
+        )
+    })?;
 
     // A machine without the jars has nothing to resolve against, so generating
     // from a lock and comparing the result back to that same lock only says the
@@ -463,7 +503,7 @@ fn compose_render(
         .map(|stub| render::stubs::stub_java(&pinned.adapter, stub, mapping))
         .collect::<Result<Vec<_>, _>>()?;
     let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
-    templates::every_seeded_member_resolves(&roles, stubbed, mapping)?;
+    templates::verify_seeded_members_resolve(&roles, stubbed, mapping)?;
     let [screens, stand_ins, drivers, siblings] = sources(root, pinned, &roles, stubbed, mapping)?;
     let harness = [
         ("game", stand_ins),
@@ -592,7 +632,7 @@ fn sources(
     for tree in &trees {
         rendered.push(render(tree, name_space)?);
     }
-    templates::every_added_template_is_reached(root, &rendered.iter().collect::<Vec<_>>())?;
+    templates::verify_added_templates_reached(root, &rendered.iter().collect::<Vec<_>>())?;
     rendered
         .try_into()
         .map_err(|_| GenerateError::Input("one source set per template tree".to_owned()))
@@ -623,7 +663,7 @@ fn write_java(
     held: &OutputLock,
 ) -> Result<JavaGenerated, GenerateError> {
     let mut digest = String::new();
-    held.guards(root)?;
+    held.verify_guards(root)?;
     let java_directory = root.join(JAVA_OUTPUT);
     let stub_directory = root.join(STUB_OUTPUT);
     // Sweep every version's old paths before writing the selected version.
@@ -739,10 +779,7 @@ fn remove_output_trees(directories: &[&Path]) -> Result<(), GenerateError> {
     for directory in directories {
         if directory.is_dir() {
             fs::remove_dir_all(directory).map_err(|error| {
-                GenerateError::Input(format!(
-                    "{} could not be emptied: {error}",
-                    inputs::file_name(&directory.to_string_lossy())
-                ))
+                GenerateError::io(inputs::file_name(&directory.to_string_lossy()), error)
             })?;
         }
     }
@@ -760,17 +797,13 @@ fn load_mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mappi
     inputs::verify_input(root, input)?;
     let name = inputs::file_name(&input.path);
     let text = fs::read_to_string(root.join(&input.path))
-        .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+        .map_err(|error| GenerateError::io(name, error))?;
     mapping::Mapping::read(adapter.mapping_source, &text)
 }
 
 fn create_directory(directory: &Path) -> Result<(), GenerateError> {
-    fs::create_dir_all(directory).map_err(|error| {
-        GenerateError::Input(format!(
-            "cannot create {}: {error}",
-            inputs::file_name(&directory.to_string_lossy())
-        ))
-    })
+    fs::create_dir_all(directory)
+        .map_err(|error| GenerateError::io(inputs::file_name(&directory.to_string_lossy()), error))
 }
 
 /// Writes and digests together so the recorded digest covers every generated byte.
@@ -785,18 +818,10 @@ fn place(path: &Path, content: &str, digest: &mut String) -> Result<(), Generate
 /// nothing behind that a build could pick up.
 fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
     let pending = path.with_extension(format!("pending{}", std::process::id()));
-    fs::write(&pending, content).map_err(|error| {
-        GenerateError::Input(format!(
-            "cannot write {}: {error}",
-            inputs::file_name(&path.to_string_lossy())
-        ))
-    })?;
-    fs::rename(&pending, path).map_err(|error| {
-        GenerateError::Input(format!(
-            "cannot place {}: {error}",
-            inputs::file_name(&path.to_string_lossy())
-        ))
-    })
+    fs::write(&pending, content)
+        .map_err(|error| GenerateError::io(inputs::file_name(&path.to_string_lossy()), error))?;
+    fs::rename(&pending, path)
+        .map_err(|error| GenerateError::io(inputs::file_name(&path.to_string_lossy()), error))
 }
 
 #[cfg(test)]
@@ -1275,9 +1300,11 @@ mod tests {
             .refresh()
             .expect_err("a lock another holder replaced is not recreated");
         assert!(
-            error.to_string().contains("could not be re-dated"),
+            matches!(&error, GenerateError::Io { source, .. }
+            if source.kind() == std::io::ErrorKind::NotFound),
             "{error}"
         );
+        assert!(error.to_string().contains("could not be re-dated"));
         assert!(!path.exists(), "nothing recreated the file");
 
         std::mem::forget(held);
@@ -1340,7 +1367,6 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    #[should_panic(expected = "could not be removed after becoming stale")]
     fn stale_lock_unlink_failure() {
         let root = output("stale-directory-lock");
         let lock = root.join(OUTPUT_LOCK);
@@ -1352,7 +1378,14 @@ mod tests {
 
         let result = OutputLock::take(&root).map(|_| ());
         cleanup(&root);
-        result.expect("take stale directory lock");
+        let error = result.expect_err("a directory lock cannot be unlinked as a stale file");
+        assert!(matches!(&error, GenerateError::Io { .. }));
+        assert!(error.to_string().contains("removal failed"));
+        assert!(
+            error
+                .to_string()
+                .contains("if no build is running, delete it")
+        );
     }
 
     #[test]
@@ -2081,8 +2114,12 @@ mod tests {
         )
         .expect_err("there is nothing to generate from");
 
-        assert!(matches!(error, GenerateError::Input(_)));
-        assert!(error.to_string().starts_with("an input is unusable"));
+        assert!(matches!(
+            &error,
+            GenerateError::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert!(error.to_string().starts_with("cannot access"));
+        assert!(!error.to_string().contains("/nonexistent-ravel-root"));
     }
 
     #[test]
@@ -2123,7 +2160,7 @@ mod tests {
         let (root, directory) = staged("mapping-pairing");
         let out = output("mapping-pairing-out");
         let source = "mappingSource = \"unobfuscated-class-files\"";
-        let mappings = "\n[inputs.clientMappings]\npath = \"nowhere/client.txt\"\nsha256 = \"0\"\n";
+        let mappings = "\n[inputs.clientMappings]\npath = \"nowhere/client.txt\"\nsha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n";
 
         rewrite(
             &directory,

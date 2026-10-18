@@ -4,26 +4,11 @@ use super::{
     CampaignInventory, M3_RECORDS, campaign_document_violations, verify_campaign_inventory,
     verify_harness_lifecycles,
 };
-use crate::evidence::accounting::verify_review_round_counts;
 use crate::json::read_json;
 
 #[test]
-fn the_tracked_m3_records_leave_the_round_count_to_the_record_that_counts() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
-    let mut violations = Vec::new();
-
-    verify_review_round_counts(&root, &mut violations);
-
-    assert_eq!(violations, Vec::<String>::new());
-}
-
-#[test]
 fn the_tracked_m3_records_agree_with_the_harnesss_declared_world_lifecycles() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
+    let root = crate::test_support::repository_root();
     let mut violations = Vec::new();
 
     super::verify_m3_integrity(&root, &Value::Null, &mut violations);
@@ -105,9 +90,7 @@ fn a_campaign_document_stating_no_count_at_all_is_not_read_as_agreement() {
 }
 #[test]
 fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
+    let root = crate::test_support::repository_root();
     let mut violations = Vec::new();
 
     verify_campaign_inventory(
@@ -120,15 +103,13 @@ fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
 }
 
 fn tracked_record(name: &str) -> Value {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
+    let root = crate::test_support::repository_root();
     read_json(&root.join("evidence/m3").join(name)).expect("tracked M3 record should parse")
 }
 
 #[test]
 fn every_tracked_m3_record_satisfies_its_closure_rule() {
-    for (name, rule, _) in M3_RECORDS {
+    for (name, rule, _, _) in M3_RECORDS {
         assert!(rule(&tracked_record(name)).is_ok(), "{name} fails its rule");
     }
 }
@@ -153,9 +134,9 @@ fn every_m3_record_rule_refuses_a_missing_or_null_required_field() {
         ),
         ("linux-process-matrix.json", "/rewrite/classesRewritten"),
     ] {
-        let (_, rule, _) = M3_RECORDS
+        let (_, rule, _, _) = M3_RECORDS
             .iter()
-            .find(|(record, _, _)| *record == name)
+            .find(|(record, _, _, _)| *record == name)
             .expect("record should have a rule");
 
         let mut nulled = tracked_record(name);
@@ -179,9 +160,9 @@ fn every_m3_record_rule_refuses_a_missing_or_null_required_field() {
 
 #[test]
 fn the_m3_matrix_refuses_another_loader_and_a_zero_rewrite() {
-    let (_, rule, _) = M3_RECORDS
+    let (_, rule, _, _) = M3_RECORDS
         .iter()
-        .find(|(record, _, _)| *record == "linux-process-matrix.json")
+        .find(|(record, _, _, _)| *record == "linux-process-matrix.json")
         .expect("matrix should have a rule");
     let mut other_loader = tracked_record("linux-process-matrix.json");
     other_loader["instance"]["otherLoaderComponents"] = serde_json::json!(1);
@@ -230,7 +211,7 @@ fn cached_matrix_still_checks_lifecycle_counts_without_rereading_the_file() {
     );
     assert!(violations.is_empty(), "{violations:?}");
     std::fs::remove_file(matrix).expect("loaded matrix should be removable");
-    verify_harness_lifecycles(&root, Some(&records), &mut violations);
+    verify_harness_lifecycles(&root, &records, &mut violations);
     assert_eq!(
         violations,
         [format!(
@@ -243,7 +224,7 @@ fn cached_matrix_still_checks_lifecycle_counts_without_rereading_the_file() {
 }
 
 #[test]
-fn compact_and_pretty_matrices_check_every_string_leaf_in_both_paths() {
+fn compact_and_pretty_matrices_check_every_string_leaf() {
     let record = serde_json::json!({
         "scope": "1 world lifecycles",
         "nested": ["2 world lifecycles", {"mixed": "1 world lifecycles and 3 world lifecycles"}],
@@ -264,9 +245,6 @@ fn compact_and_pretty_matrices_check_every_string_leaf_in_both_paths() {
                 super::PERSISTENCE_HARNESS,
             )
         });
-        let mut standalone = Vec::new();
-        verify_harness_lifecycles(&root, None, &mut standalone);
-        assert_eq!(standalone, expected, "{label}");
         let mut cached = Vec::new();
         let records = crate::evidence::closure::read_records(
             &root,
@@ -277,7 +255,7 @@ fn compact_and_pretty_matrices_check_every_string_leaf_in_both_paths() {
         assert!(cached.is_empty(), "{cached:?}");
         std::fs::remove_file(root.join(super::CAMPAIGN_MATRIX))
             .expect("cached matrix should be removable");
-        verify_harness_lifecycles(&root, Some(&records), &mut cached);
+        verify_harness_lifecycles(&root, &records, &mut cached);
         assert_eq!(cached, expected, "{label}");
         std::fs::remove_dir_all(root).expect("temporary root should be removable");
     }

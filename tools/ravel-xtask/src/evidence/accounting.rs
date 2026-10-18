@@ -10,10 +10,6 @@ const PLAN_DOCUMENT: &str = "ROADMAP.md";
 
 const ROUND_NOUNS: [&str; 5] = ["rounds", "verdicts", "audits", "reviews", "iterations"];
 
-pub(crate) fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
-    verify_review_round_counts_for(root, None, violations);
-}
-
 fn verify_review_round_counts_for(
     root: &Path,
     milestone: Option<Milestone>,
@@ -115,10 +111,6 @@ const ROUND_HEADING: &str = "### Round ";
 // These records predate per-round tallies; their `### Round` lines are subsections.
 const UNTALLIED_RECORDS: [&str; 2] = ["evidence/m3/review.md", "evidence/m4/review.md"];
 
-pub(crate) fn verify_review_blocking_counts(root: &Path, violations: &mut Vec<String>) {
-    verify_review_blocking_counts_for(root, None, violations);
-}
-
 fn verify_review_blocking_counts_for(
     root: &Path,
     milestone: Option<Milestone>,
@@ -178,10 +170,6 @@ fn verify_review_blocking_counts_for(
     }
 }
 
-pub(crate) fn verify_manifest_percentages(root: &Path, violations: &mut Vec<String>) {
-    verify_manifest_percentages_for(root, None, violations);
-}
-
 fn verify_manifest_percentages_for(
     root: &Path,
     selected: Option<Milestone>,
@@ -230,14 +218,14 @@ fn verify_manifest_percentages_for(
     }
 }
 
-pub(crate) fn verify_milestone_accounting(
+pub(crate) fn verify_accounting(
     root: &Path,
-    milestone: Milestone,
+    milestone: Option<Milestone>,
     violations: &mut Vec<String>,
 ) {
-    verify_review_round_counts_for(root, Some(milestone), violations);
-    verify_review_blocking_counts_for(root, Some(milestone), violations);
-    verify_manifest_percentages_for(root, Some(milestone), violations);
+    verify_review_round_counts_for(root, milestone, violations);
+    verify_review_blocking_counts_for(root, milestone, violations);
+    verify_manifest_percentages_for(root, milestone, violations);
 }
 
 fn matches_milestone(record: &str, milestone: Option<Milestone>) -> bool {

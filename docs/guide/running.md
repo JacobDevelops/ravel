@@ -107,17 +107,12 @@ to a mod's own.
 
 ## Packets
 
-**Nothing sends one yet.** Read that first, because everything below describes a
-contract you can declare, encode, decode and test, and not a message that travels:
-no wire adapter is written and no launch path carries a mod's bytes between a
-client and a server. `encode_from` gives you a payload and there is nothing to
-give it to. The arrival half is further along than the departure: the loader's
-delivery path is written and tested, and it refuses a delivery claiming the wrong
-side, a direction that may not be received here, and an owner that is absent or
-not reacting, before anything reaches `receive_packet`. What is missing is
-transport — nothing in a running game builds the delivery that path waits for.
-Declaring a packet today is stating what your mod will send, and testing that the
-statement holds. [What does not work yet](limits.md) says the same and says when.
+**There is no outbound send.** You can declare, encode, decode and test a packet,
+and `encode_from` sends nothing on any version. On Minecraft 1.12.2, an inbound
+vanilla custom payload reaches the loader's `PacketDelivery` path on the owning
+thread. The loader refuses a wrong side, a direction that may not be received
+here, or an absent or non-reacting owner before `receive_packet` runs. Other
+adapters carry no inbound packets yet. See [What does not work yet](limits.md).
 
 Declare a `PacketContract` — an id in your namespace, a `Direction`, a version —
 and implement `Packet` for the value that will travel under it. `encode` and

@@ -497,15 +497,12 @@ struct CurseForgeReference {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::temporary_root;
-    use std::fs;
     use std::path::Path;
-    use std::process::Command;
 
     use super::{
         CurseForgeManifest, CurseForgeReference, FixtureDescriptor, FixtureError,
-        MinecraftManifest, ModLoader, is_safe_component, reconstruct_fixture, remove_partial,
-        sha256_file, validate_descriptor, verify_manifest,
+        MinecraftManifest, ModLoader, is_safe_component, remove_partial, validate_descriptor,
+        verify_manifest,
     };
 
     #[test]
@@ -595,59 +592,6 @@ mod tests {
     #[test]
     fn removing_an_absent_partial_is_idempotent() {
         remove_partial(Path::new("/definitely/not/a/ravel/partial"));
-    }
-
-    #[test]
-    fn reconstruction_admits_an_existing_verified_fixture() {
-        let root = temporary_root("unit-reconstruct");
-        let source_root = root.join("tests/fixtures/local/fixture/source");
-        fs::create_dir_all(&source_root).expect("fixture root should be creatable");
-        let manifest = source_root.join("manifest.json");
-        fs::write(
-            &manifest,
-            serde_json::to_vec(&serde_json::json!({
-                "minecraft": {
-                    "version": "26.1.2",
-                    "modLoaders": [{"id": "neoforge-26.1.2.78", "primary": true}]
-                },
-                "manifestType": "minecraftModpack",
-                "manifestVersion": 1,
-                "name": "All the Mods 11",
-                "version": "0.2.1",
-                "author": "ATMTeam",
-                "files": [{"projectID": 1, "fileID": 2, "required": true}],
-                "overrides": "overrides"
-            }))
-            .expect("manifest should serialize"),
-        )
-        .expect("manifest should be writable");
-        let status = Command::new("zip")
-            .args(["-q", "fixture.zip", "manifest.json"])
-            .current_dir(&source_root)
-            .status()
-            .expect("zip should execute");
-        assert!(status.success());
-        let archive = source_root.join("fixture.zip");
-        let descriptor = root.join("descriptor.json");
-        let mut value =
-            serde_json::to_value(valid_descriptor()).expect("descriptor should serialize");
-        value["source"]["sha256"] = sha256_file(&archive)
-            .expect("archive should be hashable")
-            .into();
-        value["manifest"]["sha256"] = sha256_file(&manifest)
-            .expect("manifest should be hashable")
-            .into();
-        fs::write(
-            &descriptor,
-            serde_json::to_vec(&value).expect("descriptor should serialize"),
-        )
-        .expect("descriptor should be writable");
-
-        let admitted =
-            reconstruct_fixture(&root, &descriptor).expect("verified fixture should be admitted");
-
-        assert_eq!(admitted, archive);
-        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     fn assert_invalid(descriptor: &FixtureDescriptor, expected_message: &str) {

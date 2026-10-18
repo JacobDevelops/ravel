@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
-use crate::json::{array, nonempty, number};
+use crate::json::{array, column_sum, nonempty, number, sum};
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::rules::{
@@ -17,7 +17,6 @@ use crate::evidence::rules::{
 };
 
 fn counterpart_record(v: &Value) -> Result<(), String> {
-    require(v["milestone"] == "M6", "/milestone must be M6")?;
     require(v["workPackage"] == "M6-W6", "/workPackage must be M6-W6")?;
     require(
         v["protocol"] == "m6-counterpart-v1",
@@ -151,13 +150,14 @@ fn same_wave_entries(v: &Value) -> bool {
             .all(|entry| counterparts.iter().any(|row| row["entry"] == entry["id"]))
 }
 
-const M6_RECORDS: &[(&str, RecordRule, &str)] = &[(
+const M6_RECORDS: &[(&str, RecordRule, &str, bool)] = &[(
     "counterpart-summary.json",
     counterpart_record,
     "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
-     counterpart with its observable areas as numbers, the cluster scenario's steps, the \
-     process-validation artefacts, and the rewrite-integrity check's scan counts and both \
-     mutation exit statuses",
+ counterpart with its observable areas as numbers, the cluster scenario's steps, the \
+ process-validation artefacts, and the rewrite-integrity check's scan counts and both \
+ mutation exit statuses",
+    false,
 )];
 
 const M6_ARITHMETIC: &[(Rule, &str)] = &[
@@ -170,9 +170,7 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            array(v, "/counterparts")
-                .iter()
-                .try_fold(0.0, |sum, row| Some(sum + number(row, "/observableAreas")?))
+            column_sum(v, "/counterparts", "/observableAreas")
                 .zip(number(v, "/totals/observableAreas"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -180,9 +178,7 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            array(v, "/counterparts")
-                .iter()
-                .try_fold(0.0, |sum, row| Some(sum + number(row, "/declarableOnly")?))
+            column_sum(v, "/counterparts", "/declarableOnly")
                 .zip(number(v, "/totals/declarableOnly"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -190,9 +186,7 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            array(v, "/counterparts")
-                .iter()
-                .try_fold(0.0, |sum, row| Some(sum + number(row, "/exercised")?))
+            column_sum(v, "/counterparts", "/exercised")
                 .zip(number(v, "/totals/exercised"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -201,9 +195,7 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
     (
         |v| {
             array(v, "/counterparts").iter().all(|v| {
-                ["/declarableOnly", "/exercised"]
-                    .iter()
-                    .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+                sum(v, &["/declarableOnly", "/exercised"])
                     .zip(number(v, "/observableAreas"))
                     .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
             })
@@ -212,9 +204,7 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
     ),
     (
         |v| {
-            ["/totals/declarableOnly", "/totals/exercised"]
-                .iter()
-                .try_fold(0.0, |sum, path| Some(sum + number(v, path)?))
+            sum(v, &["/totals/declarableOnly", "/totals/exercised"])
                 .zip(number(v, "/totals/observableAreas"))
                 .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
@@ -375,23 +365,17 @@ const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
             .map(|rows| Value::from(rows.len()))
     }),
     ("/environment/settings/counterparts/observableAreas", |v| {
-        array(v, "/counterparts")
-            .iter()
-            .try_fold(0.0, |sum, row| Some(sum + number(row, "/observableAreas")?))
+        column_sum(v, "/counterparts", "/observableAreas")
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),
     ("/environment/settings/counterparts/declarableOnly", |v| {
-        array(v, "/counterparts")
-            .iter()
-            .try_fold(0.0, |sum, row| Some(sum + number(row, "/declarableOnly")?))
+        column_sum(v, "/counterparts", "/declarableOnly")
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),
     ("/environment/settings/counterparts/exercised", |v| {
-        array(v, "/counterparts")
-            .iter()
-            .try_fold(0.0, |sum, row| Some(sum + number(row, "/exercised")?))
+        column_sum(v, "/counterparts", "/exercised")
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),

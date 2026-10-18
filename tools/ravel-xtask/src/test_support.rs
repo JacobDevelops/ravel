@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::java_shape::REFLECTION_FILE;
+use crate::scaffold::java_shape::REFLECTION_FILE;
 use crate::version_boundary::{VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE};
 
 pub(crate) const RECORDED_RUN: &str = r#""commands":[{"exitStatus":0}],
@@ -12,6 +12,10 @@ pub(crate) const PASS_RECORD: &str = "Result: PASS\n";
 
 pub(crate) const PASS_RECORD_DIGEST: &str =
     "d2bcd3b6eb96afdab9d8fa0b8333538ff07cfd0764afc5a3854976209bef21e2";
+
+pub(crate) fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
 
 pub(crate) fn hook_inventories(
     root: &Path,
@@ -62,14 +66,19 @@ pub(crate) fn adapter_document(version: &str, eligibility: &str, mapping: Option
             0,
         )
     } else {
-        ("", "[inputs.dataFixerJar]\npath = 'data-fixer.jar'\n", 1, 2)
+        (
+            "",
+            "[inputs.dataFixerJar]\npath = 'data-fixer.jar'\nsha256 = '0000000000000000000000000000000000000000000000000000000000000000'\n",
+            1,
+            2,
+        )
     };
     let (source, mappings) = mapping.map_or_else(
         || ("unobfuscated-class-files", String::new()),
         |path| {
             (
                 "official-proguard-mappings",
-                format!("[inputs.clientMappings]\npath = '{path}'\n"),
+                format!("[inputs.clientMappings]\npath = '{path}'\nsha256 = '0000000000000000000000000000000000000000000000000000000000000000'\n"),
             )
         },
     );
@@ -78,7 +87,7 @@ pub(crate) fn adapter_document(version: &str, eligibility: &str, mapping: Option
          javaRelease = 27\nmappingSource = '{source}'\n{legacy}\
          [packFormat]\nresource = {resource}\nresourceMinor = 0\ndata = {data}\ndataMinor = 0\n\
          spelling = 'pack-format'\n{mappings}{data_fixer}\
-         [inputs.clientJar]\npath = 'client.jar'\n\
+         [inputs.clientJar]\npath = 'client.jar'\nsha256 = '0000000000000000000000000000000000000000000000000000000000000000'\n\
          [inputs.versionManifest]\npath = 'version.json'\n\
          [inputs.hookInventory]\npath = 'minecraft/versions/{version}/hooks.toml'\n\
          [inputs.stubSeeds]\npath = 'minecraft/versions/{version}/stubs.toml'\n\

@@ -8,8 +8,6 @@ mod gate_versions;
 mod hooks;
 pub mod host;
 mod instance_scan;
-mod inventory;
-mod java_shape;
 mod json;
 mod package_digests;
 mod scaffold;
@@ -28,76 +26,7 @@ pub use instance_scan::{Finding, InstanceScan, scan_instance};
 pub use package_digests::{StaleDigest, refresh_digests, stale_digests};
 pub use scaffold::{required_scaffold_paths, verify_scaffold};
 pub use tracked::{verify_tracked_contents, verify_tracked_paths};
-pub use version_boundary::version_matrix;
-
-const EXAMPLE_NAMES: &[&str] = &[
-    "content-mod",
-    "guide-snippets",
-    "minimal-mod",
-    "stateful-mod",
-];
-
-const CRATE_NAMES: &[&str] = &[
-    "ravel-core",
-    "ravel-package",
-    "ravel-resolve",
-    "ravel-loader",
-    "ravel-sdk",
-    "ravel-sdk-macros",
-    "ravel-host-api",
-    "ravel-host-runtime",
-    "ravel-bootstrap-runtime",
-    "ravel-composed-host",
-    "ravel-build",
-    "ravel-minecraft",
-    "ravel-minecraft-adapter",
-    "ravel-minecraft-generate",
-    "ravel-config",
-    "ravel-data",
-    "ravel-save",
-    "ravel-network",
-    "ravel-observability",
-    "ravel-pack",
-    "ravel-acceptance",
-    "ravel-testkit",
-];
-
-const TEST_MOD_NAMES: &[&str] = &[
-    "audio",
-    "client-only",
-    "commands",
-    "configuration",
-    "events",
-    "inter-mod-service",
-    "interception",
-    "networking",
-    "noop",
-    "optional-service",
-    "provision",
-    "registries",
-    "render-stages",
-    "resources",
-    "saved-data",
-    "server-data",
-    "server-only",
-    "waystone-ledger",
-    "world-shaping",
-];
-
-const REGISTRY_MOD_NAMES: &[&str] = &[
-    "rvl-002-counterpart",
-    "rvl-025-counterpart",
-    "rvl-042-counterpart",
-    "rvl-060-counterpart",
-    "rvl-086-counterpart",
-    "rvl-120-counterpart",
-    "rvl-132-counterpart",
-    "rvl-146-counterpart",
-    "rvl-180-counterpart",
-    "rvl-210-counterpart",
-    "rvl-287-counterpart",
-    "rvl-321-counterpart",
-];
+pub use version_boundary::matrix_eligibility;
 
 /// Encodes digest bytes without hashing them a second time.
 pub(crate) fn hex_digest(digest: &[u8]) -> String {

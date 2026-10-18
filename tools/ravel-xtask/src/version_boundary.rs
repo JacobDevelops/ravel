@@ -52,7 +52,7 @@ pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
 pub(crate) type VersionAdapters = BTreeMap<String, AdapterFacts>;
 
 /// Reports matrix eligibility from typed manifest data and its actual mapping input.
-pub fn version_matrix(root: &Path, version: &str) -> Result<String, String> {
+pub fn matrix_eligibility(root: &Path, version: &str) -> Result<String, String> {
     if !tracked_versions(root)?
         .iter()
         .any(|tracked| tracked == version)
@@ -332,13 +332,15 @@ fn version_class_names(
     let mut classes = BTreeSet::new();
     let mut references = Vec::new();
     for inventory in inventories {
-        collect_hook_classes(inventory, &mut classes, &mut references);
+        collect_hook_classes(inventory, &mut classes, &mut references, violations);
     }
     let fixture_versions = root.join("tests/fixtures/public/versions");
     for directory in directories {
         if directory.starts_with(&fixture_versions) {
             match ravel_minecraft_generate::hook_inventory_at(root, directory) {
-                Ok(inventory) => collect_hook_classes(&inventory, &mut classes, &mut references),
+                Ok(inventory) => {
+                    collect_hook_classes(&inventory, &mut classes, &mut references, violations);
+                }
                 Err(error) => violations.push(error.to_string()),
             }
         }
@@ -384,10 +386,14 @@ fn collect_hook_classes(
     inventory: &HookInventory,
     classes: &mut BTreeSet<String>,
     references: &mut Vec<String>,
+    violations: &mut Vec<String>,
 ) {
     for hook in &inventory.hooks {
         classes.insert(hook.class.replace('.', "/"));
-        references.extend(descriptor_classes(&hook.descriptor));
+        match ravel_minecraft_generate::descriptor_classes(&hook.descriptor) {
+            Ok(names) => references.extend(names.into_iter().map(str::to_owned)),
+            Err(error) => violations.push(format!("{}: {error}", hook.class)),
+        }
     }
 }
 
@@ -410,30 +416,17 @@ fn collect_version_classes(
                 collect_version_classes(value, classes, references);
             }
         }
-        toml::Value::String(text) => references.extend(descriptor_classes(text)),
+        toml::Value::String(text) => {
+            // Most strings in these documents are names, not descriptors.
+            if let Ok(names) = ravel_minecraft_generate::descriptor_classes(text) {
+                references.extend(names.into_iter().map(str::to_owned));
+            }
+        }
         toml::Value::Integer(_)
         | toml::Value::Float(_)
         | toml::Value::Boolean(_)
         | toml::Value::Datetime(_) => {}
     }
-}
-
-fn descriptor_classes(text: &str) -> Vec<String> {
-    let bytes = text.as_bytes();
-    let mut found = Vec::new();
-    for (start, _) in text.match_indices('L') {
-        let name = start + 1;
-        let mut end = name;
-        while end < bytes.len()
-            && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b'/' | b'$' | b'_'))
-        {
-            end += 1;
-        }
-        if bytes.get(end) == Some(&b';') && text[name..end].contains('/') {
-            found.push(text[name..end].to_owned());
-        }
-    }
-    found
 }
 
 #[cfg(test)]

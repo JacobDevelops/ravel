@@ -25,6 +25,20 @@ pub(crate) fn number(value: &Value, pointer: &str) -> Option<f64> {
     value.pointer(pointer).and_then(Value::as_f64)
 }
 
+pub(crate) fn sum(value: &Value, pointers: &[&str]) -> Option<f64> {
+    pointers
+        .iter()
+        .try_fold(0.0, |sum, pointer| Some(sum + number(value, pointer)?))
+}
+
+pub(crate) fn column_sum(value: &Value, rows: &str, field: &str) -> Option<f64> {
+    value
+        .pointer(rows)?
+        .as_array()?
+        .iter()
+        .try_fold(0.0, |sum, row| Some(sum + number(row, field)?))
+}
+
 pub(crate) fn nonempty(value: &Value, pointer: &str) -> bool {
     value
         .pointer(pointer)

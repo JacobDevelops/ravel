@@ -13,7 +13,7 @@ use crate::evidence::rules::{
     RecordRule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation, require,
 };
-use crate::json::{array, number, read_json};
+use crate::json::{array, number};
 use crate::text::read_text;
 use crate::text::{Side, numbers_before, stated_counts};
 
@@ -30,7 +30,7 @@ pub(crate) fn verify_m3_integrity(
     if let Some(record) = records.get("linux-process-matrix.json") {
         verify_campaign_inventory(root, record, violations);
     }
-    verify_harness_lifecycles(root, Some(&records), violations);
+    verify_harness_lifecycles(root, &records, violations);
     records
 }
 
@@ -90,11 +90,10 @@ pub(crate) fn verify_m3_manifest(
     verify_closure_records(Milestone::M3, records, M3_RECORDS, violations);
 }
 
-const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
+const M3_RECORDS: &[(&str, RecordRule, &str, bool)] = &[
     (
         "class-loader-identity.json",
         |value| {
-            require(value["milestone"] == "M3", "/milestone must be M3")?;
             require(
                 value["observed"]["sameObject"] == true,
                 "/observed/sameObject",
@@ -120,12 +119,12 @@ const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "a class-loader identity record showing the loader that resolved a rewritten game class \
-         is the system loader, measured in a launch that rewrote classes and reached native code",
+     is the system loader, measured in a launch that rewrote classes and reached native code",
+        false,
     ),
     (
         "pack-compile.json",
         |value| {
-            require(value["milestone"] == "M3", "/milestone must be M3")?;
             require(value["gate"] == "ADG-2", "/gate must be ADG-2")?;
             require(
                 value["protocol"] == "m3-pack-compile-v1",
@@ -145,12 +144,12 @@ const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "a pack-compile record pricing ADG-2's source distribution with a repeated measurement, \
-         a positive marginal per-mod cost, and the toolchain size the decision accepted",
+     a positive marginal per-mod cost, and the toolchain size the decision accepted",
+        false,
     ),
     (
         "profiling-overhead.json",
         |value| {
-            require(value["milestone"] == "M3", "/milestone must be M3")?;
             require(
                 value["workPackage"] == "M3-W6",
                 "/workPackage must be M3-W6",
@@ -177,12 +176,12 @@ const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
-         per-mod attribution accuracy stated and the unsupported metrics named",
+     per-mod attribution accuracy stated and the unsupported metrics named",
+        false,
     ),
     (
         "linux-process-matrix.json",
         |value| {
-            require(value["milestone"] == "M3", "/milestone must be M3")?;
             require(
                 value["workPackage"] == "M3-W7",
                 "/workPackage must be M3-W7",
@@ -219,8 +218,9 @@ const M3_RECORDS: &[(&str, RecordRule, &str)] = &[
             Ok(())
         },
         "a Linux process-matrix record showing every M3 surface passing natively in an instance \
-         the scan proves holds no other loader, with the world round trip preserving bytes and \
-         refusing a world it cannot read",
+     the scan proves holds no other loader, with the world round trip preserving bytes and \
+     refusing a world it cannot read",
+        true,
     ),
 ];
 fn profiling_off_tick_limit(value: &Value) -> Result<(), String> {
@@ -427,7 +427,7 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
 }
 pub(crate) fn verify_harness_lifecycles(
     root: &Path,
-    records: Option<&LoadedRecords>,
+    records: &LoadedRecords,
     violations: &mut Vec<String>,
 ) {
     let harness = match read_text(root, Path::new(PERSISTENCE_HARNESS)) {
@@ -450,45 +450,45 @@ pub(crate) fn verify_harness_lifecycles(
         return;
     };
 
-    for relative in [CAMPAIGN_DOCUMENT, CAMPAIGN_MATRIX] {
-        match lifecycle_counts(root, relative, records) {
-            Ok(Some(stated)) => {
-                if stated.is_empty() {
-                    violations.push(format!(
-                        "{relative} no longer writes a count against `world lifecycles`, so \
-                         nothing in it is held to {PERSISTENCE_HARNESS}'s {declared}"
-                    ));
-                }
-                for count in stated {
-                    if count != declared {
-                        violations.push(format!(
-                            "{relative} states {count} world lifecycles where \
-                             {PERSISTENCE_HARNESS} declares {declared}"
-                        ));
-                    }
-                }
-            }
-            Ok(None) => {}
-            Err(error) => violations.push(error),
-        }
+    match read_text(root, Path::new(CAMPAIGN_DOCUMENT)) {
+        Ok(text) => verify_lifecycle_counts(
+            CAMPAIGN_DOCUMENT,
+            &numbers_before(&text, &["world", "lifecycles"]),
+            declared,
+            violations,
+        ),
+        Err(error) => violations.push(error),
+    }
+    if let Some(record) = records.get("linux-process-matrix.json") {
+        verify_lifecycle_counts(
+            CAMPAIGN_MATRIX,
+            &matrix_lifecycle_counts(record),
+            declared,
+            violations,
+        );
     }
 }
 
-fn lifecycle_counts(
-    root: &Path,
+fn verify_lifecycle_counts(
     relative: &str,
-    records: Option<&LoadedRecords>,
-) -> Result<Option<Vec<usize>>, String> {
-    if relative == CAMPAIGN_DOCUMENT {
-        return read_text(root, Path::new(relative))
-            .map(|text| Some(numbers_before(&text, &["world", "lifecycles"])));
+    stated: &[usize],
+    declared: usize,
+    violations: &mut Vec<String>,
+) {
+    if stated.is_empty() {
+        violations.push(format!(
+            "{relative} no longer writes a count against `world lifecycles`, so \
+             nothing in it is held to {PERSISTENCE_HARNESS}'s {declared}"
+        ));
     }
-    if let Some(records) = records {
-        return Ok(records
-            .get("linux-process-matrix.json")
-            .map(matrix_lifecycle_counts));
+    for count in stated {
+        if *count != declared {
+            violations.push(format!(
+                "{relative} states {count} world lifecycles where \
+                 {PERSISTENCE_HARNESS} declares {declared}"
+            ));
+        }
     }
-    read_json(&root.join(relative)).map(|record| Some(matrix_lifecycle_counts(&record)))
 }
 
 fn matrix_lifecycle_counts(record: &Value) -> Vec<usize> {

@@ -32,8 +32,6 @@ const GATE_RECORDS: [Record; 3] = [
     },
 ];
 
-const HARNESS_RECORD: &str = "target/ravel-jvm/harness-versions.txt";
-
 const REQUIRED_SECTIONS: [&str; 13] = [
     "cluster",
     "content",
@@ -110,7 +108,7 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
         }
     }
     for record in &GATE_RECORDS {
-        verify_record(
+        let text = verify_record(
             root,
             record,
             &versions,
@@ -118,9 +116,13 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
             &unavailable,
             &mut report,
         );
+        if record.verb == "ran"
+            && let Some(text) = text
+        {
+            verify_harness_sections(&text, record.path, &versions, &mut report.violations);
+        }
     }
 
-    verify_harness_sections(root, &versions, &mut report.violations);
     report
 }
 
@@ -131,12 +133,12 @@ fn verify_record(
     eligibility: &VersionAdapters,
     unavailable: &BTreeSet<&str>,
     report: &mut GateVersionsReport,
-) {
+) -> Option<String> {
     let text = match read_record(root, record) {
         Ok(text) => text,
         Err(error) => {
             report.violations.push(error);
-            return;
+            return None;
         }
     };
     let mut reached_live = false;
@@ -150,34 +152,35 @@ fn verify_record(
             _ => record.verb,
         };
         let prefix = format!("{verb}: ");
-        let mut named = text
+        let named: Vec<&str> = text
             .lines()
             .filter(|line| names_version(line, version))
-            .peekable();
+            .collect();
         if generation_only && verb != record.verb {
             let live_prefix = format!("{}: ", record.verb);
-            if named.clone().any(|line| line.starts_with(&live_prefix)) {
+            if named.iter().any(|line| line.starts_with(&live_prefix)) {
                 report.violations.push(format!(
                     "{} falsely claims Minecraft {version} {} despite generation-only eligibility",
                     record.path, record.verb
                 ));
             }
         }
-        if named.peek().is_none() {
+        if named.is_empty() {
             report.violations.push(format!(
                 "{} names no outcome for Minecraft {version}, so {} either stopped looping \
                  the tracked versions or covered one without recording it",
                 record.path, record.task
             ));
         } else if unavailable.contains(version.as_str())
-            && named.clone().any(|line| line.starts_with("SKIPPED: "))
+            && named.iter().any(|line| line.starts_with("SKIPPED: "))
         {
             report.notices.extend(
                 named
+                    .iter()
                     .filter(|line| line.starts_with("SKIPPED: "))
-                    .map(str::to_owned),
+                    .map(|line| (*line).to_owned()),
             );
-        } else if !named.any(|line| line.starts_with(&prefix)) {
+        } else if !named.iter().any(|line| line.starts_with(&prefix)) {
             report.violations.push(format!(
                 "{}: Minecraft {version} {} obligation not yet met by {}; no accepted \
                  outcome was recorded",
@@ -188,6 +191,7 @@ fn verify_record(
         }
     }
     verify_live_coverage(record, reached_live, report);
+    Some(text)
 }
 
 fn verify_live_coverage(record: &Record, reached_live: bool, report: &mut GateVersionsReport) {
@@ -209,11 +213,12 @@ fn read_record(root: &Path, record: &Record) -> Result<String, String> {
     })
 }
 
-fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Vec<String>) {
-    let Ok(text) = fs::read_to_string(root.join(HARNESS_RECORD)) else {
-        return;
-    };
-
+fn verify_harness_sections(
+    text: &str,
+    path: &str,
+    versions: &[String],
+    violations: &mut Vec<String>,
+) {
     for version in versions {
         let Some(line) = text
             .lines()
@@ -233,7 +238,7 @@ fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Ve
             .unwrap_or_default();
         if ran.is_empty() {
             violations.push(format!(
-                "{HARNESS_RECORD} says the harness ran for Minecraft {version} and names no \
+                "{path} says the harness ran for Minecraft {version} and names no \
                  section it ran, so what it covered is unrecorded"
             ));
             continue;
@@ -242,7 +247,7 @@ fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Ve
         for section in &ran {
             if !REQUIRED_SECTIONS.contains(section) {
                 violations.push(format!(
-                    "{HARNESS_RECORD} says Minecraft {version} ran a {section} section and the \
+                    "{path} says Minecraft {version} ran a {section} section and the \
                      harness has no such section, so a renamed section answers for the one it \
                      replaced and its absence goes unnoticed"
                 ));

@@ -7,9 +7,9 @@ use std::process::{Command, Stdio};
 
 use ravel_core::MINECRAFT_VERSION_SELECTION;
 
+use crate::HostPlan;
 use crate::error::BuildRefused;
-use crate::{HOST_LIBRARY, HostPlan};
-use ravel_core::paths::{HOST_DIRECTORY, INSTANCE_DIRECTORY};
+use ravel_core::paths::{HOST_DIRECTORY, HOST_LIBRARY, INSTANCE_DIRECTORY};
 
 /// Writes changed generated files, compiles the selected version, and copies the host into the instance.
 ///
@@ -24,7 +24,9 @@ pub fn build(
     cache: &Path,
     minecraft: &str,
 ) -> Result<PathBuf, BuildRefused> {
-    let workspace = game_directory.join(INSTANCE_DIRECTORY);
+    let workspace = std::path::absolute(game_directory.join(INSTANCE_DIRECTORY))
+        .map_err(|source| BuildRefused::Toolchain { source })?;
+    let cache = std::path::absolute(cache).map_err(|source| BuildRefused::Toolchain { source })?;
     for (path, contents) in &plan.files {
         let target = workspace.join(path);
         let parent = target
@@ -46,13 +48,16 @@ pub fn build(
     resolve_locked_graph(plan, &workspace, game_directory)?;
 
     let output = Command::new("cargo")
+        .current_dir(&workspace)
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .env_remove("RUSTC")
         .arg("build")
         .arg("--release")
         .arg("--locked")
         .arg("--manifest-path")
         .arg(workspace.join(HOST_DIRECTORY).join("Cargo.toml"))
         .arg("--target-dir")
-        .arg(cache)
+        .arg(&cache)
         .env(MINECRAFT_VERSION_SELECTION, minecraft)
         .output()
         .map_err(|error| BuildRefused::Toolchain { source: error })?;
@@ -77,11 +82,16 @@ pub fn build(
 }
 
 fn redact(text: &str, game_directory: &Path) -> String {
-    let instance = game_directory.display().to_string();
-    if instance.is_empty() {
-        return text.to_owned();
+    let absolute = std::path::absolute(game_directory).ok();
+    let mut redacted = absolute.map_or_else(
+        || text.to_owned(),
+        |path| text.replace(path.to_string_lossy().as_ref(), "<instance>"),
+    );
+    let instance = game_directory.to_string_lossy();
+    if !instance.is_empty() {
+        redacted = redacted.replace(instance.as_ref(), "<instance>");
     }
-    text.replace(&instance, "<instance>")
+    redacted
 }
 
 // Installed path packages and the generated host are not members of the root
@@ -102,6 +112,9 @@ fn resolve_locked_graph(
         })?;
     }
     let output = Command::new("cargo")
+        .current_dir(workspace)
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .env_remove("RUSTC")
         .args(["metadata", "--offline", "--format-version", "1"])
         .arg("--manifest-path")
         .arg(workspace.join(HOST_DIRECTORY).join("Cargo.toml"))
@@ -109,9 +122,8 @@ fn resolve_locked_graph(
         .output()
         .map_err(|error| BuildRefused::Toolchain { source: error })?;
     if !output.status.success() {
-        return Err(BuildRefused::Compile {
-            detail: redact(&String::from_utf8_lossy(&output.stderr), game_directory),
-        });
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(metadata_refusal(plan, &detail, game_directory));
     }
     let resolved =
         fs::read_to_string(&lock).map_err(|source| BuildRefused::ResolvedLockIo { source })?;
@@ -121,6 +133,70 @@ fn resolve_locked_graph(
         .map(|member| (member.crate_name.as_str(), member.mod_id.as_str()))
         .collect();
     vetted_dependencies(plan.installation_lock(), &resolved, &mods)
+}
+
+pub(super) fn metadata_refusal(
+    plan: &HostPlan,
+    detail: &str,
+    game_directory: &Path,
+) -> BuildRefused {
+    let missing = missing_dependency(detail).filter(|(name, version)| {
+        let requirement = if semver::Version::parse(version).is_err() {
+            semver::VersionReq::parse(version).ok()
+        } else {
+            None
+        };
+        !lock_packages(plan.installation_lock()).is_ok_and(|packages| {
+            packages.iter().any(|package| {
+                field(package, "name") == *name
+                    && (*version == "<unresolved>"
+                        || field(package, "version") == *version
+                        || requirement.as_ref().is_some_and(|requirement| {
+                            semver::Version::parse(field(package, "version"))
+                                .is_ok_and(|version| requirement.matches(&version))
+                        }))
+            })
+        })
+    });
+    if let Some((package, version)) = missing {
+        let mods = plan
+            .members()
+            .iter()
+            .filter(|member| detail.contains(&format!("package `{} v", member.crate_name)))
+            .map(|member| member.mod_id.to_string())
+            .collect();
+        return BuildRefused::UnpinnedDependency {
+            package: package.to_owned(),
+            version: version.to_owned(),
+            mods,
+        };
+    }
+    BuildRefused::Compile {
+        detail: redact(detail, game_directory),
+    }
+}
+
+fn missing_dependency(detail: &str) -> Option<(&str, &str)> {
+    for line in detail.lines() {
+        if let Some(rest) = line.strip_prefix("error: no matching package named `") {
+            let (package, _) = rest.split_once("` found")?;
+            return Some((package, "<unresolved>"));
+        }
+        if let Some(rest) =
+            line.strip_prefix("error: failed to select a version for the requirement `")
+        {
+            let (requirement, _) = rest.split_once('`')?;
+            let (name, version) = requirement.split_once(" = ")?;
+            return Some((name, version.trim_matches('"')));
+        }
+        if detail.contains("--offline was specified")
+            && let Some(rest) = line.strip_prefix("error: failed to download `")
+        {
+            let (identity, _) = rest.split_once('`')?;
+            return identity.split_once(" v");
+        }
+    }
+    None
 }
 
 pub(super) fn vetted_dependencies(

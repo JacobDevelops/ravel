@@ -5,7 +5,7 @@
 //! Registration and generated data use [`ContentMod::declaration`] so their
 //! identifiers stay aligned.
 
-use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, Registrar, RegistryKey};
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::generate::GeneratedData;
 use ravel_sdk::resources::RelativePath;
@@ -167,21 +167,21 @@ impl ContentMod {
 
         let block = declaration
             .entry(ContentKind::Block, LANTERN)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         let item = declaration
             .entry(ContentKind::Item, LANTERN)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .entry(ContentKind::Recipe, &format!("crafting/{LANTERN}"))
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         // Block and item tags belong to distinct registries.
         declaration
             .tag(&Self::lanterns(ContentKind::Block), &block)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .tag(&Self::lanterns(ContentKind::Item), &item)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         for (locale, name) in [("en_us", "Copper Lantern"), ("fr_fr", "Lanterne de cuivre")] {
             for prefix in ["block", "item"] {
@@ -191,16 +191,16 @@ impl ContentMod {
                         &format!("{prefix}.{}.{LANTERN}", Self::declared_id()),
                         name,
                     )
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
         }
 
         declaration
             .resource(Self::model_path(), MODEL.to_vec())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .resource(Self::recipe_path(), RECIPE.to_vec())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         Ok(declaration)
     }
@@ -227,21 +227,14 @@ impl Mod for ContentMod {
         Ok(())
     }
 
-    /// Claims every entry the declaration holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ModError::Refused`] naming the contested entry and its owner.
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        ravel_sdk::content::claim_all(&self.declaration()?, registrar)
-    }
-
-    /// Hands the host the declaration the claims above came from.
+    /// Supplies the content claimed by default registration, including its model.
     ///
     /// The model this mod supplies is bytes no version of Ravel generates, so
     /// this is the only way they reach the game at all.
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration().map(std::borrow::Cow::Owned).map(Some)
     }
 
     /// Counts resource reloads and ignores everything else.

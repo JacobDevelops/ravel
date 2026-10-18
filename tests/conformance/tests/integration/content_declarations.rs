@@ -45,7 +45,7 @@ impl HostMod for Rival {
         for key in &self.claims {
             registrar
                 .claim(key.clone())
-                .map_err(|error| ravel_host_api::ModError::refused(error.to_string()))?;
+                .map_err(ravel_host_api::ModError::from_display)?;
         }
         Ok(())
     }

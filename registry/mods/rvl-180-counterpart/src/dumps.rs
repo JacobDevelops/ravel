@@ -43,8 +43,7 @@ pub const SPRITES_PATH: &str = "generated/sprites.txt";
 /// [`crate::Entry::declaration`] reports, and when a file the declaration
 /// generates is not the JSON document it is generated as.
 pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
-    let aggregation =
-        Aggregation::conventional().map_err(|error| ModError::refused(error.to_string()))?;
+    let aggregation = Aggregation::conventional().map_err(ModError::from_display)?;
     let declaration = Entry::declaration(&aggregation)?;
     Ok(vec![
         (DECLARATIONS_PATH, declarations_document(&declaration)?),
@@ -88,7 +87,7 @@ pub fn declarations_document(declaration: &ContentDeclaration) -> Result<String,
 /// Returns [`ModError::Refused`] when a group's spelling is illegal.
 pub fn grouping_document(aggregation: &Aggregation) -> Result<String, ModError> {
     let mut document = String::from("group\tmember\n");
-    for group in grouping::all().map_err(|error| ModError::refused(error.to_string()))? {
+    for group in grouping::all().map_err(ModError::from_display)? {
         for member in aggregation.resolve(&group).members {
             writeln!(document, "{group}\t{member}").expect("writing to a String cannot fail");
         }
@@ -117,8 +116,7 @@ pub fn sprites_document() -> Result<String, ModError> {
         } else {
             "frame"
         };
-        let path =
-            sprites::sprite_path(name).map_err(|error| ModError::refused(error.to_string()))?;
+        let path = sprites::sprite_path(name).map_err(ModError::from_display)?;
         writeln!(
             document,
             "{name}\t{group}\t{}\t{}",

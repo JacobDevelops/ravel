@@ -86,7 +86,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "8dbe59ed96fa3597a7202b85991ef22f0e4ae002fbf3b876c51cc3af0671c62d"
+        "sha256": "aa47be9d3cb3fe96f08f814dfa51c56c22cacc5eb4cae9f9dbcb86f03719fdfc"
       },
       {
         "path": "src/machines.rs",

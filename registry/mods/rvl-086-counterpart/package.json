@@ -71,7 +71,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "5188d127f3df5416a09088e01361ffbc857caf07e73418664d6d3d2dbc8cd449"
+        "sha256": "2cbeed042feceba240268f6c4dbf16a166cedf80ed9190652b47d67fe2346cff"
       },
       {
         "path": "src/effects.rs",
@@ -83,7 +83,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "1957c201eea0154804e563ef1e8f08eed13c286529f336c6eb58228aaafc61be"
+        "sha256": "da71c8f738d486445e53e7b6f9fc835141f748bde7a8d089673c35e3507ba20f"
       },
       {
         "path": "src/matching.rs",

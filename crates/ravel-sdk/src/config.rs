@@ -37,15 +37,15 @@
 //!     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
 //!         ConfigurationDeclaration::parse(SETTINGS)
 //!             .map(Some)
-//!             .map_err(|error| ModError::refused(error.to_string()))
+//!             .map_err(ModError::from_display)
 //!     }
 //!
 //!     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
 //!         let key = "lanterns".parse().expect("the key this mod declared");
 //!         self.lanterns = u64::try_from(
-//!             resolved.integer(&key).map_err(|error| ModError::refused(error.to_string()))?,
+//!             resolved.integer(&key).map_err(ModError::from_display)?,
 //!         )
-//!         .map_err(|error| ModError::refused(error.to_string()))?;
+//!         .map_err(ModError::from_display)?;
 //!         Ok(())
 //!     }
 //! }

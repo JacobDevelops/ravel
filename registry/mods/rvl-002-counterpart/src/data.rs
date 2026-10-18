@@ -365,16 +365,14 @@ fn named(kind: ContentKind, ids: &[String]) -> Result<Vec<RegistryKey>, ModError
         .map(|id| {
             id.parse::<ContentId>()
                 .map(|id| RegistryKey::new(kind, id))
-                .map_err(|error| ModError::refused(error.to_string()))
+                .map_err(ModError::from_display)
         })
         .collect()
 }
 
 fn document(id: &str, kind: ContentKind, members: Vec<RegistryKey>) -> Result<Document, ModError> {
-    let id = id
-        .parse::<ContentId>()
-        .map_err(|error| ModError::refused(error.to_string()))?;
-    let tag = TagId::new(kind, id).map_err(|error| ModError::refused(error.to_string()))?;
+    let id = id.parse::<ContentId>().map_err(ModError::from_display)?;
+    let tag = TagId::new(kind, id).map_err(ModError::from_display)?;
     Ok(Document { tag, members })
 }
 
@@ -405,7 +403,7 @@ pub fn declare_tags(
         for member in &document.members {
             declaration
                 .tag(&document.tag, member)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         declared += 1;
     }

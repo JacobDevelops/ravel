@@ -76,13 +76,13 @@ pub mod content {
             let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
             let block = declaration
                 .entry(ContentKind::Block, "copper_lantern")
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
             declaration
                 .entry(ContentKind::Item, "copper_lantern")
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
             declaration
                 .tag(&lanterns(ContentKind::Block), &block)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
             Ok(declaration)
         }
     }
@@ -94,12 +94,10 @@ pub mod content {
             Ok(())
         }
 
-        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-            claim_all(&Self::declaration()?, registrar)
-        }
-
-        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-            Self::declaration().map(Some)
+        fn content_declaration(
+            &self,
+        ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+            Self::declaration().map(std::borrow::Cow::Owned).map(Some)
         }
     }
 }
@@ -220,7 +218,7 @@ pub mod state {
         fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
             SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
                 .map(Some)
-                .map_err(|error| ModError::refused(error.to_string()))
+                .map_err(ModError::from_display)
         }
 
         fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -244,7 +242,7 @@ pub mod state {
                 .saved_data_migrations()?
                 .expect("this mod declares a chain")
                 .apply(plan, envelope.payload())
-                .map_err(|failed| ModError::refused(failed.to_string()))?;
+                .map_err(ModError::from_display)?;
             self.entries = read_entries(&current);
             Ok(())
         }
@@ -292,7 +290,7 @@ pub mod settings {
         fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
             ConfigurationDeclaration::parse(SETTINGS)
                 .map(Some)
-                .map_err(|error| ModError::refused(error.to_string()))
+                .map_err(ModError::from_display)
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -322,13 +320,11 @@ pub mod optional_integration {
     ///
     /// Returns a refusal if the integration cannot be declared.
     pub fn integration() -> Result<ContentDeclaration, ModError> {
-        let owner = "foundry"
-            .parse::<ModId>()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        let owner = "foundry".parse::<ModId>().map_err(ModError::from_display)?;
         let mut declaration = ContentDeclaration::new(owner);
         declaration
             .entry(ContentKind::Recipe, "lit_copper")
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(declaration)
     }
 
@@ -414,7 +410,7 @@ pub mod optional_service {
                 [landmarks()], // what you use if something answers it
             )
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
         }
 
         fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -429,7 +425,7 @@ pub mod optional_service {
                     Ok(())
                 }
                 // The atlas is installed and said no, which is a different thing.
-                Err(failed) => Err(ModError::refused(failed.to_string())),
+                Err(failed) => Err(ModError::from_display(failed)),
             }
         }
     }

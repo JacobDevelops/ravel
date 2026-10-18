@@ -40,7 +40,7 @@ pub mod world;
 use std::collections::BTreeMap;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, Registrar, claim_all};
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
@@ -156,8 +156,7 @@ impl Entry {
         }
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration()
-                .map_err(|error| ModError::refused(error.to_string())),
+            configuration: settings::declaration().map_err(ModError::from_display),
             settings: Settings::default(),
             flags: FlagTable::default(),
             registries,
@@ -268,7 +267,7 @@ impl Entry {
     pub fn contribution_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), CONTRIBUTION_SERVICE)
-                .map_err(|error| ModError::refused(error.to_string()))?,
+                .map_err(ModError::from_display)?,
         ))
     }
 
@@ -353,7 +352,7 @@ impl Entry {
         for kind in RECIPE_KINDS {
             declaration
                 .entry(ContentKind::Recipe, kind)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         Ok(declaration)
     }
@@ -370,13 +369,14 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
@@ -385,8 +385,7 @@ impl Mod for Entry {
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         self.settings = Settings::read(resolved);
-        settings::publish(&mut self.flags, &self.settings)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -402,7 +401,7 @@ impl Mod for Entry {
         let service = Self::contribution_service()?;
         ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -416,7 +415,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [machines::DATA_VERSION])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {

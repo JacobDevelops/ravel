@@ -80,9 +80,7 @@ pub fn census() -> Result<String, ModError> {
 /// Returns a refusal when a packaged payload name is not a legal content path.
 pub fn network() -> Result<String, ModError> {
     let mut rendered = String::from("contract\tdirection\tversion\n");
-    for contract in
-        crate::network::contracts().map_err(|error| ModError::refused(error.to_string()))?
-    {
+    for contract in crate::network::contracts().map_err(ModError::from_display)? {
         writeln!(
             rendered,
             "{}\t{}\t{}",
@@ -108,8 +106,7 @@ pub fn network() -> Result<String, ModError> {
 /// Returns a refusal when the declaration this package builds from its own tables
 /// is one the configuration schema refuses.
 pub fn settings() -> Result<String, ModError> {
-    let declaration =
-        crate::settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+    let declaration = crate::settings::declaration().map_err(ModError::from_display)?;
     let mut rendered = String::from("key\tside\tdefault\n");
     for setting in declaration.settings() {
         writeln!(

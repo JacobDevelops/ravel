@@ -671,7 +671,7 @@ mod tests {
             for key in &self.claims {
                 registrar
                     .claim(key.clone())
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
             Ok(())
         }
@@ -1147,7 +1147,7 @@ mod tests {
             fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
                 registrar
                     .claim(self.key.clone())
-                    .map_err(|error| ModError::refused(error.to_string()))
+                    .map_err(ModError::from_display)
             }
         }
 

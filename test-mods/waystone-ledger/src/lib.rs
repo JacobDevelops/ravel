@@ -6,9 +6,7 @@
 
 use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{
-    ContentDeclaration, ContentId, ContentKind, Registrar, RegistryKey, claim_all,
-};
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey};
 use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::generate::GeneratedData;
 use ravel_sdk::network::{
@@ -353,23 +351,23 @@ impl WaystoneLedger {
 
         let block = declaration
             .entry(ContentKind::Block, WAYSTONE)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         let item = declaration
             .entry(ContentKind::Item, WAYSTONE)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .entry(ContentKind::Recipe, &format!("crafting/{WAYSTONE}"))
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .entry(ContentKind::Command, WAYSTONE)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         declaration
             .tag(&Self::waystones_tag(ContentKind::Block), &block)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .tag(&Self::waystones_tag(ContentKind::Item), &item)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         for (locale, name) in [("en_us", "Waystone"), ("de_de", "Wegstein")] {
             for prefix in ["block", "item"] {
@@ -379,13 +377,13 @@ impl WaystoneLedger {
                         &format!("{prefix}.{}.{WAYSTONE}", Self::declared_id()),
                         name,
                     )
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
         }
 
         declaration
             .resource(Self::model_path(), MODEL.to_vec())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         Ok(declaration)
     }
@@ -409,7 +407,7 @@ impl WaystoneLedger {
             Self::declared_id().clone(),
             VERSIONS.into_iter().map(version),
         )
-        .map_err(|error| ModError::refused(error.to_string()))
+        .map_err(ModError::from_display)
     }
 
     /// Returns the step into every version above the oldest.
@@ -478,26 +476,17 @@ impl Mod for WaystoneLedger {
         Ok(())
     }
 
-    /// Claims every entry the declaration holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ModError::Refused`] naming the contested entry and its owner. A
-    /// conflict is fatal: a ledger whose command another mod owns is a mod a
-    /// player cannot reach.
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(&Self::declaration()?, registrar)
-    }
-
-    /// Hands the host the declaration the claims above came from, model included.
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Self::declaration().map(Some)
+    /// Supplies the content claimed by default registration, model included.
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        Self::declaration().map(std::borrow::Cow::Owned).map(Some)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Reads the settings in force.
@@ -564,7 +553,7 @@ impl Mod for WaystoneLedger {
         // crosses the steps the plan names before anything is read.
         let current = Self::migrations()
             .apply(plan, envelope.payload())
-            .map_err(|failed| ModError::refused(failed.to_string()))?;
+            .map_err(ModError::from_display)?;
         let stored = current
             .get("waystones")
             .and_then(JsonValue::as_array)

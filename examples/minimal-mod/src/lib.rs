@@ -98,7 +98,7 @@ impl Mod for MinimalMod {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         registrar
             .claim(Self::greeting_command())
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Counts server ticks and ignores everything else.

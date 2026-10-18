@@ -599,10 +599,14 @@ impl LifecycleMachine {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use ravel_core::{
         ContentBehaviour, ContentKind, FailureAttribution, FailureEnvironment, FailureKind,
         LifecycleState, ModId, Redaction, Side, StructuredFailure,
     };
+    use ravel_data::ContentDeclaration;
+    use ravel_host_api::{HostError, HostMod, ModError};
     use ravel_observability::redact;
 
     use super::{LifecycleError, LifecycleMachine, executes_mod_code, has_registered};
@@ -1032,6 +1036,73 @@ mod tests {
     }
 
     #[test]
+    fn default_registration_refuses_a_foreign_declaration_through_the_loader() {
+        struct ForeignDeclaration {
+            id: ModId,
+            declaration: ContentDeclaration,
+        }
+
+        impl HostMod for ForeignDeclaration {
+            fn id(&self) -> &ModId {
+                &self.id
+            }
+
+            fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+                assert!(matches!(
+                    state,
+                    LifecycleState::Loaded | LifecycleState::Constructed
+                ));
+                Ok(())
+            }
+
+            fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
+                Ok(Some(Cow::Borrowed(&self.declaration)))
+            }
+        }
+
+        let mut declaration = ContentDeclaration::new(id("other_mod"));
+        declaration
+            .entry(ContentKind::Block, "copper")
+            .expect("valid foreign entry");
+        let mut host = ForeignDeclaration {
+            id: id("example_mod"),
+            declaration,
+        };
+        let mut machine =
+            LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
+                .expect("valid plan");
+        let error = crate::drive_loaded(
+            &mut crate::LoadedMods::<&mut dyn HostMod>::new(&mut machine, &mut [&mut host])
+                .expect("complete host set"),
+            &attribution("example_mod", LifecycleState::Constructed).environment,
+        )
+        .expect_err("default registration must reject foreign content");
+        let crate::DriveError::Host {
+            source,
+            attribution,
+        } = error
+        else {
+            panic!("expected an attributed registration refusal");
+        };
+        assert_eq!(
+            source,
+            HostError::Refused {
+                mod_id: id("example_mod"),
+                state: LifecycleState::Constructed,
+                detail: "`example_mod` cannot register `block:other_mod:copper` in another mod's namespace"
+                    .to_owned(),
+            }
+        );
+        assert_eq!(attribution.mod_id, Some(id("example_mod")));
+        assert_eq!(attribution.state, LifecycleState::Constructed);
+        assert_eq!(
+            machine.state(&id("example_mod")),
+            Ok(LifecycleState::Failed)
+        );
+        assert_eq!(machine.claimed_content().count(), 0);
+    }
+
+    #[test]
     fn an_owner_cannot_claim_one_registry_identifier_twice() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
@@ -1209,6 +1280,7 @@ mod tests {
         transition_refusals()
             .into_iter()
             .chain(registration_and_world_refusals())
+            .chain(registry_description_refusals())
     }
 
     fn transition_refusals() -> [(LifecycleError, &'static str); 6] {
@@ -1316,6 +1388,36 @@ mod tests {
                 "`example_mod` failed after the world was mutated, so partial state is not saved",
             ),
         ]
+    }
+
+    fn registry_description_refusals() -> [(LifecycleError, &'static str); 2] {
+        [
+            (
+                LifecycleError::ForeignRegistryClaim {
+                    key: match "block:other_mod:copper".parse() {
+                        Ok(key) => key,
+                        Err(error) => panic!("invalid registry key fixture: {error}"),
+                    },
+                    mod_id: id("example_mod"),
+                },
+                "`example_mod` cannot claim `block:other_mod:copper` in another mod's namespace",
+            ),
+            (
+                LifecycleError::MismatchedContentBehaviour {
+                    identifier: "item:example_mod:copper".to_owned(),
+                    described: ContentKind::Block,
+                },
+                "`item:example_mod:copper` was described as block content, which is not the kind \
+                 it names",
+            ),
+        ]
+    }
+
+    #[test]
+    fn registry_description_refusals_report_the_constructed_phase() {
+        for (error, _) in registry_description_refusals() {
+            assert_eq!(error.lifecycle_state(), LifecycleState::Constructed);
+        }
     }
 
     #[test]

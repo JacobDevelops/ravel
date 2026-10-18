@@ -59,23 +59,23 @@ impl ConfigurationMod {
     ///
     /// # Errors
     ///
-    /// Returns an error for a different owner or missing typed settings.
-    pub fn apply(&mut self, configuration: &LayeredConfiguration) -> Result<(), String> {
+    /// Returns a refused [`ModError`] for a different owner or missing typed settings.
+    pub fn apply(&mut self, configuration: &LayeredConfiguration) -> Result<(), ModError> {
         if configuration.owner() != Self::declared_id() {
-            return Err(format!(
+            return Err(ModError::refused(format!(
                 "configuration belongs to `{}`, not `{}`",
                 configuration.owner(),
                 Self::declared_id()
-            ));
+            )));
         }
         self.enabled = configuration
             .value(&key(ENABLED))
             .and_then(serde_json::Value::as_bool)
-            .ok_or_else(|| format!("`{ENABLED}` is not a boolean"))?;
+            .ok_or_else(|| ModError::refused(format!("`{ENABLED}` is not a boolean")))?;
         configuration
             .value(&key(PROFILE))
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| format!("`{PROFILE}` is not a string"))?
+            .ok_or_else(|| ModError::refused(format!("`{PROFILE}` is not a string")))?
             .clone_into(&mut self.profile);
         Ok(())
     }
@@ -119,7 +119,7 @@ impl Mod for ConfigurationMod {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(DECLARATION)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Applies the settings in force for this launch.
@@ -128,7 +128,7 @@ impl Mod for ConfigurationMod {
     ///
     /// Returns a [`ModError`] when [`ConfigurationMod::apply`] fails.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        Self::apply(self, resolved).map_err(ModError::refused)
+        Self::apply(self, resolved)
     }
 }
 
@@ -279,7 +279,7 @@ mod tests {
         let error = ConfigurationMod::new()
             .apply(&configuration)
             .expect_err("the owner differs");
-        assert!(error.contains("other_mod"), "{error}");
+        assert!(error.to_string().contains("other_mod"), "{error}");
     }
 }
 

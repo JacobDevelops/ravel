@@ -57,7 +57,7 @@
 //!         );
 //!         registrar
 //!             .claim(key)
-//!             .map_err(|error| ModError::refused(error.to_string()))
+//!             .map_err(ModError::from_display)
 //!     }
 //!
 //!     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
@@ -66,7 +66,7 @@
 //!             [SavedDataVersion::new(1).expect("1 is not zero")],
 //!         )
 //!         .map(Some)
-//!         .map_err(|error| ModError::refused(error.to_string()))
+//!         .map_err(ModError::from_display)
 //!     }
 //! }
 //!

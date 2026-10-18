@@ -224,9 +224,7 @@ impl Entry {
     /// Returns [`ModError::Refused`] on every server side, where there is no
     /// client-side state to return.
     pub fn client(&self) -> Result<&Client, ModError> {
-        self.client
-            .get(self.side)
-            .map_err(|error| Self::wrong_side(&error))
+        self.client.get(self.side).map_err(ModError::from_display)
     }
 
     /// Returns the client-side state for writing, on the side that has one.
@@ -236,9 +234,7 @@ impl Entry {
     /// The same as [`Entry::client`].
     pub fn client_mut(&mut self) -> Result<&mut Client, ModError> {
         let side = self.side;
-        self.client
-            .get_mut(side)
-            .map_err(|error| Self::wrong_side(&error))
+        self.client.get_mut(side).map_err(ModError::from_display)
     }
 
     /// Returns whether this library holds any client-side state at all.
@@ -348,10 +344,6 @@ impl Entry {
     #[must_use]
     pub const fn last_observed(&self) -> Option<GameEvent> {
         self.last_observed
-    }
-
-    fn wrong_side(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::refused(detail.to_string())
     }
 }
 

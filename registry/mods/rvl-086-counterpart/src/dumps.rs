@@ -53,8 +53,7 @@ pub fn census() -> Result<String, ModError> {
         .into_iter()
         .map(|(kind, name)| json!({"kind": format!("{kind:?}"), "name": name}))
         .collect();
-    let grouping = census::grouping(crate::FLAG_NAMESPACE)
-        .map_err(|error| ModError::refused(error.to_string()))?;
+    let grouping = census::grouping(crate::FLAG_NAMESPACE).map_err(ModError::from_display)?;
     let listed: Vec<JsonValue> = grouping
         .declared()
         .iter()
@@ -108,8 +107,7 @@ pub fn census() -> Result<String, ModError> {
 ///
 /// Panics if formatting into a string fails.
 pub fn settings() -> Result<String, ModError> {
-    let declaration =
-        settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+    let declaration = settings::declaration().map_err(ModError::from_display)?;
     let mut rendered = String::from("key\tside\tgroup\trestart\tdefault\tflags\n");
     for setting in declaration.settings() {
         let key = setting.key.as_str();

@@ -135,6 +135,12 @@ impl ContentDeclaration {
         &self.entries
     }
 
+    /// Takes every claimed entry in declaration order without copying its identifiers.
+    #[must_use]
+    pub fn into_entries(self) -> Vec<RegistryKey> {
+        self.entries
+    }
+
     /// Declares `member` a member of `tag`.
     ///
     /// Members may belong to other mods.

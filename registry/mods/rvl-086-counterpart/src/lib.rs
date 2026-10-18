@@ -40,7 +40,7 @@ pub mod settings;
 pub mod tooltip;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::interception::InterceptionDeclaration;
 use ravel_sdk::network::{PacketDelivery, PacketReader};
@@ -238,31 +238,29 @@ impl Entry {
         for (kind, name) in census::claims() {
             let key = declaration
                 .entry(kind, &name)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
             if kind == ContentKind::Item {
                 items.push(key);
             }
         }
         declaration
             .entry(ContentKind::Recipe, repair::KIND)
-            .map_err(|error| ModError::refused(error.to_string()))?;
-        census::declare_tags(&mut declaration, &items)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
+        census::declare_tags(&mut declaration, &items).map_err(ModError::from_display)?;
         declaration
             .translation(
                 census::LOCALE,
                 census::GROUPING_TITLE_KEY,
                 census::GROUPING_TITLE,
             )
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(declaration)
     }
 
     fn rebuild(&mut self) -> Result<(), ModError> {
         settings::publish(&mut self.flags, &self.settings, FLAG_NAMESPACE)
-            .map_err(|error| ModError::refused(error.to_string()))?;
-        self.grouping = census::grouping(FLAG_NAMESPACE)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
+        self.grouping = census::grouping(FLAG_NAMESPACE).map_err(ModError::from_display)?;
         self.configured = true;
         Ok(())
     }
@@ -275,26 +273,27 @@ impl Mod for Entry {
             // The two declarations are parsed from packaged text, so a malformed
             // one is a packaging failure. Refusing it here is what stops the mod
             // launching with no settings and every deciding value at its default.
-            settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+            settings::declaration().map_err(ModError::from_display)?;
             self.declaration.as_ref().map_err(Clone::clone)?;
         }
         self.entered.push(state);
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -320,8 +319,7 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let contract =
-            Decisive::contract().map_err(|error| ModError::refused(error.to_string()))?;
+        let contract = Decisive::contract().map_err(ModError::from_display)?;
         if &delivery.id != contract.id()
             || delivery.direction != contract.direction()
             || delivery.side != Side::Client
@@ -329,11 +327,8 @@ impl Mod for Entry {
             return Ok(());
         }
         let mut reader = PacketReader::new(&delivery.payload);
-        let decisive =
-            Decisive::read(&mut reader).map_err(|error| ModError::refused(error.to_string()))?;
-        reader
-            .finish()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        let decisive = Decisive::read(&mut reader).map_err(ModError::from_display)?;
+        reader.finish().map_err(ModError::from_display)?;
         self.adopt(&decisive)
     }
 

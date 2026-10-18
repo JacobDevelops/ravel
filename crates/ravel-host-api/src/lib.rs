@@ -15,6 +15,7 @@ pub use services::{
     ServiceRequest, ServiceResponse, ServiceUnavailable,
 };
 
+use std::borrow::Cow;
 use std::fmt;
 
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
@@ -111,6 +112,12 @@ impl ModError {
         Self::Refused {
             detail: detail.into(),
         }
+    }
+
+    /// Refuses a hook with an error's display text, without host attribution.
+    #[must_use]
+    pub fn from_display(error: impl fmt::Display) -> Self {
+        Self::refused(error.to_string())
     }
 
     /// Adds the identity and lifecycle phase known by the host.
@@ -255,14 +262,20 @@ pub trait HostMod: Send {
 
     /// Claims identifiers while constructed, before the registration barrier closes.
     ///
-    /// The default claims nothing. Mods decide whether a refused claim is fatal.
+    /// The default claims every entry from [`Self::content_declaration`] in declaration
+    /// order, stopping at the first refusal. An absent declaration claims nothing.
+    /// An override replaces this default; use [`claim_all`] to keep claiming the
+    /// mod's own declaration before additional registration work.
     ///
     /// # Errors
     ///
-    /// Returns a mod's refusal to register.
+    /// Returns the original declaration refusal or the first claim's display text.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let _ = registrar;
-        Ok(())
+        match self.content_declaration()? {
+            Some(Cow::Borrowed(declaration)) => claim_all(declaration, registrar),
+            Some(Cow::Owned(declaration)) => claim_entries(declaration.into_entries(), registrar),
+            None => Ok(()),
+        }
     }
 
     /// Observes an event in resolved load order while running; defaults to ignoring it.
@@ -297,9 +310,12 @@ pub trait HostMod: Send {
 
     /// Declares content and resources layered in resolved load order; defaults to none.
     ///
+    /// Borrow cached declarations to avoid copying their content and resource bytes;
+    /// return an owned declaration when constructing one for the request.
+    ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+    fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
         Ok(None)
     }
 
@@ -423,6 +439,35 @@ pub trait HostMod: Send {
     }
 }
 
+/// Claims every entry a declaration holds, in declaration order.
+///
+/// Stops at the first refusal; use [`Registrar::claim`] directly to handle
+/// individual conflicts.
+///
+/// An override replaces the default [`HostMod::register`]. Use this helper to
+/// claim the mod's own declaration before additional registration work, or to
+/// claim other declarations.
+///
+/// # Errors
+///
+/// Returns the claim refusal detail; the host attributes the registration hook.
+pub fn claim_all(
+    declaration: &ContentDeclaration,
+    registrar: &mut dyn Registrar,
+) -> Result<(), ModError> {
+    claim_entries(declaration.entries().iter().cloned(), registrar)
+}
+
+fn claim_entries(
+    entries: impl IntoIterator<Item = RegistryKey>,
+    registrar: &mut dyn Registrar,
+) -> Result<(), ModError> {
+    for key in entries {
+        registrar.claim(key).map_err(ModError::from_display)?;
+    }
+    Ok(())
+}
+
 /// The registration barrier exposed to a mod without a loader dependency.
 pub trait Registrar {
     /// Claims `key` for the mod currently registering.
@@ -531,11 +576,14 @@ impl StructuredFailure for RegistrationRefused {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use ravel_core::{
         ContentKind, FailureKind, LifecycleState, ModId, Redaction, RegistryKey, StructuredFailure,
     };
 
     use super::{HostError, HostMod, ModError, Registrar, RegistrationRefused};
+    use ravel_data::ContentDeclaration;
 
     /// An in-memory registrar for exercising the mod-facing refusal contract.
     #[derive(Default)]
@@ -577,6 +625,7 @@ mod tests {
     /// A mod that claims one block and one item, and gives up on a conflict.
     struct Registering {
         id: ModId,
+        declaration: Result<Option<ContentDeclaration>, ModError>,
     }
 
     impl HostMod for Registering {
@@ -588,20 +637,48 @@ mod tests {
             Ok(())
         }
 
-        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-            for kind in [ContentKind::Block, ContentKind::Item] {
-                registrar
-                    .claim(key(kind, "example_mod:copper"))
-                    .map_err(|error| ModError::refused(error.to_string()))?;
-            }
-            Ok(())
+        fn content_declaration(&self) -> Result<Option<Cow<'_, ContentDeclaration>>, ModError> {
+            self.declaration
+                .as_ref()
+                .map(|declaration| declaration.as_ref().map(Cow::Borrowed))
+                .map_err(Clone::clone)
         }
     }
 
     fn registering() -> Registering {
-        Registering {
-            id: "example_mod".parse().expect("valid id"),
+        let id: ModId = "example_mod".parse().expect("valid id");
+        let mut declaration = ContentDeclaration::new(id.clone());
+        for kind in [ContentKind::Block, ContentKind::Item] {
+            declaration.entry(kind, "copper").expect("valid entry");
         }
+        Registering {
+            id,
+            declaration: Ok(Some(declaration)),
+        }
+    }
+
+    #[test]
+    fn default_registration_preserves_declaration_refusal_before_claiming() {
+        let original = ModError::refused("declaration is unavailable");
+        let mut host = registering();
+        host.declaration = Err(original.clone());
+        let mut table = Table::default();
+        assert_eq!(host.register(&mut table), Err(original));
+        assert_eq!(table.claimed(), []);
+    }
+
+    #[test]
+    fn printable_refusals_preserve_display_text_without_debug_formatting() {
+        let error = RegistrationRefused::Closed {
+            key: key(ContentKind::Item, "example_mod:copper"),
+        };
+        let result: Result<(), RegistrationRefused> = Err(error.clone());
+        assert_eq!(
+            result.map_err(ModError::from_display),
+            Err(ModError::Refused {
+                detail: error.to_string(),
+            })
+        );
     }
 
     #[test]
@@ -717,7 +794,7 @@ mod tests {
     fn a_contested_identifier_reaches_the_mod_naming_who_owns_it() {
         let owner: ModId = "other_mod".parse().expect("valid id");
         let mut table = Table {
-            owned: vec![(key(ContentKind::Block, "example_mod:copper"), owner)],
+            owned: vec![(key(ContentKind::Block, "example_mod:copper"), owner.clone())],
             ..Table::default()
         };
 
@@ -725,6 +802,13 @@ mod tests {
             .register(&mut table)
             .expect_err("the block is taken");
         assert!(error.to_string().contains("other_mod"), "{error}");
+        assert_eq!(
+            error,
+            ModError::from_display(RegistrationRefused::Conflict {
+                key: key(ContentKind::Block, "example_mod:copper"),
+                owner,
+            })
+        );
 
         assert_eq!(table.claimed(), []);
     }

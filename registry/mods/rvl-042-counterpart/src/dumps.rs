@@ -130,8 +130,7 @@ fn left(uses_left: UsesLeft) -> String {
 ///
 /// Returns whatever [`settings::declaration`] refuses.
 pub fn settings_document() -> Result<String, ModError> {
-    let declaration =
-        settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+    let declaration = settings::declaration().map_err(ModError::from_display)?;
     let settings: Vec<JsonValue> = declaration
         .settings()
         .iter()

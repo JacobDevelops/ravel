@@ -33,9 +33,16 @@
 //!
 //! Refuse a hook with [`ModError::refused`], supplying only the reason. The host
 //! records the identity and lifecycle phase of the hook it actually called.
-//! Convert an error's display text with `ModError::refused(error.to_string())`;
-//! strings can be supplied directly. Return [`ModError`] from mod callbacks,
-//! not [`HostError`], which already carries host attribution.
+//! Convert an error's display text with [`ModError::from_display`], including as
+//! `.map_err(ModError::from_display)`. Supply authored strings to `refused` directly.
+//! Return [`ModError`] from mod callbacks, not [`HostError`], which already carries
+//! host attribution.
+//!
+//! The default [`Mod::register`] claims every entry returned by
+//! [`Mod::content_declaration`] in declaration order and stops at the first refusal.
+//! Mods without a content declaration claim nothing. An override replaces this
+//! default: claim declared entries explicitly with [`content::claim_all`] before
+//! doing additional registration work, or implement custom claim handling.
 
 // Let attribute expansions use the same absolute path inside this crate.
 extern crate self as ravel_sdk;
@@ -243,7 +250,9 @@ pub mod prelude {
 
 #[cfg(test)]
 mod tests {
-    use crate::content::{ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey};
+    use crate::content::{
+        ContentDeclaration, ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey,
+    };
     use crate::events::{CommandInvocation, GameEvent};
     use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};
 
@@ -292,10 +301,14 @@ mod tests {
             Ok(())
         }
 
-        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-            registrar
-                .claim(Self::command())
-                .map_err(|error| ModError::refused(error.to_string()))
+        fn content_declaration(
+            &self,
+        ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+            let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
+            declaration
+                .entry(ContentKind::Command, "example")
+                .map_err(ModError::from_display)?;
+            Ok(Some(std::borrow::Cow::Owned(declaration)))
         }
 
         fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {

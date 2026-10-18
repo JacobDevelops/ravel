@@ -1,6 +1,7 @@
 [package]
 name = "rvl-002-counterpart"
 version = "0.1.0"
+description = "Ravel counterpart for RVL-002: sixth-tier crops, ground, fuels, foods, tools and deposits."
 edition = "2024"
 license = "MIT"
 

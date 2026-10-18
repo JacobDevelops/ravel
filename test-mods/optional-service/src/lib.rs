@@ -123,7 +123,7 @@ impl Mod for SurveyMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [landmarks()], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Answers with the landmarks this survey holds.
@@ -194,7 +194,7 @@ impl Mod for CompassMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::with_optional(Self::declared_id().clone(), [], [], [landmarks()])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Calls the survey when one is installed, and records doing without when none
@@ -227,7 +227,7 @@ impl Mod for CompassMod {
                 self.bearings = Bearings::Alone;
                 Ok(())
             }
-            Err(failed) => Err(ModError::refused(failed.to_string())),
+            Err(failed) => Err(ModError::from_display(failed)),
         }
     }
 }
@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(refusal.mod_id(), SurveyMod::declared_id());
         assert_eq!(refusal.state(), LifecycleState::Running);
         assert!(refusal.to_string().contains("no chart loaded"), "{refusal}");
-        let expected = ModError::refused(refusal.to_string());
+        let expected = ModError::from_display(&refusal);
 
         let mut compass = CompassMod::new();
         let failed = compass

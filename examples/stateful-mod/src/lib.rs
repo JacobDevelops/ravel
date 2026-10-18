@@ -120,7 +120,7 @@ impl Journal {
             Self::declared_id().clone(),
             VERSIONS.into_iter().map(version),
         )
-        .map_err(|error| ModError::refused(error.to_string()))
+        .map_err(ModError::from_display)
     }
 
     /// Returns the step into every version above the oldest.
@@ -160,7 +160,7 @@ impl Mod for Journal {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -207,7 +207,7 @@ impl Mod for Journal {
         let current = self
             .chain()
             .apply(plan, envelope.payload())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         let stored = current
             .get("entries")
             .and_then(JsonValue::as_array)
@@ -237,7 +237,7 @@ impl Mod for Journal {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [entries_service()], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {

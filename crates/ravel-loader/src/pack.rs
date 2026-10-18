@@ -317,7 +317,9 @@ mod tests {
             Ok(())
         }
 
-        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        fn content_declaration(
+            &self,
+        ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
             let mut declaration = ContentDeclaration::new(self.id.clone());
             for (path, bytes) in &self.supplies {
                 declaration
@@ -327,7 +329,7 @@ mod tests {
                     )
                     .expect("each path is supplied once");
             }
-            Ok(Some(declaration))
+            Ok(Some(std::borrow::Cow::Owned(declaration)))
         }
     }
 

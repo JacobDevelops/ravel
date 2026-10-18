@@ -29,7 +29,7 @@ pub mod settings;
 
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
+use ravel_sdk::content::{ContentDeclaration, ContentKind};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 
@@ -165,11 +165,11 @@ impl Entry {
         for kind in RECIPE_KINDS {
             declaration
                 .entry(ContentKind::Recipe, kind)
-                .map_err(|detail| ModError::refused(detail.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         declaration
             .entry(ContentKind::Command, COMMAND)
-            .map_err(|detail| ModError::refused(detail.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(declaration)
     }
 
@@ -203,7 +203,7 @@ impl Entry {
         }
         let request = Self::audio_declaration()
             .and_then(|declared| declared.play(SOUND, side))
-            .map_err(|detail| ModError::refused(detail.to_string()))?;
+            .map_err(ModError::from_display)?;
         self.asked.push(request);
         Ok(true)
     }
@@ -222,23 +222,24 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn take_play_requests(&mut self) -> Vec<PlayRequest> {
         std::mem::take(&mut self.asked)
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
-    }
-
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {

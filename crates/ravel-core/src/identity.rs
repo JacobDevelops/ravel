@@ -34,6 +34,11 @@ impl ModId {
 }
 
 /// Checks the shared mod-identity and setting-key grammar.
+///
+/// # Errors
+///
+/// Returns [`ModIdError`] for an empty candidate, an invalid leading or later character,
+/// or a separator without a following letter or digit.
 pub fn check_identifier(candidate: &str) -> Result<(), ModIdError> {
     if candidate.is_empty() {
         return Err(ModIdError::Empty);

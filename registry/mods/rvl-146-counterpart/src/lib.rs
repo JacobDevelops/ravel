@@ -85,7 +85,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
@@ -448,12 +448,12 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(self.collection.run().declaration(), registrar)
-    }
-
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Ok(Some(self.collection.run().declaration().clone()))
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        Ok(Some(std::borrow::Cow::Owned(
+            self.collection.run().into_declaration(),
+        )))
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
@@ -471,7 +471,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         Memory::declaration(Self::owner())
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {

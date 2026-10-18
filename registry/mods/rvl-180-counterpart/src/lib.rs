@@ -42,7 +42,7 @@ pub mod presentation;
 pub mod sprites;
 pub mod transport;
 
-use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
+use ravel_sdk::content::{ContentDeclaration, ContentKind};
 use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::network::PacketDelivery;
 use ravel_sdk::prelude::*;
@@ -124,10 +124,7 @@ impl Entry {
                 let declaration = Self::declaration(&aggregation);
                 (aggregation, declaration)
             }
-            Err(source) => (
-                Aggregation::default(),
-                Err(ModError::refused(source.to_string())),
-            ),
+            Err(source) => (Aggregation::default(), Err(ModError::from_display(source))),
         };
         Self {
             side,
@@ -211,7 +208,7 @@ impl Entry {
     pub fn publish(&mut self, readout: &Readout) -> Result<bool, ModError> {
         self.outbox
             .queue(readout, self.side)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Hands over the encoded readouts and empties the queue.
@@ -247,10 +244,10 @@ impl Entry {
         for root in commands::ROOTS {
             declaration
                 .entry(ContentKind::Command, root)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
 
-        for group in grouping::all().map_err(|error| ModError::refused(error.to_string()))? {
+        for group in grouping::all().map_err(ModError::from_display)? {
             let resolved = aggregation.resolve(&group);
             if resolved.too_deep {
                 return Err(ModError::refused(format!(
@@ -261,22 +258,22 @@ impl Entry {
             for member in resolved.members {
                 declaration
                     .tag(&group, &member)
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
         }
 
         for (key, line) in presentation::LINES {
             declaration
                 .translation(presentation::LOCALE, key, line)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
 
         declaration
             .resource(
-                sprites::atlas_path().map_err(|error| ModError::refused(error.to_string()))?,
+                sprites::atlas_path().map_err(ModError::from_display)?,
                 sprites::atlas_document(),
             )
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         Ok(declaration)
     }
@@ -295,13 +292,14 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
@@ -317,7 +315,7 @@ impl Mod for Entry {
         let report = self
             .console
             .run(command, invocation.side, &invocation.arguments)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         // The reclamation is the release, so retaining its own report would
         // refill what the two readings it just reported were readings around.
         if command != Command::Reclaim {
@@ -331,10 +329,10 @@ impl Mod for Entry {
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let readout = delivery
             .decode::<Readout>()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         self.client
             .get_mut(self.side)
-            .map_err(|error| ModError::refused(error.to_string()))?
+            .map_err(ModError::from_display)?
             .hold(readout);
         Ok(())
     }

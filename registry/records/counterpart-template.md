@@ -264,7 +264,7 @@ bounds against hostile input, host blockers.
 pub mod area;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 
@@ -290,16 +290,14 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Ok(self.declaration.clone())
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
         let declaration = self
             .declaration
             .as_ref()
             .ok_or_else(|| Self::packaging("the packaged content declaration is not well formed"))?;
-        claim_all(declaration, registrar)
+        Ok(Some(std::borrow::Cow::Borrowed(declaration)))
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {

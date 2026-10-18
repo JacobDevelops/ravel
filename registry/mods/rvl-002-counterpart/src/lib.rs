@@ -134,8 +134,7 @@ impl Entry {
             .collect();
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration()
-                .map_err(|error| ModError::refused(error.to_string())),
+            configuration: settings::declaration().map_err(ModError::from_display),
             settings: Settings::default(),
             flags: FlagTable::default(),
             tier,
@@ -226,7 +225,7 @@ impl Entry {
             blocks.push(
                 declaration
                     .entry(ContentKind::Block, &path)
-                    .map_err(|error| ModError::refused(error.to_string()))?,
+                    .map_err(ModError::from_display)?,
             );
         }
         let mut items = Vec::with_capacity(census::ITEMS);
@@ -234,7 +233,7 @@ impl Entry {
             items.push(
                 declaration
                     .entry(ContentKind::Item, &path)
-                    .map_err(|error| ModError::refused(error.to_string()))?,
+                    .map_err(ModError::from_display)?,
             );
         }
         let tags = data::declare_tags(&mut declaration, &blocks, &items)?;
@@ -259,8 +258,14 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -276,8 +281,7 @@ impl Mod for Entry {
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         self.settings = Settings::read(resolved);
-        settings::publish(&mut self.flags, &self.settings)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
         Ok(())
     }
 

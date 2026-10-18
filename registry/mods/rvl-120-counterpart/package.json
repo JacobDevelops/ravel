@@ -62,7 +62,7 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "911a8f801e3c81c2cc986c9a20b58739a779b079aebe7903773df2792dffc561"
+        "sha256": "bc4f61d41f2f7d676601cef703f2c3791855a3295d82667db0929991fab02a66"
       },
       {
         "path": "src/commands.rs",
@@ -74,7 +74,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "7e038614f7791c6bac1f69f778cf5024ccd96387ebd79820dbf982b8f758e8c8"
+        "sha256": "9bd77f0f836efe8b8f170d5a456a287b66019decaaa49d9970ab4b35bf0d2bf1"
       },
       {
         "path": "src/grouping.rs",
@@ -82,7 +82,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "c4c35675085d557badeaf53065761cc86eeda37808cfcd374fb8dc878ab02801"
+        "sha256": "6bc24b83b925be98fc39fddd8233ae69ac4ad3addee3971c4aa52dd8bcef336f"
       },
       {
         "path": "src/network.rs",

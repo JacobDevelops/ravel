@@ -168,9 +168,7 @@ impl Mod for NetworkingMod {
     /// truncated body, bytes left over, another contract, another version, or a
     /// side that is not an end of this link.
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let ping = delivery
-            .decode::<Ping>()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        let ping = delivery.decode::<Ping>().map_err(ModError::from_display)?;
         self.answered.push(ping);
         Ok(())
     }

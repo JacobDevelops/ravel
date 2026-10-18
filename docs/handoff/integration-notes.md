@@ -43,8 +43,8 @@ is done.
 - The SDK exports both `ModError`, which is detail-only and returned by mods, and `HostError`, which is attributed and
   observed through `ServiceCallFailed::Refused`. Keep both exports when merging LoaderApi's SDK edits. `HostError` has
   no constructor that mods can call.
-- `ModError::refused(detail: impl Into<String>)`: out-of-lane `map_err(ModError::refused)` calls on error objects need
-  `|e| ModError::refused(e.to_string())`.
+- `ModError::refused(detail: impl Into<String>)` accepts authored reasons. Convert printable error objects with
+  `map_err(ModError::from_display)` instead; it preserves their display text without adding host attribution.
 - After the merge, refresh package digests for the 9 package dirs listed in the LaneSdk report, plus the registry
   digests (`package digests <dir>`, then `--check`).
 - tests/conformance registry_lifecycle.rs depends on the 12 counterpart dev-deps from ToolHarness and on a loader API

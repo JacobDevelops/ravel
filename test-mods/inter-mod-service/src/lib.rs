@@ -143,7 +143,7 @@ impl StockMod {
             Self::declared_id().clone(),
             STOCK_VERSIONS.into_iter().map(version),
         )
-        .map_err(|error| ModError::refused(error.to_string()))
+        .map_err(ModError::from_display)
     }
 
     /// Returns the step into every version above the oldest.
@@ -205,7 +205,7 @@ impl Mod for StockMod {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(STOCK_SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -247,7 +247,7 @@ impl Mod for StockMod {
         let current = self
             .chain()
             .apply(plan, envelope.payload())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         self.read(&current)
     }
 
@@ -268,7 +268,7 @@ impl Mod for StockMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -330,7 +330,7 @@ impl Mod for ShopMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Calls the one service this mod declared, and refuses without an answer.
@@ -341,7 +341,7 @@ impl Mod for ShopMod {
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
         let answer = directory
             .call(&ServiceRequest::new(prices(), json!({ "item": "lantern" })))
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         self.prices = Some(answer.value().clone());
         Ok(())
     }

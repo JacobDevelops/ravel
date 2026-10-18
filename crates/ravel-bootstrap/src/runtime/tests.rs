@@ -72,7 +72,7 @@ impl HostMod for Recording {
         for claim in &self.claims {
             registrar
                 .claim(claim.clone())
-                .map_err(|refused| ModError::refused(refused.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         Ok(())
     }

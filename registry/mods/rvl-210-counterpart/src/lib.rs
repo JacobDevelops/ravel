@@ -257,7 +257,7 @@ impl Entry {
     pub fn producer_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), PRODUCER_SERVICE)
-                .map_err(|error| ModError::refused(error.to_string()))?,
+                .map_err(ModError::from_display)?,
         ))
     }
 
@@ -276,7 +276,7 @@ impl Entry {
         for (name, _) in commands::SUBCOMMANDS {
             declaration
                 .entry(ContentKind::Command, name)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         Ok(declaration)
     }
@@ -331,12 +331,12 @@ impl Entry {
                 };
                 self.framework
                     .write(property, value)
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
             None => {
                 self.framework
                     .read(property)
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                    .map_err(ModError::from_display)?;
             }
         }
         Ok(())
@@ -348,7 +348,7 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         match state {
             LifecycleState::Constructed => {
-                settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+                settings::declaration().map_err(ModError::from_display)?;
                 self.declaration.as_ref().map_err(Clone::clone)?;
             }
             LifecycleState::Running => {
@@ -368,8 +368,14 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -382,7 +388,7 @@ impl Mod for Entry {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -402,8 +408,8 @@ impl Mod for Entry {
 
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let name = invocation.key.id().path();
-        let resolved = commands::resolve(name, &invocation.arguments)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        let resolved =
+            commands::resolve(name, &invocation.arguments).map_err(ModError::from_display)?;
         match resolved {
             commands::SETTINGS => self.run_settings(&invocation.arguments)?,
             // The same emptying section seven's reload causes, because this is
@@ -434,7 +440,7 @@ impl Mod for Entry {
         let service = Self::producer_service()?;
         ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -448,7 +454,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -480,13 +486,13 @@ impl Mod for Entry {
             }
             self.counters
                 .load(envelope.payload())
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         // Last, so a delivery this entry refused above allocates nothing and
         // leaves the counts it was holding alone.
         self.counters
             .next(persistence::OPENINGS)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 }

@@ -49,7 +49,7 @@ pub mod values;
 pub mod world;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, ContentId, Registrar, claim_all};
+use ravel_sdk::content::{ContentDeclaration, ContentId};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::network::{Packet, PacketDelivery};
 use ravel_sdk::prelude::*;
@@ -251,7 +251,7 @@ impl Entry {
     pub fn surface_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), SURFACE_SERVICE)
-                .map_err(|error| ModError::refused(error.to_string()))?,
+                .map_err(ModError::from_display)?,
         ))
     }
 
@@ -264,7 +264,7 @@ impl Entry {
     pub fn ordering_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), ORDERING_SERVICE)
-                .map_err(|error| ModError::refused(error.to_string()))?,
+                .map_err(ModError::from_display)?,
         ))
     }
 
@@ -346,8 +346,7 @@ impl Entry {
     /// Returns [`ModError::Refused`] when a name this package spells is not a
     /// legal content path, which for constants is a packaging failure.
     pub fn content() -> Result<ContentDeclaration, ModError> {
-        census::declaration(Self::declared_id().clone())
-            .map_err(|error| ModError::refused(error.to_string()))
+        census::declaration(Self::declared_id().clone()).map_err(ModError::from_display)
     }
 
     /// Answers the surface service, which is how a dependent reaches §15.
@@ -660,9 +659,8 @@ impl Entry {
         let path = delivery.id.id().path().to_owned();
         let held = self.holding.kind;
         if path == network::HeldComponents::contract().id().id().path() {
-            let payload: network::HeldComponents = delivery
-                .decode()
-                .map_err(|error| ModError::refused(error.to_string()))?;
+            let payload: network::HeldComponents =
+                delivery.decode().map_err(ModError::from_display)?;
             if network::apply_components(held, &payload, Record::PatternContents)
                 == network::Applied::Accepted
                 && let Some(written) = payload
@@ -677,9 +675,8 @@ impl Entry {
             return Ok(());
         }
         if path == network::CardArguments::contract().id().id().path() {
-            let payload: network::CardArguments = delivery
-                .decode()
-                .map_err(|error| ModError::refused(error.to_string()))?;
+            let payload: network::CardArguments =
+                delivery.decode().map_err(ModError::from_display)?;
             // This packet never updates card state, whether accepted or refused.
             match network::apply_card_arguments(held, &payload) {
                 network::Applied::Accepted
@@ -689,9 +686,8 @@ impl Entry {
             return Ok(());
         }
         if path == network::BrowserPattern::contract().id().id().path() {
-            let payload: network::BrowserPattern = delivery
-                .decode()
-                .map_err(|error| ModError::refused(error.to_string()))?;
+            let payload: network::BrowserPattern =
+                delivery.decode().map_err(ModError::from_display)?;
             if network::apply_browser_pattern(held, self.card_menu_open(), &payload)
                 == network::Applied::Accepted
                 && let Ok(pushed) = self.surface.push_browser_grid(&payload.slots)
@@ -701,9 +697,8 @@ impl Entry {
             return Ok(());
         }
         if path == network::ReadoutRequest::contract().id().id().path() {
-            let payload: network::ReadoutRequest = delivery
-                .decode()
-                .map_err(|error| ModError::refused(error.to_string()))?;
+            let payload: network::ReadoutRequest =
+                delivery.decode().map_err(ModError::from_display)?;
             if network::answer_readout(&payload, self.holding.at, self.holding.chunk_loaded)
                 == network::Applied::Accepted
             {
@@ -720,9 +715,8 @@ impl Entry {
             return Ok(());
         }
         if path == network::ReadoutAnswer::contract().id().id().path() {
-            let payload: network::ReadoutAnswer = delivery
-                .decode()
-                .map_err(|error| ModError::refused(error.to_string()))?;
+            let payload: network::ReadoutAnswer =
+                delivery.decode().map_err(ModError::from_display)?;
             return self.accept_readout(&payload);
         }
         Err(ModError::refused(
@@ -737,7 +731,7 @@ impl Entry {
         }
         let stamp = self.ordering.stamp();
         self.client_mut()
-            .map_err(|error| ModError::refused(error.to_string()))?
+            .map_err(ModError::from_display)?
             .screen
             .accept(readings, stamp);
         Ok(())
@@ -748,9 +742,7 @@ impl Entry {
         delivery: &PacketDelivery,
         held: network::Held,
     ) -> Result<(), ModError> {
-        let payload: network::HeldItem = delivery
-            .decode()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        let payload: network::HeldItem = delivery.decode().map_err(ModError::from_display)?;
         if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
             return Ok(());
         }
@@ -805,19 +797,19 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(|declaration| Some(std::borrow::Cow::Borrowed(declaration)))
+            .map_err(Clone::clone)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -858,8 +850,8 @@ impl Mod for Entry {
                 self.evaluated = Some(commands::evaluate(held, &self.recipes));
             }
             commands::CYCLE => {
-                let step = commands::direction(&invocation.arguments)
-                    .map_err(|error| ModError::refused(error.to_string()))?;
+                let step =
+                    commands::direction(&invocation.arguments).map_err(ModError::from_display)?;
                 let holding = match self.holding.kind {
                     network::Held::Carrier => Some(commands::Cyclable::Carrier(&mut self.carrier)),
                     network::Held::PatternCard
@@ -891,7 +883,7 @@ impl Mod for Entry {
         let ordering = Self::ordering_service()?;
         ServiceDeclaration::new(Self::declared_id().clone(), [surface, ordering], [])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Answers §16's first two entries, which are the two a dependent needs.
@@ -925,7 +917,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Writes the five records of §4 out to the world.
@@ -961,8 +953,7 @@ impl Mod for Entry {
                 "the world stored a version this build does not read",
             ));
         }
-        self.store = Store::from_saved(envelope.payload())
-            .map_err(|error| ModError::refused(error.to_string()))?;
+        self.store = Store::from_saved(envelope.payload()).map_err(ModError::from_display)?;
         Ok(())
     }
 }

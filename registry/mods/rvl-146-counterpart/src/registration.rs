@@ -585,11 +585,17 @@ pub struct Registered {
 }
 
 impl Registered {
-    /// Returns the Ravel declaration, which [`ravel_sdk::content::claim_all`]
-    /// claims from.
+    /// Borrows the generated declaration. Default registration receives its owned
+    /// form through [`Self::into_declaration`] and the mod's `content_declaration`.
     #[must_use]
     pub const fn declaration(&self) -> &ContentDeclaration {
         &self.declaration
+    }
+
+    /// Takes the generated declaration without copying its entries or resource bytes.
+    #[must_use]
+    pub fn into_declaration(self) -> ContentDeclaration {
+        self.declaration
     }
 
     /// Returns every key Ravel claims, in registration order.

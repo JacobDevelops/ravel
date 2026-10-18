@@ -1,9 +1,9 @@
 # Declaring content
 
 Content is declared in one place and everything else is derived from that place.
-Write a `ContentDeclaration`, claim from it during the registration window, and
-generate the pack from the same one, so the block you register and the block your
-tag names cannot drift apart.
+Write a `ContentDeclaration`, return it from `content_declaration`, and generate
+the pack from the same one. The default `register` claims every declared entry
+during the registration window, so registered blocks and tag references cannot drift apart.
 
 ```rust
 impl CopperLanterns {
@@ -11,13 +11,13 @@ impl CopperLanterns {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
         let block = declaration
             .entry(ContentKind::Block, "copper_lantern")
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .entry(ContentKind::Item, "copper_lantern")
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         declaration
             .tag(&lanterns(ContentKind::Block), &block)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(declaration)
     }
 }
@@ -29,12 +29,10 @@ impl Mod for CopperLanterns {
         Ok(())
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(&Self::declaration()?, registrar)
-    }
-
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Self::declaration().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        Self::declaration().map(std::borrow::Cow::Owned).map(Some)
     }
 }
 ```
@@ -71,9 +69,10 @@ claims nothing there claims nothing ever, and a mod that stashes the registrar
 and claims later is refused as *late* rather than as contested. Claim in
 `register` or not at all.
 
-`claim_all` treats a conflict as fatal, because content you could not claim is
-content you cannot then use. A mod with a genuine fallback claims key by key
-through `Registrar::claim` and decides each refusal itself.
+The default `register` uses `claim_all` and treats a conflict as fatal, because
+content you could not claim is content you cannot then use. A mod with a genuine
+fallback overrides `register`, claims key by key through `Registrar::claim`, and
+decides each refusal itself.
 
 ## What is generated, and what is yours
 
@@ -130,7 +129,7 @@ claims is a plain item and places nothing.
 
 **A command belongs in the declaration like anything else.**
 `ContentDeclaration::entry(ContentKind::Command, "lanterns")` is how you name one,
-`claim_all` claims it with the rest, and the mod that claimed the root literal is
+the default `register` claims it with the rest, and the mod that claimed the root literal is
 the one `run_command` reaches — see
 [The lifecycle, events, sides and packets](running.md). Two things differ from a
 block. A command generates no file, because nothing about a command's behaviour

@@ -429,23 +429,18 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         match state {
             LifecycleState::Constructed => {
-                settings::declaration()
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
+                settings::declaration().map_err(ModError::from_display)?;
                 self.declaration.as_ref().map_err(Clone::clone)?;
                 // Registry construction sits inside this state, and the
                 // serialisers go in before registry population.
-                self.install_serialisers()
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
+                self.install_serialisers().map_err(ModError::from_display)?;
             }
             LifecycleState::Registered => {
-                self.register_kinds()
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
-                self.common_setup()
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
-                self.install_adapters()
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
+                self.register_kinds().map_err(ModError::from_display)?;
+                self.common_setup().map_err(ModError::from_display)?;
+                self.install_adapters().map_err(ModError::from_display)?;
                 self.load_compatibility(None)
-                    .map_err(|refused| ModError::refused(refused.to_string()))?;
+                    .map_err(ModError::from_display)?;
                 self.attachments.bake();
             }
             // A server stopping is one of the two points section fourteen
@@ -463,26 +458,28 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         // Section three: the list is re-read on every load and reload and the
         // comparator is rebuilt from it each time, so the setting takes effect
         // without a restart.
-        self.settings =
-            Settings::read(resolved).map_err(|refused| ModError::refused(refused.to_string()))?;
-        self.comparator = self
-            .settings
-            .comparator()
-            .map_err(|refused| ModError::refused(refused.to_string()))?;
+        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        self.comparator = self.settings.comparator().map_err(ModError::from_display)?;
         Ok(())
     }
 

@@ -70,7 +70,7 @@ impl CommandsMod {
         for root in ROOTS {
             declaration
                 .entry(ContentKind::Command, root)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
         }
         Ok(declaration)
     }
@@ -98,6 +98,7 @@ impl Mod for CommandsMod {
     /// # Errors
     ///
     /// Returns a [`ModError`] on the first rejected claim.
+    // Intentionally claim-only: no declaration enters the generated resource list.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         claim_all(&Self::declaration()?, registrar)
     }

@@ -92,9 +92,8 @@ impl Mod for AudioMod {
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         if event == GameEvent::ClientTick {
-            self.asked.push(
-                Self::play(Side::Client).map_err(|error| ModError::refused(error.to_string()))?,
-            );
+            self.asked
+                .push(Self::play(Side::Client).map_err(ModError::from_display)?);
         }
         Ok(())
     }

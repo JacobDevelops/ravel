@@ -143,7 +143,7 @@ impl Mod for RegistriesMod {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         for (kind, path) in CLAIMS {
             let id = ContentId::new(Self::declared_id().clone(), path)
-                .map_err(|error| ModError::refused(error.to_string()))?;
+                .map_err(ModError::from_display)?;
             let key = RegistryKey::new(kind, id);
             // Described where there is something to describe, and claimed plainly
             // where there is not. A recipe names no value a registry builds, so
@@ -152,7 +152,7 @@ impl Mod for RegistriesMod {
                 Some(behaviour) => registrar.claim_describing(key.clone(), behaviour),
                 None => registrar.claim(key.clone()),
             };
-            claimed.map_err(|error| ModError::refused(error.to_string()))?;
+            claimed.map_err(ModError::from_display)?;
             self.registered.push(key);
         }
         Ok(())

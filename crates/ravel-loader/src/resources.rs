@@ -210,7 +210,8 @@ mod tests {
 
         fn content_declaration(
             &self,
-        ) -> Result<Option<ContentDeclaration>, ravel_host_api::ModError> {
+        ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ravel_host_api::ModError>
+        {
             if self.refuses_declaration {
                 return Err(ravel_host_api::ModError::Unsupported);
             }
@@ -223,7 +224,7 @@ mod tests {
                     .resource(at.clone(), bytes.clone())
                     .expect("each path is supplied once");
             }
-            Ok(Some(declaration))
+            Ok(Some(std::borrow::Cow::Owned(declaration)))
         }
     }
 

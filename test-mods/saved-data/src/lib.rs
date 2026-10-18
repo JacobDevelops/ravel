@@ -272,15 +272,13 @@ impl Mod for SavedDataMod {
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
-        self.declaration()
-            .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+        self.declaration().map(Some).map_err(ModError::from_display)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(DECLARATION)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Takes the waypoint limit the resolved settings put in force.
@@ -326,10 +324,8 @@ impl Mod for SavedDataMod {
                     .map(|state| (stored.data_version(), state))
             })
             .transpose()
-            .map_err(|error| ModError::refused(error.to_string()))?;
-        let opened = self
-            .open(state)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
+        let opened = self.open(state).map_err(ModError::from_display)?;
         if opened != *plan {
             return Err(ModError::refused(
                 "the admitted saved-data plan changed during delivery",
@@ -343,8 +339,7 @@ impl Mod for SavedDataMod {
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         let (version, state) = self.save();
-        let payload =
-            serde_json::to_value(state).map_err(|error| ModError::refused(error.to_string()))?;
+        let payload = serde_json::to_value(state).map_err(ModError::from_display)?;
         Ok(Some(SavedDataEnvelope::new(
             Self::declared_id().clone(),
             version,

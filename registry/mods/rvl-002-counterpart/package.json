@@ -41,7 +41,7 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "a647e426db209cc1433791d7daeb7b678ad5f4a3767d91c2cb067c76055bc929"
+        "sha256": "16392ab148d0ccae5490e43162b3dda21a377cb23aa0c17f73ec2a0417636231"
       },
       {
         "path": "NOTES.md",
@@ -77,7 +77,7 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "a70492ac7dfb42ab1ae8e8e9d32ccea38ae9018b40e06d5bc1bcfeeeaf207aba"
+        "sha256": "173b882d56e0f65b98880c2d0c44a82b1b6d577d34cf10c10576de25a87339a1"
       },
       {
         "path": "src/drops.rs",
@@ -101,7 +101,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "11af8d3f03e2012d2abb11f3180d8dcf4041a31a3f370adf71ac3cebaa920268"
+        "sha256": "dd41c72032ee9ed308820737ec0b8272d2e381c918c9530b90b12ae9c7e35069"
       },
       {
         "path": "src/recipes.rs",

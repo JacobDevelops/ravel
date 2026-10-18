@@ -72,7 +72,7 @@ impl Mod for CopperLanterns {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -146,7 +146,7 @@ impl Mod for CopperLanterns {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -170,7 +170,7 @@ impl Mod for CopperLanterns {
             .saved_data_migrations()?
             .expect("this mod declares a chain")
             .apply(plan, envelope.payload())
-            .map_err(|failed| ModError::refused(failed.to_string()))?;
+            .map_err(ModError::from_display)?;
         self.entries = read_entries(&current);
         Ok(())
     }
@@ -267,7 +267,7 @@ fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         [landmarks()], // what you use if something answers it
     )
     .map(Some)
-    .map_err(|error| ModError::refused(error.to_string()))
+    .map_err(ModError::from_display)
 }
 ```
 
@@ -293,7 +293,7 @@ fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), M
             Ok(())
         }
         // The atlas is installed and said no, which is a different thing.
-        Err(failed) => Err(ModError::refused(failed.to_string())),
+        Err(failed) => Err(ModError::from_display(failed)),
     }
 }
 ```

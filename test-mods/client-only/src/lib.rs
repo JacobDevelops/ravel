@@ -226,7 +226,7 @@ impl ClientOnlyMod {
         self.overlays
             .get(self.side)
             .map(Overlays::drawn)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 }
 
@@ -245,7 +245,7 @@ impl Mod for ClientOnlyMod {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(DECLARATION)
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     /// Takes the switch the resolved settings put in force.
@@ -284,7 +284,7 @@ impl Mod for ClientOnlyMod {
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let overlay = delivery
             .decode::<Overlay>()
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         let side = self.side;
         let enabled = self.enabled != Some(false);
@@ -292,7 +292,7 @@ impl Mod for ClientOnlyMod {
         let overlays = self
             .overlays
             .get_mut(side)
-            .map_err(|error| ModError::refused(error.to_string()))?;
+            .map_err(ModError::from_display)?;
 
         if !enabled {
             return Ok(());

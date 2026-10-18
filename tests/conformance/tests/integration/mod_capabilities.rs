@@ -311,7 +311,7 @@ fn two_mods_cannot_claim_the_same_command_root() {
         ) -> Result<(), ravel_host_api::ModError> {
             registrar
                 .claim(self.key.clone())
-                .map_err(|error| ravel_host_api::ModError::refused(error.to_string()))
+                .map_err(ravel_host_api::ModError::from_display)
         }
     }
 

@@ -42,7 +42,7 @@ pub mod settings;
 pub mod values;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
+use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
@@ -121,10 +121,8 @@ impl Entry {
     pub fn new(side: Side) -> Self {
         Self {
             side,
-            declaration: census::declaration()
-                .map_err(|error| ModError::refused(error.to_string())),
-            settings_declaration: settings::declaration()
-                .map_err(|error| ModError::refused(error.to_string())),
+            declaration: census::declaration().map_err(ModError::from_display),
+            settings_declaration: settings::declaration().map_err(ModError::from_display),
             settings: Settings::default(),
             colours: Colours::shipped(),
             commands: Commands::new(),
@@ -295,13 +293,14 @@ impl Mod for Entry {
         malformed.map_or(Ok(()), |error| Err(error.clone()))
     }
 
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some)
-    }
-
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
-        claim_all(declaration, registrar)
+    fn content_declaration(
+        &self,
+    ) -> Result<Option<std::borrow::Cow<'_, ContentDeclaration>>, ModError> {
+        self.declaration
+            .as_ref()
+            .map(std::borrow::Cow::Borrowed)
+            .map(Some)
+            .map_err(Clone::clone)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
@@ -312,7 +311,7 @@ impl Mod for Entry {
         self.settings = Settings::read(resolved);
         self.colours
             .resolve(Document::of(self.side), resolved)
-            .map_err(|refused| ModError::refused(refused.to_string()))?;
+            .map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -325,7 +324,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         GlobalData::declaration()
             .map(Some)
-            .map_err(|error| ModError::refused(error.to_string()))
+            .map_err(ModError::from_display)
     }
 
     fn open_saved_data(
@@ -339,8 +338,8 @@ impl Mod for Entry {
             self.global = GlobalData::new();
             return Ok(());
         };
-        self.global = GlobalData::from_payload(envelope.payload())
-            .map_err(|refused| ModError::refused(refused.to_string()))?;
+        self.global =
+            GlobalData::from_payload(envelope.payload()).map_err(ModError::from_display)?;
         Ok(())
     }
 
@@ -351,7 +350,7 @@ impl Mod for Entry {
         self.global
             .envelope()
             .map(Some)
-            .map_err(|refused| ModError::refused(refused.to_string()))
+            .map_err(ModError::from_display)
     }
 }
 
@@ -376,8 +375,7 @@ mod tests {
             shared.enter(LifecycleState::Constructed),
             Err(original.clone())
         );
-        shared.declaration =
-            census::declaration().map_err(|error| ModError::refused(error.to_string()));
+        shared.declaration = census::declaration().map_err(ModError::from_display);
         shared.settings_declaration = Err(original.clone());
         assert_eq!(
             shared

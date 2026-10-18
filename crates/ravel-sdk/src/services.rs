@@ -32,7 +32,7 @@
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 //!         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
 //!             .map(Some)
-//!             .map_err(|error| ModError::refused(error.to_string()))
+//!             .map_err(ModError::from_display)
 //!     }
 //!
 //!     fn answer_service(
@@ -64,7 +64,7 @@
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 //!         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
 //!             .map(Some)
-//!             .map_err(|error| ModError::refused(error.to_string()))
+//!             .map_err(ModError::from_display)
 //!     }
 //!
 //!     fn use_services(
@@ -73,7 +73,7 @@
 //!     ) -> Result<(), ModError> {
 //!         let answer = directory
 //!             .call(&ServiceRequest::new(prices(), json!({ "item": "lantern" })))
-//!             .map_err(|error| ModError::refused(error.to_string()))?;
+//!             .map_err(ModError::from_display)?;
 //!         self.lantern_price = answer.value().as_u64().unwrap_or_default();
 //!         Ok(())
 //!     }
@@ -121,7 +121,7 @@
 //!             [landmarks()],
 //!         )
 //!         .map(Some)
-//!         .map_err(|error| ModError::refused(error.to_string()))
+//!         .map_err(ModError::from_display)
 //!     }
 //!
 //!     fn use_services(
@@ -136,7 +136,7 @@
 //!                 Ok(())
 //!             }
 //!             // A provider that was reached and said no is a different event.
-//!             Err(failed) => Err(ModError::refused(failed.to_string())),
+//!             Err(failed) => Err(ModError::from_display(failed)),
 //!         }
 //!     }
 //! }

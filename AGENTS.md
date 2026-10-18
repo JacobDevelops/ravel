@@ -126,6 +126,9 @@ link the local fixtures with
   snapshot over newer edits; land follow-up fixes as a new change on top instead.
 - A lane that changes a public API migrates every caller inside its own change, so each change compiles
   alone; other lanes keep the old API until integration.
+- Before the final gate, `jj log -r '<base>::'` must show the working copy on top of the lane's described
+  changes. When it sits beside them instead, the newest edits live in the undescribed sibling; move them
+  with `jj restore --from @ --into <change>`, abandon the sibling and `jj new <change>`.
 
 ## Scope
 

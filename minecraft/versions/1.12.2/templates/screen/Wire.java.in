@@ -1,0 +1,35 @@
+{{package}}
+
+/** Length-prefixed UTF-16 framing shared with the existing native settings API. */
+final class Wire {
+    static final String VERSION = "1";
+    static final String MODS_VERSION = "3";
+    private final String text;
+    private int at;
+
+    Wire(String text) { this.text = text; }
+
+    String field() {
+        int separator = text.indexOf(':', at);
+        if (separator < 0) return null;
+        int length;
+        try { length = Integer.parseInt(text.substring(at, separator)); }
+        catch (NumberFormatException invalid) { return null; }
+        int start = separator + 1;
+        if (length < 0 || length > text.length() - start) return null;
+        at = start + length;
+        return text.substring(start, at);
+    }
+
+    int count() {
+        String value = field();
+        if (value == null) return -1;
+        try { return Math.max(-1, Integer.parseInt(value)); }
+        catch (NumberFormatException invalid) { return -1; }
+    }
+
+    boolean finished() { return at == text.length(); }
+    static void write(StringBuilder out, String value) {
+        out.append(value.length()).append(':').append(value);
+    }
+}

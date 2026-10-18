@@ -10,7 +10,7 @@ import java.security.CodeSource;
 import java.util.jar.JarFile;
 
 /**
- * The class the JVM calls, and the only Ravel class the system loader defines.
+ * The JVM premain entry; modern bundled launches define only this Ravel class in the system loader.
  *
  * <p>Ravel's classes have to be visible from every loader in the process, and
  * the {@code -javaagent} jar is on the system class path, which is not. The
@@ -36,6 +36,12 @@ import java.util.jar.JarFile;
  * bootstrap loader defined has no {@code CodeSource}, so nothing after this
  * point can say where the agent jar is, and {@code ravel-screen.jar} is found
  * beside it.
+ *
+ * <p>The legacy platform instead resolves this jar as the automatic module
+ * {@code dev.ravel.agent} and deliberately delegates Ravel to its system parent.
+ * A named Boot therefore starts Agent through its own loader, without appending
+ * the jar. Hook stays in that named module for a narrow native-access grant;
+ * unnamed game libraries, including unsupported narrator/JNA, remain ungranted.
  */
 public final class Boot {
 
@@ -52,7 +58,7 @@ public final class Boot {
     }
 
     /**
-     * Appends this jar to the bootstrap search, then starts Ravel out of it.
+     * Starts Ravel in its named module, or appends the unnamed jar to bootstrap first.
      *
      * @param arguments must be empty; the agent is configured by what it ships with
      * @param instrumentation the JVM's own instrumentation service
@@ -72,15 +78,17 @@ public final class Boot {
                             + " to the bootstrap class loader search");
         }
         File self = new File(source.getLocation().toURI());
-        JarFile jar = new JarFile(self);
-        appended = jar;
-        instrumentation.appendToBootstrapClassLoaderSearch(jar);
-
-        // By name and through the bootstrap loader explicitly. A compiled
-        // reference would resolve through this class's own defining loader,
-        // which is the system one, and the copy it found there is the copy this
-        // append exists to stop anything using.
-        Class<?> agent = Class.forName("dev.ravel.jvm.Agent", true, null);
+        ClassLoader loader = null;
+        if (Boot.class.getModule().isNamed()) {
+            // The legacy platform delegates Ravel to this resolved automatic module.
+            // Keeping Hook here permits a module-scoped JNI grant, never ALL-UNNAMED.
+            loader = Boot.class.getClassLoader();
+        } else {
+            JarFile jar = new JarFile(self);
+            appended = jar;
+            instrumentation.appendToBootstrapClassLoaderSearch(jar);
+        }
+        Class<?> agent = Class.forName("dev.ravel.jvm.Agent", true, loader);
         Method start = agent.getMethod("start", String.class, Instrumentation.class);
         try {
             start.invoke(null, self.getAbsolutePath(), instrumentation);

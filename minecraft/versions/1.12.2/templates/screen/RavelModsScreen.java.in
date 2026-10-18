@@ -1,0 +1,126 @@
+{{package}}
+
+import dev.ravel.jvm.Hook;
+import java.util.ArrayList;
+import java.util.List;
+{{import SCREEN}}
+{{import LEGACY_CLIENT}}
+
+/** The actual installed native mod surface, including attributed failures and settings entries. */
+public final class RavelModsScreen extends LegacyRavelScreen {
+    private final List<Entry> entries = new ArrayList<>();
+    private final List<String> notices = new ArrayList<>();
+    private final List<String> displayLines = new ArrayList<>();
+    private int offset;
+    private int actionable;
+    private String side;
+
+    private RavelModsScreen({{SCREEN}} parent) {
+        super(parent);
+        String document = Hook.ravelModSurface();
+        if (document == null) throw new IllegalStateException("mod surface is unavailable");
+        Wire wire = new Wire(document);
+        if (!Wire.MODS_VERSION.equals(wire.field())) throw new IllegalArgumentException("invalid mod surface version");
+        side = required(wire);
+        actionable = count(wire);
+        int count = count(wire);
+        for (int index = 0; index < count; index++) entries.add(new Entry(wire));
+        int noticed = count(wire);
+        for (int index = 0; index < noticed; index++) notices.add(required(wire));
+        if (!wire.finished()) throw new IllegalArgumentException("trailing mod surface data");
+        displayLines.addAll(notices);
+        for (Entry entry : entries) displayLines.addAll(entry.lines());
+    }
+    public static {{SCREEN}} open() { return new RavelModsScreen(null); }
+    public static {{SCREEN}} open(Object parent) { return new RavelModsScreen(({{SCREEN}}) parent); }
+    public List<Entry> entries() { return new ArrayList<>(entries); }
+    public List<String> notices() { return new ArrayList<>(notices); }
+    public int actionable() { return actionable; }
+
+    public {{SCREEN}} settings(String owner) {
+        for (Entry entry : entries) if (entry.modId.equals(owner) && entry.configurable)
+            return RavelSettingsScreen.open(owner, this);
+        throw new IllegalArgumentException("mod has no settings on this side: " + owner);
+    }
+    @Override
+    public void {{SCREEN#render}}(int x, int y, float delta) {
+        background("Ravel Mods — " + side + " — " + actionable + " need attention");
+        List<String> lines = lines();
+        for (int index = offset; index < Math.min(lines.size(), offset + visibleRows()); index++)
+            text(lines.get(index), left(), 40 + (index - offset) * 28, 0xFFFFFF);
+        button("Done", left(), footer(), 300, true);
+        text("Page Up / Page Down: scroll; click Settings to configure", left(), footer() + 26, 0xAAAAAA);
+    }
+    private List<String> lines() { return displayLines; }
+    @Override
+    protected void {{SCREEN#mouseClicked}}(int x, int y, int button) {
+        if (button != 0) return;
+        if (hit(x, y, left(), footer(), 300)) { close(); return; }
+        if (x < left() || x >= left() + 300 || y < 36 || y >= footer()) return;
+        int line = offset + (y - 36) / 28;
+        for (Entry entry : entries) {
+            int settingsLine = notices.size();
+            for (Entry previous : entries) {
+                if (previous == entry) break;
+                settingsLine += previous.lines().size();
+            }
+            settingsLine += entry.lines().size() - 1;
+            if (entry.configurable && line == settingsLine) {
+                {{LEGACY_CLIENT}}.{{LEGACY_CLIENT#getInstance}}().{{LEGACY_CLIENT#openScreen}}(settings(entry.modId));
+                return;
+            }
+        }
+    }
+    @Override
+    protected void {{SCREEN#keyPressed}}(char character, int key) {
+        if (key == 1) { close(); return; }
+        if (key == 201 || key == 209)
+            offset = Math.max(0, Math.min(Math.max(0, lines().size() - visibleRows()),
+                    offset + (key == 201 ? -visibleRows() : visibleRows())));
+    }
+    private static String required(Wire wire) {
+        String value = wire.field();
+        if (value == null) throw new IllegalArgumentException("incomplete mod surface");
+        return value;
+    }
+    private static int count(Wire wire) {
+        int value = wire.count();
+        if (value < 0) throw new IllegalArgumentException("invalid mod surface count");
+        return value;
+    }
+    public static final class Entry {
+        private final int position;
+        private final String modId, state, requirement;
+        private final boolean loadsHere, actionable, configurable;
+        private final List<String> failures = new ArrayList<>();
+        Entry(Wire wire) {
+            position = count(wire); modId = required(wire); state = required(wire); requirement = required(wire);
+            loadsHere = Boolean.parseBoolean(required(wire));
+            actionable = Boolean.parseBoolean(required(wire));
+            configurable = Boolean.parseBoolean(required(wire));
+            int failed = count(wire);
+            if (failed > 0) {
+                String kind = required(wire), surfaceKind = required(wire), surface = required(wire);
+                String failedIn = required(wire), version = required(wire);
+                int links = count(wire);
+                List<String> chain = new ArrayList<>();
+                for (int index = 0; index < links; index++) chain.add(required(wire));
+                String detail = required(wire);
+                failures.add((kind.isEmpty() ? "failed in " + failedIn : kind) + " " + version
+                        + " at " + surfaceKind + " " + surface + " via " + String.join(" -> ", chain) + ": " + detail);
+            }
+        }
+        public String modId() { return modId; }
+        public int position() { return position; }
+        public boolean isActionable() { return actionable; }
+        public boolean configurable() { return configurable; }
+        public List<String> lines() {
+            List<String> lines = new ArrayList<>();
+            lines.add(position + ". " + modId + " — " + state + (loadsHere ? "" : " (other side)")
+                    + ("optional".equals(requirement) ? " (optional)" : ""));
+            lines.addAll(failures);
+            if (configurable) lines.add("Settings: " + modId);
+            return lines;
+        }
+    }
+}

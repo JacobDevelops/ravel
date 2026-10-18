@@ -1,0 +1,44 @@
+{{package}}
+
+{{import SCREEN}}
+{{import LEGACY_GUI}}
+{{import LEGACY_CLIENT}}
+
+/** Java owns legacy rendering and input; native calls occur only at session boundaries. */
+abstract class LegacyRavelScreen extends {{SCREEN}} {
+    final {{SCREEN}} parent;
+
+    private int drawnFrames;
+
+    public final int drawnFrames() { return drawnFrames; }
+    LegacyRavelScreen({{SCREEN}} parent) {
+        this.parent = parent;
+    }
+
+    final int left() { return ({{SCREEN#width}} - 300) / 2; }
+    final int visibleRows() { return Math.max(1, ({{SCREEN#height}} - 112) / 32); }
+    final int footer() { return {{SCREEN#height}} - 52; }
+
+    final void text(String value, int x, int y, int color) {
+        {{LEGACY_GUI#drawString}}({{SCREEN#textRenderer}}, value, x, y, color);
+    }
+
+    final void background(String title) {
+        drawnFrames++;
+        {{LEGACY_GUI}}.{{LEGACY_GUI#fill}}(0, 0, {{SCREEN#width}}, {{SCREEN#height}}, 0xEE18202B);
+        {{LEGACY_GUI#drawCenteredString}}({{SCREEN#textRenderer}}, title, {{SCREEN#width}} / 2, 14, 0xFFFFFF);
+    }
+
+    final void button(String label, int x, int y, int width, boolean enabled) {
+        {{LEGACY_GUI}}.{{LEGACY_GUI#fill}}(x, y, x + width, y + 20, enabled ? 0xFF405775 : 0xFF30343A);
+        text(label, x + 5, y + 6, enabled ? 0xFFFFFF : 0x999999);
+    }
+
+    final boolean hit(int x, int y, int left, int top, int width) {
+        return x >= left && x < left + width && y >= top && y < top + 20;
+    }
+
+    final void close() {
+        {{LEGACY_CLIENT}}.{{LEGACY_CLIENT#getInstance}}().{{LEGACY_CLIENT#openScreen}}(parent);
+    }
+}

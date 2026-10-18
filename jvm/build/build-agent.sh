@@ -30,11 +30,32 @@ release="$(cat "$release_file")"
 rm -rf "$classes"
 mkdir -p "$classes"
 
+# The agent is two disjoint adapters that share the transformer core. Do not
+# compile one adapter against the other mode's generated Hook surface: legacy
+# sources require legacy-only Hook methods and names that a modern inventory
+# deliberately does not generate.
+sources=()
+adapter_sources=()
+for source in Boot Agent Transformer HookTarget Members; do
+	sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java")
+done
+
 # No game classes belong on this compile path; adapters resolve them at runtime.
-mapfile -d '' sources < <(find "$root/jvm/bootstrap" "$generated" -name '*.java' -print0 | sort -z)
+legacy=false
+if grep -q 'LEGACY_ADAPTER = true' "$generated/dev/ravel/jvm/Hook.java"; then
+	legacy=true
+	mapfile -d '' adapter_sources < <(find "$root/jvm/bootstrap/dev/ravel/jvm" -maxdepth 1 -name 'Legacy*.java' -print0 | sort -z)
+	mapfile -d '' generated_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
+else
+	for source in Content Datapack Outward Persistence Screens; do
+		sources+=("$root/jvm/bootstrap/dev/ravel/jvm/$source.java")
+	done
+	mapfile -d '' generated_sources < <(find "$generated" -name '*.java' ! -name 'LegacyNames.java' -print0 | sort -z)
+fi
+sources+=("${adapter_sources[@]}" "${generated_sources[@]}")
 javac --release "$release" -Xlint:all -Werror -d "$classes" "${sources[@]}"
 
-printf 'Premain-Class: dev.ravel.jvm.Boot\nCan-Retransform-Classes: false\n' >"$manifest"
+printf 'Premain-Class: dev.ravel.jvm.Boot\nCan-Retransform-Classes: false\nAutomatic-Module-Name: dev.ravel.agent\nRavel-Legacy-Adapter: %s\n' "$legacy" >"$manifest"
 
 # Explicit sorted entries avoid filesystem-dependent jar ordering.
 mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sort -z)

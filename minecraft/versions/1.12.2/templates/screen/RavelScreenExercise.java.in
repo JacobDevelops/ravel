@@ -1,0 +1,55 @@
+{{package}}
+
+{{import SCREEN}}
+{{import LEGACY_CLIENT}}
+{{import LEGACY_TITLE}}
+
+/** Acceptance-only caller drives this on the real owning client thread between rendered frames. */
+public final class RavelScreenExercise {
+    private static {{SCREEN}} parent;
+    private static RavelModsScreen mods;
+    private static RavelSettingsScreen settings;
+    private static int stage;
+    private static int ticks;
+
+    private RavelScreenExercise() {}
+
+    public static boolean exercise(Object game) {
+        {{LEGACY_CLIENT}} client = ({{LEGACY_CLIENT}}) game;
+        if (stage == 3) return true;
+        if (++ticks > 400) throw new AssertionError("legacy settings/menu did not render within 400 client ticks");
+        if (stage == 0) {
+            parent = client.{{LEGACY_CLIENT#screen}};
+            {{SCREEN}} title = new {{LEGACY_TITLE}}();
+            client.{{LEGACY_CLIENT#openScreen}}(title);
+            if (RavelMenu.entryCount(title) != 1) throw new AssertionError("title initialization omitted or duplicated Ravel Mods");
+            int width = title.{{SCREEN#width}};
+            int height = title.{{SCREEN#height}};
+            title.{{SCREEN#resize}}(client, width - 1, height - 1);
+            if (RavelMenu.entryCount(title) != 1) throw new AssertionError("title resize lost or duplicated Ravel Mods");
+            title.{{SCREEN#resize}}(client, width, height);
+            if (RavelMenu.entryCount(title) != 1) throw new AssertionError("repeated title initialization duplicated Ravel Mods");
+            mods = (RavelModsScreen) RavelModsScreen.open(parent);
+            stage = 1;
+            client.{{LEGACY_CLIENT#openScreen}}(mods);
+        } else if (stage == 1 && mods.drawnFrames() >= 2) {
+            settings = (RavelSettingsScreen) mods.settings("configuration");
+            client.{{LEGACY_CLIENT#openScreen}}(settings);
+            stage = 2;
+        } else if (stage == 2 && settings.drawnFrames() >= 2) {
+            String original = settings.value("client.enabled");
+            settings.{{SCREEN#mouseClicked}}(settings.left() + 5, 50, 0);
+            if (!Boolean.toString(!Boolean.parseBoolean(original)).equals(settings.value("client.enabled")))
+                throw new AssertionError("live legacy toggle input did not edit the displayed native row");
+            settings.reset();
+            if (!original.equals(settings.value("client.enabled"))) throw new AssertionError("live legacy reset failed");
+            settings.cancel();
+            client.{{LEGACY_CLIENT#openScreen}}(parent);
+            stage = 3;
+            System.out.println("legacy-live-screens=passed modsFrames=" + mods.drawnFrames()
+                    + " settingsFrames=" + settings.drawnFrames());
+            return true;
+        }
+        return false;
+    }
+}

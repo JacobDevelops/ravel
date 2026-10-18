@@ -73,6 +73,11 @@ public final class Agent {
         return UNNAMED;
     }
 
+    /** True only after the client entry-point prologue selected this distribution. */
+    static boolean clientStarted() {
+        return side.get() == CLIENT;
+    }
+
     /**
      * Composes the mod set in the entry-point prologue, before game code runs.
      * Classes loaded inside a transformer bypass transformation, so initialization must wait.
@@ -86,9 +91,19 @@ public final class Agent {
         game = entry.getClassLoader();
         try {
             Hook.ravelInitialize(named, "true".equals(System.getProperty("ravel.profiling")));
-            Screens.install();
+            installScreens();
         } finally {
             installed.countDown();
+        }
+    }
+
+    /** Legacy jars do not ship the modern screen adapter. */
+    private static void installScreens() {
+        try {
+            String adapter = Hook.LEGACY_ADAPTER ? "LegacyScreens" : "Screens";
+            Class.forName("dev.ravel.jvm." + adapter).getDeclaredMethod("install").invoke(null);
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("the screen adapter could not be installed", failure);
         }
     }
 
@@ -219,7 +234,7 @@ public final class Agent {
         write(FileDescriptor.err, "[ravel] " + message + "\n");
     }
 
-    private static void write(FileDescriptor descriptor, String line) {
+    static void write(FileDescriptor descriptor, String line) {
         // Closing this stream would close the process's descriptor.
         OutputStream out = new FileOutputStream(descriptor);
         try {

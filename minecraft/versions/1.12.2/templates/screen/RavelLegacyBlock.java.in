@@ -1,0 +1,25 @@
+{{package}}
+
+/** Per-declaration material prevents one block's tool rule mutating vanilla stone. */
+public final class RavelLegacyBlock extends {{LEGACY_BLOCK}} {
+    public RavelLegacyBlock(float hardness, float resistance, boolean requiresTool,
+            boolean randomTicks) {
+        super(material(requiresTool));
+        this.{{LEGACY_BLOCK#setStrength}}(hardness);
+        this.{{LEGACY_BLOCK#setBlastResistance}}(resistance);
+        this.{{LEGACY_BLOCK#setTicksRandomly}}(randomTicks);
+    }
+
+    private static {{LEGACY_MATERIAL}} material(boolean requiresTool) {
+        return new RavelMaterial(requiresTool);
+    }
+
+    private static final class RavelMaterial extends {{LEGACY_MATERIAL}} {
+        RavelMaterial(boolean requiresTool) {
+            super({{LEGACY_MATERIAL}}.{{LEGACY_MATERIAL#STONE}}.{{LEGACY_MATERIAL#getColor}}());
+            if (requiresTool) {
+                this.{{LEGACY_MATERIAL#setRequiresTool}}();
+            }
+        }
+    }
+}

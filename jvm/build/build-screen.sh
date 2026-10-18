@@ -36,18 +36,13 @@ mkdir -p "$stubs" "$classes"
 mapfile -d '' stub_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
 javac --release "$release" -nowarn -d "$stubs" "${stub_sources[@]}"
 
-# Hook is compiled against but shipped only in the agent jar.
-hook="$work/generated"
-if [ ! -f "$hook/dev/ravel/jvm/Hook.java" ]; then
-	echo "the generated hook class is missing; run:" >&2
-	echo "  cargo run -p ravel-xtask -- generate java" >&2
-	exit 1
-fi
-javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
-	"$hook/dev/ravel/jvm/Hook.java" "$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java"
+# Compile Hook's full runtime closure using the agent's pinned Java release.
+# Always rebuild: an existing agent jar may belong to another generated version.
+# Agent classes are compile dependencies only and never enter the screen output.
+agent="$("$root/jvm/build/build-agent.sh")"
 
 mapfile -d '' sources < <(find "$screens" -name '*.java' -print0 | sort -z)
-javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$classes" "${sources[@]}"
+javac --release "$release" -Xlint:all -Werror -cp "$stubs:$agent" -d "$classes" "${sources[@]}"
 
 # Shipping stubs would shadow game classes, including names in the unnamed package.
 while IFS= read -r -d '' stub; do

@@ -1,0 +1,79 @@
+{{package}}
+
+{{import LEGACY_SAVED_DATA}}
+{{import LEGACY_NBT}}
+{{import LEGACY_NBT_IO}}
+{{import LEGACY_NBT_LIMITER}}
+
+/** One opaque Rust aggregate in vanilla's global MapStorage. */
+public final class RavelWorldData extends {{LEGACY_SAVED_DATA}} {
+    private static final String NAME = "ravel_mods";
+    private static final String FIELD = "aggregate";
+    private static final int LIMIT = 1024 * 1024;
+    private byte[] aggregate;
+
+    public RavelWorldData(String name) {
+        super(name);
+    }
+
+    @Override
+    public void {{LEGACY_SAVED_DATA#readNbt}}({{LEGACY_NBT}} tag) {
+        if (!tag.{{LEGACY_NBT#contains}}(FIELD, 7)) {
+            throw new IllegalStateException("Ravel aggregate is not an NBT byte array");
+        }
+        aggregate = bounded(tag.{{LEGACY_NBT#getByteArray}}(FIELD));
+    }
+
+    @Override
+    public {{LEGACY_NBT}} {{LEGACY_SAVED_DATA#writeNbt}}({{LEGACY_NBT}} tag) {
+        tag.{{LEGACY_NBT#putByteArray}}(FIELD, bounded(aggregate));
+        return tag;
+    }
+
+    public static byte[] read(java.io.File root) throws java.io.IOException {
+        java.nio.file.Path path = root.toPath().resolve("data").resolve(NAME + ".dat");
+        if (!java.nio.file.Files.exists(path)) {
+            return null;
+        }
+        try (java.io.DataInputStream input = new java.io.DataInputStream(
+                new java.util.zip.GZIPInputStream(java.nio.file.Files.newInputStream(path)))) {
+            {{LEGACY_NBT}} outer = {{LEGACY_NBT_IO}}.{{LEGACY_NBT_IO#read}}(
+                    (java.io.DataInput) input, new {{LEGACY_NBT_LIMITER}}(2L * LIMIT));
+            if (!outer.{{LEGACY_NBT#contains}}("data", 10)) {
+                throw new IllegalStateException("Ravel saved data has no compound payload");
+            }
+            RavelWorldData held = new RavelWorldData(NAME);
+            held.{{LEGACY_SAVED_DATA#readNbt}}(outer.{{LEGACY_NBT#getCompound}}("data"));
+            return held.aggregate;
+        }
+    }
+
+    public static Object[] lookup() {
+        return new Object[] {RavelWorldData.class, NAME};
+    }
+
+    public static Object[] replacement(byte[] bytes) {
+        RavelWorldData held = new RavelWorldData(NAME);
+        held.aggregate = bounded(bytes);
+        return new Object[] {NAME, held};
+    }
+
+    public static byte[] bytes(Object stored) {
+        return stored == null ? null : ((RavelWorldData) stored).aggregate;
+    }
+
+    /** Check and stage before touching the live object's payload or dirty bit. */
+    public static void commit(Object live, Object staged) {
+        RavelWorldData target = (RavelWorldData) live;
+        byte[] replacement = bounded(((RavelWorldData) staged).aggregate);
+        target.{{LEGACY_SAVED_DATA#markDirty}}();
+        target.aggregate = replacement;
+    }
+
+    private static byte[] bounded(byte[] bytes) {
+        if (bytes == null || bytes.length > LIMIT) {
+            throw new IllegalArgumentException("Ravel aggregate exceeds its byte bound");
+        }
+        return bytes.clone();
+    }
+}

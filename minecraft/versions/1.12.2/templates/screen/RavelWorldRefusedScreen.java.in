@@ -1,0 +1,27 @@
+{{package}}
+
+{{import SCREEN}}
+
+/** Shows the native admission refusal without weakening world-load protection. */
+public final class RavelWorldRefusedScreen extends LegacyRavelScreen {
+    private final String diagnostic;
+    private RavelWorldRefusedScreen(String diagnostic) { super(null); this.diagnostic = diagnostic; }
+    public static {{SCREEN}} open(String diagnostic) { return new RavelWorldRefusedScreen(diagnostic); }
+    public String diagnostic() { return diagnostic; }
+    @Override
+    public void {{SCREEN#render}}(int x, int y, float delta) {
+        background("Ravel refused this world");
+        int line = 42;
+        for (String message : diagnostic.split("\n")) {
+            text(message, left(), line, 0xFFAAAA);
+            line += 12;
+        }
+        button("Return to menu", left(), footer(), 300, true);
+    }
+    @Override
+    protected void {{SCREEN#keyPressed}}(char character, int key) { if (key == 1) close(); }
+    @Override
+    protected void {{SCREEN#mouseClicked}}(int x, int y, int button) {
+        if (button == 0 && hit(x, y, left(), footer(), 300)) close();
+    }
+}

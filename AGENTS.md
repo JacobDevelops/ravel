@@ -56,7 +56,14 @@ intact and says nothing about closure. Closure is `cargo make ravel:verify-miles
 milestone exits 1 there and is expected to. Ask that task which milestones are closed; do not trust a list
 written here, and do not write one — a milestone closes and this sentence would go stale unnoticed.
 
-Judge the gate by its exit status, not an individual task's test summary.
+Judge the gate by its exit status, not an individual task's test summary. Run heavy checks (`ravel:verify`,
+workspace clippy, live launches) through `numen run -- <command>` so concurrent agents serialise instead of
+contending for the target directory, GPU and shared legacy artifacts. If coverage lists paths from another
+checkout, remove `target/llvm-cov-target` and rerun; stale rows survive deleted sibling workspaces.
+
+Package digests in `package.json` are written by
+`cargo run -q -p ravel-xtask -- package digests <dir>` and confirmed with the same command plus `--check`;
+regenerate them for every package whose sources a change touches.
 
 ## Hard rules
 
@@ -81,6 +88,8 @@ Judge the gate by its exit status, not an individual task's test summary.
   Never track fixture contents, credentials, launcher tokens, or raw captures.
 - Scaffold checks discover maintained Cargo members from their directories. Adding or removing a
   member only requires its Cargo workspace wiring, including `[workspace.dependencies]` when used.
+- Registry counterparts, examples and test mods depend on `ravel-sdk` alone, dev-dependencies included:
+  player builds vet every mod-reachable crate against the SDK closure.
 
 ## Version control
 
@@ -104,6 +113,20 @@ your first commit in a session; it holds the commands and the review loop.
   Stopping at a described local change is completion. When approval exists, pushing a revised change is the
   normal path, not a force push to apologise for.
 - `cargo make ravel:verify-stack` enforces this contract and runs inside `ravel:verify`.
+
+### Parallel workspaces
+
+Concurrent agents each work in their own `jj workspace add --name <lane> -r <base> ../ravel-<lane>`, then
+link the local fixtures with
+`for d in ../ravel/tests/fixtures/local/*/; do ln -s "$(realpath "$d")" tests/fixtures/local/; done`.
+
+- Edit and write tools resolve relative paths against the primary checkout, so every edit path starts with
+  the lane workspace's absolute path; repeat this in each sub-agent brief.
+- A change below another workspace's working-copy parent stays frozen while that workspace is live.
+  Rewriting it makes the other workspace stale, and `jj workspace update-stale` can then restore an older
+  snapshot over newer edits; land follow-up fixes as a new change on top instead.
+- A lane that changes a public API migrates every caller inside its own change, so each change compiles
+  alone; other lanes keep the old API until integration.
 
 ## Scope
 

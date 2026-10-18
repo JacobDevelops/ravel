@@ -4,7 +4,8 @@ use std::fmt;
 use ravel_core::ModId;
 use serde_json::Value;
 
-use crate::{SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion};
+use crate::error::SavedDataError;
+use crate::{SavedDataDeclaration, SavedDataPlan, SavedDataVersion};
 
 /// A non-capturing migration from the preceding data version to the target version.
 pub type MigrationStep = fn(&Value) -> Result<Value, MigrationFailed>;
@@ -173,8 +174,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{MigrationChain, MigrationFailed};
+    use crate::error::SavedDataError;
     use crate::tests::{id, version};
-    use crate::{SavedDataDeclaration, SavedDataError, SavedDataPlan};
+    use crate::{SavedDataDeclaration, SavedDataPlan};
 
     fn to_two(payload: &Value) -> Result<Value, MigrationFailed> {
         append(payload, 2)

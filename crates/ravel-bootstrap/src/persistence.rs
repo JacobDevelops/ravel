@@ -1,20 +1,19 @@
-//! Identity-keyed world admission, checkpoints, and data-pack JNI crossings.
+//! Identity-keyed world admission, checkpoints, and data-pack publication.
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::{Arc, PoisonError};
 
-use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{JNI_FALSE, jboolean, jint};
-use jni::{Env, EnvUnowned};
+use jni::sys::jint;
 use ravel_core::ModId;
 use ravel_host_api::{HostMod, Outcome, Point};
-use ravel_save::{MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataError};
+use ravel_save::{SavedDataAggregate, SavedDataError};
 use semver::Version;
 
-use crate::guard::{HookError, text};
 use crate::runtime::LoaderRuntime;
+
+pub(crate) mod crossings;
 
 #[derive(Clone, Debug)]
 struct Checkpoint {
@@ -485,112 +484,6 @@ impl LoaderRuntime {
     }
 }
 
-enum Incoming {
-    Absent,
-    /// Empty arrays are present but unreadable, never fresh state.
-    Present(Vec<u8>),
-    Oversized(String),
-}
-
-// Check the JNI array length before allocating native storage.
-fn incoming<'local>(
-    env: &Env<'local>,
-    aggregate: &JByteArray<'local>,
-) -> Result<Incoming, HookError> {
-    if aggregate.is_null() {
-        return Ok(Incoming::Absent);
-    }
-    let length = aggregate.len(env)?;
-    if length > MAX_AGGREGATE_BYTES {
-        return Ok(Incoming::Oversized(
-            SavedDataError::AggregateTooLarge {
-                limit: MAX_AGGREGATE_BYTES,
-            }
-            .to_string(),
-        ));
-    }
-    Ok(Incoming::Present(env.convert_byte_array(aggregate)?))
-}
-
-/// Returns empty text on admission or a diagnostic on refusal; null also refuses.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelOpenWorldPersistence")]
-pub fn ravel_open_world_persistence<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    aggregate: JByteArray<'local>,
-    identity: JString<'local>,
-    fresh_world: jboolean,
-) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            let identity = text(env, &identity)?;
-            let outcome = match incoming(env, &aggregate)? {
-                Incoming::Absent => stage(&identity, None, fresh_world != JNI_FALSE),
-                Incoming::Present(bytes) => {
-                    stage(&identity, Some(&bytes), fresh_world != JNI_FALSE)
-                }
-                Incoming::Oversized(refusal) => OpenOutcome::Refused(refusal),
-            };
-            Ok(match outcome {
-                OpenOutcome::Staged => env.new_string("")?,
-                OpenOutcome::Refused(diagnostic) => env.new_string(publishable(&diagnostic))?,
-            })
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-const UNCHANGED: u8 = 0x00;
-const REPLACEMENT: u8 = 0x01;
-const FAILED: u8 = 0x02;
-const IDENTITY_MISMATCH: u8 = 0x03;
-
-fn tagged(tag: u8, payload: &[u8]) -> Vec<u8> {
-    let mut answer = Vec::with_capacity(payload.len() + 1);
-    answer.push(tag);
-    answer.extend_from_slice(payload);
-    answer
-}
-
-fn publishable(diagnostic: &str) -> String {
-    ravel_observability::redact(diagnostic).text().to_owned()
-}
-
-fn save_answer(outcome: SaveOutcome) -> Vec<u8> {
-    match outcome {
-        // Java writes nothing for both vetoed and unchanged saves.
-        SaveOutcome::Unchanged | SaveOutcome::Withheld => vec![UNCHANGED],
-        SaveOutcome::Replacement(bytes) => tagged(REPLACEMENT, &bytes),
-        SaveOutcome::Failed(detail) => tagged(FAILED, publishable(&detail).as_bytes()),
-        SaveOutcome::IdentityMismatch(detail) => {
-            tagged(IDENTITY_MISMATCH, publishable(&detail).as_bytes())
-        }
-    }
-}
-
-/// Returns a tagged save result; null or failure leaves vanilla saving untouched.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSaveWorldPersistence")]
-pub fn ravel_save_world_persistence<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    identity: JString<'local>,
-) -> JByteArray<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JByteArray<'local>, HookError> {
-            let identity = text(env, &identity)?;
-            let answer = save_answer(save(&identity));
-            Ok(env.byte_array_from_slice(&answer)?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
 // Reject paths whose tree replacement could overwrite the game directory.
 fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
     if !world.is_absolute() {
@@ -645,63 +538,6 @@ fn pack_targets_are_real(world: &Path) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// Writes the world data pack before pack discovery; failures become notices.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteWorldDatapack")]
-pub fn ravel_write_world_datapack<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    world: JString<'local>,
-) {
-    env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
-        let world = text(env, &world)?;
-        if let Ok(runtime) = runtime() {
-            runtime.write_world_pack(&world);
-        }
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
-}
-
-/// Stages the data pack and returns 0 for absent, 1 for unchanged, or 2 for changed.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteStagedDatapack")]
-pub fn ravel_write_staged_datapack<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    directory: JString<'local>,
-) -> jint {
-    env.with_env(|env: &mut Env<'local>| -> Result<jint, HookError> {
-        let directory = text(env, &directory)?;
-        let Ok(runtime) = runtime() else {
-            return Ok(jint::from(StagedPack::Nothing));
-        };
-        Ok(jint::from(runtime.write_staged_pack(&directory)))
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-/// Returns the game-facing identifier of Ravel's data pack.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelPackId")]
-pub fn ravel_pack_id<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-) -> JString<'local> {
-    env.with_env(
-        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            Ok(env.new_string(ravel_loader::pack_id())?)
-        },
-    )
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 impl From<SavedDataError> for OpenOutcome {

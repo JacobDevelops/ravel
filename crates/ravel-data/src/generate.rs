@@ -85,18 +85,14 @@ fn document(value: &Value) -> Vec<u8> {
     text.into_bytes()
 }
 
-/// Renders tag members with `replace: false` to preserve other contributions.
-pub(crate) fn tag_document(members: &[String]) -> Vec<u8> {
+/// Renders sorted tag members with `replace: false` to preserve other contributions.
+pub(crate) fn tag_document(mut members: Vec<String>) -> Vec<u8> {
+    members.sort();
     let mut object = Map::new();
     object.insert("replace".to_owned(), Value::Bool(false));
     object.insert(
         "values".to_owned(),
-        Value::Array(
-            members
-                .iter()
-                .map(|member| Value::String(member.clone()))
-                .collect(),
-        ),
+        Value::Array(members.into_iter().map(Value::String).collect()),
     );
     document(&Value::Object(object))
 }
@@ -239,7 +235,10 @@ mod tests {
 
     #[test]
     fn a_tag_document_is_the_exact_text_this_test_pins() {
-        let rendered = tag_document(&["example_mod:copper".to_owned(), "other:tin".to_owned()]);
+        let rendered = tag_document(vec![
+            "other:tin".to_owned(),
+            "example_mod:copper".to_owned(),
+        ]);
         assert_eq!(
             String::from_utf8(rendered).expect("generated JSON is UTF-8"),
             "{\n  \"replace\": false,\n  \"values\": [\n    \"example_mod:copper\",\n    \
@@ -249,7 +248,7 @@ mod tests {
 
     #[test]
     fn an_empty_tag_document_is_still_a_document_with_no_members() {
-        let rendered = tag_document(&[]);
+        let rendered = tag_document(Vec::new());
         assert_eq!(
             String::from_utf8(rendered).expect("generated JSON is UTF-8"),
             "{\n  \"replace\": false,\n  \"values\": []\n}\n"
@@ -277,7 +276,7 @@ mod tests {
         );
 
         for rendered in [
-            tag_document(&["a:b".to_owned()]),
+            tag_document(vec!["a:b".to_owned()]),
             translation_document(&entries),
         ] {
             assert!(rendered.ends_with(b"\n"));

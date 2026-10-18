@@ -5,6 +5,7 @@ set -euo pipefail
 # partway: the instance config is left exactly as it was found. Needs no display.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/assert-status.sh"
 probe="$script_dir/prism-nested-launch-probe.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -28,17 +29,6 @@ for tool in xdotool openbox import wmctrl xdpyinfo glxinfo Xephyr; do
   chmod +x "$stub_bin/$tool"
 done
 export PATH="$stub_bin:$PATH"
-
-expect_status() {
-  local expected="$1" description="$2"
-  shift 2
-  local status=0
-  "$@" >/dev/null 2>&1 || status=$?
-  [[ "$status" -eq "$expected" ]] || {
-    echo "FAIL: $description expected status $expected, got $status" >&2
-    exit 1
-  }
-}
 
 expect_config_untouched() {
   local description="$1"

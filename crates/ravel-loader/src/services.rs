@@ -386,9 +386,7 @@ impl StructuredFailure for ServiceRefused {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use ravel_core::{ContentId, LifecycleState, ModId, Side, SideSet};
+    use ravel_core::{ContentId, LifecycleState, ModId, Side};
     use ravel_host_api::{
         HostError, HostMod, ModError, ServiceDeclaration, ServiceDirectory, ServiceId,
         ServiceRequest, ServiceResponse,
@@ -397,6 +395,7 @@ mod tests {
 
     use super::{ServiceRefused, open_services};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::tests::entry;
 
     struct Failing {
         id: ModId,
@@ -608,15 +607,6 @@ mod tests {
                     .push(answer.value().as_str().unwrap_or_default().to_owned());
             }
             Ok(())
-        }
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
         }
     }
 

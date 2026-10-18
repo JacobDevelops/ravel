@@ -64,8 +64,19 @@ pub fn callback<T>(
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId, StructuredFailure};
+    use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
     use ravel_host_api::{HostError, ModError};
+
+    use crate::lifecycle::{LifecycleEntry, Requirement};
+
+    pub(crate) fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
+        LifecycleEntry {
+            mod_id: name.parse().expect("a legal mod id"),
+            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
+            requirement: Requirement::Required,
+            saved_data_versions: std::collections::BTreeSet::new(),
+        }
+    }
 
     #[test]
     fn panics_are_distinct_from_mod_refusals_with_the_same_text() {

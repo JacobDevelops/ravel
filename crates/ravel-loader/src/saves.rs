@@ -292,7 +292,7 @@ impl StructuredFailure for SaveRefused {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, SideSet, StructuredFailure};
+    use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure};
     use ravel_host_api::{HostError, HostMod, ModError};
     use ravel_save::{
         MigrationChain, MigrationFailed, SavedDataAggregate, SavedDataDeclaration,
@@ -302,6 +302,7 @@ mod tests {
 
     use super::{SaveRefused, open_saved_data};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::tests::entry;
 
     struct Failing {
         id: ModId,
@@ -786,15 +787,6 @@ mod tests {
             })
         );
         assert_eq!(host.read, None);
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
     }
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {

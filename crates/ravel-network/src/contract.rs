@@ -2,7 +2,8 @@ use std::fmt;
 
 use ravel_core::{ContentId, ModId, Side};
 
-use crate::{PacketReader, PacketWriter, WireError};
+use crate::WireError;
+use crate::wire::{PacketReader, PacketWriter};
 
 /// Which side receives a packet.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

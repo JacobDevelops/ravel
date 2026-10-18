@@ -270,12 +270,15 @@ impl ContentDeclaration {
             data.insert(path, bytes);
         }
         for (tag, members) in &self.tags {
-            let mut spellings: Vec<String> = members
-                .iter()
-                .map(|member| member.id().to_string())
-                .collect();
-            spellings.sort();
-            data.insert(tag.generated_path(), tag_document(&spellings));
+            data.insert(
+                tag.generated_path(),
+                tag_document(
+                    members
+                        .iter()
+                        .map(|member| member.id().to_string())
+                        .collect(),
+                ),
+            );
         }
         for (locale, entries) in &self.translations {
             data.insert(

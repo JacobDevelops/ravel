@@ -33,7 +33,7 @@ pub mod exports {
     #[cfg(test)]
     pub use crate::guard::tests::generated_export;
     pub use crate::mods::ravel_mod_surface;
-    pub use crate::persistence::{
+    pub use crate::persistence::crossings::{
         ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
         ravel_write_staged_datapack, ravel_write_world_datapack,
     };

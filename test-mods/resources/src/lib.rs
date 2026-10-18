@@ -59,7 +59,7 @@ impl ResourcesMod {
     ///
     /// # Panics
     ///
-    /// Panics if a constant in [`DECLARED`] stops being a legal relative path,
+    /// Panics if a constant in `DECLARED` stops being a legal relative path,
     /// which would mean the manifest it mirrors can no longer be validated.
     #[must_use]
     pub fn declared(&self) -> Vec<RelativePath> {

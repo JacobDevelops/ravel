@@ -7,7 +7,8 @@ use std::process::{Command, Stdio};
 
 use ravel_core::MINECRAFT_VERSION_SELECTION;
 
-use crate::{BuildRefused, HOST_LIBRARY, HostPlan, WORKSPACE_DIRECTORY};
+use crate::error::BuildRefused;
+use crate::{HOST_LIBRARY, HostPlan, WORKSPACE_DIRECTORY};
 
 /// Writes changed generated files, compiles the selected version, and copies the host into the instance.
 ///

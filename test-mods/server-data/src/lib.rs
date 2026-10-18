@@ -75,7 +75,7 @@ impl ServerDataMod {
     /// # Errors
     ///
     /// Returns [`ServerDataError`] if any entry is refused, which would mean two
-    /// of [`ENTRIES`] name one file.
+    /// of `ENTRIES` name one file.
     pub fn declaration() -> Result<ServerDataDeclaration, ServerDataError> {
         let mut declared = ServerDataDeclaration::new(Self::declared_id().clone());
         for (kind, name, bytes) in ENTRIES {

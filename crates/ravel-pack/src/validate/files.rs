@@ -7,7 +7,8 @@ use ravel_package::PackageManifest;
 use serde_json::{Map, Value};
 
 use super::{PackFile, RESERVED_PREFIX};
-use crate::{ClosureError, PackDeclaration};
+use crate::declare::PackDeclaration;
+use crate::error::ClosureError;
 
 /// Builds the pack's files, refusing a contested or reserved path.
 pub(super) fn written_files(

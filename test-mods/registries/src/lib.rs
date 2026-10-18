@@ -95,7 +95,7 @@ impl RegistriesMod {
     /// # Panics
     ///
     /// Panics if `path` is not a legal [`ContentId`] path. Every caller in this
-    /// crate passes a constant from [`CLAIMS`], and a test asserts they parse.
+    /// crate passes a constant from `CLAIMS`, and a test asserts they parse.
     #[must_use]
     pub fn key(&self, kind: ContentKind, path: &str) -> RegistryKey {
         RegistryKey::new(

@@ -156,14 +156,13 @@ impl StructuredFailure for ResourceRefused {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use ravel_core::{ContentKind, LifecycleState, ModId, RelativePath, Side, SideSet};
+    use ravel_core::{ContentKind, LifecycleState, ModId, RelativePath, Side};
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{HostError, HostMod};
 
     use super::ResourceRefused;
-    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::lifecycle::{LifecycleEntry, LifecycleMachine};
+    use crate::tests::entry;
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a legal mod id")
@@ -238,15 +237,6 @@ mod tests {
 
         fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             Ok(())
-        }
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
         }
     }
 

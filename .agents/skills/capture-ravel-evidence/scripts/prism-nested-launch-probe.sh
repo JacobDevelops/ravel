@@ -22,6 +22,7 @@ world="$6"
 out_dir="$7"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/prism-launch-common.sh"
 # Overridable so a test can inject a failing display start and prove the
 # instance config is restored on that path.
 nested_setup="${RAVEL_NESTED_SETUP:-$script_dir/prism-nested-setup.sh}"
@@ -90,17 +91,7 @@ restore_config() {
 
 cleanup() {
   local status=$?
-  local pids
-  for reaper in game_pids launcher_pids; do
-    mapfile -t pids < <("$reaper")
-    [[ "${#pids[@]}" -eq 0 ]] && continue
-    kill -TERM "${pids[@]}" 2>/dev/null || true
-    for _ in {1..30}; do
-      mapfile -t pids < <("$reaper")
-      [[ "${#pids[@]}" -eq 0 ]] && break
-      sleep 1
-    done
-  done
+  reap_launch_processes game_pids launcher_pids
   if [[ -n "${openbox_pid:-}" ]]; then
     kill -TERM "$openbox_pid" 2>/dev/null || true
   fi
@@ -130,14 +121,7 @@ echo "gl=$gl_version"
 # Without a window manager the nested focus is PointerRoot and keys go nowhere.
 openbox >/dev/null 2>&1 &
 openbox_pid=$!
-for _ in {1..20}; do
-  wmctrl -m >/dev/null 2>&1 && break
-  sleep 0.5
-done
-wmctrl -m >/dev/null 2>&1 || {
-  echo "no window manager answered on $display" >&2
-  exit 1
-}
+wait_for_window_manager "$display"
 
 : >"$game_log" 2>/dev/null || true
 "$launcher" -d "$data_dir" -l "$instance_id" -w "$world" \

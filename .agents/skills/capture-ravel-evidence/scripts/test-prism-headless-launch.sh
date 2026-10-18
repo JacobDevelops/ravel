@@ -10,6 +10,7 @@ set -euo pipefail
 # sound category that is not silent.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/assert-status.sh"
 proof="$script_dir/prism-headless-launch.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -73,17 +74,6 @@ chmod +x "$stub_bin"/*
 export PATH="$stub_bin:$PATH"
 
 out_dir="$work/out"
-
-expect_status() {
-	local expected="$1" description="$2"
-	shift 2
-	local status=0
-	"$@" >/dev/null 2>&1 || status=$?
-	[[ "$status" -eq "$expected" ]] || {
-		echo "FAIL: $description expected status $expected, got $status" >&2
-		exit 1
-	}
-}
 
 expect_untouched() {
 	local description="$1"

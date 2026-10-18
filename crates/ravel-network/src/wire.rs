@@ -1,4 +1,5 @@
-use crate::{Packet, WireError};
+use crate::WireError;
+use crate::contract::Packet;
 
 /// Writes big-endian integers and `u32`-length-prefixed variable fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

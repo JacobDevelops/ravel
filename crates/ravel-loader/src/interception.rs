@@ -151,16 +151,15 @@ impl StructuredFailure for InterceptRefused {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
+    use ravel_core::{LifecycleState, ModId, Side, StructuredFailure};
     use ravel_host_api::{
         HostError, HostMod, InterceptionDeclaration, InterceptionRefused, ModError, Occasion,
         Outcome, Point,
     };
 
     use super::{InterceptRefused, intercept};
-    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::lifecycle::LifecycleMachine;
+    use crate::tests::entry;
 
     // Reverse lexical order ensures ordering assertions depend on the declared edge.
     const GUARD: &str = "zephyr_guard";
@@ -168,16 +167,6 @@ mod tests {
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a legal mod id")
-    }
-
-    fn entry(name: &str) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new([Side::IntegratedServer, Side::DedicatedServer])
-                .expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
     }
 
     #[derive(Clone, Copy, Eq, PartialEq)]
@@ -283,7 +272,10 @@ mod tests {
     fn running(names: &[&str]) -> LifecycleMachine {
         let mut machine = LifecycleMachine::new(
             Side::IntegratedServer,
-            names.iter().copied().map(entry).collect(),
+            names
+                .iter()
+                .map(|name| entry(name, &[Side::IntegratedServer, Side::DedicatedServer]))
+                .collect(),
         )
         .expect("a legal plan");
         for state in [
@@ -440,8 +432,14 @@ mod tests {
     fn a_mod_that_is_not_running_is_not_asked() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse);
         let mut mods: Vec<&mut dyn HostMod> = vec![&mut guard];
-        let mut machine = LifecycleMachine::new(Side::IntegratedServer, vec![entry(GUARD)])
-            .expect("a legal plan");
+        let mut machine = LifecycleMachine::new(
+            Side::IntegratedServer,
+            vec![entry(
+                GUARD,
+                &[Side::IntegratedServer, Side::DedicatedServer],
+            )],
+        )
+        .expect("a legal plan");
         machine
             .advance_all(LifecycleState::Validated)
             .expect("a legal step");

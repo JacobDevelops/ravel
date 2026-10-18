@@ -302,7 +302,7 @@ impl Mod for SavedDataMod {
 
     /// Declares the step into every version above the oldest.
     ///
-    /// Each step is [`SavedDataMod::step`] over the stored payload, so there is one
+    /// Each step is `SavedDataMod::step` over the stored payload, so there is one
     /// implementation of the transformation and not a second one that could
     /// disagree with it. The chain exists because a host opening a world checks
     /// that every declared version has a way into it before it reads a payload,

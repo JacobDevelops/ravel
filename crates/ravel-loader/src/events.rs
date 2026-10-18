@@ -401,17 +401,15 @@ pub fn route_profiled(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use ravel_core::{
-        ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet,
-        StructuredFailure,
+        ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
     };
     use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
     use ravel_network::{Direction, PacketDelivery, PacketId};
 
     use super::{Delivery, DispatchRefused, broadcast, deliver_packet, route};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::tests::entry;
 
     fn id(text: &str) -> ModId {
         text.parse().expect("a legal mod id")
@@ -422,15 +420,6 @@ mod tests {
             ContentKind::Command,
             ContentId::new(id(namespace), path).expect("a legal content path"),
         )
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
     }
 
     /// A mod that records every event it saw and every command it ran.

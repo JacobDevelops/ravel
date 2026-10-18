@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/prism-launch-common.sh"
+
 # Drives the pinned 1.21.1 client through a Ravel proof on a virtual display, so
 # the whole sequence runs without the operator's screen, pointer, keyboard,
 # sound or Microsoft account.
@@ -269,16 +272,7 @@ cleanup() {
 		restore_config || status=1
 		exit "$status"
 	fi
-	for reaper in game_pids launcher_pids; do
-		mapfile -t pids < <("$reaper")
-		[[ "${#pids[@]}" -eq 0 ]] && continue
-		kill -TERM "${pids[@]}" 2>/dev/null || true
-		for _ in {1..30}; do
-			mapfile -t pids < <("$reaper")
-			[[ "${#pids[@]}" -eq 0 ]] && break
-			sleep 1
-		done
-	done
+	reap_launch_processes game_pids launcher_pids
 	if [[ -n "${openbox_pid:-}" ]]; then
 		kill -TERM "$openbox_pid" 2>/dev/null || true
 	fi
@@ -325,14 +319,7 @@ verdict timing_evidence no
 # Without a window manager the focus is PointerRoot and keys go nowhere.
 openbox >"$out_dir/openbox.log" 2>&1 &
 openbox_pid=$!
-for _ in {1..20}; do
-	wmctrl -m >/dev/null 2>&1 && break
-	sleep 0.5
-done
-wmctrl -m >/dev/null 2>&1 || {
-	echo "no window manager answered on $display" >&2
-	exit 1
-}
+wait_for_window_manager "$display"
 
 # --- driving helpers -------------------------------------------------------
 #

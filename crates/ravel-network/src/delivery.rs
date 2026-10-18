@@ -1,6 +1,8 @@
 use ravel_core::Side;
 
-use crate::{DeliveryRefused, Direction, Packet, PacketId, decode, encode};
+use crate::DeliveryRefused;
+use crate::contract::{Direction, Packet, PacketId};
+use crate::wire::{decode, encode};
 
 /// Encodes `packet` for sending from `side`.
 ///

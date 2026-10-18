@@ -271,15 +271,15 @@ impl std::error::Error for DriveError {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
     use std::sync::{Arc, Mutex};
 
-    use ravel_core::{LifecycleState, ModId, Side, SideSet};
+    use ravel_core::{LifecycleState, ModId, Side};
     use ravel_host_api::{HostMod, ModError, Registrar, ServiceDeclaration, ServiceId};
 
     use super::{DriveError, drive, drive_borrowed, stop_all};
-    use crate::lifecycle::{LifecycleEntry, Requirement};
+    use crate::lifecycle::Requirement;
     use crate::services::ServiceRefused;
+    use crate::tests::entry;
 
     struct Recording {
         id: ModId,
@@ -299,15 +299,6 @@ mod tests {
 
     fn id(value: &str) -> ModId {
         value.parse().expect("a legal mod id")
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
     }
 
     #[test]

@@ -106,12 +106,11 @@ impl LifecycleMachine {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use ravel_core::{ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
+    use ravel_core::{ContentKind, LifecycleState, ModId, RegistryKey, Side};
     use ravel_host_api::{Registrar, RegistrationRefused};
 
-    use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, Requirement};
+    use crate::lifecycle::{LifecycleError, LifecycleMachine};
+    use crate::tests::entry;
 
     fn id(text: &str) -> ModId {
         text.parse().expect("a legal mod id")
@@ -121,19 +120,15 @@ mod tests {
         RegistryKey::new(kind, text.parse().expect("a legal content id"))
     }
 
-    fn entry(name: &str) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new([Side::Client]).expect("one side"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
-    }
-
     fn constructed(names: &[&str]) -> LifecycleMachine {
-        let mut machine =
-            LifecycleMachine::new(Side::Client, names.iter().map(|name| entry(name)).collect())
-                .expect("a legal plan");
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            names
+                .iter()
+                .map(|name| entry(name, &[Side::Client]))
+                .collect(),
+        )
+        .expect("a legal plan");
         for state in [
             LifecycleState::Validated,
             LifecycleState::Resolved,
@@ -231,9 +226,14 @@ mod tests {
     #[test]
     fn a_claim_from_a_mod_that_is_not_constructed_tells_the_loader_more_than_the_mod() {
         // Two mods keep the barrier open while only one of them is constructed.
-        let mut machine =
-            LifecycleMachine::new(Side::Client, vec![entry("early_mod"), entry("late_mod")])
-                .expect("a legal plan");
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![
+                entry("early_mod", &[Side::Client]),
+                entry("late_mod", &[Side::Client]),
+            ],
+        )
+        .expect("a legal plan");
         for state in [LifecycleState::Validated, LifecycleState::Resolved] {
             machine.advance_all(state).expect("a legal step");
         }
@@ -269,7 +269,8 @@ mod tests {
     #[test]
     fn only_the_first_unexpected_refusal_is_kept() {
         let mut machine =
-            LifecycleMachine::new(Side::Client, vec![entry("early_mod")]).expect("a legal plan");
+            LifecycleMachine::new(Side::Client, vec![entry("early_mod", &[Side::Client])])
+                .expect("a legal plan");
         machine
             .advance_all(LifecycleState::Validated)
             .expect("a legal step");

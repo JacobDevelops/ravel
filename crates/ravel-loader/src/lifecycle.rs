@@ -599,18 +599,14 @@ impl LifecycleMachine {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use ravel_core::{
         ContentBehaviour, ContentKind, FailureAttribution, FailureEnvironment, FailureKind,
-        LifecycleState, ModId, Redaction, Side, SideSet, StructuredFailure,
+        LifecycleState, ModId, Redaction, Side, StructuredFailure,
     };
     use ravel_observability::redact;
 
-    use super::{
-        LifecycleEntry, LifecycleError, LifecycleMachine, Requirement, executes_mod_code,
-        has_registered,
-    };
+    use super::{LifecycleError, LifecycleMachine, executes_mod_code, has_registered};
+    use crate::tests::entry;
 
     const SUCCESS_PATH: [LifecycleState; 8] = [
         LifecycleState::Validated,
@@ -625,15 +621,6 @@ mod tests {
 
     fn id(name: &str) -> ModId {
         name.parse().expect("valid mod id")
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("at least one side"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
-        }
     }
 
     fn attribution(name: &str, state: LifecycleState) -> FailureAttribution {

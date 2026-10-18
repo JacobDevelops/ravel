@@ -210,14 +210,15 @@ impl StructuredFailure for ConfigRefused {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeMap;
 
     use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument};
-    use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
+    use ravel_core::{LifecycleState, ModId, Side, StructuredFailure};
     use ravel_host_api::{HostError, HostMod};
 
     use super::ConfigRefused;
-    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+    use crate::lifecycle::{LifecycleEntry, LifecycleMachine};
+    use crate::tests::entry;
 
     fn open_configuration(
         machine: &LifecycleMachine,
@@ -367,15 +368,6 @@ mod tests {
                 .value(&"limit".parse().expect("a legal key"))
                 .and_then(serde_json::Value::as_i64);
             Ok(())
-        }
-    }
-
-    fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: id(name),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::new(),
         }
     }
 

@@ -112,10 +112,7 @@ use ravel_save::{
 };
 use serde_json::json;
 
-use super::{
-    FAILED, IDENTITY_MISMATCH, OpenOutcome, REPLACEMENT, SaveOutcome, StagedPack, UNCHANGED,
-    WorldIdentity, tagged,
-};
+use super::{OpenOutcome, SaveOutcome, StagedPack, WorldIdentity};
 use crate::runtime::LoaderRuntime;
 
 const OWNER: &str = "saved_data";
@@ -1633,18 +1630,6 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
 }
 
 #[test]
-fn the_save_answer_tags_what_java_should_do_and_only_one_tag_writes() {
-    assert_eq!(vec![UNCHANGED], tagged(UNCHANGED, &[]));
-    assert_eq!(tagged(REPLACEMENT, b"stored"), b"\x01stored".to_vec());
-    assert_eq!(tagged(FAILED, b"why"), b"\x02why".to_vec());
-    assert_eq!(tagged(IDENTITY_MISMATCH, b"whose"), b"\x03whose".to_vec());
-    assert_eq!(
-        BTreeSet::from([UNCHANGED, REPLACEMENT, FAILED, IDENTITY_MISMATCH]).len(),
-        4
-    );
-}
-
-#[test]
 fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
     let (runtime, _held) = running();
     runtime
@@ -1700,28 +1685,6 @@ fn a_refusal_carries_the_diagnostic_to_the_java_adapter() {
             "the canonical saved-data aggregate exceeds the 1048576-byte limit".to_owned()
         )
     );
-}
-
-#[test]
-fn persistence_diagnostics_are_redacted_before_the_jni_output() {
-    let detail = "could not read /home/player/.minecraft/world, token=ghp_secretvalue";
-    let published = super::publishable(detail);
-    assert!(!published.contains("ghp_secretvalue"), "{published}");
-    assert!(!published.contains("/home/player"), "{published}");
-    assert!(published.contains("redacted"), "{published}");
-    for (tag, outcome) in [
-        (FAILED, SaveOutcome::Failed(detail.to_owned())),
-        (
-            IDENTITY_MISMATCH,
-            SaveOutcome::IdentityMismatch(detail.to_owned()),
-        ),
-    ] {
-        let answer = super::save_answer(outcome);
-        assert_eq!(answer[0], tag);
-        let published = String::from_utf8_lossy(&answer[1..]);
-        assert!(!published.contains("ghp_secretvalue"), "{published}");
-        assert!(!published.contains("/home/player"), "{published}");
-    }
 }
 
 fn java_int(source: &str, name: &str) -> i32 {

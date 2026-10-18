@@ -8,7 +8,10 @@ use serde_json::Value;
 
 use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_milestone_figures};
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{Rule, array, closed_gates, nonempty, number, read_json, work_packages};
+use crate::json::{
+    Rule, array, benchmark_results, closed_gates, native_attestation, nonempty, number, read_json,
+    work_packages,
+};
 use crate::{CRATE_NAMES, EXAMPLE_NAMES, TEST_MOD_NAMES};
 
 pub(crate) fn verify_m4_manifest(root: &Path, manifest: &Value, violations: &mut Vec<String>) {
@@ -28,14 +31,11 @@ pub(crate) fn verify_m4_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            let mut names = array(value, "/benchmarks/results")
-                .iter()
-                .filter_map(|row| row["name"].as_str())
-                .collect::<Vec<_>>();
-            names.sort_unstable();
-            value["benchmarks"]["protocolVersion"] == "m4-surface-v1"
-                && array(value, "/benchmarks/results").len() == 2
-                && names == ["linux-process-matrix.json", "sdk-surface.json"]
+            benchmark_results(
+                value,
+                "m4-surface-v1",
+                &["linux-process-matrix.json", "sdk-surface.json"],
+            )
         },
         "M4 manifest must record both M4 results under the m4-surface-v1 protocol, so that each \
          one is covered by a recomputed digest",
@@ -52,15 +52,7 @@ pub(crate) fn verify_m4_manifest(root: &Path, manifest: &Value, violations: &mut
 
     require_manifest_rule(
         manifest,
-        |value| {
-            array(value, "/attestations").iter().any(|row| {
-                row["platform"] == "linux"
-                    && row["architecture"] == "x86_64"
-                    && array(row, "/workloads")
-                        .iter()
-                        .any(|workload| workload == "ravel")
-            })
-        },
+        |value| native_attestation(value, "ravel"),
         "M4 closure requires a native Linux attestation for the recorded gate run",
         violations,
     );

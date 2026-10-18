@@ -453,7 +453,7 @@ export_mod!(|side| Entry::new(side, "."));
 /// other two are the absence of a capability rather than a rule the compiler
 /// knows, so the proof is that nothing here names one.
 #[cfg(test)]
-const SOURCES: [(&str, &str); 14] = [
+const SOURCES: [(&str, &str); 16] = [
     ("lib.rs", include_str!("lib.rs")),
     ("channel.rs", include_str!("channel.rs")),
     ("colour.rs", include_str!("colour.rs")),
@@ -462,12 +462,20 @@ const SOURCES: [(&str, &str); 14] = [
     ("dumps.rs", include_str!("dumps.rs")),
     ("fluids.rs", include_str!("fluids.rs")),
     ("highlights.rs", include_str!("highlights.rs")),
+    (
+        "highlights/declarations.rs",
+        include_str!("highlights/declarations.rs"),
+    ),
     ("matching.rs", include_str!("matching.rs")),
     ("presentation.rs", include_str!("presentation.rs")),
     ("shapes.rs", include_str!("shapes.rs")),
     ("storage.rs", include_str!("storage.rs")),
     ("transport.rs", include_str!("transport.rs")),
     ("validators.rs", include_str!("validators.rs")),
+    (
+        "validators/matching.rs",
+        include_str!("validators/matching.rs"),
+    ),
 ];
 
 #[cfg(test)]

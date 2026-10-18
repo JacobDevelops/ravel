@@ -1,6 +1,5 @@
 package dev.ravel.jvm;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -47,7 +46,7 @@ final class Outward {
         }
         int performed = 0;
         try {
-            List<String> fields = fields(payload);
+            List<String> fields = Agent.fields(payload);
             if (fields.size() < 2 || !fields.get(0).equals(VERSION)) {
                 Agent.diagnose("an outward payload was offered that cannot be read");
                 return 0;
@@ -90,7 +89,7 @@ final class Outward {
                     + "/" + arguments.size());
             return false;
         } catch (Throwable unperformed) {
-            Agent.diagnose("could not perform " + verb + " (" + unusableName(unperformed) + ")");
+            Agent.diagnose("could not perform " + verb + " (" + Agent.unusableName(unperformed) + ")");
             return false;
         }
     }
@@ -116,28 +115,5 @@ final class Outward {
                 .invoke(client);
         Members.method(Members.game(SOUND_MANAGER), GameMembers.SOUND_MANAGER_PLAY)
                 .invoke(manager, sound);
-    }
-
-    /** The type that stopped an action, unwrapped past the reflection layer. */
-    private static String unusableName(Throwable thrown) {
-        Throwable cause = thrown.getCause() == null ? thrown : thrown.getCause();
-        return cause.getClass().getName();
-    }
-
-    /** Reads fields framed as a length and that many UTF-16 code units. */
-    private static List<String> fields(String payload) {
-        List<String> read = new ArrayList<>();
-        int at = 0;
-        while (at < payload.length()) {
-            int separator = payload.indexOf(':', at);
-            if (separator < 0) {
-                throw new IllegalArgumentException("a field states no length");
-            }
-            int length = Integer.parseInt(payload.substring(at, separator));
-            int start = separator + 1;
-            read.add(payload.substring(start, start + length));
-            at = start + length;
-        }
-        return read;
     }
 }

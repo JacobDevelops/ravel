@@ -44,7 +44,7 @@ final class Content {
             if (payload.isEmpty()) {
                 return;
             }
-            List<String> fields = fields(payload);
+            List<String> fields = Agent.fields(payload);
             if (fields.size() < 2 || !fields.get(0).equals(VERSION)) {
                 Agent.diagnose("content registration was offered a payload it cannot read");
                 return;
@@ -133,7 +133,7 @@ final class Content {
         } catch (Throwable unmapped) {
             Agent.diagnose("registered " + row.identifier()
                     + " but its states are not mapped, so placing it will disconnect the session ("
-                    + unusableName(unmapped) + ")");
+                    + Agent.unusableName(unmapped) + ")");
         }
         return true;
     }
@@ -173,7 +173,7 @@ final class Content {
 
     private static boolean refuse(Row row, Throwable unregistered) {
         Agent.diagnose("could not register " + row.kind() + " " + row.identifier()
-                + " (" + unusableName(unregistered) + ")");
+                + " (" + Agent.unusableName(unregistered) + ")");
         return false;
     }
 
@@ -215,28 +215,5 @@ final class Content {
                     + absent.getClass().getName() + ")");
             return null;
         }
-    }
-
-    /** The type that stopped a registration, unwrapped past the reflection layer. */
-    private static String unusableName(Throwable thrown) {
-        Throwable cause = thrown.getCause() == null ? thrown : thrown.getCause();
-        return cause.getClass().getName();
-    }
-
-    /** Reads fields framed as a length and that many UTF-16 code units. */
-    private static List<String> fields(String payload) {
-        List<String> read = new ArrayList<>();
-        int at = 0;
-        while (at < payload.length()) {
-            int separator = payload.indexOf(':', at);
-            if (separator < 0) {
-                throw new IllegalArgumentException("a field states no length");
-            }
-            int length = Integer.parseInt(payload.substring(at, separator));
-            int start = separator + 1;
-            read.add(payload.substring(start, start + length));
-            at = start + length;
-        }
-        return read;
     }
 }

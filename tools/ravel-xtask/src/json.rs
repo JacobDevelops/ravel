@@ -43,6 +43,20 @@ pub(crate) fn work_packages(value: &Value, expected: &[&str]) -> bool {
     array(value, "/workPackages").len() == expected.len() && packages == expected
 }
 
+/// Matches the complete result-name set under its recorded protocol.
+/// Expected names must be sorted, just like work-package identifiers.
+pub(crate) fn benchmark_results(value: &Value, protocol: &str, expected: &[&str]) -> bool {
+    let results = array(value, "/benchmarks/results");
+    let mut names = results
+        .iter()
+        .filter_map(|row| row["name"].as_str())
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    value["benchmarks"]["protocolVersion"] == protocol
+        && results.len() == expected.len()
+        && names == expected
+}
+
 pub(crate) fn closed_gates(value: &Value, closure_row: &str, count: usize) -> bool {
     let Some(gates) = value
         .pointer("/environment/settings/gateStatus")
@@ -64,13 +78,13 @@ pub(crate) fn closed_gates(value: &Value, closure_row: &str, count: usize) -> bo
             .all(|(_, gate)| gate["status"] == "closed" && nonempty(gate, "/evidence"))
 }
 
-pub(crate) fn native_attestation(value: &Value) -> bool {
+pub(crate) fn native_attestation(value: &Value, workload: &str) -> bool {
     array(value, "/attestations").iter().any(|attestation| {
         attestation["platform"] == "linux"
             && attestation["architecture"] == "x86_64"
             && array(attestation, "/workloads")
                 .iter()
-                .any(|workload| workload == "official-atm11")
+                .any(|recorded| recorded == workload)
     })
 }
 

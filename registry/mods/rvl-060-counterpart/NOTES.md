@@ -19,7 +19,7 @@ saved-data ownership, networking channels — is expressed through Ravel rather 
 | §2 the side-appropriate registry accessor and its hard failure | implemented | `src/lib.rs` |
 | §2 the client-only observers | implemented as Ravel's own side isolation | `src/lib.rs` |
 | §2 the process-wide channel list | host-blocked, dropped by design | `src/lib.rs` |
-| §2, §10.1 declared packs contributed on the client only | implemented on both sides, declared | `src/highlights.rs` |
+| §2, §10.1 declared packs contributed on the client only | implemented on both sides, declared | `src/highlights/declarations.rs` |
 | §4 the declaration handle and its before-registration error | implemented | `src/declaration.rs` |
 | §4 nesting, grouping and the inert nested initialisation | implemented | `src/declaration.rs` |
 | §4 the one extension point and its refusal | implemented; refusal kept, claims nothing | `src/declaration.rs` |
@@ -52,7 +52,7 @@ saved-data ownership, networking channels — is expressed through Ravel rather 
 | §7.4 both list kinds rejecting an empty candidate | implemented, kept | `src/validators.rs` |
 | §7.4 the floating-point lower bound | fixed to negative infinity, declared | `src/validators.rs` |
 | §7.4 decoding by first-parse order | implemented; family required, declared | `src/validators.rs` |
-| §7.4 the regular-expression kind | implemented over a stated subset, declared | `src/validators.rs` |
+| §7.4 the regular-expression kind | implemented over a stated subset, declared | `src/validators.rs`, `src/validators/matching.rs` |
 | §7 hanging any of this on a data-pack document | host-blocked | — |
 | §8 the base recipe's four deliberate answers | implemented | `src/shapes.rs` |
 | §8 the ingredient complexity flag and its inversion | implemented | `src/shapes.rs` |
@@ -72,9 +72,9 @@ saved-data ownership, networking channels — is expressed through Ravel rather 
 | §10 the memory never being cleared | implemented; cleared on disconnect, declared | `src/presentation.rs`, `src/lib.rs` |
 | §10 the widgets and the cursor shape catalogue | declarable only | — |
 | §10 the four system categories and the registration point | implemented | `src/presentation.rs` |
-| §10.1 the declaration shapes and the fixed lookup path | implemented | `src/highlights.rs` |
-| §10.1 the required and non-required metadata rules | implemented | `src/highlights.rs` |
-| §10.1 the inner failure that discards its cause | fixed, declared | `src/highlights.rs` |
+| §10.1 the declaration shapes and the fixed lookup path | implemented | `src/highlights/declarations.rs` |
+| §10.1 the required and non-required metadata rules | implemented | `src/highlights/declarations.rs` |
+| §10.1 the inner failure that discards its cause | fixed, declared | `src/highlights/declarations.rs` |
 | §10.2 the two document shapes and the key that parts them | implemented | `src/highlights.rs` |
 | §10.2 flattening, sharing and discarding the named table | implemented | `src/highlights.rs` |
 | §10.2 the exact-state lookup and the length rule | implemented | `src/highlights.rs` |
@@ -115,6 +115,11 @@ back to a placeholder and still claim to agree.
   of the gates. The field names for the non-default kinds and the two bound names are this package's
   own decision rather than carried spellings; the specification names the eleven kinds and "their
   field names", and the four family gates are the ones a decode branches on.
+
+The shared spelling configuration and pack contributions live in
+`src/highlights/declarations.rs`; `highlights` retains their public paths alongside outline
+geometry. The whole-value pattern engine lives in `src/validators/matching.rs`; `validators` retains
+its public pattern types and integrates them through parsing and whole-value matching.
 
 ## Behaviour changes, each declared rather than incidental
 

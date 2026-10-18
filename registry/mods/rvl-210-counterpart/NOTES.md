@@ -54,7 +54,7 @@ root's public surface.
 | §10 the storage interfaces, slotted and slotless | declared here and implemented by dependents | `src/storage.rs` |
 | §10 the move and its conditional raise | implemented | `src/storage.rs` |
 | §10 the difference tracker | implemented | `src/storage.rs` |
-| §11 the twenty-two handlers in the published order | implemented, with the declared change | `src/query.rs` |
+| §11 the twenty-two handlers in the published order | implemented, with the declared change | `src/query/selection.rs` |
 | §11 evaluation as a set of matches | implemented | `src/query.rs` |
 | §11 navigation over the parsed form | implemented | `src/query.rs` |
 | §12 the detector, its constraints and its failure detail | implemented, with the declared change | `src/shapes.rs` |

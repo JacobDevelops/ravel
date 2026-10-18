@@ -78,11 +78,11 @@ meet the vocabulary's own set, so a caller writing one filter for all three kind
 | §10 the heat rules for all three readings | implemented | `src/readings.rs` |
 | §10 obtaining the smelting burn timer | host-blocked | — |
 | §10 obtaining the brewing fuel count and brewable test | host-blocked | — |
-| §11 the general station view, its grid and its two simulations | implemented, one declared change | `src/recipes.rs` |
-| §11 the brewing view's simulation | implemented, its starting value inferred | `src/recipes.rs` |
+| §11 the general station view, its grid and its two simulations | implemented, one declared change | `src/recipes.rs`, `src/recipes/selection.rs` |
+| §11 the brewing view's simulation | implemented, its starting value inferred | `src/recipes/selection.rs` |
 | §11 the eight recipe-view attachments bound to their views | implemented, two flag columns inferred | `src/recipes.rs`, `src/lib.rs` |
 | §11 the third cache and the base it hangs off | not carried, by §14's own instruction | `src/cache.rs` |
-| §11.1 the brewing closure and its cap | implemented, cap as a setting | `src/recipes.rs` |
+| §11.1 the brewing closure and its cap | implemented, cap as a setting | `src/recipes/selection.rs` |
 | §12 the list-valued read-modify-write cycle and its two rules | implemented | `src/holdings.rs` |
 | §12 the container item's ceiling and what it accepts | implemented | `src/holdings.rs` |
 | §12 the pouch's weight-driven validity and cap | implemented, weight host-blocked | `src/holdings.rs` |

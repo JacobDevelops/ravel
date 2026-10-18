@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::reflection::{declared_roles, game_class_literals, verify_persistence_reflection};
 use crate::java_shape::{
     AGENT_JAR_SOURCES, REFLECTION_FILE, SCREEN_JAR_SOURCES, TRANSFORMER_SHAPE_RECORD,
-    declared_hook, declared_roles, game_class_literals, parse_hook_inventory,
-    verify_hook_name_literals, verify_persistence_reflection, verify_screen_templates,
+    declared_hook, parse_hook_inventory, verify_hook_name_literals, verify_screen_templates,
     verify_transformer_shape,
 };
 use crate::test_support::{temporary_root, version_directory};

@@ -11,10 +11,10 @@ use crate::inventory::{
     verify_example_inventory, verify_game_type_claims, verify_guide_enumerations,
     verify_hook_inventory_document, verify_inventory, verify_test_mod_inventory,
 };
+use crate::java_shape::reflection::verify_persistence_reflection;
 use crate::java_shape::{
-    verify_hook_name_literals, verify_menu_row_placement, verify_persistence_reflection,
-    verify_screen_overrides, verify_screen_templates, verify_transformer_shape,
-    verify_version_readmes,
+    verify_hook_name_literals, verify_menu_row_placement, verify_screen_overrides,
+    verify_screen_templates, verify_transformer_shape, verify_version_readmes,
 };
 use crate::json::read_json;
 use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};

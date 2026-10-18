@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::evidence::closure::verify_closure_records;
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{Rule, array, nonempty, number, read_json};
+use crate::json::{Rule, array, benchmark_results, nonempty, number, read_json, work_packages};
 
 const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
 
@@ -33,23 +33,30 @@ pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            let packages = array(value, "/workPackages");
-            let expected = [
-                "M2-W1", "M2-W2", "M2-W3", "M2-W4", "M2-W5", "M2-W6", "M2-W7", "M2-W8",
-            ];
-            packages.len() == expected.len()
-                && expected.iter().all(|name| {
-                    packages
-                        .iter()
-                        .any(|package| package.as_str() == Some(*name))
-                })
+            work_packages(
+                value,
+                &[
+                    "M2-W1", "M2-W2", "M2-W3", "M2-W4", "M2-W5", "M2-W6", "M2-W7", "M2-W8",
+                ],
+            )
         },
         "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once",
         violations,
     );
     require_manifest_rule(
         manifest,
-        m2_benchmark_results,
+        |value| {
+            benchmark_results(
+                value,
+                "m2-loader-budget-v1",
+                &[
+                    "loader-overhead.json",
+                    "noop-pipeline.json",
+                    "pre-world-gate.json",
+                    "prism-launch.json",
+                ],
+            )
+        },
         "M2 manifest must record all four M2 results under the m2-loader-budget-v1 protocol, so \
          that each one is covered by a recomputed digest",
         violations,
@@ -78,21 +85,6 @@ pub(crate) fn verify_m2_manifest(root: &Path, manifest: &Value, violations: &mut
         );
     }
     verify_closure_records(root, "M2", "evidence/m2", M2_RECORDS, violations);
-}
-
-fn m2_benchmark_results(value: &Value) -> bool {
-    let results = array(value, "/benchmarks/results");
-    let expected = [
-        "loader-overhead.json",
-        "noop-pipeline.json",
-        "pre-world-gate.json",
-        "prism-launch.json",
-    ];
-    value["benchmarks"]["protocolVersion"] == "m2-loader-budget-v1"
-        && results.len() == expected.len()
-        && expected
-            .iter()
-            .all(|name| results.iter().any(|result| result["name"] == *name))
 }
 
 const M2_RECORDS: &[(&str, Rule, &str)] = &[

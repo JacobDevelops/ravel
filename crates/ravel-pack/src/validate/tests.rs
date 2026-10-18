@@ -415,6 +415,40 @@ fn the_pack_replacing_one_members_file_is_recorded_rather_than_refused() {
 }
 
 #[test]
+fn ordinary_member_resource_override_is_recorded() -> Result<(), Box<dyn std::error::Error>> {
+    let shared = path("assets/base_mod/models/lantern.json");
+    let (mut pack, manifests, _) = one_member();
+    let mut declaration = ContentDeclaration::new(id("base_mod"));
+    declaration.resource(shared.clone(), b"{}".to_vec())?;
+    pack.supply(shared.clone(), b"{\"changed\":true}\n".to_vec());
+
+    let validated = validate(&pack, &manifests, &[declaration], &[])?;
+    assert_eq!(validated.overrides().len(), 1);
+    assert_eq!(validated.overrides()[0].path, shared);
+    assert_eq!(validated.overrides()[0].winner, id("example_pack"));
+    assert_eq!(validated.overrides()[0].shadowed, [id("base_mod")]);
+    assert_eq!(
+        validated.file(&shared).map(super::PackFile::bytes),
+        Some(b"{\"changed\":true}\n".as_slice())
+    );
+    Ok(())
+}
+
+#[test]
+fn member_resources_cannot_use_ravels_directory() -> Result<(), Box<dyn std::error::Error>> {
+    let reserved = path(&format!("{RESERVED_PREFIX}member.json"));
+    let (pack, manifests, _) = one_member();
+    let mut declaration = ContentDeclaration::new(id("base_mod"));
+    declaration.resource(reserved.clone(), b"{}".to_vec())?;
+
+    assert_eq!(
+        validate(&pack, &manifests, &[declaration], &[]),
+        Err(ClosureError::ReservedPath { path: reserved })
+    );
+    Ok(())
+}
+
+#[test]
 fn nothing_but_ravel_may_write_into_ravels_own_directory() {
     let (mut pack, manifests, content) = one_member();
     pack.supply(path(&format!("{RESERVED_PREFIX}pack.json")), b"{}".to_vec());

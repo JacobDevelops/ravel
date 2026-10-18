@@ -5,8 +5,8 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::json::{
-    Figure, Rule, array, closed_gates, native_attestation, nonempty, number, read_json,
-    work_packages,
+    Figure, Rule, array, benchmark_results, closed_gates, native_attestation, nonempty, number,
+    read_json, work_packages,
 };
 
 use crate::evidence::closure::{
@@ -148,11 +148,7 @@ pub(crate) fn verify_m5_manifest(root: &Path, manifest_path: &Value, violations:
     );
     require_manifest_rule(
         manifest_path,
-        |v| {
-            v["benchmarks"]["protocolVersion"] == "m5-inventory-v1"
-                && array(v, "/benchmarks/results").len() == 1
-                && v["benchmarks"]["results"][0]["name"] == "inventory-summary.json"
-        },
+        |value| benchmark_results(value, "m5-inventory-v1", &["inventory-summary.json"]),
         "M5 manifest must record its inventory summary under the m5-inventory-v1 protocol, so \
          that the record carrying every figure is covered by a recomputed digest",
         violations,
@@ -166,7 +162,7 @@ pub(crate) fn verify_m5_manifest(root: &Path, manifest_path: &Value, violations:
     );
     require_manifest_rule(
         manifest_path,
-        native_attestation,
+        |value| native_attestation(value, "official-atm11"),
         "M5 closure requires a native Linux attestation for the recorded inventory run",
         violations,
     );

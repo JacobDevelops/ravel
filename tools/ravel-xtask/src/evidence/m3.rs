@@ -9,7 +9,10 @@ use serde_json::Value;
 use crate::evidence::accounting::{Side, numbers_before, stated_counts};
 use crate::evidence::closure::verify_closure_records;
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::{Rule, array, closed_gates, number, read_json, work_packages};
+use crate::json::{
+    Rule, array, benchmark_results, closed_gates, native_attestation, number, read_json,
+    work_packages,
+};
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
@@ -37,20 +40,16 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
     require_manifest_rule(
         manifest,
         |value| {
-            let mut names = array(value, "/benchmarks/results")
-                .iter()
-                .filter_map(|row| row["name"].as_str())
-                .collect::<Vec<_>>();
-            names.sort_unstable();
-            value["benchmarks"]["protocolVersion"] == "m3-prototype-v1"
-                && array(value, "/benchmarks/results").len() == 4
-                && names
-                    == [
-                        "class-loader-identity.json",
-                        "linux-process-matrix.json",
-                        "pack-compile.json",
-                        "profiling-overhead.json",
-                    ]
+            benchmark_results(
+                value,
+                "m3-prototype-v1",
+                &[
+                    "class-loader-identity.json",
+                    "linux-process-matrix.json",
+                    "pack-compile.json",
+                    "profiling-overhead.json",
+                ],
+            )
         },
         "M3 manifest must record all four M3 results under the m3-prototype-v1 protocol, so that each one is covered by a recomputed digest",
         violations,
@@ -63,15 +62,7 @@ pub(crate) fn verify_m3_manifest(root: &Path, manifest: &Value, violations: &mut
     );
     require_manifest_rule(
         manifest,
-        |value| {
-            array(value, "/attestations").iter().any(|row| {
-                row["platform"] == "linux"
-                    && row["architecture"] == "x86_64"
-                    && array(row, "/workloads")
-                        .iter()
-                        .any(|workload| workload == "ravel")
-            })
-        },
+        |value| native_attestation(value, "ravel"),
         "M3 closure requires a native Linux attestation for the operator-run Ravel launch",
         violations,
     );

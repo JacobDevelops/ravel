@@ -3,22 +3,18 @@
 use serde_json::Value;
 
 use crate::evidence::manifest::require_manifest_rule;
-use crate::json::array;
+use crate::json::{array, work_packages};
 
 pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>) {
     require_manifest_rule(
         manifest,
         |value| {
-            let packages = array(value, "/workPackages");
-            let expected = [
-                "M0-W1", "M0-W2", "M0-W3", "M0-W4", "M0-W5", "M0-W6", "M0-W7", "M0-W8", "M0-W9",
-            ];
-            packages.len() == expected.len()
-                && expected.iter().all(|name| {
-                    packages
-                        .iter()
-                        .any(|package| package.as_str() == Some(*name))
-                })
+            work_packages(
+                value,
+                &[
+                    "M0-W1", "M0-W2", "M0-W3", "M0-W4", "M0-W5", "M0-W6", "M0-W7", "M0-W8", "M0-W9",
+                ],
+            )
         },
         "M0 manifest must include every work package from M0-W1 through M0-W9 exactly once",
         violations,

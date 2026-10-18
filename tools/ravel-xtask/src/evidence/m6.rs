@@ -432,7 +432,7 @@ pub(crate) fn verify_m6_manifest(root: &Path, manifest_path: &Value, violations:
     );
     require_manifest_rule(
         manifest_path,
-        native_attestation,
+        |value| native_attestation(value, "official-atm11"),
         "M6 closure requires a native Linux attestation for the recorded counterpart run",
         violations,
     );

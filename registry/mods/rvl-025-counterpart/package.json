@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "d8f10f64c61c61b3ef7c92be04a0fbf89edcffb5450cdac1f6e5a10e68f38b79"
+        "sha256": "2f385f01c5613f8762987ad4e6f1bf3a7b3222b1977d13e9370f6c173baf5fef"
       },
       {
         "path": "aliases.json",
@@ -66,7 +66,11 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "0a141fecfe5022b6635c4be0d01e897bb3805dfe9434e018cd1400fd95524964"
+        "sha256": "50cf640c201616dbf4322f9f14f1da6a3ab683b3c1daf868bd5f6b9454719914"
+      },
+      {
+        "path": "src/capabilities/primitives.rs",
+        "sha256": "daada565af0858df7554077d6734da6954f6940a361d66a150f8752f6f1d6de4"
       },
       {
         "path": "src/census.rs",
@@ -86,7 +90,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "aa47be9d3cb3fe96f08f814dfa51c56c22cacc5eb4cae9f9dbcb86f03719fdfc"
+        "sha256": "54e543e6dce2089aaf251ebfb21e0d048758eef7b9f0e84efce9f5aaa4eb14c2"
       },
       {
         "path": "src/machines.rs",
@@ -103,6 +107,10 @@
       {
         "path": "src/ordering.rs",
         "sha256": "c78b8f1c3f6ba6f83dffcafe0dd264dd2a831a5b9e808f6bf1cf7f5a2d04f1a5"
+      },
+      {
+        "path": "src/channel.rs",
+        "sha256": "cc1a7d4a0d6447e29a502f457bdd9e31b808483d64d4b311dd5a45494d318792"
       },
       {
         "path": "src/settings.rs",

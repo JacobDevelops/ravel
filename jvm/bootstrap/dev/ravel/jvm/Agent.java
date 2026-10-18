@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -185,6 +187,32 @@ public final class Agent {
         }
         line = line + transformationFailures();
         write(FileDescriptor.out, line);
+    }
+
+    /**
+     * Reads native payload fields framed as a length and that many UTF-16 code units.
+     * Content registration and outward actions share this framing, not their row schemas.
+     */
+    static List<String> fields(String payload) {
+        List<String> read = new ArrayList<>();
+        int at = 0;
+        while (at < payload.length()) {
+            int separator = payload.indexOf(':', at);
+            if (separator < 0) {
+                throw new IllegalArgumentException("a field states no length");
+            }
+            int length = Integer.parseInt(payload.substring(at, separator));
+            int start = separator + 1;
+            read.add(payload.substring(start, start + length));
+            at = start + length;
+        }
+        return read;
+    }
+
+    /** Names a diagnostic's failure type, unwrapping one reflection or adapter layer. */
+    static String unusableName(Throwable thrown) {
+        Throwable cause = thrown.getCause() == null ? thrown : thrown.getCause();
+        return cause.getClass().getName();
     }
 
     static void diagnose(String message) {

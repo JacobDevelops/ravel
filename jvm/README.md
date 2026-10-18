@@ -88,7 +88,7 @@ cargo build -p ravel-composed-host --release
 ./jvm/harness/run-harness.sh
 ```
 
-`ravel-composed-host` produces `libravel_bootstrap.so` for the selected mod set.
+`ravel-composed-host` produces `libravel_bootstrap.so` for the fixed JVM harness test-mod set.
 The generic `ravel-bootstrap` runtime is an rlib with no selected mod set.
 
 ### Generating the stand-in game

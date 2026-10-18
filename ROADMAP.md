@@ -302,13 +302,13 @@ ravel/
 │   ├── ravel-loader/               # discovery pipeline and lifecycle orchestration
 │   ├── ravel-sdk/                  # safe public mod-author facade
 │   ├── ravel-sdk-macros/           # derives/attributes that generate SDK declarations
-│   ├── ravel-host-api/             # stable loader-to-mod execution contract
+│   ├── ravel-host-api/             # provisional loader-to-mod execution contract
 │   ├── ravel-bootstrap/            # safe JNI integration rlib linked into host cdylibs
 │   ├── ravel-host-runtime/         # shared instance composition and host lifecycle
-│   ├── ravel-composed-host/        # workspace-selected JVM-loadable host cdylib
+│   ├── ravel-composed-host/        # JVM harness host composing the fixed test-mod set
 │   ├── ravel-build/                # player-local host planning and compilation
 │   ├── ravel-minecraft/            # version-neutral Minecraft capability traits
-│   ├── ravel-minecraft-adapter/    # shared version-data adapter runtime
+│   ├── ravel-minecraft-adapter/    # generated per-version hook targets and lookup
 │   ├── ravel-minecraft-generate/   # Rust bindings, Java sources and pinned locks
 │   ├── ravel-config/               # schema, validation, overrides, restart/side semantics
 │   ├── ravel-data/                 # resources, recipes, tags, loot, progression data
@@ -355,10 +355,7 @@ ravel/
 │   ├── client-only/
 │   ├── commands/
 │   ├── configuration/
-│   ├── dependency-base/
-│   ├── dependency-consumer/
 │   ├── events/
-│   ├── failure-cases/
 │   ├── inter-mod-service/
 │   ├── interception/
 │   ├── networking/
@@ -380,7 +377,6 @@ ravel/
 │   ├── fixtures/
 │   │   ├── public/                  # shared test inputs
 │   │   └── local/                   # machine-local test inputs
-│   └── snapshots/                   # redacted deterministic expected outputs
 ├── examples/
 │   ├── minimal-mod/
 │   ├── content-mod/
@@ -391,12 +387,10 @@ ravel/
 │   │   ├── dependency-rules.md
 │   │   ├── safety-boundary.md
 │   │   └── public-private-boundary.md
-│   ├── sdk/                         # mod-author guide and generated API links
-│   ├── pack-authoring/
+│   ├── guide/                       # mod and pack author guides
 │   └── runbooks/                    # Prism, baseline, release and recovery procedures
 ├── evidence/
-│   ├── m0/ ... m11/                 # sanitized manifests and small summaries
-│   └── hardware/                    # non-identifying reference profiles
+│   └── m0/ ... m11/                 # sanitized manifests and small summaries
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml
@@ -427,12 +421,12 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-sdk` | Safe public mod-author facade and author-facing types |
 | `ravel-sdk-macros` | Compile-time SDK declaration generation |
 | `ravel-host-api` | Source-compiled package execution boundary, including config/data/save/network contracts |
-| `ravel-bootstrap` | Safe JNI integration runtime linked as an rlib into host cdylibs |
-| `ravel-host-runtime` | Shared instance composition, lifecycle and outward-action routing for hosts |
-| `ravel-composed-host` | Workspace-selected host cdylib with the JVM-loadable `ravel_bootstrap` library name |
+| `ravel-bootstrap` | Safe JNI integration, hook observer dispatch, outward-action queue, persistence and settings crossings |
+| `ravel-host-runtime` | Shared instance composition and host lifecycle |
+| `ravel-composed-host` | JVM harness host composing the fixed test-mod set with the `ravel_bootstrap` library name |
 | `ravel-build` | Player-local host planning, source composition and compilation |
 | `ravel-minecraft` | Version-neutral handles, hooks and capability traits |
-| `ravel-minecraft-adapter` | Shared adapter runtime, hook dispatch and conversion machinery |
+| `ravel-minecraft-adapter` | Generated per-version hook target table and lookup |
 | `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data |
 | `ravel-config` | Schemas, validation, side/restart flags and layered overrides |
 | `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts |

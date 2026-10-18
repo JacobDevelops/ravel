@@ -58,8 +58,6 @@ has no in-game call that changes its journal; the saved-data test mod supplies t
 - **Is a Cargo compile inside the launch sequence acceptable?** `evidence/m3/pack-compile.json`
   records cold and warm pack costs. The stock Prism integration does not own a pre-launch compile
   step, and a build needs the toolchain and registry dependencies.
-- **Does the composed host survive as a launch path or become a test fixture?** Installed examples
-  now exercise the player path; the composed host is the launch path for the original test mods.
 - **Ravel needs Java 24+** because the transformer uses `java.lang.classfile`. Port it or declare
   the requirement to players; the 1.21.1 launch uses the pinned Java 25 runtime with
   `IgnoreJavaCompatibility=true`.

@@ -35,6 +35,10 @@ stable contracts toward concrete host internals.
   Artifact admission, descriptor validation and mapping uniqueness remain ours.
   JVM names and descriptor tokens live in its classfile module, shared by source
   rendering, hook-shape classification and tooling inventory counts.
+  Xtask consumes its typed adapter admission facts for eligibility and mapping
+  availability instead of maintaining a second adapter schema. Shared hook parsing
+  and counts live in xtask's hooks module; version and Java checks both depend on
+  that module rather than on one another.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's
@@ -112,10 +116,10 @@ stable contracts toward concrete host internals.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and
-  startup through `ravel-host-runtime`. It remains under `crates/` to preserve
-  the workspace's crate inventory and harness build paths; its placement does
-  not make test-mod dependencies suitable for other runtime crates. Player
-  hosts are emitted by `ravel-build` with the instance's selected members.
+  startup through `ravel-host-runtime`. It remains under `crates/` with the other
+  host crates; historical evidence inventories describe their pinned revisions,
+  not a placement constraint. Its test-mod dependencies are not suitable for other
+  runtime crates. Player hosts are emitted by `ravel-build` with the instance's selected members.
 
 - Loader phase entry points accept borrowed mutable host slices so testkit
   callers and owning hosts use the same dispatch surface. A lifecycle machine

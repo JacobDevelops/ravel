@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn the_mining_speed_line_is_drawn_on_a_digging_tool_the_list_does_not_name() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         assert!(shows_mining_speed(
             &settings,
             "example:pick",
@@ -137,7 +137,7 @@ mod tests {
     fn an_excluded_tool_and_a_switched_off_tooltip_both_draw_nothing() {
         let excluded = Settings {
             tooltip_excluded: Matcher::parse("example:*"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert!(!shows_mining_speed(
             &excluded,
@@ -148,7 +148,7 @@ mod tests {
 
         let off = Settings {
             tooltip_enabled: false,
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert!(!shows_mining_speed(
             &off,

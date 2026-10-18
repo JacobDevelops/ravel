@@ -95,14 +95,7 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
     let upgradable = reader.bool()?;
     let infusion = reader.u32()?;
 
-    let declared = reader.u32()?;
-    let declared = usize::try_from(declared).unwrap_or(usize::MAX);
-    if declared > MAX_COMPONENTS {
-        return Err(WireError::TooLarge {
-            needed: declared,
-            limit: MAX_COMPONENTS,
-        });
-    }
+    let declared = bounded_count(reader, MAX_COMPONENTS)?;
     let mut components = BTreeMap::new();
     for _ in 0..declared {
         let name = bounded_text(reader)?;
@@ -135,6 +128,17 @@ fn bounded_text(reader: &mut PacketReader<'_>) -> Result<String, WireError> {
         });
     }
     Ok(text.to_owned())
+}
+
+fn bounded_count(reader: &mut PacketReader<'_>, limit: usize) -> Result<usize, WireError> {
+    let declared = usize::try_from(reader.u32()?).expect("packet lengths fit the address space");
+    if declared > limit {
+        return Err(WireError::TooLarge {
+            needed: declared,
+            limit,
+        });
+    }
+    Ok(declared)
 }
 
 fn write_position(writer: &mut PacketWriter, at: (i32, i32, i32)) {
@@ -200,13 +204,7 @@ impl Packet for CardArguments {
     }
 
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
-        let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
-        if declared > MAX_VALUES {
-            return Err(WireError::TooLarge {
-                needed: declared,
-                limit: MAX_VALUES,
-            });
-        }
+        let declared = bounded_count(reader, MAX_VALUES)?;
         let mut named = Vec::with_capacity(declared);
         for _ in 0..declared {
             named.push((bounded_text(reader)?, bounded_text(reader)?));
@@ -238,13 +236,7 @@ impl Packet for BrowserPattern {
     }
 
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
-        let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
-        if declared > BROWSER_SLOTS {
-            return Err(WireError::TooLarge {
-                needed: declared,
-                limit: BROWSER_SLOTS,
-            });
-        }
+        let declared = bounded_count(reader, BROWSER_SLOTS)?;
         let mut slots = Vec::with_capacity(declared);
         for _ in 0..declared {
             slots.push(if reader.bool()? {
@@ -382,13 +374,7 @@ impl Packet for ReadoutAnswer {
 
     fn read(reader: &mut PacketReader<'_>) -> Result<Self, WireError> {
         let at = read_position(reader)?;
-        let declared = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
-        if declared > MAX_VALUES {
-            return Err(WireError::TooLarge {
-                needed: declared,
-                limit: MAX_VALUES,
-            });
-        }
+        let declared = bounded_count(reader, MAX_VALUES)?;
 
         // The shape is read first and the body is read against it, because the
         // shared library's own form is positional: it says what the values are,

@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "4e964d08ad8b1164ec57acc92fc0d45e51d8f26d6583fb84911e581956789733"
+        "sha256": "7608ffc03788826650b2374e15c981d747af1c3ffecb61d2a6c6847bd91fbfc0"
       },
       {
         "path": "aliases.json",
@@ -55,15 +55,15 @@
       },
       {
         "path": "src/arithmetic.rs",
-        "sha256": "5d75f2ac7ba278e93c4cd3499288efb7d301f23b88a06f18ece261f57b1f7be3"
+        "sha256": "d4fa65e5622b91732ae2eaebd03b2918b152ced511dfb749da58fdbcbecc446d"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "318ba0a0420050199bef5b766348fc8fc3969464eda90bc93a209e313433b24b"
+        "sha256": "793ab1a84a629c20f455099a308c998f6995b0f97b1d4a3b5952d6b738eabc65"
       },
       {
         "path": "src/flags.rs",
-        "sha256": "59fd13b33ec572808f52dc65f3d3b2aa5191010cd4c060e69a2a770d2a51ba2c"
+        "sha256": "a3e172fc25a0a7c8dfb4dd97eaeae8badc1c62a8f8e6d131eae06ab4bc663faa"
       },
       {
         "path": "src/inventory.rs",
@@ -71,11 +71,11 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "39a2f1505c66cdee62069ae4edddccbe0cbcc749ec97227091cb7002d56f8de6"
+        "sha256": "cb3b95072e2b47aa7dd275c09c3e3284ce81eae9a0417dc2f1cb00c96b9fc72f"
       },
       {
         "path": "src/reusable.rs",
-        "sha256": "2c137f1550241d4e9a24bf7fdb62e449e6342ef4311efaa5738d2a88c20b5850"
+        "sha256": "91b3d605366a91413ed11d6899192ab540fa04c338e3252afdb247eae1213972"
       },
       {
         "path": "src/selection.rs",
@@ -83,7 +83,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "58fac897076552f805efec89dfda165c5259b20a9df7b1038e7f300ebe16d69b"
+        "sha256": "4d498e5714668a89d0ef0d5f41d789142ec3d9a941db387018bfbae3ee12b374"
       }
     ]
   },

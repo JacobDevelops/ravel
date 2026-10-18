@@ -669,22 +669,21 @@ pub struct Settings {
     pub tweak_ineffective: Matcher,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
-            None,
-            None,
-        )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved, crate::HOST_NAMESPACE).expect("declared settings have matching types")
-    }
-}
-
 impl Settings {
+    /// Resolves the packaged defaults, refusing malformed declarations.
+    ///
+    /// # Errors
+    /// Returns the packaged declaration, resolution, or typed-value refusal.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved, crate::HOST_NAMESPACE).map_err(ravel_sdk::ModError::from_display)
+    }
+
     /// Reads the values in force out of a resolved configuration.
     ///
-    /// Returns typed access errors; repair costs retain their declared clamping.
+    /// Returns typed access errors, including repair costs outside their declared ranges.
     /// `host_namespace` completes an override selector written without one.
     pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Result<Self, ValueError> {
         let mut switches = [false; 14];
@@ -696,11 +695,11 @@ impl Settings {
             tooltip_excluded: Matcher::parse(resolved.text(TOOLTIP_EXCLUDED)?),
             switches,
             repair_enabled: resolved.boolean(REPAIR_ENABLED)?,
-            repair_cost: clamp_cost(resolved.integer(REPAIR_COST)?, COST_RANGE),
-            repair_enchantment_cost: clamp_cost(
+            repair_cost: read_cost(resolved.integer(REPAIR_COST)?, COST_RANGE)?,
+            repair_enchantment_cost: read_cost(
                 resolved.integer(REPAIR_ENCHANTMENT_COST)?,
                 ENCHANTMENT_COST_RANGE,
-            ),
+            )?,
             repair_materials: RepairMaterials::read(resolved)?,
             repair_discounts: RepairDiscounts::read(resolved)?,
             repair_blacklist: Matcher::parse(resolved.text(REPAIR_BLACKLIST)?),
@@ -759,11 +758,18 @@ impl Settings {
     }
 }
 
-fn clamp_cost(value: i64, (minimum, maximum): (u32, u32)) -> u32 {
-    u32::try_from(value).map_or_else(
-        |_| if value < 0 { minimum } else { maximum },
-        |value| value.clamp(minimum, maximum),
-    )
+fn read_cost(value: i64, (minimum, maximum): (u32, u32)) -> Result<u32, ValueError> {
+    if value < i64::from(minimum) {
+        return Err(ValueError::Below {
+            minimum: f64::from(minimum),
+        });
+    }
+    if value > i64::from(maximum) {
+        return Err(ValueError::Above {
+            maximum: f64::from(maximum),
+        });
+    }
+    Ok(u32::try_from(value).expect("the supported cost range fits u32"))
 }
 
 /// The twenty-six deciding settings, as they travel to a joining client.
@@ -909,11 +915,12 @@ mod tests {
     /// Whether a setting is one a given side resolves at all.
     #[must_use]
     fn resolved_on(key: &str, side: Side) -> bool {
-        declaration().is_ok_and(|declaration| {
-            declaration
-                .setting(key)
-                .is_some_and(|setting| setting.side.applies_to(side))
-        })
+        declaration()
+            .expect("the packaged declaration parses")
+            .setting(key)
+            .expect("the key is declared")
+            .side
+            .applies_to(side)
     }
 
     #[test]
@@ -926,11 +933,54 @@ mod tests {
     }
 
     #[test]
-    fn repair_costs_saturate_before_clamping_to_their_declared_range() {
-        assert_eq!(clamp_cost(i64::MIN, COST_RANGE), COST_RANGE.0);
-        assert_eq!(clamp_cost(i64::MAX, COST_RANGE), COST_RANGE.1);
-        assert_eq!(clamp_cost(4, COST_RANGE), 4);
-        assert_eq!(clamp_cost(-1, ENCHANTMENT_COST_RANGE), 0);
+    fn repair_costs_outside_the_declared_range_are_refused() {
+        for (key, range) in [
+            (REPAIR_COST, COST_RANGE),
+            (REPAIR_ENCHANTMENT_COST, ENCHANTMENT_COST_RANGE),
+        ] {
+            for (value, refusal) in [
+                (
+                    -1,
+                    ValueError::Below {
+                        minimum: f64::from(range.0),
+                    },
+                ),
+                (
+                    900,
+                    ValueError::Above {
+                        maximum: f64::from(range.1),
+                    },
+                ),
+            ] {
+                let mut document: ravel_sdk::JsonValue =
+                    DOCUMENT.parse().expect("the packaged document parses");
+                let setting = document["settings"]
+                    .as_array_mut()
+                    .expect("a settings array")
+                    .iter_mut()
+                    .find(|setting| setting["key"] == key)
+                    .expect("the cost is declared");
+                setting["valueSchema"] = ravel_sdk::json!({ "type": "integer" });
+                setting["default"] = ravel_sdk::json!(value);
+                let declared = ConfigurationDeclaration::parse(&document.to_string())
+                    .expect("a widened declaration");
+                let resolved = LayeredConfiguration::resolve(declared, None, None)
+                    .expect("the widened declaration resolves");
+                assert_eq!(Settings::read(&resolved, "host"), Err(refusal));
+            }
+            assert_eq!(
+                read_cost(i64::MIN, range),
+                Err(ValueError::Below {
+                    minimum: f64::from(range.0)
+                }),
+            );
+            assert_eq!(
+                read_cost(i64::MAX, range),
+                Err(ValueError::Above {
+                    maximum: f64::from(range.1)
+                }),
+            );
+        }
     }
 
     #[test]
@@ -995,7 +1045,7 @@ mod tests {
 
     #[test]
     fn every_shipped_default_is_the_one_the_specification_states() {
-        let shipped = Settings::default();
+        let shipped = Settings::shipped().expect("the packaged settings resolve");
         assert!(shipped.tooltip_enabled);
         assert!(shipped.tooltip_excluded.is_empty());
         assert_eq!(shipped.switches, [true; 14]);
@@ -1051,7 +1101,7 @@ mod tests {
 
     #[test]
     fn switching_one_feature_off_disables_only_the_flags_named_for_it() {
-        let mut settings = Settings::default();
+        let mut settings = Settings::shipped().expect("the packaged settings resolve");
         settings.switches[Feature::LightBlock.index()] = false;
 
         let mut table = FlagTable::default();
@@ -1067,13 +1117,20 @@ mod tests {
     #[test]
     fn an_invalid_flag_namespace_is_returned_instead_of_silently_skipped() {
         let mut table = FlagTable::default();
-        assert!(publish(&mut table, &Settings::default(), "invalid namespace").is_err());
+        assert!(
+            publish(
+                &mut table,
+                &Settings::shipped().expect("valid settings"),
+                "invalid namespace"
+            )
+            .is_err()
+        );
         assert_eq!(table.published().count(), 0);
     }
 
     #[test]
     fn switching_the_watering_tools_off_leaves_the_light_block_listed() {
-        let mut settings = Settings::default();
+        let mut settings = Settings::shipped().expect("the packaged settings resolve");
         settings.switches[Feature::WateringTools.index()] = false;
 
         let mut table = FlagTable::default();
@@ -1086,7 +1143,11 @@ mod tests {
     fn every_declared_feature_has_a_distinct_slot_and_ships_enabled() {
         for (index, feature) in Feature::ALL.into_iter().enumerate() {
             assert_eq!(feature.index(), index);
-            assert!(Settings::default().is_switched_on(feature));
+            assert!(
+                Settings::shipped()
+                    .expect("valid settings")
+                    .is_switched_on(feature)
+            );
         }
     }
 
@@ -1102,7 +1163,7 @@ mod tests {
             repair_blacklist: Matcher::parse("example:pick,tag:example:tools"),
             repair_overrides: Table::parse("example:pick=example:ingot@2", "host"),
             tweak_ineffective: Matcher::parse("example:*"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         settings.switches[Feature::TintedStone.index()] = false;
 
@@ -1135,13 +1196,13 @@ mod tests {
             repair_enabled: false,
             tweak_ineffective: Matcher::parse("example:spade"),
             repair_overrides: Table::parse("example:pick=example:ingot@2", "host"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
 
         let mut client = Settings {
             tooltip_enabled: false,
             tooltip_excluded: Matcher::parse("example:*"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         client.adopt(&server.decisive(), "host");
 
@@ -1163,10 +1224,12 @@ mod tests {
 
     #[test]
     fn a_cost_outside_its_declared_range_is_clamped_when_it_is_adopted() {
-        let mut decisive = Settings::default().decisive();
+        let mut decisive = Settings::shipped()
+            .expect("the packaged settings resolve")
+            .decisive();
         decisive.repair_cost = 4_000_000_000;
         decisive.repair_enchantment_cost = 900;
-        let mut client = Settings::default();
+        let mut client = Settings::shipped().expect("the packaged settings resolve");
         client.adopt(&decisive, "host");
         assert_eq!(client.repair_cost, COST_RANGE.1);
         assert_eq!(client.repair_enchantment_cost, ENCHANTMENT_COST_RANGE.1);
@@ -1179,9 +1242,9 @@ mod tests {
                 "example:pick=example:a@3,example:pick=example:a@9",
                 "host",
             ),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
-        let mut client = Settings::default();
+        let mut client = Settings::shipped().expect("the packaged settings resolve");
         client.adopt(&server.decisive(), "host");
         assert_eq!(
             client

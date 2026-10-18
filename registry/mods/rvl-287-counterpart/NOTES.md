@@ -82,6 +82,14 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
 - **Property values are compared by value, not by reference.** §7 says the original compares the
   game's interned property values by reference identity. `BlockState` compares by value, which the
   specification itself calls the same answer by a safer route.
+- **Block and texture identities stay qualified.** `BlockState::new` takes the SDK's validated
+  `ContentId`; condition, vocabulary, group and texture keys keep that same type rather than
+  dropping it back to text. A neighbourhood returns `Option<BlockState>`, with `None` meaning an
+  empty position; neither a magic block name nor an invalid default state represents absence.
+  An absent centre cannot occlude or connect; pane context construction returns its empty/default
+  context because there is no own appearance. A direction-specific `appearance_from` of `None`
+  likewise never connects, even to an occupied neighbour. This deliberately replaces the old
+  sentinel's accidental same-block equality between two absent positions.
 - **The condition language is bounded.** `conditions::MAX_DEPTH` and `conditions::MAX_ELEMENTS` cap
   nesting and list length, at parse and again at evaluation. A resource pack is untrusted input and
   a condition is the one part of a declaration a pack author can nest without limit. Both are

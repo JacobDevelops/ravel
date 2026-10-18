@@ -156,12 +156,11 @@ fn run_surface_instruction(surface: &Surface, arguments: &JsonValue) -> JsonValu
     let Some(name) = arguments.get("name").and_then(JsonValue::as_str) else {
         return json!({ "answered": false, "refused": "a call names no instruction" });
     };
-    let supplied: Vec<capabilities::Argument> = arguments
-        .get("arguments")
-        .and_then(JsonValue::as_array)
-        .map_or_else(Vec::new, |values| {
-            values.iter().map(read_argument).collect()
-        });
+    let empty = Vec::new();
+    let Some(values) = optional_field(arguments, "arguments", &empty, JsonValue::as_array) else {
+        return json!({ "answered": false, "refused": "arguments is not an array" });
+    };
+    let supplied: Vec<_> = values.iter().map(read_argument).collect();
     let mut program = capabilities::Program::default();
     match surface.run(&mut program, name, &supplied) {
         Ok(()) => json!({
@@ -267,27 +266,20 @@ fn read_instruction(arguments: &JsonValue) -> Result<capabilities::Instruction, 
         .ok_or("an instruction has no name")?;
     let output = read_kind(arguments.get("output")).ok_or("an instruction names no output kind")?;
     let mut parameters = Vec::new();
-    for declared in arguments
-        .get("parameters")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-    {
+    let empty = Vec::new();
+    let declared = optional_field(arguments, "parameters", &empty, JsonValue::as_array)
+        .ok_or("parameters is not an array")?;
+    for declared in declared {
         parameters.push(capabilities::Parameter {
             kind: read_kind(declared.get("kind")).ok_or("a parameter names no legal kind")?,
-            required: declared
-                .get("required")
-                .and_then(JsonValue::as_bool)
-                .unwrap_or_default(),
+            required: optional_field(declared, "required", false, JsonValue::as_bool)
+                .ok_or("required is not a boolean")?,
         });
     }
     let mut body = Vec::new();
-    for step in arguments
-        .get("body")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-    {
+    let steps = optional_field(arguments, "body", &empty, JsonValue::as_array)
+        .ok_or("body is not an array")?;
+    for step in steps {
         let index = || {
             step.get("index")
                 .and_then(JsonValue::as_u64)
@@ -310,15 +302,14 @@ fn read_instruction(arguments: &JsonValue) -> Result<capabilities::Instruction, 
             _ => return Err("a body step is not one this entry runs"),
         });
     }
-    let categories = arguments
-        .get("categories")
-        .and_then(JsonValue::as_array)
-        .map_or_else(Vec::new, |listed| {
-            listed
-                .iter()
-                .filter_map(|category| category.as_str().map(str::to_owned))
-                .collect()
-        });
+    let categories = optional_field(arguments, "categories", Vec::new(), |value| {
+        value
+            .as_array()?
+            .iter()
+            .map(|category| category.as_str().map(str::to_owned))
+            .collect()
+    })
+    .ok_or("categories is not an array of strings")?;
     Ok(capabilities::Instruction {
         name: name.to_owned(),
         parameters,
@@ -584,6 +575,50 @@ mod tests {
         assert_eq!(
             answer_ordering(&mut ordering, &json!({ "action": "queued" }))["queued"],
             json!(1)
+        );
+    }
+    #[test]
+    fn malformed_optional_instruction_fields_are_refused_without_registration() {
+        let mut surface = Surface::new();
+        for (field, value) in [
+            ("parameters", json!(null)),
+            ("parameters", json!({"kind": "amount"})),
+            ("parameters", json!([{"kind": "amount", "required": "yes"}])),
+            ("body", json!(false)),
+            ("categories", json!("one")),
+            ("categories", json!(["one", 7])),
+        ] {
+            let mut request = json!({
+                "action": "register_instruction", "name": "test", "output": "amount",
+            });
+            request[field] = value;
+            let response = answer_surface(&mut surface, &request);
+            assert_eq!(response["answered"], json!(false));
+            assert!(response["refused"].as_str().is_some());
+            let response = answer_surface(&mut surface, &json!({"action": "run", "name": "test"}));
+            assert_eq!(response["answered"], json!(false));
+            assert_eq!(
+                response["refused"],
+                json!("nothing is registered under test")
+            );
+        }
+        let request = json!({
+            "action": "register_instruction", "name": "test", "output": "amount",
+        });
+        assert_eq!(
+            answer_surface(&mut surface, &request)["answered"],
+            json!(true)
+        );
+        for arguments in [json!(null), json!(false), json!({})] {
+            let request = json!({"action": "run", "name": "test", "arguments": arguments});
+            assert_eq!(
+                answer_surface(&mut surface, &request)["answered"],
+                json!(false)
+            );
+        }
+        assert_eq!(
+            answer_surface(&mut surface, &json!({"action": "run", "name": "test"}))["answered"],
+            json!(true)
         );
     }
 }

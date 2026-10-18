@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn the_game_rule_is_tested_before_any_draw_is_taken() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         for boss in [Boss::WitherClass, Boss::DragonClass] {
             let added = on_death(boss, false, &settings, &id(SOUL), &id(SCALE), 0.0);
             assert_eq!(added.stacks.len(), 0);
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn the_wither_class_drop_is_a_draw_against_the_configured_chance() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         let below = on_death(
             Boss::WitherClass,
             true,
@@ -130,7 +130,7 @@ mod tests {
     fn a_chance_of_zero_never_drops_and_a_chance_of_one_always_does() {
         let mut settings = Settings {
             drops_soul_chance: 0.0,
-            ..Settings::default()
+            ..Settings::shipped().expect("the shipped settings are valid")
         };
         for draw in [0.0, 0.5, 0.999] {
             assert_eq!(
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn the_dragon_class_drop_is_a_certainty_and_takes_no_draw() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         let added = on_death(
             Boss::DragonClass,
             true,
@@ -184,7 +184,7 @@ mod tests {
     fn a_scale_count_of_zero_turns_the_drop_off_rather_than_dropping_nothing_visibly() {
         let settings = Settings {
             drops_scale_count: 0,
-            ..Settings::default()
+            ..Settings::shipped().expect("the shipped settings are valid")
         };
         let added = on_death(
             Boss::DragonClass,
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn the_dragon_class_branch_fires_on_every_death_including_a_later_one() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         for _ in 0..3 {
             let added = on_death(
                 Boss::DragonClass,
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn the_handed_in_draw_is_the_only_thing_the_drop_depends_on() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         let below = on_death(
             Boss::WitherClass,
             true,

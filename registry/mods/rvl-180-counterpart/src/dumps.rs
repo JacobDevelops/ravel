@@ -142,33 +142,30 @@ mod tests {
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let regenerate = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         let rendered = documents().expect("this package's constants are legal");
         assert_eq!(rendered.len(), 3);
+        let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
-            assert!(
-                document.ends_with('\n'),
-                "{relative} does not end with a newline"
-            );
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
-            if regenerate {
-                let directory = path.parent().expect("the path names a directory");
-                std::fs::create_dir_all(directory)
+            if regenerating {
+                let parent = path.parent().expect("the path names a directory");
+                std::fs::create_dir_all(parent)
                     .unwrap_or_else(|error| panic!("{relative} is not writable: {error}"));
-                std::fs::write(&path, &document)
+                std::fs::write(&path, document.as_bytes())
                     .unwrap_or_else(|error| panic!("{relative} is not writable: {error}"));
-            } else {
-                let found = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-                    panic!(
-                        "{relative} is not readable: {error}. Set RAVEL_REGENERATE_GENERATED to \
-                         write it."
-                    )
-                });
-                assert_eq!(
-                    found, document,
-                    "{relative} has drifted from what this package generates"
-                );
+                continue;
             }
+            let on_disk = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+                panic!(
+                    "{relative} is not readable: {error}. Set RAVEL_REGENERATE_GENERATED to \
+                     write it."
+                )
+            });
+            assert_eq!(
+                on_disk, document,
+                "{relative} has drifted from what this package generates"
+            );
         }
     }
 }

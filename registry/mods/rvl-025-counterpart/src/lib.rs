@@ -124,7 +124,7 @@ pub struct Holding {
 pub struct Entry {
     side: Side,
     declaration: Result<ContentDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     surface: Surface,
     ordering: Ordering,
     store: Store,
@@ -151,8 +151,8 @@ impl Entry {
     pub fn new(side: Side) -> Self {
         Self {
             side,
-            declaration: Self::content(),
-            settings: Settings::default(),
+            declaration: Self::declaration(),
+            settings: Settings::shipped(),
             surface: Surface::new(),
             ordering: Ordering::new(),
             store: Store::new(),
@@ -171,10 +171,9 @@ impl Entry {
         }
     }
 
-    /// Returns the values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    /// Returns the values in force, or the packaged settings refusal.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// Returns the world data this entry owns.
@@ -222,7 +221,7 @@ impl Entry {
         &mut self.holding
     }
 
-    /// Returns the recipes the evaluate command scans.
+    /// Replaces the recipes the evaluate command scans.
     pub fn set_recipes(&mut self, recipes: Vec<ShapedRecipe>) {
         self.recipes = recipes;
     }
@@ -347,7 +346,7 @@ impl Entry {
     ///
     /// Returns [`ModError::Refused`] when a name this package spells is not a
     /// legal content path, which for constants is a packaging failure.
-    pub fn content() -> Result<ContentDeclaration, ModError> {
+    pub fn declaration() -> Result<ContentDeclaration, ModError> {
         census::declaration(Self::declared_id().clone()).map_err(ModError::from_display)
     }
 
@@ -355,8 +354,7 @@ impl Entry {
         let path = delivery.id.id().path().to_owned();
         let held = self.holding.kind;
         if path == network::HeldComponents::contract().id().id().path() {
-            let payload: network::HeldComponents =
-                delivery.decode().map_err(ModError::from_display)?;
+            let payload: network::HeldComponents = delivery.decode().map_err(ModError::from)?;
             if network::apply_components(held, &payload, Record::PatternContents)
                 == network::Applied::Accepted
                 && let Some(written) = payload
@@ -371,8 +369,7 @@ impl Entry {
             return Ok(());
         }
         if path == network::CardArguments::contract().id().id().path() {
-            let payload: network::CardArguments =
-                delivery.decode().map_err(ModError::from_display)?;
+            let payload: network::CardArguments = delivery.decode().map_err(ModError::from)?;
             // This packet never updates card state, whether accepted or refused.
             match network::apply_card_arguments(held, &payload) {
                 network::Applied::Accepted
@@ -382,8 +379,7 @@ impl Entry {
             return Ok(());
         }
         if path == network::BrowserPattern::contract().id().id().path() {
-            let payload: network::BrowserPattern =
-                delivery.decode().map_err(ModError::from_display)?;
+            let payload: network::BrowserPattern = delivery.decode().map_err(ModError::from)?;
             if network::apply_browser_pattern(held, self.card_menu_open(), &payload)
                 == network::Applied::Accepted
                 && let Ok(pushed) = self.surface.push_browser_grid(&payload.slots)
@@ -393,8 +389,7 @@ impl Entry {
             return Ok(());
         }
         if path == network::ReadoutRequest::contract().id().id().path() {
-            let payload: network::ReadoutRequest =
-                delivery.decode().map_err(ModError::from_display)?;
+            let payload: network::ReadoutRequest = delivery.decode().map_err(ModError::from)?;
             if network::answer_readout(&payload, self.holding.at, self.holding.chunk_loaded)
                 == network::Applied::Accepted
             {
@@ -414,13 +409,10 @@ impl Entry {
             return Ok(());
         }
         if path == network::ReadoutAnswer::contract().id().id().path() {
-            let payload: network::ReadoutAnswer =
-                delivery.decode().map_err(ModError::from_display)?;
+            let payload: network::ReadoutAnswer = delivery.decode().map_err(ModError::from)?;
             return self.accept_readout(&payload);
         }
-        Err(ModError::refused(
-            "this entry declares no contract under that name",
-        ))
+        Err(ModError::Unsupported)
     }
 
     fn accept_readout(&mut self, payload: &network::ReadoutAnswer) -> Result<(), ModError> {
@@ -441,7 +433,7 @@ impl Entry {
         delivery: &PacketDelivery,
         held: network::Held,
     ) -> Result<(), ModError> {
-        let payload: network::HeldItem = delivery.decode().map_err(ModError::from_display)?;
+        let payload: network::HeldItem = delivery.decode().map_err(ModError::from)?;
         if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
             return Ok(());
         }
@@ -489,6 +481,9 @@ impl Mod for Entry {
     /// that is where the clear happens. On a client the queues are empty and the
     /// clear is a no-op, so the substitution costs nothing there.
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        if state == LifecycleState::Constructed {
+            self.settings()?;
+        }
         self.entered.push(state);
         if state == LifecycleState::Running {
             self.ordering.clear();
@@ -513,7 +508,7 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        self.settings = Ok(Settings::read(resolved).map_err(ModError::from_display)?);
         Ok(())
     }
 
@@ -848,25 +843,37 @@ mod tests {
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the shipped defaults resolve");
         entry.configure(&resolved).expect("they read back");
-        assert_eq!(entry.settings(), &Settings::default());
+        assert_eq!(
+            entry.settings().expect("valid settings"),
+            &Settings::shipped().expect("valid settings")
+        );
     }
 
     #[test]
     fn configure_propagates_a_missing_key_without_changing_settings() {
         let mut entry = Entry::new(Side::DedicatedServer);
-        let before = *entry.settings();
+        let before = *entry.settings().expect("valid settings");
         let changed = settings::DOCUMENT.replace(settings::ENERGY_CAPACITY, "infusing.renamed");
         let declaration = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the changed declaration resolves");
 
         assert!(entry.configure(&resolved).is_err());
-        assert_eq!(entry.settings(), &before);
+        assert_eq!(entry.settings().expect("valid settings"), &before);
     }
 
     #[test]
     fn the_host_builds_this_package_under_its_declared_identity() {
         assert_eq!(__ravel_entry(Side::DedicatedServer).id().as_str(), MOD_ID);
+    }
+
+    #[test]
+    fn a_packaged_settings_refusal_is_returned_at_constructed() {
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let refusal = ModError::refused("malformed packaged settings");
+        entry.settings = Err(refusal.clone());
+        assert_eq!(entry.enter(LifecycleState::Constructed), Err(refusal));
+        assert_eq!(entry.entered(), []);
     }
 
     fn delivery_of<P: Packet>(packet: &P, side: Side) -> PacketDelivery {

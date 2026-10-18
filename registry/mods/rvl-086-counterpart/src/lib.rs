@@ -43,7 +43,7 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::interception::InterceptionDeclaration;
-use ravel_sdk::network::{Packet, PacketDelivery};
+use ravel_sdk::network::PacketDelivery;
 use ravel_sdk::prelude::*;
 use rvl_042_counterpart::flags::FlagTable;
 
@@ -125,7 +125,7 @@ pub fn observers(side: Side) -> Vec<Observer> {
 #[derive(Debug)]
 pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     flags: FlagTable,
     grouping: Grouping,
     upkeep: Upkeep,
@@ -147,7 +147,7 @@ impl Entry {
     pub fn new() -> Self {
         Self {
             declaration: Self::declaration(),
-            settings: Settings::default(),
+            settings: Settings::shipped(),
             flags: FlagTable::default(),
             grouping: Grouping::default(),
             upkeep: Upkeep::new(),
@@ -159,9 +159,11 @@ impl Entry {
     }
 
     /// Returns the values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the retained shipped-settings refusal.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// Returns the flags this entry published.
@@ -222,7 +224,10 @@ impl Entry {
     /// Returns [`ModError::Refused`] when the creative grouping cannot be built
     /// over the flag names this package declares, which is a packaging failure.
     pub fn adopt(&mut self, decisive: &Decisive) -> Result<(), ModError> {
-        self.settings.adopt(decisive, HOST_NAMESPACE);
+        self.settings
+            .as_mut()
+            .map_err(|error| error.clone())?
+            .adopt(decisive, HOST_NAMESPACE);
         self.rebuild()
     }
 
@@ -258,8 +263,12 @@ impl Entry {
     }
 
     fn rebuild(&mut self) -> Result<(), ModError> {
-        settings::publish(&mut self.flags, &self.settings, FLAG_NAMESPACE)
-            .map_err(ModError::from_display)?;
+        settings::publish(
+            &mut self.flags,
+            self.settings.as_ref().map_err(Clone::clone)?,
+            FLAG_NAMESPACE,
+        )
+        .map_err(ModError::from_display)?;
         self.grouping = census::grouping(FLAG_NAMESPACE).map_err(ModError::from_display)?;
         self.configured = true;
         Ok(())
@@ -270,10 +279,7 @@ impl Entry {
 impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if state == LifecycleState::Constructed {
-            // The two declarations are parsed from packaged text, so a malformed
-            // one is a packaging failure. Refusing it here is what stops the mod
-            // launching with no settings and every deciding value at its default.
-            settings::declaration().map_err(ModError::from_display)?;
+            self.settings()?;
             self.declaration.as_ref().map_err(Clone::clone)?;
         }
         self.entered.push(state);
@@ -297,7 +303,8 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved, HOST_NAMESPACE).map_err(ModError::from_display)?;
+        self.settings =
+            Ok(Settings::read(resolved, HOST_NAMESPACE).map_err(ModError::from_display)?);
         self.rebuild()
     }
 
@@ -319,13 +326,10 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let contract = Decisive::contract();
-        if &delivery.id != contract.id() {
-            return Ok(());
+        if &delivery.id != Decisive::contract().id() {
+            return Err(ModError::Unsupported);
         }
-        let decisive = delivery
-            .decode::<Decisive>()
-            .map_err(ModError::from_display)?;
+        let decisive = delivery.decode::<Decisive>().map_err(ModError::from)?;
         self.adopt(&decisive)
     }
 
@@ -341,7 +345,18 @@ export_mod!(Entry::new());
 
 #[cfg(test)]
 mod tests {
+    use ravel_sdk::network::Packet;
+
     use super::*;
+
+    #[test]
+    fn shipped_settings_failure_is_refused_at_constructed() {
+        let original = ModError::refused("invalid shipped settings");
+        let mut entry = Entry::new();
+        entry.settings = Err(original.clone());
+        assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
+        assert_eq!(entry.entered(), []);
+    }
 
     #[test]
     fn deferred_content_refusal_is_not_replaced_by_a_generic_message() {
@@ -413,7 +428,11 @@ mod tests {
     fn every_registered_entry_is_listed_and_each_flag_changes_what_is_shown() {
         let mut entry = Entry::new();
         entry
-            .adopt(&Settings::default().decisive())
+            .adopt(
+                &Settings::shipped()
+                    .expect("the packaged settings resolve")
+                    .decisive(),
+            )
             .expect("the packaged flag names are legal");
 
         let listed = entry.grouping().declared().len();
@@ -421,7 +440,7 @@ mod tests {
         assert_eq!(entry.grouping().shown(entry.flags()).len(), listed);
 
         for (flag, feature) in settings::FLAG_BINDINGS {
-            let mut off = Settings::default();
+            let mut off = Settings::shipped().expect("the packaged settings resolve");
             off.switches[feature.index()] = false;
             let mut entry = Entry::new();
             entry
@@ -442,7 +461,10 @@ mod tests {
     #[test]
     fn a_fresh_entry_holds_the_shipped_defaults_and_has_resolved_nothing() {
         let entry = Entry::new();
-        assert_eq!(entry.settings(), &Settings::default());
+        assert_eq!(
+            entry.settings(),
+            Settings::shipped().as_ref().map_err(Clone::clone)
+        );
         assert!(!entry.configured());
         assert!(entry.upkeep().is_empty());
         assert_eq!(entry.grouping().declared().len(), 0);
@@ -452,7 +474,7 @@ mod tests {
     fn adopting_a_servers_answers_republishes_the_flags_over_them() {
         let server = Settings {
             switches: [false; 14],
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         let mut entry = Entry::new();
         entry
@@ -467,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn a_delivery_for_another_contract_is_left_alone_rather_than_decoded() {
+    fn a_declared_toggle_delivery_has_no_entry_handler() {
         let mut entry = Entry::new();
         let other = Toggle::contract();
         let delivery = PacketDelivery::new(
@@ -476,9 +498,22 @@ mod tests {
             Side::DedicatedServer,
             Vec::new(),
         );
-        entry
-            .receive_packet(&delivery)
-            .expect("a delivery this entry does not own changes nothing");
+        assert_eq!(entry.receive_packet(&delivery), Err(ModError::Unsupported));
+        assert!(!entry.configured());
+    }
+
+    #[test]
+    fn an_undeclared_delivery_has_no_entry_handler() {
+        let mut entry = Entry::new();
+        let delivery = PacketDelivery::new(
+            PacketId::new(
+                ContentId::new(Entry::declared_id().clone(), "unknown").expect("a packet path"),
+            ),
+            Direction::ToClient,
+            Side::Client,
+            Vec::new(),
+        );
+        assert_eq!(entry.receive_packet(&delivery), Err(ModError::Unsupported));
         assert!(!entry.configured());
     }
 
@@ -486,13 +521,16 @@ mod tests {
     fn a_decisive_delivery_adopts_the_servers_settings() {
         let server = Settings {
             switches: [false; 14],
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         let delivery = PacketDelivery::of(&server.decisive(), Side::Client)
             .expect("the client receives deciding settings");
         let mut entry = Entry::new();
         entry.receive_packet(&delivery).expect("a valid frame");
-        assert_eq!(entry.settings().switches, server.switches);
+        assert_eq!(
+            entry.settings().expect("shipped settings").switches,
+            server.switches
+        );
         assert!(entry.configured());
     }
 
@@ -502,7 +540,10 @@ mod tests {
         let mut writer = ravel_sdk::network::PacketWriter::default();
         writer.text(&contract.id().to_string());
         writer.u32(settings::PACKET_VERSION + 1);
-        Settings::default().decisive().write(&mut writer);
+        Settings::shipped()
+            .expect("the packaged settings resolve")
+            .decisive()
+            .write(&mut writer);
         let delivery = PacketDelivery::new(
             contract.id().clone(),
             contract.direction(),
@@ -522,7 +563,11 @@ mod tests {
             contract.id().clone(),
             contract.direction(),
             Side::DedicatedServer,
-            ravel_sdk::network::encode(&Settings::default().decisive()),
+            ravel_sdk::network::encode(
+                &Settings::shipped()
+                    .expect("the packaged settings resolve")
+                    .decisive(),
+            ),
         );
         assert!(entry.receive_packet(&delivery).is_err());
         assert!(

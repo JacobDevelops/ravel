@@ -12,6 +12,7 @@
 //! for the divergence to be recorded rather than for the split to be
 //! reproduced. [`Settings`] resolves all four together.
 
+use ravel_sdk::ModError;
 use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide, ValueError,
 };
@@ -105,25 +106,35 @@ pub struct Settings {
     pub energy_accepted: i32,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
+impl Settings {
+    /// Resolves the packaged defaults without panicking on a packaging failure.
+    pub fn shipped() -> Result<Self, ModError> {
         let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
+            declaration().map_err(ModError::from_display)?,
             None,
             None,
         )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved).expect("declared settings have matching types")
+        .map_err(ModError::from_display)?;
+        Self::read(&resolved).map_err(ModError::from_display)
     }
-}
 
-impl Settings {
     /// Reads all four validated integer settings together for one launch.
     ///
     /// Returns a typed access error for a missing key, wrong kind or out-of-range integer.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         let integer = |name: &str| {
-            i32::try_from(resolved.integer(name)?).map_err(|_| ValueError::IntegerRange)
+            let value = resolved.integer(name)?;
+            i32::try_from(value).map_err(|_| {
+                if value < i64::from(i32::MIN) {
+                    ValueError::Below {
+                        minimum: f64::from(i32::MIN),
+                    }
+                } else {
+                    ValueError::Above {
+                        maximum: f64::from(i32::MAX),
+                    }
+                }
+            })
         };
         Ok(Self {
             upgrade_ceiling: integer(UPGRADE_CEILING)?,
@@ -217,7 +228,10 @@ mod tests {
         let declaration = declaration().expect("the shipped document is legal");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the shipped defaults resolve");
-        assert_eq!(Settings::read(&resolved), Ok(Settings::default()));
+        assert_eq!(
+            Settings::read(&resolved),
+            Ok(Settings::shipped().expect("valid settings"))
+        );
     }
 
     use super::*;
@@ -256,7 +270,24 @@ mod tests {
         let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
         let resolved = LayeredConfiguration::resolve(declared, None, None)
             .expect("the widened declaration resolves");
-        assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+        assert_eq!(
+            Settings::read(&resolved),
+            Err(ValueError::Above {
+                maximum: f64::from(i32::MAX)
+            })
+        );
+        let changed = DOCUMENT
+            .replace("\"minimum\": 0.0", "\"minimum\": -4294967295.0")
+            .replace("\"default\": 60000", "\"default\": -2147483649");
+        let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .expect("the widened declaration resolves");
+        assert_eq!(
+            Settings::read(&resolved),
+            Err(ValueError::Below {
+                minimum: f64::from(i32::MIN)
+            })
+        );
     }
 
     #[test]

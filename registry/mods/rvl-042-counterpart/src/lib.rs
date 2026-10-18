@@ -77,8 +77,7 @@ const SOUND_BYTES: &[u8] = b"the supplied bytes";
 #[derive(Debug)]
 pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
-    flags: FlagTable,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     selection: Option<Selection>,
     observed: Vec<GameEvent>,
     entered: Vec<LifecycleState>,
@@ -100,8 +99,7 @@ impl Entry {
     pub fn new() -> Self {
         Self {
             declaration: Self::declaration(),
-            flags: FlagTable::default(),
-            settings: Settings::default(),
+            settings: Settings::shipped(),
             selection: None,
             observed: Vec::new(),
             entered: Vec::new(),
@@ -109,26 +107,12 @@ impl Entry {
         }
     }
 
-    /// Returns the flag table dependents publish into and reference out of.
-    #[must_use]
-    pub const fn flags(&self) -> &FlagTable {
-        &self.flags
-    }
-
-    /// Returns the flag table for publication.
-    ///
-    /// A dependent publishes its own flags here before anything asks for them.
-    /// Ravel gives no mod a way to force another mod's declarations to exist, so
-    /// the ordering guarantee is met by declaration order rather than by
-    /// discovery, and a dependent that publishes nothing disables only itself.
-    pub const fn flags_mut(&mut self) -> &mut FlagTable {
-        &mut self.flags
-    }
-
     /// Returns the values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the retained shipped-settings refusal.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// Returns the tag selection, once configuration has been resolved.
@@ -226,6 +210,10 @@ impl Entry {
 #[declare_mod(id = "rvl_042_counterpart")]
 impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        if state == LifecycleState::Constructed {
+            self.declaration.as_ref().map_err(Clone::clone)?;
+            self.settings()?;
+        }
         self.entered.push(state);
         Ok(())
     }
@@ -251,11 +239,12 @@ impl Mod for Entry {
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        let settings = Settings::read(resolved).map_err(ModError::from_display)?;
         self.selection = Some(Selection::new(
-            self.settings.preference.clone(),
-            self.settings.self_heal,
+            settings.preference.clone(),
+            settings.self_heal,
         ));
+        self.settings = Ok(settings);
         Ok(())
     }
 
@@ -271,6 +260,15 @@ export_mod!(Entry::new());
 mod tests {
     use super::*;
     use ravel_sdk::audio::AudioEvent;
+
+    #[test]
+    fn shipped_settings_failure_is_refused_at_constructed() {
+        let original = ModError::refused("invalid shipped settings");
+        let mut entry = Entry::new();
+        entry.settings = Err(original.clone());
+        assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
+        assert_eq!(entry.entered(), []);
+    }
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
@@ -307,7 +305,10 @@ mod tests {
     fn a_library_that_has_not_been_configured_holds_no_selection_yet() {
         let shared = Entry::new();
         assert!(shared.selection().is_none());
-        assert_eq!(shared.settings(), &Settings::default());
+        assert_eq!(
+            shared.settings(),
+            Settings::shipped().as_ref().map_err(Clone::clone)
+        );
     }
 
     #[test]
@@ -322,16 +323,6 @@ mod tests {
 
         assert_eq!(shared.entered(), LifecycleState::ALL);
         assert_eq!(shared.observed(), [GameEvent::ServerTick]);
-    }
-
-    #[test]
-    fn a_dependent_publishes_its_flags_into_the_one_table() {
-        let mut shared = Entry::new();
-        let id = "dependent:optional"
-            .parse::<FlagId>()
-            .expect("a legal identity");
-        shared.flags_mut().publish_constant(id.clone(), true);
-        assert!(shared.flags().enabled(&id));
     }
 
     #[test]

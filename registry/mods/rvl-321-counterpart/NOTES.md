@@ -21,6 +21,15 @@ of silently omitting an invalid binding; configuration propagates publication fa
 shaping and machine envelopes reuse the entry's already-declared identity, so neither operation
 reparses the package constant or reports an impossible identity failure.
 
+The mod-owned flag table is exposed by the required-service SDK seam: `flags` accepts
+`{"flag": "namespace:name"}` and answers a boolean only for a published identity. Missing or malformed
+flags refuse the request, and dependents resolve values after configuration rather than reading their
+own unrelated tables. Construction publishes the shipped settings too, so lifecycle-only admission
+without a configuration pass still exposes the actual default flags; a configuration pass replaces
+them with the resolved launch values before service wiring. Packaged settings or flag-publication
+errors remain fallible through construction and are refused at Constructed; configuration declarations
+are parsed on demand rather than cached separately.
+
 ## What each section became
 
 | Section | Here | Where |
@@ -117,6 +126,9 @@ reparses the package constant or reports an impossible identity failure.
   modifier identities carry `ContentId`; contributions refuse malformed identifiers before registration.
   Machine recipe ticks use named `RecipeStep` inputs; harvester ticks use `Timing` for effective,
   upgraded operation figures rather than unupgraded `Bases`. Both use the same `Redstone` mode.
+  Harvests take a named `Maturity` state rather than adjacent maturity/second-seed booleans, and
+  ground conversion leaves its configuration gate to the caller. Bounded machine cursor conversions
+  preserve their proven values instead of silently substituting position zero.
 
 ## Declarable only, and why
 

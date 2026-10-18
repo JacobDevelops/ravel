@@ -9,11 +9,9 @@
 //! entry's.
 
 use ravel_sdk::{JsonValue, content::ContentId};
-use rvl_042_counterpart::flags::FlagTable;
 use rvl_042_counterpart::inventory::Stack;
 use rvl_321_counterpart::ground::{self, Converted};
 use rvl_321_counterpart::model::Tier;
-use rvl_321_counterpart::settings as depended;
 
 /// The multiplier fall damage is taken at when an entity lands on this ground.
 pub const FALL_MULTIPLIER: f64 = ground::FALL_MULTIPLIER;
@@ -39,17 +37,6 @@ pub fn landed_on(fall_damage: f64) -> (f64, bool) {
     (fall_damage * FALL_MULTIPLIER, true)
 }
 
-/// Whether conversion into this ground is permitted at all.
-///
-/// The gate is the dependency's ground-conversion flag, consulted before
-/// anything of this entry's. An unpublished flag reads as off, which is the safe
-/// reading: a conversion that consumes a material is not something to perform on
-/// a flag nobody declared.
-#[must_use]
-pub fn conversion_enabled(flags: &FlagTable) -> bool {
-    depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL).is_ok_and(|flag| flags.enabled(&flag))
-}
-
 /// Converts ground with this tier's material held.
 ///
 /// This short-circuits to a pass-through when the dependency's flag is off,
@@ -57,17 +44,17 @@ pub fn conversion_enabled(flags: &FlagTable) -> bool {
 /// whenever the two disagree.
 #[must_use]
 pub fn convert(
-    flags: &FlagTable,
+    conversion_enabled: bool,
     current: Option<&Tier>,
     plain_tilled: bool,
     held: &Tier,
     moisture: u8,
     draw: u32,
 ) -> Converted {
-    if !conversion_enabled(flags) {
+    if !conversion_enabled {
         return Converted::default();
     }
-    ground::convert(current, plain_tilled, held, moisture, true, draw)
+    ground::convert(current, plain_tilled, held, moisture, draw)
 }
 
 /// The tilling recipe that reaches this ground without owning a converter.
@@ -146,30 +133,10 @@ mod tests {
     }
 
     #[test]
-    fn conversion_is_gated_on_the_dependencys_flag_and_nothing_of_this_entrys() {
+    fn conversion_is_gated_on_the_dependencys_resolved_flag() {
         let held = sixth();
-        let mut flags = FlagTable::new();
-        assert!(!conversion_enabled(&flags));
-        assert!(
-            convert(&flags, None, true, &held, 4, 0).passed_through(),
-            "an unpublished flag short-circuits before anything else is consulted"
-        );
-
-        // This entry's own five flags are all published and none of them opens
-        // the gate.
-        let settings = crate::settings::Settings {
-            crops_fertilisable: true,
-            ..crate::settings::Settings::default()
-        };
-        crate::settings::publish(&mut flags, &settings).expect("legal flag bindings");
-        assert!(!conversion_enabled(&flags));
-        assert!(convert(&flags, None, true, &held, 4, 0).passed_through());
-
-        let flag = depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)
-            .expect("the dependency names its flag");
-        flags.publish_constant(flag, true);
-        assert!(conversion_enabled(&flags));
-        let converted = convert(&flags, None, true, &held, 4, 0);
+        assert!(convert(false, None, true, &held, 4, 0).passed_through());
+        let converted = convert(true, None, true, &held, 4, 0);
         assert!(!converted.passed_through());
         assert_eq!(converted.ground.as_deref(), Some("test:ground"));
         assert_eq!(converted.moisture, 4, "moisture carries across unchanged");

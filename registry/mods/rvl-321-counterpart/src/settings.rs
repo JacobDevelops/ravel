@@ -342,15 +342,16 @@ pub struct Settings {
     pub deposits: DepositSettings,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
-            None,
-            None,
-        )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved).expect("declared settings have matching types")
+impl Settings {
+    /// Resolves the packaged defaults, refusing malformed declarations or values.
+    ///
+    /// # Errors
+    /// Returns a refusal when the packaged declaration or its defaults are invalid.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
     }
 }
 impl DropSettings {
@@ -401,10 +402,8 @@ impl Settings {
     /// Returns a typed access error if a key is missing or has the wrong kind.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
-            ritual_catalyst_uses: u32::try_from(resolved.integer(RITUAL_CATALYST_USES)?)
-                .map_err(|_| ValueError::IntegerRange)?,
-            growth_pulse_seconds: u32::try_from(resolved.integer(GROWTH_PULSE_SECONDS)?)
-                .map_err(|_| ValueError::IntegerRange)?,
+            ritual_catalyst_uses: unsigned(resolved, RITUAL_CATALYST_USES)?,
+            growth_pulse_seconds: unsigned(resolved, GROWTH_PULSE_SECONDS)?,
             drops: DropSettings::read(resolved)?,
             growth_require_effective_ground: resolved.boolean(GROWTH_REQUIRE_EFFECTIVE_GROUND)?,
             ground_convert_by_material: resolved.boolean(GROUND_CONVERT_BY_MATERIAL)?,
@@ -413,6 +412,19 @@ impl Settings {
             deposits: DepositSettings::read(resolved)?,
         })
     }
+}
+
+fn unsigned(resolved: &LayeredConfiguration, key: &str) -> Result<u32, ValueError> {
+    let value = resolved.integer(key)?;
+    u32::try_from(value).map_err(|_| {
+        if value < 0 {
+            ValueError::Below { minimum: 0.0 }
+        } else {
+            ValueError::Above {
+                maximum: f64::from(u32::MAX),
+            }
+        }
+    })
 }
 
 type FlagBinding = (&'static str, fn(&Settings) -> bool);
@@ -456,11 +468,10 @@ const PUBLISHED: [FlagBinding; 14] = [
     (WORLD_SECOND_DEPOSIT, |settings| settings.deposits.second),
 ];
 
-/// Publishes those flags into the shared table under this entry's namespace.
+/// Publishes flags into this mod's own table under its namespace.
 ///
-/// A flag is published as a constant rather than a live predicate, because the
-/// shared library binds a reference once and a value that moved afterwards
-/// would not be seen by an already-bound reference anyway.
+/// Constants reflect the resolved launch configuration. Cross-mod consumers ask
+/// this entry's flags service during service wiring.
 ///
 /// # Errors
 ///
@@ -543,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn a_widened_declaration_returns_an_integer_range_error() {
+    fn a_widened_declaration_reports_the_unsigned_upper_bound() {
         for default in ["\"default\": 1000,", "\"default\": 10,"] {
             let changed = DOCUMENT
                 .replace("4294967295", "5000000000")
@@ -551,7 +562,12 @@ mod tests {
             let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the widened declaration resolves");
-            assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+            assert_eq!(
+                Settings::read(&resolved),
+                Err(ValueError::Above {
+                    maximum: f64::from(u32::MAX)
+                })
+            );
         }
     }
 
@@ -622,7 +638,7 @@ mod tests {
 
     #[test]
     fn the_two_settings_that_ship_off_are_the_ground_gate_and_the_plain_grid_recipes() {
-        let shipped = Settings::default();
+        let shipped = Settings::shipped().expect("the shipped settings are valid");
         assert!(!shipped.growth_require_effective_ground);
         assert!(!shipped.recipes_plain_grid_seeds);
         assert!(!shipped.gear.top.armour_unbreakable);
@@ -632,7 +648,7 @@ mod tests {
 
     #[test]
     fn the_shipped_numbers_are_the_ones_the_document_states() {
-        let shipped = Settings::default();
+        let shipped = Settings::shipped().expect("the shipped settings are valid");
         assert!((shipped.drops.creature_material_chance - 0.2).abs() < f64::EPSILON);
         assert!((shipped.drops.fertiliser_chance - 0.1).abs() < f64::EPSILON);
         assert!((shipped.deposits.rare_substitution_chance - 0.05).abs() < f64::EPSILON);
@@ -667,7 +683,7 @@ mod tests {
             .map(|(key, _)| flag_id(key).expect("a legal flag identity"))
             .collect();
         let mut table = FlagTable::new();
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         publish(&mut table, &settings).expect("legal flag bindings");
         assert_eq!(
             table

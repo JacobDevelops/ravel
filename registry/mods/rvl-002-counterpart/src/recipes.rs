@@ -179,9 +179,11 @@ pub fn contributes(
 }
 
 /// The dependency setting the crafting documents are gated on, which ships off.
-#[must_use]
-pub fn grid_seed_setting_default() -> bool {
-    depended::Settings::default().recipes_plain_grid_seeds
+///
+/// # Errors
+/// Returns a refusal if the dependency's packaged settings cannot resolve.
+pub fn grid_seed_setting_default() -> Result<bool, ravel_sdk::ModError> {
+    Ok(depended::Settings::shipped()?.recipes_plain_grid_seeds)
 }
 
 /// The count a decompression yields, which is nine for every member but one.
@@ -315,7 +317,7 @@ mod tests {
             .collect();
         assert_eq!(gated, [CropRecipe::Crafting]);
         assert!(
-            !grid_seed_setting_default(),
+            !grid_seed_setting_default().expect("valid shipped settings"),
             "a default installation loads no crafting recipe of the six"
         );
     }
@@ -336,7 +338,7 @@ mod tests {
 
     #[test]
     fn a_default_installation_loads_infusion_and_reprocessing_and_no_crafting() {
-        let grid_seeds = grid_seed_setting_default();
+        let grid_seeds = grid_seed_setting_default().expect("valid shipped settings");
         assert!(!contributes(CropRecipe::Crafting, true, true, grid_seeds));
         assert!(contributes(CropRecipe::Infusion, true, true, grid_seeds));
         assert!(contributes(

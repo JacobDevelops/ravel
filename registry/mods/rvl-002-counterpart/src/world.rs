@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn each_switch_gates_exactly_its_own_deposit() {
         for deposit in &DEPOSITS {
-            let mut settings = Settings::default();
+            let mut settings = Settings::shipped().expect("the shipped settings are valid");
             assert!(deposit.generates(&settings));
             settings.world_lower.shard = false;
             settings.world_lower.essence = false;
@@ -240,7 +240,7 @@ mod tests {
                 shard: true,
                 essence: false,
             },
-            ..Settings::default()
+            ..Settings::shipped().expect("the shipped settings are valid")
         };
         let generating = DEPOSITS
             .iter()
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn the_biome_gate_is_applied_twice_and_both_tests_can_decline() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         let deposit = DEPOSITS[0];
         assert!(admits(&deposit, Dimension::Lower, true, &settings));
         assert!(

@@ -240,7 +240,7 @@ pub fn soak(
     offer: &dyn Fn(Position) -> Soaked,
     draw: &mut dyn FnMut(Position) -> f64,
 ) -> SoakReport {
-    let radius = i32::try_from(half_extent(side)).unwrap_or(i32::MAX);
+    let radius = half_extent(side).cast_signed();
     let mut report = SoakReport::default();
     for position in radial_positions(origin, radius) {
         let offered = offer(position);

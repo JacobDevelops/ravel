@@ -279,7 +279,7 @@ impl Crop {
 
     /// Whether a packed colour asks for no tint at all.
     #[must_use]
-    pub const fn untinted(colour: Colour) -> bool {
+    pub const fn is_untinted(colour: Colour) -> bool {
         colour.red == 0 && colour.green == 0 && colour.blue == 0
     }
 
@@ -468,15 +468,18 @@ mod tests {
             ("test:kind").parse().expect("a legal crop kind identity"),
             Crafted::Nothing,
         );
-        assert!(Crop::untinted(crop.flower_colour));
+        assert!(Crop::is_untinted(crop.flower_colour));
         crop.set_colour(10, 20, 30);
         assert_eq!(crop.flower_colour, crop.material_colour);
         assert_eq!(crop.material_colour, crop.seed_colour);
         assert_eq!(crop.flower_colour.opacity, CROP_OPACITY);
-        assert!(!Crop::untinted(crop.flower_colour));
+        assert!(!Crop::is_untinted(crop.flower_colour));
 
         crop.set_colour(0, 0, 0);
-        assert!(Crop::untinted(crop.flower_colour), "pure black is no tint");
+        assert!(
+            Crop::is_untinted(crop.flower_colour),
+            "pure black is no tint"
+        );
     }
 
     #[test]

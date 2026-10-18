@@ -351,15 +351,20 @@ impl Neighbours {
 /// state access from the render thread, so the real implementation of this is
 /// host-blocked; the probe itself is a pure function of whatever answers it.
 pub trait Neighbourhood {
-    /// Returns the appearance of the position at `offset`.
-    fn appearance(&self, offset: Offset) -> BlockState;
+    /// Returns the appearance at `offset`, or `None` for an empty position.
+    ///
+    /// `None` at the centre means there is no block appearance to draw from:
+    /// it cannot occlude or connect, and a pane model returns an empty context.
+    fn appearance(&self, offset: Offset) -> Option<BlockState>;
 
     /// Returns the appearance the block being drawn presents when it is looked
     /// at from `offset`.
+    /// `None` means the block has no appearance from this direction and cannot
+    /// connect to that sample, even when the neighbour itself is occupied.
     ///
     /// The default answers with the block's own appearance at the centre, which
     /// is what a block with no appearance override presents in every direction.
-    fn appearance_from(&self, offset: Offset) -> BlockState {
+    fn appearance_from(&self, offset: Offset) -> Option<BlockState> {
         let _ = offset;
         self.appearance(Offset::ZERO)
     }
@@ -407,9 +412,10 @@ pub fn probe(
 /// Answers whether the position in front of `face` occludes it.
 #[must_use]
 pub fn occluded(face: Face, neighbourhood: &dyn Neighbourhood) -> bool {
-    let own = neighbourhood.appearance(Offset::ZERO);
-    let front = neighbourhood.appearance(face.normal());
-    !front.is_nothing() && front.same_block(&own)
+    neighbourhood
+        .appearance(Offset::ZERO)
+        .zip(neighbourhood.appearance(face.normal()))
+        .is_some_and(|(own, front)| front.same_block(&own))
 }
 
 /// Takes the eight samples without the occlusion test.
@@ -439,12 +445,12 @@ fn connects(
     groups: &Groups,
     neighbourhood: &dyn Neighbourhood,
 ) -> bool {
-    let sampled = neighbourhood.appearance(offset);
-    if sampled.is_nothing() {
+    let Some(sampled) = neighbourhood.appearance(offset) else {
         return false;
-    }
-    let own = neighbourhood.appearance_from(offset);
-    condition.connects(&own, &sampled, groups)
+    };
+    neighbourhood
+        .appearance_from(offset)
+        .is_some_and(|own| condition.connects(&own, &sampled, groups))
 }
 
 #[cfg(test)]
@@ -457,15 +463,15 @@ pub(crate) mod tests {
     /// A neighbourhood written out position by position.
     #[derive(Default)]
     pub(crate) struct Written {
-        centre: BlockState,
+        centre: Option<BlockState>,
         around: BTreeMap<Offset, BlockState>,
-        presented: BTreeMap<Offset, BlockState>,
+        presented: BTreeMap<Offset, Option<BlockState>>,
     }
 
     impl Written {
         pub(crate) fn of(centre: BlockState) -> Self {
             Self {
-                centre,
+                centre: Some(centre),
                 ..Self::default()
             }
         }
@@ -484,23 +490,20 @@ pub(crate) mod tests {
         }
 
         fn presenting(mut self, offset: Offset, state: BlockState) -> Self {
-            self.presented.insert(offset, state);
+            self.presented.insert(offset, Some(state));
             self
         }
     }
 
     impl Neighbourhood for Written {
-        fn appearance(&self, offset: Offset) -> BlockState {
+        fn appearance(&self, offset: Offset) -> Option<BlockState> {
             if offset == Offset::ZERO {
                 return self.centre.clone();
             }
-            self.around
-                .get(&offset)
-                .cloned()
-                .unwrap_or_else(BlockState::nothing)
+            self.around.get(&offset).cloned()
         }
 
-        fn appearance_from(&self, offset: Offset) -> BlockState {
+        fn appearance_from(&self, offset: Offset) -> Option<BlockState> {
             self.presented
                 .get(&offset)
                 .cloned()
@@ -581,9 +584,17 @@ pub(crate) mod tests {
 
     #[test]
     fn a_face_whose_front_presents_the_same_block_is_culled_before_anything_is_sampled() {
-        let neighbourhood = Written::of(BlockState::new("base:panel"))
-            .at(Face::North.normal(), BlockState::new("base:panel"))
-            .at(Face::North.orthogonal(0), BlockState::new("base:panel"));
+        let neighbourhood = Written::of(BlockState::new(
+            "base:panel".parse().expect("qualified block"),
+        ))
+        .at(
+            Face::North.normal(),
+            BlockState::new("base:panel".parse().expect("qualified block")),
+        )
+        .at(
+            Face::North.orthogonal(0),
+            BlockState::new("base:panel".parse().expect("qualified block")),
+        );
         assert_eq!(
             probe(
                 Face::North,
@@ -608,7 +619,44 @@ pub(crate) mod tests {
 
     #[test]
     fn an_empty_position_in_front_does_not_cull_and_an_empty_sample_never_connects() {
-        let neighbourhood = Written::of(BlockState::new("base:panel"));
+        let neighbourhood = Written::of(BlockState::new(
+            "base:panel".parse().expect("qualified block"),
+        ));
+        assert!(neighbourhood.appearance(Face::North.normal()).is_none());
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
+        let mut absent = Written::default().all_around(Face::North, &panel);
+        absent = absent.at(Face::North.normal(), panel.clone());
+        assert_eq!(
+            probe(Face::North, &Condition::SameBlock, &Groups::new(), &absent),
+            Probe::Drawn(Neighbours::NONE),
+            "an absent centre neither occludes nor connects to occupied neighbours",
+        );
+        let mut unpresented = Written::of(panel.clone()).all_around(Face::North, &panel);
+        let offset = Face::North.orthogonal(0);
+        unpresented.presented.insert(offset, None);
+        let sampled = sample(
+            Face::North,
+            &Condition::SameBlock,
+            &Groups::new(),
+            &unpresented,
+        );
+        assert!(
+            !sampled.orthogonal[0],
+            "an absent own appearance never connects"
+        );
+        assert!(sampled.orthogonal[1]);
+        let named_nothing = BlockState::new("base:nothing".parse().expect("qualified block"));
+        let occupied = Written::of(named_nothing.clone()).at(Face::North.normal(), named_nothing);
+        assert_eq!(
+            probe(
+                Face::North,
+                &Condition::SameBlock,
+                &Groups::new(),
+                &occupied
+            ),
+            Probe::Culled,
+            "a real block named nothing is occupied, not absence",
+        );
         let Probe::Drawn(neighbours) = probe(
             Face::North,
             // A condition that would connect anything, so only the emptiness
@@ -625,9 +673,17 @@ pub(crate) mod tests {
     #[test]
     fn all_eight_samples_are_taken_and_each_lands_in_its_own_slot() {
         let face = Face::Up;
-        let mut neighbourhood = Written::of(BlockState::new("base:panel"));
-        neighbourhood = neighbourhood.at(face.orthogonal(1), BlockState::new("base:panel"));
-        neighbourhood = neighbourhood.at(face.diagonal(2), BlockState::new("base:panel"));
+        let mut neighbourhood = Written::of(BlockState::new(
+            "base:panel".parse().expect("qualified block"),
+        ));
+        neighbourhood = neighbourhood.at(
+            face.orthogonal(1),
+            BlockState::new("base:panel".parse().expect("qualified block")),
+        );
+        neighbourhood = neighbourhood.at(
+            face.diagonal(2),
+            BlockState::new("base:panel".parse().expect("qualified block")),
+        );
 
         let neighbours = sample(face, &Condition::SameBlock, &Groups::new(), &neighbourhood);
         assert_eq!(neighbours.orthogonal, [false, true, false, false]);
@@ -642,8 +698,13 @@ pub(crate) mod tests {
     fn a_neighbour_that_presents_another_block_connects_as_that_other_block() {
         let face = Face::Up;
         let offset = face.orthogonal(0);
-        let neighbourhood =
-            Written::of(BlockState::new("base:panel")).at(offset, BlockState::new("base:beam"));
+        let neighbourhood = Written::of(BlockState::new(
+            "base:panel".parse().expect("qualified block"),
+        ))
+        .at(
+            offset,
+            BlockState::new("base:beam".parse().expect("qualified block")),
+        );
         let condition = Condition::SameBlock;
 
         let raw = sample(face, &condition, &Groups::new(), &neighbourhood);
@@ -651,9 +712,17 @@ pub(crate) mod tests {
 
         // The block being drawn presents itself as the neighbour's block when
         // looked at from there, so the same-block test now holds.
-        let presenting = Written::of(BlockState::new("base:panel"))
-            .at(offset, BlockState::new("base:beam"))
-            .presenting(offset, BlockState::new("base:beam"));
+        let presenting = Written::of(BlockState::new(
+            "base:panel".parse().expect("qualified block"),
+        ))
+        .at(
+            offset,
+            BlockState::new("base:beam".parse().expect("qualified block")),
+        )
+        .presenting(
+            offset,
+            BlockState::new("base:beam".parse().expect("qualified block")),
+        );
         let overridden = sample(face, &condition, &Groups::new(), &presenting);
         assert!(
             overridden.orthogonal[0],

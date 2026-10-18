@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "956bd492d92aaa1f04c0693ed2d64c80246cc357faf00971645852b8db8b589e"
+        "sha256": "0e0b0fd719e99df0f53531a9bcb8c6374e498c4bac66d31cd1c18265828cbb5b"
       },
       {
         "path": "aliases.json",
@@ -70,11 +70,11 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "fcbbf130955653d8e91f173e71897ba7a4dabf5dbd786a16fcb482102bd58dff"
+        "sha256": "144223f5c0c1f597af5bc7e6bbde8ba26f0c9162807c72692c0aff16d8930c1f"
       },
       {
         "path": "src/ground.rs",
-        "sha256": "b670d39a5525c62abc93c39cff1e0a3a5d90eb11a92a915bf5ccc3813ef48379"
+        "sha256": "22e166714b985c4451afcf95066cfc1c804a9ce3af4d792c63c633584be2f8b5"
       },
       {
         "path": "src/growth.rs",
@@ -82,19 +82,19 @@
       },
       {
         "path": "src/harvest.rs",
-        "sha256": "69f8a470f546e57b85e853ba833b18c5a9024d00b9b43a401bd42141a244cadf"
+        "sha256": "374fe2efbf4b4ffce6c8b1ff288db401a55c3f395ee6ad663b2f319e65bded76"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "96321a65c5ebcd49b6f3b1bf7a185839f16f9f5c238f3be2e9a020c6816f6784"
+        "sha256": "9bee46f65cc104c60f3447128ce00cd90e2cdb8a490ea41e2bc949aa8b675d18"
       },
       {
         "path": "src/machines.rs",
-        "sha256": "18218c3a14ec4c0f759b13389a18edb6c8ecc4dd6c95891e277d09673a42f1af"
+        "sha256": "15938420ae40ed8dc8e4c6e4825d65a62834ce5687f67e905a079a06a571b7b2"
       },
       {
         "path": "src/model.rs",
-        "sha256": "c7a956b95d2fa9b9b004760fef081d84afac07dffe9365efee92474c8f22ad20"
+        "sha256": "0eaceb90edbdd12f7a907ca3ebbb0f2a726730a3869de4ba92190306af5269c5"
       },
       {
         "path": "src/recipes.rs",
@@ -106,11 +106,11 @@
       },
       {
         "path": "src/registries.rs",
-        "sha256": "98971f6fa2bc260112ef79cffe2979c504ff8723fb3ffa9a4995249b9e65c9c6"
+        "sha256": "4a43c98d1f80ad6cfcafea49146bc8e31b8c458a801e127a6f021fe9b1aeaeb8"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "6340c44dad549867b5f0cf6d237e62809bf9edad71c34457ef05d84d3c608485"
+        "sha256": "1d548347fed2d427395339309ef78ce50f198438c71468477d45966dcf9485d8"
       },
       {
         "path": "src/world.rs",

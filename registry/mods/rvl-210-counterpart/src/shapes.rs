@@ -270,13 +270,13 @@ fn validate(
     for constraint in constraints {
         match constraint {
             Constraint::ExactSize(wanted) if region.size() != *wanted => {
-                return Err(validate_size(region, *wanted));
+                return Err(wrong_size(region, *wanted));
             }
             Constraint::MinimumSize(wanted) if region.size() < *wanted => {
-                return Err(validate_size(region, *wanted));
+                return Err(wrong_size(region, *wanted));
             }
             Constraint::MaximumSize(wanted) if region.size() > *wanted => {
-                return Err(validate_size(region, *wanted));
+                return Err(wrong_size(region, *wanted));
             }
             Constraint::Cube => {
                 let extent = region.extent();
@@ -288,13 +288,13 @@ fn validate(
                 }
             }
             Constraint::ExactCount(block, wanted) if count_of(block) != *wanted => {
-                return Err(validate_count(at, block, count_of(block), *wanted));
+                return Err(wrong_count(at, block, count_of(block), *wanted));
             }
             Constraint::MinimumCount(block, wanted) if count_of(block) < *wanted => {
-                return Err(validate_count(at, block, count_of(block), *wanted));
+                return Err(wrong_count(at, block, count_of(block), *wanted));
             }
             Constraint::MaximumCount(block, wanted) if count_of(block) > *wanted => {
-                return Err(validate_count(at, block, count_of(block), *wanted));
+                return Err(wrong_count(at, block, count_of(block), *wanted));
             }
             Constraint::Hollow => {
                 if let Some(inside) = region
@@ -319,7 +319,7 @@ fn validate(
     Ok(())
 }
 
-fn validate_size(region: &Region, wanted: usize) -> Failure {
+fn wrong_size(region: &Region, wanted: usize) -> Failure {
     Failure {
         at: region.lowest,
         reason: Reason::WrongSize {
@@ -329,7 +329,7 @@ fn validate_size(region: &Region, wanted: usize) -> Failure {
     }
 }
 
-fn validate_count(at: Position, block: &str, found: usize, wanted: usize) -> Failure {
+fn wrong_count(at: Position, block: &str, found: usize, wanted: usize) -> Failure {
     Failure {
         at,
         reason: Reason::WrongCount {

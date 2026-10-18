@@ -61,7 +61,7 @@ Tests retain behavioral and uniqueness checks without restating fixed-array leng
 | §7.4 both list kinds rejecting an empty candidate | implemented, kept | `src/validators.rs` |
 | §7.4 the floating-point lower bound | fixed to negative infinity, declared | `src/validators.rs` |
 | §7.4 decoding by first-parse order | implemented; family required, declared | `src/validators.rs` |
-| §7.4 the regular-expression kind | implemented over a stated subset, declared | `src/validators.rs`, `src/validators/matching.rs` |
+| §7.4 the regular-expression kind | implemented over a stated subset, declared | `src/validators.rs`, `src/validators/conditions.rs` |
 | §7 hanging any of this on a data-pack document | host-blocked | — |
 | §8 the base recipe's four deliberate answers | implemented | `src/shapes.rs` |
 | §8 the ingredient complexity flag and its inversion | implemented | `src/shapes.rs` |
@@ -127,8 +127,9 @@ back to a placeholder and still claim to agree.
 
 The shared spelling configuration and pack contributions live in
 `src/highlights/declarations.rs`; `highlights` retains their public paths alongside outline
-geometry. The whole-value pattern engine lives in `src/validators/matching.rs`; `validators` retains
-its public pattern types and integrates them through parsing and whole-value matching.
+geometry. The whole-value pattern engine lives in `src/validators/conditions.rs`, distinct from
+the public block/entity/item predicates in `matching`; `validators` retains its public pattern
+types and integrates them through parsing and whole-value matching.
 
 ## Behaviour changes, each declared rather than incidental
 

@@ -148,7 +148,7 @@ mod tests {
     fn the_accelerant_switch_is_copied_once_rather_than_read_live() {
         let mut settings = Settings {
             crops_fertilisable: true,
-            ..Settings::default()
+            ..Settings::shipped().expect("the shipped settings are valid")
         };
         let tier = declared(
             "test:6".parse().expect("a legal tier identity"),

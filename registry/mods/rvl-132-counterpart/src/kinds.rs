@@ -461,14 +461,8 @@ where
     fn project(&self, value: &Self::Instance, category: &Category) -> Option<Projection>;
 }
 
-/// Section 6.2's rebuilding rule, stated once.
-///
-/// The original returns the same instance when the quantity is unchanged and a
-/// copy otherwise, so a caller that mutates a returned instance mutates the
-/// original in the unchanged case. These are values, so a caller cannot tell a
-/// copy from an alias except by mutating one, and there is nothing here to
-/// mutate through.
-fn checked(quantity: Amount, maximum: Amount, what: &str) -> Result<(), KindError> {
+/// Refuses a quantity above the maximum this ingredient kind carries.
+fn within_maximum(quantity: Amount, maximum: Amount, what: &str) -> Result<(), KindError> {
     if quantity > maximum {
         return Err(KindError::new(format!(
             "a {what} of {quantity} is past the {maximum} this kind carries"
@@ -588,7 +582,7 @@ impl Ingredient for Stackable {
     }
 
     fn with_quantity(&self, value: &Stack, quantity: Amount) -> Result<Stack, KindError> {
-        checked(quantity, NARROW_MAXIMUM, "count")?;
+        within_maximum(quantity, NARROW_MAXIMUM, "count")?;
         if value.is_empty() && quantity != 0 {
             return Err(KindError::new(
                 "a zero-count stack cannot be rebuilt at a non-zero count",
@@ -747,7 +741,7 @@ impl Ingredient for Fluid {
     /// there, so a caller that meant "this much of nothing" silently receives
     /// water.
     fn with_quantity(&self, value: &Portion, quantity: Amount) -> Result<Portion, KindError> {
-        checked(quantity, NARROW_MAXIMUM, "volume")?;
+        within_maximum(quantity, NARROW_MAXIMUM, "volume")?;
         if quantity == 0 {
             return Ok(Portion::empty());
         }
@@ -861,7 +855,7 @@ impl Ingredient for Scalar {
     }
 
     fn with_quantity(&self, value: &Charge, quantity: Amount) -> Result<Charge, KindError> {
-        checked(quantity, WIDE_MAXIMUM, "charge")?;
+        within_maximum(quantity, WIDE_MAXIMUM, "charge")?;
         if quantity == value.amount {
             return Ok(*value);
         }

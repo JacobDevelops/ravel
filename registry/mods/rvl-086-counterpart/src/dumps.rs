@@ -167,32 +167,28 @@ pub fn refusal() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::Path;
-
     use super::documents;
+    use std::path::Path;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let rebuilt = documents().expect("the packaged constants render");
+        assert!(!rebuilt.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-
-        for (relative, content) in rebuilt {
-            assert!(
-                content.ends_with('\n'),
-                "{relative} does not end with a newline"
-            );
+        for (relative, document) in rebuilt {
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
                 let parent = path.parent().expect("a generated path has a directory");
-                fs::create_dir_all(parent).expect("the generated directory is writable");
-                fs::write(&path, &content).expect("the generated document is writable");
+                std::fs::create_dir_all(parent).expect("the generated directory is writable");
+                std::fs::write(&path, document.as_bytes())
+                    .expect("the generated document is writable");
                 continue;
             }
-            let on_disk = fs::read_to_string(&path)
+            let on_disk = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{relative} is readable: {error}"));
-            assert_eq!(on_disk, content, "{relative} has drifted from the crate");
+            assert_eq!(on_disk, document, "{relative} has drifted from the crate");
         }
     }
 }

@@ -75,9 +75,10 @@ pub const CONVENTION_NAMESPACE: &str = "c";
 #[derive(Debug)]
 pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
-    configuration: Result<ConfigurationDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     flags: FlagTable,
+    ground_conversion_enabled: bool,
+    top_tools_enchantable: bool,
     tier: Tier,
     crops: Vec<Crop>,
     adjusted: bool,
@@ -117,9 +118,10 @@ impl Entry {
             .collect();
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(ModError::from_display),
-            settings: Settings::default(),
+            settings: Settings::shipped(),
             flags: FlagTable::default(),
+            ground_conversion_enabled: false,
+            top_tools_enchantable: false,
             tier,
             crops,
             adjusted: false,
@@ -129,15 +131,29 @@ impl Entry {
     }
 
     /// The values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the packaged settings refusal if construction could not resolve them.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// The flag table this entry published into.
     #[must_use]
     pub const fn flags(&self) -> &FlagTable {
         &self.flags
+    }
+
+    /// The dependency's ground conversion flag, resolved through its service.
+    #[must_use]
+    pub const fn ground_conversion_enabled(&self) -> bool {
+        self.ground_conversion_enabled
+    }
+
+    /// The dependency's enchantability flag, resolved through its service.
+    #[must_use]
+    pub const fn top_tools_enchantable(&self) -> bool {
+        self.top_tools_enchantable
     }
 
     /// The sixth tier.
@@ -176,12 +192,16 @@ impl Entry {
     /// The pointing is unconditional and happens for all six crops including the
     /// ones no companion mod enables, so an unobtainable crop still has a valid
     /// anchor.
-    pub fn adjust(&mut self) {
+    ///
+    /// # Errors
+    /// Returns the settings refusal before changing tiers or crops.
+    pub fn adjust(&mut self) -> Result<(), ModError> {
+        let fertilisable = self.settings()?.crops_fertilisable;
         tier::adjust(
             &mut self.tier,
             ContentId::new(Self::declared_id().clone(), "ground").expect("a legal ground path"),
             ContentId::new(Self::declared_id().clone(), "material").expect("a legal material path"),
-            self.settings.crops_fertilisable,
+            fertilisable,
         );
         for (crop, declared) in self.crops.iter_mut().zip(crops::DECLARED) {
             crop.foundation = Some(
@@ -190,6 +210,7 @@ impl Entry {
             );
         }
         self.adjusted = true;
+        Ok(())
     }
 
     /// What this entry claims at the registration barrier.
@@ -238,7 +259,7 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if state == LifecycleState::Constructed {
             self.declaration.as_ref().map_err(Clone::clone)?;
-            self.configuration.as_ref().map_err(Clone::clone)?;
+            self.settings()?;
         }
         self.entered.push(state);
         Ok(())
@@ -257,17 +278,49 @@ impl Mod for Entry {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)?;
-        self.adjust();
+        self.adjust()?;
         Ok(())
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
-        self.configuration.clone().map(Some)
+        settings::declaration()
+            .map(Some)
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
-        settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
+        let settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        settings::publish(&mut self.flags, &settings).map_err(ModError::from_display)?;
+        self.settings = Ok(settings);
+        Ok(())
+    }
+
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        let mut declaration = ServiceDeclaration::new(Self::declared_id().clone());
+        declaration
+            .require(rvl_321_counterpart::Entry::flags_service()?)
+            .map_err(ModError::from_display)?;
+        Ok(Some(declaration))
+    }
+
+    fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
+        let mut values = [false; 2];
+        for (value, flag) in values
+            .iter_mut()
+            .zip(settings::consumed_flags().map_err(ModError::from_display)?)
+        {
+            let response = directory
+                .call(&ServiceRequest::new(
+                    rvl_321_counterpart::Entry::flags_service()?,
+                    ravel_sdk::json!({"flag": flag.to_string()}),
+                ))
+                .map_err(ModError::from_display)?;
+            *value = response
+                .value()
+                .as_bool()
+                .ok_or_else(|| ModError::refused("the flag service did not answer a boolean"))?;
+        }
+        [self.top_tools_enchantable, self.ground_conversion_enabled] = values;
         Ok(())
     }
 
@@ -286,7 +339,81 @@ export_mod!(Entry::new());
 mod tests {
     use super::*;
     use ravel_sdk::content::{RegistrationRefused, RegistryKey};
+    use ravel_sdk::json;
     use rvl_321_counterpart::model::Crafted;
+
+    struct Provider(rvl_321_counterpart::Entry);
+
+    impl ServiceDirectory for Provider {
+        fn call(
+            &mut self,
+            request: &ServiceRequest,
+        ) -> Result<ServiceResponse, ravel_sdk::services::ServiceCallFailed> {
+            Ok(self
+                .0
+                .answer_service(request)
+                .expect("the actual provider answers its flags"))
+        }
+    }
+
+    #[test]
+    fn flags_are_resolved_from_the_configured_dependency_not_our_table() {
+        use ravel_sdk::config::ValueDocument;
+        use rvl_321_counterpart::settings as depended;
+        for (ground, tools) in [(false, false), (false, true), (true, false), (true, true)] {
+            let document = ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1,
+                    "owner": rvl_321_counterpart::MOD_ID,
+                    "values": {
+                        (depended::GROUND_CONVERT_BY_MATERIAL): ground,
+                        (depended::GEAR_TOP_TOOLS_ENCHANTABLE): tools
+                    }
+                })
+                .to_string(),
+            )
+            .expect("valid settings document");
+            let resolved = LayeredConfiguration::resolve(
+                depended::declaration().expect("valid declaration"),
+                Some(&document),
+                None,
+            )
+            .expect("valid configured flags");
+            let mut provider = Provider(rvl_321_counterpart::Entry::new());
+            provider
+                .0
+                .configure(&resolved)
+                .expect("flags are published");
+            let mut entry = Entry::new();
+            for (flag, enabled) in settings::consumed_flags()
+                .expect("legal flags")
+                .into_iter()
+                .zip([tools, ground])
+            {
+                entry.flags.publish_constant(flag, !enabled);
+            }
+            let declaration = entry
+                .service_declaration()
+                .expect("legal services")
+                .expect("required flags");
+            assert!(declaration.requires().any(
+                |id| id == &rvl_321_counterpart::Entry::flags_service().expect("legal service")
+            ));
+            entry
+                .use_services(&mut provider)
+                .expect("actual cross-mod answers");
+            assert_eq!(entry.ground_conversion_enabled(), ground);
+            assert_eq!(entry.top_tools_enchantable(), tools);
+        }
+    }
+
+    #[test]
+    fn a_packaged_settings_refusal_is_reported_at_constructed() {
+        let mut entry = Entry::new();
+        entry.settings = Err(ModError::refused("invalid packaged settings"));
+        assert!(entry.enter(LifecycleState::Constructed).is_err());
+        assert_eq!(entry.entered, []);
+    }
 
     #[derive(Default)]
     struct Accepting {
@@ -324,13 +451,16 @@ mod tests {
         assert!(!entry.adjusted());
         assert_eq!(entry.tier().value, tier::VALUE);
         assert_eq!(entry.tier().ground, None);
-        assert_eq!(entry.settings(), &Settings::default());
+        assert_eq!(
+            entry.settings().expect("valid settings"),
+            &Settings::shipped().expect("valid defaults")
+        );
     }
 
     #[test]
     fn the_adjust_pass_points_the_tier_at_content_and_every_crop_at_an_anchor() {
         let mut entry = Entry::new();
-        entry.adjust();
+        entry.adjust().expect("valid settings");
         assert!(entry.adjusted());
         assert!(entry.tier().ground.is_some());
         assert!(entry.tier().material.is_some());
@@ -493,7 +623,7 @@ mod tests {
     #[test]
     fn a_thousand_ticks_leave_the_entry_exactly_as_they_found_it() {
         let mut entry = Entry::new();
-        entry.adjust();
+        entry.adjust().expect("valid settings");
         let before = format!("{entry:?}");
         for _ in 0..1000 {
             entry
@@ -510,7 +640,7 @@ mod tests {
     #[test]
     fn a_reload_changes_nothing_because_this_entry_owns_nothing_a_reload_rebuilds() {
         let mut entry = Entry::new();
-        entry.adjust();
+        entry.adjust().expect("valid settings");
         let tier = entry.tier().clone();
         let crops = entry.crops().to_vec();
         for _ in 0..5 {

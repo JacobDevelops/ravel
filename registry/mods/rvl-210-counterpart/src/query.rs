@@ -537,8 +537,9 @@ fn append_slice(
         let length = entries.len();
         let start = from.map_or(0, |bound| clamp(bound, length));
         let end = to.map_or(length, |bound| clamp(bound, length));
-        for index in start..end.min(length) {
-            if let Some(value) = entries.get(index) {
+        if let Some(window) = entries.get(start..end) {
+            for (offset, value) in window.iter().enumerate() {
+                let index = start + offset;
                 let mut path = found.path.clone();
                 path.push(Segment::Index(index));
                 push(
@@ -565,7 +566,7 @@ fn push(next: &mut Vec<Match>, found: Match) -> Result<(), EvaluateError> {
 fn clamp(bound: i64, length: usize) -> usize {
     let length = i64::try_from(length).unwrap_or(i64::MAX);
     let resolved = if bound < 0 { length + bound } else { bound };
-    usize::try_from(resolved.clamp(0, length)).unwrap_or(0)
+    usize::try_from(resolved.clamp(0, length)).expect("clamped into 0..=length")
 }
 
 fn apply_all(
@@ -776,6 +777,19 @@ mod tests {
             .evaluate(&document)
             .expect("within the match limit");
         assert_eq!(found.len(), 0, "a backwards slice is empty, not a panic");
+        let found = Query::parse("$.entries[1:3]")
+            .expect("legal")
+            .evaluate(&document)
+            .expect("within the match limit");
+        let paths: Vec<_> = found.iter().map(|matched| matched.path.clone()).collect();
+        assert_eq!(
+            paths,
+            [
+                vec![Segment::Key("entries".to_owned()), Segment::Index(1)],
+                vec![Segment::Key("entries".to_owned()), Segment::Index(2)],
+            ],
+            "slice paths retain absolute collection indices"
+        );
     }
 
     #[test]

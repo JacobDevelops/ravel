@@ -42,6 +42,8 @@ pub enum Step {
 /// What this entry refuses.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Refused {
+    /// The packaged settings could not be resolved.
+    UnavailableSettings(ModError),
     /// A step ran before the step section two puts before it.
     OutOfOrder {
         /// What was asked for.
@@ -62,6 +64,7 @@ pub enum Refused {
 impl core::fmt::Display for Refused {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Self::UnavailableSettings(error) => error.fmt(formatter),
             Self::OutOfOrder { wanted, reached } => write!(
                 formatter,
                 "{wanted:?} was asked for at {reached:?}, which is out of the order section two states"
@@ -77,6 +80,7 @@ impl core::fmt::Display for Refused {
 impl std::error::Error for Refused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::UnavailableSettings(error) => Some(error),
             Self::Kinds(error) => Some(error),
             Self::Bundle(error) => Some(error),
             Self::Settings(error) => Some(error),
@@ -90,7 +94,7 @@ impl std::error::Error for Refused {
 #[derive(Debug)]
 pub struct Entry {
     declaration: ContentDeclaration,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     comparator: Comparator,
     serialisers: Serialisers,
     kinds: Kinds,
@@ -112,10 +116,21 @@ impl Entry {
     /// Builds the entry holding its shipped defaults and nothing resolved.
     #[must_use]
     pub fn new() -> Self {
-        let settings = Settings::shipped();
-        // The shipped list is empty, so the only comparator that can refuse is
-        // one built from a list a caller assigned.
-        let comparator = settings.comparator().unwrap_or_default();
+        Self::with_settings(Settings::shipped())
+    }
+
+    fn with_settings(settings: Result<Settings, ModError>) -> Self {
+        let prepared = settings.and_then(|settings| {
+            let comparator = settings.comparator().map_err(ModError::from_display)?;
+            Ok((settings, comparator))
+        });
+        let (settings, comparator) = match prepared {
+            Ok((settings, comparator)) => (Ok(settings), comparator),
+            Err(error) => (
+                Err(error),
+                Comparator::new(Vec::new()).expect("an empty comparator cannot refuse"),
+            ),
+        };
         Self {
             declaration: Self::declaration(),
             settings,
@@ -145,9 +160,11 @@ impl Entry {
     }
 
     /// The values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the retained shipped-settings refusal.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// The data comparator in force, which the two data-carrying kinds are
@@ -341,9 +358,11 @@ impl Entry {
     /// The brewing view is built at the cap the settings in force resolved, so a
     /// pack that raised `recipes.brewing_closure_cap` reaches the attachment
     /// rather than stopping at the setting.
-    #[must_use]
-    pub fn recipe_views(&self) -> Vec<recipes::Bound> {
-        recipes::bound(self.settings.closure())
+    ///
+    /// # Errors
+    /// Returns the retained shipped-settings refusal.
+    pub fn recipe_views(&self) -> Result<Vec<recipes::Bound>, ModError> {
+        Ok(recipes::bound(self.settings()?.closure()))
     }
 
     /// Every bundle failure this launch carried on past.
@@ -353,7 +372,11 @@ impl Entry {
     }
 
     fn bundle_failed(&mut self, refused: capabilities::NotInstalled) -> Result<(), Refused> {
-        if self.settings.abort_on_bundle_failure {
+        if self
+            .settings()
+            .map_err(Refused::UnavailableSettings)?
+            .abort_on_bundle_failure
+        {
             return Err(Refused::Bundle(refused));
         }
         self.bundle_failures.push(refused);
@@ -376,7 +399,7 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         match state {
             LifecycleState::Constructed => {
-                settings::declaration().map_err(ModError::from_display)?;
+                self.settings()?;
                 // Registry construction sits inside this state, and the
                 // serialisers go in before registry population.
                 self.install_serialisers().map_err(ModError::from_display)?;
@@ -420,8 +443,9 @@ impl Mod for Entry {
         // Section three: the list is re-read on every load and reload and the
         // comparator is rebuilt from it each time, so the setting takes effect
         // without a restart.
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
-        self.comparator = self.settings.comparator().map_err(ModError::from_display)?;
+        let settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        self.comparator = settings.comparator().map_err(ModError::from_display)?;
+        self.settings = Ok(settings);
         Ok(())
     }
 

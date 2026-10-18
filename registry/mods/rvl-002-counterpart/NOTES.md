@@ -106,13 +106,15 @@ package constant again.
   supplies shipped defaults and rejects values outside the document's bounds before typed reading,
   so a chance above one or a scale count above sixty-four cannot reach the drop rule.
   `Settings::read` propagates missing-key and wrong-kind errors instead of replacing them with defaults.
+  Packaged defaults are fallible too: construction retains a parse/read refusal and reports it at
+  Constructed rather than panicking before the loader can attribute the failure.
 - **An ore drop count is bounded against its declared span (§15, §16.1).** `Deposit::dropped` clamps
   the roll it is handed, so a source answering anything at all still yields a count inside the two-to-
   five or three-to-five range the loot document declares.
-- **An unpublished conversion flag reads as off (§8).** `ground::conversion_enabled` answers false when
-  the dependency's flag is not published at all, rather than falling through to a local reading. A
-  conversion consumes a material, and performing one on a flag nobody declared is the failure worth
-  avoiding.
+- **Cross-mod flags travel through the SDK service seam (§8, §11).** This entry requires rvl-321's
+  `flags` service and resolves its two consumed flags during service wiring. Ground conversion and
+  tool enchantability receive those booleans, never this entry's unrelated local flag table.
+  Missing or malformed service answers refuse wiring rather than silently reading an unpublished flag.
 
 ## Declarable only, and why
 
@@ -183,13 +185,8 @@ Neither was worked around by copying logic; both are listed here as work for tho
   all. This package therefore holds its own six crops in `Entry` and does not contribute them. A
   service argument shape for a crop, or an explicit statement that a dependent keeps its own, would
   close it; today the two surfaces disagree.
-- **`rvl_042_counterpart::flags::FlagTable` publishes no way to ask whether a flag was published *as
-  off*.** `holds` answers whether the identity exists and `enabled` answers the predicate, so an
-  unpublished flag and a flag published as false are only distinguishable by calling both.
-  Neither `ground::conversion_enabled` nor `Grade::enchantable` makes that distinction today: both
-  call `enabled` alone, so both read an unpublished flag as off and neither can say which case it is
-  in. A `FlagTable::value(&FlagId) -> Option<bool>` would answer it in one call, and until it exists
-  the two callers are stating a policy rather than reading a fact.
+- **Flag tables are mod-owned.** rvl-321's flag service checks publication before answering, preserving
+  the distinction between a missing flag (refused) and a published false value (a boolean answer).
 
 ## Evidence
 
@@ -237,10 +234,13 @@ state this package can be in; setting `RAVEL_REGENERATE_GENERATED` makes the sam
 `checks/verify-counterpart-build.sh` runs the counterpart unit suites. The root
 `tests/conformance/tests/integration/registry_lifecycle.rs` suite drives all twelve
 counterparts through the real loader registration barrier and service admission, both
-individually and as a manifest-resolved set, on client, integrated-server and
+with only each entry's required dependencies and as a full manifest-resolved set, on client, integrated-server and
 dedicated-server sides. It compares manifest saved-data versions with each host's
 declaration, checks running states and declared key ownership, and pins independent
 per-kind and total registration censuses, and requires world-access readiness. The combined
 round asserts declared after-dependency order against the driven host sequence.
-The isolated rounds intentionally omit package dependencies to distinguish each entry's
-lifecycle conformance from the full set's dependency-resolution contract.
+The minimal rounds include the transitive mandatory manifest dependencies: this leaf cannot
+honestly start alone while requiring the crop entry's flag service. The configured-service
+regression drives real loader configuration and startup with all four boolean combinations;
+the leaf's SDK-only unit regression also plants contradictory local constants before service
+calls, proving that only the configured dependency's answers control the consumed flags.

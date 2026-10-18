@@ -1,5 +1,10 @@
 # RVL-042 counterpart
 
+Shipped settings are fallible: construction retains a refusal and `Constructed` reports it
+before admitting the entry. `settings()` exposes that result. Flag tables belong to each
+consuming mod, not to this library's entry; consumers publish their own tables explicitly.
+Bounded geometry radii use the integer half-extent's proven signed range.
+
 An original Rust implementation of `specifications/m6-foundation/RVL-042.md`, written against
 `ravel-sdk`, with checked `num-traits::ToPrimitive` numeric conversions preserving floating-point
 rounding and integer truncation and saturation. No upstream source was opened, decompiled or read to write it; the

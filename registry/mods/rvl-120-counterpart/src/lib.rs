@@ -86,7 +86,6 @@ pub const INTEGRATIONS: [&str; 4] = [
 pub struct Entry {
     side: Side,
     declaration: Result<ContentDeclaration, ModError>,
-    settings_declaration: Result<ConfigurationDeclaration, ModError>,
     settings: Settings,
     colours: Colours,
     commands: Commands,
@@ -109,17 +108,14 @@ impl Default for Entry {
 impl Entry {
     /// Builds the library for one side, holding its shipped defaults.
     ///
-    /// Both declarations are built once here rather than on every call, because
-    /// a malformed one has to be reported rather than read as "this package
-    /// declares none": a swallowed configuration failure would drop all
-    /// seventy-three settings to their shipped defaults with nothing said
-    /// anywhere.
+    /// Content declaration failures are retained for `Constructed` refusal.
+    /// Configuration declarations are built on request and validated at that
+    /// barrier rather than stored a second time.
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
             side,
             declaration: census::declaration().map_err(ModError::from_display),
-            settings_declaration: settings::declaration().map_err(ModError::from_display),
             settings: Settings::default(),
             colours: Colours::shipped(),
             commands: Commands::new(),
@@ -280,14 +276,11 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.states_entered += 1;
         self.last_state = Some(state);
-        let malformed = [
-            self.declaration.as_ref().err(),
-            self.settings_declaration.as_ref().err(),
-        ]
-        .into_iter()
-        .flatten()
-        .next();
-        malformed.map_or(Ok(()), |error| Err(error.clone()))
+        if state == LifecycleState::Constructed {
+            self.declaration.as_ref().map_err(Clone::clone)?;
+            settings::declaration().map_err(ModError::from_display)?;
+        }
+        Ok(())
     }
 
     fn content_declaration(
@@ -301,7 +294,9 @@ impl Mod for Entry {
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
-        self.settings_declaration.clone().map(Some)
+        settings::declaration()
+            .map(Some)
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -359,18 +354,6 @@ mod tests {
         assert_eq!(
             shared
                 .content_declaration()
-                .expect_err("the declaration refused"),
-            original
-        );
-        assert_eq!(
-            shared.enter(LifecycleState::Constructed),
-            Err(original.clone())
-        );
-        shared.declaration = census::declaration().map_err(ModError::from_display);
-        shared.settings_declaration = Err(original.clone());
-        assert_eq!(
-            shared
-                .configuration_declaration()
                 .expect_err("the declaration refused"),
             original
         );

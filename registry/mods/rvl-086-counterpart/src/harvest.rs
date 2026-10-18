@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn a_harvest_withholds_exactly_one_seed_and_keeps_the_rest_of_the_stack() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = crop(
             vec![
                 Stack::new(id("example:produce"), 2),
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn a_single_seed_stack_is_removed_rather_than_left_holding_nothing() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = crop(
             vec![
                 Stack::new(id("example:produce"), 1),
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn only_the_first_matching_stack_is_reduced() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = crop(
             vec![
                 Stack::new(id("example:seed"), 2),
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn a_crop_whose_seed_is_not_identified_drops_everything() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = crop(vec![Stack::new(id("example:produce"), 4)], None);
         let harvested = harvest(&settings, Hand::Main, &clicked, true).expect("a harvest");
         assert_eq!(harvested.drops, vec![Stack::new(id("example:produce"), 4)]);
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn the_nether_growing_crop_takes_its_fixed_seed_the_same_way() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = Clicked {
             mature: true,
             drops: vec![Stack::new(id("example:nether_seed"), 2)],
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn an_off_hand_click_a_client_and_an_immature_crop_all_do_nothing() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         let clicked = crop(
             vec![Stack::new(id("example:seed"), 2)],
             Some("example:seed"),
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn switching_the_feature_off_stops_the_harvest() {
-        let mut settings = Settings::default();
+        let mut settings = Settings::shipped().expect("the packaged settings resolve");
         settings.switches[Feature::CropHarvest.index()] = false;
         let clicked = crop(
             vec![Stack::new(id("example:seed"), 2)],

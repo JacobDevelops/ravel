@@ -1,5 +1,12 @@
 # RVL-086 counterpart
 
+Shipped settings failures are retained until `Constructed`, not panicked away during
+construction. Typed cost reads refuse values outside their declared ranges; packet
+adoption retains its specified clamp. Malformed deciding-settings payloads preserve
+`InvalidPacket`, allowing the loader to reject delivery while keeping the owner running.
+The declared attractor-toggle contract has no entry-level handler here and returns
+`Unsupported`, as do undeclared contracts; this does not add toggle gameplay.
+
 An original Rust implementation of `specifications/m6-foundation/RVL-086.md`, written against
 `ravel-sdk` and `rvl-042-counterpart` and nothing else. No upstream source was opened, decompiled or
 read to write it; the specification is the only description of the behaviour that was used.

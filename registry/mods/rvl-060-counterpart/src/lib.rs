@@ -473,8 +473,8 @@ const SOURCES: [(&str, &str); 16] = [
     ("transport.rs", include_str!("transport.rs")),
     ("validators.rs", include_str!("validators.rs")),
     (
-        "validators/matching.rs",
-        include_str!("validators/matching.rs"),
+        "validators/conditions.rs",
+        include_str!("validators/conditions.rs"),
     ),
 ];
 

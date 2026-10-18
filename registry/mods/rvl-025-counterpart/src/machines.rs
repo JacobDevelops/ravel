@@ -121,7 +121,7 @@ pub fn shared_component(identifier: &str) -> Option<&'static str> {
 /// range admits.
 #[must_use]
 pub fn factor(level: u32, ceiling: i32) -> f32 {
-    let ceiling = u32::try_from(ceiling.max(1)).unwrap_or(1);
+    let ceiling = ceiling.max(1).unsigned_abs();
     if level >= ceiling {
         return 1.0;
     }
@@ -280,8 +280,7 @@ impl Machine {
     pub fn accepts_subject(stack: &Stack, settings: &Settings) -> bool {
         !stack.is_empty()
             && stack.upgradable
-            && u64::from(stack.infusion)
-                < u64::try_from(settings.upgrade_ceiling.max(1)).unwrap_or(1)
+            && u64::from(stack.infusion) < u64::from(settings.upgrade_ceiling.max(1).unsigned_abs())
     }
 
     /// Puts material into slot zero, up to the slot's own limit.
@@ -486,7 +485,7 @@ mod tests {
 
     #[test]
     fn one_unit_of_material_costs_five_ticks_and_one_payment_made_at_the_start() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = loaded(&settings);
         let before = machine.energy();
 
@@ -513,7 +512,7 @@ mod tests {
 
     #[test]
     fn a_buffer_shorter_than_the_price_refuses_and_changes_nothing() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = loaded(&settings);
         machine.energy = 599;
 
@@ -525,7 +524,7 @@ mod tests {
 
     #[test]
     fn an_item_extracted_mid_cycle_loses_the_payment_and_the_material() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = loaded(&settings);
         assert!(matches!(machine.tick(&settings), Ticked::Started { .. }));
         machine.take_subject().expect("it was there to take");
@@ -539,7 +538,7 @@ mod tests {
 
     #[test]
     fn lowering_the_ceiling_makes_an_already_infused_item_unacceptable_at_once() {
-        let generous = Settings::default();
+        let generous = Settings::shipped().expect("valid settings");
         let mut machine = Machine::new();
         machine
             .insert_subject(subject(10), &generous)
@@ -547,7 +546,7 @@ mod tests {
 
         let strict = Settings {
             upgrade_ceiling: 10,
-            ..Settings::default()
+            ..Settings::shipped().expect("valid settings")
         };
         assert!(!Machine::accepts_subject(&subject(10), &strict));
         assert!(Machine::accepts_subject(&subject(9), &strict));
@@ -555,7 +554,7 @@ mod tests {
 
     #[test]
     fn slot_zero_takes_only_the_tagged_material_and_slot_one_only_an_upgradable_item() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = Machine::new();
         let untagged = Stack::of("counterpart:pebble").expect("a legal identity");
 
@@ -571,7 +570,7 @@ mod tests {
 
     #[test]
     fn the_two_slot_limits_are_enforced_where_automation_reaches_them() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = Machine::new();
 
         assert_eq!(
@@ -594,7 +593,7 @@ mod tests {
 
     #[test]
     fn the_buffer_takes_at_most_the_accept_rate_and_never_past_capacity() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = Machine::new();
 
         assert_eq!(machine.accept_energy(i32::MAX, &settings), 600);
@@ -607,7 +606,7 @@ mod tests {
 
     #[test]
     fn a_machine_that_is_itself_infused_pays_less_for_the_same_work() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut fresh = loaded(&settings);
         let mut infused = loaded(&settings);
         infused.set_infusion(settings.upgrade_ceiling.unsigned_abs());
@@ -622,7 +621,7 @@ mod tests {
 
     #[test]
     fn the_discount_ignores_the_infusion_level_of_the_item_being_upgraded() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = Machine::new();
         machine
             .insert_material(material(4))
@@ -644,7 +643,7 @@ mod tests {
 
     #[test]
     fn a_machine_at_the_ceiling_reaches_the_half_price_the_specification_states() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("valid settings");
         let mut machine = loaded(&settings);
         machine.set_infusion(settings.upgrade_ceiling.unsigned_abs());
 

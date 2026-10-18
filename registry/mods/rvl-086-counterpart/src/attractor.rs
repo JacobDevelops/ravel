@@ -395,12 +395,6 @@ pub fn tick(
     }
 }
 
-/// Whether the attractor draws with the enchanted-item highlight.
-#[must_use]
-pub const fn highlighted(switched_on: bool) -> bool {
-    switched_on
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,7 +528,6 @@ mod tests {
         let made = fresh();
         assert!(made.attractor);
         assert!(!made.switched_on, "a fresh attractor is switched off");
-        assert!(!highlighted(made.switched_on));
     }
 
     #[test]
@@ -704,11 +697,5 @@ mod tests {
             Loose::orb((2, 0, 0)),
         ];
         assert_eq!(tick(true, (0, 0, 0), 7, &loose, true).moved, vec![0, 3]);
-    }
-
-    #[test]
-    fn the_highlight_is_drawn_exactly_when_the_attractor_is_switched_on() {
-        assert!(highlighted(true));
-        assert!(!highlighted(false));
     }
 }

@@ -132,12 +132,8 @@ pub fn convert(
     plain_tilled: bool,
     held: &Tier,
     moisture: u8,
-    enabled: bool,
     draw: u32,
 ) -> Converted {
-    if !enabled {
-        return Converted::default();
-    }
     let Some(ground) = held.ground.as_ref() else {
         return Converted::default();
     };
@@ -251,7 +247,7 @@ pub(crate) mod tests {
     #[test]
     fn plain_tilled_ground_converts_and_carries_its_moisture_across_unchanged() {
         let held = tier(3);
-        let answer = convert(None, true, &held, 5, true, 99);
+        let answer = convert(None, true, &held, 5, 99);
         assert_eq!(answer.ground.as_deref(), Some("test:ground_3"));
         assert_eq!(answer.moisture, 5, "a converted plot does not reset to dry");
         assert_eq!(answer.consumed, 1);
@@ -273,7 +269,7 @@ pub(crate) mod tests {
         let held = tier(1);
         assert_ne!(side.id, held.id);
         assert!(
-            convert(Some(&side), false, &held, 7, true, 0).passed_through(),
+            convert(Some(&side), false, &held, 7, 0).passed_through(),
             "the block is already the one the held material resolves to"
         );
     }
@@ -282,7 +278,7 @@ pub(crate) mod tests {
     fn converting_a_different_tier_refunds_the_outgoing_material_a_quarter_of_the_time() {
         let outgoing = tier(1);
         let held = tier(4);
-        let refunded = convert(Some(&outgoing), false, &held, 7, true, 24);
+        let refunded = convert(Some(&outgoing), false, &held, 7, 24);
         assert_eq!(
             refunded.refund,
             Some(Stack::new(
@@ -293,7 +289,7 @@ pub(crate) mod tests {
         assert_eq!(refunded.consumed, 1);
         assert_eq!(refunded.moisture, 7);
 
-        let bare = convert(Some(&outgoing), false, &held, 7, true, 25);
+        let bare = convert(Some(&outgoing), false, &held, 7, 25);
         assert!(bare.refund.is_none());
         assert_eq!(bare.ground.as_deref(), Some("test:ground_4"));
     }
@@ -301,13 +297,7 @@ pub(crate) mod tests {
     #[test]
     fn the_same_tier_and_anything_that_is_not_ground_pass_straight_through() {
         let held = tier(2);
-        assert!(convert(Some(&tier(2)), false, &held, 4, true, 0).passed_through());
-        assert!(convert(None, false, &held, 4, true, 0).passed_through());
-    }
-
-    #[test]
-    fn the_setting_switches_the_whole_interaction_off() {
-        let held = tier(2);
-        assert!(convert(None, true, &held, 4, false, 0).passed_through());
+        assert!(convert(Some(&tier(2)), false, &held, 4, 0).passed_through());
+        assert!(convert(None, false, &held, 4, 0).passed_through());
     }
 }

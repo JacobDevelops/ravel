@@ -391,7 +391,9 @@ impl Model {
         neighbourhood: &dyn Neighbourhood,
     ) -> Context {
         let Some(condition) = self.condition.as_ref() else {
-            let own = neighbourhood.appearance(Offset::ZERO);
+            let Some(own) = neighbourhood.appearance(Offset::ZERO) else {
+                return Context::default();
+            };
             return Context {
                 neighbours: pane_sample(face, &own, neighbourhood),
                 sheet: pane_sheet(face, &own, neighbourhood),
@@ -968,7 +970,7 @@ mod tests {
     fn pane_state(across: bool) -> BlockState {
         let along = if across { "false" } else { "true" };
         let perpendicular = if across { "true" } else { "false" };
-        BlockState::new("base:pane")
+        BlockState::new("base:pane".parse().expect("qualified block"))
             .with("north", along)
             .with("south", along)
             .with("west", perpendicular)
@@ -993,6 +995,11 @@ mod tests {
         let own = pane_state(true);
         let written = Written::of(own.clone()).all_around(Face::North, &pane_state(false));
         let groups = Groups::new();
+        let absent = Written::default().all_around(Face::North, &own);
+        let context = pane.context(Face::North, &groups, &absent);
+        assert_eq!(context.neighbours, Neighbours::NONE);
+        assert_eq!(context.sheet, Sheet::default());
+        assert_eq!(context.probe, None, "an absent centre has no pane context");
 
         let context = pane.context(Face::North, &groups, &written);
         assert_eq!(
@@ -1012,7 +1019,7 @@ mod tests {
     #[test]
     fn a_condition_reading_model_is_handed_its_samples_even_where_the_face_is_culled() {
         let vocabulary = vocabulary();
-        let own = BlockState::new("base:mat");
+        let own = BlockState::new("base:mat".parse().expect("qualified block"));
         let written = Written::of(own.clone())
             .all_around(Face::Up, &own)
             .at(Face::Up.normal(), own);
@@ -1141,7 +1148,7 @@ mod tests {
             "and the refusal is counted"
         );
 
-        let panel = BlockState::new("base:panel");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
         assert!(
             !model
                 .condition()

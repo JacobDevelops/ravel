@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn a_player_building_without_consuming_anything_is_never_refused() {
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the packaged settings resolve");
         assert!(refuses(
             &settings,
             Surface::BreakBlock,
@@ -265,7 +265,7 @@ mod tests {
     fn switching_the_rule_off_stops_every_surface_refusing() {
         let settings = Settings {
             tweak_nearly_destroyed: false,
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         for surface in Surface::ALL {
             assert!(!refuses(
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn the_ineffective_rule_is_governed_only_by_its_list_being_non_empty() {
-        let empty = Settings::default();
+        let empty = Settings::shipped().expect("the packaged settings resolve");
         assert!(!ineffective(
             &empty,
             "example:pick",
@@ -292,7 +292,7 @@ mod tests {
 
         let listed = Settings {
             tweak_ineffective: Matcher::parse("example:pick"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert!(ineffective(
             &listed,
@@ -314,7 +314,7 @@ mod tests {
     fn only_a_tiered_ranged_or_shearing_shape_can_be_made_ineffective() {
         let listed = Settings {
             tweak_ineffective: Matcher::parse("example:*"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         for shape in [Shape::Digging, Shape::Sword, Shape::Shearing, Shape::Ranged] {
             assert!(
@@ -355,7 +355,7 @@ mod tests {
     fn a_player_building_without_consuming_is_exempt_from_all_four_effects() {
         let listed = Settings {
             tweak_ineffective: Matcher::parse("example:*"),
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert!(!ineffective(
             &listed,

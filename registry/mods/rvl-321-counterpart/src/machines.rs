@@ -583,7 +583,7 @@ impl Sweep {
     /// The reach a machine with this upgrade has.
     #[must_use]
     pub fn range(upgrade: Option<Upgrade>) -> i32 {
-        1 + upgrade.map_or(0, |upgrade| i32::try_from(upgrade.range).unwrap_or(0))
+        1 + upgrade.map_or(0, |upgrade| upgrade.range.cast_signed())
     }
 
     /// The square's side.
@@ -619,7 +619,7 @@ impl Sweep {
     #[must_use]
     pub fn at(&self, index: u32) -> Position {
         let side = self.side();
-        let index = i32::try_from(index % self.area()).unwrap_or(0);
+        let index = (index % self.area()).cast_signed();
         let x = index % side - self.range;
         let z = index.div_euclid(side) - self.range;
         let (dx, dz) = self.facing.map(x, z);
@@ -723,15 +723,6 @@ impl Altar {
         self.active = true;
     }
 
-    /// Whether an item may be inserted into the altar's input.
-    ///
-    /// Refused while the output is occupied, which is what stops a craft
-    /// starting on top of a result nobody took.
-    #[must_use]
-    pub const fn accepts_input(output_occupied: bool) -> bool {
-        !output_occupied
-    }
-
     /// Advances the altar by a tick, answering whether the craft completed.
     ///
     /// Progress rises by one while the altar is active and a recipe matches,
@@ -783,8 +774,8 @@ pub fn summoning_position(
     let reach = SUMMONING_REACH;
     for _ in 0..SUMMONING_ATTEMPTS {
         let index = draw(side * side) % (side * side);
-        let x = i32::try_from(index % side).unwrap_or(0) - reach;
-        let z = i32::try_from(index.div_euclid(side)).unwrap_or(0) - reach;
+        let x = (index % side).cast_signed() - reach;
+        let z = index.div_euclid(side).cast_signed() - reach;
         let position = (origin.0 + x, origin.1, origin.2 + z);
         if unobstructed(position) {
             return Some(position);
@@ -1544,12 +1535,6 @@ mod tests {
         assert!(!altar.tick(true, true, false));
         assert_eq!(altar.progress, 0);
         assert!(altar.active, "the latch survives an uncovered tick");
-    }
-
-    #[test]
-    fn an_altar_refuses_an_insertion_while_its_output_is_occupied() {
-        assert!(Altar::accepts_input(false));
-        assert!(!Altar::accepts_input(true));
     }
 
     #[test]

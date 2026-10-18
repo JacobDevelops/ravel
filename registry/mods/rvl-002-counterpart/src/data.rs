@@ -644,15 +644,8 @@ mod tests {
 
     #[test]
     fn the_grounds_moisture_round_trips_inside_the_dependencys_range() {
-        use rvl_042_counterpart::flags::FlagTable;
-        use rvl_321_counterpart::settings as depended;
-
         let highest = rvl_321_counterpart::ground::MAXIMUM_MOISTURE;
 
-        let mut flags = FlagTable::default();
-        let flag = depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)
-            .expect("the dependency names its conversion flag");
-        flags.publish_constant(flag, true);
         let held = crate::tier::declared(
             "test:6".parse().expect("a legal tier identity"),
             "test:ground".parse().expect("a legal ground identity"),
@@ -661,7 +654,7 @@ mod tests {
         );
 
         for moisture in 0..=highest {
-            let converted = crate::ground::convert(&flags, None, true, &held, moisture, 0);
+            let converted = crate::ground::convert(true, None, true, &held, moisture, 0);
             assert_eq!(converted.ground.as_deref(), Some("test:ground"));
             assert_eq!(
                 converted.moisture, moisture,

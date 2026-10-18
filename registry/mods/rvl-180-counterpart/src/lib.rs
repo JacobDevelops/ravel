@@ -327,9 +327,7 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let readout = delivery
-            .decode::<Readout>()
-            .map_err(ModError::from_display)?;
+        let readout = delivery.decode::<Readout>().map_err(ModError::from)?;
         self.client
             .get_mut(self.side)
             .map_err(ModError::from_display)?

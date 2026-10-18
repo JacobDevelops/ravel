@@ -133,6 +133,41 @@ fn document() -> JsonValue {
     })
 }
 
+/// A missing or invalid server setting.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SettingsRefused {
+    /// Typed configuration access failed.
+    Value(ValueError),
+    /// The infusion ceiling must be between one and `i32::MAX`.
+    InfusionCeiling,
+}
+
+impl core::fmt::Display for SettingsRefused {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Value(error) => error.fmt(formatter),
+            Self::InfusionCeiling => {
+                write!(formatter, "{INFUSION_CEILING} must be in 1..={}", i32::MAX)
+            }
+        }
+    }
+}
+
+impl std::error::Error for SettingsRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Value(error) => Some(error),
+            Self::InfusionCeiling => None,
+        }
+    }
+}
+
+impl From<ValueError> for SettingsRefused {
+    fn from(error: ValueError) -> Self {
+        Self::Value(error)
+    }
+}
+
 /// The three server values in force for one launch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Settings {
@@ -162,13 +197,12 @@ impl Settings {
     ///
     /// # Errors
     ///
-    /// Returns [`ValueError`] when a key is missing, its kind does not match, or
-    /// the infusion ceiling is outside the supported range.
-    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
+    /// Returns [`SettingsRefused`] for missing keys, wrong kinds or an unsupported ceiling.
+    pub fn read(resolved: &LayeredConfiguration) -> Result<Self, SettingsRefused> {
         let infusion_ceiling = i32::try_from(resolved.integer(INFUSION_CEILING)?)
-            .map_err(|_| ValueError::IntegerRange)?;
+            .map_err(|_| SettingsRefused::InfusionCeiling)?;
         if infusion_ceiling < 1 {
-            return Err(ValueError::IntegerRange);
+            return Err(SettingsRefused::InfusionCeiling);
         }
         Ok(Self {
             debug_logging: resolved.boolean(DEBUG_LOGGING)?,
@@ -204,9 +238,9 @@ mod tests {
             .expect("the changed declaration resolves");
         assert_eq!(
             Settings::read(&resolved),
-            Err(ValueError::Unknown {
+            Err(SettingsRefused::Value(ValueError::Unknown {
                 key: DEBUG_LOGGING.to_owned()
-            })
+            }))
         );
     }
 
@@ -255,7 +289,7 @@ mod tests {
             if name == DEBUG_LOGGING {
                 assert!(matches!(
                     Settings::read(&resolved),
-                    Err(ValueError::AccessKind { .. })
+                    Err(SettingsRefused::Value(ValueError::AccessKind { .. }))
                 ));
             } else {
                 assert!(matches!(
@@ -302,21 +336,26 @@ mod tests {
 
     #[test]
     fn a_ceiling_outside_the_supported_range_is_refused() {
-        let mut changed = document();
-        let settings = changed["settings"]
-            .as_array_mut()
-            .expect("a settings array");
-        let ceiling = settings
-            .iter_mut()
-            .find(|setting| setting["key"] == INFUSION_CEILING)
-            .expect("the ceiling is declared");
-        ceiling["valueSchema"] = json!({ "type": "integer" });
-        ceiling["default"] = json!(i64::from(i32::MAX) + 1);
-        let declared = ConfigurationDeclaration::parse(&changed.to_string())
-            .expect("an unconstrained integer declaration");
-        let resolved = LayeredConfiguration::resolve(declared, None, None)
-            .expect("the out-of-range integer resolves");
-        assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+        for value in [-1, 0, i64::from(i32::MAX) + 1] {
+            let mut changed = document();
+            let settings = changed["settings"]
+                .as_array_mut()
+                .expect("a settings array");
+            let ceiling = settings
+                .iter_mut()
+                .find(|setting| setting["key"] == INFUSION_CEILING)
+                .expect("the ceiling is declared");
+            ceiling["valueSchema"] = json!({ "type": "integer" });
+            ceiling["default"] = json!(value);
+            let declared = ConfigurationDeclaration::parse(&changed.to_string())
+                .expect("an unconstrained integer declaration");
+            let resolved = LayeredConfiguration::resolve(declared, None, None)
+                .expect("the out-of-range integer resolves");
+            assert_eq!(
+                Settings::read(&resolved),
+                Err(SettingsRefused::InfusionCeiling)
+            );
+        }
     }
 
     #[test]

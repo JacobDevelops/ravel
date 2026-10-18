@@ -139,6 +139,8 @@ pub fn declaration() -> Result<ConfigurationDeclaration, DeclarationError> {
 pub enum Refused {
     /// A declared setting is missing or has the wrong kind.
     Value(ValueError),
+    /// The brewing closure refuses a cap outside its supported domain.
+    Cap(crate::recipes::Refused),
     /// The ignored-component list is longer than [`MAX_IGNORED_TEXT`].
     ListTooLong {
         /// The published ceiling.
@@ -155,6 +157,7 @@ impl fmt::Display for Refused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Value(error) => error.fmt(formatter),
+            Self::Cap(error) => error.fmt(formatter),
             Self::ListTooLong { limit } => {
                 write!(
                     formatter,
@@ -175,6 +178,7 @@ impl std::error::Error for Refused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Value(error) => Some(error),
+            Self::Cap(error) => Some(error),
             Self::ListTooLong { .. } | Self::TooManyIgnored { .. } => None,
         }
     }
@@ -202,15 +206,14 @@ pub struct Settings {
 
 impl Settings {
     /// The values declared by the packaged document, before any overrides.
-    #[must_use]
-    pub fn shipped() -> Self {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
-            None,
-            None,
-        )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved).expect("declared settings have valid values")
+    ///
+    /// # Errors
+    /// Returns the packaged declaration, resolution, or typed-value refusal.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
     }
 
     /// Reads every declared setting from the resolved configuration.
@@ -222,9 +225,12 @@ impl Settings {
         let abort_on_bundle_failure = resolved.boolean(ABORT_ON_BUNDLE_FAILURE)?;
         let log_unequal_data = resolved.boolean(LOG_UNEQUAL_DATA)?;
         let ignored = ignored_from(resolved.text(IGNORED_COMPONENTS)?)?;
-        let cap = usize::try_from(resolved.integer(CLOSURE_CAP)?)
-            .map_err(|_| ValueError::IntegerRange)?;
-        let closure = Closure::new(cap).map_err(|_| ValueError::IntegerRange)?;
+        let cap = usize::try_from(resolved.integer(CLOSURE_CAP)?).map_err(|_| {
+            Refused::Cap(crate::recipes::Refused::Cap {
+                limit: crate::recipes::MAX_CLOSURE_CAP,
+            })
+        })?;
+        let closure = Closure::new(cap).map_err(Refused::Cap)?;
         Ok(Self {
             abort_on_invalid_recipe,
             abort_on_bundle_failure,
@@ -367,7 +373,10 @@ mod tests {
         let resolved =
             LayeredConfiguration::resolve(declaration().expect("a packaged document"), None, None)
                 .expect("the shipped defaults resolve");
-        assert_eq!(Settings::read(&resolved), Ok(Settings::shipped()));
+        assert_eq!(
+            Settings::read(&resolved),
+            Ok(Settings::shipped().expect("valid shipped settings"))
+        );
     }
 
     #[test]
@@ -411,7 +420,7 @@ mod tests {
 
     #[test]
     fn the_comparator_is_rebuilt_from_the_values_in_force() {
-        let mut settings = Settings::shipped();
+        let mut settings = Settings::shipped().expect("the packaged settings resolve");
         let sharp = wear_data(0);
         let blunt = wear_data(90);
         assert!(
@@ -435,7 +444,7 @@ mod tests {
         // ignores nothing is a matching change with no signal.
         let settings = Settings {
             ignored: (0..=MAX_IGNORED).map(|index| format!("k{index}")).collect(),
-            ..Settings::shipped()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert_eq!(
             settings.comparator(),
@@ -472,7 +481,9 @@ mod tests {
                 .expect("the widened declaration resolves");
             assert_eq!(
                 Settings::read(&resolved),
-                Err(Refused::Value(ValueError::IntegerRange)),
+                Err(Refused::Cap(crate::recipes::Refused::Cap {
+                    limit: crate::recipes::MAX_CLOSURE_CAP
+                })),
                 "{cap}"
             );
         }

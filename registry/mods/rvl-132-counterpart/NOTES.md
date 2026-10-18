@@ -1,5 +1,11 @@
 # RVL-132 counterpart
 
+Shipped settings resolution is fallible and refused at `Constructed`; `settings()` and
+recipe views expose unavailable settings rather than manufacturing defaults. Closure-cap
+domain refusals retain `recipes::Refused::Cap`, separate from typed configuration access.
+The initial comparator follows the shipped ignored-component settings. Only a retained
+settings/comparator refusal uses an empty comparator pending refusal at `Constructed`.
+
 An original Rust implementation of `specifications/m6-foundation/RVL-132.md`, written against
 `ravel-sdk` and `rvl-210-counterpart` and nothing else. No upstream source was opened, decompiled or
 read to write it; the specification is the only description of the behaviour that was used.

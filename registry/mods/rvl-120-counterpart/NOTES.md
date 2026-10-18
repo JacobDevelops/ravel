@@ -1,5 +1,9 @@
 # RVL-120 counterpart
 
+Configuration declarations are parsed on request and validated at `Constructed`, without
+duplicating cached declaration state. An unsupported infusion ceiling has its own
+`SettingsRefused::InfusionCeiling` domain refusal, distinct from typed value-access failures.
+
 An original Rust implementation of `specifications/m6-foundation/RVL-120.md`, written against
 `ravel-sdk`, with checked `num-traits::ToPrimitive` conversions after explicit truncation
 and saturation. No upstream source was opened, decompiled or read to write it; the

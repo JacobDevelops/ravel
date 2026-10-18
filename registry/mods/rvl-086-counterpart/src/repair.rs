@@ -494,7 +494,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             Self {
-                settings: Settings::default(),
+                settings: Settings::shipped().expect("the packaged settings resolve"),
                 table: Table::default(),
                 blacklist: Matcher::default(),
             }
@@ -523,7 +523,7 @@ mod tests {
         let mut fixture = Fixture::new();
         fixture.settings = Settings {
             repair_enabled: false,
-            ..Settings::default()
+            ..Settings::shipped().expect("the packaged settings resolve")
         };
         assert_eq!(
             repair(&[], &fixture.context(&everything_accepted)),

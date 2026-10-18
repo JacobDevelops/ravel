@@ -143,37 +143,30 @@ pub fn colour_layout() -> (&'static str, String) {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::documents;
+    use std::path::Path;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let documents = documents();
-        assert_eq!(
-            documents.len(),
-            3,
-            "every renderer contributes one document"
-        );
-        for (path, rendered) in documents {
-            assert!(
-                rendered.ends_with('\n'),
-                "`{path}` does not end with a trailing newline"
-            );
-            let full = root.join(path);
-            if std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some() {
-                let parent = full.parent().expect("every document names a directory");
+        let rendered = documents();
+        assert_eq!(rendered.len(), 3);
+        let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
+        for (relative, document) in rendered {
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
+            let path = root.join(relative);
+            if regenerating {
+                let parent = path.parent().expect("every document names a directory");
                 std::fs::create_dir_all(parent).expect("the directory is this package's own");
-                std::fs::write(&full, rendered.as_bytes())
+                std::fs::write(&path, document.as_bytes())
                     .expect("the document is this package's own");
                 continue;
             }
-            let written = std::fs::read_to_string(&full)
-                .unwrap_or_else(|error| panic!("`{path}` cannot be read: {error}"));
+            let on_disk = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{relative} cannot be read: {error}"));
             assert_eq!(
-                written, rendered,
-                "`{path}` no longer holds what this crate derives"
+                on_disk, document,
+                "{relative} no longer holds what this crate derives"
             );
         }
     }

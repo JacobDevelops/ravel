@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_sdk::JsonValue;
+use ravel_sdk::content::ContentId;
 
 use crate::conditions::qualify;
 use crate::neighbourhood::Face;
@@ -58,24 +59,28 @@ pub const MISSING_TEXTURE: &str = "base:absent";
 
 /// One texture, named the way a declaration names it.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TextureId(String);
+pub struct TextureId(ContentId);
 
 impl TextureId {
     /// Reads a texture name, refusing one that is not a name.
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {
-        qualify(name).map(|id| Self(id.to_string()))
+        qualify(name).map(Self)
     }
 
     /// Returns the sprite a missing texture falls back to.
     #[must_use]
     pub fn missing() -> Self {
-        Self(MISSING_TEXTURE.to_owned())
+        Self(
+            MISSING_TEXTURE
+                .parse()
+                .expect("the missing texture is qualified"),
+        )
     }
 
-    /// Returns the name.
+    /// Returns the qualified texture identity.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub const fn id(&self) -> &ContentId {
         &self.0
     }
 }
@@ -487,7 +492,9 @@ impl Grid {
         let mut cells = Vec::with_capacity(declared.len());
         for (position, held) in declared.iter().enumerate() {
             let texture = held.as_str().and_then(TextureId::parse).ok_or_else(|| {
-                SlotError::MissingCell(u32::try_from(position).unwrap_or(u32::MAX))
+                SlotError::MissingCell(
+                    u32::try_from(position).expect("a cell index is below MAX_CELLS"),
+                )
             })?;
             cells.push(texture);
         }
@@ -555,8 +562,9 @@ impl PerFaceSlots {
                         sprites.push(texture);
                         sprites.len() - 1
                     });
-                let index = u32::try_from(sprite_of.len()).unwrap_or(u32::MAX);
-                sprite_of.push(u32::try_from(sprite).unwrap_or(0));
+                let index =
+                    u32::try_from(sprite_of.len()).expect("runtime texture indices must fit u32");
+                sprite_of.push(u32::try_from(sprite).expect("sprite indices must fit u32"));
                 per_face[position].insert(slot, index);
             }
         }
@@ -735,6 +743,12 @@ mod tests {
 
         let held = FlatSlots::new().with(Slot::Particle, texture("base:dust"));
         assert_eq!(held.particle(), texture("base:dust"));
+        assert_eq!(texture("dust"), texture("base:dust"));
+        assert_eq!(
+            texture("dust").id(),
+            &"base:dust".parse().expect("qualified texture")
+        );
+        assert!(TextureId::parse("bad texture").is_none());
     }
 
     #[test]

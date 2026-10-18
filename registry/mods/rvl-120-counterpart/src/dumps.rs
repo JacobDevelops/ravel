@@ -135,31 +135,28 @@ mod tests {
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         let rendered = documents().expect("the packaged declarations are valid");
+        assert_eq!(rendered.len(), 3, "every renderer contributes one document");
         assert!(
             !rendered.is_empty(),
             "the package ships generated documents"
         );
-
-        for (path, document) in rendered {
-            assert!(
-                document.ends_with('\n'),
-                "{path} ends with a trailing newline"
-            );
-            let target = root.join(path);
+        let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
+        for (relative, document) in rendered {
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
+            let path = root.join(relative);
             if regenerating {
-                let directory = target.parent().expect("a document has a parent directory");
-                std::fs::create_dir_all(directory).expect("the directory can be created");
-                std::fs::write(&target, document.as_bytes()).expect("the document can be written");
-            } else {
-                let on_disk = std::fs::read_to_string(&target)
-                    .unwrap_or_else(|error| panic!("{path} could not be read: {error}"));
-                assert_eq!(
-                    on_disk, document,
-                    "{path} has drifted from what the crate renders"
-                );
+                let parent = path.parent().expect("a document has a parent directory");
+                std::fs::create_dir_all(parent).expect("the directory can be created");
+                std::fs::write(&path, document.as_bytes()).expect("the document can be written");
+                continue;
             }
+            let on_disk = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{relative} could not be read: {error}"));
+            assert_eq!(
+                on_disk, document,
+                "{relative} has drifted from what the crate renders"
+            );
         }
     }
 }

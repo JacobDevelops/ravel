@@ -94,6 +94,15 @@ pub fn second_drop_chance(crop: &Crop, tier: &Tier, below: Option<Below>) -> f64
     chance.clamp(0.0, 1.0)
 }
 
+/// The crop's age state at harvest.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Maturity {
+    /// Below the crop's maximum age.
+    Growing,
+    /// At the crop's maximum age.
+    Mature,
+}
+
 /// What the ordinary crop yields.
 ///
 /// The produce count is set to one before the origin is consulted, so a drop
@@ -105,12 +114,12 @@ pub fn general(
     crop: &Crop,
     tier: &Tier,
     below: Option<Below>,
-    mature: bool,
+    maturity: Maturity,
     second_seed: bool,
     fertiliser_chance: f64,
     draws: Draws,
 ) -> Yield {
-    if !mature {
+    if maturity == Maturity::Growing {
         return Yield {
             produce: 0,
             seeds: 1,
@@ -148,11 +157,11 @@ pub fn tier_one(
     crop: &Crop,
     tier: &Tier,
     below: Option<Below>,
-    mature: bool,
+    maturity: Maturity,
     second_seed: bool,
     draws: Draws,
 ) -> Yield {
-    if !mature {
+    if maturity == Maturity::Growing {
         return Yield {
             produce: 0,
             seeds: 1,
@@ -308,7 +317,7 @@ mod tests {
             &crop(),
             &tiers[0],
             Some(below),
-            false,
+            Maturity::Growing,
             true,
             1.0,
             Draws::default(),
@@ -332,7 +341,15 @@ mod tests {
             fertiliser: 0.0,
             even_bump: 0.0,
         };
-        let answer = general(&crop(), &tiers[0], None, true, true, 1.0, certain);
+        let answer = general(
+            &crop(),
+            &tiers[0],
+            None,
+            Maturity::Mature,
+            true,
+            1.0,
+            certain,
+        );
         assert_eq!(
             answer,
             Yield {
@@ -358,7 +375,15 @@ mod tests {
             fertiliser: 1.0,
             even_bump: 1.0,
         };
-        let answer = general(&crop(), &tiers[0], Some(below), true, true, 0.1, split);
+        let answer = general(
+            &crop(),
+            &tiers[0],
+            Some(below),
+            Maturity::Mature,
+            true,
+            0.1,
+            split,
+        );
         assert_eq!(answer.produce, 2, "0.05 is under the shipped 0.2");
         assert_eq!(answer.seeds, 1, "0.5 is not, and the draw is its own");
         assert_eq!(answer.fertiliser, 0);
@@ -373,8 +398,24 @@ mod tests {
             &tiers,
         );
         let certain = Draws::default();
-        let with = general(&crop(), &tiers[0], Some(below), true, true, 0.1, certain);
-        let without = general(&crop(), &tiers[0], Some(below), true, false, 0.1, certain);
+        let with = general(
+            &crop(),
+            &tiers[0],
+            Some(below),
+            Maturity::Mature,
+            true,
+            0.1,
+            certain,
+        );
+        let without = general(
+            &crop(),
+            &tiers[0],
+            Some(below),
+            Maturity::Mature,
+            false,
+            0.1,
+            certain,
+        );
         assert_eq!(with.seeds, 2);
         assert_eq!(without.seeds, 1);
         assert_eq!(with.produce, without.produce);
@@ -394,7 +435,15 @@ mod tests {
             fertiliser: 0.1,
             even_bump: 1.0,
         };
-        let answer = general(&crop(), &tiers[0], Some(below), true, true, 0.1, boundary);
+        let answer = general(
+            &crop(),
+            &tiers[0],
+            Some(below),
+            Maturity::Mature,
+            true,
+            0.1,
+            boundary,
+        );
         assert_eq!(
             answer.fertiliser, 0,
             "a draw equal to the chance does not pass"
@@ -404,7 +453,15 @@ mod tests {
             fertiliser: 0.09,
             ..boundary
         };
-        let answer = general(&crop(), &tiers[0], Some(below), true, true, 0.1, under);
+        let answer = general(
+            &crop(),
+            &tiers[0],
+            Some(below),
+            Maturity::Mature,
+            true,
+            0.1,
+            under,
+        );
         assert_eq!(answer.fertiliser, 1);
     }
 
@@ -434,7 +491,14 @@ mod tests {
             &tiers[0],
             &tiers,
         );
-        let answer = tier_one(&crop(), &tiers[0], Some(plain), true, true, certain);
+        let answer = tier_one(
+            &crop(),
+            &tiers[0],
+            Some(plain),
+            Maturity::Mature,
+            true,
+            certain,
+        );
         assert_eq!(answer.produce, 1);
         assert_eq!(answer.fertiliser, 0);
 
@@ -443,7 +507,14 @@ mod tests {
             &tiers[0],
             &tiers,
         );
-        let answer = tier_one(&crop(), &tiers[0], Some(high), true, true, certain);
+        let answer = tier_one(
+            &crop(),
+            &tiers[0],
+            Some(high),
+            Maturity::Mature,
+            true,
+            certain,
+        );
         assert_eq!(answer.produce, 3);
         assert_eq!(answer.fertiliser, 0);
     }
@@ -452,7 +523,7 @@ mod tests {
     fn the_first_tiers_crop_with_no_origin_skips_the_arithmetic_and_the_seed_draw() {
         let tiers = tiers();
         let certain = Draws::default();
-        let answer = tier_one(&crop(), &tiers[0], None, true, true, certain);
+        let answer = tier_one(&crop(), &tiers[0], None, Maturity::Mature, true, certain);
         assert_eq!(
             answer,
             Yield {

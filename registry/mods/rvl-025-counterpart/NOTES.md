@@ -33,6 +33,12 @@ Missing, wrong-typed, malformed, and foreign-namespace identifiers are refused b
 mutation; an omitted or empty owner cannot claim an empty-namespace factory. Optional
 module and dimension scalar fields default only when absent; malformed present fields
 are refused without registration or replacement of an existing dimension.
+Instruction parameters, bodies, categories, required flags, and supplied argument
+arrays likewise default only when absent; malformed present fields are refused.
+Packaged settings resolve fallibly and a packaging failure is refused at Constructed,
+not panicked during entry construction. Narrow integer reads report the actual i32
+bound. Malformed peer packets are declined as InvalidPacket and undeclared paths as
+Unsupported, so neither fails the receiving mod.
 
 ## What each section became
 

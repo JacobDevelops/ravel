@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "e0383d223a6a5094a8ce80ab93ae8b14d11a81043668d6c34df8936e479b85a9"
+        "sha256": "bd3d25550417ae4c0b7fa4e8aa56c7f63d26f7728591999001a45f2ad3d18413"
       },
       {
         "path": "aliases.json",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "df65cfe1e08051a6ecc34ece213146ebd22e924516f2c238e8fbdd7447692f2f"
+        "sha256": "747595e30f65b88d6b111d4909a28ee61ec3b9930a8841790309552aea7e53af"
       },
       {
         "path": "src/forms.rs",
@@ -87,11 +87,11 @@
       },
       {
         "path": "src/holdings.rs",
-        "sha256": "e4aed5255bf574dc2a71e1b38f60809e05e6d8729a0d758bee9a10618b34c5d9"
+        "sha256": "fbc0a6cc606e3a4f41881329ee4a75e7b71066bc2273b14710c36ca6a9694315"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "8759230ade0c9a6537b193a5e48b270df0c9e701aba6a30d898a4e095c88c7f2"
+        "sha256": "568144a5988950ab73aa513c67350a002d527cc503ed944f4dc117582eeacf12"
       },
       {
         "path": "src/lib.rs",
@@ -111,15 +111,15 @@
       },
       {
         "path": "src/registration.rs",
-        "sha256": "04654c05016d0ce371ae7f965f77cfa06e42881be23922ebe1c265c53a3c29f3"
+        "sha256": "ec2ad14b870e5e766bc5de3f811c4b05bede39adbc4514deb95328999673b818"
       },
       {
         "path": "src/registration/conditions.rs",
-        "sha256": "f355632e6b3793e58eefc833346fbcb66a52745fe117998f8ced2fc087332e59"
+        "sha256": "2143385b9718db0be6a9de1ebb40672098205af5514b57c705faf6282cbd253f"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "bc1d7f820e2714558a9158f4b49189eada520079e4323ff5a976d4858b44fa96"
+        "sha256": "3b0b2735193344c6d1ba9c5b9c721ee570985c8ca6038589fa2eea89c620407a"
       },
       {
         "path": "src/storage.rs",

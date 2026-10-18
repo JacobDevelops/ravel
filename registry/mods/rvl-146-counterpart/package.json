@@ -62,7 +62,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "95888073cda22f4e3f49191a7c32e7deda62967547d32738ba6f1a951d6265b3"
+        "sha256": "5245fa8a3fe6d243ca8956cc50ba5185e07205c6519591b4f4bfe5ac72392dd2"
       },
       {
         "path": "src/highlights.rs",

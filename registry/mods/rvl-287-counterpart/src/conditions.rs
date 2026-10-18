@@ -66,35 +66,20 @@ pub const TAG_KEY: &str = "group";
 /// The original compares the game's own interned property values by reference.
 /// Comparing by value is the same answer by a safer route, so that is what this
 /// does.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockState {
-    block: String,
+    block: ContentId,
     properties: BTreeMap<String, String>,
 }
 
 impl BlockState {
-    /// The name the absence of a block is spelled by.
-    pub const NOTHING: &'static str = "nothing";
-
     /// Builds a state of `block` carrying no property.
     #[must_use]
-    pub fn new(block: impl Into<String>) -> Self {
+    pub fn new(block: ContentId) -> Self {
         Self {
-            block: block.into(),
+            block,
             properties: BTreeMap::new(),
         }
-    }
-
-    /// Returns the state that stands for an empty position.
-    #[must_use]
-    pub fn nothing() -> Self {
-        Self::new(Self::NOTHING)
-    }
-
-    /// Returns whether this state is the empty one.
-    #[must_use]
-    pub fn is_nothing(&self) -> bool {
-        self.block == Self::NOTHING
     }
 
     /// Adds a property to this state, replacing any value already under it.
@@ -106,7 +91,7 @@ impl BlockState {
 
     /// Returns the block this state is of.
     #[must_use]
-    pub fn block(&self) -> &str {
+    pub const fn block(&self) -> &ContentId {
         &self.block
     }
 
@@ -131,8 +116,8 @@ impl BlockState {
 /// function of the vocabulary it is given either way.
 #[derive(Clone, Debug, Default)]
 pub struct Vocabulary {
-    blocks: BTreeMap<String, BTreeSet<String>>,
-    groups: BTreeSet<String>,
+    blocks: BTreeMap<ContentId, BTreeSet<String>>,
+    groups: BTreeSet<ContentId>,
 }
 
 impl Vocabulary {
@@ -153,7 +138,7 @@ impl Vocabulary {
             return self;
         };
         self.blocks
-            .entry(name.to_string())
+            .entry(name)
             .or_default()
             .extend(properties.into_iter().map(Into::into));
         self
@@ -163,20 +148,20 @@ impl Vocabulary {
     #[must_use]
     pub fn with_group(mut self, name: &str) -> Self {
         if let Some(name) = qualify(name) {
-            self.groups.insert(name.to_string());
+            self.groups.insert(name);
         }
         self
     }
 
     /// Returns whether this vocabulary knows `block`.
     #[must_use]
-    pub fn knows_block(&self, block: &str) -> bool {
+    pub fn knows_block(&self, block: &ContentId) -> bool {
         self.blocks.contains_key(block)
     }
 
     /// Returns whether `block` carries a property called `property`.
     #[must_use]
-    pub fn knows_property(&self, block: &str, property: &str) -> bool {
+    pub fn knows_property(&self, block: &ContentId, property: &str) -> bool {
         self.blocks
             .get(block)
             .is_some_and(|names| names.contains(property))
@@ -184,7 +169,7 @@ impl Vocabulary {
 
     /// Returns whether this vocabulary knows `group`.
     #[must_use]
-    pub fn knows_group(&self, group: &str) -> bool {
+    pub fn knows_group(&self, group: &ContentId) -> bool {
         self.groups.contains(group)
     }
 }
@@ -192,7 +177,7 @@ impl Vocabulary {
 /// Which blocks belong to which named group, as a connection decision sees it.
 #[derive(Clone, Debug, Default)]
 pub struct Groups {
-    members: BTreeMap<String, BTreeSet<String>>,
+    members: BTreeMap<ContentId, BTreeSet<ContentId>>,
 }
 
 impl Groups {
@@ -206,17 +191,14 @@ impl Groups {
     #[must_use]
     pub fn with_member(mut self, group: &str, block: &str) -> Self {
         if let (Some(group), Some(block)) = (qualify(group), qualify(block)) {
-            self.members
-                .entry(group.to_string())
-                .or_default()
-                .insert(block.to_string());
+            self.members.entry(group).or_default().insert(block);
         }
         self
     }
 
     /// Returns whether `block` is a member of `group`.
     #[must_use]
-    pub fn holds(&self, group: &str, block: &str) -> bool {
+    pub fn holds(&self, group: &ContentId, block: &ContentId) -> bool {
         self.members
             .get(group)
             .is_some_and(|members| members.contains(block))
@@ -261,12 +243,12 @@ pub enum Condition {
     /// The neighbour is that block, with the named properties matching.
     NamedBlock {
         /// The qualified block name.
-        block: String,
+        block: ContentId,
         /// The property constraints that survived parsing.
         properties: BTreeMap<String, String>,
     },
     /// The neighbour's block is a member of that group.
-    NamedGroup(String),
+    NamedGroup(ContentId),
     /// The nested condition does not hold.
     Inverted(Box<Self>),
     /// Every listed condition holds.
@@ -437,7 +419,6 @@ fn parse_named_block(value: &JsonValue, vocabulary: &Vocabulary, report: &mut Re
     let named = value.get(BLOCK_KEY).and_then(JsonValue::as_str);
     let Some(block) = named
         .and_then(qualify)
-        .map(|block| block.to_string())
         .filter(|block| vocabulary.knows_block(block))
     else {
         report.refused_forms += 1;
@@ -471,7 +452,6 @@ fn parse_named_group(value: &JsonValue, vocabulary: &Vocabulary, report: &mut Re
     // so this one does too.
     if let Some(group) = named
         .and_then(qualify)
-        .map(|group| group.to_string())
         .filter(|group| vocabulary.knows_group(group))
     {
         Condition::NamedGroup(group)
@@ -567,7 +547,7 @@ mod tests {
 
     #[test]
     fn the_default_and_the_malformed_answer_differ_where_it_matters() {
-        let panel = BlockState::new("base:panel");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
         let groups = groups();
         assert!(
             Condition::SameState.connects(&panel, &panel, &groups),
@@ -591,9 +571,11 @@ mod tests {
     #[test]
     fn the_two_identity_forms_read_the_pair_they_are_given() {
         let groups = groups();
-        let lit = BlockState::new("base:panel").with("lit", "true");
-        let unlit = BlockState::new("base:panel").with("lit", "false");
-        let beam = BlockState::new("base:beam");
+        let lit =
+            BlockState::new("base:panel".parse().expect("qualified block")).with("lit", "true");
+        let unlit =
+            BlockState::new("base:panel".parse().expect("qualified block")).with("lit", "false");
+        let beam = BlockState::new("base:beam".parse().expect("qualified block"));
 
         let (same_state, _) = parse(&json!({ "test": "same_state" }));
         assert!(same_state.connects(&lit, &lit.clone(), &groups));
@@ -614,13 +596,13 @@ mod tests {
         }));
         assert!(report.is_clean());
         assert!(parsed.connects(
-            &BlockState::new("base:beam"),
-            &BlockState::new("base:panel").with("lit", "true"),
+            &BlockState::new("base:beam".parse().expect("qualified block")),
+            &BlockState::new("base:panel".parse().expect("qualified block")).with("lit", "true"),
             &groups
         ));
         assert!(!parsed.connects(
-            &BlockState::new("base:beam"),
-            &BlockState::new("base:panel").with("lit", "false"),
+            &BlockState::new("base:beam".parse().expect("qualified block")),
+            &BlockState::new("base:panel".parse().expect("qualified block")).with("lit", "false"),
             &groups
         ));
 
@@ -664,8 +646,8 @@ mod tests {
         let (known, report) = parse(&json!({ "test": "named_group", "group": "base:panels" }));
         assert!(report.is_clean());
         assert!(known.connects(
-            &BlockState::new("base:panel"),
-            &BlockState::new("base:beam"),
+            &BlockState::new("base:panel".parse().expect("qualified block")),
+            &BlockState::new("base:beam".parse().expect("qualified block")),
             &groups
         ));
 
@@ -685,11 +667,15 @@ mod tests {
     #[test]
     fn an_inversion_with_a_body_that_is_not_an_object_is_never_rather_than_always() {
         let groups = groups();
-        let panel = BlockState::new("base:panel");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
 
         let (inverted, _) = parse(&json!({ "test": "inverted", "of": { "test": "same_state" } }));
         assert!(!inverted.connects(&panel, &panel, &groups));
-        assert!(inverted.connects(&panel, &BlockState::new("base:beam"), &groups));
+        assert!(inverted.connects(
+            &panel,
+            &BlockState::new("base:beam".parse().expect("qualified block")),
+            &groups,
+        ));
 
         for broken in [
             json!({ "test": "inverted", "of": ["x"] }),
@@ -755,8 +741,8 @@ mod tests {
     #[test]
     fn an_exclusive_or_of_any_arity_but_two_never_connects() {
         let groups = groups();
-        let panel = BlockState::new("base:panel");
-        let beam = BlockState::new("base:beam");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
+        let beam = BlockState::new("base:beam".parse().expect("qualified block"));
 
         let (two, _) = parse(&json!({
             "test": "one_of_two",
@@ -768,7 +754,8 @@ mod tests {
         );
         assert!(
             two.connects(
-                &BlockState::new("base:panel").with("lit", "true"),
+                &BlockState::new("base:panel".parse().expect("qualified block"))
+                    .with("lit", "true"),
                 &panel,
                 &groups
             ),
@@ -792,8 +779,8 @@ mod tests {
     #[test]
     fn a_conjunction_and_a_disjunction_of_several_read_every_element() {
         let groups = groups();
-        let panel = BlockState::new("base:panel");
-        let beam = BlockState::new("base:beam");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
+        let beam = BlockState::new("base:beam".parse().expect("qualified block"));
         let elements = json!([
             { "test": "same_block" },
             { "test": "named_group", "group": "base:panels" },
@@ -814,7 +801,7 @@ mod tests {
         assert!(any.connects(&panel, &beam, &groups), "the second holds");
         assert!(!any.connects(
             &panel,
-            &BlockState::new("base:panel").with("lit", "true"),
+            &BlockState::new("base:panel".parse().expect("qualified block")).with("lit", "true"),
             &groups
         ));
     }
@@ -869,7 +856,7 @@ mod tests {
         for _ in 0..512 {
             condition = Condition::AllOf(vec![condition]);
         }
-        let panel = BlockState::new("base:panel");
+        let panel = BlockState::new("base:panel".parse().expect("qualified block"));
 
         let answer = condition.connects(&panel, &panel, &groups());
 
@@ -886,6 +873,13 @@ mod tests {
             qualify("other:panel").map(|id| id.to_string()),
             Some("other:panel".to_owned())
         );
+        let panel = BlockState::new(qualify("panel").expect("a bare name is qualified"));
+        let (named, report) = parse(&json!({ "test": "named_block", "block": "panel" }));
+        assert!(report.is_clean());
+        assert!(named.connects(&panel, &panel, &groups()));
+        let (grouped, report) = parse(&json!({ "test": "named_group", "group": "panels" }));
+        assert!(report.is_clean());
+        assert!(grouped.connects(&panel, &panel, &groups()));
         for path in ["deep/panel", "panel.variant", "panel-variant"] {
             let id = qualify(path).expect("valid SDK content path");
             assert_eq!(id.namespace().as_str(), "base");

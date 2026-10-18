@@ -421,10 +421,7 @@ impl Mod for Entry {
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         if !transport::MESSAGE_KINDS.contains(&delivery.id.id().path()) {
-            return Err(ModError::refused(format!(
-                "undeclared packet {}",
-                delivery.id.id()
-            )));
+            return Err(ModError::Unsupported);
         }
         self.carried = self.carried.saturating_add(1);
         Ok(())
@@ -540,7 +537,7 @@ mod tests {
         let refusal = entry
             .receive_packet(&delivery)
             .expect_err("unknown contracts are refused");
-        assert!(refusal.to_string().contains("undeclared packet"));
+        assert!(matches!(refusal, ModError::Unsupported));
         assert_eq!(entry.carried(), before);
     }
 

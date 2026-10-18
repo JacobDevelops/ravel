@@ -318,10 +318,9 @@ pub fn pane_sample(face: Face, own: &BlockState, neighbourhood: &dyn Neighbourho
         return Neighbours::NONE;
     }
     let connects = |offset: Offset| {
-        let sampled = neighbourhood.appearance(offset);
-        !sampled.is_nothing()
-            && sampled.same_block(own)
-            && SheetFlags::read(&sampled).runs_across(face)
+        neighbourhood.appearance(offset).is_some_and(|sampled| {
+            sampled.same_block(own) && SheetFlags::read(&sampled).runs_across(face)
+        })
     };
     let mut neighbours = Neighbours::NONE;
     for index in 0..4 {
@@ -340,7 +339,7 @@ pub fn pane_sample(face: Face, own: &BlockState, neighbourhood: &dyn Neighbourho
 pub fn pane_sheet(face: Face, own: &BlockState, neighbourhood: &dyn Neighbourhood) -> Sheet {
     Sheet::new(
         SheetFlags::read(own),
-        &neighbourhood.appearance(face.normal()) == own,
+        neighbourhood.appearance(face.normal()).as_ref() == Some(own),
     )
 }
 
@@ -445,7 +444,7 @@ pub fn tiled_coordinate(position: Offset, vector: Offset, extent: u32, mirrored:
     }
     let modulus = i64::from(extent);
     let reduced = i64::from(position.along(axis)).rem_euclid(modulus);
-    let reduced = u32::try_from(reduced).unwrap_or(0);
+    let reduced = u32::try_from(reduced).expect("rem_euclid by a u32 extent fits u32");
     if mirrored {
         extent.saturating_sub(1).saturating_sub(reduced)
     } else {
@@ -798,7 +797,7 @@ mod tests {
     }
 
     fn pane(north: &str, south: &str, west: &str, east: &str) -> BlockState {
-        BlockState::new("base:pane")
+        BlockState::new("base:pane".parse().expect("qualified block"))
             .with("north", north)
             .with("south", south)
             .with("west", west)
@@ -860,7 +859,7 @@ mod tests {
             assert!(connected.all_connected(), "{face:?}");
 
             // A different block running across it does not.
-            let other = BlockState::new("base:other")
+            let other = BlockState::new("base:other".parse().expect("qualified block"))
                 .with("north", "true")
                 .with("south", "true")
                 .with("west", "true")

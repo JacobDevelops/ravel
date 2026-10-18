@@ -166,15 +166,16 @@ pub struct Settings {
     pub world_outer: Deposits,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
-            None,
-            None,
-        )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved).expect("declared settings have matching types")
+impl Settings {
+    /// Resolves the packaged defaults, refusing malformed declarations or values.
+    ///
+    /// # Errors
+    /// Returns a refusal when the packaged declaration or its defaults are invalid.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
     }
 }
 
@@ -185,11 +186,9 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, ValueError> {
         Ok(Self {
             drops_soul_chance: resolved.number(DROPS_SOUL_CHANCE)?,
-            drops_scale_count: u32::try_from(resolved.integer(DROPS_SCALE_COUNT)?)
-                .map_err(|_| ValueError::IntegerRange)?,
+            drops_scale_count: unsigned(resolved, DROPS_SCALE_COUNT)?,
             crops_fertilisable: resolved.boolean(CROPS_FERTILISABLE)?,
-            foods_effect_seconds: u32::try_from(resolved.integer(FOODS_EFFECT_SECONDS)?)
-                .map_err(|_| ValueError::IntegerRange)?,
+            foods_effect_seconds: unsigned(resolved, FOODS_EFFECT_SECONDS)?,
             world_lower: Deposits {
                 shard: resolved.boolean(WORLD_LOWER_SHARD_DEPOSIT)?,
                 essence: resolved.boolean(WORLD_LOWER_ESSENCE_DEPOSIT)?,
@@ -200,6 +199,19 @@ impl Settings {
             },
         })
     }
+}
+
+fn unsigned(resolved: &LayeredConfiguration, key: &str) -> Result<u32, ValueError> {
+    let value = resolved.integer(key)?;
+    u32::try_from(value).map_err(|_| {
+        if value < 0 {
+            ValueError::Below { minimum: 0.0 }
+        } else {
+            ValueError::Above {
+                maximum: f64::from(u32::MAX),
+            }
+        }
+    })
 }
 
 type FlagBinding = (&'static str, fn(&Settings) -> bool);
@@ -220,7 +232,7 @@ pub(crate) const PUBLISHED: [FlagBinding; 5] = [
     }),
 ];
 
-/// Publishes those flags into the shared table under this entry's namespace.
+/// Publishes those flags into this mod's table under this entry's namespace.
 ///
 /// # Errors
 ///
@@ -249,14 +261,11 @@ pub fn flag_id(key: &str) -> Result<FlagId, ContentIdError> {
 /// [`crate::ground`] short-circuits on. Naming them through that package's own
 /// [`depended::flag_id`] is what keeps the direction honest — this entry cannot
 /// mint a flag in a namespace it does not own.
-pub fn consumed_flags() -> Result<Vec<FlagId>, ContentIdError> {
-    [
-        depended::GEAR_TOP_TOOLS_ENCHANTABLE,
-        depended::GROUND_CONVERT_BY_MATERIAL,
-    ]
-    .into_iter()
-    .map(depended::flag_id)
-    .collect()
+pub fn consumed_flags() -> Result<[FlagId; 2], ContentIdError> {
+    Ok([
+        depended::flag_id(depended::GEAR_TOP_TOOLS_ENCHANTABLE)?,
+        depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)?,
+    ])
 }
 
 #[cfg(test)]
@@ -315,7 +324,12 @@ mod tests {
             let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
             let resolved = LayeredConfiguration::resolve(declared, None, None)
                 .expect("the widened declaration resolves");
-            assert_eq!(Settings::read(&resolved), Err(ValueError::IntegerRange));
+            assert_eq!(
+                Settings::read(&resolved),
+                Err(ValueError::Above {
+                    maximum: f64::from(u32::MAX)
+                })
+            );
         }
     }
 
@@ -361,7 +375,7 @@ mod tests {
                 "the document declares {key}"
             );
         }
-        let shipped = Settings::default();
+        let shipped = Settings::shipped().expect("the shipped settings are valid");
         assert!((shipped.drops_soul_chance - 0.35).abs() < f64::EPSILON);
         assert_eq!(shipped.drops_scale_count, 8);
         assert!(!shipped.crops_fertilisable);
@@ -393,7 +407,7 @@ mod tests {
     #[test]
     fn five_flags_are_published_and_the_two_consumed_ones_are_not_in_this_namespace() {
         let mut table = FlagTable::new();
-        let settings = Settings::default();
+        let settings = Settings::shipped().expect("the shipped settings are valid");
         publish(&mut table, &settings).expect("legal flag bindings");
         assert_eq!(table.published().count(), 5);
 
@@ -429,7 +443,7 @@ mod tests {
                 shard: false,
                 essence: true,
             },
-            ..Settings::default()
+            ..Settings::shipped().expect("the shipped settings are valid")
         };
         publish(&mut table, &settings).expect("legal flag bindings");
         let fertilisable = flag_id(CROPS_FERTILISABLE).expect("a legal flag name");

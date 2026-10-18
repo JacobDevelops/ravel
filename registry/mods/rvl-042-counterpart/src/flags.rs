@@ -59,7 +59,7 @@ impl FromStr for FlagId {
     }
 }
 
-/// The one table a flag is published into.
+/// A mod's own table of flags, populated and read within that mod.
 #[derive(Clone, Default)]
 pub struct FlagTable {
     published: BTreeMap<FlagId, Predicate>,

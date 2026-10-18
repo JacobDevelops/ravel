@@ -538,11 +538,11 @@ impl<K: QuantityKind> Summing<'_, K> {
 
 /// A collection that keeps its contents in partitions.
 ///
-/// A lookup restricted to a category scans that category's partition alone. The
-/// restriction section ten leaves implicit is enforced here in one place:
-/// [`Classified::may_use_partitions`] answers false unless the query's conditions
-/// are a superset of the partitioning ones, and every lookup that would otherwise
-/// use a partition falls back to a whole scan when it does.
+/// For a single-category kind, a lookup restricted to a category scans that
+/// category's partition alone. The restriction section ten leaves implicit is
+/// enforced here in one place: [`Classified::may_use_partitions`] answers false
+/// unless the query's conditions are a superset of the partitioning ones, and
+/// every lookup that cannot use one partition falls back to a whole scan.
 #[derive(Clone, Debug)]
 pub struct Classified<K: Partitioned> {
     kind: K,
@@ -596,8 +596,8 @@ impl<K: Partitioned> Classified<K> {
 
     /// How much matches, and how much of the collection had to be read.
     ///
-    /// The second number is the observable half: a partitioned lookup that may
-    /// use its partition reads that partition alone, and one that may not reads
+    /// The second number is the observable half: a single-category lookup that
+    /// may use its partition reads that partition alone; every other lookup reads
     /// everything. A dependent that could not tell the two apart would have no
     /// reason to hold a classified collection at all.
     pub fn amount_of(&self, value: &K::Instance, under: Conditions) -> Lookup {
@@ -637,7 +637,7 @@ pub struct Lookup {
     pub amount: Amount,
     /// How many entries were read to answer.
     pub scanned: usize,
-    /// Whether the partitioning was usable for this query.
+    /// Whether the lookup read one partition rather than the whole collection.
     pub used_partitions: bool,
 }
 

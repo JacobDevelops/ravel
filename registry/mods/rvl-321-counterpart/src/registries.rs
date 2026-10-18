@@ -706,7 +706,11 @@ mod tests {
             crops: Vec::new(),
         };
         let mut extensions: Vec<&mut dyn Extension> = vec![&mut first, &mut second];
-        let taken = construct(&mut registries, &mut extensions, &Settings::default());
+        let taken = construct(
+            &mut registries,
+            &mut extensions,
+            &Settings::shipped().expect("the shipped settings are valid"),
+        );
         assert_eq!(
             taken,
             [

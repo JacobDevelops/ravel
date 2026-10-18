@@ -1,5 +1,8 @@
 # RVL-180 counterpart
 
+Malformed readout packets preserve `InvalidPacket` classification. The loader rejects
+that delivery without changing the receiving mod's `Running` state.
+
 An original Rust implementation of `specifications/m6-foundation/RVL-180.md`, written against
 `ravel-sdk` and nothing else. No upstream source was opened, decompiled or read to write it, and no
 compiled entry of the pinned artifact was opened either. The specification is the only description of

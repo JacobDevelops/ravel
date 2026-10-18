@@ -104,19 +104,18 @@ pub struct Settings {
     pub self_heal: bool,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        let resolved = LayeredConfiguration::resolve(
-            declaration().expect("the packaged declaration is valid"),
-            None,
-            None,
-        )
-        .expect("the shipped defaults resolve");
-        Self::read(&resolved).expect("declared settings have matching types")
-    }
-}
-
 impl Settings {
+    /// Resolves the packaged defaults, refusing malformed declarations.
+    ///
+    /// # Errors
+    /// Returns the packaged declaration, resolution, or typed-value refusal.
+    pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
+        let declared = declaration().map_err(ravel_sdk::ModError::from_display)?;
+        let resolved = LayeredConfiguration::resolve(declared, None, None)
+            .map_err(ravel_sdk::ModError::from_display)?;
+        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+    }
+
     /// Reads the values in force out of a resolved configuration.
     ///
     /// Returns a typed access error if a key is missing or has the wrong kind.
@@ -222,7 +221,7 @@ mod tests {
 
     #[test]
     fn the_shipped_defaults_are_one_tooltip_on_one_off_and_self_heal_on() {
-        let shipped = Settings::default();
+        let shipped = Settings::shipped().expect("the packaged settings resolve");
         assert!(shipped.tag_tooltip);
         assert!(!shipped.data_tooltip);
         assert!(shipped.self_heal);

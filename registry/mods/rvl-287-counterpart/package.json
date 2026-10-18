@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "2d8e8c1fd1bfb700fac5bc4b2b7526112b9f47abe9497da5f6ed730d68981915"
+        "sha256": "f0392e21cc376fa0ca1789901b4fac000684030469b1e7e4f5a3632e23360e3d"
       },
       {
         "path": "aliases.json",
@@ -55,19 +55,19 @@
       },
       {
         "path": "src/conditions.rs",
-        "sha256": "88d47680d9704b9014e3bc1afc07270c7f114ff675284f4139ee0345d65629cd"
+        "sha256": "30fe1d1a51d93f2788ac542d7d42bfaa201188f48067be574c96ede086cd429a"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "a0b41d424380151723f01c01822dc0b52440e383ccefa14555fb94d1d6b86d84"
+        "sha256": "d7405d9ae89c514e1e4a8a280e1ba4d76b69351e32fbb7c03f331ed1e1c75f35"
       },
       {
         "path": "src/geometry.rs",
-        "sha256": "5f3ae27e7caa4b151a9415cd95214ccf32ccd534bb8805df299c6b78b1480e8c"
+        "sha256": "4b19a478fda4c778ef2df2da1b12c5e5b583f67596c49cb32e96c889648776c1"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "8135e87e35ab411e79e86071711e1109f65e76bfc4c7eea278835811817e6f79"
+        "sha256": "85d5ff8ba50df4fdccc5bdaef03e7b5013f4122eb417872d1af93c0ccc76f273"
       },
       {
         "path": "src/lib.rs",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/neighbourhood.rs",
-        "sha256": "d8c8966f66173380a035acfb088126678f76975d82b97f3f72ab93f273ceac5f"
+        "sha256": "3322b26ba39de4f8375869dd82608f6529cb7237d221b7a928f34a1b7093ad3b"
       },
       {
         "path": "src/quadrant.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/slots.rs",
-        "sha256": "0fa2cd0e0be1a5d38ecda31f7664410e8701d880d2c7341000c92c68ab55fab7"
+        "sha256": "da32a44cc2b9c0aa0baa821729a2e7a27c08756862b94abda80baddb9d197c32"
       }
     ]
   },

@@ -206,26 +206,6 @@ impl Listing {
     }
 }
 
-/// The portable container item's store.
-///
-/// Its per-slot limit is 64 and it accepts anything.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct Container;
-
-impl Container {
-    /// The per-slot limit.
-    #[must_use]
-    pub const fn ceiling(self) -> Amount {
-        PER_SLOT
-    }
-
-    /// Whether an item may go in, which for the container is always.
-    #[must_use]
-    pub const fn admits(self, _value: &Stack) -> bool {
-        true
-    }
-}
-
 /// What a pouch's weight arithmetic reads.
 ///
 /// Section 13.3 blocks this: the two widened fields on the pouch and the one on
@@ -607,19 +587,6 @@ mod tests {
             ]
         );
         assert_eq!(Listing::empty().entries().count(), 0);
-    }
-
-    #[test]
-    fn the_container_takes_anything_at_a_ceiling_of_sixty_four() {
-        assert_eq!(Container.ceiling(), 64);
-        assert!(Container.admits(&Stack::of(
-            "minecraft:stone".parse().expect("a valid item"),
-            1
-        )));
-        assert!(Container.admits(&Stack::of(
-            "minecraft:diamond_sword".parse().expect("a valid item"),
-            1
-        )));
     }
 
     #[test]

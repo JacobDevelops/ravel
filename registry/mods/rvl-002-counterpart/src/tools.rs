@@ -8,9 +8,6 @@
 //! every interaction with no short-circuit, so a modifier that consumes an event
 //! does not prevent the ones after it from seeing it.
 
-use rvl_042_counterpart::flags::FlagTable;
-use rvl_321_counterpart::settings as depended;
-
 /// How many grades this entry declares.
 pub const COUNT: usize = 6;
 
@@ -60,9 +57,8 @@ impl Grade {
     /// off the answer falls back to whatever the base tool kind allows, which is
     /// this caller's `base` and not a decision made here.
     #[must_use]
-    pub fn enchantable(&self, flags: &FlagTable, base: bool) -> bool {
-        depended::flag_id(depended::GEAR_TOP_TOOLS_ENCHANTABLE)
-            .map_or(base, |flag| if flags.enabled(&flag) { true } else { base })
+    pub const fn enchantable(&self, top_tools_enchantable: bool, base: bool) -> bool {
+        top_tools_enchantable || base
     }
 }
 
@@ -346,26 +342,10 @@ mod tests {
     #[test]
     fn enchantability_follows_the_dependencys_flag_and_falls_back_to_the_base_kind() {
         let grade = at(6).expect("a declared grade");
-        let mut flags = FlagTable::new();
-        assert!(
-            !grade.enchantable(&flags, false),
-            "an unpublished flag leaves the base kind deciding"
-        );
-        assert!(grade.enchantable(&flags, true));
-
-        let off = depended::flag_id(depended::GEAR_TOP_TOOLS_ENCHANTABLE)
-            .expect("the dependency names its flag");
-        flags.publish_constant(off, false);
-        assert!(
-            !grade.enchantable(&flags, false),
-            "a flag published as off is not a flag that permits"
-        );
-        assert!(grade.enchantable(&flags, true));
-
-        let flag = depended::flag_id(depended::GEAR_TOP_TOOLS_ENCHANTABLE)
-            .expect("the dependency names its flag");
-        flags.publish_constant(flag, true);
-        assert!(grade.enchantable(&flags, false));
+        assert!(!grade.enchantable(false, false));
+        assert!(grade.enchantable(false, true));
+        assert!(grade.enchantable(true, false));
+        assert!(grade.enchantable(true, true));
     }
 
     #[test]

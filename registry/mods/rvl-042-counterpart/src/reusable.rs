@@ -51,12 +51,6 @@ impl Reusable {
         }
     }
 
-    /// Returns whether the entry may be repaired, which a reusable one may not.
-    #[must_use]
-    pub const fn repairable(&self) -> bool {
-        false
-    }
-
     /// Returns what a player is shown for a given damage.
     ///
     /// §10 specifies the display for reachable damage only, and damage above the
@@ -147,11 +141,6 @@ mod tests {
         assert_eq!(entry.uses_left(0), UsesLeft::Remaining(4));
         assert_eq!(entry.uses_left(2), UsesLeft::Remaining(2));
         assert_eq!(entry.uses_left(3), UsesLeft::Last);
-    }
-
-    #[test]
-    fn a_reusable_entry_is_never_repairable() {
-        assert!(!Reusable::new(4).repairable());
     }
 
     #[test]

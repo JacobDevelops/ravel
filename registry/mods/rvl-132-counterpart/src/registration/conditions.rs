@@ -4,6 +4,15 @@ use crate::capabilities::{RECIPES, VANILLA_ATTACHMENTS};
 use crate::kinds::REGISTERED;
 
 #[test]
+fn shipped_settings_failure_is_refused_at_constructed() {
+    let original = ModError::refused("invalid shipped settings");
+    let mut entry = Entry::new();
+    entry.settings = Err(original.clone());
+    assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
+    assert_eq!(entry.entered(), []);
+}
+
+#[test]
 fn wrapped_refusals_expose_their_typed_sources() {
     use std::error::Error;
     let kinds = Refused::Kinds(kinds::NotRegistered::Full { limit: 2 });
@@ -147,7 +156,7 @@ fn registration_installs_the_vanilla_bundle_and_bakes_the_registry() {
 #[test]
 fn every_recipe_view_attachment_the_entry_installs_has_a_view_behind_it() {
     let entry = run_to_registered();
-    let views = entry.recipe_views();
+    let views = entry.recipe_views().expect("valid settings");
     let attached: Vec<&str> = entry
         .attachments()
         .attachments()
@@ -168,8 +177,8 @@ fn the_entrys_brewing_view_carries_the_resolved_cap() {
     let declared = ConfigurationDeclaration::parse(&changed).expect("a legal declaration");
     let resolved =
         LayeredConfiguration::resolve(declared, None, None).expect("the changed defaults resolve");
-    entry.settings = Settings::read(&resolved).expect("a valid cap");
-    let views = entry.recipe_views();
+    entry.settings = Ok(Settings::read(&resolved).expect("a valid cap"));
+    let views = entry.recipe_views().expect("valid settings");
     let brewing = views
         .iter()
         .find_map(|bound| match &bound.view {
@@ -194,7 +203,11 @@ fn a_bundle_failure_is_recorded_and_loading_carries_on_at_the_shipped_default() 
 #[test]
 fn the_abort_setting_turns_a_bundle_failure_into_a_refusal() {
     let mut entry = run_to_registered();
-    entry.settings.abort_on_bundle_failure = true;
+    entry
+        .settings
+        .as_mut()
+        .expect("valid settings")
+        .abort_on_bundle_failure = true;
     assert!(matches!(
         entry.load_compatibility(None),
         Err(Refused::Bundle(_))
@@ -209,11 +222,51 @@ fn the_third_party_bundle_adds_one_attachment_when_a_target_is_named() {
 }
 
 #[test]
+fn initial_comparator_uses_shipped_ignored_components() {
+    let mut settings = Settings::shipped().expect("valid shipped settings");
+    settings.ignored = vec!["wear".to_owned()];
+    let entry = Entry::with_settings(Ok(settings));
+    assert_eq!(entry.comparator().ignored().collect::<Vec<_>>(), ["wear"]);
+}
+
+#[test]
+fn unavailable_initial_settings_or_comparator_refuse_at_constructed() {
+    let original = ModError::refused("invalid shipped declaration");
+    let mut unavailable = Entry::with_settings(Err(original.clone()));
+    assert_eq!(
+        unavailable.enter(LifecycleState::Constructed),
+        Err(original)
+    );
+    assert_eq!(unavailable.entered(), []);
+
+    let mut invalid = Settings::shipped().expect("valid shipped settings");
+    invalid.ignored = (0..=crate::data::MAX_IGNORED)
+        .map(|index| format!("component{index}"))
+        .collect();
+    let original = ModError::from_display(
+        invalid
+            .comparator()
+            .expect_err("the comparator exceeds its limit"),
+    );
+    let mut unavailable = Entry::with_settings(Ok(invalid));
+    assert!(unavailable.comparator().ignored().next().is_none());
+    assert_eq!(
+        unavailable.enter(LifecycleState::Constructed),
+        Err(original)
+    );
+    assert_eq!(unavailable.entered(), []);
+}
+
+#[test]
 fn a_resolved_ignore_list_rebuilds_the_comparator_the_kinds_are_built_against() {
     let mut entry = Entry::new();
     assert!(entry.comparator().ignored().next().is_none());
-    entry.settings.ignored = vec!["wear".to_owned()];
-    entry.comparator = entry.settings.comparator().expect("a one-name list");
+    entry.settings.as_mut().expect("valid settings").ignored = vec!["wear".to_owned()];
+    entry.comparator = entry
+        .settings()
+        .expect("valid settings")
+        .comparator()
+        .expect("a one-name list");
     assert_eq!(
         entry.comparator().ignored().collect::<Vec<&str>>(),
         ["wear"]

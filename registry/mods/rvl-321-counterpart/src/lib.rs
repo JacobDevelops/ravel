@@ -125,8 +125,7 @@ pub const CONTRIBUTION_SERVICE: &str = "registries";
 #[derive(Debug)]
 pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
-    configuration: Result<ConfigurationDeclaration, ModError>,
-    settings: Settings,
+    settings: Result<Settings, ModError>,
     flags: FlagTable,
     registries: Registries,
     cache: cache::Cache,
@@ -154,11 +153,15 @@ impl Entry {
         for kind in model::shipped_kinds() {
             registries.register_kind(kind);
         }
+        let mut flags = FlagTable::default();
+        let settings = Settings::shipped().and_then(|settings| {
+            settings::publish(&mut flags, &settings).map_err(ModError::from_display)?;
+            Ok(settings)
+        });
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(ModError::from_display),
-            settings: Settings::default(),
-            flags: FlagTable::default(),
+            settings,
+            flags,
             registries,
             cache: cache::Cache::new(),
             colours: cache::Colours::default(),
@@ -170,9 +173,11 @@ impl Entry {
     }
 
     /// The values in force.
-    #[must_use]
-    pub const fn settings(&self) -> &Settings {
-        &self.settings
+    ///
+    /// # Errors
+    /// Returns the packaged settings refusal if construction could not resolve them.
+    pub fn settings(&self) -> Result<&Settings, ModError> {
+        self.settings.as_ref().map_err(Clone::clone)
     }
 
     /// The flag table this entry published into.
@@ -271,6 +276,28 @@ impl Entry {
         ))
     }
 
+    /// The service answering this mod's published flags.
+    ///
+    /// # Errors
+    /// Returns a refusal if the packaged service identity is malformed.
+    pub fn flags_service() -> Result<ServiceId, ModError> {
+        ContentId::new(Self::declared_id().clone(), "flags")
+            .map(ServiceId::new)
+            .map_err(ModError::from_display)
+    }
+
+    fn answer_flag(&self, arguments: &JsonValue) -> Result<ServiceResponse, ModError> {
+        let flag = arguments
+            .get("flag")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| ModError::refused("a flag request names no flag"))?;
+        let flag = flag.parse().map_err(ModError::from_display)?;
+        if !self.flags.is_published(&flag) {
+            return Err(ModError::refused("this entry has not published that flag"));
+        }
+        Ok(ServiceResponse::new(json!(self.flags.enabled(&flag))))
+    }
+
     fn contribute(&mut self, arguments: &JsonValue) -> JsonValue {
         let before = self.registries.refused().len();
         let id = arguments.get("id").and_then(JsonValue::as_str);
@@ -365,7 +392,7 @@ impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if state == LifecycleState::Constructed {
             self.declaration.as_ref().map_err(Clone::clone)?;
-            self.configuration.as_ref().map_err(Clone::clone)?;
+            self.settings()?;
         }
         self.entered.push(state);
         Ok(())
@@ -382,12 +409,15 @@ impl Mod for Entry {
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
-        self.configuration.clone().map(Some)
+        settings::declaration()
+            .map(Some)
+            .map_err(ModError::from_display)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        self.settings = Settings::read(resolved).map_err(ModError::from_display)?;
-        settings::publish(&mut self.flags, &self.settings).map_err(ModError::from_display)?;
+        let settings = Settings::read(resolved).map_err(ModError::from_display)?;
+        settings::publish(&mut self.flags, &settings).map_err(ModError::from_display)?;
+        self.settings = Ok(settings);
         Ok(())
     }
 
@@ -405,13 +435,19 @@ impl Mod for Entry {
         declaration
             .provide(service)
             .map_err(ModError::from_display)?;
+        declaration
+            .provide(Self::flags_service()?)
+            .map_err(ModError::from_display)?;
         Ok(Some(declaration))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
+        if request.id == Self::flags_service()? {
+            return self.answer_flag(&request.arguments);
+        }
         let service = Self::contribution_service()?;
         if request.id != service {
-            return Err(ModError::refused("this entry answers one service"));
+            return Err(ModError::refused("this entry does not answer that service"));
         }
         Ok(ServiceResponse::new(self.contribute(&request.arguments)))
     }
@@ -468,6 +504,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_packaged_settings_refusal_is_reported_at_constructed() {
+        let mut entry = Entry::new();
+        entry.settings = Err(ModError::refused("invalid packaged settings"));
+        assert!(entry.enter(LifecycleState::Constructed).is_err());
+        assert_eq!(entry.entered, []);
+    }
+
+    #[test]
+    fn the_flags_service_distinguishes_published_false_from_missing() {
+        let mut entry = Entry::new();
+        let resolved = LayeredConfiguration::resolve(
+            settings::declaration().expect("legal declaration"),
+            None,
+            None,
+        )
+        .expect("valid shipped configuration");
+        entry
+            .configure(&resolved)
+            .expect("configuration publishes flags");
+        let service = Entry::flags_service().expect("legal service");
+        let disabled = settings::flag_id(settings::RECIPES_PLAIN_GRID_SEEDS).expect("legal flag");
+        let answer = entry
+            .answer_service(&ServiceRequest::new(
+                service.clone(),
+                json!({"flag": disabled.to_string()}),
+            ))
+            .expect("a published false flag is answered");
+        assert_eq!(answer.value(), &json!(false));
+        for arguments in [
+            json!({}),
+            json!({"flag": "not legal"}),
+            json!({"flag": "test:absent"}),
+        ] {
+            assert!(
+                entry
+                    .answer_service(&ServiceRequest::new(service.clone(), arguments))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
         assert_eq!(Entry::new().id().as_str(), MOD_ID);
@@ -491,7 +569,10 @@ mod tests {
         assert!(!entry.registries().is_open());
         assert!(entry.cache().is_empty());
         assert!(entry.colours().is_empty());
-        assert_eq!(entry.settings(), &Settings::default());
+        assert_eq!(
+            entry.settings().expect("valid settings"),
+            &Settings::shipped().expect("valid defaults")
+        );
     }
 
     #[test]
@@ -648,7 +729,7 @@ mod tests {
                 .expect("the entry declares the service it answers")
                 .provides()
                 .count(),
-            1
+            2
         );
 
         let answer = entry

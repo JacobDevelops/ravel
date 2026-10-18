@@ -131,6 +131,11 @@ re-exported at the crate root for convenience.
   either way; what differs is the cost, and `Lookup::used_partitions` says which happened. Naming
   several partitions would need a wider trait than §17's dependents consume.
 
+- **Unknown packet contracts are declined rather than failing the receiver (§7).** Undeclared paths
+  return `ModError::Unsupported`: a peer's unknown contract is a declined delivery, not a failure
+  of the receiving mod. A loader-level regression drives this entry to `Running`, declines an
+  undeclared delivery, and asserts the entry remains `Running` without counting it.
+
 - **The value channel is emptied on a resource reload (§7).** §6 registers a resource reload request
   and §7's channel holds values a screen is reading. `Entry::observe` clears the channel on
   `GameEvent::ResourcesReloaded`, so a screen re-reads rather than showing values from before the

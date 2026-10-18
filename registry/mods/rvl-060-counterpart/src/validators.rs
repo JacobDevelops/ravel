@@ -35,9 +35,9 @@ use ravel_sdk::JsonValue;
 
 use crate::data::{Kind, Tag};
 
-mod matching;
+mod conditions;
 
-pub use matching::{MAX_PATTERN_ATOMS, MAX_PATTERN_STEPS, Pattern, PatternError};
+pub use conditions::{MAX_PATTERN_ATOMS, MAX_PATTERN_STEPS, Pattern, PatternError};
 
 /// The four families a validator belongs to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

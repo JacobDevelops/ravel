@@ -146,7 +146,6 @@ fn slot_name(slot: Slot) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use std::path::Path;
 
     use super::documents;
@@ -154,24 +153,23 @@ mod tests {
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = documents();
+        assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-        for (relative, rendered) in documents() {
+        for (relative, document) in rendered {
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
-                let directory = path.parent().expect("a document sits in a directory");
-                fs::create_dir_all(directory).expect("the generated directory is writable");
-                fs::write(&path, rendered.as_bytes()).expect("the document is writable");
+                let parent = path.parent().expect("a document sits in a directory");
+                std::fs::create_dir_all(parent).expect("the generated directory is writable");
+                std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
-            let on_disk = fs::read_to_string(&path)
+            let on_disk = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
             assert_eq!(
-                on_disk, rendered,
+                on_disk, document,
                 "{relative} has drifted from the functions it is rendered from"
-            );
-            assert!(
-                rendered.ends_with('\n'),
-                "{relative} does not end with a newline"
             );
         }
     }

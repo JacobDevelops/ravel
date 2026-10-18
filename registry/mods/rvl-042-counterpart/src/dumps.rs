@@ -65,7 +65,7 @@ pub fn geometry_table() -> String {
     let mut rendered = String::from("side\textent\tsweep\tradial\tweapon\n");
     for side in 1..=LARGEST_SIDE {
         let extent = half_extent(side);
-        let radius = i32::try_from(extent).unwrap_or(i32::MAX);
+        let radius = extent.cast_signed();
         writeln!(
             rendered,
             "{side}\t{extent}\t{}\t{}\t{:.6}",
@@ -163,25 +163,22 @@ pub fn settings_document() -> Result<String, ModError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::path::Path;
+
+    use super::*;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let rendered = documents().expect("the packaged declaration parses");
+        assert_eq!(rendered.len(), 3, "every renderer contributes one document");
         assert!(
             !rendered.is_empty(),
             "the package renders at least one document"
         );
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-
         for (relative, document) in rendered {
-            assert!(
-                document.ends_with('\n'),
-                "{relative} ends with a trailing newline"
-            );
-
+            assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
                 let parent = path.parent().expect("a document sits in a directory");
@@ -189,7 +186,6 @@ mod tests {
                 std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
-
             let on_disk = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{relative} is missing from the tree: {error}"));
             assert_eq!(

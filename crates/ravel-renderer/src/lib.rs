@@ -103,41 +103,49 @@ pub struct Cell {
 
 impl Cell {
     /// Packed numeric block id and four-bit metadata, without truncation.
+    #[must_use]
     pub fn state_key(self) -> u32 {
         self.state
     }
 
     /// Numeric block id, preserving ids above the historical twelve-bit range.
+    #[must_use]
     pub fn block_id(self) -> u32 {
         self.state >> 4
     }
 
     /// Four-bit block metadata.
+    #[must_use]
     pub fn metadata(self) -> u8 {
         self.state.to_le_bytes()[0] & 15
     }
 
     /// Render-state identity, not a baked model or geometry handle.
+    #[must_use]
     pub fn model_key(self) -> u32 {
         self.state
     }
 
     /// Captured full-opaque predicate, with air key zero unconditionally empty.
+    #[must_use]
     pub fn is_full_opaque_cube(self) -> bool {
         self.state != 0 && self.full_opaque_cube
     }
 
     /// Sky light in the upper nibble, block light in the lower nibble.
+    #[must_use]
     pub fn packed_light(self) -> u8 {
         self.light
     }
 
     /// Sky-light level from zero to fifteen.
+    #[must_use]
     pub fn sky_light(self) -> u8 {
         self.light >> 4
     }
 
     /// Block-light level from zero to fifteen.
+    #[must_use]
     pub fn block_light(self) -> u8 {
         self.light & 15
     }
@@ -157,6 +165,11 @@ impl SectionSnapshot {
     /// Copies a complete bordered section. Geometry flags are captured game
     /// `isOpaqueCube && isFullCube` predicates (zero/one), consistent per state.
     /// Air key zero is always treated as empty by the mesh primitive.
+    ///
+    /// # Errors
+    ///
+    /// Rejects invalid generations, incomplete arrays, out-of-range states, invalid
+    /// or contradictory geometry flags, and palettes exceeding the bounded capacity.
     pub fn capture(
         generation: u64,
         states: &[i32],
@@ -204,16 +217,19 @@ impl SectionSnapshot {
     }
 
     /// Resource/world generation supplied at capture.
+    #[must_use]
     pub fn generation(&self) -> u64 {
         self.generation
     }
 
     /// Number of deduplicated state/model identities.
+    #[must_use]
     pub fn palette_len(&self) -> usize {
         self.palette.len()
     }
 
     /// Decodes a linear cell index; out-of-range indices return `None`.
+    #[must_use]
     pub fn cell(&self, index: usize) -> Option<Cell> {
         let &palette_index = self.indices.get(index)?;
         Some(Cell {
@@ -224,6 +240,7 @@ impl SectionSnapshot {
     }
 
     /// Decodes bordered coordinates; all faces, edges and corners are preserved.
+    #[must_use]
     pub fn cell_at(&self, x: usize, y: usize, z: usize) -> Option<Cell> {
         if x >= SNAPSHOT_EDGE || y >= SNAPSHOT_EDGE || z >= SNAPSHOT_EDGE {
             return None;
@@ -232,6 +249,7 @@ impl SectionSnapshot {
     }
 
     /// Exact retained heap payload, excluding allocator metadata.
+    #[must_use]
     pub fn heap_bytes(&self) -> usize {
         size_of_val(self.palette.as_ref())
             + size_of_val(self.indices.as_ref())
@@ -240,6 +258,7 @@ impl SectionSnapshot {
     }
 
     /// Object size plus retained heap payload, excluding allocator metadata.
+    #[must_use]
     pub fn total_bytes(&self) -> usize {
         size_of::<Self>() + self.heap_bytes()
     }

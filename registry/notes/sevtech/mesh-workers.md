@@ -104,7 +104,8 @@ performs vanilla compilation. It is not a matched ablation or replacement compil
 Build with `mise exec -- numen run -- cargo make ravel:legacy-agent-build`; run `ravel:legacy-agent-live` through the
 same wrapper for Xvfb/integrated/connected-dedicated/restart acceptance. Physical reproduction uses `mise exec --
 numen run -- env DISPLAY=:0 RAVEL_LEGACY_EVIDENCE_SUFFIX=-wp5s4 bash jvm/legacy-platform/launch.sh client-agent
-display`. The physical JSON also passed the same `live.renderer_proof` validator. No raw process logs are committed.
+display`. The physical JSON also passed the same `renderer_proof.renderer_proof` validator, previously in `live.py`.
+No raw process logs are committed.
 
 Raw evidence is under ignored `tests/fixtures/local/legacy-platform/`:
 

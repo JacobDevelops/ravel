@@ -5,10 +5,20 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from typing import TypedDict
 from unittest import TestCase, main
 from unittest.mock import patch
 
 import run
+
+
+class GeometryExport(TypedDict):
+    schemaVersion: int
+    selection: str
+    backend: str
+    fidelity: str
+    upload: str
+    metrics: dict[str, int]
 
 
 class RunPolicyTests(TestCase):
@@ -132,7 +142,7 @@ class RunPolicyTests(TestCase):
                 run.validate_geometry_export(out, "vanilla", 0)
 
     @staticmethod
-    def geometry_export(renderer: str) -> dict:
+    def geometry_export(renderer: str) -> GeometryExport:
         metrics = dict.fromkeys(run.GEOMETRY_METRICS, 0)
         if renderer == "geometry-proof":
             metrics.update(copiedMeshes=1, copiedBytes=100, uploads=1, uploadBytes=60,

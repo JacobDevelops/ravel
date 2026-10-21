@@ -23,7 +23,7 @@ mkdir -p "$work/classes" "$work/fixture" "$work/entries" "$work/missing"
     "$sources/InitTarget.java" "$sources/InitializationMain.java" \
     "$sources/ExecutableTarget.java" "$sources/ExecutableMain.java" \
     "$sources/PaletteFixture.java" "$sources/PaletteMain.java"
-native=("${jvm[@]}" --module-path "$jar" --add-modules dev.ravel.agent,java.instrument
+native=("${jvm[@]}" --module-path "$jar" --add-modules "dev.ravel.agent,java.instrument"
     --enable-native-access=dev.ravel.agent --patch-module "dev.ravel.agent=$work/classes")
 for renderer in vanilla geometry-proof world; do
     "${native[@]}" "-Dravel.renderer=$renderer" \

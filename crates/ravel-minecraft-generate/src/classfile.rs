@@ -10,7 +10,8 @@ use noak::reader::attributes::AttributeContent;
 use noak::reader::cpool::{ConstantPool, Index, Utf8};
 use noak::reader::{Attribute, Class};
 
-use crate::{GenerateError, mapping};
+use crate::error::GenerateError;
+use crate::mapping;
 
 /// One validated JVM type, retaining its exact spelling for opaque handles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

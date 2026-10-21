@@ -79,7 +79,9 @@ Ravel into a Java mod host.
   full-cube flags in one primitive-array JNI batch. `ravel-renderer` owns
   immutable palette-compressed values, CPU cube geometry and face-to-face
   visibility outside the SDK closure. Unsupported state keys remain explicit;
-  numeric identity alone never implies a cube model. Two Rust workers share
+  numeric identity alone never implies a cube model. Meshing refuses coordinates
+  outside the captured border with a structured error rather than panicking;
+  cancellation and bounded allocation failures remain explicit. Two Rust workers share
   eight bounded outstanding slots, including retained completions, with byte
   reservations and generation cancellation. Java admits keyed work; retained
   completion metadata and one bounded little-endian mesh copy cross JNI in

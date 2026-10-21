@@ -38,6 +38,7 @@ pub enum Face {
 }
 
 impl Face {
+    #[must_use]
     pub fn code(self) -> u8 {
         match self {
             Self::West => 0,
@@ -75,13 +76,16 @@ pub struct Vertex {
     packed_light: u8,
 }
 impl Vertex {
+    #[must_use]
     pub fn position(self) -> [u8; 3] {
         self.position
     }
+    #[must_use]
     pub fn face(self) -> Face {
         self.face
     }
     /// Uninterpolated sky-high/block-low nibbles, not a baked lightmap coordinate or AO.
+    #[must_use]
     pub fn packed_light(self) -> u8 {
         self.packed_light
     }
@@ -94,9 +98,11 @@ pub struct MaterialRange {
     indices: Range<u32>,
 }
 impl MaterialRange {
+    #[must_use]
     pub fn state_key(&self) -> u32 {
         self.state_key
     }
+    #[must_use]
     pub fn indices(&self) -> Range<u32> {
         self.indices.clone()
     }
@@ -111,16 +117,20 @@ pub struct FaceRange {
     first_index: u32,
 }
 impl FaceRange {
+    #[must_use]
     pub fn state_key(&self) -> u32 {
         self.state_key
     }
+    #[must_use]
     pub fn face(&self) -> Face {
         self.face
     }
+    #[must_use]
     pub fn indices(&self) -> Range<u32> {
         self.first_index..self.first_index + 6
     }
     /// Doubled section-local centre, avoiding floating-point sorting ambiguity.
+    #[must_use]
     pub fn centre_twice(&self) -> [u8; 3] {
         let corners = CORNERS[usize::from(self.face.code())];
         std::array::from_fn(|axis| self.origin[axis] * 2 + corners[0][axis] + corners[2][axis])
@@ -144,15 +154,19 @@ pub struct LayerBuffers {
     faces: Vec<FaceRange>,
 }
 impl LayerBuffers {
+    #[must_use]
     pub fn vertices(&self) -> &[Vertex] {
         &self.vertices
     }
+    #[must_use]
     pub fn indices(&self) -> &[u32] {
         &self.indices
     }
+    #[must_use]
     pub fn materials(&self) -> &[MaterialRange] {
         &self.materials
     }
+    #[must_use]
     pub fn faces(&self) -> &[FaceRange] {
         &self.faces
     }
@@ -179,9 +193,11 @@ impl LayerBuffers {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Visibility(u64);
 impl Visibility {
+    #[must_use]
     pub fn bits(self) -> u64 {
         self.0
     }
+    #[must_use]
     pub fn connected(self, from: Face, to: Face) -> bool {
         self.0 & (1 << (u32::from(from.code()) * 6 + u32::from(to.code()))) != 0
     }
@@ -206,21 +222,27 @@ pub struct MeshResult {
     visibility: Visibility,
 }
 impl MeshResult {
+    #[must_use]
     pub fn generation(&self) -> u64 {
         self.generation
     }
+    #[must_use]
     pub fn key(&self) -> u64 {
         self.key
     }
+    #[must_use]
     pub fn layers(&self) -> &[LayerBuffers; 4] {
         &self.layers
     }
+    #[must_use]
     pub fn unsupported_keys(&self) -> &[u32] {
         &self.unsupported
     }
+    #[must_use]
     pub fn is_complete(&self) -> bool {
         self.unsupported.is_empty()
     }
+    #[must_use]
     pub fn visibility(&self) -> Visibility {
         self.visibility
     }
@@ -231,6 +253,7 @@ impl MeshResult {
             .sum::<usize>()
             + size_of_val(self.unsupported.as_slice())
     }
+    #[must_use]
     pub fn total_bytes(&self) -> usize {
         size_of::<Self>() + self.heap_bytes()
     }
@@ -248,10 +271,17 @@ pub enum MeshError {
     Cancelled,
     Allocation,
     OutputLimit,
+    InvalidCoordinates,
 }
 
 /// Counts before allocating. Cell loops check cancellation every 64 visits.
 /// Bounded sorts, material counting and each allocation have checks on both sides.
+///
+/// # Errors
+///
+/// Returns `Cancelled` when cancellation is observed, `Allocation` when a bounded
+/// buffer cannot be reserved, `OutputLimit` when output exceeds its representation,
+/// or `InvalidCoordinates` if an internal position is outside the captured border.
 pub fn mesh(
     snapshot: &SectionSnapshot,
     key: u64,
@@ -324,10 +354,10 @@ fn check_cancel(cancel: &impl Fn() -> bool) -> Result<(), MeshError> {
 fn opaque(cell: Cell) -> bool {
     cell.state_key() != 0 && cell.is_full_opaque_cube()
 }
-fn cell(snapshot: &SectionSnapshot, p: [u8; 3]) -> Cell {
+fn cell(snapshot: &SectionSnapshot, p: [u8; 3]) -> Result<Cell, MeshError> {
     snapshot
         .cell_at(usize::from(p[0]), usize::from(p[1]), usize::from(p[2]))
-        .expect("bounded bordered coordinates")
+        .ok_or(MeshError::InvalidCoordinates)
 }
 fn neighbour(mut p: [u8; 3], face: Face) -> [u8; 3] {
     match face {
@@ -362,10 +392,10 @@ fn visit_faces(
         }
         let origin = core_position(index);
         let position = bordered(origin);
-        let current = cell(snapshot, position);
+        let current = cell(snapshot, position)?;
         if opaque(current) {
             for face in FACES {
-                if !opaque(cell(snapshot, neighbour(position, face))) {
+                if !opaque(cell(snapshot, neighbour(position, face))?) {
                     visit(origin, face, current.state_key());
                 }
             }
@@ -438,7 +468,7 @@ fn emit(
         let first = u32::try_from(index * 6).map_err(|_| MeshError::OutputLimit)?;
         let base = u32::try_from(index * 4).map_err(|_| MeshError::OutputLimit)?;
         face.first_index = first;
-        let light = cell(snapshot, neighbour(bordered(face.origin), face.face)).packed_light();
+        let light = cell(snapshot, neighbour(bordered(face.origin), face.face))?.packed_light();
         for corner in CORNERS[usize::from(face.face.code())] {
             solid.vertices.push(Vertex {
                 position: std::array::from_fn(|axis| face.origin[axis] + corner[axis]),
@@ -473,7 +503,7 @@ fn visibility(
         if start % 64 == 0 {
             check_cancel(cancel)?;
         }
-        if visited[start] || opaque(cell(snapshot, bordered(core_position(start)))) {
+        if visited[start] || opaque(cell(snapshot, bordered(core_position(start)))?) {
             continue;
         }
         visited[start] = true;
@@ -493,7 +523,7 @@ fn visibility(
                 let next = neighbour(p, face);
                 let index =
                     usize::from(next[1]) * 256 + usize::from(next[2]) * 16 + usize::from(next[0]);
-                if !visited[index] && !opaque(cell(snapshot, bordered(next))) {
+                if !visited[index] && !opaque(cell(snapshot, bordered(next))?) {
                     visited[index] = true;
                     queue[write] = u16::try_from(index).map_err(|_| MeshError::OutputLimit)?;
                     write += 1;
@@ -516,5 +546,4 @@ fn on_face(p: [u8; 3], face: Face) -> bool {
 }
 
 #[cfg(test)]
-#[path = "mesh_tests.rs"]
 mod tests;

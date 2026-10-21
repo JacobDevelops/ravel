@@ -299,3 +299,22 @@ fn air_is_never_an_opaque_cube_even_with_captured_flag_one() {
     assert!(result.is_complete());
     assert_eq!(result.visibility().bits(), (1_u64 << 36) - 1);
 }
+
+#[test]
+fn mesh_cell_lookup_refuses_coordinates_outside_the_capture() {
+    let mut states = vec![0; CELL_COUNT];
+    states[index(1, 2, 3)] = 16;
+    let snapshot = snapshot(&states);
+    for position in [[18, 0, 0], [0, 18, 0], [0, 0, 18], [255; 3]] {
+        assert_eq!(
+            cell(&snapshot, position),
+            Err(MeshError::InvalidCoordinates)
+        );
+    }
+    for (position, state) in [([0; 3], 0), ([17; 3], 0), ([1, 2, 3], 16)] {
+        assert_eq!(
+            cell(&snapshot, position).map(crate::Cell::state_key),
+            Ok(state)
+        );
+    }
+}

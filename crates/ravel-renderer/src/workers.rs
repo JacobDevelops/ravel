@@ -180,6 +180,11 @@ pub struct WorkerPool {
 
 impl WorkerPool {
     /// Starts exactly `MAX_WORKERS` threads, cleaning up partial startup on error.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidGeneration` for a generation outside the positive Java-long
+    /// range, or `Spawn` if an operating-system worker cannot be started.
     pub fn new(generation: u64) -> Result<Self, WorkerError> {
         validate_generation(generation)?;
         let mut pool = Self {
@@ -199,6 +204,11 @@ impl WorkerPool {
 
     /// Transfers ownership only after checking generation, uniqueness and both ceilings.
     /// A cancelled running owner retains its key until its worker releases the reservation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Stopped`, `Stale`, `DuplicateKey` or `Full` without admitting the
+    /// snapshot when shutdown, generation, ownership or resource checks fail.
     pub fn try_submit(&self, snapshot: SectionSnapshot, key: u64) -> Result<(), SubmitError> {
         let mut state = self.shared.lock();
         if state.stats.stopped {
@@ -240,6 +250,7 @@ impl WorkerPool {
 
     /// Removes at most one exact-current-generation completion under the invalidation lock.
     /// Once returned, the completion belongs to the caller, outside the pool reservation.
+    #[must_use]
     pub fn poll(&self) -> Option<Completion> {
         let mut state = self.shared.lock();
         for index in 0..MAX_OUTSTANDING_JOBS {
@@ -295,6 +306,10 @@ impl WorkerPool {
 
     /// Publishes before releasing an exact completed owner; failure preserves ownership.
     /// The callback must not reenter the pool.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the callback's error without releasing the completed owner.
     pub fn publish_acknowledgement<T, E>(
         &self,
         generation: u64,
@@ -324,6 +339,10 @@ impl WorkerPool {
     /// The callback runs exactly once, including when every entry is `None`.
     /// Failure preserves all owners and reservations; success releases ready owners.
     /// The callback must not reenter this pool because its mutex remains locked.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the callback's error without releasing any ready owners.
     pub fn consume_ready<T, E>(
         &self,
         publish: impl FnOnce(&[Option<&Completion>; MAX_OUTSTANDING_JOBS]) -> Result<T, E>,
@@ -349,6 +368,11 @@ impl WorkerPool {
 
     /// Atomically changes generation, discards queued/completed owners and cancels running work.
     /// Even invalidating to the same generation cancels all prior jobs; it never restarts shutdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidGeneration` without changing the pool when the generation
+    /// is outside the positive Java-long range.
     pub fn invalidate(&self, generation: u64) -> Result<(), WorkerError> {
         validate_generation(generation)?;
         let mut state = self.shared.lock();
@@ -361,6 +385,11 @@ impl WorkerPool {
     }
 
     /// Cancels, joins every thread and drains all reservations; safe to call repeatedly.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ThreadPanicked` after joining all workers and draining reservations
+    /// if any worker terminated by panicking.
     pub fn shutdown(&mut self) -> Result<(), WorkerError> {
         {
             let mut state = self.shared.lock();
@@ -389,6 +418,7 @@ impl WorkerPool {
     }
 
     /// Captures counters consistently; running invalidated jobs retain their reservations.
+    #[must_use]
     pub fn stats(&self) -> WorkerStats {
         let state = self.shared.lock();
         let mut counters = state.stats;

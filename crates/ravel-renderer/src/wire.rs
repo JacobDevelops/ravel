@@ -25,6 +25,11 @@ fn encoded_len(vertices: usize, indices: usize, materials: usize) -> Result<usiz
 }
 
 /// Encodes a bounded owned copy. Allocation/limit failure leaves its source untouched.
+///
+/// # Errors
+///
+/// Returns `Allocation` if the encoded buffer cannot be reserved, or `OutputLimit`
+/// if a mesh count exceeds the bounded wire representation.
 pub fn encode(completion: &Completion) -> Result<Vec<u8>, MeshError> {
     let mesh = completion.result.as_ref().ok();
     let solid = mesh.map(|mesh| &mesh.layers()[0]);
@@ -77,5 +82,4 @@ fn count(value: usize) -> Result<u32, MeshError> {
 }
 
 #[cfg(test)]
-#[path = "wire_tests.rs"]
 mod tests;

@@ -29,7 +29,7 @@ impl Attempt {
 }
 
 /// A place a quantity can be put and taken from.
-pub trait Store {
+pub trait QuantityStore {
     /// The kind this store holds.
     type Kind: QuantityKind;
 
@@ -60,7 +60,7 @@ pub trait Store {
 ///
 /// The one guarantee the slotted form adds is in the result: a caller is told
 /// which slot a result came from, which the slotless form cannot answer.
-pub trait SlottedStore: Store {
+pub trait SlottedStore: QuantityStore {
     /// How many slots there are.
     fn slots(&self) -> usize;
 
@@ -149,8 +149,8 @@ pub fn move_quantity<K, From, To>(
 ) -> Result<Amount, Inconsistent>
 where
     K: QuantityKind,
-    From: Store<Kind = K>,
-    To: Store<Kind = K>,
+    From: QuantityStore<Kind = K>,
+    To: QuantityStore<Kind = K>,
 {
     let available = from.extract(value, amount, Attempt::Simulated);
     if available == 0 {
@@ -471,7 +471,7 @@ mod tests {
         }
     }
 
-    impl Store for Room {
+    impl QuantityStore for Room {
         type Kind = Ones;
 
         fn kind(&self) -> &Ones {
@@ -615,7 +615,7 @@ mod tests {
         }
     }
 
-    impl Store for Shelf {
+    impl QuantityStore for Shelf {
         type Kind = Ones;
 
         fn kind(&self) -> &Ones {
@@ -628,16 +628,14 @@ mod tests {
 
         fn extract(&mut self, _value: &u32, amount: Amount, attempt: Attempt) -> Amount {
             let mut left = amount;
-            let mut taken = 0;
             for held in &mut self.slots {
                 let from_here = left.min(*held);
                 if attempt.changes_anything() {
                     *held -= from_here;
                 }
-                taken += from_here;
                 left -= from_here;
             }
-            taken
+            amount - left
         }
     }
 

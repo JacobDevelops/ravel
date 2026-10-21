@@ -374,3 +374,8 @@ form. Nothing there is transcribed and nothing is invented for the file: a table
 changes the document. `the_generated_documents_regenerate_byte_for_byte` is the one test that owns
 them — it rebuilds all three and fails on any drift, and writes them instead when
 `RAVEL_REGENERATE_GENERATED` is set, which is how the tree is produced.
+
+## Public contract consistency
+
+Preferences retain a typed `Style`; external names are admitted at the setter and wire boundary.
+Interner size is exposed as `ids_issued`.

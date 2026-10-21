@@ -120,6 +120,17 @@ fn register_surface_module(
     let Some(data) = arguments.get("data").and_then(JsonValue::as_str) else {
         return json!({ "answered": false, "refused": "a module names no data" });
     };
+    let data = if let Some(kind) = capabilities::BuiltInData::ALL
+        .into_iter()
+        .find(|kind| kind.as_str() == data)
+    {
+        capabilities::ModuleData::BuiltIn(kind)
+    } else {
+        let Ok(identifier) = data.parse() else {
+            return json!({ "answered": false, "refused": "a module names no legal data kind" });
+        };
+        capabilities::ModuleData::Registered(identifier)
+    };
     let (Some(energy_per_tick), Some(takes_clicks)) = (
         optional_field(arguments, "energy_per_tick", 0, read_u32),
         optional_field(arguments, "takes_clicks", false, JsonValue::as_bool),
@@ -129,7 +140,7 @@ fn register_surface_module(
     service_outcome(surface.register_module(capabilities::Module {
         owner,
         name: name.to_owned(),
-        data: data.to_owned(),
+        data,
         energy_per_tick,
         takes_clicks,
     }))

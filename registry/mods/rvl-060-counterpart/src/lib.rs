@@ -162,12 +162,12 @@ impl RegistryAccess {
     }
 
     /// Records that what the accessor reads from now exists.
-    pub const fn arrived(&mut self) {
+    pub const fn mark_present(&mut self) {
         self.present = true;
     }
 
     /// Records that what the accessor reads from is gone.
-    pub const fn departed(&mut self) {
+    pub const fn mark_absent(&mut self) {
         self.present = false;
     }
 
@@ -177,7 +177,7 @@ impl RegistryAccess {
         self.source
     }
 
-    /// Returns the registry set.
+    /// Returns the source only when its registry set is present.
     ///
     /// # Errors
     ///
@@ -185,7 +185,7 @@ impl RegistryAccess {
     /// not exist yet. That is a hard failure rather than an empty answer,
     /// because an empty registry set reads as "the game has nothing" and a
     /// dependent would believe it.
-    pub const fn get(&self) -> Result<RegistrySource, AccessUnavailable> {
+    pub const fn require_source(&self) -> Result<RegistrySource, AccessUnavailable> {
         if self.present {
             Ok(self.source)
         } else {
@@ -572,24 +572,26 @@ mod tests {
     fn asking_for_the_registry_set_before_it_exists_is_a_hard_failure() {
         let mut access = RegistryAccess::installed(Side::Client);
         assert_eq!(access.source(), RegistrySource::Connection);
-        let refusal = access.get().expect_err("nothing has connected yet");
+        let refusal = access
+            .require_source()
+            .expect_err("nothing has connected yet");
         assert_eq!(refusal.source, RegistrySource::Connection);
         assert_ne!(
             refusal.to_string(),
             "",
             "an empty answer would read as `the game has nothing`"
         );
-        access.arrived();
-        assert_eq!(access.get(), Ok(RegistrySource::Connection));
-        access.departed();
-        assert!(access.get().is_err());
+        access.mark_present();
+        assert_eq!(access.require_source(), Ok(RegistrySource::Connection));
+        access.mark_absent();
+        assert!(access.require_source().is_err());
     }
 
     #[test]
     fn the_accessor_a_side_installs_is_the_one_it_keeps() {
         let shared = Entry::new(Side::DedicatedServer, "/root");
         assert_eq!(shared.registries().source(), RegistrySource::RunningServer);
-        assert!(shared.registries().get().is_err());
+        assert!(shared.registries().require_source().is_err());
     }
 
     #[test]

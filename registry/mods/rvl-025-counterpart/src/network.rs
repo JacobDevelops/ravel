@@ -468,12 +468,12 @@ pub enum Applied {
     /// The payload was accepted and deliberately does nothing.
     Discarded,
     /// The payload was refused, with the reason.
-    Refused(Refusal),
+    Refused(PayloadRefused),
 }
 
 /// Why a payload was refused.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refusal {
+pub enum PayloadRefused {
     /// The held item is not one this payload acts on.
     WrongHeldItem,
     /// The sent item is not one this payload may install.
@@ -498,18 +498,18 @@ pub enum Refusal {
 #[must_use]
 pub fn apply_components(held: Held, payload: &HeldComponents, record: Record) -> Applied {
     if held != Held::PatternCard {
-        return Applied::Refused(Refusal::WrongHeldItem);
+        return Applied::Refused(PayloadRefused::WrongHeldItem);
     }
     if record != Record::PatternContents {
-        return Applied::Refused(Refusal::WrongRecord);
+        return Applied::Refused(PayloadRefused::WrongRecord);
     }
     let Some(written) = payload.offered.components.get(record.as_str()) else {
-        return Applied::Refused(Refusal::BadRecord);
+        return Applied::Refused(PayloadRefused::BadRecord);
     };
     if decodes(record, written) {
         Applied::Accepted
     } else {
-        Applied::Refused(Refusal::BadRecord)
+        Applied::Refused(PayloadRefused::BadRecord)
     }
 }
 
@@ -543,7 +543,7 @@ pub fn apply_card_arguments(held: Held, _payload: &CardArguments) -> Applied {
     if held == Held::PatternCard {
         Applied::Discarded
     } else {
-        Applied::Refused(Refusal::WrongHeldItem)
+        Applied::Refused(PayloadRefused::WrongHeldItem)
     }
 }
 
@@ -558,10 +558,10 @@ pub fn apply_browser_pattern(
     _payload: &BrowserPattern,
 ) -> Applied {
     if held != Held::PatternCard {
-        return Applied::Refused(Refusal::WrongHeldItem);
+        return Applied::Refused(PayloadRefused::WrongHeldItem);
     }
     if !card_menu_open {
-        return Applied::Refused(Refusal::WrongMenu);
+        return Applied::Refused(PayloadRefused::WrongMenu);
     }
     Applied::Accepted
 }
@@ -581,7 +581,7 @@ pub fn answer_readout(
     chunk_loaded: bool,
 ) -> Applied {
     if !chunk_loaded {
-        return Applied::Refused(Refusal::ChunkAbsent);
+        return Applied::Refused(PayloadRefused::ChunkAbsent);
     }
     let span = |a: i32, b: i32| i64::from(a) - i64::from(b);
     let (x, y, z) = (
@@ -594,7 +594,7 @@ pub fn answer_readout(
         .saturating_add(y.saturating_mul(y))
         .saturating_add(z.saturating_mul(z));
     if squared > READ_RANGE * READ_RANGE {
-        return Applied::Refused(Refusal::OutOfRange);
+        return Applied::Refused(PayloadRefused::OutOfRange);
     }
     Applied::Accepted
 }
@@ -612,23 +612,23 @@ pub fn answer_readout(
 pub fn apply_held_item(held: Held, sent_kind: Held, payload: &HeldItem) -> Applied {
     let permitted = |kind: Held| matches!(kind, Held::MatchItem | Held::Carrier);
     if !permitted(held) {
-        return Applied::Refused(Refusal::WrongHeldItem);
+        return Applied::Refused(PayloadRefused::WrongHeldItem);
     }
     if !permitted(sent_kind) || sent_kind != held {
-        return Applied::Refused(Refusal::WrongSentItem);
+        return Applied::Refused(PayloadRefused::WrongSentItem);
     }
     let record = match sent_kind {
         Held::MatchItem => Record::MatchRule,
         Held::Carrier => Record::CarrierContents,
-        Held::PatternCard | Held::Other => return Applied::Refused(Refusal::WrongSentItem),
+        Held::PatternCard | Held::Other => return Applied::Refused(PayloadRefused::WrongSentItem),
     };
     let Some(written) = payload.sent.components.get(record.as_str()) else {
-        return Applied::Refused(Refusal::BadRecord);
+        return Applied::Refused(PayloadRefused::BadRecord);
     };
     if decodes(record, written) {
         Applied::Accepted
     } else {
-        Applied::Refused(Refusal::BadRecord)
+        Applied::Refused(PayloadRefused::BadRecord)
     }
 }
 
@@ -960,11 +960,11 @@ mod tests {
         );
         assert_eq!(
             apply_components(Held::Carrier, &payload, Record::PatternContents),
-            Applied::Refused(Refusal::WrongHeldItem)
+            Applied::Refused(PayloadRefused::WrongHeldItem)
         );
         assert_eq!(
             apply_components(Held::PatternCard, &payload, Record::CarrierContents),
-            Applied::Refused(Refusal::WrongRecord),
+            Applied::Refused(PayloadRefused::WrongRecord),
             "one named record is copied rather than the whole component map"
         );
     }
@@ -982,7 +982,7 @@ mod tests {
                 &HeldComponents { offered },
                 Record::PatternContents
             ),
-            Applied::Refused(Refusal::BadRecord),
+            Applied::Refused(PayloadRefused::BadRecord),
             "knowing a key is present is not knowing its body is one this entry writes"
         );
     }
@@ -1015,7 +1015,7 @@ mod tests {
         );
         assert_eq!(
             apply_card_arguments(Held::MatchItem, &payload),
-            Applied::Refused(Refusal::WrongHeldItem)
+            Applied::Refused(PayloadRefused::WrongHeldItem)
         );
     }
 
@@ -1028,11 +1028,11 @@ mod tests {
         );
         assert_eq!(
             apply_browser_pattern(Held::PatternCard, false, &payload),
-            Applied::Refused(Refusal::WrongMenu)
+            Applied::Refused(PayloadRefused::WrongMenu)
         );
         assert_eq!(
             apply_browser_pattern(Held::Carrier, true, &payload),
-            Applied::Refused(Refusal::WrongHeldItem)
+            Applied::Refused(PayloadRefused::WrongHeldItem)
         );
     }
 
@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(answer_readout(&near, (0, 0, 4), true), Applied::Accepted);
         assert_eq!(
             answer_readout(&near, (0, 0, 4), false),
-            Applied::Refused(Refusal::ChunkAbsent)
+            Applied::Refused(PayloadRefused::ChunkAbsent)
         );
 
         let far = ReadoutRequest {
@@ -1050,7 +1050,7 @@ mod tests {
         };
         assert_eq!(
             answer_readout(&far, (0, 0, 0), true),
-            Applied::Refused(Refusal::OutOfRange),
+            Applied::Refused(PayloadRefused::OutOfRange),
             "chunk load alone would let any player read any loaded position"
         );
     }
@@ -1062,7 +1062,7 @@ mod tests {
         };
         assert_eq!(
             answer_readout(&extreme, (i32::MAX, i32::MIN, i32::MAX), true),
-            Applied::Refused(Refusal::OutOfRange)
+            Applied::Refused(PayloadRefused::OutOfRange)
         );
     }
 
@@ -1087,7 +1087,7 @@ mod tests {
         let hostile = HeldItem { sent: smuggled };
         assert_eq!(
             apply_held_item(Held::Carrier, Held::Carrier, &hostile),
-            Applied::Refused(Refusal::BadRecord),
+            Applied::Refused(PayloadRefused::BadRecord),
             "a class test alone would install a carrier whose next selection fails"
         );
     }
@@ -1103,15 +1103,15 @@ mod tests {
 
         assert_eq!(
             apply_held_item(Held::PatternCard, Held::Carrier, &payload),
-            Applied::Refused(Refusal::WrongHeldItem)
+            Applied::Refused(PayloadRefused::WrongHeldItem)
         );
         assert_eq!(
             apply_held_item(Held::Carrier, Held::Other, &payload),
-            Applied::Refused(Refusal::WrongSentItem)
+            Applied::Refused(PayloadRefused::WrongSentItem)
         );
         assert_eq!(
             apply_held_item(Held::Carrier, Held::MatchItem, &payload),
-            Applied::Refused(Refusal::WrongSentItem),
+            Applied::Refused(PayloadRefused::WrongSentItem),
             "the two permitted kinds are not interchangeable with each other"
         );
     }
@@ -1125,7 +1125,7 @@ mod tests {
         );
         assert_eq!(
             apply_held_item(Held::MatchItem, Held::MatchItem, &HeldItem { sent }),
-            Applied::Refused(Refusal::BadRecord)
+            Applied::Refused(PayloadRefused::BadRecord)
         );
     }
 

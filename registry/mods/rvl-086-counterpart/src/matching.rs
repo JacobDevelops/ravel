@@ -133,7 +133,7 @@ impl Matcher {
 
     /// Returns how many written entries this matcher could not read.
     #[must_use]
-    pub fn unreadable(&self) -> usize {
+    pub fn unreadable_count(&self) -> usize {
         self.expressions
             .iter()
             .filter(|expression| **expression == Expression::Nothing)
@@ -235,7 +235,7 @@ mod tests {
     fn a_written_entry_the_language_cannot_read_is_kept_and_counted() {
         let matcher = Matcher::parse("example:pick, a:b:c:d, one:two:three");
         assert_eq!(matcher.expressions().len(), 3);
-        assert_eq!(matcher.unreadable(), 2);
+        assert_eq!(matcher.unreadable_count(), 2);
     }
 
     #[test]

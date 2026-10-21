@@ -178,8 +178,9 @@ impl std::error::Error for StoreRefused {}
 pub struct LoadReport {
     /// How many entries were placed.
     pub placed: usize,
-    /// How many entries were skipped because they did not decode or were out of
-    /// range.
+    /// How many payload parts were skipped: an undecodable or out-of-range entry,
+    /// an unrepresentable slot count or one above [`MAXIMUM_SLOTS`], or a missing
+    /// entries list (counted once, with no slot count applied).
     pub skipped: usize,
     /// How many slots the store grew by.
     pub grown: usize,

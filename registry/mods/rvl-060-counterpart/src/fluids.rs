@@ -230,7 +230,7 @@ impl FluidCache {
 
     /// Returns how many lookups the cache remembers.
     #[must_use]
-    pub fn remembered(&self) -> usize {
+    pub fn resolved_count(&self) -> usize {
         self.resolved.len()
     }
 
@@ -242,7 +242,7 @@ impl FluidCache {
 
     /// Returns how many records are registered.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub fn registered_count(&self) -> usize {
         self.registered.len()
     }
 
@@ -277,13 +277,13 @@ mod tests {
     #[test]
     fn a_record_registered_after_the_first_look_is_never_seen() {
         let mut cache = FluidCache::new();
-        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.registered_count(), 0);
         assert!(cache.resolve("molten_copper").is_none());
         assert!(cache.is_resolved("molten_copper"));
         cache
             .register("molten_copper", ClientProperties::default())
             .expect("a fresh identifier");
-        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.registered_count(), 1);
         assert!(
             cache.resolve("molten_copper").is_none(),
             "the lazy lookup already answered, and the answer is what is cached"
@@ -331,9 +331,9 @@ mod tests {
         for index in 0..super::MAX_FLUIDS * 2 {
             assert_eq!(cache.resolve(&format!("absent{index}")), None);
         }
-        assert_eq!(cache.len(), 0, "nothing was ever registered");
+        assert_eq!(cache.registered_count(), 0, "nothing was ever registered");
         assert_eq!(
-            cache.remembered(),
+            cache.resolved_count(),
             super::MAX_FLUIDS,
             "an absent name is remembered up to the ceiling and no further"
         );

@@ -3,9 +3,8 @@
 //!
 //! Ravel publishes no world feature and no biome modifier, so all four
 //! registrations are recorded as host-blocked and the parameters are carried as
-//! declared data. What is not blocked is the shaping set: a world this entry
-//! deposited into is refused once the entry is gone, rather than opening and
-//! generating differently from the chunks already on disk.
+//! declared data. Its shaping set is also a declaration: the published host
+//! does not admit it or enforce removal refusals against saved worlds.
 //!
 //! Every rule here is expressible in the host's own declarative vocabulary. No
 //! deposit needs a portable predicate, which is the difference between this

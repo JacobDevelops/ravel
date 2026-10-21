@@ -48,7 +48,7 @@ consumes every one of these from it, redeclaring none:
 | the quantity type | `rvl_210_counterpart::quantity::Amount` |
 | the match-condition set | `rvl_210_counterpart::quantity::Conditions` |
 | the refusal a kind raises on stored bytes | `rvl_210_counterpart::quantity::KindError` |
-| the slotless and slot-addressed storage abstractions | `rvl_210_counterpart::storage::{Store, SlottedStore}` |
+| the slotless and slot-addressed storage abstractions | `rvl_210_counterpart::storage::{QuantityStore, SlottedStore}` |
 | whether a call changes anything | `rvl_210_counterpart::storage::Attempt` |
 | the slot a result came through | `rvl_210_counterpart::storage::Slotted` |
 | the capability-constructor registry §9 declares every attachment through | `rvl_210_counterpart::capabilities::{Registry, Address, TargetClass}` |
@@ -466,3 +466,8 @@ bytes in the package, so a table that changes without its document fails. Settin
 how they are produced.
 
 `checks/verify-counterpart-build.sh` runs the counterpart tests.
+
+## Public contract consistency
+
+Quantity capabilities implement the dependency’s `QuantityStore`. Both storage absence predicates
+use `is_absent`. Cache queries distinguish `station_count` from `has_brewing`.

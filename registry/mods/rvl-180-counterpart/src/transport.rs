@@ -132,13 +132,13 @@ impl Outbox {
 
     /// Returns how many encoded readouts are waiting.
     #[must_use]
-    pub fn pending(&self) -> usize {
+    pub fn pending_packets(&self) -> usize {
         self.pending.len()
     }
 
     /// Returns how many readouts the bound has dropped.
     #[must_use]
-    pub const fn dropped(&self) -> usize {
+    pub const fn dropped_packets(&self) -> usize {
         self.dropped
     }
 
@@ -216,7 +216,7 @@ mod tests {
             outbox.queue(&readout, Side::Client).is_err(),
             "a client sending a client-bound packet is refused before anything is encoded"
         );
-        assert_eq!(outbox.pending(), 0);
+        assert_eq!(outbox.pending_packets(), 0);
 
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
             assert!(
@@ -225,7 +225,7 @@ mod tests {
                     .expect("a server end may send one")
             );
         }
-        assert_eq!(outbox.pending(), 2);
+        assert_eq!(outbox.pending_packets(), 2);
     }
 
     #[test]
@@ -254,12 +254,12 @@ mod tests {
                 .expect("a server end may send one");
             assert_eq!(queued, index < MAX_PENDING);
         }
-        assert_eq!(outbox.pending(), MAX_PENDING);
-        assert_eq!(outbox.dropped(), MAX_PENDING * 3);
+        assert_eq!(outbox.pending_packets(), MAX_PENDING);
+        assert_eq!(outbox.dropped_packets(), MAX_PENDING * 3);
 
         let taken = outbox.take();
         assert_eq!(taken.len(), MAX_PENDING);
-        assert_eq!(outbox.pending(), 0);
+        assert_eq!(outbox.pending_packets(), 0);
         assert_eq!(outbox.take().len(), 0);
     }
 }

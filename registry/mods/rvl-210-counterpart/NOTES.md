@@ -15,7 +15,7 @@ files go.
 
 **This package owns the interface vocabulary of §10.** §18 raised it as the thing blocking both this
 counterpart and RVL-132's, and the wave decision settles it here: `quantity::QuantityKind`,
-`quantity::Conditions`, `quantity::Partitioned`, `storage::Store` and `storage::SlottedStore` are
+`quantity::Conditions`, `quantity::Partitioned`, `storage::QuantityStore` and `storage::SlottedStore` are
 declared in this crate. Dependents consume these module interfaces; selected types are also
 re-exported at the crate root for convenience.
 
@@ -62,9 +62,9 @@ re-exported at the crate root for convenience.
 | §13 the per-world counters and their guarantee | implemented, through Ravel's saved-data ownership | `src/persistence.rs`, `src/lib.rs` |
 | §14 the dumping service and its seven producers | implemented | `src/dumps.rs` |
 | §14 the manual engine | not carried; §14 itself says a counterpart draws it in Ravel if at all | — |
-| §15 the seven subcommands, settings reads and reload | implemented; settings writes withheld pending reviewed invocation permissions | `src/commands.rs`, `src/lib.rs` |
+| §15 the seven subcommands, settings reads and reload | implemented for reads; writes and command reload withheld pending reviewed invocation permissions | `src/commands.rs`, `src/lib.rs` |
 | §15 the seven subcommands, the five that are declarable only | declarable only | `src/commands.rs`, `src/lib.rs` |
-| §15 the permission levels | not carried; the specification records them as unread; settings command writes are refused until invocations carry a reviewed permission level, while reads remain available on every side | `src/lib.rs` |
+| §15 the permission levels | not carried; the specification records them as unread; settings command writes and command reload are refused until invocations carry a reviewed permission level, while reads remain available on every side | `src/lib.rs` |
 | §16 the access widening and the one bytecode patch | declarable only | — |
 | §17 the capability-attachment registry | implemented | `src/capabilities.rs` |
 | §17 block-entity lookup, stores, fluids and the side questions | answered by `menus::insert_first`, `Store::count_of`, `storage::fill` and `Tank::drain`; block lookup calls the supplied closure directly and side questions use SDK `Side` matching/predicates, with no package lookup or side API | `src/menus.rs`, `src/storage.rs`, `ravel_sdk::Side` |
@@ -131,10 +131,10 @@ re-exported at the crate root for convenience.
   either way; what differs is the cost, and `Lookup::used_partitions` says which happened. Naming
   several partitions would need a wider trait than §17's dependents consume.
 
-- **Unknown packet contracts are declined rather than failing the receiver (§7).** Undeclared paths
-  return `ModError::Unsupported`: a peer's unknown contract is a declined delivery, not a failure
-  of the receiving mod. A loader-level regression drives this entry to `Running`, declines an
-  undeclared delivery, and asserts the entry remains `Running` without counting it.
+- **Names alone do not admit packet deliveries (§6, §7).** The specification records thirteen
+  message names but does not recover their wire fields or directions. These remain declarations,
+  not packet contracts: the entry uses the SDK's `Unsupported` delivery refusal for every name.
+  No opaque payload is counted or accepted without a contract that can validate it.
 
 - **The value channel is emptied on a resource reload (§7).** §6 registers a resource reload request
   and §7's channel holds values a screen is reading. `Entry::observe` clears the channel on
@@ -187,16 +187,16 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
   drawn screen. Ravel draws its own, and §14 says a counterpart treats the manual as Ravel-drawn if it
   is built at all. The demonstration menu is declared and the subcommand that opens it is in the tree;
   nothing paginates.
-- **Five of the seven subcommands' own effects (§15).** Two act on state this entry holds and
-  `Entry::run_command` dispatches them: the settings one reads through `settings::Framework`
-  (writes are refused until invocations carry a permission level), and the reload one empties the value
-  channel. The other five do not act here. What `version`, `diagnostic` and `manual` answer is Ravel's
-  chat surface and there is none
+- **Five of the seven subcommands' own effects (§15).** The settings subcommand reads state this
+  entry holds through `settings::Framework`. Writes and command reload are refused until
+  invocations carry a reviewed permission level; the value channel changes only on the
+  resource-reload event. The other five do not act here. What `version`, `diagnostic` and `manual`
+  answer is Ravel's chat surface and there is none
   published. `dump` writes registry documents to a destination Ravel does not publish, and this
   entry holds no registry of its own to serialise, so `dumps::Producers::write_all` is the piece that
   exists and the writing is not. `ignite` acts on a level entity through a seam Ravel does not
-  publish. The tree shape, its seven names, which two are inherited, the arity of each and the two that
-  act are implemented and tested.
+  publish. The tree shape, its seven names, which two are inherited, the arity of each, the settings
+  reads and the permission refusals are implemented and tested.
 
 - **The slotted storage form (§10).** `storage::SlottedStore` is vocabulary this package owns and
   publishes for RVL-132, which implements it over its own stores. Nothing in this package is a
@@ -274,7 +274,7 @@ opening on no counters rather than the last one's, a counter at the end of its r
 producers each named once, a producer collected twice, a producer writing nothing
 named with nothing rather than an empty registry, seven subcommands with five own and two inherited,
 the arity of each, the settings subcommand reading the setting it names, refusing an undeclared
-name, and withholding writes on every side, the reload subcommand emptying the channel, a listener
+name, and withholding writes on every side, command reload withholding mutation, a listener
 installed on first registration of each of the four classes, the registry raising after baking and
 holding nothing, specific against broad addressing,
 the platform codecs reaching the table at common setup, an insertion that would overflow a
@@ -316,8 +316,8 @@ when the scope does not apply. Capability and command failures use `CapabilityRe
 Saved counter payloads must contain a counters object. Missing or wrongly typed tables are refused
 rather than accepted as an empty set, which would restart previously allocated identifiers.
 All package error types implement `std::error::Error`; transport wire refusals expose their cause.
-Packet deliveries must name one of `transport::MESSAGE_KINDS`; undeclared packet paths are refused
-without incrementing the delivery count. The loader routes packets to the owner of their identifier,
+`transport::MESSAGE_KINDS` records names only; packet deliveries remain unsupported until real
+contracts recover their fields and directions. The loader routes packets to the identifier owner,
 so a dependent's own contracts are handled by that dependent.
 After saving a store, its owner can acknowledge the saved state with `clear_dirty()`.
 
@@ -331,3 +331,9 @@ against the specification, tested at the seams `ravel-sdk` publishes. What a run
 and this cannot: whether Ravel's registration barrier fires where §2 needs it, whether an interception
 point exists for the reach §16 counts, what a subcommand prints, and whether the transport's bytes
 reach a peer at all.
+
+## Public contract consistency
+
+Public type names distinguish `QuantityStore`, menu `Store`, `SettingKind`, `SettingValue`,
+`CodecKind` and `WireValue` without aliases. Quantity-list extraction derives its result from the
+unfilled remainder rather than maintaining a second accumulator.

@@ -328,3 +328,9 @@ Instruction declarations use `Instruction::new(name, output)` and
 `Parameter::new(kind, required)`; their public fields remain configurable. `Program::default()`
 starts an empty runtime state. These records are non-exhaustive so consumers need not name every
 field when the declaration vocabulary grows.
+
+## Public contract consistency
+
+Module data uses `ModuleData`, distinguishing the `BuiltInData` vocabulary from validated registered
+`ContentId` factories. Wire errors are `PayloadRefused`. Carrier extraction clears its selected
+compartment rather than accepting a partial amount.

@@ -54,7 +54,6 @@ pub mod transport;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
-use ravel_sdk::network::PacketDelivery;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion};
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
@@ -73,8 +72,8 @@ pub use crate::query::{ParseError, Query, Segment};
 pub use crate::settings::{Framework, Scope, Settings};
 pub use crate::shapes::{Constraint, DetectionFailure, Region, ShapeRefused};
 pub use crate::storage::{
-    Attempt, Difference, Inconsistent, Slotted, SlottedStore, Store as QuantityStore, Tank,
-    ValueBox, difference, move_quantity,
+    Attempt, Difference, Inconsistent, QuantityStore, Slotted, SlottedStore, Tank, ValueBox,
+    difference, move_quantity,
 };
 pub use crate::transport::{Codecs, Level, Shape, Target, TransportError};
 
@@ -93,9 +92,9 @@ const OPERATOR_ONLY: &str = "operator-only until invocations carry a permission 
 pub const DATA_VERSION: SavedDataVersion = SavedDataVersion::MIN;
 
 /// This platform's additions to the wire codec table, loaded at common setup.
-pub const PLATFORM_CODECS: [(&str, transport::Kind); 2] = [
-    ("position", transport::Kind::Number),
-    ("identifier", transport::Kind::Text),
+pub const PLATFORM_CODECS: [(&str, transport::CodecKind); 2] = [
+    ("position", transport::CodecKind::Number),
+    ("identifier", transport::CodecKind::Text),
 ];
 
 /// This platform's additions to the persistable field-type table.
@@ -117,7 +116,6 @@ pub struct Entry {
     entered: Vec<LifecycleState>,
     crafting_helpers: bool,
     load_complete: bool,
-    carried: u64,
 }
 
 impl Default for Entry {
@@ -144,7 +142,6 @@ impl Entry {
             entered: Vec::new(),
             crafting_helpers: false,
             load_complete: false,
-            carried: 0,
         }
     }
 
@@ -235,12 +232,6 @@ impl Entry {
     #[must_use]
     pub const fn crafting_helpers(&self) -> bool {
         self.crafting_helpers
-    }
-
-    /// How many of this entry's own thirteen messages it has carried.
-    #[must_use]
-    pub const fn carried(&self) -> u64 {
-        self.carried
     }
 
     /// The latched flag a dependent reads to ask whether loading finished.
@@ -378,9 +369,6 @@ impl Mod for Entry {
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
-        // Section six's resource reload request is one of the thirteen and this
-        // is the signal it exists to cause; nothing else here is driven by a
-        // tick, so the other two are observed and add nothing.
         if event == GameEvent::ResourcesReloaded {
             self.channel = Channel::new();
         }
@@ -393,22 +381,12 @@ impl Mod for Entry {
             commands::resolve(name, &invocation.arguments).map_err(ModError::from_display)?;
         match resolved {
             commands::SETTINGS => self.run_settings(&invocation.arguments)?,
-            // The same emptying section seven's reload causes, because this is
-            // the subcommand that causes it.
-            commands::RELOAD => self.channel = Channel::new(),
+            commands::RELOAD => return Err(ModError::refused(OPERATOR_ONLY)),
             // The other five change nothing this entry holds: what each answers
             // is a chat surface Ravel does not publish, which `NOTES.md` records
             // as declarable only.
             _ => {}
         }
-        Ok(())
-    }
-
-    fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        if !transport::MESSAGE_KINDS.contains(&delivery.id.id().path()) {
-            return Err(ModError::Unsupported);
-        }
-        self.carried = self.carried.saturating_add(1);
         Ok(())
     }
 
@@ -518,41 +496,34 @@ mod tests {
     }
 
     #[test]
-    fn undeclared_packets_are_refused_without_counting_a_delivery() {
-        use ravel_sdk::network::{Direction, PacketId};
+    fn message_names_without_wire_contracts_refuse_every_delivery_without_mutation() {
+        use ravel_sdk::network::{Direction, PacketDelivery, PacketId};
 
         let mut entry = Entry::new();
-        for kind in transport::MESSAGE_KINDS {
-            let delivery = PacketDelivery::new(
-                PacketId::new(
-                    format!("{MOD_ID}:{kind}")
-                        .parse()
-                        .expect("a legal packet id"),
-                ),
-                Direction::ToServer,
-                Side::DedicatedServer,
-                Vec::new(),
-            );
-            entry
-                .receive_packet(&delivery)
-                .expect("a declared message is accepted");
+        let before = format!("{entry:?}");
+        for kind in transport::MESSAGE_KINDS.into_iter().chain(["undeclared"]) {
+            for direction in [Direction::ToClient, Direction::ToServer] {
+                for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
+                    for payload in [Vec::new(), vec![255]] {
+                        let delivery = PacketDelivery::new(
+                            PacketId::new(
+                                format!("{MOD_ID}:{kind}")
+                                    .parse()
+                                    .expect("a legal packet id"),
+                            ),
+                            direction,
+                            side,
+                            payload,
+                        );
+                        assert!(matches!(
+                            entry.receive_packet(&delivery),
+                            Err(ModError::Unsupported)
+                        ));
+                        assert_eq!(format!("{entry:?}"), before);
+                    }
+                }
+            }
         }
-        let before = entry.carried();
-        let delivery = PacketDelivery::new(
-            PacketId::new(
-                format!("{MOD_ID}:undeclared")
-                    .parse()
-                    .expect("a legal packet id"),
-            ),
-            Direction::ToServer,
-            Side::DedicatedServer,
-            Vec::new(),
-        );
-        let refusal = entry
-            .receive_packet(&delivery)
-            .expect_err("unknown contracts are refused");
-        assert!(matches!(refusal, ModError::Unsupported));
-        assert_eq!(entry.carried(), before);
     }
 
     #[test]
@@ -781,7 +752,7 @@ mod tests {
         let mut entry = Entry::new();
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SHORTCUT),
-            Ok(&settings::Value::Truth(false))
+            Ok(&settings::SettingValue::Truth(false))
         );
         let refusal = invoke(
             &mut entry,
@@ -792,7 +763,7 @@ mod tests {
         assert_eq!(refusal, ModError::refused(OPERATOR_ONLY));
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SHORTCUT),
-            Ok(&settings::Value::Truth(false)),
+            Ok(&settings::SettingValue::Truth(false)),
             "a withheld write changes nothing"
         );
     }
@@ -815,7 +786,7 @@ mod tests {
                     "A server setting",
                     Scope::Server,
                     true,
-                    settings::Value::Truth(false),
+                    settings::SettingValue::Truth(false),
                 ));
                 let write = CommandInvocation::new(
                     key.clone(),
@@ -828,7 +799,7 @@ mod tests {
                 );
                 assert_eq!(
                     entry.framework().read(property),
-                    Ok(&settings::Value::Truth(false))
+                    Ok(&settings::SettingValue::Truth(false))
                 );
                 let read = CommandInvocation::new(key.clone(), side, vec![property.to_owned()]);
                 assert!(entry.run_command(&read).is_ok());
@@ -854,17 +825,29 @@ mod tests {
         );
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SILENCE_MUSIC),
-            Ok(&settings::Value::Truth(false)),
+            Ok(&settings::SettingValue::Truth(false)),
             "a refused write changes nothing"
         );
     }
 
     #[test]
-    fn the_reload_subcommand_empties_the_screen_value_channel() {
-        let mut entry = Entry::new();
-        entry.channel_mut().send(1, json!(7));
-        invoke(&mut entry, commands::RELOAD, &[]).expect("the reload subcommand runs");
-        assert!(entry.channel().is_empty());
+    fn the_reload_subcommand_requires_reviewed_permission_without_mutating_state() {
+        for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
+            let mut entry = Entry::new();
+            entry.channel_mut().send(1, json!(7));
+            let before = format!("{entry:?}");
+            let key = RegistryKey::new(
+                ContentKind::Command,
+                ContentId::new(Entry::declared_id().clone(), commands::RELOAD)
+                    .expect("a legal path"),
+            );
+            let invocation = CommandInvocation::new(key, side, Vec::new());
+            assert_eq!(
+                entry.run_command(&invocation),
+                Err(ModError::refused(OPERATOR_ONLY))
+            );
+            assert_eq!(format!("{entry:?}"), before);
+        }
     }
 
     #[test]

@@ -40,7 +40,7 @@ pub struct ItemData {
     /// The stored experience, capped.
     pub experience: u32,
     /// The charge the container holds, as a type and an amount.
-    pub charge: Option<(String, f64)>,
+    pub charge: Option<(ContentId, f64)>,
     /// The area offset, horizontal and vertical.
     pub offset: (i32, i32),
 }
@@ -84,8 +84,8 @@ impl ItemData {
 /// dedicated one does.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Cache {
-    recipes_by_item: BTreeMap<String, Vec<String>>,
-    materials: BTreeSet<String>,
+    recipes_by_item: BTreeMap<ContentId, Vec<String>>,
+    materials: BTreeSet<ContentId>,
 }
 
 impl Cache {
@@ -104,7 +104,7 @@ impl Cache {
         &mut self,
         recipe: &str,
         ingredients: &[Ingredient],
-        enumerates: &dyn Fn(&Ingredient) -> Vec<String>,
+        enumerates: &dyn Fn(&Ingredient) -> Vec<ContentId>,
     ) {
         for ingredient in ingredients {
             for entry in enumerates(ingredient) {
@@ -119,13 +119,13 @@ impl Cache {
     /// Records the declared materials of an eight-station ritual.
     pub fn index_materials(&mut self, recipe: &EightStation) {
         for material in &recipe.materials {
-            self.materials.insert(material.entry.to_string());
+            self.materials.insert(material.entry.clone());
         }
     }
 
     /// The recipes that accept an item.
     #[must_use]
-    pub fn recipes_accepting(&self, entry: &str) -> &[String] {
+    pub fn recipes_accepting(&self, entry: &ContentId) -> &[String] {
         self.recipes_by_item.get(entry).map_or(&[], Vec::as_slice)
     }
 
@@ -134,7 +134,7 @@ impl Cache {
     /// This is the reservoir's whole insertion predicate, which is why a
     /// reservoir accepts nothing until the first data load.
     #[must_use]
-    pub fn is_material(&self, entry: &str) -> bool {
+    pub fn is_material(&self, entry: &ContentId) -> bool {
         self.materials.contains(entry)
     }
 
@@ -156,18 +156,18 @@ impl Cache {
 /// Cleared and rebuilt on each reload, and consulted with a fallback to white.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Colours {
-    declared: BTreeMap<String, u32>,
+    declared: BTreeMap<ContentId, u32>,
 }
 
 impl Colours {
     /// Replaces every declared colour with a freshly loaded set.
-    pub fn rebuild<I: IntoIterator<Item = (String, u32)>>(&mut self, declared: I) {
+    pub fn rebuild<I: IntoIterator<Item = (ContentId, u32)>>(&mut self, declared: I) {
         self.declared = declared.into_iter().collect();
     }
 
     /// The colour declared for an item, or white.
     #[must_use]
-    pub fn of(&self, entry: &str) -> u32 {
+    pub fn of(&self, entry: &ContentId) -> u32 {
         self.declared.get(entry).copied().unwrap_or(FALLBACK_COLOUR)
     }
 
@@ -182,6 +182,11 @@ impl Colours {
     pub fn is_empty(&self) -> bool {
         self.declared.is_empty()
     }
+}
+
+fn read_identity(reader: &mut PacketReader<'_>) -> Result<ContentId, WireError> {
+    let text = reader.text()?.to_owned();
+    text.parse().map_err(|_| WireError::ContentId { text })
 }
 
 fn contract(path: &str, direction: Direction) -> PacketContract {
@@ -215,9 +220,9 @@ impl Packet for ExperienceSound {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CachePayload {
     /// The item, and the recipes that accept it.
-    pub entries: Vec<(String, Vec<String>)>,
+    pub entries: Vec<(ContentId, Vec<String>)>,
     /// The items that appear as a declared ritual material.
-    pub materials: Vec<String>,
+    pub materials: Vec<ContentId>,
 }
 
 impl Packet for CachePayload {
@@ -228,7 +233,7 @@ impl Packet for CachePayload {
     fn write(&self, writer: &mut PacketWriter) {
         writer.u32(u32::try_from(self.entries.len()).expect("entry count fits the wire length"));
         for (entry, recipes) in &self.entries {
-            writer.text(entry);
+            writer.text(&entry.to_string());
             writer.u32(u32::try_from(recipes.len()).expect("recipe count fits the wire length"));
             for recipe in recipes {
                 writer.text(recipe);
@@ -237,7 +242,7 @@ impl Packet for CachePayload {
         writer
             .u32(u32::try_from(self.materials.len()).expect("material count fits the wire length"));
         for material in &self.materials {
-            writer.text(material);
+            writer.text(&material.to_string());
         }
     }
 
@@ -245,7 +250,7 @@ impl Packet for CachePayload {
         let count = reader.u32()?;
         let mut entries = Vec::new();
         for _ in 0..count {
-            let entry = reader.text()?.to_owned();
+            let entry = read_identity(reader)?;
             let held = reader.u32()?;
             let mut recipes = Vec::new();
             for _ in 0..held {
@@ -256,7 +261,7 @@ impl Packet for CachePayload {
         let count = reader.u32()?;
         let mut materials = Vec::new();
         for _ in 0..count {
-            materials.push(reader.text()?.to_owned());
+            materials.push(read_identity(reader)?);
         }
         Ok(Self { entries, materials })
     }
@@ -266,7 +271,7 @@ impl Packet for CachePayload {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ColourPayload {
     /// The item, and the colour declared for it.
-    pub entries: Vec<(String, u32)>,
+    pub entries: Vec<(ContentId, u32)>,
 }
 
 impl Packet for ColourPayload {
@@ -277,7 +282,7 @@ impl Packet for ColourPayload {
     fn write(&self, writer: &mut PacketWriter) {
         writer.u32(u32::try_from(self.entries.len()).expect("colour count fits the wire length"));
         for (entry, colour) in &self.entries {
-            writer.text(entry);
+            writer.text(&entry.to_string());
             writer.u32(*colour);
         }
     }
@@ -286,7 +291,7 @@ impl Packet for ColourPayload {
         let count = reader.u32()?;
         let mut entries = Vec::new();
         for _ in 0..count {
-            let entry = reader.text()?.to_owned();
+            let entry = read_identity(reader)?;
             entries.push((entry, reader.u32()?));
         }
         Ok(Self { entries })
@@ -338,10 +343,10 @@ mod tests {
         }
     }
 
-    fn enumerates(ingredient: &Ingredient) -> Vec<String> {
+    fn enumerates(ingredient: &Ingredient) -> Vec<ContentId> {
         match ingredient {
-            Ingredient::Entry(entry) => vec![entry.to_string()],
-            Ingredient::Tag(_) => vec!["a:tagged".to_owned()],
+            Ingredient::Entry(entry) => vec![entry.clone()],
+            Ingredient::Tag(_) => vec!["a:tagged".parse().expect("item id")],
             Ingredient::TillingTool
             | Ingredient::ChargedContainer
             | Ingredient::CropComponent { .. } => Vec::new(),
@@ -352,8 +357,13 @@ mod tests {
     fn a_client_that_never_received_a_payload_accepts_nothing() {
         let cache = Cache::new();
         assert!(cache.is_empty());
-        assert_eq!(cache.recipes_accepting("a:anything").len(), 0);
-        assert!(!cache.is_material("a:fuel"));
+        assert_eq!(
+            cache
+                .recipes_accepting(&"a:anything".parse().expect("item id"))
+                .len(),
+            0
+        );
+        assert!(!cache.is_material(&"a:fuel".parse().expect("item id")));
     }
 
     #[test]
@@ -367,9 +377,14 @@ mod tests {
             ],
             &enumerates,
         );
-        assert_eq!(cache.recipes_accepting("a:one"), ["test:recipe"]);
+        assert_eq!(
+            cache.recipes_accepting(&"a:one".parse().expect("item id")),
+            ["test:recipe"]
+        );
         assert!(
-            cache.recipes_accepting("a:container").is_empty(),
+            cache
+                .recipes_accepting(&"a:container".parse().expect("item id"))
+                .is_empty(),
             "a non-simple ingredient enumerates nothing to key on"
         );
         assert_eq!(cache.indexed_item_count(), 1);
@@ -383,31 +398,37 @@ mod tests {
             Ingredient::Entry("a:one".parse().expect("item id")),
         ];
         cache.index("test:recipe", &twice, &enumerates);
-        assert_eq!(cache.recipes_accepting("a:one"), ["test:recipe"]);
+        assert_eq!(
+            cache.recipes_accepting(&"a:one".parse().expect("item id")),
+            ["test:recipe"]
+        );
     }
 
     #[test]
     fn the_reservoir_predicate_is_empty_until_a_ritual_is_indexed() {
         let mut cache = Cache::new();
-        assert!(!cache.is_material("a:fuel"));
+        assert!(!cache.is_material(&"a:fuel".parse().expect("item id")));
         cache.index_materials(&ritual());
-        assert!(cache.is_material("a:fuel"));
-        assert!(!cache.is_material("a:dust"));
+        assert!(cache.is_material(&"a:fuel".parse().expect("item id")));
+        assert!(!cache.is_material(&"a:dust".parse().expect("item id")));
     }
 
     #[test]
     fn the_colour_map_falls_back_to_white_and_is_rebuilt_whole() {
         let mut colours = Colours::default();
         assert!(colours.is_empty());
-        assert_eq!(colours.of("a:one"), FALLBACK_COLOUR);
+        assert_eq!(
+            colours.of(&"a:one".parse().expect("item id")),
+            FALLBACK_COLOUR
+        );
 
-        colours.rebuild([("a:one".to_owned(), 0x00ff_0000)]);
-        assert_eq!(colours.of("a:one"), 0x00ff_0000);
+        colours.rebuild([("a:one".parse().expect("item id"), 0x00ff_0000)]);
+        assert_eq!(colours.of(&"a:one".parse().expect("item id")), 0x00ff_0000);
         assert_eq!(colours.len(), 1);
 
-        colours.rebuild([("a:two".to_owned(), 1)]);
+        colours.rebuild([("a:two".parse().expect("item id"), 1)]);
         assert_eq!(
-            colours.of("a:one"),
+            colours.of(&"a:one".parse().expect("item id")),
             FALLBACK_COLOUR,
             "a reload clears what it does not redeclare"
         );
@@ -475,13 +496,45 @@ mod tests {
     }
 
     #[test]
+    fn cache_and_colour_payloads_refuse_invalid_item_identifiers() {
+        let mut cache = PacketWriter::default();
+        cache.u32(1);
+        cache.text("not a qualified item");
+        cache.u32(0);
+        cache.u32(0);
+        assert!(matches!(
+            CachePayload::read(&mut PacketReader::new(&cache.finish())),
+            Err(WireError::ContentId { .. })
+        ));
+        let mut colour = PacketWriter::default();
+        colour.u32(1);
+        colour.text("not a qualified item");
+        colour.u32(0);
+        assert!(matches!(
+            ColourPayload::read(&mut PacketReader::new(&colour.finish())),
+            Err(WireError::ContentId { .. })
+        ));
+        let mut material = PacketWriter::default();
+        material.u32(0);
+        material.u32(1);
+        material.text("not a qualified item");
+        assert!(matches!(
+            CachePayload::read(&mut PacketReader::new(&material.finish())),
+            Err(WireError::ContentId { .. })
+        ));
+    }
+
+    #[test]
     fn the_cache_payload_round_trips_through_the_wire() {
         let sent = CachePayload {
             entries: vec![
-                ("a:one".to_owned(), vec!["test:recipe".to_owned()]),
-                ("a:two".to_owned(), Vec::new()),
+                (
+                    "a:one".parse().expect("item id"),
+                    vec!["test:recipe".to_owned()],
+                ),
+                ("a:two".parse().expect("item id"), Vec::new()),
             ],
-            materials: vec!["a:fuel".to_owned()],
+            materials: vec!["a:fuel".parse().expect("item id")],
         };
         let read = ravel_sdk::network::decode::<CachePayload>(&ravel_sdk::network::encode(&sent))
             .expect("the cache payload decodes");
@@ -491,7 +544,7 @@ mod tests {
     #[test]
     fn the_colour_payload_and_the_unit_payload_round_trip() {
         let sent = ColourPayload {
-            entries: vec![("a:one".to_owned(), 0x00ab_cdef)],
+            entries: vec![("a:one".parse().expect("item id"), 0x00ab_cdef)],
         };
         let read = ravel_sdk::network::decode::<ColourPayload>(&ravel_sdk::network::encode(&sent))
             .expect("the colour payload decodes");

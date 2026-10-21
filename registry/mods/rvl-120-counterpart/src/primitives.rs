@@ -228,7 +228,7 @@ impl Interner {
 
     /// Returns how many ids have been issued.
     #[must_use]
-    pub const fn issued(&self) -> usize {
+    pub const fn ids_issued(&self) -> usize {
         self.names.len()
     }
 }
@@ -510,7 +510,7 @@ mod tests {
             Ok(1),
             "a name keeps the id it was given"
         );
-        assert_eq!(interner.issued(), 2);
+        assert_eq!(interner.ids_issued(), 2);
         assert_eq!(interner.name(1), Some("first"));
         assert_eq!(interner.name(0), None, "zero is never issued");
         assert_eq!(interner.name(3), None);

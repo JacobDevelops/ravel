@@ -147,7 +147,7 @@ impl Shape {
     pub fn write(
         &self,
         table: &Codecs,
-        values: &BTreeMap<String, Value>,
+        values: &BTreeMap<String, WireValue>,
         writer: &mut PacketWriter,
     ) -> Result<(), TransportError> {
         for (field, codec) in self.wire_order() {
@@ -172,7 +172,7 @@ impl Shape {
         &self,
         table: &Codecs,
         reader: &mut PacketReader<'_>,
-    ) -> Result<BTreeMap<String, Value>, TransportError> {
+    ) -> Result<BTreeMap<String, WireValue>, TransportError> {
         let mut values = BTreeMap::new();
         for (field, codec) in self.wire_order() {
             let codec = table.get(codec).ok_or_else(|| TransportError::NoCodec {
@@ -216,7 +216,7 @@ impl std::error::Error for ShapeError {}
 
 /// The closed vocabulary of wire codec kinds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Kind {
+pub enum CodecKind {
     /// A truth value.
     Truth,
     /// A whole number.
@@ -227,7 +227,7 @@ pub enum Kind {
     Bytes,
 }
 
-impl Kind {
+impl CodecKind {
     /// The canonical portable codec name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -242,7 +242,7 @@ impl Kind {
 
 /// One value on the wire, in the four kinds the portable table writes.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Value {
+pub enum WireValue {
     /// A truth value.
     Truth(bool),
     /// A whole number.
@@ -253,15 +253,15 @@ pub enum Value {
     Bytes(Vec<u8>),
 }
 
-impl Value {
+impl WireValue {
     /// Which codec kind this value belongs to.
     #[must_use]
-    pub const fn kind(&self) -> Kind {
+    pub const fn kind(&self) -> CodecKind {
         match self {
-            Self::Truth(_) => Kind::Truth,
-            Self::Number(_) => Kind::Number,
-            Self::Text(_) => Kind::Text,
-            Self::Bytes(_) => Kind::Bytes,
+            Self::Truth(_) => CodecKind::Truth,
+            Self::Number(_) => CodecKind::Number,
+            Self::Text(_) => CodecKind::Text,
+            Self::Bytes(_) => CodecKind::Bytes,
         }
     }
 }
@@ -276,16 +276,21 @@ pub const TEXT: &str = "text";
 pub const BYTES: &str = "bytes";
 
 /// The four codecs the table holds without being loaded.
-pub const PORTABLE_CODECS: [Kind; 4] = [Kind::Truth, Kind::Number, Kind::Text, Kind::Bytes];
+pub const PORTABLE_CODECS: [CodecKind; 4] = [
+    CodecKind::Truth,
+    CodecKind::Number,
+    CodecKind::Text,
+    CodecKind::Bytes,
+];
 
 /// One entry in the type-to-encoder table.
 #[derive(Clone, Copy, Debug)]
 pub struct Codec {
-    kind: Kind,
+    kind: CodecKind,
 }
 
 impl Codec {
-    fn write(self, value: &Value, writer: &mut PacketWriter) -> Result<(), TransportError> {
+    fn write(self, value: &WireValue, writer: &mut PacketWriter) -> Result<(), TransportError> {
         if value.kind() != self.kind {
             return Err(TransportError::WrongKind {
                 codec: self.kind,
@@ -293,20 +298,20 @@ impl Codec {
             });
         }
         match value {
-            Value::Truth(truth) => writer.bool(*truth),
-            Value::Number(number) => writer.u32(*number),
-            Value::Text(text) => writer.text(text),
-            Value::Bytes(bytes) => writer.bytes_field(bytes),
+            WireValue::Truth(truth) => writer.bool(*truth),
+            WireValue::Number(number) => writer.u32(*number),
+            WireValue::Text(text) => writer.text(text),
+            WireValue::Bytes(bytes) => writer.bytes_field(bytes),
         }
         Ok(())
     }
 
-    fn read(self, reader: &mut PacketReader<'_>) -> Result<Value, TransportError> {
+    fn read(self, reader: &mut PacketReader<'_>) -> Result<WireValue, TransportError> {
         let value = match self.kind {
-            Kind::Truth => Value::Truth(reader.bool()?),
-            Kind::Number => Value::Number(reader.u32()?),
-            Kind::Text => Value::Text(reader.text()?.to_owned()),
-            Kind::Bytes => Value::Bytes(reader.bytes_field()?.to_vec()),
+            CodecKind::Truth => WireValue::Truth(reader.bool()?),
+            CodecKind::Number => WireValue::Number(reader.u32()?),
+            CodecKind::Text => WireValue::Text(reader.text()?.to_owned()),
+            CodecKind::Bytes => WireValue::Bytes(reader.bytes_field()?.to_vec()),
         };
         Ok(value)
     }
@@ -350,7 +355,7 @@ impl Codecs {
     ///
     /// Answers whether anything was added, so a second call is visible rather
     /// than silent.
-    pub fn load_platform(&mut self, additions: &[(&str, Kind)]) -> bool {
+    pub fn load_platform(&mut self, additions: &[(&str, CodecKind)]) -> bool {
         if self.platform_loaded {
             return false;
         }
@@ -368,7 +373,7 @@ impl Codecs {
     }
 
     /// Adds one entry for a dependent's own declared field type.
-    pub fn add(&mut self, name: &str, kind: Kind) {
+    pub fn add(&mut self, name: &str, kind: CodecKind) {
         self.entries.insert(name.to_owned(), Codec { kind });
     }
 
@@ -407,9 +412,9 @@ pub enum TransportError {
     /// The value is not of the kind the codec writes.
     WrongKind {
         /// What the codec writes.
-        codec: Kind,
+        codec: CodecKind,
         /// What it was handed.
-        value: Kind,
+        value: CodecKind,
     },
     /// The bytes do not spell what the shape says they do.
     Wire(WireError),
@@ -570,12 +575,12 @@ mod tests {
             .expect("two levels and four fields are inside both limits")
     }
 
-    fn values() -> BTreeMap<String, Value> {
+    fn values() -> BTreeMap<String, WireValue> {
         BTreeMap::from([
-            ("alpha".to_owned(), Value::Truth(true)),
-            ("zeta".to_owned(), Value::Number(9)),
-            ("beta".to_owned(), Value::Text("written".to_owned())),
-            ("gamma".to_owned(), Value::Number(4)),
+            ("alpha".to_owned(), WireValue::Truth(true)),
+            ("zeta".to_owned(), WireValue::Number(9)),
+            ("beta".to_owned(), WireValue::Text("written".to_owned())),
+            ("gamma".to_owned(), WireValue::Number(4)),
         ])
     }
 
@@ -668,7 +673,7 @@ mod tests {
         let unknown = Shape::new()
             .below(Level::new().mark("one", "nothing_declares_this"))
             .expect("one level");
-        let supplied = BTreeMap::from([("one".to_owned(), Value::Number(1))]);
+        let supplied = BTreeMap::from([("one".to_owned(), WireValue::Number(1))]);
         assert!(matches!(
             unknown.write(&table, &supplied, &mut writer),
             Err(TransportError::NoCodec { .. })
@@ -682,12 +687,12 @@ mod tests {
         let shape = Shape::new()
             .below(Level::new().mark("one", NUMBER))
             .expect("one level");
-        let values = BTreeMap::from([("one".to_owned(), Value::Text("nine".to_owned()))]);
+        let values = BTreeMap::from([("one".to_owned(), WireValue::Text("nine".to_owned()))]);
         assert_eq!(
             shape.write(&table, &values, &mut writer),
             Err(TransportError::WrongKind {
-                codec: Kind::Number,
-                value: Kind::Text,
+                codec: CodecKind::Number,
+                value: CodecKind::Text,
             })
         );
     }
@@ -718,10 +723,10 @@ mod tests {
             assert!(table.get(kind.as_str()).is_some());
         }
         assert!(table.get("position").is_none());
-        assert!(table.load_platform(&[("position", Kind::Number)]));
+        assert!(table.load_platform(&[("position", CodecKind::Number)]));
         assert!(table.get("position").is_some());
         assert!(
-            !table.load_platform(&[("position", Kind::Number)]),
+            !table.load_platform(&[("position", CodecKind::Number)]),
             "common setup runs once and a second load says so"
         );
     }
@@ -729,7 +734,7 @@ mod tests {
     #[test]
     fn a_dependent_adds_its_own_declared_field_type() {
         let mut table = Codecs::new();
-        table.add("mine", Kind::Text);
+        table.add("mine", CodecKind::Text);
         assert_eq!(table.len(), PORTABLE_CODECS.len() + 1);
         assert!(table.get("mine").is_some());
     }

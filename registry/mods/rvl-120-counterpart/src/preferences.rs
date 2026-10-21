@@ -17,10 +17,39 @@ use std::fmt;
 pub const DEFAULT_OFFSET: i32 = -20;
 
 /// The style a fresh record and a reset one both prefer.
-pub const DEFAULT_STYLE: &str = "flat_gradient";
+pub const DEFAULT_STYLE: Style = Style::FlatGradient;
 
 /// The styles the widget toolkit publishes, in declaration order.
-pub const STYLES: [&str; 3] = ["flat_gradient", "flat", "raised"];
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Style {
+    /// A flat panel with a gradient.
+    FlatGradient,
+    /// A flat panel.
+    Flat,
+    /// A raised panel.
+    Raised,
+}
+
+impl Style {
+    /// Every published style in declaration order.
+    pub const ALL: [Self; 3] = [Self::FlatGradient, Self::Flat, Self::Raised];
+
+    /// The stable wire spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FlatGradient => "flat_gradient",
+            Self::Flat => "flat",
+            Self::Raised => "raised",
+        }
+    }
+
+    /// Admits a published wire spelling.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|style| style.as_str() == name)
+    }
+}
 
 /// Which corner of the screen status icons anchor to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,7 +103,7 @@ pub struct Preferences {
     corner: Corner,
     horizontal: i32,
     vertical: i32,
-    style: String,
+    style: Style,
     dirty: bool,
 }
 
@@ -96,7 +125,7 @@ impl Preferences {
             corner: Corner::BottomRight,
             horizontal: DEFAULT_OFFSET,
             vertical: DEFAULT_OFFSET,
-            style: DEFAULT_STYLE.to_owned(),
+            style: DEFAULT_STYLE,
             dirty: true,
         }
     }
@@ -121,8 +150,8 @@ impl Preferences {
 
     /// Returns the preferred widget style.
     #[must_use]
-    pub fn style(&self) -> &str {
-        &self.style
+    pub const fn style(&self) -> Style {
+        self.style
     }
 
     /// Returns whether the record has changes the next tick should push.
@@ -159,10 +188,10 @@ impl Preferences {
     /// because this is reached from a client-to-server payload and a name a
     /// client invented is ordinary untrusted input.
     pub fn set_style(&mut self, name: &str) -> bool {
-        if !STYLES.contains(&name) {
+        let Some(style) = Style::from_name(name) else {
             return false;
-        }
-        name.clone_into(&mut self.style);
+        };
+        self.style = style;
         self.dirty = true;
         true
     }
@@ -177,7 +206,7 @@ impl Preferences {
         self.corner = Corner::TopLeft;
         self.horizontal = DEFAULT_OFFSET;
         self.vertical = DEFAULT_OFFSET;
-        DEFAULT_STYLE.clone_into(&mut self.style);
+        self.style = DEFAULT_STYLE;
         self.dirty = true;
     }
 
@@ -203,7 +232,7 @@ impl Preferences {
         let mut bytes = vec![self.corner.ordinal()];
         bytes.extend_from_slice(&self.horizontal.to_be_bytes());
         bytes.extend_from_slice(&self.vertical.to_be_bytes());
-        let style = self.style.as_bytes();
+        let style = self.style.as_str().as_bytes();
         bytes.extend_from_slice(&crate::arithmetic::signed_len(style.len()).to_be_bytes());
         bytes.extend_from_slice(style);
         bytes
@@ -238,16 +267,14 @@ impl Preferences {
             return Err(PreferencesRefused::Trailing);
         }
         let name = std::str::from_utf8(body).map_err(|_| PreferencesRefused::NotText)?;
-        if !STYLES.contains(&name) {
-            return Err(PreferencesRefused::Style {
-                name: name.to_owned(),
-            });
-        }
+        let style = Style::from_name(name).ok_or_else(|| PreferencesRefused::Style {
+            name: name.to_owned(),
+        })?;
         Ok(Self {
             corner,
             horizontal,
             vertical,
-            style: name.to_owned(),
+            style,
             dirty: false,
         })
     }
@@ -306,7 +333,7 @@ mod tests {
         assert_eq!(fresh.corner(), Corner::BottomRight);
         assert_eq!(fresh.horizontal(), -20);
         assert_eq!(fresh.vertical(), -20);
-        assert_eq!(fresh.style(), "flat_gradient");
+        assert_eq!(fresh.style().as_str(), "flat_gradient");
     }
 
     #[test]
@@ -345,7 +372,7 @@ mod tests {
         let _ = preferences.take_for_send();
 
         assert!(!preferences.set_style("nothing_publishes_this"));
-        assert_eq!(preferences.style(), "flat_gradient");
+        assert_eq!(preferences.style().as_str(), "flat_gradient");
         assert!(!preferences.is_dirty());
 
         assert!(!preferences.set_corner(None));
@@ -363,7 +390,7 @@ mod tests {
         assert_eq!(preferences.corner(), Corner::TopLeft);
         assert_eq!(preferences.horizontal(), -20);
         assert_eq!(preferences.vertical(), -20);
-        assert_eq!(preferences.style(), "flat_gradient");
+        assert_eq!(preferences.style().as_str(), "flat_gradient");
 
         assert_ne!(
             preferences.corner(),
@@ -376,9 +403,9 @@ mod tests {
     #[test]
     fn the_style_setter_refuses_a_name_it_does_not_publish_and_takes_every_one_it_does() {
         let mut preferences = Preferences::new();
-        for name in STYLES {
+        for name in Style::ALL.map(Style::as_str) {
             assert!(preferences.set_style(name));
-            assert_eq!(preferences.style(), name);
+            assert_eq!(preferences.style().as_str(), name);
         }
         for name in ["", "FLAT", "flat ", "gradient"] {
             assert!(!preferences.set_style(name), "`{name}` is not published");
@@ -405,7 +432,7 @@ mod tests {
         assert_eq!(received.corner(), sent.corner());
         assert_eq!(received.horizontal(), -3);
         assert_eq!(received.vertical(), 400);
-        assert_eq!(received.style(), "raised");
+        assert_eq!(received.style().as_str(), "raised");
         assert!(
             !received.is_dirty(),
             "receiving what the other side already knows asks for no send back"
@@ -464,7 +491,7 @@ mod tests {
         );
 
         let mut lying = wire.clone();
-        let header = wire.len() - Preferences::new().style().len() - 4;
+        let header = wire.len() - Preferences::new().style().as_str().len() - 4;
         lying[header..header + 4].copy_from_slice(&i32::MAX.to_be_bytes());
         assert_eq!(
             Preferences::from_wire(&lying),

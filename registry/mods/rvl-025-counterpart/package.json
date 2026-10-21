@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "8f63d4d8620b0c197342d492756eb6ec90093783b9c3970ddf31c63bf1ba7279"
+        "sha256": "02843aacd7515afcf9844af010238257c7cf4c14e07145266717fb2b339c7dcf"
       },
       {
         "path": "aliases.json",
@@ -66,7 +66,7 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "97bfe11985f64bd2ef8db00f47ceaac6db5d7d9eaddcc6533d72b9f6dace63da"
+        "sha256": "5e060a40d9a28e69e0917a30a6559dc73be80bdf8779934a7eea4a81d4217917"
       },
       {
         "path": "src/capabilities/primitives.rs",
@@ -86,11 +86,11 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "ff9909fadb9224ed8b3fb90bba4033c27796286f7c0a667c324846494f011a3a"
+        "sha256": "184ce6537a0cbdda9100a2924d1d53b0a9e4f2cdcc7bc521580e1a8d0d59149f"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "5d06201661a6e019d661986f55840c591fb453b383db24126d48567d85016b5c"
+        "sha256": "ac15ed87f2902833c63ed998e0315a08804963858427c37332f74bfada69c977"
       },
       {
         "path": "src/machines.rs",
@@ -102,15 +102,15 @@
       },
       {
         "path": "src/network.rs",
-        "sha256": "11fdd7b669e926b061477541630a94417776834ce059451ad0b218bd638613be"
+        "sha256": "ed91cc7cb2fe97ab6f300dc793e85de95053d78d4bee000bddcd6617de6d339c"
       },
       {
         "path": "src/ordering.rs",
-        "sha256": "c78b8f1c3f6ba6f83dffcafe0dd264dd2a831a5b9e808f6bf1cf7f5a2d04f1a5"
+        "sha256": "4b264207b4eeaad581447234bb36567f184ed340defc12b379495ab14249f035"
       },
       {
         "path": "src/services.rs",
-        "sha256": "4511d5da4c30dacd56c1a5fe7d67def6985351deff6edc88f5542228395df8b3"
+        "sha256": "2a117f51897ba5f0f970cdc54181bfb20976148ad35fe0720d1f70226e0cbaa8"
       },
       {
         "path": "src/settings.rs",
@@ -122,7 +122,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "3eef42b1ec1919aa5340e3ef9bf76fc1253ab8ed485a2c01453f2e413940bac7"
+        "sha256": "eef97ba5697da585c3df407523dd20945b44717fa404cfc6e36a89e68d806b2d"
       },
       {
         "path": "src/tools.rs",

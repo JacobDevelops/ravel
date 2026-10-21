@@ -130,7 +130,7 @@ pub struct Entry {
     registries: Registries,
     cache: cache::Cache,
     colours: cache::Colours,
-    declared_colours: Vec<(String, u32)>,
+    declared_colours: Vec<(ContentId, u32)>,
     machines: BTreeMap<String, machines::Persisted>,
     reloads: u32,
     entered: Vec<LifecycleState>,
@@ -221,7 +221,7 @@ impl Entry {
 
     /// How many reloads this entry has rebuilt itself for.
     #[must_use]
-    pub const fn reloads(&self) -> u32 {
+    pub const fn reloads_taken(&self) -> u32 {
         self.reloads
     }
 
@@ -230,7 +230,7 @@ impl Entry {
     /// §13's colour map is cleared and rebuilt on each reload rather than
     /// accumulated, so what a reload rebuilds *from* is what a data load last
     /// declared and nothing older.
-    pub fn declare_colours(&mut self, declared: Vec<(String, u32)>) {
+    pub fn declare_colours(&mut self, declared: Vec<(ContentId, u32)>) {
         self.declared_colours = declared;
     }
 
@@ -651,12 +651,15 @@ mod tests {
         }
         assert_eq!(entry.entered(), LifecycleState::ALL);
 
-        entry.declare_colours(vec![("test:one".to_owned(), 0x00_FF_00)]);
+        entry.declare_colours(vec![("test:one".parse().expect("item id"), 0x00_FF_00)]);
         entry
             .observe(GameEvent::ResourcesReloaded)
             .expect("a reload is a signal this entry acts on");
-        assert_eq!(entry.reloads(), 1);
-        assert_eq!(entry.colours().of("test:one"), 0x00_FF_00);
+        assert_eq!(entry.reloads_taken(), 1);
+        assert_eq!(
+            entry.colours().of(&"test:one".parse().expect("item id")),
+            0x00_FF_00
+        );
 
         entry.declare_colours(Vec::new());
         entry
@@ -671,7 +674,7 @@ mod tests {
     #[test]
     fn a_thousand_ticks_leave_the_entry_exactly_as_they_found_it() {
         let mut entry = Entry::new();
-        entry.declare_colours(vec![("test:one".to_owned(), 1)]);
+        entry.declare_colours(vec![("test:one".parse().expect("item id"), 1)]);
         entry.reload();
         let before = format!("{entry:?}");
         for _ in 0..1000 {
@@ -687,7 +690,7 @@ mod tests {
             before,
             "two thousand ticks add nothing to the entry"
         );
-        assert_eq!(entry.reloads(), 1);
+        assert_eq!(entry.reloads_taken(), 1);
     }
 
     #[test]

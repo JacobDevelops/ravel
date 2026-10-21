@@ -52,7 +52,7 @@ pub trait Catalogue {
     fn tilling_tool(&self, entry: &ContentId) -> bool;
 
     /// The charge a stack holds, as a type identifier and an amount.
-    fn charge(&self, stack: &Stack) -> Option<(String, f64)>;
+    fn charge(&self, stack: &Stack) -> Option<(ContentId, f64)>;
 }
 
 /// A declared ingredient.
@@ -389,18 +389,18 @@ impl Enchanting {
 }
 
 /// A charge extraction recipe.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ChargeExtraction {
     /// The recipe's own identifier.
     pub id: String,
     /// What is consumed.
     pub input: Ingredient,
     /// The charge type the container has to hold or be empty of.
-    pub charge_type: String,
+    pub charge_type: ContentId,
     /// How much charge one extraction adds.
-    pub amount: u64,
+    pub amount: f64,
     /// How much a full container of this type holds.
-    pub requirement: u64,
+    pub requirement: f64,
 }
 
 impl ChargeExtraction {
@@ -413,13 +413,19 @@ impl ChargeExtraction {
     ///
     /// Answers `None` when the container is of another type or already full.
     #[must_use]
-    pub fn extract(&self, held: Option<(&str, u64)>) -> Option<u64> {
+    pub fn extract(&self, held: Option<(&ContentId, f64)>) -> Option<f64> {
         let current = match held {
-            None => 0,
-            Some((kind, _)) if kind != self.charge_type => return None,
+            None => 0.0,
+            Some((kind, _)) if kind != &self.charge_type => return None,
             Some((_, amount)) => amount,
         };
-        if current >= self.requirement {
+        if !current.is_finite()
+            || current < 0.0
+            || !self.amount.is_finite()
+            || self.amount <= 0.0
+            || !self.requirement.is_finite()
+            || current >= self.requirement
+        {
             return None;
         }
         Some((current + self.amount).min(self.requirement))
@@ -534,7 +540,7 @@ mod tests {
         tags: BTreeMap<ContentId, Vec<ContentId>>,
         components: BTreeMap<String, ContentId>,
         tools: Vec<ContentId>,
-        charges: BTreeMap<ContentId, (String, f64)>,
+        charges: BTreeMap<ContentId, (ContentId, f64)>,
     }
 
     impl Catalogue for Table {
@@ -552,7 +558,7 @@ mod tests {
             self.tools.iter().any(|tool| tool == entry)
         }
 
-        fn charge(&self, stack: &Stack) -> Option<(String, f64)> {
+        fn charge(&self, stack: &Stack) -> Option<(ContentId, f64)> {
             self.charges.get(&stack.entry).cloned()
         }
     }
@@ -856,14 +862,20 @@ mod tests {
         let recipe = ChargeExtraction {
             id: "test:extraction".to_owned(),
             input: Ingredient::Entry("a:one".parse().expect("item id")),
-            charge_type: "test:charge".to_owned(),
-            amount: 30,
-            requirement: 100,
+            charge_type: "test:charge".parse().expect("charge id"),
+            amount: 30.0,
+            requirement: 100.0,
         };
-        assert_eq!(recipe.extract(None), Some(30));
-        assert_eq!(recipe.extract(Some(("test:charge", 80))), Some(100));
-        assert_eq!(recipe.extract(Some(("test:charge", 100))), None);
-        assert_eq!(recipe.extract(Some(("test:other", 0))), None);
+        let charge = "test:charge".parse().expect("charge id");
+        let other = "test:other".parse().expect("charge id");
+        assert_eq!(recipe.extract(None), Some(30.0));
+        assert_eq!(recipe.extract(Some((&charge, 80.0))), Some(100.0));
+        assert_eq!(recipe.extract(Some((&charge, 100.0))), None);
+        assert_eq!(recipe.extract(Some((&other, 0.0))), None);
+        assert_eq!(recipe.extract(Some((&charge, 0.5))), Some(30.5));
+        for invalid in [f64::NAN, f64::INFINITY, -1.0] {
+            assert_eq!(recipe.extract(Some((&charge, invalid))), None);
+        }
     }
 
     #[test]
@@ -878,7 +890,7 @@ mod tests {
         let mut table = Table::default();
         table.charges.insert(
             "a:container".parse().expect("item id"),
-            ("test:charge".to_owned(), 5.0),
+            ("test:charge".parse().expect("charge id"), 5.0),
         );
         let recipe = Emptying {
             id: "test:emptying".to_owned(),
@@ -911,7 +923,7 @@ mod tests {
         let mut table = Table::default();
         table.charges.insert(
             "a:container".parse().expect("item id"),
-            ("test:charge".to_owned(), 0.0),
+            ("test:charge".parse().expect("charge id"), 0.0),
         );
         assert!(!Ingredient::ChargedContainer.matches(&stack("a:container", 1), &table));
     }

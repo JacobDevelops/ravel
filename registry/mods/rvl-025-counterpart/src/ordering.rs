@@ -224,7 +224,7 @@ impl Ordering {
 
     /// Returns how many dimensions hold anything.
     #[must_use]
-    pub fn dimensions(&self) -> usize {
+    pub fn queued_dimension_count(&self) -> usize {
         self.queues
             .values()
             .filter(|ranks| ranks.iter().any(|queue| !queue.is_empty()))
@@ -234,10 +234,10 @@ impl Ordering {
     /// Returns how many dimensions the service is holding queues for.
     ///
     /// The figure [`MAX_DIMENSIONS`] bounds, which is not the same as
-    /// [`Ordering::dimensions`]: a dimension keeps its empty ranks until it is
+    /// [`Ordering::queued_dimension_count`]: a dimension keeps its empty ranks until it is
     /// drained.
     #[must_use]
-    pub fn tracked_dimensions(&self) -> usize {
+    pub fn tracked_dimension_count(&self) -> usize {
         self.queues.len()
     }
 
@@ -356,7 +356,7 @@ mod tests {
         ordering
             .enqueue("counterpart:high", 0, "high")
             .expect("a legal rank");
-        assert_eq!(ordering.dimensions(), 2);
+        assert_eq!(ordering.queued_dimension_count(), 2);
 
         assert_eq!(names(&ordering.drain("counterpart:deep")), ["deep"]);
         assert_eq!(
@@ -498,7 +498,7 @@ mod tests {
         for (_, outcome) in &drained {
             assert_eq!(names(outcome), ["dependent"]);
         }
-        assert_eq!(ordering.dimensions(), 0);
+        assert_eq!(ordering.queued_dimension_count(), 0);
         assert_eq!(
             ordering.stamp(),
             1,
@@ -532,7 +532,7 @@ mod tests {
                 .enqueue(&format!("counterpart:d{index}"), 0, "dependent")
                 .expect("a legal rank");
         }
-        assert_eq!(ordering.tracked_dimensions(), MAX_DIMENSIONS);
+        assert_eq!(ordering.tracked_dimension_count(), MAX_DIMENSIONS);
         assert_eq!(
             ordering.enqueue("counterpart:one_too_many", 0, "dependent"),
             Err(OrderingRefused::Dimensions {
@@ -541,7 +541,7 @@ mod tests {
         );
 
         ordering.drain_all();
-        assert_eq!(ordering.tracked_dimensions(), 0);
+        assert_eq!(ordering.tracked_dimension_count(), 0);
         assert!(
             ordering
                 .enqueue("counterpart:one_too_many", 0, "dependent")
@@ -588,7 +588,7 @@ mod tests {
         let before = ordering.stamp();
         ordering.clear();
 
-        assert_eq!(ordering.dimensions(), 0);
+        assert_eq!(ordering.queued_dimension_count(), 0);
         assert_eq!(ordering.queued("counterpart:high"), 0);
         assert_eq!(
             ordering.stamp(),

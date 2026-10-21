@@ -398,12 +398,16 @@ fn parse_at(
             Elements::Many(elements) => Condition::AnyOf(elements),
         },
         "one_of_two" => match parse_elements(value, vocabulary, depth, report) {
-            Elements::Many(mut elements) if elements.len() == 2 => {
-                let second = elements.pop().unwrap_or(Condition::Never);
-                let first = elements.pop().unwrap_or(Condition::Never);
-                Condition::OneOfTwo(Box::new(first), Box::new(second))
+            Elements::Many(elements) => {
+                if let Ok([first, second]) = <[Condition; 2]>::try_from(elements) {
+                    Condition::OneOfTwo(Box::new(first), Box::new(second))
+                } else {
+                    report.refused_forms += 1;
+                    Condition::Never
+                }
             }
-            Elements::Refused | Elements::One(_) | Elements::Many(_) => {
+            Elements::Refused => Condition::Never,
+            Elements::One(_) => {
                 report.refused_forms += 1;
                 Condition::Never
             }
@@ -700,7 +704,7 @@ mod tests {
         for word in ["all_of", "any_of"] {
             let (empty, report) = parse(&json!({ "test": word, "of": [] }));
             assert_eq!(empty, Condition::Never, "{word} of nothing");
-            assert!(report.refused_forms >= 1);
+            assert_eq!(report.refused_forms, 1);
 
             let (single, _) = parse(&json!({
                 "test": word,
@@ -767,7 +771,8 @@ mod tests {
             let elements: Vec<_> = (0..arity)
                 .map(|_| json!({ "test": "same_block" }))
                 .collect();
-            let (parsed, _) = parse(&json!({ "test": "one_of_two", "of": elements }));
+            let (parsed, report) = parse(&json!({ "test": "one_of_two", "of": elements }));
+            assert_eq!(report.refused_forms, 1, "one refusal for arity {arity}");
             assert_eq!(
                 parsed,
                 Condition::Never,

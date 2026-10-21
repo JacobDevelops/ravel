@@ -264,7 +264,7 @@ pub struct Contributed {
 /// A dependent whose contribution failed, and why.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct Failure {
+pub struct ContributionFailure {
     /// Whose declaration failed.
     pub namespace: String,
     /// The typed reason the contribution failed.
@@ -278,7 +278,7 @@ pub struct Contribution {
     /// The packs that reached the game.
     pub packs: Vec<Contributed>,
     /// The dependents whose declarations did not, each with its cause.
-    pub failures: Vec<Failure>,
+    pub failures: Vec<ContributionFailure>,
 }
 
 /// What one dependent declares and what its file actually holds.
@@ -335,7 +335,7 @@ pub fn contribute(declaring: &[Declaring], kind: PackKind, side: Side) -> Contri
     let mut contribution = Contribution::default();
     for dependent in declaring {
         if dependent.declarations.len() > MAX_DECLARED_PACKS {
-            contribution.failures.push(Failure {
+            contribution.failures.push(ContributionFailure {
                 namespace: dependent.namespace.clone(),
                 cause: PackError::TooMany(MAX_DECLARED_PACKS),
             });
@@ -343,7 +343,7 @@ pub fn contribute(declaring: &[Declaring], kind: PackKind, side: Side) -> Contri
         }
         for document in &dependent.declarations {
             match Declaration::decode(document) {
-                Err(error) => contribution.failures.push(Failure {
+                Err(error) => contribution.failures.push(ContributionFailure {
                     namespace: dependent.namespace.clone(),
                     cause: error,
                 }),

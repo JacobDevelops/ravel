@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "fbaacdf39566b1ecba2ae8a339acd78356598c49c80a2cdb9af0b9aedc473893"
+        "sha256": "b775e12846cbdad7d70cf2e7d5577316ea8fbb8a2be4a6ca05e24df301de8f95"
       },
       {
         "path": "aliases.json",
@@ -66,7 +66,7 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "ccf04aeb68628127672eb1d83d27e5f345c0323b183302f63c0c339e7f5b0597"
+        "sha256": "d747a19e096d659dd5ee108c214251bdc70ac323cb0dfcb420258dfb27668154"
       },
       {
         "path": "src/dumps.rs",
@@ -86,7 +86,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "d5db1c502504b614a4bf4aea26572e0be2d6b9aa9ca7f0681225cf8663bec6d6"
+        "sha256": "6c1584092a2bef6f787fd9f180d3ae7c566ce4208d2067768bb6a81047bb51b7"
       },
       {
         "path": "src/machines.rs",
@@ -94,11 +94,11 @@
       },
       {
         "path": "src/model.rs",
-        "sha256": "c67c71211c7fef08f551000c76b1b4e731d775d954739cfdb691991a229b4052"
+        "sha256": "6db5d3a3cafc08e5a4637fcc4a39ec12d579c7cb1a4e1b9624e580c6b0fb2741"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "ae1ea68129e4ceabf5043e9583a576a3d2e3ffd8b26eaa5f2c4810e26830cb2d"
+        "sha256": "81d7822f3860b1e59f6ef5564cdaa31d0d2d3eaf1d056604e4019dd36aa6584e"
       },
       {
         "path": "src/recipes/selection.rs",
@@ -114,7 +114,7 @@
       },
       {
         "path": "src/world.rs",
-        "sha256": "abee3eebf656e34a6897e7540dc6912fd87e50dfb9601f003fc5b1a42b5c47b8"
+        "sha256": "550718fd9c85a2f19d9b96f6b45bb51aa795d548ab4cb38f1c5fa7b89113bcbb"
       }
     ]
   },

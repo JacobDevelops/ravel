@@ -258,3 +258,8 @@ tree alone is a red test. It was proved by mutation like the ten above: renaming
 
 What no test here can reach is anything about a running game: no quad this package produces has ever
 been baked, drawn or seen, because §11 is host-blocked and the surface it needs does not exist.
+
+## Public contract consistency
+
+One-of-two parsing converts exactly two operands to an array. A refused list is counted once, and
+unreachable pop fallbacks are absent. Client counts use `reloads_taken` and `pending_documents`.

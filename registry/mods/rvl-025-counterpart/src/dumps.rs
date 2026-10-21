@@ -95,7 +95,7 @@ pub fn capabilities_document() -> String {
         .collect();
     let document = json!({
         "groups": groups,
-        "builtInData": capabilities::BUILT_IN_DATA,
+        "builtInData": capabilities::BuiltInData::ALL.map(capabilities::BuiltInData::as_str),
     });
     format!("{document}\n")
 }

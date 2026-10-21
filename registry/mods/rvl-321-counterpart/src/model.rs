@@ -350,9 +350,8 @@ pub(crate) fn own(path: &str) -> ContentId {
 /// The six tiers this entry ships.
 ///
 /// Five numbered one to five with matching values, and one side tier for the
-/// elemental crops carrying value one. The side tier therefore sorts with the
-/// first tier, and after the adjust pass shares its ground and material, so an
-/// elemental crop is drop-eligible on the first tier's ground.
+/// elemental crops carrying value one, so the side tier sorts with the first
+/// tier. Its ground and material are whatever the adjust pass gives it.
 #[must_use]
 pub fn shipped_tiers() -> Vec<Tier> {
     let mut tiers: Vec<Tier> = (1..=5)

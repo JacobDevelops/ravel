@@ -7,7 +7,8 @@
 //! non-empty. [`matches()`] is written as exactly that call, so the preview a grid
 //! draws and the craft it performs cannot disagree.
 //!
-//! Every number here is integer arithmetic and both truncations are the
+//! Material worth is fractional, so units accumulate as `f64`. The per-unit cost
+//! division and final mended amount both truncate; those two truncations are the
 //! observable behaviour, so both are reproduced rather than rounded.
 
 use std::fmt::Write as _;

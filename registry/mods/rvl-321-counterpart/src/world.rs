@@ -4,12 +4,9 @@
 //! are declared as data and the one piece of behaviour that is not a parameter
 //! is the substitution predicate, which is portable and is written out.
 //!
-//! What Ravel does publish is the *set* of mods a world was shaped by, so this
-//! entry declares itself in a [`WorldShaping`]. That is what makes removing it
-//! from a world it deposited into a refusal rather than chunks that quietly
-//! stop matching the ones already on disk. A deposit switched off in
-//! configuration does not undeclare the entry: it has shaped whatever generated
-//! while it was on.
+//! The entry also describes its shaping set in a [`WorldShaping`] declaration.
+//! The published host does not admit that declaration or enforce saved-world
+//! removal refusals. Switching off a deposit does not change the declaration.
 //!
 //! Whether a deposit generates at all is the setting itself, read at the moment
 //! biomes are constructed, so switching one off affects chunks generated
@@ -143,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn a_world_this_entry_deposited_into_is_refused_once_the_entry_is_gone() {
+    fn a_shaping_record_can_compare_the_declared_set_without_host_admission() {
         use ravel_sdk::world_shaping::ShapingRecord;
 
         let mut at_creation = WorldShaping::default();

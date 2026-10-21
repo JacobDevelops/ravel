@@ -77,20 +77,20 @@ impl Tag {
 
     /// Returns the tag's kind, which is what the family checks read.
     #[must_use]
-    pub const fn kind(&self) -> Kind {
+    pub const fn kind(&self) -> TagKind {
         match self {
-            Self::Byte(_) => Kind::Byte,
-            Self::Short(_) => Kind::Short,
-            Self::Int(_) => Kind::Int,
-            Self::Long(_) => Kind::Long,
-            Self::Float(_) => Kind::Float,
-            Self::Double(_) => Kind::Double,
-            Self::Text(_) => Kind::Text,
-            Self::List(_) => Kind::List,
-            Self::ByteArray(_) => Kind::ByteArray,
-            Self::IntArray(_) => Kind::IntArray,
-            Self::LongArray(_) => Kind::LongArray,
-            Self::Compound(_) => Kind::Compound,
+            Self::Byte(_) => TagKind::Byte,
+            Self::Short(_) => TagKind::Short,
+            Self::Int(_) => TagKind::Int,
+            Self::Long(_) => TagKind::Long,
+            Self::Float(_) => TagKind::Float,
+            Self::Double(_) => TagKind::Double,
+            Self::Text(_) => TagKind::Text,
+            Self::List(_) => TagKind::List,
+            Self::ByteArray(_) => TagKind::ByteArray,
+            Self::IntArray(_) => TagKind::IntArray,
+            Self::LongArray(_) => TagKind::LongArray,
+            Self::Compound(_) => TagKind::Compound,
         }
     }
 
@@ -170,7 +170,7 @@ impl Tag {
 
 /// The concrete kinds a tag may be.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum Kind {
+pub enum TagKind {
     /// [`Tag::Byte`].
     Byte,
     /// [`Tag::Short`].
@@ -197,7 +197,7 @@ pub enum Kind {
     Compound,
 }
 
-impl Kind {
+impl TagKind {
     /// Returns whether this kind holds a number.
     #[must_use]
     pub const fn is_numeric(self) -> bool {

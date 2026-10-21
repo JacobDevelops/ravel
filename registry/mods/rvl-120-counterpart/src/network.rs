@@ -974,13 +974,13 @@ mod tests {
 
         let mut preferences = Preferences::new();
         assert!(chosen.apply(&mut preferences));
-        assert_eq!(preferences.style(), "raised");
+        assert_eq!(preferences.style().as_str(), "raised");
 
         let invented = StyleChoice {
             style: "whatever_a_client_typed".to_owned(),
         };
         assert!(!invented.apply(&mut preferences));
-        assert_eq!(preferences.style(), "raised");
+        assert_eq!(preferences.style().as_str(), "raised");
     }
 
     #[test]

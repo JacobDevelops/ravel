@@ -111,8 +111,10 @@ fn rvl180_a_malformed_readout_leaves_the_loader_owner_running() {
 #[test]
 fn rvl210_an_undeclared_packet_leaves_its_receiving_mod_running() {
     let side = Side::DedicatedServer;
+    let expected =
+        assert_declined_packets_keep_running(rvl_210_counterpart::Entry::new(), side, []);
     let owner = rvl_210_counterpart::Entry::new();
     let delivery = undeclared(&owner, side);
     let owner = assert_declined_packets_keep_running(owner, side, [delivery]);
-    assert_eq!(owner.carried(), 0);
+    assert_eq!(format!("{owner:?}"), format!("{expected:?}"));
 }

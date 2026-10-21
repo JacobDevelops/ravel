@@ -56,19 +56,7 @@ pub struct Colour {
 /// A channel outside the unit interval packs at the edge, which is this
 /// package's own answer and is declared in the module documentation above.
 fn channel_byte(value: f32) -> u8 {
-    let scaled = value * 255.0;
-    if scaled.is_nan() {
-        return 0;
-    }
-    let truncated = scaled.trunc();
-    if truncated <= 0.0 {
-        0
-    } else if truncated >= 255.0 {
-        255
-    } else {
-        num_traits::ToPrimitive::to_u8(&truncated)
-            .expect("an integral channel strictly between zero and 255 fits in a byte")
-    }
+    num_traits::AsPrimitive::<u8>::as_(value * 255.0)
 }
 
 impl Colour {

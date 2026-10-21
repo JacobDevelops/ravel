@@ -147,7 +147,7 @@ impl ClientState {
 
     /// Returns how many reloads have been taken.
     #[must_use]
-    pub const fn reloads(&self) -> usize {
+    pub const fn reloads_taken(&self) -> usize {
         self.reloads
     }
 
@@ -159,7 +159,7 @@ impl ClientState {
 
     /// Returns how many documents are waiting for the next reload.
     #[must_use]
-    pub fn pending(&self) -> usize {
+    pub fn pending_documents(&self) -> usize {
         self.pending.len()
     }
 }
@@ -450,7 +450,7 @@ mod tests {
                 .expect("a client accepts one")
         );
         assert_eq!(
-            library.client().expect("client").pending(),
+            library.client().expect("client").pending_documents(),
             1,
             "and holds it until a reload"
         );
@@ -468,7 +468,7 @@ mod tests {
         let model = resolved.model().expect("the kind claims it");
         let quads = model.quads(Face::North, &Context::default());
         assert_eq!(quads.len(), 4, "and the claimed kind draws");
-        assert_eq!(library.client().expect("client").reloads(), 1);
+        assert_eq!(library.client().expect("client").reloads_taken(), 1);
     }
 
     #[test]
@@ -478,7 +478,7 @@ mod tests {
         library
             .observe(GameEvent::ResourcesReloaded)
             .expect("the reload runs");
-        assert_eq!(library.client().expect("client").pending(), 0);
+        assert_eq!(library.client().expect("client").pending_documents(), 0);
         assert!(
             library
                 .model("base:wall")
@@ -497,7 +497,7 @@ mod tests {
             Resolved::Unclaimed,
             "the queue is drained rather than replayed"
         );
-        assert_eq!(library.client().expect("client").reloads(), 2);
+        assert_eq!(library.client().expect("client").reloads_taken(), 2);
     }
 
     #[test]
@@ -514,7 +514,7 @@ mod tests {
         }
         assert_eq!(accepted, MAX_PENDING);
         let client = library.client().expect("client");
-        assert_eq!(client.pending(), MAX_PENDING);
+        assert_eq!(client.pending_documents(), MAX_PENDING);
         assert_eq!(
             client.refused_documents(),
             64,
@@ -524,7 +524,7 @@ mod tests {
         library
             .observe(GameEvent::ResourcesReloaded)
             .expect("the reload runs");
-        assert_eq!(library.client().expect("client").pending(), 0);
+        assert_eq!(library.client().expect("client").pending_documents(), 0);
         assert!(
             library.supply("base:after", wall()).expect("client"),
             "and the queue takes documents again once it is drained"
@@ -579,8 +579,8 @@ mod tests {
         for event in [GameEvent::ClientTick, GameEvent::ServerTick] {
             library.observe(event).expect("observed");
         }
-        assert_eq!(library.client().expect("client").reloads(), 0);
-        assert_eq!(library.client().expect("client").pending(), 1);
+        assert_eq!(library.client().expect("client").reloads_taken(), 0);
+        assert_eq!(library.client().expect("client").pending_documents(), 1);
         assert_eq!(
             library.events_observed(),
             2,

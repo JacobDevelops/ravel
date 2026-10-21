@@ -8,12 +8,12 @@
 //! error.
 //!
 //! The store interfaces themselves are RVL-210's, consumed from there:
-//! [`Store`], [`SlottedStore`], [`Attempt`] and [`Slotted`] are its types.
+//! [`QuantityStore`], [`SlottedStore`], [`Attempt`] and [`Slotted`] are its types.
 
 use core::fmt;
 
 use rvl_210_counterpart::quantity::{Amount, Conditions};
-use rvl_210_counterpart::storage::{Attempt, Slotted, SlottedStore, Store};
+use rvl_210_counterpart::storage::{Attempt, QuantityStore, Slotted, SlottedStore};
 
 use crate::kinds::{
     Charge, Fluid as KindOfFluid, Ingredient, PORTION, SCALAR, STACKABLE, Scalar, Stackable,
@@ -162,7 +162,7 @@ pub enum Published {
 /// The empty store a missing capability answers, of the adapter's own kind.
 ///
 /// Section eight asks for an empty store, not an empty store of some other
-/// kind: a dependent reading [`Store::kind`] off what a missing fluid capability
+/// kind: a dependent reading [`QuantityStore::kind`] off what a missing fluid capability
 /// yielded has to be told the fluid kind.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Absent {
@@ -191,9 +191,9 @@ impl Absent {
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Items(empty) => Store::kind(empty).name(),
-            Self::Fluid(empty) => Store::kind(empty).name(),
-            Self::Charge(empty) => Store::kind(empty).name(),
+            Self::Items(empty) => QuantityStore::kind(empty).name(),
+            Self::Fluid(empty) => QuantityStore::kind(empty).name(),
+            Self::Charge(empty) => QuantityStore::kind(empty).name(),
         }
     }
 }
@@ -300,7 +300,7 @@ where
     }
 }
 
-impl<K: Ingredient> Store for Empty<K>
+impl<K: Ingredient> QuantityStore for Empty<K>
 where
     K::Instance: Clone + fmt::Debug + Eq,
 {
@@ -520,7 +520,7 @@ where
     }
 }
 
-impl<K: Ingredient> Store for Shelf<K>
+impl<K: Ingredient> QuantityStore for Shelf<K>
 where
     K::Instance: Clone + fmt::Debug + Eq,
 {
@@ -660,7 +660,7 @@ where
     }
 }
 
-impl<K: Ingredient> Store for Pool<K>
+impl<K: Ingredient> QuantityStore for Pool<K>
 where
     K::Instance: Clone + fmt::Debug + Eq,
 {
@@ -783,7 +783,7 @@ where
     /// Whether the object publishes neither half, in which case every answer is
     /// the empty one.
     #[must_use]
-    pub const fn absent(&self) -> bool {
+    pub const fn is_absent(&self) -> bool {
         self.slotted.is_none() && self.slotless.is_none()
     }
 
@@ -836,7 +836,7 @@ where
     }
 }
 
-impl<K: Ingredient> Store for Combined<K>
+impl<K: Ingredient> QuantityStore for Combined<K>
 where
     K::Instance: Clone + fmt::Debug + Eq,
 {
@@ -872,7 +872,7 @@ where
 /// Section eight records that the original reports **one more slot than it
 /// holds**, so that the last index always reads empty and can be inserted into:
 /// a host store interface has no insert-anywhere operation, and the phantom slot
-/// is the only way to expose one. RVL-210's [`Store`] has a slotless insert, so
+/// is the only way to expose one. RVL-210's [`QuantityStore`] has a slotless insert, so
 /// there is nothing here for a phantom slot to work around and this reports the
 /// entries it holds and no more. Section eight says in as many words that a
 /// counterpart with a slotless insert should not have one.
@@ -960,7 +960,7 @@ impl HostCharge {
     }
 }
 
-impl Store for HostCharge {
+impl QuantityStore for HostCharge {
     type Kind = Scalar;
 
     fn kind(&self) -> &Scalar {
@@ -1483,7 +1483,7 @@ mod tests {
     #[test]
     fn a_combined_store_over_neither_half_answers_the_empty_answer_everywhere() {
         let mut combined: Combined<Stackable> = Combined::new(Stackable::default(), None, None);
-        assert!(combined.absent());
+        assert!(combined.is_absent());
         assert_eq!(combined.capacity(), 0);
         assert_eq!(combined.slots(), 0);
         assert_eq!(combined.contents().len(), 0);

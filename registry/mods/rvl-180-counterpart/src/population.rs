@@ -124,7 +124,7 @@ impl Population {
 
     /// Returns how many kinds are counted.
     #[must_use]
-    pub fn kinds(&self) -> usize {
+    pub fn kind_count(&self) -> usize {
         self.counted.len()
     }
 
@@ -260,7 +260,7 @@ mod tests {
         population.record("bat", 1, false).expect("a legal kind");
         assert_eq!(population.count_of("cow"), 6);
         assert_eq!(population.total(), 7);
-        assert_eq!(population.kinds(), 2);
+        assert_eq!(population.kind_count(), 2);
         assert!(!population.is_empty());
     }
 
@@ -287,7 +287,7 @@ mod tests {
                 outcome.expect("a kind below the bound is recorded");
             }
         }
-        assert_eq!(population.kinds(), MAX_KINDS);
+        assert_eq!(population.kind_count(), MAX_KINDS);
     }
 
     #[test]
@@ -299,7 +299,7 @@ mod tests {
                 Err(PopulationError::Name { .. })
             ));
         }
-        assert_eq!(population.kinds(), 0);
+        assert_eq!(population.kind_count(), 0);
         assert!(is_legal_kind("namespace:kind_one"));
     }
 
@@ -332,12 +332,12 @@ mod tests {
                 .record(&format!("kind_{index}"), 1, false)
                 .expect("a kind below the bound is recorded");
         }
-        assert_eq!(population.kinds(), MAX_KINDS);
+        assert_eq!(population.kind_count(), MAX_KINDS);
 
         population.remove(&Selector::Everything);
         assert!(population.is_empty());
         assert_eq!(
-            population.kinds(),
+            population.kind_count(),
             0,
             "a swept population that still counts its kinds refuses every later kind forever"
         );

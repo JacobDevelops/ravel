@@ -1084,7 +1084,7 @@ mod tests {
         entry
             .observe(GameEvent::ServerTick)
             .expect("the entry records what it observes");
-        assert_eq!(entry.ordering().dimensions(), 0);
+        assert_eq!(entry.ordering().queued_dimension_count(), 0);
         assert_eq!(entry.ordering().stamp(), 1);
     }
 

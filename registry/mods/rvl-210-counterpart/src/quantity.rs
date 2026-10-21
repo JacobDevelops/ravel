@@ -20,9 +20,8 @@ use core::fmt;
 
 /// How much of something is held.
 ///
-/// Unsigned and saturating everywhere: an amount is a count, a wrapped sum is a
-/// smaller number than the one already held, and section ten's collections are
-/// fed by decoded input.
+/// Unsigned, with sums saturating: a wrapped sum is smaller than the amount
+/// already held, and section ten's collections are fed by decoded input.
 pub type Amount = u64;
 
 /// The number of condition slots a kind may name.
@@ -260,7 +259,6 @@ impl<K: QuantityKind> List<K> {
     /// Returns how much was taken, which is never more than is held.
     pub fn take(&mut self, value: &K::Instance, amount: Amount, under: Conditions) -> Amount {
         let mut left = amount;
-        let mut taken: Amount = 0;
         let kind = &self.kind;
         for entry in &mut self.held {
             if left == 0 {
@@ -272,10 +270,9 @@ impl<K: QuantityKind> List<K> {
             let step = entry.amount.min(left);
             entry.amount -= step;
             left -= step;
-            taken = taken.saturating_add(step);
         }
         self.held.retain(|entry| entry.amount > 0);
-        taken
+        amount - left
     }
 
     /// Every entry a predicate admits, without copying the list.

@@ -147,7 +147,7 @@ impl Carrier {
     /// Takes from a slot, or reports what is there without taking it.
     ///
     /// A simulated extraction answers with the slot's contents and leaves them.
-    /// A real one clears the slot outright and ignores the amount asked for,
+    /// A real one clears the slot outright: there is no partial extraction,
     /// which is §10's rule and is why a slot never holds a partial stack.
     #[must_use]
     pub fn extract(&mut self, slot: usize, simulate: bool) -> Option<Stack> {

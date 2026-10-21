@@ -33,7 +33,7 @@ use std::collections::BTreeMap;
 use num_traits::ToPrimitive;
 use ravel_sdk::JsonValue;
 
-use crate::data::{Kind, Tag};
+use crate::data::{Tag, TagKind};
 
 mod conditions;
 
@@ -58,12 +58,12 @@ impl Family {
 
     /// Returns whether a candidate tag belongs to this family.
     #[must_use]
-    pub const fn admits(self, kind: Kind) -> bool {
+    pub const fn admits(self, kind: TagKind) -> bool {
         match self {
-            Self::Text => matches!(kind, Kind::Text),
+            Self::Text => matches!(kind, TagKind::Text),
             Self::List => kind.is_list(),
             Self::Number => kind.is_numeric(),
-            Self::Compound => matches!(kind, Kind::Compound),
+            Self::Compound => matches!(kind, TagKind::Compound),
         }
     }
 

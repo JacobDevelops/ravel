@@ -20,7 +20,7 @@
 //! - **The inner failure names its cause.** The original's outer scan logs the
 //!   failure with its cause and carries on, which is right; the inner
 //!   registration catches its failure, discards the cause, and logs a message
-//!   that does not say what went wrong. Every [`Failure`] here carries both who
+//!   that does not say what went wrong. Every [`ContributionFailure`] here carries both who
 //!   and why.
 //!
 //! **Host-blocked.** Ravel publishes no block-outline interception point and no
@@ -38,8 +38,8 @@ use crate::colour::Colour;
 mod declarations;
 
 pub use declarations::{
-    Contributed, Contribution, Declaration, Declaring, Failure, MAX_DECLARED_PACKS, PACK_ROOT,
-    PackError, PackKind, Spellings, SpellingsUnavailable, contribute,
+    Contributed, Contribution, ContributionFailure, Declaration, Declaring, MAX_DECLARED_PACKS,
+    PACK_ROOT, PackError, PackKind, Spellings, SpellingsUnavailable, contribute,
 };
 
 /// One line of an outline: a start, an end and a normal.
@@ -159,13 +159,13 @@ impl Outlines {
 
     /// Returns how many distinct arrays are held.
     #[must_use]
-    pub fn arrays(&self) -> usize {
+    pub fn array_count(&self) -> usize {
         self.arrays.len()
     }
 
     /// Returns how many states have an outline.
     #[must_use]
-    pub fn states(&self) -> usize {
+    pub fn state_count(&self) -> usize {
         self.by_state.len()
     }
 
@@ -330,9 +330,9 @@ mod tests {
     use ravel_sdk::{Side, json};
 
     use super::{
-        Contributed, Declaration, Declaring, Drawn, FLOATS_PER_SEGMENT, Failure, OutlineError,
-        Outlines, PackError, PackKind, Segment, Spellings, SpellingsUnavailable, StateId,
-        contribute, draw, flatten_segment, load,
+        Contributed, ContributionFailure, Declaration, Declaring, Drawn, FLOATS_PER_SEGMENT,
+        OutlineError, Outlines, PackError, PackKind, Segment, Spellings, SpellingsUnavailable,
+        StateId, contribute, draw, flatten_segment, load,
     };
 
     fn spellings() -> Spellings {
@@ -508,7 +508,7 @@ mod tests {
         assert_eq!(contribution.packs.len(), 1);
         assert_eq!(contribution.packs[0].namespace, "sound");
         assert_eq!(contribution.failures.len(), 1);
-        let Failure { namespace, cause } = &contribution.failures[0];
+        let ContributionFailure { namespace, cause } = &contribution.failures[0];
         assert_eq!(namespace, "broken");
         assert_eq!(
             cause,
@@ -566,8 +566,12 @@ mod tests {
             &spellings(),
         )
         .expect("one inline shape and one named");
-        assert_eq!(outlines.states(), 2);
-        assert_eq!(outlines.arrays(), 1, "identical outlines share one array");
+        assert_eq!(outlines.state_count(), 2);
+        assert_eq!(
+            outlines.array_count(),
+            1,
+            "identical outlines share one array"
+        );
         assert_eq!(outlines.at(StateId(1)), outlines.at(StateId(2)));
     }
 
@@ -582,7 +586,7 @@ mod tests {
             &spellings(),
         )
         .expect("two well-formed documents");
-        assert_eq!(outlines.arrays(), 2);
+        assert_eq!(outlines.array_count(), 2);
         assert_ne!(outlines.at(StateId(1)), outlines.at(StateId(2)));
     }
 
@@ -653,8 +657,8 @@ mod tests {
         let mut mapping = BTreeMap::new();
         mapping.insert(StateId(1), 9);
         let outlines = Outlines::from_arrays(Vec::new(), mapping);
-        assert_eq!(outlines.states(), 0);
-        assert_eq!(outlines.states(), 0);
+        assert_eq!(outlines.state_count(), 0);
+        assert_eq!(outlines.state_count(), 0);
     }
 
     #[test]
@@ -693,8 +697,8 @@ mod tests {
     #[test]
     fn an_empty_load_holds_nothing_and_says_so() {
         let outlines = load(&[], &[], &spellings()).expect("nothing to load");
-        assert_eq!(outlines.states(), 0);
-        assert_eq!(outlines.arrays(), 0);
+        assert_eq!(outlines.state_count(), 0);
+        assert_eq!(outlines.array_count(), 0);
     }
 
     #[test]

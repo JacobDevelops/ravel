@@ -17,7 +17,7 @@ use core::fmt;
 
 use rvl_210_counterpart::capabilities::{Address, CapabilityRefused, Registry, TargetClass};
 use rvl_210_counterpart::quantity::Amount;
-use rvl_210_counterpart::storage::{Attempt, Store};
+use rvl_210_counterpart::storage::{Attempt, QuantityStore};
 
 use crate::kinds::Ingredient;
 use crate::storage::Pool;

@@ -317,13 +317,9 @@ impl Mod for Entry {
         if matches!(command, Command::Reclaim | Command::Sweep) {
             return Err(ModError::refused(OPERATOR_ONLY));
         }
-        let report = self
-            .console
+        self.console
             .run(command, invocation.side, &invocation.arguments)
             .map_err(ModError::from_display)?;
-        for key in report.keys() {
-            self.console.retain(key.to_string());
-        }
         Ok(())
     }
 
@@ -499,15 +495,15 @@ mod tests {
     }
 
     #[test]
-    fn a_count_the_host_drove_is_still_reported_through_a_retained_note() {
+    fn the_open_tally_does_not_retain_shared_state() {
         let mut shared = Entry::new(Side::DedicatedServer);
         shared
             .run_command(&invocation("entity_tally", Side::DedicatedServer, &[]))
             .expect("a server runs the count");
         assert_eq!(
             shared.console().notes_held(),
-            1,
-            "only the reclamation is exempt from retaining its report"
+            0,
+            "an open read-only command must not fill operator-owned retained state"
         );
     }
 
@@ -546,7 +542,7 @@ mod tests {
         let mut server = Entry::new(Side::DedicatedServer);
         assert!(server.publish(&readout).expect("a server may send one"));
         assert_eq!(server.take_outgoing().len(), 1);
-        assert_eq!(server.outbox().pending(), 0);
+        assert_eq!(server.outbox().pending_packets(), 0);
         assert!(
             server.client().is_err(),
             "a server holds no client view at all"

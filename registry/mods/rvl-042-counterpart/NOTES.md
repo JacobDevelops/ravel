@@ -162,3 +162,8 @@ fails on any drift from the bytes on disk, and writes them instead when
 
 `colour::Colour` exposes readable channels but is non-exhaustive. Construct it with
 `Colour::new` rather than a struct literal, and allow additional fields in patterns.
+
+## Public contract consistency
+
+`LoadReport::skipped` includes malformed or out-of-range entries, refused slot counts and a missing
+entries list; the latter prevents applying a declared count.

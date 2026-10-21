@@ -412,3 +412,8 @@ rebuilds both and compares them against the bytes on disk, and writes them inste
 was proved rather than read.
 
 `checks/verify-counterpart-build.sh` runs the counterpart tests, including numeric conversion edge cases.
+
+## Public contract consistency
+
+Colour channels use the vetted `num_traits::AsPrimitive` saturating float-to-byte conversion,
+including non-finite inputs.

@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "900b2723510733c3134e45c6c5024a6269ea233574775129ebd10250ef1cda3f"
+        "sha256": "c4cdad8fe77f8a3f655e00ed2ef22888b3bc04792e6d6c5d683e77b526ee3055"
       },
       {
         "path": "aliases.json",
@@ -58,7 +58,7 @@
       },
       {
         "path": "src/colour.rs",
-        "sha256": "a0e0ae49b6640ad015bb65cbae68344181092807bfac9e795821595a18733b10"
+        "sha256": "592874cf387c05b9a06ebe86d71b1021a0aa5e8eab8dd10adbfb91adfc902c00"
       },
       {
         "path": "src/dumps.rs",
@@ -70,7 +70,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "8e5e7893f64bc969f6f0f5e54a276946b5e162ee08f63ff992b4ab805aaf5263"
+        "sha256": "761940f8b51ba5a61b200d4d5975db3a68073ff085b0ea494d420329ca959594"
       },
       {
         "path": "src/menus.rs",

@@ -113,7 +113,51 @@ impl fmt::Display for Group {
 /// A module whose data is none of these is refused until the dependent registers
 /// a factory for it under its own namespace, which is §15's one stated refusal
 /// for this group.
-pub const BUILT_IN_DATA: [&str; 5] = ["amount", "text", "flag", "position", "stack"];
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuiltInData {
+    /// A quantity.
+    Amount,
+    /// Text to display.
+    Text,
+    /// A truth value.
+    Flag,
+    /// A world position.
+    Position,
+    /// An item stack.
+    Stack,
+}
+
+impl BuiltInData {
+    /// Every built-in data kind in declaration order.
+    pub const ALL: [Self; 5] = [
+        Self::Amount,
+        Self::Text,
+        Self::Flag,
+        Self::Position,
+        Self::Stack,
+    ];
+
+    /// The stable published spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Amount => "amount",
+            Self::Text => "text",
+            Self::Flag => "flag",
+            Self::Position => "position",
+            Self::Stack => "stack",
+        }
+    }
+}
+
+/// The data a display module consumes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ModuleData {
+    /// A built-in data kind.
+    BuiltIn(BuiltInData),
+    /// A dependent's registered data factory.
+    Registered(ContentId),
+}
 
 /// One display module a dependent supplies.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -123,7 +167,7 @@ pub struct Module {
     /// The module's own name.
     pub name: String,
     /// What the module's data is.
-    pub data: String,
+    pub data: ModuleData,
     /// What running it costs the owning screen each tick.
     pub energy_per_tick: u32,
     /// Whether the module wants clicks forwarded to it.
@@ -238,16 +282,13 @@ impl Surface {
     ///
     /// Returns [`SurfaceRefused::Closed`] after the window and
     /// [`SurfaceRefused::UnknownData`] for a module whose data is neither one of
-    /// [`BUILT_IN_DATA`] nor a kind a factory has been registered for.
+    /// [`BuiltInData::ALL`] nor a kind a factory has been registered for.
     pub fn register_module(&mut self, module: Module) -> Result<(), SurfaceRefused> {
         self.window()?;
-        let known = BUILT_IN_DATA.contains(&module.data.as_str())
-            || module
-                .data
-                .parse::<ContentId>()
-                .is_ok_and(|data| self.data_factories.iter().any(|(_, kind)| kind == &data));
-        if !known {
-            return Err(SurfaceRefused::UnknownData { data: module.data });
+        if let ModuleData::Registered(data) = &module.data
+            && !self.data_factories.iter().any(|(_, kind)| kind == data)
+        {
+            return Err(SurfaceRefused::UnknownData { data: data.clone() });
         }
         self.modules.push(module);
         Ok(())
@@ -675,7 +716,7 @@ pub enum SurfaceRefused {
     /// A module's data is neither built in nor registered.
     UnknownData {
         /// What the module declared.
-        data: String,
+        data: ContentId,
     },
     /// Nothing is registered under that instruction name.
     UnknownInstruction {
@@ -791,7 +832,7 @@ impl fmt::Display for SurfaceRefused {
                 formatter,
                 "a browser push carries {given} slot views and the transfer collects {expected}"
             ),
-            Self::Pattern(refused) => write!(formatter, "{refused}"),
+            Self::Pattern(refused) => write!(formatter, "a surface pattern is refused: {refused}"),
             Self::ReceiverTaken { at } => {
                 write!(formatter, "a receiver already stands at {at:?}")
             }
@@ -841,6 +882,10 @@ mod tests {
                 .and_then(|source| source.downcast_ref::<RecordRefused>()),
             Some(&record)
         );
+        assert_eq!(
+            refused.to_string(),
+            format!("a surface pattern is refused: {pattern}")
+        );
         assert!(SurfaceRefused::Closed.source().is_none());
     }
 
@@ -848,7 +893,10 @@ mod tests {
         Module {
             owner: "dependent".parse().expect("a legal owner"),
             name: "gauge".to_owned(),
-            data: data.to_owned(),
+            data: match data {
+                "amount" => ModuleData::BuiltIn(BuiltInData::Amount),
+                _ => ModuleData::Registered(data.parse().expect("a qualified data kind")),
+            },
             energy_per_tick: 4,
             takes_clicks: true,
         }
@@ -904,7 +952,7 @@ mod tests {
         assert_eq!(
             surface.register_module(module("dependent:curve")),
             Err(SurfaceRefused::UnknownData {
-                data: "dependent:curve".to_owned()
+                data: "dependent:curve".parse().expect("a qualified data kind")
             })
         );
         assert_eq!(surface.modules().len(), 1);

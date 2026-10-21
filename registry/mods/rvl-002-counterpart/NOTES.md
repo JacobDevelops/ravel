@@ -151,9 +151,8 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
   modifier, so `world::DEPOSITS` is declared data. Every rule here is expressible in the host's own
   declarative vocabulary, so unlike the dependency's §14 no portable predicate is needed at all; the
   double biome gate is `world::admits` because both tests are observable. What Ravel does publish is
-  `world_shaping::WorldShaping`, and `world::shaping` declares this entry into it, so a world this
-  entry deposited into is refused once the entry is gone rather than generating differently from the
-  chunks on disk.
+  `world_shaping::WorldShaping`, and `world::shaping` describes this entry in that declaration.
+  The published host does not admit this set or enforce saved-world removal refusals.
 - **The recipe documents (§14).** Ravel claims a recipe kind as a registry entry and decides nothing
   about what one does. This entry owns no kind at all — every recipe it ships is data against a kind
   one of its two dependencies claims — so there is nothing here to claim and nothing to serialise. The
@@ -259,3 +258,8 @@ honestly start alone while requiring the crop entry's flag service. The configur
 regression drives real loader configuration and startup with all four boolean combinations;
 the leaf's SDK-only unit regression also plants contradictory local constants before service
 calls, proving that only the configured dependency's answers control the consumed flags.
+
+## Public contract consistency
+
+Reload counts are exposed as `reloads_taken`. Shaping sets describe declarations only; the published
+host does not enforce saved-world removal refusal.

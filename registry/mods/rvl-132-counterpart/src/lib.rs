@@ -833,7 +833,7 @@ mod tests {
             .caches_mut()
             .brewing(|| Ok::<Vec<recipes::Converted>, ()>(Vec::new()))
             .expect("a small table");
-        assert!(entry.caches().brewed());
+        assert!(entry.caches().has_brewing());
         entry
             .observe(GameEvent::ResourcesReloaded)
             .expect("an event");
@@ -850,7 +850,7 @@ mod tests {
         for event in [GameEvent::ServerTick, GameEvent::ClientTick] {
             entry.observe(event).expect("an event");
         }
-        assert!(entry.caches().brewed());
+        assert!(entry.caches().has_brewing());
     }
 
     #[test]

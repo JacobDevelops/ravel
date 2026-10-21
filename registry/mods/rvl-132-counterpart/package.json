@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "a9f36088813d5e6093789d42847adc19377819cbce1250a7287217abb3c2b149"
+        "sha256": "7068b1adafd71ddc6f274e2e4800cca097f8debd8c7d9a0d323da99679377ebe"
       },
       {
         "path": "aliases.json",
@@ -63,11 +63,11 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "7d26efc176eec9aca8aabb97891a04a77e3c71ff4772fb6e954b5586f9146989"
+        "sha256": "43742ac993849421b3c7472bdc168bc5f2cadf04c907faab239e28ea39a970af"
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "f8e2e734994d166e332721e2fe3b129d8e664ddbfea0d6d262d7a27f9a54f970"
+        "sha256": "5381aa5ce5b96f0f9806c0fc8615219326fd455e2b88859f8ec884d9dc9076f5"
       },
       {
         "path": "src/census.rs",
@@ -95,7 +95,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "a4fb5421911ed619ccea831fc4aa3991894df3abf22e750b196a9dc1daf7ca23"
+        "sha256": "73e183f4317f5e1bacdda0def33433845a45cd7412663ee15d0e18f3ea62a226"
       },
       {
         "path": "src/readings.rs",
@@ -115,7 +115,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "94914067aadcbb2827c8854785869267daa03191fbf86303070eac2ca48c9195"
+        "sha256": "0443c79be459e30f59de4d5a69f32ab3f589538ea4f9ebc16f5735ff70855d37"
       }
     ]
   },

@@ -275,7 +275,7 @@ impl Entry {
 
     /// Returns how many memories are held.
     #[must_use]
-    pub fn memories(&self) -> usize {
+    pub fn memory_count(&self) -> usize {
         self.memories.len()
     }
 
@@ -700,7 +700,7 @@ mod tests {
         shared
             .open_saved_data(Some(&envelope))
             .expect("a malformed entry does not cost a world");
-        assert_eq!(shared.memories(), 0);
+        assert_eq!(shared.memory_count(), 0);
         assert_eq!(shared.recovered().len(), 1);
         assert!(shared.save_saved_data().is_err());
     }
@@ -730,7 +730,7 @@ mod tests {
     fn a_fresh_world_holds_no_memory_and_is_not_a_failure() {
         let mut shared = Entry::new(Side::IntegratedServer);
         shared.open_saved_data(None).expect("a fresh world opens");
-        assert_eq!(shared.memories(), 0);
+        assert_eq!(shared.memory_count(), 0);
     }
 
     #[test]
@@ -758,7 +758,7 @@ mod tests {
             shared.remember("block0", Memory::default()).is_ok(),
             "replacing a held memory is not a new one"
         );
-        assert_eq!(shared.memories(), MAX_MEMORIES);
+        assert_eq!(shared.memory_count(), MAX_MEMORIES);
     }
 
     #[test]
@@ -823,7 +823,7 @@ mod tests {
             .open_saved_data(Some(&envelope))
             .expect("a world too large for this build still opens");
 
-        assert_eq!(opened.memories(), MAX_MEMORIES);
+        assert_eq!(opened.memory_count(), MAX_MEMORIES);
         assert_eq!(
             opened.dropped(),
             Some(10),

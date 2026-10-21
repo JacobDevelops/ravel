@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "7abea416b7701699429cc972b232ebe453d19ca1d2ea815a454746f1c18b19d0"
+        "sha256": "42cbb246d28e5606ad24018d19cf107cf22f28d3c3bc2efe3abf0d533594a627"
       },
       {
         "path": "aliases.json",
@@ -63,7 +63,7 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "18449f91ee0e17de4bf301a468ef970ebbabd598744f338ed7f40908f2d4960b"
+        "sha256": "6e3375d096380dea7fdee112554d3b1ef0f63f609bad8dbbabbc27ae9ac99880"
       },
       {
         "path": "src/declaration.rs",
@@ -75,19 +75,19 @@
       },
       {
         "path": "src/fluids.rs",
-        "sha256": "f591c54ef7352e01311fa93705e4dc678f31843493dacbc8392488223cd72485"
+        "sha256": "296e4e961a40f68c46b538e159eedce7874a808749cecfdb80c1e0d176ff1127"
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "f3aade9a3bcd326fe270a9d13df7a650e4f3975de199086aff0753dd98d3a81a"
+        "sha256": "1d30c909d3f41cb70da9dbea4ab3dc144bb822185d455e30462f88c12cc2fa8f"
       },
       {
         "path": "src/highlights/declarations.rs",
-        "sha256": "ea605bc5928f91f196bbefbe8287a8a450e05d32f33d2dee0e894caeb7438ef6"
+        "sha256": "bd72bdf3849f720c2ab0cb1b717231973467f24f67b7ef4a0753d836a9c9e05b"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "cb682dafda6042a92511de444df00ed62c96474d446181205a8243de48342934"
+        "sha256": "973624b506c7a5f7c0a5b083b7750cd45687c5f8d144e467c105846c05e2065d"
       },
       {
         "path": "src/matching.rs",
@@ -111,7 +111,7 @@
       },
       {
         "path": "src/validators.rs",
-        "sha256": "41d2cc6284837732034602e09f49c3418ac073081cdbcefea0ade36f84c6f313"
+        "sha256": "cc1938f7b5fdc02e4dc99d6326d63d1eb1d92c063e7894cc0d8a2c609b88fb38"
       },
       {
         "path": "src/validators/conditions.rs",

@@ -251,3 +251,8 @@ produced; there is no build script and no binary.
 unresolved in the rights record, so no save-compatible identifier mapping is specified and none is
 claimed here. §5.1's instruction to keep sixteen blocks rather than one is about cardinality, and
 `census::claims` keeps them sixteen with generated names of this package's own.
+
+## Public contract consistency
+
+Repair material worth and accumulated units use fractional arithmetic; per-unit division and the
+final mended amount retain their documented truncations.

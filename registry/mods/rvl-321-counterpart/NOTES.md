@@ -170,11 +170,9 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
   directions round-trip.
 - **The world feature and the biome modifiers (§14).** Ravel publishes no feature and no biome
   modifier, so `world::DEPOSITS` is declared data and `world::place` is the one predicate the third
-  deposit needs. Nothing generates. What Ravel does publish is `world_shaping::WorldShaping`, the
-  set of mods a world was shaped by, and `world::shaping` declares this entry into it: a world this
-  entry deposited into is refused once the entry is gone, rather than opening and generating
-  differently from the chunks already on disk. That is the half of §14 that is not blocked, and it
-  is the half that costs a player a world.
+  deposit needs. Nothing generates. `world_shaping::WorldShaping` describes a shaping set, and
+  `world::shaping` declares this entry into it. The published host does not admit that declaration
+  or enforce saved-world removal refusals.
 - **The strong fertiliser's sapling branch (§7).** It reaches a tree generator through the second of
   the two widened host members named in §1, and there is no equivalent. The other branch of the same
   item is implemented. The first widened member, the near-water test, *is* reimplemented, in
@@ -288,3 +286,11 @@ deposits' parameters and `world::place` read at both bound states against five d
 `Crop` is non-exhaustive: dependents construct it through `Crop::new` and then configure its
 public fields. Crop-derived recipes live in `src/recipes/selection.rs`, separately from ingredient
 matching and crafting rules; the `recipes::derive` interface and recipe identities are unchanged.
+
+## Public contract consistency
+
+Charge identities and item cache keys retain validated `ContentId` values; charge amounts and
+requirements consistently use fractional quantities. Cache and colour payload readers validate item
+identifiers at the wire boundary. Shipped side-tier ground and material remain distinct after
+adjustment. Reload counts use `reloads_taken`; shaping sets are declarations, not host-enforced
+admission.

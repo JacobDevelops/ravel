@@ -145,13 +145,13 @@ impl Caches {
 
     /// How many station keys are filed.
     #[must_use]
-    pub fn stations(&self) -> usize {
+    pub fn station_count(&self) -> usize {
         self.stations.len()
     }
 
     /// Whether the brewing closure has been derived.
     #[must_use]
-    pub const fn brewed(&self) -> bool {
+    pub const fn has_brewing(&self) -> bool {
         self.brewing.is_some()
     }
 
@@ -197,7 +197,7 @@ mod tests {
                 .expect("room for one key");
         }
         assert_eq!(conversions, 1);
-        assert_eq!(caches.stations(), 1);
+        assert_eq!(caches.station_count(), 1);
     }
 
     #[test]
@@ -215,7 +215,7 @@ mod tests {
                 || converted("b"),
             )
             .expect("room");
-        assert_eq!(caches.stations(), 2);
+        assert_eq!(caches.station_count(), 2);
     }
 
     #[test]
@@ -237,7 +237,7 @@ mod tests {
                 limit: MAX_STATION_KEYS
             })
         );
-        assert_eq!(caches.stations(), MAX_STATION_KEYS);
+        assert_eq!(caches.station_count(), MAX_STATION_KEYS);
     }
 
     #[test]
@@ -253,7 +253,7 @@ mod tests {
                 .expect("a small table");
         }
         assert_eq!(derivations, 1);
-        assert!(caches.brewed());
+        assert!(caches.has_brewing());
     }
 
     #[test]
@@ -263,13 +263,13 @@ mod tests {
             caches.brewing(|| Err::<Vec<Converted>, &str>("a probable cycle")),
             Err("a probable cycle")
         );
-        assert!(!caches.brewed());
+        assert!(!caches.has_brewing());
         assert!(
             caches
                 .brewing(|| Ok::<Vec<Converted>, &str>(converted("brew")))
                 .is_ok()
         );
-        assert!(caches.brewed());
+        assert!(caches.has_brewing());
     }
 
     #[test]
@@ -287,8 +287,8 @@ mod tests {
         assert!(!caches.is_empty());
         caches.invalidate(Point::Reloaded);
         assert!(caches.is_empty());
-        assert_eq!(caches.stations(), 0);
-        assert!(!caches.brewed());
+        assert_eq!(caches.station_count(), 0);
+        assert!(!caches.has_brewing());
     }
 
     #[test]
@@ -305,8 +305,8 @@ mod tests {
     fn a_fresh_set_of_caches_is_empty() {
         let caches = Caches::new();
         assert!(caches.is_empty());
-        assert_eq!(caches.stations(), 0);
-        assert!(!caches.brewed());
+        assert_eq!(caches.station_count(), 0);
+        assert!(!caches.has_brewing());
     }
 
     #[test]

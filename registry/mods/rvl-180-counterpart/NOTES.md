@@ -61,9 +61,9 @@ Nothing here softens §11's statement, and the declarable-only list is where the
   this package itself retains — the notes the removal command accumulates — and the two readings are
   counts of that. The command still performs a release and still reports either side of it, which is
   the shape §5 recovers; what it is a reading *of* is different and is stated here rather than left
-  to be discovered. The reclamation is the one command whose own report is not retained: every other
-  command's report leaves a note behind, and retaining the reclamation's would refill what the two
-  readings it just reported were readings around.
+  to be discovered. Entry-level tally is read-only and retains no report. The two mutating commands
+  remain refused until the host supplies reviewed invocation permissions. Direct console sweeps
+  retain their removal reports until a direct reclaim releases them.
 - **All three commands are server-side (§5).** §5 records the side of each as unknown and names
   server-side with an operator requirement as the safe decision for the second and third. This
   package extends that to the first, because counting what is loaded reads world state as much as
@@ -228,3 +228,8 @@ leaving a removed kind counting zero instead of dropping it, retaining the recla
 resolving depth-first instead of breadth-first, declaring a group whose resolution hit the depth
 bound, dropping a retained note without counting it, and bounding a fluid name in characters rather
 than bytes.
+
+## Public contract consistency
+
+Read-only tally invocations do not retain shared console notes. Outbox size and losses are exposed
+as `pending_packets` and `dropped_packets`.

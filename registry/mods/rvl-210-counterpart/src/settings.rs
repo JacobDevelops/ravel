@@ -143,12 +143,12 @@ pub struct Declared {
     comment: String,
     scope: Scope,
     changeable: bool,
-    value: Value,
+    value: SettingValue,
 }
 
 /// The closed vocabulary of setting value kinds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Kind {
+pub enum SettingKind {
     /// A truth value.
     Truth,
     /// A whole number.
@@ -157,7 +157,7 @@ pub enum Kind {
     Text,
 }
 
-impl Kind {
+impl SettingKind {
     /// The canonical spelling used in diagnostics and generated documents.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -171,7 +171,7 @@ impl Kind {
 
 /// A declared setting's value.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Value {
+pub enum SettingValue {
     /// A truth value.
     Truth(bool),
     /// A whole number.
@@ -180,19 +180,19 @@ pub enum Value {
     Text(String),
 }
 
-impl Value {
+impl SettingValue {
     /// Which kind of value this is, so a write of another kind can be refused.
     #[must_use]
-    pub const fn kind(&self) -> Kind {
+    pub const fn kind(&self) -> SettingKind {
         match self {
-            Self::Truth(_) => Kind::Truth,
-            Self::Number(_) => Kind::Number,
-            Self::Text(_) => Kind::Text,
+            Self::Truth(_) => SettingKind::Truth,
+            Self::Number(_) => SettingKind::Number,
+            Self::Text(_) => SettingKind::Text,
         }
     }
 }
 
-impl fmt::Display for Value {
+impl fmt::Display for SettingValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Truth(truth) => write!(formatter, "{truth}"),
@@ -212,7 +212,7 @@ impl Declared {
         comment: &str,
         scope: Scope,
         changeable: bool,
-        value: Value,
+        value: SettingValue,
     ) -> Self {
         Self {
             property: property.to_owned(),
@@ -262,7 +262,7 @@ impl Declared {
 
     /// The value in force.
     #[must_use]
-    pub const fn value(&self) -> &Value {
+    pub const fn value(&self) -> &SettingValue {
         &self.value
     }
 }
@@ -292,9 +292,9 @@ pub enum ChangeRefused {
     /// The value written is not of the declared kind.
     WrongKind {
         /// What was declared.
-        declared: Kind,
+        declared: SettingKind,
         /// What was written.
-        written: Kind,
+        written: SettingKind,
     },
 }
 
@@ -390,7 +390,7 @@ impl Framework {
     /// # Errors
     ///
     /// Returns [`ChangeRefused::NoSuchProperty`] when nothing carries the name.
-    pub fn read(&self, property: &str) -> Result<&Value, ChangeRefused> {
+    pub fn read(&self, property: &str) -> Result<&SettingValue, ChangeRefused> {
         self.declared
             .iter()
             .find(|declared| declared.property == property)
@@ -410,7 +410,12 @@ impl Framework {
     ///
     /// Returns [`ChangeRefused`] for an unknown property, a side outside its scope,
     /// a setting not changeable at runtime, or a value of another kind.
-    pub fn write(&mut self, property: &str, value: Value, side: Side) -> Result<(), ChangeRefused> {
+    pub fn write(
+        &mut self,
+        property: &str,
+        value: SettingValue,
+        side: Side,
+    ) -> Result<(), ChangeRefused> {
         let Some(declared) = self
             .declared
             .iter_mut()
@@ -462,7 +467,7 @@ pub fn own_framework() -> Framework {
         "Adds a main-menu shortcut that opens a scratch world.",
         Scope::Client,
         true,
-        Value::Truth(false),
+        SettingValue::Truth(false),
     ));
     framework.declare(Declared::new(
         DEVELOPMENT_SILENCE_MUSIC,
@@ -470,7 +475,7 @@ pub fn own_framework() -> Framework {
         "Silences music when the game starts.",
         Scope::Client,
         true,
-        Value::Truth(false),
+        SettingValue::Truth(false),
     ));
     framework
 }
@@ -542,12 +547,12 @@ mod tests {
                     "scope guard",
                     scope,
                     true,
-                    Value::Number(3),
+                    SettingValue::Number(3),
                 ));
-                let result = framework.write("scoped.one", Value::Number(9), side);
+                let result = framework.write("scoped.one", SettingValue::Number(9), side);
                 if scope.resolved_by(side) {
                     assert_eq!(result, Ok(()));
-                    assert_eq!(framework.read("scoped.one"), Ok(&Value::Number(9)));
+                    assert_eq!(framework.read("scoped.one"), Ok(&SettingValue::Number(9)));
                 } else {
                     assert_eq!(
                         result,
@@ -557,7 +562,7 @@ mod tests {
                             side,
                         })
                     );
-                    assert_eq!(framework.read("scoped.one"), Ok(&Value::Number(3)));
+                    assert_eq!(framework.read("scoped.one"), Ok(&SettingValue::Number(3)));
                 }
             }
         }
@@ -613,14 +618,18 @@ mod tests {
         let mut framework = own_framework();
         assert_eq!(
             framework.read(DEVELOPMENT_SHORTCUT),
-            Ok(&Value::Truth(false))
+            Ok(&SettingValue::Truth(false))
         );
         framework
-            .write(DEVELOPMENT_SHORTCUT, Value::Truth(true), Side::Client)
+            .write(
+                DEVELOPMENT_SHORTCUT,
+                SettingValue::Truth(true),
+                Side::Client,
+            )
             .expect("the setting is changeable");
         assert_eq!(
             framework.read(DEVELOPMENT_SHORTCUT),
-            Ok(&Value::Truth(true))
+            Ok(&SettingValue::Truth(true))
         );
     }
 
@@ -633,30 +642,30 @@ mod tests {
             "not changeable",
             Scope::Common,
             false,
-            Value::Number(3),
+            SettingValue::Number(3),
         ));
         assert_eq!(
-            framework.write("fixed.one", Value::Number(9), Side::Client),
+            framework.write("fixed.one", SettingValue::Number(9), Side::Client),
             Err(ChangeRefused::NotChangeable {
                 property: "fixed.one".to_owned()
             })
         );
-        assert_eq!(framework.read("fixed.one"), Ok(&Value::Number(3)));
+        assert_eq!(framework.read("fixed.one"), Ok(&SettingValue::Number(3)));
     }
 
     #[test]
     fn a_write_of_another_kind_is_refused_rather_than_replacing_the_declared_one() {
         let mut framework = own_framework();
         assert_eq!(
-            framework.write(DEVELOPMENT_SHORTCUT, Value::Number(1), Side::Client),
+            framework.write(DEVELOPMENT_SHORTCUT, SettingValue::Number(1), Side::Client),
             Err(ChangeRefused::WrongKind {
-                declared: Kind::Truth,
-                written: Kind::Number,
+                declared: SettingKind::Truth,
+                written: SettingKind::Number,
             })
         );
         assert_eq!(
             framework.read(DEVELOPMENT_SHORTCUT),
-            Ok(&Value::Truth(false))
+            Ok(&SettingValue::Truth(false))
         );
     }
 
@@ -670,7 +679,7 @@ mod tests {
             })
         );
         assert_eq!(
-            framework.write("never.declared", Value::Truth(true), Side::Client),
+            framework.write("never.declared", SettingValue::Truth(true), Side::Client),
             Err(ChangeRefused::NoSuchProperty {
                 property: "never.declared".to_owned()
             })

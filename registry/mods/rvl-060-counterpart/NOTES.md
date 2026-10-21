@@ -160,7 +160,7 @@ Nine of these are §13's own table. The rest are this package's, and each says w
   the caller, and its trigger is declarable only because Ravel publishes no disconnect event.
 - **A pack contribution failure names its cause (§10.1).** The original's inner registration catches
   its failure, discards the cause, and logs a message that does not say what went wrong. Every
-  `highlights::Failure` carries both who and why, and the scan still carries on past it.
+  `highlights::ContributionFailure` carries both who and why, and the scan still carries on past it.
 - **Colour animation is a function of the frame it is drawn in (§11, §12).** The original runs it on
   a ten-thread pool created at class load and never shut down, mutating shared state the drawing
   thread reads without synchronisation. `colour::Animated::at` removes the pool and the race
@@ -403,3 +403,9 @@ Pack records are non-exhaustive. Dependents start with `Declaring::new(namespace
 declarations and discovered resources; `Declaration::named` checks a bare pack name and
 `Declaration::decode` reads descriptor data. Scan results come from `contribute`, with
 `Contribution::default()` available for an empty result.
+
+## Public contract consistency
+
+Data-tag kinds use `TagKind`; highlight contribution errors use `ContributionFailure`. Registry
+access mutators are `mark_present`/`mark_absent`, and `require_source` names its fallible read.
+Fluid cache accessors distinguish `resolved_count` from `registered_count`.

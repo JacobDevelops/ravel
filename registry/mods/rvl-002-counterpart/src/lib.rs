@@ -172,7 +172,7 @@ impl Entry {
 
     /// How many reloads this entry has seen.
     #[must_use]
-    pub const fn reloads(&self) -> u32 {
+    pub const fn reloads_taken(&self) -> u32 {
         self.reloads
     }
 
@@ -770,7 +770,7 @@ mod tests {
         entry
             .observe(GameEvent::ResourcesReloaded)
             .expect("a reload is a signal this entry sees");
-        assert_eq!(entry.reloads(), 1);
+        assert_eq!(entry.reloads_taken(), 1);
     }
 
     #[test]
@@ -787,7 +787,7 @@ mod tests {
                 .expect("a tick is a signal this entry has nothing to do about");
         }
         assert_eq!(format!("{entry:?}"), before);
-        assert_eq!(entry.reloads(), 0);
+        assert_eq!(entry.reloads_taken(), 0);
     }
 
     #[test]
@@ -801,7 +801,7 @@ mod tests {
                 .observe(GameEvent::ResourcesReloaded)
                 .expect("a reload is a signal this entry sees");
         }
-        assert_eq!(entry.reloads(), 5);
+        assert_eq!(entry.reloads_taken(), 5);
         assert_eq!(entry.tier().expect("valid tier"), &tier);
         assert_eq!(entry.crops().expect("valid crops"), crops.as_slice());
         assert_eq!(

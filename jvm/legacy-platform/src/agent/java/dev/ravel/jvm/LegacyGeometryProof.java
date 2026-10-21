@@ -151,15 +151,30 @@ final class LegacyGeometryProof {
                 generation, LegacyRenderer.ownerThread(), draw);
     }
 
-    static long[] compareBaked(int[] emitted, byte[] oracle, boolean retain) {
-        requireOwner(LegacyRenderer.currentGeneration());
-        return (long[]) call("compareBaked", new Class<?>[]{int[].class, byte[].class, boolean.class},
-                emitted, oracle, retain);
+    static long[] compareBaked(int[] emitted, byte[] oracle, long[] identity, boolean retain) {
+        requireOwner(identity[0]);
+        return (long[]) call("compareBaked", new Class<?>[]{int[].class, byte[].class, long[].class, boolean.class},
+                emitted, oracle, identity, retain);
     }
 
     static byte[][] bakedReadbacks() {
         requireOwner(LegacyRenderer.currentGeneration());
         return (byte[][]) call("bakedReadbacks", new Class<?>[0]);
+    }
+
+    static void drawBaked(long resource, long atlas) {
+        long generation = LegacyRenderer.currentGeneration();
+        requireOwner(generation);
+        call("drawBaked", new Class<?>[]{long.class, long.class, long.class, long.class},
+                generation, resource, atlas, LegacyRenderer.ownerThread());
+    }
+
+    static long[] shadedNativeResidency() {
+        return selected() ? Hook.ravelRendererBakedLease(0, 0, 0) : new long[12];
+    }
+
+    static long[] shadedGlResidency() {
+        return platform == null ? new long[16] : (long[]) call("bakedResidency", new Class<?>[0]);
     }
 
     static void bindVanillaBuffer(int buffer) {
@@ -193,6 +208,10 @@ final class LegacyGeometryProof {
             json.append(Arrays.toString(LegacyBakedCapture.metrics()).replace(" ", ""));
             json.append(",\"bakedWorld\":");
             json.append(Arrays.toString(LegacyBakedCapture.world()).replace(" ", ""));
+            json.append(",\"shadedNativeResidency\":");
+            json.append(Arrays.toString(shadedNativeResidency()).replace(" ", ""));
+            json.append(",\"shadedGlResidency\":");
+            json.append(Arrays.toString(shadedGlResidency()).replace(" ", ""));
             json.append("}\n");
             Path path = Path.of(destination);
             if (path.toAbsolutePath().getParent() != null) Files.createDirectories(path.toAbsolutePath().getParent());

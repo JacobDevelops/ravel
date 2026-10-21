@@ -21,6 +21,8 @@ class GeometryExport(TypedDict):
     metrics: dict[str, int]
     bakedMetrics: list[int]
     bakedWorld: list[int]
+    shadedNativeResidency: list[int]
+    shadedGlResidency: list[int]
 
 
 class RunPolicyTests(TestCase):
@@ -172,12 +174,35 @@ class RunPolicyTests(TestCase):
             with self.assertRaisesRegex(ValueError, "baked"):
                 run.validate_geometry_export(out, "vanilla", 0)
 
+    def test_shaded_residency_requires_bounded_acknowledged_reuse_and_complete_drain(self) -> None:
+        for field, index, value in (("shadedNativeResidency", 0, 1), ("shadedNativeResidency", 1, 1),
+                ("shadedNativeResidency", 2, 5_636_193), ("shadedNativeResidency", 3, 0),
+                ("shadedNativeResidency", 4, 0), ("shadedNativeResidency", 5, 1),
+                ("shadedGlResidency", 1, 2_752_513), ("shadedGlResidency", 2, 2),
+                ("shadedGlResidency", 3, 1), ("shadedGlResidency", 5, 2),
+                ("shadedGlResidency", 6, 1), ("shadedGlResidency", 14, 0),
+                ("shadedGlResidency", 15, 1), ("shadedGlResidency", 0, True)):
+            data = self.geometry_export("geometry-proof")
+            data[field][index] = value
+            with self.subTest(field=field, index=index), self.assertRaises(ValueError):
+                run.validate_shaded_export(data, "geometry-proof")
+        for field in ("shadedNativeResidency", "shadedGlResidency"):
+            data = self.geometry_export("geometry-proof")
+            data[field] = []
+            with self.assertRaises(ValueError):
+                run.validate_shaded_export(data, "geometry-proof")
+        data = self.geometry_export("vanilla")
+        data["shadedNativeResidency"][3] = 1
+        with self.assertRaisesRegex(ValueError, "vanilla"):
+            run.validate_shaded_export(data, "vanilla")
+
     @staticmethod
     def geometry_export(renderer: str) -> GeometryExport:
         metrics = dict.fromkeys(run.GEOMETRY_METRICS, 0)
         baked = [0] * run.BAKED_METRICS
         baked[10] = -1
         world = [0] * 7
+        native, gl = [0] * 12, [0] * 16
         if renderer == "geometry-proof":
             metrics.update(copiedMeshes=1, copiedBytes=100, uploads=1, uploadBytes=60,
                            submissions=1, cleanups=1, maxResidentBytes=60,
@@ -185,11 +210,15 @@ class RunPolicyTests(TestCase):
             for index, value in ((0, 2), (2, 1), (4, 6), (11, 1), (12, 1), (13, 2), (16, 224), (25, 1)):
                 baked[index] = value
             world = [2, 0, 0, 0, 30, 30, 24]
+            native[:5] = [0, 0, 100, 2, 2]
+            gl[1:5] = [2_752_512, 3, 2, 1]
+            gl[14] = 1
         return {"schemaVersion": 1, "selection": renderer,
                 "backend": "OpenGL15" if renderer == "geometry-proof" else "not-selected",
                 "fidelity": run.GEOMETRY_FIDELITY,
                 "upload": "bounded-native-wire-java-owned-offscreen-gl", "metrics": metrics,
-                "bakedMetrics": baked, "bakedWorld": world}
+                "bakedMetrics": baked, "bakedWorld": world,
+                "shadedNativeResidency": native, "shadedGlResidency": gl}
 
 
 if __name__ == "__main__":

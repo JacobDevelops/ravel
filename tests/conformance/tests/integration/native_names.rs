@@ -58,6 +58,7 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
         "ravelRendererWork",
         "ravelRendererMesh",
         "ravelRendererBaked",
+        "ravelRendererBakedLease",
     ] {
         assert!(expected.remove(unused));
     }
@@ -76,7 +77,11 @@ fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
         .filter_map(|(head, _)| head.split_whitespace().last())
         .filter(|name| name.starts_with("ravelRenderer"))
         .collect();
-    assert_eq!(renderer_names.len(), 6, "exactly six renderer declarations");
+    assert_eq!(
+        renderer_names.len(),
+        7,
+        "exactly seven renderer declarations"
+    );
     assert_eq!(
         renderer_names.into_iter().collect::<BTreeSet<_>>(),
         BTreeSet::from([
@@ -86,9 +91,15 @@ fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
             "ravelRendererWork",
             "ravelRendererMesh",
             "ravelRendererBaked",
+            "ravelRendererBakedLease",
         ]),
         "renderer crossings carry only scalars and bounded primitive batches"
     );
+}
+
+#[test]
+fn renderer_semantic_native_signatures_share_copied_primitives() {
+    let generator = include_str!("../../../../crates/ravel-minecraft-generate/src/render/hooks.rs");
     let (_, shared) = generator
         .split_once("fn written_declarations()")
         .expect("shared handwritten declarations");
@@ -111,7 +122,12 @@ fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
         (
             "ravelRendererBaked",
             "long[]",
-            vec!["long", "byte[]", "byte[]", "int[]"],
+            vec!["long", "long[]", "byte[]", "byte[]", "int[]"],
+        ),
+        (
+            "ravelRendererBakedLease",
+            "long[]",
+            vec!["long", "long", "int"],
         ),
     ] {
         assert!(

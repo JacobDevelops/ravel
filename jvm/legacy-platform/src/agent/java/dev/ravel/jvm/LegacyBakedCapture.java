@@ -40,6 +40,7 @@ final class LegacyBakedCapture {
     private static long phaseRenderer;
     private static Capture storage;
     private static volatile Capture active;
+    private static volatile boolean resident;
 
     private LegacyBakedCapture() { }
 
@@ -60,6 +61,7 @@ final class LegacyBakedCapture {
     }
 
     static synchronized void clear() {
+        resident = false;
         active = null;
         queued = null;
         if (storage != null) storage.sprites.clear();
@@ -97,22 +99,46 @@ final class LegacyBakedCapture {
     }
 
     static void draw() {
+        if (!LegacyGeometryProof.selected()) return;
         if (queued != null) drawQueued();
+        else if (resident && LegacyRuntime.resourceGeneration() == LegacyRuntime.completedResourceGeneration())
+            LegacyGeometryProof.drawBaked(LegacyRuntime.completedResourceGeneration(),
+                    LegacyRuntime.atlasResourceGeneration());
     }
 
     private static synchronized void drawQueued() {
         Capture capture = queued;
         if (capture == null) return;
-        queued = null;
         if (!LegacyRenderer.accepts(capture.generation) || !capture.resourceCurrent()) {
+            capture.settle(false);
+            queued = null;
             METRICS[14]++;
             return;
         }
         int designated = capture.designated();
         int scene = designated < 0 ? -1 : capture.scene(designated);
         boolean retain = scene >= 0 && RETAINED[scene] < SAMPLES && (COVERAGE[phase] & 1 << designated) == 0;
-        long[] result = LegacyGeometryProof.compareBaked(capture.output, capture.oracle.array(), retain);
-        if (result.length != 32) { METRICS[15]++; return; }
+        long[] identity = {capture.generation, capture.key, capture.source.getLong(16),
+                capture.source.getLong(24), capture.origin[0], capture.origin[1], capture.origin[2],
+                LegacyRenderer.ownerThread()};
+        long[] result;
+        try {
+            result = LegacyGeometryProof.compareBaked(capture.output, capture.oracle.array(), identity, retain);
+        } catch (RuntimeException failure) {
+            capture.settle(false);
+            queued = null;
+            resident = false;
+            throw failure;
+        }
+        if (result.length != 32) {
+            capture.settle(false);
+            queued = null;
+            METRICS[15]++;
+            return;
+        }
+        capture.settle(true);
+        resident = true;
+        queued = null;
         METRICS[13]++;
         METRICS[16] += result[28]; METRICS[17] = Math.max(METRICS[17], result[29]);
         METRICS[18] += result[30]; METRICS[19] += result[31];
@@ -272,6 +298,8 @@ final class LegacyBakedCapture {
         final float[] ao = new float[4];
         final float[] rgb = new float[12];
         final int[] origin = new int[3];
+        final long[] section = new long[3];
+        long key;
         Object task;
         Object builder;
         long generation;
@@ -302,6 +330,7 @@ final class LegacyBakedCapture {
             origin[0] = (int) access.originX.invokeExact(position);
             origin[1] = (int) access.originY.invokeExact(position);
             origin[2] = (int) access.originZ.invokeExact(position);
+            for (int axis = 0; axis < 3; axis++) section[axis] = origin[axis];
             source.clear().position(32);
             source.putLong(16, LegacyRuntime.completedResourceGeneration());
             source.putLong(24, LegacyRuntime.atlasResourceGeneration());
@@ -374,10 +403,15 @@ final class LegacyBakedCapture {
             if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return; }
             if (!resourceCurrent()) { METRICS[3]++; return; }
             source.putInt(0, count);
-            long[] result = Hook.ravelRendererBaked(generation, source.array(), oracle.array(), output);
-            if (!resourceCurrent() || !LegacyRenderer.accepts(generation)) { METRICS[3]++; return; }
+            long[] result = Hook.ravelRendererBaked(generation, section, source.array(), oracle.array(), output);
+            if (result.length == 7) key = result[6];
+            if (!resourceCurrent() || !LegacyRenderer.accepts(generation)) {
+                if (result.length == 7) settle(false);
+                METRICS[3]++;
+                return;
+            }
             if (result.length == 0) { METRICS[3]++; return; }
-            if (result.length != 6 || result[0] < 0) {
+            if (result.length != 7 || result[0] < 0) {
                 refuse(result.length == 6 && result[1] == 2 ? RUST_DECODE : RUST_OTHER);
                 return;
             }
@@ -389,10 +423,17 @@ final class LegacyBakedCapture {
             METRICS[4] += result[0]; METRICS[5] += result[1]; METRICS[6] += result[3];
             if (result[2] >= 0 && METRICS[10] < 0) METRICS[10] = result[2];
             if (count > 0 && (!controlledWindow() || needed())) queued = this;
+            else settle(false);
             METRICS[7] = Math.max(METRICS[7], result[4]);
             METRICS[8] = Math.max(METRICS[8], result[5]); METRICS[9] += animated;
             METRICS[11] = source.getLong(16);
             METRICS[12] = source.getLong(24);
+        }
+
+        void settle(boolean accepted) {
+            long[] result = Hook.ravelRendererBakedLease(generation, key, accepted ? 1 : 2);
+            if (LegacyRenderer.accepts(generation) && result.length != 12)
+                throw new IllegalStateException("Shaded native lease lost before exact acknowledgement");
         }
 
         void release() {

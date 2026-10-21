@@ -24,7 +24,7 @@ use jni::{Env, EnvUnowned};
 mod baked;
 mod snapshot;
 mod work;
-pub use baked::ravel_renderer_baked;
+pub use baked::{ravel_renderer_baked, ravel_renderer_baked_lease};
 
 // Shared wire values with the Java renderer observer (not raw hook IDs).
 const CURRENT: jint = 0;
@@ -78,6 +78,7 @@ struct Renderer {
     draining: bool,
     closed: bool,
     worker_failure: bool,
+    shaded: baked::Residency,
 }
 
 impl Renderer {
@@ -90,6 +91,7 @@ impl Renderer {
             draining: false,
             closed: false,
             worker_failure: false,
+            shaded: baked::Residency::new(),
         }
     }
 
@@ -173,7 +175,7 @@ pub fn ravel_renderer_event<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
-/// Checks a copied worker generation under the same gate used by invalidation.
+/// Checks the current generation and refuses closed, draining or failed worker state.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererAccept")]
 pub fn ravel_renderer_accept<'local>(
     _env: EnvUnowned<'local>,
@@ -184,7 +186,7 @@ pub fn ravel_renderer_accept<'local>(
         RENDERER
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .accepts(generation),
+            .can_capture(generation),
     )
 }
 

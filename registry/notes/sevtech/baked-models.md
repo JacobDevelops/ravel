@@ -1,4 +1,4 @@
-# WP5 slice 6: bounded shaded baked comparisons
+# WP5 slices 6–7: bounded shaded baked comparisons and residency
 
 ## Status and boundary
 
@@ -190,14 +190,71 @@ changing that timeout, drain threshold or any golden assertion. A separate
 attempt after verification had regenerated the modern agent and correctly refused
 the non-legacy adapter before the successful legacy rebuild.
 
-## Next: slice 7
+## Slice 7: generation-keyed shaded residency
 
-Next is complete generation-keyed shaded residency and resource/atlas replacement,
-including retirement before unload/reopen and the handling of currently refused
-sections. The controlled section-layer matrix is measured, but full-world fidelity
-and fluid tessellation remain unsupported. Keep selection off and vanilla
-authoritative while extending the same independent raw-readback oracle to those
-boundaries; preserve exact refusal reasons and never treat empty scenes as
-matches. Default world cutover requires faithful full-world golden scenes and
-fresh like-for-like measurements. The bounded comparison does not authorize
-removing vanilla drawing or claiming a speedup.
+Shaded comparison now retains one acknowledged native section and at most one
+pending replacement. Each owns its source bytes and emitted words. Its identity
+contains the renderer generation, monotonic lease key, resource and atlas
+generations, and aligned section origin. The GL owner must acknowledge the exact
+pending generation/key after comparison; refusal preserves the prior native
+resident. Unload, atlas replacement, resource reload and shutdown retire both
+slots, and stale acknowledgements cannot republish them.
+
+Three Java-owned VBOs retain resident, pending and oracle layer ranges. Each reserves
+917,504 bytes once per GL lifetime; later captures upload into the pending buffer,
+then swap only after a complete comparison. A failed upload preserves the old resident.
+All four layer ranges retain their source ordering, material data and translucency
+state. Repeated render-layer observations reuse the acknowledged emitted VBO in
+the existing offscreen proof target, not in place of vanilla world drawing.
+The native reservation ceiling is 2,818,096 bytes per slot and 5,636,192 bytes for
+resident plus pending; the retained metric counts vector capacities, not just
+lengths. Temporary snapshot, mesh and staging storage remains separately bounded
+and is not represented as retained residency. GL residency reserves 2,752,512
+bytes for the resident, pending and oracle VBOs; this is not whole-device VRAM usage.
+
+The controlled section-layer matrix is not full-world fidelity. Fluid
+tessellation remains unsupported. Selection stays off by default and vanilla
+remains authoritative. Default world cutover requires complete source provenance,
+independent full-world golden scenes and fresh live acceptance; the documented
+fallback remains the default vanilla renderer. No vanilla speedup is claimed.
+
+Slice 7 is not yet acceptance-complete. The implementation and lifecycle tests
+do not replace the required fresh, frozen-candidate three off/three on RTX 5090
+trial matrix and separate Xvfb functional run. All physical/golden tables above
+belong to slice 6; they are not slice-7 performance or golden evidence.
+
+### Slice-7 controlled live acceptance
+
+The final three-buffer implementation passed legacy-agent build, default live,
+selected geometry-proof live and the full verification task (all exit 0).
+The selected Xvfb live gate independently validated the following controlled
+readbacks. This is functional evidence, not the separate frozen-candidate
+benchmark run or full-world acceptance.
+
+| Scene | Comparisons | Color/depth/silhouette mismatches | Foreground pixels, emitted/oracle | Vertices |
+| --- | ---: | --- | --- | ---: |
+| Opaque | 1 | 0/0/0 | 256/256 | 384 |
+| Cutout-mipped | 1 | 0/0/0 | 188/188 | 5,184 |
+| Cutout | 1 | 0/0/0 | 256/256 | 768 |
+| Translucent | 1 | 0/0/0 | 256/256 | 512 |
+| Animated | 1 | 0/0/0 | 256/256 | 384 |
+| Staged reload | 5 | 0/0/0 | 1,212/1,212 | 7,232 |
+| Unload | 5 | 0/0/0 | 1,212/1,212 | 7,232 |
+
+Translucent fluid remains refused because its tessellation lacks baked-quad
+provenance. Repeated resident submissions do not establish composited full-scene
+fidelity or moving-camera translucent reordering.
+
+The selected live run recorded 46 native acknowledgements and 46 GL replacements.
+Native combined retained capacity peaked at 740,040 bytes; fixed GL reservation
+peaked at 2,752,512 bytes across three buffers per pool. Three pools retired,
+and both native and GL live residency drained to zero. There were 10,626 repeated
+resident submissions and zero recorded stale GL refusals. These are run-wide
+functional counters, not per-trial physical memory measurements.
+
+Workspace verification passed 4,383 tests with none skipped; focused generator,
+renderer-validator and benchmark-validator suites passed 321, 9 and 14 tests.
+Coverage was 93.10% regions, 92.54% functions and 93.85% lines. Workspace clippy
+with all targets/features and warnings denied passed. Offline verification still
+reports seven unavailable clean-room source trees out of eighteen; acquired-byte
+checks requiring them were not exercised.

@@ -95,6 +95,7 @@ pub enum Outcome {
 
 impl Outcome {
     /// Stable metadata and geometry-wire discriminant.
+    #[must_use]
     pub const fn code(self) -> u32 {
         match self {
             Self::Complete => 0,

@@ -314,8 +314,11 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   remains explicitly unsupported. Six fresh frozen RTX 5090 trials passed, with
   complete shaded comparisons in every selected trial, plus separate Xvfb acceptance.
   These bounded section-layer results do not establish full-world fidelity.
-  Next is slice 7: complete shaded residency and resource/atlas replacement,
-  not automatic default cutover or a demonstrated resource saving.
+  Slice 7 implements bounded generation/resource/atlas/section-keyed native resident
+  and pending slots with exact acknowledgement, three stable Java-owned resident/pending/oracle
+  VBOs and atlas-entry/reload/unload/shutdown retirement. Acceptance remains open:
+  fresh frozen-candidate three off/three on physical trials and separate Xvfb acceptance
+  are still required. No default cutover or resource saving is established by this implementation.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

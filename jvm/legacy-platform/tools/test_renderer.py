@@ -95,6 +95,10 @@ def geometry_proof_fixture(directory: Path) -> renderer_proof.Proof:
             'depthMismatchPixels': 1, 'totalPixels': 4096},
         'metrics': metrics, 'info': ['geometry-proof', 'OpenGL15',
             'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'],
+        'shadedNativeResidency': [0, 0, 200, 2, 2] + [0] * 7,
+        'shadedGlResidency': [0, 2_752_512, 3, 2, 1] + [0] * 9 + [1, 0],
+        'shadedNativeLive': [100, 0, 200, 2, 0, 1, 2, 1, 1, -16, 32, 48],
+        'shadedGlLive': [2_752_512, 2_752_512, 3, 2, 0, 3, 1, 2, 1, 1, -16, 32, 48, 1, 1, 0],
         'finalMetrics': final, 'baked': baked_proof_fixture(directory)}
 
 
@@ -277,6 +281,24 @@ class RendererProofTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 renderer_proof.geometry_proof(path, 0)
 
+
+    def test_shaded_residency_rejects_cross_generation_keys_bounds_and_live_leaks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proof = geometry_proof_fixture(Path(directory))
+            renderer_proof.shaded_residency_proof(proof)
+            for name, index, value in (('shadedNativeResidency', 0, 1),
+                    ('shadedNativeResidency', 1, 1), ('shadedNativeResidency', 2, 5_636_193),
+                    ('shadedNativeResidency', 3, 0), ('shadedGlResidency', 5, 2),
+                    ('shadedGlResidency', 14, 0), ('shadedGlLive', 6, 2), ('shadedGlLive', 7, 3),
+                    ('shadedGlLive', 8, 2), ('shadedGlLive', 9, 2), ('shadedGlLive', 10, 1),
+                    ('shadedGlLive', 13, 0), ('shadedNativeLive', 1, -1)):
+                changed = proof | {name: proof[name].copy()}
+                changed[name][index] = value
+                with self.subTest(name=name, index=index), self.assertRaises(RuntimeError):
+                    renderer_proof.shaded_residency_proof(changed)
+            for name in ('shadedNativeResidency', 'shadedGlResidency', 'shadedNativeLive', 'shadedGlLive'):
+                with self.subTest(name=name), self.assertRaises(RuntimeError):
+                    renderer_proof.shaded_residency_proof(proof | {name: []})
     def test_generations_seams_and_freshness(self):
         proof = renderer_proof_fixture()
         proof['snapshot'].update(oracleRetryCells=7, oracleRetryCandidates=2)

@@ -39,6 +39,22 @@ BAKED_REFUSALS = range(20, 29)
 PROOF_IMAGE_EDGE = 64
 PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2
 
+def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
+    from prepare import require
+    native, gl = data.get('shadedNativeResidency'), data.get('shadedGlResidency')
+    require(isinstance(native, list) and len(native) == 12 and isinstance(gl, list) and len(gl) == 16
+            and all(type(value) is int and value >= 0 for value in native + gl),
+            'shaded residency schema differs')
+    if renderer == 'vanilla':
+        require(not any(native + gl), 'vanilla arm performed shaded residency work')
+        return
+    require(not any(native[:2] + native[5:] + gl[:1] + gl[5:14]),
+            'shaded residency did not drain at shutdown')
+    require(0 < native[2] <= 5_636_192 and native[3] > 0 and native[4] >= native[3]
+            and gl[1] == 2_752_512 and gl[2] == 3 * gl[4] > 0
+            and gl[3] == native[3] and gl[14] > 0 and gl[15] == 0,
+            'shaded reservation, exact acknowledgement, reuse or retirement proof missing')
+
 
 def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
     from prepare import require
@@ -82,6 +98,7 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
     require(all(type(value) is int and value >= 0 for value in metrics.values()),
             'geometry metrics must be nonnegative integers')
     validate_baked_export(data, renderer)
+    validate_shaded_export(data, renderer)
     if renderer == 'vanilla':
         require(data.get('backend') == 'not-selected' and not any(metrics.values()),
                 'vanilla arm performed geometry work')

@@ -129,6 +129,7 @@ pub(super) fn observe(
 }
 
 fn retire(renderer: &mut Renderer) -> Option<WorkerPool> {
+    renderer.shaded.retire();
     let retired = renderer.workers.take();
     if let Some(workers) = &retired {
         renderer.draining = true;

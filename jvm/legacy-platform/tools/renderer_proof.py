@@ -145,11 +145,33 @@ def mesh_proof(mesh: Proof, selection: str = 'vanilla') -> None:
         raise RuntimeError('Bounded native geometry admission, drain, stale rejection or timing proof missing')
 
 
+def shaded_residency_proof(proof: Proof) -> None:
+    native, gl = proof['shadedNativeResidency'], proof['shadedGlResidency']
+    live_native, live_gl = proof['shadedNativeLive'], proof['shadedGlLive']
+    vectors = ((native, 12), (gl, 16), (live_native, 12), (live_gl, 16))
+    if not all(isinstance(values, list) and len(values) == width
+               and all(type(value) is int for value in values) for values, width in vectors):
+        raise RuntimeError('Shaded residency schema differs')
+    if not (all(value >= 0 for value in native + gl + live_native[:9] + live_gl[:10] + live_gl[13:])
+            and not any(native[:2] + native[5:] + gl[:1] + gl[5:14])
+            and 0 < live_native[0] <= 2_818_096 and 0 <= live_native[1] <= 2_818_096
+            and sum(live_native[:2]) <= live_native[2] <= native[2] <= 5_636_192
+            and native[3] >= live_native[3] > 0 and native[4] >= native[3]
+            and gl[1] == live_gl[0] == live_gl[1] == 2_752_512
+            and gl[2] == gl[4] * 3 > 0 and gl[3] == native[3]
+            and gl[14] >= live_gl[14] > 0 and gl[15] == 0
+            and live_gl[5] == 3 and live_native[5:] == live_gl[6:13]
+            and live_gl[6] > 0 and live_gl[7] > 0 and live_gl[8] == live_gl[9] > 0
+            and all(axis & 15 == 0 for axis in live_gl[10:13]) and live_gl[13] > 0):
+        raise RuntimeError('Shaded generation, acknowledgement, residency reuse or shutdown drain missing')
+
+
 def geometry_proof(path: Path, started: float) -> Proof:
     if not path.is_file() or path.stat().st_mtime < started:
         raise RuntimeError(f'No fresh geometry upload proof: {path}')
     proof = json.loads(path.read_text())
     metrics, final = proof['metrics'], proof['finalMetrics']
+    shaded_residency_proof(proof)
     if not (proof['selection'] == 'geometry-proof' and proof['offDefault'] is True
             and proof['worldSubstitution'] is False and proof['fidelity'] == 'not-proven'
             and proof['reference'] == 'self-reference-not-vanilla-oracle'

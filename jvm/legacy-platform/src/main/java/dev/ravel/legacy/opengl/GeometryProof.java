@@ -46,6 +46,18 @@ public final class GeometryProof {
     private static byte[] bakedPixels;
     private static float[] bakedDepth;
     private static byte[][] bakedRetained;
+    private static final ProofLease BAKED_LEASE = new ProofLease();
+    private static final long[] BAKED_RESIDENCY = new long[16];
+    private static final int[] bakedLayers = new int[4];
+    private static final int[] bakedReplacementLayers = new int[4];
+    private static int bakedBuffer;
+    private static int bakedPending;
+    private static int bakedOracle;
+    private static int bakedAtlas;
+    private static int bakedLightmap;
+    private static final int BAKED_CAPACITY = 8192 * 112;
+
+    public static synchronized long[] bakedResidency() { return BAKED_RESIDENCY.clone(); }
 
     private GeometryProof() { }
 
@@ -270,9 +282,12 @@ public final class GeometryProof {
         return count;
     }
 
-    public static synchronized long[] compareBaked(int[] emitted, byte[] oracle, boolean retain) {
+    public static synchronized long[] compareBaked(int[] emitted, byte[] oracle, long[] identity, boolean retain) {
         if (emitted.length != 4 + 8192 * 28 || oracle.length != 16 + 8192 * 112)
             throw new IllegalArgumentException("Invalid bounded baked output");
+        checkBakedIdentity(identity, BAKED_RESIDENCY[7]);
+        BAKED_LEASE.check(identity[0], identity[7]);
+        checkBakedCounts(emitted, oracle);
         bakedRetained = null;
         if (capabilityRefused) return new long[]{-1};
         try {
@@ -291,27 +306,105 @@ public final class GeometryProof {
         GL13.glActiveTexture(active);
         if (atlas == 0 || lightmap == 0) return new long[]{-1};
         int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
-        int buffer = generate();
         long[] result = new long[32];
         byte[][] retained = retain ? new byte[4][] : null;
         long started = System.nanoTime();
         int offset = 0;
         try {
+            reserveBaked();
             for (int layer = 0; layer < 4; layer++) {
                 int quads = emitted[layer];
-                if (quads < 0 || quads > 8192 - offset / 112 || quads != littleInt(oracle, layer * 4))
-                    throw new IllegalArgumentException("Baked layer counts differ from final buffers");
-                if (quads > 0) bakedLayer(emitted, oracle, offset, quads, layer, buffer, atlas, lightmap, result);
+                if (quads > 0) bakedLayer(emitted, oracle, offset, quads, layer, bakedPending, atlas, lightmap, result);
+                bakedReplacementLayers[layer] = quads * 4;
                 if (quads > 0 && retained != null) retained[layer] = rawSample();
                 offset += quads * 112;
             }
             result[31] = System.nanoTime() - started;
+            BAKED_LEASE.uploaded(identity[0], identity[7]);
+            int previousResident = bakedBuffer;
+            bakedBuffer = bakedPending;
+            bakedPending = previousResident;
+            System.arraycopy(bakedReplacementLayers, 0, bakedLayers, 0, 4);
+            BAKED_RESIDENCY[0] = 3L * BAKED_CAPACITY;
+            BAKED_RESIDENCY[1] = Math.max(BAKED_RESIDENCY[1], BAKED_RESIDENCY[0]);
+            BAKED_RESIDENCY[3]++;
+            System.arraycopy(identity, 0, BAKED_RESIDENCY, 6, identity.length);
+            bakedAtlas = atlas;
+            bakedLightmap = lightmap;
             bakedRetained = retained;
             return result;
         } finally {
             bind(GL15.GL_ARRAY_BUFFER, previous);
-            delete(buffer);
         }
+    }
+
+    static void checkBakedCounts(int[] emitted, byte[] oracle) {
+        int total = 0;
+        for (int layer = 0; layer < 4; layer++) {
+            int count = emitted[layer];
+            if (count < 0 || count > 8192 - total || count != littleInt(oracle, layer * 4))
+                throw new IllegalArgumentException("Baked layer counts differ from final buffers");
+            total += count;
+        }
+    }
+
+    static void checkBakedIdentity(long[] identity, long lastKey) {
+        if (identity.length != 8 || identity[0] <= 0 || identity[1] <= lastKey
+                || identity[2] <= 0 || identity[2] != identity[3])
+            throw new IllegalArgumentException("Invalid or superseded shaded identity");
+        for (int axis = 4; axis < 7; axis++)
+            if ((identity[axis] & 15) != 0) throw new IllegalArgumentException("Unaligned shaded section");
+    }
+
+    private static void reserveBaked() {
+        if (bakedBuffer != 0) return;
+        int[] buffers = new int[3];
+        try {
+            for (int index = 0; index < buffers.length; index++) buffers[index] = reserveBakedBuffer();
+        } catch (RuntimeException failure) {
+            for (int buffer : buffers) if (buffer != 0) delete(buffer);
+            throw failure;
+        }
+        bakedBuffer = buffers[0];
+        bakedPending = buffers[1];
+        bakedOracle = buffers[2];
+        BAKED_RESIDENCY[2] += 3;
+        BAKED_RESIDENCY[5] = 3;
+    }
+
+    private static int reserveBakedBuffer() {
+        int buffer = generate();
+        try {
+            bind(GL15.GL_ARRAY_BUFFER, buffer);
+            if (coreBuffers) GL15.glBufferData(GL15.GL_ARRAY_BUFFER, BAKED_CAPACITY, GL15.GL_DYNAMIC_DRAW);
+            else ARBVertexBufferObject.glBufferDataARB(GL15.GL_ARRAY_BUFFER, BAKED_CAPACITY,
+                    ARBVertexBufferObject.GL_DYNAMIC_DRAW_ARB);
+            int size = coreBuffers ? GL15.glGetBufferParameteri(GL15.GL_ARRAY_BUFFER, GL15.GL_BUFFER_SIZE)
+                    : ARBVertexBufferObject.glGetBufferParameteriARB(GL15.GL_ARRAY_BUFFER,
+                            ARBVertexBufferObject.GL_BUFFER_SIZE_ARB);
+            if (size != BAKED_CAPACITY) throw new IllegalStateException("Shaded VBO reservation failed");
+            return buffer;
+        } catch (RuntimeException failure) {
+            delete(buffer);
+            throw failure;
+        }
+    }
+
+    public static synchronized void drawBaked(long generation, long resource, long atlas, long owner) {
+        if (BAKED_RESIDENCY[0] == 0) return;
+        if (BAKED_RESIDENCY[6] != generation || BAKED_RESIDENCY[8] != resource || BAKED_RESIDENCY[9] != atlas) {
+            BAKED_RESIDENCY[15]++;
+            return;
+        }
+        BAKED_LEASE.draw(generation, owner);
+        if (context != GL.getCapabilities()) throw new IllegalStateException("Wrong shaded GL context");
+        int offset = 0;
+        for (int layer = 0; layer < 4; layer++) {
+            if (bakedLayers[layer] != 0)
+                bakedSubmit(bakedBuffer, bakedLayers[layer], layer, bakedAtlas, bakedLightmap, offset, false);
+            offset += bakedLayers[layer] * 28;
+        }
+        BAKED_RESIDENCY[14]++;
     }
 
     private static int littleInt(byte[] bytes, int offset) {
@@ -323,22 +416,28 @@ public final class GeometryProof {
             int buffer, int atlas, int lightmap, long[] result) {
         int bytes = quads * 112;
         result[28] += 2L * bytes;
-        result[29] = Math.max(result[29], bytes);
+        result[29] = BAKED_CAPACITY;
         staging.clear().limit(bytes);
         staging.asIntBuffer().put(emitted, 4 + offset / 4, bytes / 4);
         bind(GL15.GL_ARRAY_BUFFER, buffer);
         long uploadStarted = System.nanoTime();
-        data(GL15.GL_ARRAY_BUFFER, staging);
+        updateBaked(offset, staging);
         result[30] += System.nanoTime() - uploadStarted;
-        bakedSubmit(buffer, quads * 4, layer, atlas, lightmap);
+        bakedSubmit(buffer, quads * 4, layer, atlas, lightmap, offset, true);
         readback.get(0, bakedPixels);
         readback.asFloatBuffer().get(PIXELS, bakedDepth);
         staging.clear().put(oracle, 16 + offset, bytes).flip();
         uploadStarted = System.nanoTime();
-        data(GL15.GL_ARRAY_BUFFER, staging);
+        bind(GL15.GL_ARRAY_BUFFER, bakedOracle);
+        updateBaked(offset, staging);
         result[30] += System.nanoTime() - uploadStarted;
-        bakedSubmit(buffer, quads * 4, layer, atlas, lightmap);
+        bakedSubmit(bakedOracle, quads * 4, layer, atlas, lightmap, offset, true);
         bakedDifference(result, layer * 7, quads * 4);
+    }
+
+    private static void updateBaked(int offset, ByteBuffer bytes) {
+        if (coreBuffers) GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, offset, bytes);
+        else ARBVertexBufferObject.glBufferSubDataARB(GL15.GL_ARRAY_BUFFER, offset, bytes);
     }
 
     /** Last retained comparison's per-layer raw arms: emitted RGBA, depth, then oracle RGBA, depth. */
@@ -380,7 +479,8 @@ public final class GeometryProof {
         }
     }
 
-    private static void bakedSubmit(int buffer, int vertices, int layer, int atlas, int lightmap) {
+    private static void bakedSubmit(int buffer, int vertices, int layer, int atlas, int lightmap,
+            int offset, boolean capture) {
         try (State state = new State()) {
             state.prepare();
             GL11.glClearColor(0, 0, 0, 0);
@@ -388,10 +488,10 @@ public final class GeometryProof {
             bind(GL15.GL_ARRAY_BUFFER, buffer);
             GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
             GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
-            GL11.glVertexPointer(3, GL11.GL_FLOAT, 28, 0L);
-            GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12L);
-            bakedTexture(GL13.GL_TEXTURE0, atlas, GL11.GL_FLOAT, 16L);
-            bakedTexture(GL13.GL_TEXTURE1, lightmap, GL11.GL_SHORT, 24L);
+            GL11.glVertexPointer(3, GL11.GL_FLOAT, 28, offset);
+            GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12L + offset);
+            bakedTexture(GL13.GL_TEXTURE0, atlas, GL11.GL_FLOAT, 16L + offset);
+            bakedTexture(GL13.GL_TEXTURE1, lightmap, GL11.GL_SHORT, 24L + offset);
             GL11.glEnable(GL11.GL_ALPHA_TEST);
             GL11.glAlphaFunc(GL11.GL_GREATER, 0.1f);
             if (layer == 3) {
@@ -401,11 +501,13 @@ public final class GeometryProof {
             }
             try {
                 GL11.glDrawArrays(GL11.GL_QUADS, 0, vertices);
-                readback.clear();
-                GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE,
-                        readback.slice(0, PIXELS * 4));
-                GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT,
-                        readback.slice(PIXELS * 4, PIXELS * 4));
+                if (capture) {
+                    readback.clear();
+                    GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE,
+                            readback.slice(0, PIXELS * 4));
+                    GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT,
+                            readback.slice(PIXELS * 4, PIXELS * 4));
+                }
             } finally {
                 resetBakedArrays();
             }
@@ -517,6 +619,7 @@ public final class GeometryProof {
 
     public static synchronized void retire(long generation, long owner) {
         LEASE.retire(generation, owner);
+        BAKED_LEASE.retire(generation, owner);
         if (context != null && context != GL.getCapabilities())
             throw new IllegalStateException("Geometry cleanup requires its GL context");
         destroy();
@@ -524,6 +627,15 @@ public final class GeometryProof {
     }
 
     private static void destroy() {
+        if (bakedBuffer != 0) delete(bakedBuffer);
+        if (bakedPending != 0) delete(bakedPending);
+        if (bakedOracle != 0) delete(bakedOracle);
+        BAKED_RESIDENCY[4] += bakedBuffer != 0 ? 1 : 0;
+        BAKED_RESIDENCY[0] = 0;
+        BAKED_RESIDENCY[5] = 0;
+        Arrays.fill(BAKED_RESIDENCY, 6, 14, 0);
+        Arrays.fill(bakedLayers, 0);
+        bakedBuffer = bakedPending = bakedOracle = bakedAtlas = bakedLightmap = 0;
         if (vertexBuffer != 0) delete(vertexBuffer);
         if (indexBuffer != 0) delete(indexBuffer);
         if (vertexArray != 0) ARBVertexArrayObject.glDeleteVertexArrays(vertexArray);

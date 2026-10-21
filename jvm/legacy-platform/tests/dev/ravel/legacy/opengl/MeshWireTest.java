@@ -14,6 +14,7 @@ public final class MeshWireTest {
         refusals();
         lifetime();
         capabilities();
+        shaded();
         System.out.println("mesh-wire-parser-refusal-lifetime-ok");
     }
 
@@ -151,6 +152,35 @@ public final class MeshWireTest {
                 "bounded compatibility texture-unit endpoints");
         expect(UnsupportedOperationException.class, () -> GeometryProof.selectTextureUnits(0));
         expect(UnsupportedOperationException.class, () -> GeometryProof.selectTextureUnits(33));
+    }
+
+    private static void shaded() {
+        long[] identity = {7, 11, 3, 3, -16, 32, 48, Thread.currentThread().threadId()};
+        GeometryProof.checkBakedIdentity(identity, 10);
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedIdentity(identity, 11));
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedIdentity(identity, 12));
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedIdentity(new long[7], 0));
+        for (int index : new int[]{0, 1, 2, 3, 4, 5, 6}) {
+            long[] invalid = identity.clone();
+            invalid[index] = index < 4 ? 0 : 1;
+            expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedIdentity(invalid, 10));
+        }
+        int[] emitted = new int[4];
+        byte[] oracle = new byte[16];
+        ByteBuffer counts = ByteBuffer.wrap(oracle).order(ByteOrder.LITTLE_ENDIAN);
+        for (int layer = 0; layer < 4; layer++) {
+            emitted[layer] = 2048;
+            counts.putInt(layer * 4, 2048);
+        }
+        GeometryProof.checkBakedCounts(emitted, oracle);
+        emitted[3]++;
+        counts.putInt(12, 2049);
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedCounts(emitted, oracle));
+        emitted[3] = -1;
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedCounts(emitted, oracle));
+        emitted[3] = 2048;
+        counts.putInt(12, 2047);
+        expect(IllegalArgumentException.class, () -> GeometryProof.checkBakedCounts(emitted, oracle));
     }
 
     private static ByteBuffer header(int status, int vertices, int indices, int materials) {

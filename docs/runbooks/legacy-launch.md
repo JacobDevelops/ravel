@@ -340,13 +340,24 @@ stay in the platform's one-chunk ring, inside the render-distance-two window;
 iron bars and glass panes exercise mipped cutouts independently of fancy graphics.
 Fresh raw emitted/oracle RGBA and depth readbacks are independently recounted.
 Fluid tessellation remains explicitly unsupported because it lacks baked-quad
-provenance. See the [slice-6 status](../../registry/notes/sevtech/baked-models.md)
+provenance. See the [slices 6–7 status](../../registry/notes/sevtech/baked-models.md)
 for the complete golden matrix, physical admission and bounds. These section-local
 comparisons are not full-world visual goldens. Native-versus-CPU
 reference images alone are not a vanilla oracle. Actual vanilla-section
 comparison and matched selection-on/off measurements must disclose their scope,
 refusals and mismatch counts; they do not authorize a default renderer or a
 speedup claim.
+
+Shaded residency holds one acknowledged native section and one bounded pending
+replacement, each with owned source/emission and exact renderer/resource/atlas/
+section identity. Java owns stable resident, pending and oracle layer-packed VBOs and acknowledges the
+pending lease only after its comparison completes. Reload, atlas replacement,
+unload and shutdown retire these resources. The exported shaded residency vectors
+record peak native capacity, fixed GL reservation, exact acknowledgement counts,
+buffer reuse and final drain; they are distinct from RSS, heap and device VRAM.
+Repeated shaded submissions remain offscreen. Leave `ravel.renderer` at its
+default `vanilla` value to retain the documented fallback; neither these bounded
+goldens nor residency acceptance authorize full-world substitution.
 
 ## JVM permissions
 

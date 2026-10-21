@@ -432,7 +432,9 @@ final class ClientAutomation implements Runnable {
                         + "\"vanillaScope\":\"published-SOLID-only-section-position-coverage-depth\","
                         + "\"width\":64,\"height\":64,\"rowOrder\":\"bottom-up\","
                         + "\"info\":[\"" + String.join("\",\"", info) + "\"],\"metrics\":" + geometryMetrics()
-                        + ",\"vanillaComparison\":" + comparison;
+                        + ",\"vanillaComparison\":" + comparison
+                        + ",\"shadedNativeLive\":" + shadedResidency("shadedNativeResidency")
+                        + ",\"shadedGlLive\":" + shadedResidency("shadedGlResidency");
                 captured.set(pixels);
                 return true;
             }), TimeUnit.MINUTES.toNanos(3));
@@ -486,7 +488,13 @@ final class ClientAutomation implements Runnable {
         require(geometryLiveProof != null, "Geometry proof was not captured before unload");
         String finalMetrics = onGame(this::geometryMetrics);
         Files.writeString(evidence.resolve("geometry-upload.json"),
-                geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof() + "}\n");
+                geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof()
+                        + ",\"shadedNativeResidency\":" + onGame(() -> shadedResidency("shadedNativeResidency"))
+                        + ",\"shadedGlResidency\":" + onGame(() -> shadedResidency("shadedGlResidency")) + "}\n");
+    }
+
+    private String shadedResidency(String name) throws Exception {
+        return Arrays.toString((long[]) rendererType().getMethod(name).invoke(null));
     }
 
     private static final String[] BAKED_NAMES = {"comparedSections", "busySections", "unsupportedSections",

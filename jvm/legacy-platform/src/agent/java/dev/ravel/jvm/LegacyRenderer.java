@@ -24,6 +24,9 @@ public final class LegacyRenderer {
         LegacyGeometryProof.selected(); // Validate explicit selection; default performs no GL work.
         switch (id) {
             case "legacyResourceReload" -> lifecycle(1);
+            case "legacyAtlasReload" -> {
+                if (LegacyGeometryProof.selected()) lifecycle(1);
+            }
             case "legacyRendererUnload", "legacyRendererClose" -> lifecycle(2);
             case "legacyRendererFrame" -> {
                 ownerEvent(3);
@@ -107,6 +110,7 @@ public final class LegacyRenderer {
     public static int meshKeysHeld() { return LegacyMeshWork.occupied(); }
     public static long[] shutdownMeshWork() {
         long retiring = currentGeneration();
+        LegacyBakedCapture.clear();
         long[] result;
         try {
             LegacyGeometryProof.retire(retiring);
@@ -123,6 +127,8 @@ public final class LegacyRenderer {
 
     public static boolean geometryProofSelected() { return LegacyGeometryProof.selected(); }
     public static long[] geometryProofMetrics() { return LegacyGeometryProof.metrics(); }
+    public static long[] shadedNativeResidency() { return LegacyGeometryProof.shadedNativeResidency(); }
+    public static long[] shadedGlResidency() { return LegacyGeometryProof.shadedGlResidency(); }
     public static String[] geometryProofMetricNames() { return LegacyGeometryProof.NAMES.clone(); }
     public static String[] geometryProofInfo() { return LegacyGeometryProof.info(); }
     public static long[] geometryProofIdentity() { return LegacyGeometryProof.identity(); }

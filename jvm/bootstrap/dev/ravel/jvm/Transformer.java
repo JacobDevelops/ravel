@@ -630,7 +630,7 @@ public final class Transformer implements ClassFileTransformer {
             return switch (target.hookMethod()) {
                 case "legacyBlockRegister", "legacyItemRegister", "legacyClientTick",
                         "legacyServerTick", "legacyPayloadClient", "legacyPayloadServer",
-                        "legacyResourceReload", "legacyRecipeRegister", "legacyWorldOpen",
+                        "legacyResourceReload", "legacyAtlasReload", "legacyRecipeRegister", "legacyWorldOpen",
                         "legacyWorldOpenIntegrated", "legacyWorldSave",
                         "legacyCommandExecute", "legacyItemFireDamage",
                         "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",

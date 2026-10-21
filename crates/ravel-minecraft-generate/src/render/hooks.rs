@@ -323,7 +323,7 @@ fn written_declarations() -> &'static str {
          \x20   public static native void ravelInitialize(int side, boolean profilingRequested);\n\n\
          \x20   /** Scalar renderer lifecycle event; returns the current generation. */\n\
          \x20   public static native long ravelRendererEvent(int event, long generation, long threadId, boolean ownerThread);\n\n\
-         \x20   /** Whether completed renderer work still belongs to the active generation. */\n\
+         \x20   /** Whether this generation can accept work: false while closed, draining or failed. */\n\
          \x20   public static native boolean ravelRendererAccept(long generation);\n\n\
          \x20   /** Bounded batch: [accepted, bytes, mismatches, cells, copyBytes, scratchBoundBytes, admitted, key]. Failure: [-1, code, detailA, detailB, detailC, 0, 0, key]; stale/busy is empty.\n\
          \x20    * Failure codes: 1 generation; 2 lengths(states,light,geometry); 3 state(index,key); 4 geometry(index,flag); 5 inconsistent geometry(stateKey); 6 palette; 7 null arrays(bitmask states=1,light=2,geometry=4). */\n\
@@ -332,8 +332,10 @@ fn written_declarations() -> &'static str {
          \x20   public static native long[] ravelRendererWork(int operation, long generation, long key);\n\n\
          \x20   /** Non-consuming Java-owned solid mesh copy; empty for absent/stale/closed/invalid. LE v1: magic 0x354d5652,u32 version,i64 generation/key,u32 status/vertexCount/indexCount/materialCount,u64 visibility (48 bytes); vertices XYZ/face/light (5 bytes), u32 indices, material u32 stateKey/firstIndex/indexCount (12 bytes). Status 0 complete,1 incomplete,2 error; only 0 drawable. At most 1,376,304 bytes. */\n\
          \x20   public static native byte[] ravelRendererMesh(long generation, long key);\n\n\
-     \x20   /** Independent baked emission and bounded copied BLOCK output. Empty stale/busy, negative unsupported; otherwise [quads, mismatchedWords, firstMismatch, cpuNanos, inputBytes, outputBytes]. */\n\
-     \x20   public static native long[] ravelRendererBaked(long generation, byte[] source, byte[] oracle, int[] output);\n\n\
+     \x20   /** Bounded shaded transfer: [quads, mismatches, firstMismatch, cpuNanos, inputBytes, outputBytes, pendingKey]; empty stale/busy/closed, negative first value unsupported. */\n\
+     \x20   public static native long[] ravelRendererBaked(long generation, long[] origin, byte[] source, byte[] oracle, int[] output);\n\n\
+     \x20   /** Operation 0 observes, 1 acknowledges replacement, 2 refuses the pending lease. */\n\
+     \x20   public static native long[] ravelRendererBakedLease(long generation, long key, int operation);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

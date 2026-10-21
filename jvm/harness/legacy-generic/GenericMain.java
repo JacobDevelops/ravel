@@ -81,6 +81,7 @@ public final class GenericMain {
     private static void adapterFixtureTests(HookTarget hook, MethodModel method) {
             boolean entry = java.util.Set.of("legacyBlockRegister", "legacyItemRegister", "legacyClientTick",
                     "legacyServerTick", "legacyPayloadClient", "legacyPayloadServer", "legacyResourceReload",
+                    "legacyAtlasReload",
                     "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyWorldSave",
                     "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",
                     "legacyRendererUpdate",

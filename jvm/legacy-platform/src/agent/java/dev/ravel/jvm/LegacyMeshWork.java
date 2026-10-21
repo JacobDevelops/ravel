@@ -3,8 +3,8 @@ package dev.ravel.jvm;
 import java.util.Arrays;
 
 /**
- * Java-owned admission keys for native geometry jobs. Meshes stay native until a poll drains them;
- * Java receives fixed-width numeric metadata only, checks it and discards it. Nothing is uploaded.
+ * Java-owned admission keys for native geometry jobs. Default polls drain diagnostic metadata only;
+ * explicitly selected geometric proof retains a completion until bounded Java copy/upload and ack.
  * Every table and sample buffer is fixed-size, independent of world size or session length.
  */
 final class LegacyMeshWork {
@@ -144,12 +144,18 @@ final class LegacyMeshWork {
     static void poll() {
         if (Thread.currentThread().threadId() != LegacyRenderer.ownerThread()) return;
         long generation = LegacyRenderer.currentGeneration();
-        long[] response = Hook.ravelRendererWork(POLL, generation, 0);
+        boolean retained = LegacyGeometryProof.selected();
+        long[] response = Hook.ravelRendererWork(retained ? 4 : POLL, generation, 0);
+        if (retained && response.length != 0) {
+            retainedPoll(response, generation);
+            response = new long[0];
+        }
         long[] stats = LegacyRuntime.PROOF ? Hook.ravelRendererWork(STATS, generation, 0) : null;
         synchronized (LegacyMeshWork.class) {
             retireLocked(generation);
-            if (response.length == 0) METRICS[19]++;
-            else drainLocked(response, generation);
+            if (response.length == 0) {
+                if (!retained) METRICS[19]++;
+            } else drainLocked(response, generation);
             if (stats != null && stats.length != 0) {
                 limits(stats);
                 if (stats[1] != generation) throw new IllegalStateException("Native stats changed generation");
@@ -183,19 +189,49 @@ final class LegacyMeshWork {
         }
     }
 
+    /** One mesh per owner poll: bounded copy/upload work even when eight completions are retained. */
+    private static void retainedPoll(long[] response, long generation) {
+        if (!retainedAdmission(response, generation)) return;
+        if (!LegacyGeometryProof.transfer(generation, response, HEADER)) return;
+        synchronized (LegacyMeshWork.class) {
+            if (!accept(response, HEADER, generation)) METRICS[17]++;
+        }
+    }
+
+    /** Admission gate is independent of JNI/GL, and never admits more than the first retained record. */
+    static boolean retainedAdmission(long[] response, long generation) {
+        int count = pollCount(response, generation);
+        synchronized (LegacyMeshWork.class) {
+            retireLocked(generation);
+            METRICS[20]++;
+            METRICS[21] = Math.max(METRICS[21], Math.min(count, 1));
+            if (count == 0) return false;
+            validate(response, HEADER);
+            int slot = find(response[HEADER + 1]);
+            if (slot < 0 || GENERATIONS[slot] != generation
+                    || (STATES[slot] != RESERVED && STATES[slot] != ADMITTED))
+                throw new IllegalStateException("Retained completion lacks Java admission");
+            return true;
+        }
+    }
+
     private static void drainLocked(long[] response, long generation) {
-        if (response.length < HEADER || response[0] != 1 || response[1] != generation
-                || response[3] != RECORD || response[2] < 0 || response[2] > MAX_RECORDS
-                || response.length != HEADER + response[2] * RECORD)
-            throw new IllegalStateException("Malformed native geometry poll: " + Arrays.toString(response));
-        int count = (int) response[2];
+        int count = pollCount(response, generation);
         METRICS[20]++;
         METRICS[21] = Math.max(METRICS[21], count);
         for (int index = 0; index < count; index++)
             if (!accept(response, HEADER + index * RECORD, generation)) METRICS[17]++;
     }
 
-    private static boolean accept(long[] record, int at, long current) {
+    private static int pollCount(long[] response, long generation) {
+        if (response.length < HEADER || response[0] != 1 || response[1] != generation
+                || response[3] != RECORD || response[2] < 0 || response[2] > MAX_RECORDS
+                || response.length != HEADER + response[2] * RECORD)
+            throw new IllegalStateException("Malformed native geometry poll: " + Arrays.toString(response));
+        return (int) response[2];
+    }
+
+    static boolean accept(long[] record, int at, long current) {
         long generation = record[at];
         int slot = record[at + 1] > 0 ? find(record[at + 1]) : -1;
         if (slot < 0 || generation != current || GENERATIONS[slot] != generation

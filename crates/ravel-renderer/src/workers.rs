@@ -254,6 +254,72 @@ impl WorkerPool {
         None
     }
 
+    /// Borrows current completions under the invalidation lock without releasing owners.
+    /// The callback must not reenter the pool; failure and success both retain ownership.
+    pub fn peek_ready<T>(
+        &self,
+        publish: impl FnOnce(&[Option<&Completion>; MAX_OUTSTANDING_JOBS]) -> T,
+    ) -> T {
+        let state = self.shared.lock();
+        let ready = std::array::from_fn(|index| {
+            state.completions[index].as_ref().filter(|completion| {
+                !state.stats.stopped && completion.generation == state.stats.generation
+            })
+        });
+        publish(&ready)
+    }
+
+    /// Borrows one exact generation/key while blocking invalidation and acknowledgement.
+    /// Missing, stopped and stale owners are reported as `None`. Never consumes.
+    pub fn with_completion<T>(
+        &self,
+        generation: u64,
+        key: u64,
+        publish: impl FnOnce(Option<&Completion>) -> T,
+    ) -> T {
+        self.peek_ready(|ready| {
+            publish(
+                ready.iter().flatten().copied().find(|completion| {
+                    completion.generation == generation && completion.key == key
+                }),
+            )
+        })
+    }
+
+    /// Releases only a completed exact-current-generation owner; queued/running keys remain.
+    #[cfg(test)]
+    pub fn acknowledge(&self, generation: u64, key: u64) -> bool {
+        self.publish_acknowledgement(generation, key, Ok::<bool, std::convert::Infallible>)
+            .unwrap_or(false)
+    }
+
+    /// Publishes before releasing an exact completed owner; failure preserves ownership.
+    /// The callback must not reenter the pool.
+    pub fn publish_acknowledgement<T, E>(
+        &self,
+        generation: u64,
+        key: u64,
+        publish: impl FnOnce(bool) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut state = self.shared.lock();
+        if state.stats.stopped || state.stats.generation != generation {
+            return publish(false);
+        }
+        let index = state.completions.iter().position(|completion| {
+            completion.as_ref().is_some_and(|completion| {
+                completion.generation == generation && completion.key == key
+            })
+        });
+        let value = publish(index.is_some())?;
+        if let Some(index) = index {
+            state.completions[index] = None;
+            state.slots[index] = Slot::Vacant;
+            release(&mut state);
+        }
+        drop(state);
+        Ok(value)
+    }
+
     /// Publishes current ready owners transactionally while holding the invalidation lock.
     /// The callback runs exactly once, including when every entry is `None`.
     /// Failure preserves all owners and reservations; success releases ready owners.

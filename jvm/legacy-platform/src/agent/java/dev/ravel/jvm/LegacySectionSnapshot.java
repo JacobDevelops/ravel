@@ -35,11 +35,12 @@ final class LegacySectionSnapshot {
             Access a = access;
             ReentrantLock lock = (ReentrantLock) a.lock.get(chunk);
             if (!lock.tryLock()) { increment(8); return; }
-            Object region;
+            Object region, compiled;
             int x, y, z;
             try {
+                compiled = a.compiled.invoke(task);
                 if (a.pending.get(chunk) != task || (boolean) a.cancelled.invoke(task)
-                        || a.compiled.invoke(task) == null) { increment(8); return; }
+                        || compiled == null) { increment(8); return; }
                 region = a.region.get(chunk);
                 if (region == null) { increment(8); return; }
                 Object origin = a.origin.get(chunk);
@@ -53,7 +54,8 @@ final class LegacySectionSnapshot {
             long nonAir = fill(a, region, x, y, z, states, light, geometry);
             long[] candidate = retainProof && !proofReady()
                     ? oracle(a, region, x, y, z, new byte[][] {light, geometry}, states) : null;
-            long[] receipt = submit(generation, states, light, geometry, started);
+            long[] receipt = submit(generation, states, light, geometry, started,
+                    chunk, task, compiled, x, y, z);
             if (receipt == null) return;
             record(receipt, System.nanoTime() - started, generation, nonAir, states, light, geometry);
             if (candidate != null) retain(candidate, generation, states, light, geometry);
@@ -66,13 +68,18 @@ final class LegacySectionSnapshot {
     }
 
     // The Java key is reserved before the native call; every outcome settles it exactly once.
-    private static long[] submit(long generation, int[] states, byte[] light, byte[] geometry, long started) {
+    private static long[] submit(long generation, int[] states, byte[] light, byte[] geometry, long started,
+            Object chunk, Object task, Object compiled, int x, int y, int z) {
         long key = LegacyMeshWork.reserve(generation);
         if (key == 0) { increment(8); return null; }
         long[] receipt = null;
         try {
+            LegacyVanillaGeometry.associate(key, generation, chunk, task, compiled, x, y, z);
             receipt = Hook.ravelRendererSnapshot(generation, key, states, light, geometry);
         } finally {
+            if (receipt == null || receipt.length != 8 || receipt[0] != 1
+                    || receipt[6] != 1 || receipt[7] != key)
+                LegacyVanillaGeometry.discard(key, generation);
             LegacyMeshWork.commit(key, receipt, System.nanoTime() - started);
         }
         if (receipt.length == 0) { increment(7); return null; }

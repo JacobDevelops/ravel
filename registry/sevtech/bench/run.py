@@ -18,13 +18,56 @@ import shutil
 import urllib.request
 import zipfile
 from shade import relocate_class
-from launch import prepare_command, validate_java
+from launch import prepare_command, validate_java, validate_renderer_selection
 from summarize import validate_ravel_runtime
 
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = ROOT / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline'
 ASM_URL = 'https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.6/asm-9.6.jar'
 ASM_SHA256 = '3c6fac2424db3d4a853b669f4e3d1d9c3c552235e19a319673f887083c2303a1'
+GEOMETRY_METRICS = (
+    'copiedMeshes', 'copiedBytes', 'copyNanos', 'uploads', 'uploadBytes', 'uploadNanos',
+    'residentBytes', 'maxResidentBytes', 'stagingBytes', 'maxStagingBytes',
+    'submissions', 'submissionNanos', 'refusedMeshes', 'cleanups', 'liveBuffers',
+    'liveFramebuffers', 'referenceMismatchPixels', 'vanillaComparisons',
+    'vanillaRgbaMismatchPixels', 'vanillaCoverageMismatchPixels', 'vanillaDepthMismatchPixels',
+    'generation', 'key',
+)
+GEOMETRY_FIDELITY = 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'
+
+
+def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
+    from prepare import require
+    path = out / 'geometry-upload.json'
+    require(path.is_file(), 'geometry metrics export missing')
+    require(path.stat().st_mtime_ns >= started_ns, 'geometry metrics export stale')
+    data = json.loads(path.read_text())
+    require(isinstance(data, dict) and type(data.get('schemaVersion')) is int
+            and data['schemaVersion'] == 1, 'geometry metrics schema differs')
+    require(data.get('selection') == renderer, 'geometry metrics selection differs')
+    require(data.get('fidelity') == GEOMETRY_FIDELITY
+            and data.get('upload') == 'bounded-native-wire-java-owned-offscreen-gl',
+            'geometry metrics fidelity/upload contract differs')
+    metrics = data.get('metrics')
+    require(isinstance(metrics, dict) and set(metrics) == set(GEOMETRY_METRICS),
+            'geometry metrics fields differ')
+    require(all(type(value) is int and value >= 0 for value in metrics.values()),
+            'geometry metrics must be nonnegative integers')
+    if renderer == 'vanilla':
+        require(data.get('backend') == 'not-selected' and not any(metrics.values()),
+                'vanilla arm performed geometry work')
+        return
+    require(data.get('backend') in ('OpenGL15', 'ARB_vertex_buffer_object'),
+            'geometry backend unsupported or unselected')
+    require(all(metrics[name] > 0 for name in
+                ('copiedMeshes', 'copiedBytes', 'uploads', 'uploadBytes', 'submissions', 'cleanups')),
+            'geometry proof performed no copy/upload/submission/cleanup work')
+    require(0 < metrics['maxResidentBytes'] <= 1_179_648
+            and 0 < metrics['maxStagingBytes'] <= 1_212_416,
+            'geometry residency/staging exceeded bounded capacity')
+    require(not any(metrics[name] for name in
+                    ('residentBytes', 'stagingBytes', 'liveBuffers', 'liveFramebuffers', 'generation', 'key')),
+            'geometry cleanup retained residency or live objects')
 
 
 def pinned_asm(version: str, checksum: str) -> Path:
@@ -152,6 +195,7 @@ def validate_display(functional_only: bool) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
+    validate_renderer_selection(args.instance, args.workload, args.renderer)
     validate_display(args.functional_only)
     out = LOCAL / 'runs' / args.trial
     out.mkdir(parents=True, mode=0o700)
@@ -164,7 +208,8 @@ def run(args: argparse.Namespace) -> None:
         prepare = 'prepare.py' if args.instance == 'original' else 'cleanroom.py'
         subprocess.run(['python3', str(Path(__file__).with_name(prepare)),
                         '--agent', str(LOCAL / 'observer.jar'), '--output', str(out)], check=True)
-    command, cwd = prepare_command(args.instance, out, args.candidate, workload=args.workload)
+    command, cwd = prepare_command(args.instance, out, args.candidate, workload=args.workload,
+                                   renderer=args.renderer)
     instance = cwd.parent
     game_log = cwd / 'logs/latest.log'
     game_log.unlink(missing_ok=True)
@@ -177,6 +222,7 @@ def run(args: argparse.Namespace) -> None:
     environment = os.environ.copy()
     environment.setdefault('ALSOFT_DRIVERS', 'null')
     start = time.monotonic_ns()
+    started_ns = time.time_ns()
     with (out / 'launcher.log').open('w') as log, (out / 'process.csv').open('w') as raw:
         process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
@@ -210,6 +256,7 @@ def run(args: argparse.Namespace) -> None:
         raise RuntimeError('trial did not complete successfully; inspect private trial logs')
     if args.instance == 'ravel' and args.workload == 'vanilla':
         validate_ravel_runtime(out)
+        validate_geometry_export(out, args.renderer, started_ns)
 
 
 def monitor(process: subprocess.Popen, writer: Any, out: Path, timeout: float) -> None:
@@ -271,6 +318,7 @@ def prepare_candidate(out: Path) -> None:
 
 
 def matrix(args: argparse.Namespace) -> None:
+    validate_renderer_selection(args.instance, args.workload, args.renderer)
     if '/' in args.matrix or args.matrix in ('.', '..'):
         raise ValueError('matrix prefix must be a simple identifier')
     caches = ('warm-filesystem',) if args.workload == 'vanilla' else ('cold-data-cache', 'warm-filesystem')
@@ -279,7 +327,8 @@ def matrix(args: argparse.Namespace) -> None:
             trial = f'{args.matrix}-{cache}-{repetition}'
             command = ['mise', 'exec', '--', 'numen', 'run', '--', 'python3', str(Path(__file__)),
                        trial, '--cache', cache, '--instance', args.instance,
-                       '--timeout', str(args.timeout), '--workload', args.workload]
+                       '--timeout', str(args.timeout), '--workload', args.workload,
+                       '--renderer', args.renderer]
             if args.candidate:
                 command += ['--candidate', str(args.candidate.resolve())]
             subprocess.run(command, check=True)
@@ -292,6 +341,8 @@ def main() -> None:
     parser.add_argument('--cache', choices=['cold-data-cache', 'warm-filesystem'], default='warm-filesystem')
     parser.add_argument('--instance', choices=['original', 'cleanroom', 'ravel', 'vanilla'], default='original')
     parser.add_argument('--workload', choices=['sevtech', 'vanilla'], default='sevtech')
+    parser.add_argument('--renderer', choices=['vanilla', 'geometry-proof'], default='vanilla',
+                        help='geometry-proof is opt-in for the Ravel vanilla workload only')
     parser.add_argument('--functional-only', action='store_true',
                         help='allow a nonphysical display; never include in performance comparisons')
     parser.add_argument('--candidate', type=Path, help='private Ravel direct launch specification JSON')
@@ -300,6 +351,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.instance == 'vanilla':
         args.workload = 'vanilla'
+    try:
+        validate_renderer_selection(args.instance, args.workload, args.renderer)
+    except ValueError as error:
+        parser.error(str(error))
     if args.workload == 'vanilla' and args.instance not in ('vanilla', 'ravel'):
         parser.error('vanilla workload requires --instance vanilla or ravel')
     if args.functional_only and args.matrix:

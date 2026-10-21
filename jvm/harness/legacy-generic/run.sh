@@ -15,7 +15,8 @@ record="$root/target/ravel-jvm/legacy-generic-sections.txt"
 section() { printf '%s\n' "$1" >>"$record"; }
 jvm=("$java" -Xshare:off -Xverify:all --illegal-native-access=deny -Dravel.legacy.proof=true)
 mkdir -p "$work/classes" "$work/fixture" "$work/entries" "$work/missing"
-"$javac" -cp "$jar" -d "$work/classes" "$sources/GenericMain.java" "$sources/NativeMain.java"
+"$javac" -cp "$jar" -d "$work/classes" "$sources/GenericMain.java" "$sources/NativeMain.java" \
+    "$root/jvm/harness/LegacyGeometryProofMain.java" "$root/jvm/harness/LegacyRetainedMeshMain.java"
 "$javac" -cp "$jar" -d "$work/fixture" "$sources/fixture/dev/ravel/jvm/Hook.java"
 "$javac" -cp "$work/fixture:$jar" -d "$work/fixture" \
     "$sources/FixtureMain.java" "$sources/HierarchyFixture.java" \
@@ -24,6 +25,11 @@ mkdir -p "$work/classes" "$work/fixture" "$work/entries" "$work/missing"
     "$sources/PaletteFixture.java" "$sources/PaletteMain.java"
 native=("${jvm[@]}" --module-path "$jar" --add-modules dev.ravel.agent,java.instrument
     --enable-native-access=dev.ravel.agent --patch-module "dev.ravel.agent=$work/classes")
+for renderer in vanilla geometry-proof world; do
+    "${native[@]}" "-Dravel.renderer=$renderer" \
+        -m dev.ravel.agent/dev.ravel.jvm.LegacyGeometryProofMain
+done
+"${native[@]}" -m dev.ravel.agent/dev.ravel.jvm.LegacyRetainedMeshMain
 (cd "$work" && "${native[@]}" -m dev.ravel.agent/dev.ravel.jvm.NativeMain prepare \
     "$work/entries" "$work/missing" "$work/entry-names")
 mapfile -t entries <"$work/entry-names"

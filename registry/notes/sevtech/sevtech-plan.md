@@ -296,10 +296,16 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   drain. Captured game full-opaque-cube properties select geometry; unsupported state keys are explicit.
   Two Rust workers share eight work slots and a fixed native byte reservation ceiling. Physical-GPU and
   Xvfb moving stress both reach the ceiling without stale publication or leaked shutdown reservations.
-  Java checks completion metadata but discards native geometry; vanilla still renders and owns GL.
-  Slices 5–7 remain: batched upload, complete model/layer/reload fidelity and default cutover.
-  This is functional geometry/ownership proof, not an atomic world transaction, full visual parity,
-  matched performance evidence or demonstrated resource savings.
+  Slice 5 completed [bounded Java-owned batched upload](batched-upload.md), retained generation/key
+  transfer and exact acknowledgement. Explicit off-by-default geometry-proof selection submits only
+  eligible complete solid geometry offscreen; vanilla remains authoritative and owns world drawing.
+  Default and selected silent Xvfb live acceptance pass; the selected actual same-section vanilla solid
+  projection has nonempty foreground and zero RGBA/coverage/depth mismatches. Six locked RTX 5090
+  physical trials (three off/three on) and separate strict reductions completed with disclosed
+  frame/copy/upload/residency/RSS/heap/device-VRAM results and frozen-versus-live artifact differences.
+  Stress p95/p99 trial-median changes were +3.19%/+0.32%, not a like-for-like vanilla speedup.
+  Slices 6–7 retain model/texture/AO/layer/reload fidelity and default cutover.
+  This is not full visual parity or demonstrated resource savings.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

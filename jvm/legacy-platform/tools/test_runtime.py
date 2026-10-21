@@ -4,10 +4,12 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import struct
 import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import zlib
 
 import acquire
 import agent
@@ -297,6 +299,100 @@ def mesh_proof_fixture():
 
 
 class RendererProofTests(unittest.TestCase):
+    def test_geometry_selection_requires_fresh_separate_proof(self):
+        proof = renderer_proof_fixture()
+        proof['mesh']['upload'] = 'bounded-native-wire-java-owned-offscreen-gl'
+        live.mesh_proof(proof['mesh'], 'geometry-proof')
+        with self.assertRaises(RuntimeError):
+            live.mesh_proof(proof['mesh'])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'renderer.json'
+            path.write_text(json.dumps(proof))
+            with self.assertRaises(RuntimeError):
+                live.renderer_proof(path, 0)
+            with self.assertRaises(RuntimeError):
+                live.renderer_proof(path, 0, 'geometry-proof')
+
+    def test_geometry_self_reference_mismatch_bounds_and_cleanup_are_strict(self):
+        names = ('copiedMeshes copiedBytes copyNanos uploads uploadBytes uploadNanos residentBytes '
+                 'maxResidentBytes stagingBytes maxStagingBytes submissions submissionNanos refusedMeshes '
+                 'cleanups liveBuffers liveFramebuffers referenceMismatchPixels vanillaComparisons '
+                 'vanillaRgbaMismatchPixels vanillaCoverageMismatchPixels vanillaDepthMismatchPixels generation key').split()
+        metrics = dict.fromkeys(names, 1)
+        metrics.update(referenceMismatchPixels=0, refusedMeshes=0, vanillaComparisons=1,
+                       vanillaRgbaMismatchPixels=1, vanillaCoverageMismatchPixels=1, vanillaDepthMismatchPixels=1)
+        final = metrics | dict.fromkeys(('residentBytes', 'stagingBytes', 'liveBuffers', 'liveFramebuffers'), 0)
+        proof = {
+            'selection': 'geometry-proof', 'offDefault': True, 'worldSubstitution': False,
+            'fidelity': 'not-proven', 'reference': 'self-reference-not-vanilla-oracle',
+            'width': 64, 'height': 64, 'rowOrder': 'bottom-up',
+            'vanillaScope': 'published-SOLID-only-section-position-coverage-depth',
+            'vanillaComparison': {'status': 1, 'generation': 1, 'key': 1, 'vanillaVertices': 4,
+                'vanillaLayers': 1, 'rgbaMismatchPixels': 1, 'coverageMismatchPixels': 1,
+                'depthMismatchPixels': 1, 'totalPixels': 4096},
+            'metrics': metrics, 'info': ['geometry-proof', 'OpenGL15',
+                'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'],
+            'finalMetrics': final}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'geometry-upload.json'
+            def chunk(kind, data):
+                return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+            png = (b'\x89PNG\r\n\x1a\n'
+                   + chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 64, 8, 6, 0, 0, 0))
+                   + chunk(b'IDAT', zlib.compress(bytes(64 * (1 + 64 * 4))))
+                   + chunk(b'IEND', b''))
+            native = bytes([1]) + bytes(16383)
+            vanilla = bytes([1, 0, 0, 0, 1]) + bytes(16379)
+            for name in ('native', 'reference', 'vanilla'):
+                (path.parent / f'geometry-{name}.rgba').write_bytes(native)
+                (path.parent / f'geometry-{name}.png').write_bytes(png)
+            (path.parent / 'geometry-vanilla.rgba').write_bytes(vanilla)
+            path.write_text(json.dumps(proof))
+            self.assertEqual(live.geometry_proof(path, 0), proof)
+            for empty in ('native', 'vanilla'):
+                with self.subTest(emptyImage=empty):
+                    (path.parent / f'geometry-{empty}.rgba').write_bytes(bytes(16384))
+                    empty_proof = proof
+                    if empty == 'native':
+                        (path.parent / 'geometry-reference.rgba').write_bytes(bytes(16384))
+                        empty_proof = proof | {
+                            'metrics': metrics | {'vanillaRgbaMismatchPixels': 2, 'vanillaCoverageMismatchPixels': 2},
+                            'vanillaComparison': proof['vanillaComparison'] | {
+                                'rgbaMismatchPixels': 2, 'coverageMismatchPixels': 2}}
+                    path.write_text(json.dumps(empty_proof))
+                    with self.assertRaises(RuntimeError):
+                        live.geometry_proof(path, 0)
+                    for name in ('native', 'reference'):
+                        (path.parent / f'geometry-{name}.rgba').write_bytes(native)
+                    (path.parent / 'geometry-vanilla.rgba').write_bytes(vanilla)
+            for changes in ({'referenceMismatchPixels': 1}, {'maxResidentBytes': 1179649},
+                            {'maxStagingBytes': 1212417}, {'uploads': 0}, {'submissions': 0}):
+                path.write_text(json.dumps(proof | {'metrics': metrics | changes}))
+                with self.assertRaises(RuntimeError):
+                    live.geometry_proof(path, 0)
+            path.write_text(json.dumps(proof | {'finalMetrics': final | {'liveBuffers': 1}}))
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+            path.write_text(json.dumps(proof | {'vanillaComparison': proof['vanillaComparison'] | {'status': 0}}))
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+            path.write_text(json.dumps(proof | {'vanillaComparison': proof['vanillaComparison'] | {'vanillaLayers': 2}}))
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+            path.write_text(json.dumps(proof | {'finalMetrics': final | {'maxResidentBytes': 1179649}}))
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+            path.write_text(json.dumps(proof))
+            (path.parent / 'geometry-native.rgba').write_bytes(bytes([2]) + bytes(16383))
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, float('inf'))
+            (path.parent / 'geometry-native.rgba').write_bytes(native)
+            (path.parent / 'geometry-vanilla.rgba').unlink()
+            with self.assertRaises(RuntimeError):
+                live.geometry_proof(path, 0)
+
     def test_generations_seams_and_freshness(self):
         proof = renderer_proof_fixture()
         proof['snapshot'].update(oracleRetryCells=7, oracleRetryCandidates=2)

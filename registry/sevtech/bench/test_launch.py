@@ -196,10 +196,10 @@ class VanillaLaunchTests(unittest.TestCase):
         import vanilla
         with patch.object(vanilla, 'prepare_command', return_value=(['java'], Path('/game'))) as prepare:
             self.assertEqual(launch.prepare_command('vanilla', '/trial'), (['java'], Path('/game')))
-            prepare.assert_called_once_with(Path('/trial'), 'vanilla', None)
+            prepare.assert_called_once_with(Path('/trial'), 'vanilla', None, renderer='vanilla')
             prepare.reset_mock()
             launch.prepare_command('ravel', '/trial', '/candidate', workload='vanilla')
-            prepare.assert_called_once_with(Path('/trial'), 'ravel', '/candidate')
+            prepare.assert_called_once_with(Path('/trial'), 'ravel', '/candidate', renderer='vanilla')
 
     def test_vanilla_candidate_rejects_unpinned_runtime_and_extras(self):
         import vanilla
@@ -311,11 +311,33 @@ class VanillaLaunchTests(unittest.TestCase):
                     vanilla.write_candidate(rejected, root / 'java', host)
                 self.assertFalse(rejected.exists())
 
+    def test_geometry_proof_requires_ravel_vanilla_before_resolution(self) -> None:
+        import vanilla
+        for instance, workload in (('original', 'sevtech'), ('cleanroom', 'sevtech'),
+                                   ('ravel', 'sevtech'), ('vanilla', 'vanilla')):
+            with self.subTest(instance=instance, workload=workload):
+                with self.assertRaisesRegex(ValueError, 'geometry-proof requires'):
+                    launch.prepare_command(instance, Path('/unused'), workload=workload,
+                                           renderer='geometry-proof')
+        with self.assertRaisesRegex(ValueError, 'geometry-proof requires'):
+            vanilla.prepare_command(Path('/unused'), 'vanilla', renderer='geometry-proof')
+        with self.assertRaisesRegex(ValueError, 'unknown renderer'):
+            launch.prepare_command('ravel', Path('/unused'), workload='vanilla', renderer='other')
+
+    def test_renderer_selection_is_forwarded_to_vanilla_resolver(self) -> None:
+        import vanilla
+        with patch.object(vanilla, 'prepare_command', return_value=(['java'], Path('/game'))) as resolve:
+            launch.prepare_command('ravel', Path('/trial'), Path('/candidate'),
+                                   workload='vanilla', renderer='geometry-proof')
+        resolve.assert_called_once_with(Path('/trial'), 'ravel', Path('/candidate'),
+                                        renderer='geometry-proof')
+
     def test_matched_vanilla_commands_use_official_main_or_real_agent(self):
         import json
         import vanilla
-        for instance in ('vanilla', 'ravel'):
-            with self.subTest(instance=instance), tempfile.TemporaryDirectory() as raw:
+        for instance, renderer in (('vanilla', 'vanilla'), ('ravel', 'vanilla'),
+                                   ('ravel', 'geometry-proof')):
+            with self.subTest(instance=instance, renderer=renderer), tempfile.TemporaryDirectory() as raw:
                 root = Path(raw)
                 out = root / 'trial'
                 out.mkdir()
@@ -343,13 +365,17 @@ class VanillaLaunchTests(unittest.TestCase):
                             'minecraftArguments': '--gameDir ${game_directory} --username ${auth_player_name}',
                             'assetIndex': {'id': '1.12'}, 'libraries': []}
                 candidate = self._vanilla_candidate(root, java) if instance == 'ravel' else None
+                candidate_bytes = candidate.read_bytes() if candidate else None
                 with patch.object(launch, 'LOCAL', root), patch.object(launch, 'ROOT', root), \
                      patch.object(launch, 'official_metadata', return_value=(official, client)), \
                      patch.object(launch, 'resolve_libraries', return_value=([library], natives)), \
                      patch.object(launch, 'resolve_assets', return_value=root / 'assets'), \
                      patch.object(launch, 'validate_java', return_value='actual version'), \
                      patch.object(vanilla, 'validate_agent'):
-                    command, cwd = vanilla.prepare_command(out, instance, candidate)
+                    if renderer == 'vanilla':
+                        command, cwd = vanilla.prepare_command(out, instance, candidate)
+                    else:
+                        command, cwd = vanilla.prepare_command(out, instance, candidate, renderer=renderer)
                 self.assertEqual(cwd, game)
                 self.assertIn('-Xmx8192M', command)
                 self.assertNotIn('--tweakClass', command)
@@ -358,11 +384,18 @@ class VanillaLaunchTests(unittest.TestCase):
                 if instance == 'vanilla':
                     self.assertIn('net.minecraft.client.main.Main', command)
                     self.assertNotIn('--module-path', command)
+                    self.assertFalse(any(arg.startswith('-Dravel.renderer') for arg in command))
                 else:
                     self.assertIn('dev.ravel.legacy.launch.LegacyLauncher', command)
                     self.assertIn('-Dravel.legacy.benchmark=true', command)
                     self.assertEqual(len([arg for arg in command if arg.startswith('-javaagent:')]), 2)
                     self.assertTrue(any(arg.startswith('-Dravel.host=') for arg in command))
+                    selection = ['-Dravel.renderer=' + renderer,
+                                 '-Dravel.renderer.metrics=' + str(out / 'geometry-upload.json')]
+                    self.assertTrue(all(value in command for value in selection))
+                    self.assertEqual(record['provenance']['rendererJvmArgs'], selection)
+                    self.assertEqual(record['provenance']['renderer'], renderer)
+                    self.assertEqual(candidate.read_bytes(), candidate_bytes)
                     child = directory / 'benchmark-child-classpath.txt'
                     self.assertIn(str(library), child.read_text())
 

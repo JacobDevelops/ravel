@@ -84,7 +84,62 @@ public final class NativeMain {
         if (arguments[1].equals("renderer")) renderer();
         System.out.println("legacy " + arguments[1] + " side=" + expectedSide + " checked");
     }
+    private static void vanillaOracleIdentity() {
+        require(LegacyVanillaGeometry.solidLayerMask(1, 0), "oracle refused solid-only scope");
+        require(LegacyVanillaGeometry.solidLayerMask(4, 2), "oracle assumed SOLID ordinal");
+        require(!LegacyVanillaGeometry.solidLayerMask(0, 0), "oracle accepted empty scope");
+        require(!LegacyVanillaGeometry.solidLayerMask(3, 0), "oracle accepted mixed layers");
+        require(!LegacyVanillaGeometry.solidLayerMask(2, 0), "oracle accepted non-solid-only scope");
+        require(!LegacyVanillaGeometry.solidLayerMask(1, -1)
+                && !LegacyVanillaGeometry.solidLayerMask(1, 4), "oracle accepted invalid solid layer");
+        for (long status : new long[]{0, 1, -1, -2, -3, -4, -5}) {
+            require(LegacyVanillaGeometry.withoutResident(status) != 1,
+                    "eligibility was reported as an actual absent-resident comparison");
+            require(LegacyVanillaGeometry.retryEligibility(status) == (status == -2),
+                    "busy eligibility must retry, not become a completed scope refusal");
+        }
+        LegacyVanillaGeometry.Associations entries = new LegacyVanillaGeometry.Associations();
+        Object chunk = new Object(), task = new Object(), compiled = new Object();
+        require(!entries.put(0, 1, chunk, task, compiled, 0, 0, 0), "oracle accepted zero key");
+        require(!entries.put(1, 0, chunk, task, compiled, 0, 0, 0), "oracle accepted zero generation");
+        require(!entries.put(1, 1, null, task, compiled, 0, 0, 0), "oracle accepted missing chunk");
+        require(!entries.put(1, 1, chunk, task, compiled, 1, 0, 0), "oracle accepted unaligned origin");
+        require(entries.put(1, 1, chunk, task, compiled, 0, 0, 0), "oracle refused identity");
+        require(entries.get(1, 2) == null, "oracle relabelled generation");
+        require(entries.get(2, 1) == null, "oracle relabelled key");
+        entries.pin(1, 1);
+        entries.remove(1, 1);
+        for (int key = 2; key <= 17; key++)
+            require(entries.put(key, 1, chunk, task, compiled, 0, 0, 0), "oracle refused bounded admission");
+        require(entries.size() == 16 && entries.get(1, 1) != null, "oracle evicted resident association");
+        require(!entries.put(18, 1, chunk, task, compiled, 0, 0, 0),
+                "oracle evicted an outstanding association");
+        boolean overflow = false;
+        try {
+            entries.admit(19, 1, chunk, task, compiled, 0, 0, 0);
+        } catch (IllegalStateException expected) {
+            overflow = true;
+        }
+        require(overflow && entries.size() == 16 && entries.get(1, 1) != null,
+                "overflow must fail without evicting pending or resident identities");
+        entries.remove(9, 1);
+        require(entries.put(18, 1, chunk, task, compiled, 0, 0, 0), "oracle did not reuse settled slot");
+        require(entries.get(1, 1) != null, "settlement replaced pinned resident");
+        entries.retire(1);
+        require(entries.size() == 0 && entries.get(1, 1) == null
+                && !entries.put(19, 1, chunk, task, compiled, 0, 0, 0),
+                "oracle retained or readmitted retired generation");
+        entries.admit(20, 1, chunk, task, compiled, 0, 0, 0);
+        require(entries.size() == 0, "retired-generation association was not a quiet no-op");
+        LegacyVanillaGeometry.Associations empty = new LegacyVanillaGeometry.Associations();
+        empty.retire(2);
+        empty.admit(21, 2, chunk, task, compiled, 0, 0, 0);
+        require(empty.size() == 0, "empty-table retirement forgot explicit generation");
+        empty.admit(22, 3, chunk, task, compiled, 0, 0, 0);
+        require(empty.size() == 1, "explicit retirement blocked a future generation");
+    }
     private static void renderer() throws Exception {
+        vanillaOracleIdentity();
         LegacyRenderer.enter("legacyRendererFrame", null);
         long initial = LegacyRenderer.currentGeneration();
         require(initial > 0 && LegacyRenderer.accepts(initial), "no renderer generation");

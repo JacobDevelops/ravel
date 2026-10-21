@@ -17,6 +17,10 @@ suffix=""
 client_native_modules="$modules"
 server_native_options=()
 if [[ "$action" == client-agent || "$action" == server-agent ]]; then
+    case "${RAVEL_LEGACY_RENDERER:-vanilla}" in
+        vanilla|geometry-proof) ;;
+        *) echo 'RAVEL_LEGACY_RENDERER must be vanilla or geometry-proof' >&2; exit 1 ;;
+    esac
     action="${action%-agent}"
     suffix="-agent"
     agent="${RAVEL_LEGACY_AGENT:-$root/target/ravel-jvm/ravel-agent.jar}"
@@ -29,6 +33,9 @@ if [[ "$action" == client-agent || "$action" == server-agent ]]; then
     agent_options=(--add-modules dev.ravel.agent "-javaagent:$agent"
         "-Dravel.host=$host" -Dravel.report.targets=true -Dravel.report.loader=true
         -Dravel.legacy.acceptance=true -Dravel.legacy.proof=true)
+    if [[ "$action" == client && "${RAVEL_LEGACY_RENDERER:-vanilla}" == geometry-proof ]]; then
+        agent_options+=(-Dravel.renderer=geometry-proof)
+    fi
     if [[ -n "${RAVEL_LEGACY_PROBES:-}" ]]; then
         agent_options+=(--patch-module "dev.ravel.agent=$RAVEL_LEGACY_PROBES"
             -Dravel.legacy.serverProbe=dev.ravel.jvm.LegacyServerLive
@@ -82,6 +89,7 @@ if [[ "${1:-}" == build ]]; then
     "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.ClientLinkageTest \
         "$work/client-classpath.txt" "$work/client.jar" "$work/vanilla-linkage.tsv" "$work/audio-linkage.tsv"
     "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.MatrixMathTest
+    "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.opengl.MeshWireTest
     "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.launch.LegacyShutdownTest
     "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.SysTimerTest
     "${modular[@]}" -cp "$test_cp" dev.ravel.legacy.input.KeyboardTranslationTest

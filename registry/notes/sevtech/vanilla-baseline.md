@@ -138,6 +138,62 @@ Offline regression checks run with
 Preparation isolation checks live in `test_prepare.py`; synthetic summary
 fixtures live in `summary_test_support.py`. Neither requires a game launch.
 
+## Runtime renderer selection
+
+`run.py` and `launch.py` accept `--renderer vanilla|geometry-proof`, defaulting
+to `vanilla`. `geometry-proof` is restricted to `--instance ravel --workload
+vanilla`; it is not a SevTech or official Java 8 renderer mode. The selector is
+a runtime argument, not an extra candidate field: use the same immutable,
+content-addressed candidate for both Ravel arms. No arbitrary JVM options are
+accepted through this selector.
+
+Ravel vanilla commands explicitly record `-Dravel.renderer=<selection>` and
+`-Dravel.renderer.metrics=<absolute-trial-directory>/geometry-upload.json` in
+`command.json`'s `argv` and `provenance.rendererJvmArgs`; `provenance.renderer`
+also records the selection. The official Java 8 command receives neither
+property. The metrics property requests a Java export at lifecycle cleanup and
+mesh-worker shutdown, with a snapshot-only JVM shutdown fallback that never
+calls GL. Schema version 1 records `selection`, `backend`, `fidelity`, `upload`
+and named integer `metrics`, separately from the unchanged observer CSV/reducer
+protocol. The vanilla arm reports `backend: not-selected` and zero counters
+without loading the platform/GL path. Geometry proof is bounded, offscreen,
+geometric-only upload evidence, not a fidelity-complete world replacement;
+the export explicitly records the missing material/light fidelity. A forced
+kill may prevent the final shutdown snapshot; an absent file is not zero work.
+The runner rejects a missing/stale export, wrong schema/selection, unsupported
+proof backend, zero copy/upload/submission/cleanup work, out-of-bounds peak
+residency/staging, or retained residency/live objects after shutdown. The off
+arm must report no geometry work. These checks run after process completion;
+they do not change the reducer's historical CSV/JSON format or scene arithmetic.
+The bounded payload residency counter covers VBO bytes only (maximum
+1,179,648 bytes); CPU direct staging plus readback is bounded to 1,212,416
+bytes. Fixed 64×64 framebuffer attachments are resource-bounded, not counted
+as measured GPU bytes: their actual driver storage is unspecified.
+
+After retaining a fresh slice-5 candidate using the build procedure above,
+these two matrices request six warm-filesystem physical trials (three per
+renderer), with the same seed 8675309 and existing scene timings:
+
+```sh
+baseline=tests/fixtures/local/sevtech-ages-3.2.3/baseline
+candidate="$baseline/wp5-slice5-candidate.json"
+DISPLAY=:0 mise exec -- python3 registry/sevtech/bench/run.py \
+  --matrix wp5-s5-off --instance ravel --workload vanilla \
+  --candidate "$candidate" --renderer vanilla
+DISPLAY=:0 mise exec -- python3 registry/sevtech/bench/run.py \
+  --matrix wp5-s5-on --instance ravel --workload vanilla \
+  --candidate "$candidate" --renderer geometry-proof
+mise exec -- numen run -- xvfb-run -a -s '-screen 0 1280x720x24' \
+  env LIBGL_ALWAYS_SOFTWARE=1 python3 registry/sevtech/bench/run.py \
+  wp5-s5-on-functional --instance ravel --workload vanilla \
+  --candidate "$candidate" --renderer geometry-proof --functional-only --timeout 900
+```
+
+Each matrix expands to `PREFIX-warm-filesystem-1`, `-2`, and `-3`, using one
+`numen run` lock per trial. Use fresh prefixes and a candidate built from the
+intended runtime; selection does not rebuild or modify pinned artifacts.
+These are reproduction commands, not recorded results or a performance claim.
+
 ## Recorded matched trials
 
 Six fresh, independently locked warm-filesystem trials completed with exit 0;

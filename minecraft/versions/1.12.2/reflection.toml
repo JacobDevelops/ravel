@@ -632,6 +632,63 @@ descriptor = "Lnet/minecraft/client/render/world/ChunkCompileTask;"
 [[reflected.member]]
 name = "taskLock"
 descriptor = "Ljava/util/concurrent/locks/ReentrantLock;"
+[[reflected.member]]
+name = "getBuffer"
+descriptor = "(I)Lnet/minecraft/client/render/vertex/VertexBuffer;"
+[[reflected.member]]
+name = "getCompiledChunk"
+descriptor = "()Lnet/minecraft/client/render/world/CompiledChunk;"
+[[reflected.member]]
+name = "compileLock"
+descriptor = "Ljava/util/concurrent/locks/ReentrantLock;"
+
+# Official bxn$2 publishes its captured bxo only after every layer upload completes.
+# Feather hasBlock is inverted: bxo.b(layer) returns true when the layer is empty.
+[[reflected]]
+name = "LEGACY_COMPILED_CHUNK"
+class = "net.minecraft.client.render.world.CompiledChunk"
+runtime = "bxo"
+[[reflected.member]]
+name = "hasBlock"
+descriptor = "(Lnet/minecraft/client/render/block/BlockLayer;)Z"
+
+[[reflected]]
+name = "LEGACY_BLOCK_LAYER"
+class = "net.minecraft.client.render.block.BlockLayer"
+runtime = "amm"
+[[reflected.member]]
+name = "SOLID"
+descriptor = "Lnet/minecraft/client/render/block/BlockLayer;"
+
+[[reflected]]
+name = "LEGACY_VERTEX_BUFFER"
+class = "net.minecraft.client.render.vertex.VertexBuffer"
+runtime = "cdz"
+[[reflected.member]]
+name = "id"
+descriptor = "I"
+[[reflected.member]]
+name = "vertexCount"
+descriptor = "I"
+[[reflected.member]]
+name = "format"
+descriptor = "Lnet/minecraft/client/render/vertex/VertexFormat;"
+
+[[reflected]]
+name = "LEGACY_VERTEX_FORMAT"
+class = "net.minecraft.client.render.vertex.VertexFormat"
+runtime = "cea"
+[[reflected.member]]
+name = "getVertexSize"
+descriptor = "()I"
+
+[[reflected]]
+name = "LEGACY_VERTEX_FORMATS"
+class = "net.minecraft.client.render.vertex.DefaultVertexFormat"
+runtime = "cdy"
+[[reflected.member]]
+name = "BLOCK"
+descriptor = "Lnet/minecraft/client/render/vertex/VertexFormat;"
 
 [[reflected]]
 name = "LEGACY_COMPILE_TASK"
@@ -643,6 +700,9 @@ descriptor = "()Z"
 [[reflected.member]]
 name = "getCompiledChunk"
 descriptor = "()Lnet/minecraft/client/render/world/CompiledChunk;"
+[[reflected.member]]
+name = "getLock"
+descriptor = "()Ljava/util/concurrent/locks/ReentrantLock;"
 
 [[reflected]]
 name = "LEGACY_WORLD_REGION"

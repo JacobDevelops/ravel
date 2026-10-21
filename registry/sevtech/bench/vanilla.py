@@ -131,7 +131,8 @@ def retain_agent_bundle(agent: Path, screen: Path) -> tuple[Path, Path]:
 
 def ravel_command(candidate: Path | str | None, settings: dict[str, Any], directory: Path,
                   out: Path, observer: Path, classpath: list[Path], natives: Path,
-                  args: list[str]) -> tuple[list[str], list[Path], dict[str, Any]]:
+                  args: list[str], renderer: str = 'vanilla') -> tuple[list[str], list[Path], dict[str, Any]]:
+    launch.validate_renderer_selection('ravel', 'vanilla', renderer)
     require(candidate is not None, 'ravel requires an explicit real candidate JSON')
     source = Path(candidate).resolve()
     data = json.loads(source.read_text())
@@ -148,19 +149,23 @@ def ravel_command(candidate: Path | str | None, settings: dict[str, Any], direct
     child = launch.private_path(directory, 'benchmark-child-classpath.txt')
     child.write_text(''.join(str(path) + '\n' for path in classpath))
     logging_args = [value for value in settings['jvmArgs'] if value.startswith('-Dlog4j')]
+    renderer_args = ['-Dravel.renderer=' + renderer,
+                     '-Dravel.renderer.metrics=' + str(out.resolve() / 'geometry-upload.json')]
     command = [data['javaPath'], '-Xms4096M', '-Xmx8192M', '-XX:+UseG1GC',
                '--module-path', os.pathsep.join(map(str, [agent, *modules])),
                '--add-modules', MODULES + ',dev.ravel.agent', '--illegal-native-access=deny',
                '--enable-native-access=' + MODULES + ',dev.ravel.agent',
                '-javaagent:' + str(agent), '-Dravel.host=' + str(host),
                '-Dravel.report.targets=true', '-Dravel.report.loader=true',
-               '-Dravel.legacy.benchmark=true', '-javaagent:' + str(observer) + '=' + str(out),
+               '-Dravel.legacy.benchmark=true', *renderer_args,
+               '-javaagent:' + str(observer) + '=' + str(out),
                '-Xlog:gc*,safepoint:file=' + str(out / 'gc.log') + ':time,uptime,level,tags',
                '-Djava.library.path=' + str(natives), *logging_args,
                '-cp', os.pathsep.join(map(str, [platform, *native_jars])),
                'dev.ravel.legacy.launch.LegacyLauncher', 'client', str(child), str(out), *args]
     provenance = {'candidate': str(source), 'candidateSha256': digest(source),
-                  'childClasspath': list(map(str, classpath))}
+                  'childClasspath': list(map(str, classpath)),
+                  'renderer': renderer, 'rendererJvmArgs': renderer_args}
     return command, retained + [child, source], provenance
 
 
@@ -194,7 +199,9 @@ def prepare_vanilla(out: Path, instance: str, candidate: Path | str | None = Non
     write_json(out / 'settings.json', settings)
 
 
-def prepare_command(out: Path, instance: str, candidate: Path | str | None = None) -> tuple[list[str], Path]:
+def prepare_command(out: Path, instance: str, candidate: Path | str | None = None,
+                    renderer: str = 'vanilla') -> tuple[list[str], Path]:
+    launch.validate_renderer_selection(instance, 'vanilla', renderer)
     out = Path(out).resolve()
     require(instance in ('vanilla', 'ravel'), 'vanilla workload requires vanilla or ravel instance')
     require(out.is_relative_to(launch.LOCAL.resolve()), 'trial output must be below private baseline')
@@ -234,7 +241,7 @@ def prepare_command(out: Path, instance: str, candidate: Path | str | None = Non
     if instance == 'ravel':
         args = command[command.index(profile['mainClass']) + 1:]
         command, extra, candidate_provenance = ravel_command(candidate, settings, directory, out,
-                                                            observer, classpath, natives, args)
+                                                            observer, classpath, natives, args, renderer=renderer)
         runtime += extra
         provenance.update(candidate_provenance)
     runtime += [path for path in natives.rglob('*') if path.is_file()]

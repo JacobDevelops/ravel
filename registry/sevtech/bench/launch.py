@@ -417,14 +417,21 @@ def prepare_candidate(candidate: Path | str | None, instance: Path, output: Path
     return command, game, provenance
 
 
+def validate_renderer_selection(instance: str, workload: str, renderer: str) -> None:
+    require(renderer in ('vanilla', 'geometry-proof'), 'unknown renderer: ' + renderer)
+    require(renderer != 'geometry-proof' or (instance == 'ravel' and workload == 'vanilla'),
+            'geometry-proof requires --instance ravel --workload vanilla')
+
+
 def prepare_command(instance: str, output: Path | str,
                     candidate: Path | str | None = None,
-                    workload: str = 'sevtech') -> tuple[list[str], Path]:
+                    workload: str = 'sevtech', renderer: str = 'vanilla') -> tuple[list[str], Path]:
     """Finish all resolver I/O, then return (Java argv, .minecraft cwd)."""
     require(workload in ('sevtech', 'vanilla'), 'unknown workload: ' + workload)
+    validate_renderer_selection(instance, workload, renderer)
     if instance == 'vanilla' or workload == 'vanilla':
         from vanilla import prepare_command as vanilla_command
-        return vanilla_command(Path(output), instance, candidate)
+        return vanilla_command(Path(output), instance, candidate, renderer=renderer)
     require(instance in ('original', 'cleanroom', 'ravel'), 'unknown instance: ' + instance)
     require(platform.system() == 'Linux' and platform.machine() in ('x86_64', 'amd64'),
             'direct benchmark resolver requires Linux x86_64')
@@ -474,11 +481,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--instance', choices=('original', 'cleanroom', 'ravel', 'vanilla'), default='original')
     parser.add_argument('--workload', choices=('sevtech', 'vanilla'), default='sevtech')
+    parser.add_argument('--renderer', choices=('vanilla', 'geometry-proof'), default='vanilla')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--candidate', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='explicit; this tool never launches')
     args = parser.parse_args()
-    command, game = prepare_command(args.instance, args.output, args.candidate, args.workload)
+    command, game = prepare_command(args.instance, args.output, args.candidate, args.workload, args.renderer)
     print(json.dumps({'command': command, 'cwd': str(game)}, indent=2))
 
 

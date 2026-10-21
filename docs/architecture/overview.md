@@ -81,10 +81,15 @@ Ravel into a Java mod host.
   visibility outside the SDK closure. Unsupported state keys remain explicit;
   numeric identity alone never implies a cube model. Two Rust workers share
   eight bounded outstanding slots, including retained completions, with byte
-  reservations and generation cancellation. Java admits keyed work, consumes
-  checked result metadata and drains on teardown. Vanilla still owns actual
-  rendering, models, textures, shading and every GL operation; no worker result
-  is uploaded before the later submission cutover.
+  reservations and generation cancellation. Java admits keyed work; retained
+  completion metadata and one bounded little-endian mesh copy cross JNI in
+  batches, with exact generation/key acknowledgement releasing native ownership.
+  Vanilla remains authoritative for world drawing, models, textures and shading.
+  The explicit, off-by-default `geometry-proof` selection uploads complete solid
+  results to Java-owned offscreen GL buffers; incomplete or unsupported results
+  cannot become successful draws. Java alone owns the context, buffers and
+  submission, restores surrounding state, and releases resources on reload,
+  world teardown and close. This proof is not a model/texture/AO fidelity cutover.
 - **Launcher integration.** Prism owns authentication, downloads, Java selection
   and launch; Ravel uses stock instance arguments rather than a launcher fork.
   The generated `Hook` loads the native library with `System.load` from the

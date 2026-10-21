@@ -236,6 +236,24 @@ pub fn ravel_renderer_work<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
+/// Copies a bounded retained solid mesh into Java-owned memory without consuming it.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererMesh")]
+pub fn ravel_renderer_mesh<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    generation: jlong,
+    key: jlong,
+) -> JByteArray<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JByteArray<'local>, work::BoundaryError> {
+            work::publish_mesh(&RENDERER, generation, key, |bytes| {
+                Ok(env.byte_array_from_slice(bytes)?)
+            })
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
 #[cfg(test)]
 mod tests;
 

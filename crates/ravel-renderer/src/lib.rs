@@ -11,6 +11,7 @@
 use std::mem::{size_of, size_of_val};
 
 pub mod mesh;
+pub mod wire;
 pub mod workers;
 
 /// Core section edge, excluding neighbours.

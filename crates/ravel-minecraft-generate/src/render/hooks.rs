@@ -280,8 +280,10 @@ fn written_declarations() -> &'static str {
          \x20   /** Bounded batch: [accepted, bytes, mismatches, cells, copyBytes, scratchBoundBytes, admitted, key]. Failure: [-1, code, detailA, detailB, detailC, 0, 0, key]; stale/busy is empty.\n\
          \x20    * Failure codes: 1 generation; 2 lengths(states,light,geometry); 3 state(index,key); 4 geometry(index,flag); 5 inconsistent geometry(stateKey); 6 palette; 7 null arrays(bitmask states=1,light=2,geometry=4). */\n\
          \x20   public static native long[] ravelRendererSnapshot(long generation, long key, int[] states, byte[] light, byte[] geometry);\n\n\
-         \x20   /** Native-only mesh work: 0 polls at most eight records, 1 queries 18 current stats (last is workerFailure), 2 joins/drains and closes this generation, 3 queries actual last-retired pool stats; authorize with current generation and zero key. */\n\
+         \x20   /** Mesh work: 0 consumes bounded metadata, 1 current stats, 2 closes/drains, 3 retired stats, 4 peeks retained metadata; these require key=0. 5 acknowledges exact generation/key: [1] released, [0] absent, empty stale/closed/invalid. */\n\
          \x20   public static native long[] ravelRendererWork(int operation, long generation, long key);\n\n\
+         \x20   /** Non-consuming Java-owned solid mesh copy; empty for absent/stale/closed/invalid. LE v1: magic 0x354d5652,u32 version,i64 generation/key,u32 status/vertexCount/indexCount/materialCount,u64 visibility (48 bytes); vertices XYZ/face/light (5 bytes), u32 indices, material u32 stateKey/firstIndex/indexCount (12 bytes). Status 0 complete,1 incomplete,2 error; only 0 drawable. At most 1,376,304 bytes. */\n\
+         \x20   public static native byte[] ravelRendererMesh(long generation, long key);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

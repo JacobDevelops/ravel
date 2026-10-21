@@ -12,10 +12,148 @@ fn snapshot(generation: u64) -> SectionSnapshot {
     .expect("bounded snapshot")
 }
 
+fn solid_snapshot(generation: u64) -> SectionSnapshot {
+    let mut states = vec![0; CELL_COUNT];
+    states[(18 + 1) * 18 + 1] = 16;
+    let geometry: Vec<_> = states.iter().map(|state| u8::from(*state == 16)).collect();
+    SectionSnapshot::capture(generation, &states, &[0xa3; CELL_COUNT], &geometry)
+        .unwrap_or_else(|error| panic!("{error:?}"))
+}
+
+fn assert_solid_wire(bytes: &[u8], generation: i64, key: i64) {
+    assert_eq!(bytes.len(), 48 + 24 * 5 + 36 * 4 + 12);
+    assert_eq!(&bytes[..8], &[0x52, 0x56, 0x4d, 0x35, 1, 0, 0, 0]);
+    assert_eq!(&bytes[8..16], &generation.to_le_bytes());
+    assert_eq!(&bytes[16..24], &key.to_le_bytes());
+    assert_eq!(&bytes[24..28], &0_u32.to_le_bytes());
+    assert_eq!(&bytes[28..32], &24_u32.to_le_bytes());
+    assert_eq!(&bytes[32..36], &36_u32.to_le_bytes());
+    assert_eq!(&bytes[36..40], &1_u32.to_le_bytes());
+    assert_eq!(&bytes[40..48], &((1_u64 << 36) - 1).to_le_bytes());
+    let mesh = ravel_renderer::mesh::mesh(
+        &solid_snapshot(generation.unsigned_abs()),
+        key.unsigned_abs(),
+        || false,
+    )
+    .unwrap_or_else(|error| panic!("{error:?}"));
+    for (offset, vertex) in mesh.layers()[0].vertices().iter().enumerate() {
+        let offset = 48 + offset * 5;
+        assert_eq!(&bytes[offset..offset + 3], &vertex.position());
+        assert_eq!(bytes[offset + 3], vertex.face().code());
+        assert_eq!(bytes[offset + 4], vertex.packed_light());
+    }
+    for (offset, index) in mesh.layers()[0].indices().iter().enumerate() {
+        let offset = 48 + 24 * 5 + offset * 4;
+        assert_eq!(&bytes[offset..offset + 4], &index.to_le_bytes());
+    }
+    assert_eq!(&bytes[312..324], &[16, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0]);
+}
+
+fn wait_for_retained_completion(renderer: &Lifecycle) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let ready = work::exchange(renderer, 4, 1, 0).unwrap_or_default();
+        if ready.get(2) == Some(&1) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "completion deadline");
+        std::thread::yield_now();
+    }
+}
+
+#[test]
+fn accepted_generation_still_refuses_transfer_when_draining_or_failed() {
+    for (draining, worker_failure) in [(true, false), (false, true)] {
+        let mut state = Renderer::new();
+        assert!(state.submit(solid_snapshot(1), 71).is_ok_and(|value| value));
+        let renderer = Lifecycle::new(state);
+        wait_for_retained_completion(&renderer);
+        {
+            let mut locked = renderer
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            locked.draining = draining;
+            locked.worker_failure = worker_failure;
+        }
+        for (operation, key) in [(4, 0), (5, 71)] {
+            assert_eq!(
+                work::exchange(&renderer, operation, 1, key).unwrap_or_default(),
+                Vec::<i64>::new()
+            );
+        }
+        let bytes = work::publish_mesh(&renderer, 1, 71, |bytes| Ok(bytes.to_vec()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(bytes, Vec::<u8>::new());
+        let mut locked = renderer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        locked.draining = false;
+        locked.worker_failure = false;
+        drop(locked);
+        let bytes = work::publish_mesh(&renderer, 1, 71, |bytes| Ok(bytes.to_vec()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_solid_wire(&bytes, 1, 71);
+        assert_eq!(work::exchange(&renderer, 5, 1, 71).unwrap_or_default(), [1]);
+        work::stop(&renderer, 1);
+    }
+}
+
+#[test]
+fn retained_transfer_retries_and_refuses_stale_or_closed_lifecycle() {
+    let renderer = Lifecycle::new(Renderer::new());
+    {
+        let mut locked = renderer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(
+            locked
+                .submit(solid_snapshot(1), 71)
+                .is_ok_and(|accepted| accepted)
+        );
+        drop(locked);
+    }
+    wait_for_retained_completion(&renderer);
+    let failed: Result<(), work::BoundaryError> = work::publish_mesh(&renderer, 1, 71, |_| {
+        Err(work::BoundaryError::Worker(
+            ravel_renderer::workers::WorkerError::InvalidGeneration,
+        ))
+    });
+    assert!(failed.is_err());
+    for _ in 0..2 {
+        let bytes = work::publish_mesh(&renderer, 1, 71, |bytes| Ok(bytes.to_vec()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_solid_wire(&bytes, 1, 71);
+    }
+    for (generation, key) in [(2, 71), (1, 72), (1, 0), (1, -1)] {
+        let bytes = work::publish_mesh(&renderer, generation, key, |bytes| Ok(bytes.to_vec()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(bytes, Vec::<u8>::new());
+    }
+    assert_eq!(
+        work::exchange(&renderer, 5, 2, 71).unwrap_or_default(),
+        Vec::<i64>::new()
+    );
+    assert_eq!(work::exchange(&renderer, 5, 1, 72).unwrap_or_default(), [0]);
+    assert_eq!(work::exchange(&renderer, 5, 1, 71).unwrap_or_default(), [1]);
+    assert_eq!(work::exchange(&renderer, 5, 1, 71).unwrap_or_default(), [0]);
+    assert_eq!(
+        work::exchange(&renderer, 4, 1, 0).unwrap_or_default(),
+        [1, 1, 0, 11]
+    );
+    work::stop(&renderer, 1);
+    assert_eq!(
+        work::exchange(&renderer, 5, 1, 71).unwrap_or_default(),
+        Vec::<i64>::new()
+    );
+    let bytes = work::publish_mesh(&renderer, 1, 71, |bytes| Ok(bytes.to_vec()))
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(bytes, Vec::<u8>::new());
+}
+
 #[test]
 fn work_protocol_rejects_stale_unknown_and_nonzero_reserved_keys() {
     let renderer = Lifecycle::new(Renderer::new());
-    for (operation, generation, key) in [(0, 0, 0), (1, 2, 0), (4, 1, 0), (0, 1, 1)] {
+    for (operation, generation, key) in [(0, 0, 0), (1, 2, 0), (6, 1, 0), (0, 1, 1)] {
         assert_eq!(
             work::exchange(&renderer, operation, generation, key).expect("protocol"),
             [0_i64; 0]

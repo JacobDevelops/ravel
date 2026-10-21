@@ -10,6 +10,7 @@ import java.awt.Robot;
 import java.awt.Toolkit;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
+import java.awt.image.BufferedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -44,6 +45,7 @@ final class ClientAutomation implements Runnable {
     private long unloadingGeneration;
     private long unloadDrainChecks;
     private long unloadRetiredPoolGeneration;
+    private String geometryLiveProof;
 
     ClientAutomation(ClassLoader loader, Path evidence) {
         this.loader = loader;
@@ -72,6 +74,7 @@ final class ClientAutomation implements Runnable {
             snapshot("03-world");
             walkAndLook();
             if (Boolean.getBoolean("ravel.legacy.acceptance")) stressMovement();
+            if (geometrySelected() && geometryLiveProof == null) captureGeometryProof();
             wheel();
             resize();
             key(KeyEvent.VK_F11);
@@ -265,6 +268,7 @@ final class ClientAutomation implements Runnable {
                 long drained = meshMetric("drained");
                 long submitted = meshMetric("submitted");
                 teleport(server, origin[0] + step * STRESS_STEP_BLOCKS, 160, origin[2], origin);
+                if (step == 1 && geometrySelected()) captureGeometryProof();
                 await("Fresh geometry drains after stress teleport " + step,
                         () -> meshMetric("drained") - drained >= STRESS_MIN_DRAINED, TimeUnit.MINUTES.toNanos(3));
                 waitTicks(20);
@@ -324,6 +328,7 @@ final class ClientAutomation implements Runnable {
         boolean stalePoll = onGame(() -> (boolean) rendererType().getMethod("injectStaleMeshProof", long.class)
                 .invoke(null, rendererBeforeReload));
         long[] closed = onGame(() -> (long[]) rendererType().getMethod("shutdownMeshWork").invoke(null));
+        if (geometrySelected()) writeGeometryProof();
         int keysHeld = (int) rendererType().getMethod("meshKeysHeld").invoke(null);
         require(stalePoll && closed.length == 18 && closed[2] == 1
                 && Arrays.stream(closed, 3, 8).allMatch(value -> value == 0) && closed[14] == 0 && closed[17] == 0
@@ -338,7 +343,8 @@ final class ClientAutomation implements Runnable {
                 "Native geometry admission/drain proof missing");
         StringBuilder json = new StringBuilder("{\"geometry\":\"game-isOpaqueCube-and-isFullCube-per-state-air-key-zero-empty\","
                 + "\"fidelity\":\"geometry-only-no-texture-ao-or-model-parity\","
-                + "\"upload\":\"none-native-owned-until-drained-then-discarded\","
+                + "\"upload\":\"" + (geometrySelected() ? "bounded-native-wire-java-owned-offscreen-gl"
+                        : "none-native-owned-until-drained-then-discarded") + "\","
                 + "\"denominator\":\"admitted-native-geometry-jobs-not-vanilla-compile-tasks\","
                 + "\"frameInterval\":\"observational-stress-window-frame-interval-not-mesh-attribution\","
                 + "\"cancellationEvidence\":\"" + (meshMetric("retiredBeforeDrain") > 0
@@ -361,6 +367,118 @@ final class ClientAutomation implements Runnable {
             json.append(",\"").append(series[s]).append('P').append(percent).append("Nanos\":").append(nanos);
         }
         return json.append('}').toString();
+    }
+
+    private static boolean geometrySelected() {
+        return "geometry-proof".equals(System.getProperty("ravel.renderer", "vanilla"));
+    }
+
+    private String geometryMetrics() throws ReflectiveOperationException {
+        String[] names = (String[]) rendererType().getMethod("geometryProofMetricNames").invoke(null);
+        long[] values = (long[]) rendererType().getMethod("geometryProofMetrics").invoke(null);
+        require(names.length == values.length, "Geometry metric schema mismatch");
+        StringBuilder json = new StringBuilder("{");
+        for (int i = 0; i < names.length; i++) {
+            if (i > 0) json.append(',');
+            json.append('"').append(names[i]).append("\":").append(values[i]);
+        }
+        return json.append('}').toString();
+    }
+
+    // Copy all GL-owned proof state on the game thread while this world's buffers are still live.
+    private void captureGeometryProof() throws Exception {
+        AtomicReference<byte[][]> captured = new AtomicReference<>();
+        AtomicReference<long[]> lastComparison = new AtomicReference<>();
+        try {
+            await("Published same-section vanilla geometry comparison", () -> onGame(() -> {
+                long[] vanilla = (long[]) rendererType().getMethod("geometryProofComparePublishedVanilla").invoke(null);
+                require(vanilla.length == 9, "Vanilla comparison schema mismatch");
+                lastComparison.set(vanilla);
+                if (vanilla[0] != 1) return false;
+                String[] comparisonNames = {"status", "generation", "key", "vanillaVertices", "vanillaLayers",
+                        "rgbaMismatchPixels", "coverageMismatchPixels", "depthMismatchPixels", "totalPixels"};
+                StringBuilder comparison = new StringBuilder("{");
+                for (int i = 0; i < vanilla.length; i++) {
+                    if (i > 0) comparison.append(',');
+                    comparison.append('"').append(comparisonNames[i]).append("\":").append(vanilla[i]);
+                }
+                comparison.append('}');
+                String[] info = (String[]) rendererType().getMethod("geometryProofInfo").invoke(null);
+                require(info.length == 3 && info[0].equals("geometry-proof"), "Geometry mode not selected");
+                byte[][] pixels = {
+                    (byte[]) rendererType().getMethod("geometryProofPixels").invoke(null),
+                    (byte[]) rendererType().getMethod("geometryProofReferencePixels").invoke(null),
+                    (byte[]) rendererType().getMethod("geometryProofVanillaPixels").invoke(null)};
+                int nativeForeground = geometryForeground(pixels[0]);
+                int vanillaForeground = geometryForeground(pixels[2]);
+                if (nativeForeground == 0 || vanillaForeground == 0) {
+                    vanilla[0] = -6;
+                    return false;
+                }
+                comparison.setLength(comparison.length() - 1);
+                comparison.append(",\"nativeForegroundPixels\":").append(nativeForeground)
+                        .append(",\"vanillaForegroundPixels\":").append(vanillaForeground).append('}');
+                geometryLiveProof = "{\"selection\":\"geometry-proof\",\"offDefault\":true,"
+                        + "\"worldSubstitution\":false,\"fidelity\":\"not-proven\","
+                        + "\"reference\":\"self-reference-not-vanilla-oracle\","
+                        + "\"vanillaScope\":\"published-SOLID-only-section-position-coverage-depth\","
+                        + "\"width\":64,\"height\":64,\"rowOrder\":\"bottom-up\","
+                        + "\"info\":[\"" + String.join("\",\"", info) + "\"],\"metrics\":" + geometryMetrics()
+                        + ",\"vanillaComparison\":" + comparison;
+                captured.set(pixels);
+                return true;
+            }), TimeUnit.MINUTES.toNanos(3));
+        } catch (IllegalStateException failure) {
+            throw new IllegalStateException(failure.getMessage()
+                    + " lastVanillaComparison[status,generation,key,vertices,layers,rgbaMismatch,"
+                    + "coverageMismatch,depthMismatch,totalPixels]=" + Arrays.toString(lastComparison.get())
+                    + " lastStatus=" + vanillaStatus(lastComparison.get()), failure);
+        }
+        byte[][] images = captured.get();
+        String[] imageNames = {"native", "reference", "vanilla"};
+        for (int i = 0; i < images.length; i++) {
+            byte[] rgba = images[i];
+            require(rgba != null && rgba.length == 64 * 64 * 4, "Geometry proof pixels unavailable before unload");
+            String name = "geometry-" + imageNames[i];
+            Files.write(evidence.resolve(name + ".rgba"), rgba);
+            BufferedImage image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) {
+                int offset = ((63 - y) * 64 + x) * 4;
+                image.setRGB(x, y, (rgba[offset + 3] & 255) << 24 | (rgba[offset] & 255) << 16
+                        | (rgba[offset + 1] & 255) << 8 | (rgba[offset + 2] & 255));
+            }
+            require(ImageIO.write(image, "png", evidence.resolve(name + ".png").toFile()),
+                    "Geometry PNG writer unavailable");
+        }
+    }
+
+    private static int geometryForeground(byte[] rgba) {
+        require(rgba != null && rgba.length == 64 * 64 * 4, "Geometry proof pixel schema mismatch");
+        int foreground = 0;
+        for (int at = 0; at < rgba.length; at += 4) if (rgba[at] != 0) foreground++;
+        return foreground;
+    }
+
+    private static String vanillaStatus(long[] comparison) {
+        if (comparison == null || comparison.length == 0) return "absent-not-polled";
+        return switch ((int) comparison[0]) {
+            case 1 -> "compared";
+            case 0 -> "absent-resident";
+            case -1 -> "stale-task-publication-origin-or-generation";
+            case -2 -> "busy-task-or-compile-lock";
+            case -3 -> "invalid-layer-buffer-format-or-readback";
+            case -4 -> "mixedscope-or-nonsolid-section";
+            case -5 -> "absent-same-section-association";
+            case -6 -> "absent-foreground-in-current-projection";
+            default -> "unknown-" + comparison[0];
+        };
+    }
+
+    private void writeGeometryProof() throws Exception {
+        require(geometryLiveProof != null, "Geometry proof was not captured before unload");
+        String finalMetrics = onGame(this::geometryMetrics);
+        Files.writeString(evidence.resolve("geometry-upload.json"),
+                geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + "}\n");
     }
 
     private String snapshotProof() throws Exception {

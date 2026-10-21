@@ -16,6 +16,98 @@ fn parked_pool() -> WorkerPool {
 }
 
 #[test]
+fn retained_reads_retry_and_ack_only_the_exact_owner() {
+    let pool = parked_pool();
+    for key in [7, 8] {
+        assert!(pool.try_submit(snapshot(1), key).is_ok());
+        let Some((slot, job)) = take_job(&pool.shared) else {
+            panic!("queued");
+        };
+        finish_job(&pool.shared, slot, execute(&pool.shared, slot, job));
+    }
+    let before = pool.stats();
+    let failed: Result<(), ()> = pool.peek_ready(|ready| {
+        assert_eq!(ready.iter().flatten().count(), 2);
+        Err(())
+    });
+    assert!(failed.is_err());
+    let failed_ack: Result<(), ()> = pool.publish_acknowledgement(1, 7, |ready| {
+        assert!(ready);
+        Err(())
+    });
+    assert!(failed_ack.is_err());
+    for _ in 0..2 {
+        pool.with_completion(1, 7, |completion| {
+            assert_eq!(completion.map(|value| value.key), Some(7));
+        });
+    }
+    assert_eq!(pool.stats(), before);
+    assert!(!pool.acknowledge(2, 7));
+    assert!(!pool.acknowledge(1, 9));
+    assert!(pool.acknowledge(1, 7));
+    assert!(!pool.acknowledge(1, 7));
+    assert_eq!(pool.stats().outstanding, 1);
+    assert_eq!(pool.stats().reserved_bytes, JOB_RESERVED_BYTES);
+    assert!(pool.invalidate(2).is_ok());
+    pool.with_completion(1, 8, |completion| assert!(completion.is_none()));
+    pool.with_completion(2, 8, |completion| assert!(completion.is_none()));
+    assert!(!pool.acknowledge(1, 8));
+    assert!(!pool.acknowledge(2, 8));
+    assert_eq!(pool.stats().reserved_bytes, 0);
+}
+
+#[test]
+fn acknowledgement_cannot_release_queued_or_running_owners() {
+    let pool = parked_pool();
+    assert!(pool.try_submit(snapshot(1), 11).is_ok());
+    assert!(!pool.acknowledge(1, 11));
+    let Some((slot, job)) = take_job(&pool.shared) else {
+        panic!("queued");
+    };
+    assert!(!pool.acknowledge(1, 11));
+    assert_eq!(pool.stats().reserved_bytes, JOB_RESERVED_BYTES);
+    finish_job(&pool.shared, slot, execute(&pool.shared, slot, job));
+    assert!(pool.acknowledge(1, 11));
+    assert_eq!(pool.stats().reserved_bytes, 0);
+}
+
+#[test]
+fn eight_retained_completions_stay_full_until_one_exact_acknowledgement() {
+    let pool = parked_pool();
+    for key in 1..=8 {
+        assert!(pool.try_submit(snapshot(1), key).is_ok());
+        let Some((slot, job)) = take_job(&pool.shared) else {
+            panic!("queued");
+        };
+        finish_job(&pool.shared, slot, execute(&pool.shared, slot, job));
+    }
+    let retained = pool.stats();
+    assert_eq!(retained.completed, MAX_OUTSTANDING_JOBS);
+    assert_eq!(retained.outstanding, MAX_OUTSTANDING_JOBS);
+    assert_eq!(retained.reserved_bytes, MAX_RESERVED_BYTES);
+    for _ in 0..3 {
+        pool.peek_ready(|ready| assert_eq!(ready.iter().flatten().count(), 8));
+        assert_eq!(pool.stats(), retained);
+        assert_eq!(pool.try_submit(snapshot(1), 9), Err(SubmitError::Full));
+    }
+    assert!(pool.acknowledge(1, 4));
+    assert_eq!(pool.stats().completed, MAX_OUTSTANDING_JOBS - 1);
+    assert_eq!(pool.stats().outstanding, MAX_OUTSTANDING_JOBS - 1);
+    assert_eq!(
+        pool.stats().reserved_bytes,
+        MAX_RESERVED_BYTES - JOB_RESERVED_BYTES
+    );
+    assert!(pool.try_submit(snapshot(1), 9).is_ok());
+    assert_eq!(pool.stats().queued, 1);
+    assert_eq!(pool.stats().completed, MAX_OUTSTANDING_JOBS - 1);
+    assert_eq!(pool.stats().outstanding, MAX_OUTSTANDING_JOBS);
+    assert_eq!(pool.stats().reserved_bytes, MAX_RESERVED_BYTES);
+    assert_eq!(pool.try_submit(snapshot(1), 10), Err(SubmitError::Full));
+    assert!(!pool.acknowledge(1, 4));
+    assert_eq!(pool.try_submit(snapshot(1), 10), Err(SubmitError::Full));
+}
+
+#[test]
 fn queued_and_completed_jobs_share_count_and_byte_ceiling() {
     let pool = parked_pool();
     for key in 0..MAX_OUTSTANDING_JOBS {

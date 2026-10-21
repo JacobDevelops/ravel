@@ -10,7 +10,8 @@ use std::mem::{size_of, size_of_val};
 use std::ops::Range;
 
 const CORE_CELLS: usize = 4096;
-const MAX_FACES: usize = CORE_CELLS * 6;
+/// Maximum emitted faces, before neighbour culling, across all core cells.
+pub const MAX_FACES: usize = CORE_CELLS * 6;
 /// Maximum retained object plus heap payload; allocator bookkeeping is excluded.
 pub const MAX_MESH_BYTES: usize = size_of::<MeshResult>()
     + MAX_FACES

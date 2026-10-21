@@ -294,8 +294,49 @@ indices, state-key material ranges, face sort metadata and six-face visibility
 reachability. Only captured opaque full cubes produce geometry. Other state
 keys are explicitly unsupported; incomplete results must not become a renderer
 cutover. Geometry does not establish texture, ambient-occlusion or translucent
-parity. Java consumes checked result metadata at its scheduling seam and records
-bounded timing/byte counters. No mesh is uploaded and vanilla remains visible.
+parity. With the default `vanilla` selection, Java consumes checked diagnostic
+metadata and vanilla remains the only renderer. The optional geometry proof
+retains native ownership until Java explicitly acknowledges a generation/key.
+
+### Opt-in bounded GL geometry proof
+
+Set `RAVEL_LEGACY_RENDERER=geometry-proof` for the explicit client-agent launch
+or live acceptance. The matched comparator uses `--renderer geometry-proof`
+with `--instance ravel --workload vanilla`. Omit either option for the default
+`vanilla` selection. This selection never replaces vanilla world drawing.
+
+The proof transfers one bounded little-endian byte array per retained completion,
+not per vertex. A failed copy leaves native ownership intact; successful Java
+acceptance acknowledges the exact generation/key. Incomplete or unsupported
+results are refused, not presented as missing geometry in a successful draw.
+Java selects supported GL entry points from the verified current LWJGL3 context,
+owns upload buffers and offscreen submission, and releases them on reload,
+world teardown and close. No GL 4.6 requirement is inferred from the test GPU.
+
+The resident candidate must have an associated current vanilla compile task with
+exactly the nonempty SOLID layer. Mixed-layer and non-SOLID sections are refused
+as whole meshes and counted; they are never reduced to a convenient comparison
+subset. Association retention is bounded by the sixteen in-flight native work
+slots plus one separately pinned resident identity. Settled slots are released
+without evicting the resident, and teardown retires both pending and pinned
+references. The comparison still requires that exact task's compiled object to
+be published at the original section origin before drawing vanilla's own VBO.
+Both native and vanilla readbacks must contain foreground; pixel and depth
+mismatches are reported rather than hidden. Automation's `lastStatus` separates
+absent residents/associations, stale publication/task/origin/generation,
+mixed-scope sections, busy locks and invalid buffers/readbacks.
+Busy vanilla compile locks keep the copied completion owned by native for a later
+poll, without acknowledgement or a scope-refusal count. An eligible but not
+uploaded mesh is not a successful comparison. Blank readbacks in the current
+projection remain pending (`absent-foreground-in-current-projection`), and only
+nonempty actual readbacks can become captured evidence.
+
+The offscreen solid-geometry comparison is narrower than vanilla appearance:
+atlas UVs and sprites, model/biome tint, per-vertex AO and combined lighting are
+not in this CPU contract. Native-versus-CPU reference images alone are not a
+vanilla oracle. Actual vanilla-section comparison and matched selection-on/off
+measurements must disclose their scope, refusals and mismatch counts; they do
+not authorize a default renderer or a speedup claim.
 
 ## JVM permissions
 

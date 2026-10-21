@@ -1,4 +1,4 @@
-//! Fixed-width metadata only; owned geometry is consumed without GL upload.
+//! Bounded metadata polling and retained CPU geometry publication; Java owns GL.
 
 use std::sync::PoisonError;
 
@@ -14,6 +14,7 @@ use super::Renderer;
 pub(super) enum BoundaryError {
     Jni(jni::errors::Error),
     Worker(WorkerError),
+    Mesh(ravel_renderer::mesh::MeshError),
 }
 
 impl std::fmt::Display for BoundaryError {
@@ -21,6 +22,7 @@ impl std::fmt::Display for BoundaryError {
         match self {
             Self::Jni(error) => std::fmt::Display::fmt(error, formatter),
             Self::Worker(error) => std::fmt::Display::fmt(error, formatter),
+            Self::Mesh(error) => write!(formatter, "mesh transfer failed: {error:?}"),
         }
     }
 }
@@ -39,6 +41,32 @@ impl From<WorkerError> for BoundaryError {
     }
 }
 
+pub(super) fn publish_mesh<T>(
+    renderer: &super::Lifecycle,
+    generation: jlong,
+    key: jlong,
+    publish: impl FnOnce(&[u8]) -> Result<T, BoundaryError>,
+) -> Result<T, BoundaryError> {
+    let locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
+    if !locked.can_capture(generation) || key <= 0 {
+        return publish(&[]);
+    }
+    let Some(workers) = &locked.workers else {
+        return publish(&[]);
+    };
+    let bytes = workers
+        .with_completion(
+            generation.unsigned_abs(),
+            key.unsigned_abs(),
+            |completion| completion.map(ravel_renderer::wire::encode).transpose(),
+        )
+        .map_err(BoundaryError::Mesh)?;
+    // The owned encoding no longer borrows the pool. Keep the lifecycle gate
+    // locked through Java publication so stop/reload/ack cannot race the copy.
+    let result = publish(bytes.as_deref().unwrap_or_default());
+    drop(locked);
+    result
+}
 impl Renderer {
     pub(super) fn can_capture(&self, generation: jlong) -> bool {
         self.accepts(generation) && !self.closed && !self.draining && !self.worker_failure
@@ -166,7 +194,23 @@ pub(super) fn publish<T, E>(
         stop(renderer, generation);
     }
     let locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
-    if key != 0 || !locked.accepts(generation) || !matches!(operation, 0..=3) {
+    if !locked.accepts(generation) || !matches!(operation, 0..=5) || (operation != 5 && key != 0) {
+        return publish(&[]);
+    }
+    if operation == 5 {
+        if !locked.can_capture(generation) || key <= 0 {
+            return publish(&[]);
+        }
+        let Some(workers) = &locked.workers else {
+            return publish(&[0]);
+        };
+        return workers.publish_acknowledgement(
+            generation.unsigned_abs(),
+            key.unsigned_abs(),
+            |acknowledged| publish(&[jlong::from(acknowledged)]),
+        );
+    }
+    if operation == 4 && !locked.can_capture(generation) {
         return publish(&[]);
     }
     if operation == 3 {
@@ -179,27 +223,40 @@ pub(super) fn publish<T, E>(
             None => publish(&[]),
         };
     }
-    if operation != 0 {
+    if !matches!(operation, 0 | 4) {
         return publish(&statistics(&locked));
     }
     let Some(workers) = &locked.workers else {
         return publish(&[1, generation, 0, 11]);
     };
-    let result = workers.consume_ready(|ready| {
-        let mut values = [0; 4 + MAX_OUTSTANDING_JOBS * 11];
-        values[..4].copy_from_slice(&[1, generation, 0, 11]);
-        let mut length = 4;
-        for completion in ready.iter().flatten() {
-            if locked.accepts(wire(completion.generation)) {
-                values[length..length + 11].copy_from_slice(&completion_values(completion));
-                values[2] += 1;
-                length += 11;
-            }
-        }
-        publish(&values[..length])
-    });
+    let metadata = |ready: &[Option<&Completion>; MAX_OUTSTANDING_JOBS]| {
+        publish_metadata(&locked, ready, publish)
+    };
+    let result = if operation == 4 {
+        workers.peek_ready(metadata)
+    } else {
+        workers.consume_ready(metadata)
+    };
     drop(locked);
     result
+}
+
+fn publish_metadata<T, E>(
+    renderer: &Renderer,
+    ready: &[Option<&Completion>; MAX_OUTSTANDING_JOBS],
+    publish: impl FnOnce(&[jlong]) -> Result<T, E>,
+) -> Result<T, E> {
+    let mut values = [0; 4 + MAX_OUTSTANDING_JOBS * 11];
+    values[..4].copy_from_slice(&[1, renderer.generation, 0, 11]);
+    let mut length = 4;
+    for completion in ready.iter().flatten() {
+        if renderer.accepts(wire(completion.generation)) {
+            values[length..length + 11].copy_from_slice(&completion_values(completion));
+            values[2] += 1;
+            length += 11;
+        }
+    }
+    publish(&values[..length])
 }
 
 fn completion_values(completion: &Completion) -> [jlong; 11] {

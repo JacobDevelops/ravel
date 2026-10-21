@@ -21,6 +21,7 @@ public final class LegacyRenderer {
     private LegacyRenderer() { }
 
     static void enter(String id, Object first) {
+        LegacyGeometryProof.selected(); // Validate explicit selection; default performs no GL work.
         switch (id) {
             case "legacyResourceReload" -> lifecycle(1);
             case "legacyRendererUnload", "legacyRendererClose" -> lifecycle(2);
@@ -44,7 +45,16 @@ public final class LegacyRenderer {
     private static void lifecycle(int event) {
         long retiring = currentGeneration();
         ownerEvent(event);
-        LegacyMeshWork.retire(retiring);
+        try {
+            LegacyGeometryProof.retire(retiring);
+        } finally {
+            try {
+                LegacyVanillaGeometry.clear(retiring);
+            } finally {
+                try { LegacyMeshWork.retire(retiring); }
+                finally { LegacyGeometryProof.flushMetrics(); }
+            }
+        }
     }
 
     // These returns can include aborted compilation or a cancelled callback's early return.
@@ -83,7 +93,36 @@ public final class LegacyRenderer {
     public static void endMeshStress() { LegacyMeshWork.endStress(); }
     public static boolean injectStaleMeshProof(long retired) { return LegacyMeshWork.injectStaleProof(retired); }
     public static int meshKeysHeld() { return LegacyMeshWork.occupied(); }
-    public static long[] shutdownMeshWork() { return LegacyMeshWork.shutdown(); }
+    public static long[] shutdownMeshWork() {
+        long retiring = currentGeneration();
+        long[] result;
+        try {
+            LegacyGeometryProof.retire(retiring);
+        } finally {
+            try {
+                LegacyVanillaGeometry.clear(retiring);
+            } finally {
+                try { result = LegacyMeshWork.shutdown(); }
+                finally { LegacyGeometryProof.flushMetrics(); }
+            }
+        }
+        return result;
+    }
+
+    public static boolean geometryProofSelected() { return LegacyGeometryProof.selected(); }
+    public static long[] geometryProofMetrics() { return LegacyGeometryProof.metrics(); }
+    public static String[] geometryProofMetricNames() { return LegacyGeometryProof.NAMES.clone(); }
+    public static String[] geometryProofInfo() { return LegacyGeometryProof.info(); }
+    public static long[] geometryProofIdentity() { return LegacyGeometryProof.identity(); }
+    public static byte[] geometryProofPixels() { return LegacyGeometryProof.pixels(false); }
+    public static byte[] geometryProofReferencePixels() { return LegacyGeometryProof.pixels(true); }
+    public static float[] geometryProofDepths() { return LegacyGeometryProof.depths(); }
+    public static long[] geometryProofCompareVanilla(Runnable draw) { return LegacyGeometryProof.compareVanilla(draw); }
+    public static long[] geometryProofComparePublishedVanilla() throws ReflectiveOperationException {
+        return LegacyVanillaGeometry.compareResident();
+    }
+    public static byte[] geometryProofVanillaPixels() { return LegacyGeometryProof.vanillaPixels(); }
+    public static void geometryProofBindVanillaBuffer(int buffer) { LegacyGeometryProof.bindVanillaBuffer(buffer); }
 
     private static synchronized void callbackReturn(Object receiver) throws ReflectiveOperationException {
         if (TASKS.isEmpty()) return;

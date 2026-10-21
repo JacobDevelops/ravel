@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{AdmittedPoints, Points, PointsRefused, Round};
+use crate::points::{AdmittedPoints, Points, PointsRefused, Round};
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_host_api::{HostError, InterceptionDeclaration, Mod, Occasion, Point};
 
@@ -250,12 +250,12 @@ mod tests {
     };
 
     use super::InterceptRefused;
-    use crate::PointsRefused;
+    use crate::points::PointsRefused;
 
     fn intercept<H: std::ops::DerefMut<Target: Mod>>(
         loaded: &mut LoadedMods<'_, H>,
         point: Point,
-    ) -> Result<crate::Round, InterceptRefused> {
+    ) -> Result<super::Round, InterceptRefused> {
         let points = super::open_interceptions(loaded, &crate::tests::environment())?;
         super::intercept(loaded, &points, point, &crate::tests::environment())
     }

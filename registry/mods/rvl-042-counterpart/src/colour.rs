@@ -4,6 +4,7 @@ use num_traits::ToPrimitive;
 
 /// A colour, as four channels.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Colour {
     /// The opacity channel.
     pub opacity: u8,

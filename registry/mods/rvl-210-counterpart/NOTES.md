@@ -321,6 +321,9 @@ without incrementing the delivery count. The loader routes packets to the owner 
 so a dependent's own contracts are handled by that dependent.
 After saving a store, its owner can acknowledge the saved state with `clear_dirty()`.
 
+`shapes::DetectionFailure` is non-exhaustive. Its public fields remain readable;
+patterns outside the package must allow additional fields.
+
 ## Host blockers
 
 Nothing here has been run inside a game. Every claim above is a claim about this package's own code

@@ -216,6 +216,9 @@ BAKED_SCENES = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 
 BAKED_REFUSALS = ('refusedQuadBudget', 'refusedUncolored', 'refusedForeignBuilder', 'refusedObservation',
                   'refusedIncompleteQuad', 'refusedUnaccountedVertices', 'refusedRetiredAtFinish',
                   'refusedRustDecode', 'refusedRustOther')
+BAKED_MAX_QUADS_PER_SECTION = 8192
+BAKED_QUAD_BYTES = 112
+BAKED_COMPARISON_BYTES = 2 * BAKED_QUAD_BYTES
 BAKED_SAMPLE_BYTES = 16 + PROOF_IMAGE_PIXELS * 16
 BAKED_SAMPLE_LIMIT = 8
 BAKED_DESIGNATED = 5
@@ -281,7 +284,7 @@ def baked_golden(row: Proof, scene: int, directory: Path, started: float) -> Non
 
 def baked_proof(proof: Proof, directory: Path, started: float) -> None:
     labels = {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
-              'worldSubstitution': False, 'maxQuadsPerSection': 8192}
+              'worldSubstitution': False, 'maxQuadsPerSection': BAKED_MAX_QUADS_PER_SECTION}
     nonnegative = ('busySections', 'unsupportedSections', 'staleSections', 'animatedSpriteObservations',
                    'glStaleSections', 'glUnsupportedSections', 'controlledDeferredSections', *BAKED_REFUSALS)
     positive = ('comparedSections', 'quads', 'cpuNanos', 'maxInputBytes', 'maxOutputBytes',
@@ -296,8 +299,10 @@ def baked_proof(proof: Proof, directory: Path, started: float) -> None:
             and sum(proof[key] for key in BAKED_REFUSALS) == proof['unsupportedSections']
             and proof['maxInputBytes'] <= 8_000_000 and proof['maxOutputBytes'] <= 4_000_000
             and proof['glComparedSections'] <= proof['comparedSections']
-            and proof['glPeakBufferBytes'] <= 8192 * 112 and proof['glPeakBufferBytes'] % 112 == 0
-            and proof['glUploadedBytes'] % 224 == 0 and proof['glUploadedBytes'] <= proof['quads'] * 224):
+            and proof['glPeakBufferBytes'] <= BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES
+            and proof['glPeakBufferBytes'] % BAKED_QUAD_BYTES == 0
+            and proof['glUploadedBytes'] % BAKED_COMPARISON_BYTES == 0
+            and proof['glUploadedBytes'] <= proof['quads'] * BAKED_COMPARISON_BYTES):
         raise RuntimeError('Bounded independently atlas-scoped Rust baked comparison missing or mismatched')
     world = proof.get('world')
     if not (isinstance(world, list) and len(world) == 7 and all(type(value) is int and value >= 0 for value in world)

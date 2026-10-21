@@ -62,6 +62,7 @@ pub enum Constraint {
 
 /// Why a detection failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct DetectionFailure {
     /// Where the failure was found.
     pub at: Position,

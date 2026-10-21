@@ -36,6 +36,8 @@ GEOMETRY_METRICS = (
 GEOMETRY_FIDELITY = 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'
 BAKED_METRICS = 30
 BAKED_REFUSALS = range(20, 29)
+PROOF_IMAGE_EDGE = 64
+PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2
 
 
 def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
@@ -54,7 +56,8 @@ def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
     require(baked[0] > 0 and baked[4] > 0 and baked[5] == 0 and baked[11] == baked[12] > 0 and baked[29] == 0,
             'selected arm admitted no complete matching baked comparison')
     require(baked[13] > 0 and baked[16] > 0 and 0 < world[0] <= 4 * baked[13]
-            and world[4] > 0 and world[5] > 0 and all(value <= world[0] * 4096 for value in world[1:6]),
+            and world[4] > 0 and world[5] > 0
+            and all(value <= world[0] * PROOF_IMAGE_PIXELS for value in world[1:6]),
             'selected arm drew no shaded baked comparison')
     require(not any(world[1:4]), 'selected shaded baked comparison mismatched pixels')
     require(sum(baked[index] for index in BAKED_REFUSALS) == baked[2],

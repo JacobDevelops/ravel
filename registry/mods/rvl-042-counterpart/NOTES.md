@@ -159,3 +159,6 @@ computed through `settings::resolved_on` rather than restated. Nothing is transc
 comes back from a call. `the_generated_documents_regenerate_byte_for_byte` rebuilds all three and
 fails on any drift from the bytes on disk, and writes them instead when
 `RAVEL_REGENERATE_GENERATED` is set, which is how they were produced.
+
+`colour::Colour` exposes readable channels but is non-exhaustive. Construct it with
+`Colour::new` rather than a struct literal, and allow additional fields in patterns.

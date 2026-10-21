@@ -84,6 +84,11 @@ fn java_executable() -> Result<PathBuf, GenerateError> {
             diagnostic.trim()
         )));
     }
+    ensure_supported_java(&java, &diagnostic)?;
+    Ok(java)
+}
+
+fn ensure_supported_java(java: &Path, diagnostic: &str) -> Result<(), GenerateError> {
     let version = diagnostic.split('"').nth(1).ok_or_else(|| {
         GenerateError::Input(format!(
             "unrecognized mapping-io Java version: {diagnostic}"
@@ -102,5 +107,64 @@ fn java_executable() -> Result<PathBuf, GenerateError> {
             inputs::file_name(&java.to_string_lossy())
         )));
     }
-    Ok(java)
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_supported_java, inputs, read};
+    use crate::test_fixtures::document;
+    use std::path::Path;
+
+    #[test]
+    fn missing_normalizer_inputs_are_refused() {
+        let mut adapter: inputs::Adapter =
+            toml::from_str(&document("unobfuscated-class-files", ""))
+                .expect("complete adapter fixture");
+        adapter.mapping_namespaces = Some(inputs::MappingNamespaces {
+            runtime: "official".to_owned(),
+            reviewed: "named".to_owned(),
+        });
+        adapter.inputs.client_mappings = Some(adapter.inputs.client_jar.clone());
+        adapter.inputs.mapping_io_jar = Some(adapter.inputs.client_jar.clone());
+        for (field, expected) in [
+            (
+                0,
+                "Tiny mappings require explicit runtime and reviewed namespaces",
+            ),
+            (1, "Tiny mappings require a pinned mapping artifact"),
+            (2, "Tiny mappings require a pinned mapping-io jar"),
+        ] {
+            let mut missing = adapter.clone();
+            match field {
+                0 => missing.mapping_namespaces = None,
+                1 => missing.inputs.client_mappings = None,
+                2 => missing.inputs.mapping_io_jar = None,
+                _ => unreachable!(),
+            }
+            let error = read(Path::new(""), &missing).expect_err("missing required input");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn normalizer_java_version_requires_a_recognized_supported_major() {
+        let java = Path::new("java");
+        for version in ["11.0.1", "17.0.1", "25-ea+7", "27"] {
+            let diagnostic = format!("openjdk version \"{version}\"");
+            ensure_supported_java(java, &diagnostic).expect("supported Java version");
+        }
+        for version in ["1.8.0_402", "10.0.2", "", "invalid", "1", "1.invalid"] {
+            let diagnostic = format!("java version \"{version}\"");
+            let error = ensure_supported_java(java, &diagnostic).expect_err("unsupported Java");
+            assert!(error.to_string().contains("requires Java 11 or newer"));
+        }
+        let error = ensure_supported_java(java, "missing version quotes")
+            .expect_err("unrecognized version output");
+        assert!(
+            error
+                .to_string()
+                .contains("unrecognized mapping-io Java version")
+        );
+    }
 }

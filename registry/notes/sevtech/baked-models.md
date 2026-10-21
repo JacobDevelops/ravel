@@ -218,10 +218,11 @@ remains authoritative. Default world cutover requires complete source provenance
 independent full-world golden scenes and fresh live acceptance; the documented
 fallback remains the default vanilla renderer. No vanilla speedup is claimed.
 
-Slice 7 is not yet acceptance-complete. The implementation and lifecycle tests
-do not replace the required fresh, frozen-candidate three off/three on RTX 5090
-trial matrix and separate Xvfb functional run. All physical/golden tables above
-belong to slice 6; they are not slice-7 performance or golden evidence.
+Slice 7 bounded-residency acceptance is complete: one candidate frozen after the
+round-16 fixes passed three off/three on locked RTX 5090 physical trials and a
+separate Xvfb functional trial. The earlier physical tables remain slice-6
+history; the fresh slice-7 results are below. This does not complete WP5 or
+authorize world-renderer cutover.
 
 The round-16 crossing cleanup pins the 232-byte record, 8,192-quad admission
 limit, diagnostic codes and receipt offsets across Rust, Java and the Python
@@ -253,16 +254,96 @@ Translucent fluid remains refused because its tessellation lacks baked-quad
 provenance. Repeated resident submissions do not establish composited full-scene
 fidelity or moving-camera translucent reordering.
 
-The selected live run recorded 46 native acknowledgements and 46 GL replacements.
-Native combined retained capacity peaked at 740,040 bytes; fixed GL reservation
-peaked at 2,752,512 bytes across three buffers per pool. Three pools retired,
-and both native and GL live residency drained to zero. There were 10,626 repeated
-resident submissions and zero recorded stale GL refusals. These are run-wide
-functional counters, not per-trial physical memory measurements.
+The post-cleanup selected live run recorded 84 native acknowledgements and 84 GL
+replacements, with 480 native entries retired. Native combined retained capacity
+peaked at 746,232 bytes; fixed GL reservation peaked at 2,752,512 bytes across
+three buffers per pool. Three pools retired, and native and GL live residency
+drained to zero. There were 12,376 repeated resident submissions and zero recorded
+stale GL refusals. These are run-wide functional counters, not per-trial physical
+memory measurements.
 
-Workspace verification passed 4,383 tests with none skipped; focused generator,
-renderer-validator and benchmark-validator suites passed 321, 9 and 14 tests.
-Coverage was 93.10% regions, 92.54% functions and 93.85% lines. Workspace clippy
-with all targets/features and warnings denied passed. Offline verification still
-reports seven unavailable clean-room source trees out of eighteen; acquired-byte
-checks requiring them were not exercised.
+Post-cleanup verification passed 4,393 workspace tests with none skipped for each
+of 1.12.2, 1.21.1 and 26.1.2, plus the no-feature composed-host test for each
+version. Bootstrap tests passed 253 cases and the panic-redaction case. Coverage
+was 93.26% regions, 92.62% functions and 93.94% lines. Workspace clippy with all
+targets/features and warnings denied passed. Offline verification still reports
+seven unavailable clean-room source trees out of eighteen; acquired-byte checks
+requiring them were not exercised.
+
+### Slice-7 frozen physical trials
+
+Candidate `wp5s7b-candidate.json` has SHA-256
+`c62c02f3e32066e262893996d969be8403d20238604ca0b47bc188d0ec2c1239`.
+It was frozen after the source fixes, independent review and verification:
+legacy agent `45d1f2fb6a9bbb193c20154c0e956f2d4198733d1b89fad268f78526ea77ee9f`,
+release host `d36a61bb0665201ba629959b3f84900b94a6b0dab6da38f2111fb8da5480f930`.
+All seven runtime cohorts record that candidate hash; no runtime sources changed
+after freezing. Observer settings record agent SHA-256
+`41c9eb91a6d0031d801da89a0a7162da379108baaf558ba29aee091000b259de`.
+Raw local runs are `baseline/runs/wp5s7b-{off,on}-warm-filesystem-{1,2,3}`
+and `baseline/runs/wp5s7b-functional` beneath the acquired SevTech fixture.
+
+The six physical trials ran serially under the host check lock on RTX 5090,
+DISPLAY `:0`, seed 8675309, slice-1 settings: 1280×720, distance 12, unlimited
+FPS/VSync off, Temurin 27+35, G1, 4,096–8,192 MiB heap, null audio and all sound
+categories muted. Both cohorts use Ravel over the vanilla 1.12.2 fixture; “off”
+selects vanilla rendering and “on” selects the additional geometry-proof path.
+This is a diagnostic overhead ablation, not a comparison against an unmodified
+vanilla process. Every launcher/trial and all three summary commands exited 0.
+
+Nearest-rank frame quantiles in milliseconds; each cell is p50/p95/p99 for that
+trial and scene, never pooled across trials. Idle lasts 60 seconds; exploration
+and loaded-chunk stress last 120 seconds each.
+
+| Trial | Spawn idle | Square exploration | Loaded-chunk stress |
+| --- | --- | --- | --- |
+| Off 1 | 0.5088/0.5549/0.9041 | 0.7420/0.9500/1.2732 | 0.7968/0.9014/1.2476 |
+| Off 2 | 0.5210/0.7225/1.0658 | 0.7441/0.9601/1.2747 | 0.7926/0.9029/1.2605 |
+| Off 3 | 0.5110/0.6049/0.9369 | 0.7504/0.9928/1.3167 | 0.8062/0.9916/1.3122 |
+| On 1 | 0.9719/1.3106/1.7134 | 1.0820/1.5294/1.9927 | 1.0642/1.4489/1.8152 |
+| On 2 | 0.9320/1.2592/1.5610 | 1.1551/1.6070/2.1758 | 1.1606/1.5829/2.0243 |
+| On 3 | 0.9114/1.2374/1.5035 | 1.1061/1.5129/1.9528 | 1.1763/1.5321/1.9019 |
+
+Peaks below cover startup through measurement completion, excluding saving.
+RSS is process peak RSS; heap is sampled JVM used heap; VRAM is sampled
+whole-device usage, not attributed to this process. All heaps committed 4,096 MiB.
+Native/GL columns are actual shaded retained-capacity/fixed-reservation peaks
+in bytes, not total native memory and not RSS-minus-heap.
+
+| Trial | Native bytes | GL bytes | RSS MiB | Heap-used MiB | Device VRAM MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Off 1 | 0 | 0 | 5,421.52 | 2,724.64 | 1,437 |
+| Off 2 | 0 | 0 | 5,465.16 | 2,732.63 | 1,516 |
+| Off 3 | 0 | 0 | 5,383.86 | 2,684.50 | 1,503 |
+| On 1 | 2,292,856 | 2,752,512 | 5,439.61 | 2,671.64 | 1,505 |
+| On 2 | 1,819,512 | 2,752,512 | 5,546.86 | 2,708.27 | 1,507 |
+| On 3 | 1,997,704 | 2,752,512 | 5,517.50 | 2,763.74 | 1,507 |
+
+Every selected trial admitted independently emitted shaded comparisons and exact
+native/GL residency replacement; every off trial kept shaded counters at zero.
+
+| Selected trial | Emitted sections | GL-compared sections / replacements | Native retired | Resident submissions | Pixel comparisons |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| On 1 | 2,196 | 584 | 2,196 | 1,211,568 | 1,095 |
+| On 2 | 2,819 | 554 | 2,819 | 1,158,062 | 1,061 |
+| On 3 | 2,882 | 556 | 2,882 | 1,180,000 | 1,038 |
+| Xvfb functional | 2,622 | 446 | 2,622 | 39,206 | 863 |
+
+All four selected runs had zero emitted-word and color/depth/silhouette
+mismatches, positive and matching emitted/oracle foreground, zero stale GL
+refusals, one three-buffer pool retired, and zero live native/GL reservations
+after shutdown. Peaks remain below the 5,636,192-byte native ceiling and equal
+the 2,752,512-byte fixed GL ceiling. The separate Xvfb software-GL run passed
+with native peak 2,333,792 bytes; its timing and memory are not physical-GPU
+performance evidence. The seven controlled golden rows above were independently
+recounted by the selected live gate; workload pixel-comparison counts here are
+not additional full-world golden scenes.
+
+The selected path increases observed frame quantiles in these trials; no
+speedup or resource saving is established. Off-3 stress also contains an
+885.7 ms full-scene maximum, outside its first-five-second maximum of 5.548 ms;
+quantiles must not conceal that outlier. Full-world/composited and moving-camera
+goldens remain **unsupported**: the current readbacks compare isolated section
+layers, not full-scene resident drawing or camera-dependent translucent
+reordering. Fluids remain unsupported for missing baked-quad provenance.
+World drawing therefore remains vanilla and selection remains off by default.

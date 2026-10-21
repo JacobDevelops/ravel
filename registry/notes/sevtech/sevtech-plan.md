@@ -314,12 +314,19 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   remains explicitly unsupported. Six fresh frozen RTX 5090 trials passed, with
   complete shaded comparisons in every selected trial, plus separate Xvfb acceptance.
   These bounded section-layer results do not establish full-world fidelity.
-  Slice 7 implements bounded generation/resource/atlas/section-keyed native resident
+  Slice 7 completed bounded generation/resource/atlas/section-keyed native resident
   and pending slots with exact acknowledgement, three stable Java-owned resident/pending/oracle
-  VBOs and atlas-entry/reload/unload/shutdown retirement. Crossing contracts now have
+  VBOs and atlas-entry/reload/unload/shutdown retirement. Round-16 crossing fixes add
   named diagnostics, pinned Rust/Java/Python bounds and isolated reload-during-comparison
-  tests. Acceptance remains open until fresh frozen-candidate three off/three on physical
-  trials and separate Xvfb acceptance pass. No default cutover or resource saving is established.
+  tests. One post-fix frozen candidate passed three off/three on locked RTX 5090
+  trials and separate Xvfb acceptance; the slice note discloses per-trial frames,
+  residency, RSS, heap and whole-device VRAM. Every selected trial admitted shaded
+  comparisons and native/GL replacement, then drained to zero. Selected frame
+  quantiles increased; no vanilla speedup or resource saving is established.
+  Full-world/composited and moving-camera goldens remain unsupported because the
+  current readbacks compare isolated section layers, not composited resident drawing
+  or camera-dependent translucent reordering. Fluid provenance and these goldens
+  remain WP5 acceptance work before any default cutover; vanilla remains authoritative.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

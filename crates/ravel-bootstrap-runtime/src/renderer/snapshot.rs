@@ -10,6 +10,7 @@ use jni::sys::jlong;
 use ravel_renderer::{CELL_COUNT, MAX_CAPTURE_SCRATCH_BYTES, SectionSnapshot, SnapshotError};
 
 use super::Lifecycle;
+use super::status::SnapshotFailure;
 use super::work::BoundaryError;
 
 type Receipt = [jlong; 8];
@@ -26,7 +27,7 @@ pub(super) fn admit(
     renderer: &Lifecycle,
     generation: jlong,
     key: jlong,
-    capture: impl FnOnce() -> jni::errors::Result<Option<Captured>>,
+    capture: impl FnOnce() -> jni::errors::Result<Captured>,
 ) -> Result<Option<Receipt>, BoundaryError> {
     let _permit = match renderer.capture.try_lock() {
         Ok(permit) => permit,
@@ -41,45 +42,48 @@ pub(super) fn admit(
     {
         return Ok(None);
     }
-    let Some(captured) = capture()? else {
-        return Ok(None);
-    };
+    let captured = capture()?;
     let mut locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
     if !locked.can_capture(generation) {
         return Ok(None);
     }
     let admitted = match captured.snapshot {
-        Some(snapshot) if captured.receipt[2] == 0 => locked.submit(snapshot, key)?,
+        Some(snapshot) if captured.receipt[super::status::SNAPSHOT_MISMATCHES] == 0 => {
+            locked.submit(snapshot, key)?
+        }
         _ => false,
     };
     drop(locked);
     let mut receipt = [0; 8];
     receipt[..6].copy_from_slice(&captured.receipt);
-    receipt[6] = jlong::from(admitted);
+    receipt[super::status::SNAPSHOT_ADMITTED] = jlong::from(admitted);
     receipt[7] = key;
     Ok(Some(receipt))
 }
 
-pub(super) fn copy_and_compare(
+pub(super) fn copy_and_capture(
     env: &Env<'_>,
     generation: jlong,
     states: &JIntArray<'_>,
     light: &JByteArray<'_>,
     geometry: &JByteArray<'_>,
-) -> jni::errors::Result<Option<Captured>> {
+) -> jni::errors::Result<Captured> {
     let nulls = u8::from(states.is_null())
         | (u8::from(light.is_null()) << 1)
         | (u8::from(geometry.is_null()) << 2);
     if nulls != 0 {
-        return Ok(Some(failure(7, [jlong::from(nulls), 0, 0])));
+        return Ok(failure(
+            SnapshotFailure::NullInput,
+            [jlong::from(nulls), 0, 0],
+        ));
     }
     let lengths = (states.len(env)?, light.len(env)?, geometry.len(env)?);
     if !valid_lengths(lengths.0, lengths.1, lengths.2) {
-        return Ok(Some(capture_error(SnapshotError::InvalidLengths {
+        return Ok(capture_error(SnapshotError::InvalidLengths {
             states: lengths.0,
             light: lengths.1,
             geometry: lengths.2,
-        })));
+        }));
     }
     // Validate all lengths before allocating bounded copies. Region APIs do
     // not pin or expose Java memory, and no object escapes this call.
@@ -87,7 +91,7 @@ pub(super) fn copy_and_compare(
     states.get_region(env, 0, &mut copied_states)?;
     let copied_light = env.convert_byte_array(light)?;
     let copied_geometry = env.convert_byte_array(geometry)?;
-    Ok(compare(
+    Ok(capture_and_validate(
         generation,
         &copied_states,
         &copied_light,
@@ -99,57 +103,67 @@ fn valid_lengths(states: usize, light: usize, geometry: usize) -> bool {
     states == CELL_COUNT && light == CELL_COUNT && geometry == CELL_COUNT
 }
 
-fn compare(generation: jlong, states: &[i32], light: &[u8], geometry: &[u8]) -> Option<Captured> {
+fn capture_and_validate(
+    generation: jlong,
+    states: &[i32],
+    light: &[u8],
+    geometry: &[u8],
+) -> Captured {
     let generation = u64::try_from(generation).unwrap_or(0);
     let snapshot = match SectionSnapshot::capture(generation, states, light, geometry) {
         Ok(snapshot) => snapshot,
-        Err(error) => return Some(capture_error(error)),
+        Err(error) => return capture_error(error),
     };
     let mismatches = mismatched_cells(&snapshot, states, light, geometry);
     let copy_bytes = CELL_COUNT * (size_of::<i32>() + 2 * size_of::<u8>());
     let receipt = [
         1,
-        jlong::try_from(snapshot.total_bytes()).ok()?,
-        jlong::try_from(mismatches).ok()?,
-        jlong::try_from(CELL_COUNT).ok()?,
-        jlong::try_from(copy_bytes).ok()?,
-        jlong::try_from(MAX_CAPTURE_SCRATCH_BYTES + copy_bytes).ok()?,
+        jlong::try_from(snapshot.total_bytes()).expect("bounded snapshot bytes"),
+        jlong::try_from(mismatches).expect("bounded cell count"),
+        jlong::try_from(CELL_COUNT).expect("bounded cell count"),
+        jlong::try_from(copy_bytes).expect("bounded copy bytes"),
+        jlong::try_from(MAX_CAPTURE_SCRATCH_BYTES + copy_bytes).expect("bounded scratch bytes"),
     ];
-    Some(Captured {
+    Captured {
         receipt,
         snapshot: Some(snapshot),
-    })
+    }
 }
 
 fn capture_error(error: SnapshotError) -> Captured {
     match error {
-        SnapshotError::InvalidGeneration => failure(1, [0; 3]),
+        SnapshotError::InvalidGeneration => failure(SnapshotFailure::Generation, [0; 3]),
         SnapshotError::InvalidLengths {
             states,
             light,
             geometry,
         } => failure(
-            2,
+            SnapshotFailure::Lengths,
             [
                 super::metric_long(states),
                 super::metric_long(light),
                 super::metric_long(geometry),
             ],
         ),
-        SnapshotError::InvalidState { index, state } => {
-            failure(3, [super::metric_long(index), jlong::from(state), 0])
-        }
-        SnapshotError::InvalidGeometry { index, flag } => {
-            failure(4, [super::metric_long(index), jlong::from(flag), 0])
-        }
-        SnapshotError::InconsistentGeometry { state } => failure(5, [jlong::from(state), 0, 0]),
-        SnapshotError::PaletteLimit => failure(6, [0; 3]),
+        SnapshotError::InvalidState { index, state } => failure(
+            SnapshotFailure::State,
+            [super::metric_long(index), jlong::from(state), 0],
+        ),
+        SnapshotError::InvalidGeometry { index, flag } => failure(
+            SnapshotFailure::Geometry,
+            [super::metric_long(index), jlong::from(flag), 0],
+        ),
+        SnapshotError::InconsistentGeometry { state } => failure(
+            SnapshotFailure::InconsistentGeometry,
+            [jlong::from(state), 0, 0],
+        ),
+        SnapshotError::PaletteLimit => failure(SnapshotFailure::Palette, [0; 3]),
     }
 }
 
-fn failure(code: jlong, details: [jlong; 3]) -> Captured {
+fn failure(code: SnapshotFailure, details: [jlong; 3]) -> Captured {
     Captured {
-        receipt: [-1, code, details[0], details[1], details[2], 0],
+        receipt: [-1, i64::from(code), details[0], details[1], details[2], 0],
         snapshot: None,
     }
 }
@@ -182,7 +196,7 @@ pub(super) fn publish<T, E>(
     publish: impl FnOnce(&[jlong]) -> Result<T, E>,
 ) -> Result<T, E> {
     let locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
-    let admitted = receipt[6] == 1;
+    let admitted = receipt[super::status::SNAPSHOT_ADMITTED] == 1;
     // Cancellation can discard the mesh, but cannot revoke admission Java must settle.
     let values = if admitted || locked.can_capture(generation) {
         &receipt[..]
@@ -203,21 +217,21 @@ mod tests {
     use std::cell::Cell;
     use std::sync::PoisonError;
 
-    use super::{CELL_COUNT, SectionSnapshot, admit, compare, mismatched_cells, valid_lengths};
+    use super::{
+        CELL_COUNT, SectionSnapshot, admit, capture_and_validate, mismatched_cells, valid_lengths,
+    };
     use crate::renderer::{FRAME, Lifecycle, RELOAD, Renderer, UNLOAD};
 
     fn captured() -> super::Captured {
-        compare(
+        capture_and_validate(
             1,
             &vec![0; CELL_COUNT],
             &vec![0; CELL_COUNT],
             &vec![0; CELL_COUNT],
         )
-        .expect("snapshot")
     }
 
-    fn diagnostic(captured: Option<super::Captured>) -> [jni::sys::jlong; 6] {
-        let captured = captured.expect("diagnostic receipt");
+    fn diagnostic(captured: &super::Captured) -> [jni::sys::jlong; 6] {
         assert!(captured.snapshot.is_none());
         assert_eq!(captured.receipt[0], -1);
         captured.receipt
@@ -237,50 +251,87 @@ mod tests {
         for invalid in [-1, 0x0100_0000, i32::MAX] {
             states[CELL_COUNT - 1] = invalid;
             assert_eq!(
-                diagnostic(compare(1, &states, &light, &geometry)),
+                diagnostic(&capture_and_validate(1, &states, &light, &geometry)),
                 [-1, 3, 5831, i64::from(invalid), 0, 0]
             );
         }
         states[CELL_COUNT - 1] = 0x00ff_ffff;
         assert_eq!(
-            compare(1, &states, &light, &geometry)
-                .expect("capture")
-                .receipt[0],
+            capture_and_validate(1, &states, &light, &geometry).receipt[0],
             1
         );
         for generation in [-1, 0] {
             assert_eq!(
-                diagnostic(compare(generation, &states, &light, &geometry)),
+                diagnostic(&capture_and_validate(
+                    generation, &states, &light, &geometry
+                )),
                 [-1, 1, 0, 0, 0, 0]
             );
         }
+    }
+
+    #[test]
+    fn malformed_lengths_and_geometry_have_distinct_diagnostics() {
+        let mut states = vec![0; CELL_COUNT];
+        let light = vec![255; CELL_COUNT];
+        let geometry = vec![0; CELL_COUNT];
         assert_eq!(
-            diagnostic(compare(1, &states[..CELL_COUNT - 1], &light, &geometry)),
+            diagnostic(&capture_and_validate(
+                1,
+                &states[..CELL_COUNT - 1],
+                &light,
+                &geometry
+            )),
             [-1, 2, 5831, 5832, 5832, 0]
         );
         assert_eq!(
-            diagnostic(compare(1, &states, &light[..CELL_COUNT - 1], &geometry)),
+            diagnostic(&capture_and_validate(
+                1,
+                &states,
+                &light[..CELL_COUNT - 1],
+                &geometry
+            )),
             [-1, 2, 5832, 5831, 5832, 0]
         );
         assert_eq!(
-            diagnostic(compare(1, &states, &light, &geometry[..CELL_COUNT - 1])),
+            diagnostic(&capture_and_validate(
+                1,
+                &states,
+                &light,
+                &geometry[..CELL_COUNT - 1]
+            )),
             [-1, 2, 5832, 5832, 5831, 0]
         );
         let mut malformed_geometry = geometry;
         malformed_geometry[CELL_COUNT - 1] = 2;
         assert_eq!(
-            diagnostic(compare(1, &states, &light, &malformed_geometry)),
+            diagnostic(&capture_and_validate(
+                1,
+                &states,
+                &light,
+                &malformed_geometry
+            )),
             [-1, 4, 5831, 2, 0, 0]
         );
         malformed_geometry[CELL_COUNT - 1] = 0;
         malformed_geometry[0] = 1;
         assert_eq!(
-            diagnostic(compare(1, &states, &light, &malformed_geometry)),
+            diagnostic(&capture_and_validate(
+                1,
+                &states,
+                &light,
+                &malformed_geometry
+            )),
             [-1, 5, 0, 0, 0, 0]
         );
         states.fill(35);
         assert_eq!(
-            diagnostic(compare(1, &states, &light, &malformed_geometry)),
+            diagnostic(&capture_and_validate(
+                1,
+                &states,
+                &light,
+                &malformed_geometry
+            )),
             [-1, 5, 35, 0, 0, 0]
         );
     }
@@ -294,9 +345,7 @@ mod tests {
             .map(|index| u8::try_from(index % 256).expect("byte"))
             .collect();
         let geometry = vec![0; CELL_COUNT];
-        let receipt = compare(1, &states, &light, &geometry)
-            .expect("valid snapshot")
-            .receipt;
+        let receipt = capture_and_validate(1, &states, &light, &geometry).receipt;
         assert_eq!(receipt[0], 1);
         assert_eq!(
             receipt[1],
@@ -337,7 +386,7 @@ mod tests {
             assert!(
                 admit(&renderer, generation, 1, || {
                     called.set(true);
-                    Ok(Some(captured()))
+                    Ok(captured())
                 })
                 .expect("admission")
                 .is_none()
@@ -361,7 +410,7 @@ mod tests {
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .observe(event, generation, 10, true);
-                Ok(Some(captured()))
+                Ok(captured())
             })
             .expect("admission");
             assert!(receipt.is_none());
@@ -378,10 +427,9 @@ mod tests {
         let first = Lifecycle::new(Renderer::new());
         let second = Lifecycle::new(Renderer::new());
         let receipt = admit(&first, 1, 1, || {
-            let nested =
-                admit(&second, 1, 1, || Ok(Some(captured()))).expect("independent admission");
+            let nested = admit(&second, 1, 1, || Ok(captured())).expect("independent admission");
             assert!(nested.is_some());
-            Ok(Some(captured()))
+            Ok(captured())
         })
         .expect("outer admission");
         assert!(receipt.is_some());
@@ -406,7 +454,7 @@ mod tests {
                     .expect("busy rejection")
                     .is_none()
             );
-            Ok(compare(
+            Ok(capture_and_validate(
                 3,
                 &vec![0; CELL_COUNT],
                 &vec![0; CELL_COUNT],
@@ -419,15 +467,15 @@ mod tests {
         let mismatch = admit(&renderer, 3, 8, || {
             let mut captured = captured();
             captured.receipt[2] = 1;
-            Ok(Some(captured))
+            Ok(captured)
         })
         .expect("mismatch")
         .expect("receipt");
         assert_eq!(mismatch[6], 0);
         let diagnostic = admit(&renderer, 3, 9, || {
-            Ok(Some(super::capture_error(
+            Ok(super::capture_error(
                 ravel_renderer::SnapshotError::InconsistentGeometry { state: 35 },
-            )))
+            ))
         })
         .expect("capture failure")
         .expect("diagnostic");

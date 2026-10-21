@@ -186,3 +186,19 @@ fn sorting_can_be_cancelled_and_never_reallocates_other_layers() {
     assert_eq!(result, Err(BakedError::Cancelled));
     assert_eq!(visits.get(), 151);
 }
+
+#[test]
+fn retained_input_length_and_spare_capacity_are_both_bounded() {
+    let source = quad(RenderLayer::Solid, 0.0, 1);
+    assert_eq!(
+        BakedSnapshot::new(1, 1, vec![source; MAX_QUADS + 1]),
+        Err(BakedError::Limit)
+    );
+    let mut spare = Vec::with_capacity(MAX_QUADS + 1);
+    spare.push(source);
+    assert_eq!(BakedSnapshot::new(1, 1, spare), Err(BakedError::Limit));
+    let mut exact = Vec::with_capacity(MAX_QUADS);
+    exact.push(source);
+    let admitted = BakedSnapshot::new(1, 1, exact).expect("exact capacity bound");
+    assert_eq!(admitted.heap_bytes(), MAX_QUADS * size_of::<QuadInput>());
+}

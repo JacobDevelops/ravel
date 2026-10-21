@@ -43,15 +43,18 @@ fn final_buffer_is_only_an_oracle_and_mismatches_remain_observable() {
     let mut oracle = vec![0; 128];
     oracle[..4].copy_from_slice(&1_u32.to_le_bytes());
     let mut output = Vec::new();
-    let result = compare(1, &source, &oracle, &mut output);
+    let result = emit_and_compare(&source, &oracle, &mut output, || false);
     assert_eq!(output.len(), 32);
     assert_eq!(&output[..4], &[1, 0, 0, 0]);
     assert_eq!(&result[..3], &[1, 0, -1]);
     oracle[16 + 16..16 + 20].copy_from_slice(&1_u32.to_le_bytes());
-    let result = compare(1, &source, &oracle, &mut Vec::new());
+    let result = emit_and_compare(&source, &oracle, &mut Vec::new(), || false);
     assert_eq!(&result[..3], &[1, 1, 4]);
     oracle[..4].copy_from_slice(&2_u32.to_le_bytes());
-    assert_eq!(compare(1, &source, &oracle, &mut Vec::new())[..2], [-1, 5]);
+    assert_eq!(
+        emit_and_compare(&source, &oracle, &mut Vec::new(), || false)[..2],
+        [-1, 5]
+    );
 }
 
 #[test]
@@ -178,4 +181,252 @@ fn shaded_acceptance_refuses_same_generation_during_close_drain_or_failure() {
     state.worker_failure = true;
     assert!(state.accepts(1));
     assert!(!state.can_capture(1));
+}
+
+#[test]
+fn emission_oracle_and_reservation_refusals_are_distinct() {
+    let source = input();
+    let mut oracle = vec![0; 128];
+    oracle[..4].copy_from_slice(&1_u32.to_le_bytes());
+    assert_eq!(
+        emit_and_compare(&source, &oracle, &mut Vec::new(), || true),
+        BakedFailure::Emission.receipt()
+    );
+    assert_eq!(
+        emit_and_compare(&source, &[], &mut Vec::new(), || false),
+        BakedFailure::OracleHeader.receipt()
+    );
+    assert_eq!(
+        emit_and_compare(&source, &oracle[..16], &mut Vec::new(), || false),
+        BakedFailure::OraclePayload.receipt()
+    );
+    let failed = emit_and_compare_with(
+        &source,
+        &oracle,
+        &mut Vec::new(),
+        || false,
+        |_, _| Vec::<u8>::new().try_reserve_exact(usize::MAX),
+    );
+    assert_eq!(failed, BakedFailure::Allocation.receipt());
+}
+
+#[test]
+fn reload_during_comparison_or_before_commit_cannot_publish() {
+    let renderer = Lifecycle::new(Renderer::new());
+    let comparing = std::cell::Cell::new(false);
+    let mut output = Vec::new();
+    let result = emit_and_compare_with(
+        &input(),
+        &[0; 128],
+        &mut output,
+        || {
+            if comparing.replace(false) {
+                work::observe(&renderer, RELOAD, 1, 10, true);
+            }
+            !renderer.lock().expect("renderer").can_capture(1)
+        },
+        |words, size| {
+            comparing.set(true);
+            words.try_reserve_exact(size)
+        },
+    );
+    assert_eq!(result, BakedFailure::Emission.receipt());
+    assert_eq!(output, [0; 4]);
+    let prepared = Prepared {
+        source: input(),
+        emitted: vec![1; 32],
+        result: [1, 0, -1, 0, 0, 0],
+    };
+    let receipt = commit(&renderer, 1, [0; 3], prepared, |_| -> Result<(), ()> {
+        panic!("stale publication must not write Java output");
+    })
+    .expect("stale refusal");
+    assert_eq!(receipt, Vec::<i64>::new());
+    assert_eq!(renderer.lock().expect("renderer").shaded.metrics(), [0; 12]);
+}
+
+fn nonzero_input() -> Vec<u8> {
+    let mut bytes = input();
+    let mut set =
+        |offset: usize, value: u32| bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    set(4, 2_f32.to_bits());
+    set(8, 3_f32.to_bits());
+    set(12, 4_f32.to_bits());
+    set(32, 37);
+    set(36, 41);
+    set(40, 2);
+    set(44, 0x00ab_cdef);
+    for axis in 0..3 {
+        let bits = f64::from(u32::try_from(axis + 1).expect("axis")).to_bits();
+        set(
+            48 + axis * 8,
+            u32::try_from(bits & 0xffff_ffff).expect("low word"),
+        );
+        set(52 + axis * 8, u32::try_from(bits >> 32).expect("high word"));
+    }
+    for vertex in 0..4 {
+        for item in 0..7 {
+            let value = if item == 3 {
+                0xff12_3456
+            } else {
+                f32::from(u16::try_from(vertex * 7 + item + 1).expect("field")).to_bits()
+            };
+            set(72 + (vertex * 7 + item) * 4, value);
+        }
+        for (axis, scale) in [0.125, 0.25, 0.5].into_iter().enumerate() {
+            set(
+                200 + (vertex * 3 + axis) * 4,
+                (f32::from(u16::try_from(vertex + 1).expect("vertex")) * scale).to_bits(),
+            );
+        }
+        set(
+            184 + vertex * 4,
+            f32::from(u16::try_from(vertex + 1).expect("vertex")).to_bits(),
+        );
+        set(248 + vertex * 4, u32::try_from(vertex + 91).expect("light"));
+    }
+    bytes
+}
+
+#[test]
+fn copied_nonzero_fields_survive_decode_and_emission() {
+    let bytes = nonzero_input();
+    let (snapshot, camera) = decode(&bytes).expect("nonzero packet");
+    assert_eq!(camera, [2., 3., 4.]);
+    let mesh = snapshot.mesh(1, camera, || false).expect("emission");
+    let quad = &mesh.layers()[2][0];
+    assert_eq!(
+        (quad.state_key, quad.sprite, quad.tint),
+        (37, 41, 0x00ab_cdef)
+    );
+    for vertex in 0..4 {
+        for (axis, coordinate) in quad.vertices[vertex].iter().take(3).enumerate() {
+            assert_eq!(
+                f32::from_bits(*coordinate),
+                f32::from(u16::try_from(vertex * 7 + axis + axis + 2).expect("coordinate"))
+            );
+        }
+        assert_eq!(
+            quad.vertices[vertex][3],
+            [0xff09_0d0a, 0xff12_1a15, 0xff1b_2720, 0xff24_342b][vertex]
+        );
+        assert_eq!(
+            quad.vertices[vertex][4],
+            f32::from(u16::try_from(vertex * 7 + 5).expect("u")).to_bits()
+        );
+        assert_eq!(
+            quad.vertices[vertex][5],
+            f32::from(u16::try_from(vertex * 7 + 6).expect("v")).to_bits()
+        );
+        assert_eq!(
+            quad.vertices[vertex][6],
+            u32::try_from(vertex + 91).expect("light")
+        );
+        assert_eq!(
+            quad.ambient_occlusion[vertex],
+            f32::from(u16::try_from(vertex + 1).expect("ao")).to_bits()
+        );
+    }
+}
+
+#[test]
+fn java_python_and_rust_crossing_contracts_match() {
+    let java = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../jvm/legacy-platform/src/agent/java/dev/ravel/jvm/LegacyRendererContract.java"
+    ));
+    let python = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../jvm/legacy-platform/tools/renderer_proof.py"
+    ));
+    let benchmark = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../registry/sevtech/bench/run.py"
+    ));
+    let geometry = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../jvm/legacy-platform/src/main/java/dev/ravel/legacy/opengl/GeometryProof.java"
+    ));
+    let automation = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../jvm/legacy-platform/src/main/java/dev/ravel/legacy/launch/ClientAutomation.java"
+    ));
+    assert!(geometry.contains(&format!("MAX_BAKED_QUADS = {MAX_QUADS};")));
+    assert!(automation.contains("GeometryProof.MAX_BAKED_QUADS"));
+    for (name, index) in [
+        (
+            "SNAPSHOT_MISMATCHES",
+            super::super::status::SNAPSHOT_MISMATCHES,
+        ),
+        ("SNAPSHOT_ADMITTED", super::super::status::SNAPSHOT_ADMITTED),
+    ] {
+        assert!(java.contains(&format!("{name} = {index};")));
+    }
+    assert!(java.contains(&format!("BAKED_RECORD_BYTES = {RECORD};")));
+    assert!(java.contains(&format!("BAKED_MAX_QUADS = {MAX_QUADS};")));
+    for source in [python, benchmark] {
+        assert!(source.contains(&format!("BAKED_RECORD_BYTES = {RECORD}\n")));
+        assert!(source.contains(&format!("BAKED_MAX_QUADS_PER_SECTION = {MAX_QUADS}\n")));
+        assert!(source.contains(
+            "BAKED_GL_RESERVED_BYTES = 3 * BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES\n"
+        ));
+        assert!(source.contains("PROOF_IMAGE_EDGE = 64\n"));
+        assert!(source.contains("PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2\n"));
+    }
+}
+
+#[test]
+fn java_and_rust_status_contracts_match() {
+    use super::super::status::SnapshotFailure;
+    let java = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../jvm/legacy-platform/src/agent/java/dev/ravel/jvm/LegacyRendererContract.java"
+    ));
+    for (name, failure) in [
+        ("BOUNDS", BakedFailure::Bounds),
+        ("DECODE", BakedFailure::Decode),
+        ("EMISSION", BakedFailure::Emission),
+        ("ORACLE_HEADER", BakedFailure::OracleHeader),
+        ("LAYER_COUNT", BakedFailure::LayerCount),
+        ("ORACLE_PAYLOAD", BakedFailure::OraclePayload),
+        ("ALLOCATION", BakedFailure::Allocation),
+    ] {
+        assert!(java.contains(&format!("{name}({})", failure.receipt()[1])));
+    }
+    for (name, failure) in [
+        ("GENERATION", SnapshotFailure::Generation),
+        ("LENGTHS", SnapshotFailure::Lengths),
+        ("STATE", SnapshotFailure::State),
+        ("GEOMETRY", SnapshotFailure::Geometry),
+        (
+            "INCONSISTENT_GEOMETRY",
+            SnapshotFailure::InconsistentGeometry,
+        ),
+        ("PALETTE", SnapshotFailure::Palette),
+        ("NULL_INPUT", SnapshotFailure::NullInput),
+    ] {
+        assert!(java.contains(&format!("{name}({})", i64::from(failure))));
+    }
+}
+
+#[test]
+fn injected_capture_admission_refuses_busy_stale_and_overlapping_calls() {
+    let renderer = Lifecycle::new(Renderer::new());
+    assert_eq!(admit(&renderer, 1, || Ok::<_, ()>(7)), Ok(Some(7)));
+    assert_eq!(admit(&renderer, 0, || Ok::<_, ()>(7)), Ok(None));
+    let permit = renderer.capture.lock().expect("permit");
+    assert_eq!(admit(&renderer, 1, || Ok::<_, ()>(7)), Ok(None));
+    drop(permit);
+    renderer
+        .lock()
+        .expect("renderer")
+        .shaded
+        .publish(retained(1, 1))
+        .expect("pending");
+    assert_eq!(admit(&renderer, 1, || Ok::<_, ()>(7)), Ok(None));
+    let output = 4 + MAX_QUADS * 28;
+    assert!(valid_bounds(INPUT_BOUND, ORACLE_BOUND, output));
+    assert!(!valid_bounds(INPUT_BOUND + 1, ORACLE_BOUND, output));
+    assert!(!valid_bounds(INPUT_BOUND, ORACLE_BOUND + 1, output));
+    assert!(!valid_bounds(INPUT_BOUND, ORACLE_BOUND, output - 1));
 }

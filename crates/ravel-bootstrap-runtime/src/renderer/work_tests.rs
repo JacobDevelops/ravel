@@ -305,18 +305,26 @@ fn completion_record_has_bounded_fixed_width_and_preserves_identity() {
     let mut pool = ravel_renderer::workers::WorkerPool::new(1).expect("workers");
     pool.try_submit(snapshot(1), 9).expect("submit");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    let completion = loop {
-        if let Some(completion) = pool.poll() {
-            break completion;
+    let mut values = Vec::new();
+    loop {
+        let consumed = pool
+            .consume_ready(|ready| {
+                let Some(completion) = ready.iter().flatten().next() else {
+                    return Ok::<_, ()>(false);
+                };
+                work::append_completion(&mut values, completion);
+                Ok(true)
+            })
+            .expect("transactional publication");
+        if consumed {
+            break;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "mesh completion deadline"
         );
         std::thread::yield_now();
-    };
-    let mut values = Vec::new();
-    work::append_completion(&mut values, &completion);
+    }
     assert_eq!(values.len(), 11);
     assert_eq!(&values[..3], [1, 9, 0]);
     assert_eq!(values[7], 0);

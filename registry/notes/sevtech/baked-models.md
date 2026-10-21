@@ -223,6 +223,14 @@ do not replace the required fresh, frozen-candidate three off/three on RTX 5090
 trial matrix and separate Xvfb functional run. All physical/golden tables above
 belong to slice 6; they are not slice-7 performance or golden evidence.
 
+The round-16 crossing cleanup pins the 232-byte record, 8,192-quad admission
+limit, diagnostic codes and receipt offsets across Rust, Java and the Python
+validator. A non-zero record fixture checks copied provenance, translation,
+color multipliers, ambient occlusion and light. Capture admission, emission,
+oracle comparison and publication accept isolated lifecycle state; tests inject
+reload during comparison and refuse stale publication before any Java output
+write. Worker completion publication remains transactional under invalidation.
+
 ### Slice-7 controlled live acceptance
 
 The final three-buffer implementation passed legacy-agent build, default live,

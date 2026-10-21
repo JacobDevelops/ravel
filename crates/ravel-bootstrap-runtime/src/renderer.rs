@@ -23,6 +23,7 @@ use jni::{Env, EnvUnowned};
 
 mod baked;
 mod snapshot;
+mod status;
 mod work;
 pub use baked::{ravel_renderer_baked, ravel_renderer_baked_lease};
 
@@ -209,7 +210,7 @@ pub fn ravel_renderer_snapshot<'local>(
         |env: &mut Env<'local>| -> Result<JLongArray<'local>, work::BoundaryError> {
             let result = JLongArray::new(env, 8)?;
             let receipt = snapshot::admit(&RENDERER, generation, key, || {
-                snapshot::copy_and_compare(env, generation, &states, &light, &geometry)
+                snapshot::copy_and_capture(env, generation, &states, &light, &geometry)
             })?;
             let Some(receipt) = receipt else {
                 return Ok(JLongArray::new(env, 0)?);

@@ -257,7 +257,7 @@ impl WorkerPool {
         Ok(pool)
     }
 
-    /// Transfers ownership only after checking generation, uniqueness and both ceilings.
+    /// Transfers ownership only after checking generation, uniqueness and a vacant reserved slot.
     /// A cancelled running owner retains its key until its worker releases the reservation.
     ///
     /// # Errors
@@ -274,11 +274,6 @@ impl WorkerPool {
         }
         if state.slots.iter().any(|slot| slot.job_id() == Some(job_id)) {
             return Err(SubmitError::DuplicateJobId);
-        }
-        if state.stats.outstanding >= MAX_OUTSTANDING_JOBS
-            || state.stats.reserved_bytes > MAX_RESERVED_BYTES - JOB_RESERVED_BYTES
-        {
-            return Err(SubmitError::Full);
         }
         let index = state
             .slots
@@ -305,13 +300,13 @@ impl WorkerPool {
 
     /// Removes at most one exact-current-generation completion under the invalidation lock.
     /// Once returned, the completion belongs to the caller, outside the pool reservation.
+    #[cfg(test)]
     #[must_use]
     pub fn poll(&self) -> Option<Completion> {
         let mut state = self.shared.lock();
         for index in 0..MAX_OUTSTANDING_JOBS {
             if let Some(completion) = state.completions[index].take() {
-                state.slots[index] = Slot::Vacant;
-                release(&mut state);
+                release(&mut state, index);
                 if !state.stats.stopped && completion.generation == state.stats.generation {
                     return Some(completion);
                 }
@@ -327,12 +322,10 @@ impl WorkerPool {
         publish: impl FnOnce(&[Option<&Completion>; MAX_OUTSTANDING_JOBS]) -> T,
     ) -> T {
         let state = self.shared.lock();
-        let ready = std::array::from_fn(|index| {
-            state.completions[index].as_ref().filter(|completion| {
-                !state.stats.stopped && completion.generation == state.stats.generation
-            })
-        });
-        publish(&ready)
+        let ready = ready_completions(&state);
+        let result = publish(&ready);
+        drop(state);
+        result
     }
 
     /// Borrows one exact generation/key while blocking invalidation and acknowledgement.
@@ -380,9 +373,7 @@ impl WorkerPool {
         });
         let value = publish(index.is_some())?;
         if let Some(index) = index {
-            state.completions[index] = None;
-            state.slots[index] = Slot::Vacant;
-            release(&mut state);
+            release(&mut state, index);
         }
         drop(state);
         Ok(value)
@@ -401,18 +392,12 @@ impl WorkerPool {
         publish: impl FnOnce(&[Option<&Completion>; MAX_OUTSTANDING_JOBS]) -> Result<T, E>,
     ) -> Result<T, E> {
         let mut state = self.shared.lock();
-        let ready = std::array::from_fn(|index| {
-            state.completions[index].as_ref().filter(|completion| {
-                !state.stats.stopped && completion.generation == state.stats.generation
-            })
-        });
+        let ready = ready_completions(&state);
         let value = publish(&ready)?;
         let consumed = ready.map(|completion| completion.is_some());
         for (index, consumed) in consumed.into_iter().enumerate() {
             if consumed {
-                state.completions[index] = None;
-                state.slots[index] = Slot::Vacant;
-                release(&mut state);
+                release(&mut state, index);
             }
         }
         drop(state);
@@ -503,18 +488,26 @@ fn validate_generation(generation: u64) -> Result<(), WorkerError> {
     }
 }
 
-fn release(state: &mut State) {
+fn release(state: &mut State, index: usize) {
+    state.slots[index] = Slot::Vacant;
+    state.completions[index] = None;
     state.stats.outstanding -= 1;
     state.stats.reserved_bytes -= JOB_RESERVED_BYTES;
+}
+
+fn ready_completions(state: &State) -> [Option<&Completion>; MAX_OUTSTANDING_JOBS] {
+    std::array::from_fn(|index| {
+        state.completions[index].as_ref().filter(|completion| {
+            !state.stats.stopped && completion.generation == state.stats.generation
+        })
+    })
 }
 
 fn discard(shared: &Shared, state: &mut State) {
     for index in 0..MAX_OUTSTANDING_JOBS {
         shared.cancelled[index].store(true, Ordering::Release);
         if !matches!(state.slots[index], Slot::Running(_) | Slot::Vacant) {
-            state.slots[index] = Slot::Vacant;
-            state.completions[index] = None;
-            release(state);
+            release(state, index);
         }
     }
 }
@@ -544,9 +537,7 @@ impl Drop for RunningOwner<'_> {
         state.stats.stopped = true;
         discard(self.shared, &mut state);
         if matches!(state.slots[self.index], Slot::Running(_)) {
-            state.slots[self.index] = Slot::Vacant;
-            state.completions[self.index] = None;
-            release(&mut state);
+            release(&mut state, self.index);
         }
         drop(state);
         self.shared.wake.notify_all();
@@ -583,10 +574,11 @@ fn take_job(shared: &Shared) -> Option<(usize, Job)> {
             .map(|(index, _)| index);
         if let Some(index) = index {
             let slot = std::mem::replace(&mut state.slots[index], Slot::Vacant);
-            if let Slot::Queued(job) = slot {
-                state.slots[index] = Slot::Running(job.id);
-                return Some((index, job));
-            }
+            let Slot::Queued(job) = slot else {
+                unreachable!("selected queued slot remains queued under the state lock");
+            };
+            state.slots[index] = Slot::Running(job.id);
+            return Some((index, job));
         }
         state = shared
             .wake
@@ -637,8 +629,7 @@ fn finish_job(shared: &Shared, index: usize, completion: Completion) {
         || state.stats.generation != completion.generation
         || shared.cancelled[index].load(Ordering::Acquire)
     {
-        state.slots[index] = Slot::Vacant;
-        release(&mut state);
+        release(&mut state, index);
     } else {
         state.slots[index] = Slot::Completed(completion.job_id);
         state.completions[index] = Some(completion);

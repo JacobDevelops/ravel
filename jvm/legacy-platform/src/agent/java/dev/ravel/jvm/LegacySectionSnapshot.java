@@ -78,13 +78,16 @@ final class LegacySectionSnapshot {
             receipt = Hook.ravelRendererSnapshot(generation, key, states, light, geometry);
         } finally {
             if (receipt == null || receipt.length != 8 || receipt[0] != 1
-                    || receipt[6] != 1 || receipt[7] != key)
+                    || receipt[LegacyRendererContract.SNAPSHOT_ADMITTED] != 1 || receipt[7] != key)
                 LegacyVanillaGeometry.discard(key, generation);
             LegacyMeshWork.commit(key, receipt, System.nanoTime() - started);
         }
         if (receipt.length == 0) { increment(7); return null; }
-        if (receipt.length == 8 && receipt[0] == -1) return null; // Counted with its code by LegacyMeshWork.
-        if (receipt.length != 8 || receipt[0] != 1 || receipt[2] != 0 || receipt[3] != CELLS)
+        if (receipt.length == 8 && receipt[0] == -1) {
+            LegacyRendererContract.SnapshotFailure.decode(receipt[1]);
+            return null;
+        }
+        if (receipt.length != 8 || receipt[0] != 1 || receipt[LegacyRendererContract.SNAPSHOT_MISMATCHES] != 0 || receipt[3] != CELLS)
             throw new IllegalStateException("Native snapshot did not round-trip every copied region cell");
         return receipt;
     }
@@ -165,7 +168,7 @@ final class LegacySectionSnapshot {
         METRICS[2] = Math.max(METRICS[2], receipt[1]);
         METRICS[3] += nanos;
         METRICS[4] = Math.max(METRICS[4], nanos);
-        METRICS[5] += receipt[2];
+        METRICS[5] += receipt[LegacyRendererContract.SNAPSHOT_MISMATCHES];
         METRICS[6] += receipt[3];
         METRICS[9] += 1736;
         METRICS[10] = Thread.currentThread().threadId();

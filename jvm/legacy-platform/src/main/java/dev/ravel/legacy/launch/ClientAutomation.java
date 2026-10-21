@@ -4,6 +4,7 @@ import dev.ravel.legacy.input.Keyboard;
 import dev.ravel.legacy.input.Mouse;
 import dev.ravel.legacy.opengl.Display;
 import dev.ravel.legacy.opengl.DisplayMode;
+import dev.ravel.legacy.opengl.GeometryProof;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Robot;
@@ -514,7 +515,7 @@ final class ClientAutomation implements Runnable {
         require(values[0] > 0 && values[4] > 0 && values[5] == 0 && values[10] == -1,
                 "Baked CPU comparison missing or differs from vanilla");
         StringBuilder json = new StringBuilder("{\"comparison\":\"Rust-emission-vs-final-vanilla-BLOCK-words\","
-                + "\"drawable\":true,\"worldSubstitution\":false,\"maxQuadsPerSection\":8192");
+                + "\"drawable\":true,\"worldSubstitution\":false,\"maxQuadsPerSection\":" + GeometryProof.MAX_BAKED_QUADS);
         for (int i = 0; i < BAKED_NAMES.length; i++)
             json.append(",\"").append(BAKED_NAMES[i]).append("\":").append(values[i]);
         json.append(",\"world\":").append(Arrays.toString((long[]) rendererType().getMethod("bakedWorld").invoke(null)));

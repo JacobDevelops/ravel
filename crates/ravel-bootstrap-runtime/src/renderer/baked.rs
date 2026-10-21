@@ -1,5 +1,6 @@
 //! Selected-only copied baked inputs, independently emitted against vanilla's final buffer.
 
+use super::status::BakedFailure;
 use jni::objects::{JByteArray, JClass, JIntArray, JLongArray};
 use jni::sys::jlong;
 use jni::{Env, EnvUnowned};
@@ -29,80 +30,111 @@ pub fn ravel_renderer_baked<'local>(
 ) -> JLongArray<'local> {
     env.with_env(
         |env: &mut Env<'local>| -> Result<_, super::work::BoundaryError> {
-            let _permit = match super::RENDERER.capture.try_lock() {
-                Ok(permit) => permit,
-                Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
-                Err(std::sync::TryLockError::WouldBlock) => return Ok(JLongArray::new(env, 0)?),
-            };
-            if !active(generation)
-                || super::RENDERER
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .shaded
-                    .busy()
-            {
-                return Ok(JLongArray::new(env, 0)?);
+            let result = admit(&super::RENDERER, generation, || {
+                if origin.len(env)? != 3 {
+                    return publish(env, &BakedFailure::Bounds.receipt());
+                }
+                let mut section = [0; 3];
+                origin.get_region(env, 0, &mut section)?;
+                let input_size = source.len(env)?;
+                let oracle_size = oracle.len(env)?;
+                if !valid_bounds(input_size, oracle_size, output.len(env)?) {
+                    return publish(env, &BakedFailure::Bounds.receipt());
+                }
+                if input_size < 32 {
+                    return publish(env, &BakedFailure::Decode.receipt());
+                }
+                let mut header = [0_i8; 4];
+                source.get_region(env, 0, &mut header)?;
+                let count = usize::try_from(u32::from_le_bytes(header.map(i8::cast_unsigned)))
+                    .unwrap_or(usize::MAX);
+                if count > MAX_QUADS || input_size < 32 + count * RECORD {
+                    return publish(env, &BakedFailure::Decode.receipt());
+                }
+                let mut copied = vec![0_i8; 32 + count * RECORD];
+                source.get_region(env, 0, &mut copied)?;
+                let source = copied
+                    .into_iter()
+                    .map(i8::cast_unsigned)
+                    .collect::<Vec<_>>();
+                let oracle = env.convert_byte_array(&oracle)?;
+                let mut emitted = Vec::new();
+                let result =
+                    emit_and_compare(&source, &oracle, &mut emitted, || !active(generation));
+                let values = commit(
+                    &super::RENDERER,
+                    generation,
+                    section,
+                    Prepared {
+                        source,
+                        emitted,
+                        result,
+                    },
+                    |words| output.set_region(env, 0, words),
+                )?;
+                publish(env, &values)
+            })?;
+            match result {
+                Some(receipt) => Ok(receipt),
+                None => Ok(JLongArray::new(env, 0)?),
             }
-            if origin.len(env)? != 3 {
-                return publish(env, &[-1, 1, 0, 0, 0, 0]);
-            }
-            let mut section = [0; 3];
-            origin.get_region(env, 0, &mut section)?;
-            let input_size = source.len(env)?;
-            let oracle_size = oracle.len(env)?;
-            if input_size > INPUT_BOUND
-                || oracle_size > ORACLE_BOUND
-                || output.len(env)? != 4 + MAX_QUADS * 28
-            {
-                return publish(env, &[-1, 1, 0, 0, 0, 0]);
-            }
-            if input_size < 32 {
-                return publish(env, &[-1, 2, 0, 0, 0, 0]);
-            }
-            let mut header = [0_i8; 4];
-            source.get_region(env, 0, &mut header)?;
-            let count = usize::try_from(u32::from_le_bytes(header.map(i8::cast_unsigned)))
-                .unwrap_or(usize::MAX);
-            if count > MAX_QUADS || input_size < 32 + count * RECORD {
-                return publish(env, &[-1, 2, 0, 0, 0, 0]);
-            }
-            let mut copied = vec![0_i8; 32 + count * RECORD];
-            source.get_region(env, 0, &mut copied)?;
-            let source = copied
-                .into_iter()
-                .map(i8::cast_unsigned)
-                .collect::<Vec<_>>();
-            let oracle = env.convert_byte_array(&oracle)?;
-            let mut emitted = Vec::new();
-            let result = compare(generation.unsigned_abs(), &source, &oracle, &mut emitted);
-            complete(env, generation, section, source, emitted, result, &output)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
-fn complete<'local>(
-    env: &mut Env<'local>,
+fn valid_bounds(input: usize, oracle: usize, output: usize) -> bool {
+    input <= INPUT_BOUND && oracle <= ORACLE_BOUND && output == 4 + MAX_QUADS * 28
+}
+
+fn admit<T, E>(
+    renderer: &super::Lifecycle,
     generation: jlong,
-    origin: [jlong; 3],
+    capture: impl FnOnce() -> Result<T, E>,
+) -> Result<Option<T>, E> {
+    let _permit = match renderer.capture.try_lock() {
+        Ok(permit) => permit,
+        Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return Ok(None),
+    };
+    {
+        let locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
+        if !locked.can_capture(generation) || locked.shaded.busy() {
+            return Ok(None);
+        }
+    }
+    capture().map(Some)
+}
+
+struct Prepared {
     source: Vec<u8>,
     emitted: Vec<i32>,
     result: [jlong; 6],
-    output: &JIntArray<'local>,
-) -> Result<JLongArray<'local>, super::work::BoundaryError> {
-    let mut locked = super::RENDERER
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
+}
+
+fn commit<E>(
+    renderer: &super::Lifecycle,
+    generation: jlong,
+    origin: [jlong; 3],
+    prepared: Prepared,
+    write: impl FnOnce(&[i32]) -> Result<(), E>,
+) -> Result<Vec<jlong>, E> {
+    let Prepared {
+        source,
+        emitted,
+        result,
+    } = prepared;
+    let mut locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
     if !locked.can_capture(generation) {
-        return Ok(JLongArray::new(env, 0)?);
+        return Ok(Vec::new());
     }
     if result[0] < 0 {
-        return publish(env, &result);
+        return Ok(result.to_vec());
     }
-    output.set_region(env, 0, &emitted)?;
+    write(&emitted)?;
     let resource = |offset| {
-        jlong::from(word(&source, offset).unwrap_or_default())
-            | (jlong::from(word(&source, offset + 4).unwrap_or_default()) << 32)
+        jlong::from(word(&source, offset).expect("admitted resource word"))
+            | (jlong::from(word(&source, offset + 4).expect("admitted resource word")) << 32)
     };
     let identity = [
         generation,
@@ -118,15 +150,12 @@ fn complete<'local>(
         source,
         emitted,
     }) else {
-        return Ok(JLongArray::new(env, 0)?);
+        return Ok(Vec::new());
     };
     drop(locked);
-    publish(
-        env,
-        &[
-            result[0], result[1], result[2], result[3], result[4], result[5], key,
-        ],
-    )
+    Ok(vec![
+        result[0], result[1], result[2], result[3], result[4], result[5], key,
+    ])
 }
 
 /// Settles only the exact pending shaded transfer; zero observes bounded residency.
@@ -172,25 +201,35 @@ fn publish<'local>(
     Ok(result)
 }
 
-fn compare(generation: u64, source: &[u8], oracle: &[u8], output: &mut Vec<i32>) -> [jlong; 6] {
+fn emit_and_compare(
+    source: &[u8],
+    oracle: &[u8],
+    output: &mut Vec<i32>,
+    cancelled: impl Fn() -> bool,
+) -> [jlong; 6] {
+    emit_and_compare_with(source, oracle, output, cancelled, Vec::try_reserve_exact)
+}
+
+fn emit_and_compare_with(
+    source: &[u8],
+    oracle: &[u8],
+    output: &mut Vec<i32>,
+    cancelled: impl Fn() -> bool,
+    reserve: impl FnOnce(&mut Vec<i32>, usize) -> Result<(), std::collections::TryReserveError>,
+) -> [jlong; 6] {
     let started = Instant::now();
     let Some((snapshot, camera)) = decode(source) else {
-        return [-1, 2, 0, 0, 0, 0];
+        return BakedFailure::Decode.receipt();
     };
     let input_bytes = snapshot.heap_bytes() + source.len() + oracle.len();
-    let Ok(mesh) = snapshot.mesh(snapshot.generation(), camera, || {
-        !active(super::metric_long(generation))
-    }) else {
-        return [-1, 3, 0, 0, 0, 0];
+    let Ok(mesh) = snapshot.mesh(snapshot.generation(), camera, &cancelled) else {
+        return BakedFailure::Emission.receipt();
     };
     if oracle.len() < 16 {
-        return [-1, 4, 0, 0, 0, 0];
+        return BakedFailure::OracleHeader.receipt();
     }
-    if output
-        .try_reserve_exact(4 + mesh.payload_bytes().div_euclid(4))
-        .is_err()
-    {
-        return [-1, 7, 0, 0, 0, 0];
+    if reserve(output, 4 + mesh.payload_bytes().div_euclid(4)).is_err() {
+        return BakedFailure::Allocation.receipt();
     }
     output.resize(4, 0);
     let mut offset = 16;
@@ -198,16 +237,23 @@ fn compare(generation: u64, source: &[u8], oracle: &[u8], output: &mut Vec<i32>)
     let mut mismatches = 0;
     let mut first = -1;
     for (layer_index, layer) in mesh.layers().iter().enumerate() {
-        if word(oracle, layer_index * 4) != Some(u32::try_from(layer.len()).unwrap_or(u32::MAX)) {
-            return [-1, 5, super::metric_long(layer_index), 0, 0, 0];
+        if cancelled() {
+            return BakedFailure::Emission.receipt();
         }
-        output[layer_index] = i32::try_from(layer.len()).unwrap_or(i32::MAX);
+        if word(oracle, layer_index * 4)
+            != Some(u32::try_from(layer.len()).expect("bounded layer count"))
+        {
+            let mut failure = BakedFailure::LayerCount.receipt();
+            failure[2] = super::metric_long(layer_index);
+            return failure;
+        }
+        output[layer_index] = i32::try_from(layer.len()).expect("bounded layer count");
         for quad in layer {
             quads += 1;
             for expected in quad.vertices.into_iter().flatten() {
                 output.push(i32::from_ne_bytes(expected.to_ne_bytes()));
                 let Some(actual) = word(oracle, offset) else {
-                    return [-1, 6, 0, 0, 0, 0];
+                    return BakedFailure::OraclePayload.receipt();
                 };
                 if expected != actual {
                     if first < 0 {
@@ -234,8 +280,9 @@ fn decode(source: &[u8]) -> Option<(BakedSnapshot, [f32; 3])> {
     if count > MAX_QUADS || source.len() < 32 + count * RECORD {
         return None;
     }
-    let camera =
-        std::array::from_fn(|axis| f32::from_bits(word(source, 4 + axis * 4).unwrap_or(u32::MAX)));
+    let camera = std::array::from_fn(|axis| {
+        f32::from_bits(word(source, 4 + axis * 4).expect("bounded header word"))
+    });
     let mut quads = Vec::new();
     quads.try_reserve_exact(count).ok()?;
     for index in 0..count {
@@ -254,24 +301,24 @@ fn decode(source: &[u8]) -> Option<(BakedSnapshot, [f32; 3])> {
             tint: word(source, base + 12)?,
             offset: std::array::from_fn(|axis| {
                 let offset = base + 16 + axis * 8;
-                u64::from(word(source, offset).unwrap_or_default())
-                    | (u64::from(word(source, offset + 4).unwrap_or_default()) << 32)
+                u64::from(word(source, offset).expect("bounded record word"))
+                    | (u64::from(word(source, offset + 4).expect("bounded record word")) << 32)
             }),
             vertices: std::array::from_fn(|vertex| {
                 std::array::from_fn(|item| {
-                    word(source, base + 40 + (vertex * 7 + item) * 4).unwrap_or_default()
+                    word(source, base + 40 + (vertex * 7 + item) * 4).expect("bounded record word")
                 })
             }),
             ambient_occlusion: std::array::from_fn(|item| {
-                word(source, base + 152 + item * 4).unwrap_or_default()
+                word(source, base + 152 + item * 4).expect("bounded record word")
             }),
             multipliers: std::array::from_fn(|vertex| {
                 std::array::from_fn(|axis| {
-                    word(source, base + 168 + (vertex * 3 + axis) * 4).unwrap_or_default()
+                    word(source, base + 168 + (vertex * 3 + axis) * 4).expect("bounded record word")
                 })
             }),
             combined_light: std::array::from_fn(|item| {
-                word(source, base + 216 + item * 4).unwrap_or_default()
+                word(source, base + 216 + item * 4).expect("bounded record word")
             }),
         });
     }

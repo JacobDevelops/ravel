@@ -38,6 +38,11 @@ BAKED_METRICS = 30
 BAKED_REFUSALS = range(20, 29)
 PROOF_IMAGE_EDGE = 64
 PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2
+BAKED_MAX_QUADS_PER_SECTION = 8192
+BAKED_RECORD_BYTES = 232
+BAKED_QUAD_BYTES = 112
+BAKED_NATIVE_SLOT_BYTES = 48 + BAKED_MAX_QUADS_PER_SECTION * (BAKED_RECORD_BYTES + BAKED_QUAD_BYTES)
+BAKED_GL_RESERVED_BYTES = 3 * BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES
 
 def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
     from prepare import require
@@ -50,8 +55,8 @@ def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
         return
     require(not any(native[:2] + native[5:] + gl[:1] + gl[5:14]),
             'shaded residency did not drain at shutdown')
-    require(0 < native[2] <= 5_636_192 and native[3] > 0 and native[4] >= native[3]
-            and gl[1] == 2_752_512 and gl[2] == 3 * gl[4] > 0
+    require(0 < native[2] <= 2 * BAKED_NATIVE_SLOT_BYTES and native[3] > 0 and native[4] >= native[3]
+            and gl[1] == BAKED_GL_RESERVED_BYTES and gl[2] == 3 * gl[4] > 0
             and gl[3] == native[3] and gl[14] > 0 and gl[15] == 0,
             'shaded reservation, exact acknowledgement, reuse or retirement proof missing')
 

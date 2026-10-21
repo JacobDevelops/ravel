@@ -1,15 +1,11 @@
 //! Owned vanilla baked-model inputs and Rust-emitted shaded quads.
 
 use crate::{MAX_GENERATION, MAX_STATE_KEY, mesh::RenderLayer};
-use num_traits::ToPrimitive;
+use num_traits::{AsPrimitive, ToPrimitive};
 use std::mem::{size_of, size_of_val};
 
 /// Sections exceeding this fixed input budget are unsupported, not truncated.
 pub const MAX_QUADS: usize = 65_536;
-/// Maximum retained input vector payload, including spare capacity.
-pub const MAX_INPUT_BYTES: usize = MAX_QUADS * size_of::<QuadInput>();
-/// Maximum retained emitted quad payload across all layers.
-pub const MAX_OUTPUT_BYTES: usize = MAX_QUADS * size_of::<ShadedQuad>();
 
 /// Exact model input words use the reviewed BLOCK format: XYZ, color, UV, light.
 ///
@@ -170,7 +166,7 @@ impl BakedSnapshot {
         }
         for (ordinal, quad) in self.quads.iter().enumerate() {
             check_cancel(&cancelled)?;
-            layers[layer_index(quad.layer)].push(emit(quad, ordinal)?);
+            layers[layer_index(quad.layer)].push(emit(quad, ordinal));
         }
         sort_translucent(&mut layers[3], camera, &cancelled)?;
         check_cancel(&cancelled)?;
@@ -274,31 +270,28 @@ fn validate(quad: &QuadInput) -> Result<(), BakedError> {
     Ok(())
 }
 
-fn emit(quad: &QuadInput, ordinal: usize) -> Result<ShadedQuad, BakedError> {
+fn emit(quad: &QuadInput, ordinal: usize) -> ShadedQuad {
     let mut vertices = quad.vertices;
     for (index, vertex) in vertices.iter_mut().enumerate() {
         for (coordinate, offset) in vertex[..3].iter_mut().zip(quad.offset) {
             let translation = f64::from_bits(offset)
                 .to_f32()
-                .ok_or(BakedError::Nonfinite)?;
+                .expect("admitted translation is finite");
             let transformed = f32::from_bits(*coordinate) + translation;
-            if !transformed.is_finite() {
-                return Err(BakedError::Nonfinite);
-            }
             *coordinate = transformed.to_bits();
         }
         vertex[3] = multiply_color(vertex[3], quad.multipliers[index]);
         vertex[6] = quad.combined_light[index];
     }
-    Ok(ShadedQuad {
+    ShadedQuad {
         state_key: quad.state_key,
         sprite: quad.sprite,
         vertices,
         tint: quad.tint,
         ambient_occlusion: quad.ambient_occlusion,
-        ordinal: u32::try_from(ordinal).map_err(|_| BakedError::Limit)?,
+        ordinal: u32::try_from(ordinal).expect("admitted quad ordinal fits u32"),
         distance: 0,
-    })
+    }
 }
 
 fn multiply_color(color: u32, multipliers: [u32; 3]) -> u32 {
@@ -309,13 +302,7 @@ fn multiply_color(color: u32, multipliers: [u32; 3]) -> u32 {
         .fold(color & 0xff00_0000, |value, ((bits, shift), component)| {
             let component = f32::from(component);
             let product = component * f32::from_bits(bits);
-            let multiplied = product.to_i32().unwrap_or_else(|| {
-                if product.is_sign_negative() {
-                    i32::MIN
-                } else {
-                    i32::MAX
-                }
-            });
+            let multiplied: i32 = product.as_();
             value | multiplied.cast_unsigned().wrapping_shl(shift)
         })
 }

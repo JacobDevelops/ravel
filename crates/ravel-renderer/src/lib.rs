@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Owned section snapshots and bounded CPU geometric primitives, not a world mirror.
+//! Owned section and baked-model geometry, bounded mesh workers and wire encoding.
 //!
 //! The 16-cube core includes a full one-cell border. Coordinates `0..18` denote
 //! section origin minus one through origin plus sixteen, in `((y * 18) + z) * 18 + x`

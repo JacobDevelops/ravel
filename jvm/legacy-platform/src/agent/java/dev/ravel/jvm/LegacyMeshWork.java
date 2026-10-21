@@ -103,14 +103,14 @@ final class LegacyMeshWork {
         if (slot < 0) throw new IllegalStateException("Java admission key was lost before settlement: " + key);
         boolean receipted = receipt != null && receipt.length == 8;
         if ((receipt != null && receipt.length != 0 && !receipted) || (receipted && (receipt[7] != key
-                || (receipt[0] != 1 && receipt[0] != -1) || (receipt[6] & ~1L) != 0
-                || (receipt[0] == -1 && receipt[6] != 0)))) {
+                || (receipt[0] != 1 && receipt[0] != -1) || (receipt[LegacyRendererContract.SNAPSHOT_ADMITTED] & ~1L) != 0
+                || (receipt[0] == -1 && receipt[LegacyRendererContract.SNAPSHOT_ADMITTED] != 0)))) {
             release(slot);
             throw new IllegalStateException("Native admission receipt changed Java key " + key
                     + ": " + Arrays.toString(receipt));
         }
         byte state = STATES[slot];
-        if (!receipted || receipt[0] != 1 || receipt[6] != 1) {
+        if (!receipted || receipt[0] != 1 || receipt[LegacyRendererContract.SNAPSHOT_ADMITTED] != 1) {
             release(slot);
             if (state == DRAINED) throw new IllegalStateException("Native completed unadmitted key " + key);
             if (state == RETIRED_PENDING) METRICS[50]++;

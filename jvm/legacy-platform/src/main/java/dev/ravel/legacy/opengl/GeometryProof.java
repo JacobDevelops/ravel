@@ -55,7 +55,8 @@ public final class GeometryProof {
     private static int bakedOracle;
     private static int bakedAtlas;
     private static int bakedLightmap;
-    private static final int BAKED_CAPACITY = 8192 * 112;
+    public static final int MAX_BAKED_QUADS = 8192;
+    private static final int BAKED_CAPACITY = MAX_BAKED_QUADS * 112;
 
     public static synchronized long[] bakedResidency() { return BAKED_RESIDENCY.clone(); }
 
@@ -283,7 +284,7 @@ public final class GeometryProof {
     }
 
     public static synchronized long[] compareBaked(int[] emitted, byte[] oracle, long[] identity, boolean retain) {
-        if (emitted.length != 4 + 8192 * 28 || oracle.length != 16 + 8192 * 112)
+        if (emitted.length != 4 + MAX_BAKED_QUADS * 28 || oracle.length != 16 + MAX_BAKED_QUADS * 112)
             throw new IllegalArgumentException("Invalid bounded baked output");
         checkBakedIdentity(identity, BAKED_RESIDENCY[7]);
         BAKED_LEASE.check(identity[0], identity[7]);
@@ -342,7 +343,7 @@ public final class GeometryProof {
         int total = 0;
         for (int layer = 0; layer < 4; layer++) {
             int count = emitted[layer];
-            if (count < 0 || count > 8192 - total || count != littleInt(oracle, layer * 4))
+            if (count < 0 || count > MAX_BAKED_QUADS - total || count != littleInt(oracle, layer * 4))
                 throw new IllegalArgumentException("Baked layer counts differ from final buffers");
             total += count;
         }

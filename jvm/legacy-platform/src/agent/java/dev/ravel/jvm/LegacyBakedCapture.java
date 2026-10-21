@@ -11,8 +11,8 @@ import java.util.IdentityHashMap;
 
 /** Selected-only owning-thread source capture; final vanilla buffers are an independent oracle. */
 final class LegacyBakedCapture {
-    private static final int LIMIT = 8192;
-    private static final int RECORD = 232;
+    private static final int LIMIT = LegacyRendererContract.BAKED_MAX_QUADS;
+    private static final int RECORD = LegacyRendererContract.BAKED_RECORD_BYTES;
     static final int SCENES = 8;
     static final int DESIGNATED = 5;
     static final int SAMPLES = 8;
@@ -412,7 +412,9 @@ final class LegacyBakedCapture {
             }
             if (result.length == 0) { METRICS[3]++; return; }
             if (result.length != 7 || result[0] < 0) {
-                refuse(result.length == 6 && result[1] == 2 ? RUST_DECODE : RUST_OTHER);
+                refuse(result.length == 6
+                        && LegacyRendererContract.BakedFailure.decode(result[1]) == LegacyRendererContract.BakedFailure.DECODE
+                        ? RUST_DECODE : RUST_OTHER);
                 return;
             }
             publish(result);

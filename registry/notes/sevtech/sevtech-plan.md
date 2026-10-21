@@ -316,9 +316,10 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   These bounded section-layer results do not establish full-world fidelity.
   Slice 7 implements bounded generation/resource/atlas/section-keyed native resident
   and pending slots with exact acknowledgement, three stable Java-owned resident/pending/oracle
-  VBOs and atlas-entry/reload/unload/shutdown retirement. Acceptance remains open:
-  fresh frozen-candidate three off/three on physical trials and separate Xvfb acceptance
-  are still required. No default cutover or resource saving is established by this implementation.
+  VBOs and atlas-entry/reload/unload/shutdown retirement. Crossing contracts now have
+  named diagnostics, pinned Rust/Java/Python bounds and isolated reload-during-comparison
+  tests. Acceptance remains open until fresh frozen-candidate three off/three on physical
+  trials and separate Xvfb acceptance pass. No default cutover or resource saving is established.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

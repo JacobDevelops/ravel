@@ -154,10 +154,10 @@ def shaded_residency_proof(proof: Proof) -> None:
         raise RuntimeError('Shaded residency schema differs')
     if not (all(value >= 0 for value in native + gl + live_native[:9] + live_gl[:10] + live_gl[13:])
             and not any(native[:2] + native[5:] + gl[:1] + gl[5:14])
-            and 0 < live_native[0] <= 2_818_096 and 0 <= live_native[1] <= 2_818_096
-            and sum(live_native[:2]) <= live_native[2] <= native[2] <= 5_636_192
+            and 0 < live_native[0] <= BAKED_NATIVE_SLOT_BYTES and 0 <= live_native[1] <= BAKED_NATIVE_SLOT_BYTES
+            and sum(live_native[:2]) <= live_native[2] <= native[2] <= 2 * BAKED_NATIVE_SLOT_BYTES
             and native[3] >= live_native[3] > 0 and native[4] >= native[3]
-            and gl[1] == live_gl[0] == live_gl[1] == 2_752_512
+            and gl[1] == live_gl[0] == live_gl[1] == BAKED_GL_RESERVED_BYTES
             and gl[2] == gl[4] * 3 > 0 and gl[3] == native[3]
             and gl[14] >= live_gl[14] > 0 and gl[15] == 0
             and live_gl[5] == 3 and live_native[5:] == live_gl[6:13]
@@ -239,7 +239,10 @@ BAKED_REFUSALS = ('refusedQuadBudget', 'refusedUncolored', 'refusedForeignBuilde
                   'refusedIncompleteQuad', 'refusedUnaccountedVertices', 'refusedRetiredAtFinish',
                   'refusedRustDecode', 'refusedRustOther')
 BAKED_MAX_QUADS_PER_SECTION = 8192
+BAKED_RECORD_BYTES = 232
 BAKED_QUAD_BYTES = 112
+BAKED_NATIVE_SLOT_BYTES = 48 + BAKED_MAX_QUADS_PER_SECTION * (BAKED_RECORD_BYTES + BAKED_QUAD_BYTES)
+BAKED_GL_RESERVED_BYTES = 3 * BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES
 BAKED_COMPARISON_BYTES = 2 * BAKED_QUAD_BYTES
 BAKED_SAMPLE_BYTES = 16 + PROOF_IMAGE_PIXELS * 16
 BAKED_SAMPLE_LIMIT = 8

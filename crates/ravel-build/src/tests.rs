@@ -79,7 +79,7 @@ impl Mod for Silent {
 const RECORD: &[u8] = br#"{"origin":"example"}"#;
 
 fn game() -> String {
-    ravel_bootstrap_runtime::environment().minecraft
+    ravel_minecraft_adapter::environment().minecraft
 }
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
@@ -536,7 +536,7 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let world = std::path::Path::new(&game).join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
          \x20   if !ravel_bootstrap_runtime::LEGACY_ADAPTER {\n\
-         \x20       ravel_bootstrap_runtime::write_world_datapack(&world);\n\
+         \x20       assert_eq!(ravel_bootstrap_runtime::write_world_datapack(&world), ravel_bootstrap_runtime::PackOutcome::Written);\n\
          \x20   }\n\
          \x20   assert_eq!(\n\
          \x20       ravel_bootstrap_runtime::open_world_data(world.to_str().expect(\"world path\"), None, true),\n\

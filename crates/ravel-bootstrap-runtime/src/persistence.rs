@@ -1,10 +1,8 @@
-//! Identity-keyed world admission, checkpoints, and data-pack publication.
+//! Identity-keyed world admission and saved-data checkpoints.
 
 use std::fmt;
-use std::path::Path;
 use std::sync::{Arc, PoisonError};
 
-use jni::sys::jint;
 use ravel_core::ModId;
 use ravel_host_api::Point;
 use ravel_loader::LoadedMods;
@@ -41,26 +39,6 @@ pub enum OpenOutcome {
     Staged,
     /// World access is refused with the diagnostic text.
     Refused(String),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StagedPack {
-    /// No pack was installed or the write was refused.
-    Nothing = 0,
-    /// Existing pack contents are unchanged.
-    Unchanged = 1,
-    /// Pack contents changed and must be reloaded.
-    Written = 2,
-}
-
-impl From<StagedPack> for jint {
-    fn from(pack: StagedPack) -> Self {
-        match pack {
-            StagedPack::Nothing => 0,
-            StagedPack::Unchanged => 1,
-            StagedPack::Written => 2,
-        }
-    }
 }
 
 /// What the Java adapter should do at a save crossing.
@@ -127,16 +105,6 @@ pub fn open_world_data(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bo
     }
 }
 
-/// Writes the installed launch's world data pack before pack discovery.
-///
-/// With no installed runtime nothing is written. Filesystem refusals become
-/// runtime notices, matching the JVM pack crossing rather than refusing admission.
-pub fn write_world_datapack(world: &Path) {
-    if let Ok(runtime) = runtime() {
-        runtime.write_world_pack(world);
-    }
-}
-
 /// Produces the aggregate selected by the save receiver's identity.
 #[must_use]
 pub fn save_world_data(identity_raw: &str) -> SaveOutcome {
@@ -181,52 +149,6 @@ impl std::error::Error for PersistenceError {
 }
 
 impl LoaderRuntime {
-    fn write_world_pack(&self, world: &Path) {
-        self.put_pack(world, crate::packs::write_world_pack);
-    }
-
-    fn write_staged_pack(&self, directory: &Path) -> StagedPack {
-        self.put_pack(directory, crate::packs::write_staged_pack)
-    }
-
-    fn put_pack(
-        &self,
-        path: &Path,
-        write: fn(
-            &Path,
-            &ravel_loader::Supplied,
-        ) -> Result<crate::packs::Written, crate::packs::GamePackError>,
-    ) -> StagedPack {
-        let directory = path.display();
-        let launch = &self.launch;
-        if let Err(refusal) = admissible_world(path, &launch.game_directory) {
-            self.inner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .report
-                .note(&format!(
-                    "no data pack was written into `{directory}`, so this world reads none of \
-                     the mods' recipes or tags: {refusal}"
-                ));
-            return StagedPack::Nothing;
-        }
-        match write(path, &launch.supplied) {
-            Ok(written) if written.changed() => StagedPack::Written,
-            Ok(_) => StagedPack::Unchanged,
-            Err(error) => {
-                self.inner
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .report
-                    .note(&format!(
-                        "`{directory}` could not be given the mods' data pack, so this world \
-                         reads none of their recipes or tags: {error}"
-                    ));
-                StagedPack::Nothing
-            }
-        }
-    }
-
     pub(crate) fn stage_world(
         &self,
         identity: WorldIdentity,
@@ -266,17 +188,13 @@ impl LoaderRuntime {
         bytes: Option<&[u8]>,
     ) -> Result<SavedDataAggregate, PersistenceError> {
         let mut loaded = inner.loaded.borrow();
-        if inner.persistence.staged.is_none()
-            && let Some(live) = &mut inner.persistence.live
-        {
-            live.refresh(
-                ravel_loader::produce_saved_data(
-                    &mut loaded,
-                    Some(&live.aggregate),
-                    inner.report.environment(),
-                )
-                .map_err(PersistenceError::Admission)?,
-            );
+        if let Some(live) = &mut inner.persistence.live {
+            Self::refresh_unstaged_live(
+                &mut loaded,
+                live,
+                inner.persistence.staged.is_some(),
+                inner.report.environment(),
+            )?;
         }
         ravel_loader::open_saved_data(
             &mut loaded,
@@ -309,6 +227,18 @@ impl LoaderRuntime {
     ) -> Result<SavedDataAggregate, PersistenceError> {
         ravel_loader::produce_saved_data(loaded, prior, environment)
             .map_err(PersistenceError::Admission)
+    }
+
+    fn refresh_unstaged_live(
+        loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::Mod>>,
+        live: &mut Checkpoint,
+        has_stage: bool,
+        environment: &ravel_core::FailureEnvironment,
+    ) -> Result<(), PersistenceError> {
+        if !has_stage {
+            live.refresh(Self::snapshot(loaded, Some(&live.aggregate), environment)?);
+        }
+        Ok(())
     }
 
     fn save_checkpoint(checkpoint: &mut Checkpoint) -> SaveOutcome {
@@ -383,69 +313,13 @@ impl LoaderRuntime {
             .as_mut()
             .filter(|live| &live.identity == identity)
         {
-            if persistence.staged.is_none() {
-                live.refresh(Self::snapshot(loaded, Some(&live.aggregate), environment)?);
-            }
+            Self::refresh_unstaged_live(loaded, live, persistence.staged.is_some(), environment)?;
             return Ok(Self::save_checkpoint(live));
         }
         Ok(SaveOutcome::IdentityMismatch(format!(
             "save receiver `{identity}` matches neither live nor staged world state"
         )))
     }
-}
-
-// Reject paths whose tree replacement could overwrite the game directory.
-fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
-    if !world.is_absolute() {
-        return Err(format!(
-            "`{}` is not an absolute path, so it names a directory relative to the game's own",
-            world.display()
-        ));
-    }
-    if !world.is_dir() {
-        return Err(format!(
-            "`{}` is not an existing directory",
-            world.display()
-        ));
-    }
-    let world = world
-        .canonicalize()
-        .map_err(|error| format!("world path cannot be resolved: {error}"))?;
-    let game = game
-        .canonicalize()
-        .map_err(|error| format!("launch directory cannot be resolved: {error}"))?;
-    if game.starts_with(&world) {
-        return Err(format!(
-            "`{}` holds the game directory `{}`, and a pack is written by replacing a tree \
-             inside the path it is given",
-            world.display(),
-            game.display()
-        ));
-    }
-    pack_targets_are_real(&world)
-}
-
-// The writer replaces these entries, so a link among them would redirect it outside `world`.
-fn pack_targets_are_real(world: &Path) -> Result<(), String> {
-    let packs = world.join(crate::packs::WORLD_DATA_PACKS);
-    let roots = [
-        crate::packs::installed_pack_root(world),
-        crate::packs::staged_pack_root(world),
-    ];
-    for path in std::iter::once(packs).chain(
-        roots
-            .iter()
-            .flat_map(|root| crate::packs::replaced_paths(root)),
-    ) {
-        if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
-            return Err(format!(
-                "`{}` is a symbolic link, and a pack is written only to real directories \
-                 inside the world",
-                path.display()
-            ));
-        }
-    }
-    Ok(())
 }
 
 impl From<SavedDataError> for OpenOutcome {

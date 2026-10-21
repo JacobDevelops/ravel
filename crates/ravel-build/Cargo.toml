@@ -18,6 +18,7 @@ toml.workspace = true
 [dev-dependencies]
 ravel-bootstrap-runtime.workspace = true
 ravel-host-runtime.workspace = true
+ravel-minecraft-adapter.workspace = true
 
 [lints]
 workspace = true

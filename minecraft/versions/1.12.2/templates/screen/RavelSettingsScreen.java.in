@@ -7,7 +7,8 @@ import java.util.List;
 
 /** A batched native settings session with Java-owned drawing, editing and cancellation. */
 public final class RavelSettingsScreen extends LegacyRavelScreen {
-    private final String owner;
+    private String owner = "";
+    private final String identity;
     private final List<Row> rows = new ArrayList<>();
     private String refused = "";
     private int offset;
@@ -17,7 +18,7 @@ public final class RavelSettingsScreen extends LegacyRavelScreen {
 
     private RavelSettingsScreen(String owner, {{SCREEN}} parent) {
         super(parent);
-        this.owner = owner;
+        this.identity = owner;
         read(Hook.ravelSettingsDocument(owner));
     }
 
@@ -67,8 +68,8 @@ public final class RavelSettingsScreen extends LegacyRavelScreen {
         int count = 0;
         for (Row row : rows) if (row.changed()) count++;
         StringBuilder payload = new StringBuilder();
-        Wire.write(payload, Wire.VERSION);
-        Wire.write(payload, owner);
+        Wire.write(payload, Wire.SETTINGS_VERSION);
+        Wire.write(payload, identity);
         Wire.write(payload, Integer.toString(count));
         for (Row row : rows) if (row.changed()) {
             Wire.write(payload, row.key);
@@ -98,17 +99,21 @@ public final class RavelSettingsScreen extends LegacyRavelScreen {
     private void read(String document) {
         if (document == null) { refused = "No settings available"; return; }
         Wire wire = new Wire(document);
-        if (!Wire.VERSION.equals(wire.field()) || !owner.equals(wire.field()) || wire.field() == null)
+        if (!Wire.SETTINGS_VERSION.equals(wire.field()))
+            throw new IllegalArgumentException("invalid settings document version");
+        String canonicalOwner = wire.field();
+        if (canonicalOwner == null || wire.field() == null)
             throw new IllegalArgumentException("invalid settings document header");
         int count = wire.count();
         if (count < 0) throw new IllegalArgumentException("invalid settings row count");
         for (int index = 0; index < count; index++) rows.add(new Row(wire));
         if (!wire.finished()) throw new IllegalArgumentException("trailing settings data");
+        owner = canonicalOwner;
     }
 
     @Override
     public void {{SCREEN#render}}(int mouseX, int mouseY, float delta) {
-        background("Ravel settings: " + owner);
+        background(owner.isEmpty() ? "Ravel settings" : "Ravel settings: " + owner);
         int end = Math.min(rows.size(), offset + visibleRows());
         for (int index = offset; index < end; index++) {
             Row row = rows.get(index);

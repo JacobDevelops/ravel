@@ -151,7 +151,7 @@ final class Screens {
      * supertype. The parent is the screen to close back to, typed {@code Object}
      * for the same reason.
      *
-     * @param owner the canonical mod id whose settings to show
+     * @param owner the opaque settings route supplied by the mod-list wire document
      * @param parent the screen to return to on close
      * @return the screen as an {@code Object} for the caller to hand to the
      *     game, or {@code null} if there is no screen jar or it could not be used

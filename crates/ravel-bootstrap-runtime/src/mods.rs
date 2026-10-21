@@ -1,8 +1,8 @@
 //! Live mod-list and dependency diagnostics encoded for the Java screen.
 //!
 //! Failure details are redacted here; notices were already redacted by the report.
-//! Client screens append labelled integrated-server rows and notices. Settings
-//! use those labels to select the server store without opening client settings.
+//! Client screens append labelled integrated-server rows and notices. A separate
+//! typed settings identity routes requests independently of those display labels.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -14,6 +14,7 @@ use ravel_loader::{ModEntry, Requirement};
 
 use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
+use crate::settings::{INTEGRATED_LABEL_SUFFIX, Identity, Target};
 use crate::wire::{MODS_VERSION, count, field, flag};
 
 /// Encodes the live mod list, or returns nothing before runtime installation.
@@ -58,7 +59,14 @@ fn document_with_integrated(
         client.entries().len() + server.map_or(0, |surface| surface.entries().len()),
     );
     for (index, entry) in client.entries().iter().enumerate() {
-        row(&mut out, index, entry, configurable.contains(&entry.mod_id));
+        labelled_row(
+            &mut out,
+            index,
+            entry,
+            configurable.contains(&entry.mod_id),
+            entry.mod_id.as_str(),
+            Target::Process,
+        );
     }
     let mut label = String::new();
     for (index, entry) in server
@@ -66,21 +74,17 @@ fn document_with_integrated(
         .flat_map(ravel_loader::ModSurface::entries)
         .enumerate()
     {
-        // The display label also identifies the server's independent settings.
+        // The label is presentation only; the row carries a separate settings target.
         label.clear();
-        write!(
-            label,
-            "{}{}",
-            entry.mod_id,
-            crate::settings::INTEGRATED_SUFFIX
-        )
-        .expect("writing into a String cannot fail");
+        write!(label, "{}{INTEGRATED_LABEL_SUFFIX}", entry.mod_id)
+            .expect("writing into a String cannot fail");
         labelled_row(
             &mut out,
             client.entries().len() + index,
             entry,
             server_settings.contains(&entry.mod_id),
             &label,
+            Target::IntegratedServer,
         );
     }
     count(&mut out, client_notices.len() + server_notices.len());
@@ -96,13 +100,15 @@ fn document_with_integrated(
     Some(out)
 }
 
-/// Writes one row with its one-based position in resolved load order.
-fn row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool) {
-    labelled_row(out, index, entry, configurable, entry.mod_id.as_str());
-}
-
-/// Encodes the unchanged row schema with an explicit display label.
-fn labelled_row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool, label: &str) {
+/// Encodes one row with independent presentation and settings routing fields.
+fn labelled_row(
+    out: &mut String,
+    index: usize,
+    entry: &ModEntry,
+    configurable: bool,
+    label: &str,
+    target: Target,
+) {
     count(out, index + 1);
     field(out, label);
     field(out, entry.state.as_str());
@@ -117,6 +123,7 @@ fn labelled_row(out: &mut String, index: usize, entry: &ModEntry, configurable: 
             attribution(out, failure);
         }
     }
+    field(out, &Identity::encode(target, &entry.mod_id));
 }
 
 /// Writes one failure's structured attribution.
@@ -137,12 +144,7 @@ fn attribution(out: &mut String, failure: &FailureAttribution) {
         }
         Some(FailureSurface::Registry(key)) => {
             field(out, "registry");
-            // Registry keys contain only validated ASCII, so bytes equal UTF-16 units.
-            let units = key.kind().as_str().len()
-                + key.id().namespace().as_str().len()
-                + key.id().path().len()
-                + 2;
-            write!(out, "{units}:{key}").expect("writing into a String cannot fail");
+            field(out, &key.to_string());
         }
         Some(FailureSurface::Packet(name)) => {
             field(out, "packet");
@@ -263,7 +265,7 @@ mod tests {
         let outcome = ravel_loader::start_all(
             &mut ravel_loader::LoadedMods::new(&mut plan.machine, &mut plan.mods)
                 .expect("complete hosts"),
-            &crate::runtime::environment(),
+            &ravel_minecraft_adapter::environment(),
         );
         assert_eq!(
             outcome.is_err(),
@@ -292,7 +294,7 @@ mod tests {
                 .expect("runtime installed"),
         );
 
-        assert_eq!(read[0], "3", "the mod list's own version opens the payload");
+        assert_eq!(read[0], "4", "the mod list's own version opens the payload");
         assert_eq!(read[1], "client");
         assert_eq!(read[2], "0", "a valid graph asks the player to do nothing");
         assert_eq!(read[3], "2");
@@ -307,9 +309,31 @@ mod tests {
             "it declares no settings a screen can open"
         );
         assert_eq!(read[11], "0", "and no failure block follows");
-        assert_eq!(read[12], "2", "and the next row states the next position");
-        assert_eq!(read[13], "second_mod");
-        assert_eq!(read[15], "optional");
+        assert_eq!(
+            read[12], "process:base_mod",
+            "routing is not a display label"
+        );
+        assert_eq!(read[13], "2", "and the next row states the next position");
+        assert_eq!(read[14], "second_mod");
+        assert_eq!(read[16], "optional");
+    }
+
+    #[test]
+    fn a_spoofed_display_suffix_cannot_select_the_settings_runtime() {
+        let runtime = running(machine(vec![entry("base_mod", Requirement::Required)]));
+        let (surface, _) = runtime.mod_view();
+        let mut out = String::new();
+        super::labelled_row(
+            &mut out,
+            1,
+            &surface.entries()[0],
+            true,
+            "renamed [integrated-server]",
+            super::Target::Process,
+        );
+        let read = fields(&out);
+        assert_eq!(read[1], "renamed [integrated-server]");
+        assert_eq!(read.last().map(String::as_str), Some("process:base_mod"));
     }
 
     #[test]
@@ -433,8 +457,8 @@ mod tests {
 
         assert_eq!(read[5], "base_mod");
         assert_eq!(read[10], "false", "it declares nothing this side can show");
-        assert_eq!(read[13], "second_mod");
-        assert_eq!(read[18], "true", "and this one does");
+        assert_eq!(read[14], "second_mod");
+        assert_eq!(read[19], "true", "and this one does");
     }
 
     /// A runtime whose pre-world report already carries one notice.
@@ -463,9 +487,9 @@ mod tests {
                 .expect("runtime installed"),
         );
 
-        assert_eq!(read[12], "1", "one notice follows the rows");
+        assert_eq!(read[13], "1", "one notice follows the rows");
         assert_eq!(
-            read[13], "Ravel wrote the resource pack its mods supply and could not switch it on.",
+            read[14], "Ravel wrote the resource pack its mods supply and could not switch it on.",
             "and it crosses whole"
         );
     }
@@ -486,12 +510,12 @@ mod tests {
                 .expect("runtime installed"),
         );
 
-        assert_eq!(read[12], "1");
-        assert!(!read[13].contains("/home/player"), "{}", read[13]);
+        assert_eq!(read[13], "1");
+        assert!(!read[14].contains("/home/player"), "{}", read[14]);
         assert!(
-            !read[13].contains(concat!("ghp_", "secretvalue")),
+            !read[14].contains(concat!("ghp_", "secretvalue")),
             "{}",
-            read[13]
+            read[14]
         );
     }
 
@@ -507,9 +531,9 @@ mod tests {
                 .expect("runtime installed"),
         );
 
-        assert!(!read[13].contains("hunter2"), "{}", read[13]);
+        assert!(!read[14].contains("hunter2"), "{}", read[14]);
         assert_eq!(
-            read[13], "the launcher passed token=[redacted] to the game",
+            read[14], "the launcher passed token=[redacted] to the game",
             "one marker, not a marker over a marker"
         );
     }
@@ -523,8 +547,8 @@ mod tests {
                 .expect("runtime installed"),
         );
 
-        assert_eq!(read[12], "0", "the block is present and empty");
-        assert_eq!(read.len(), 13, "and nothing follows it");
+        assert_eq!(read[13], "0", "the block is present and empty");
+        assert_eq!(read.len(), 14, "and nothing follows it");
     }
 
     struct RefusingObserver(ModId);
@@ -606,21 +630,23 @@ mod tests {
                 .expect("client installed"),
         );
 
-        assert_eq!(&read[..4], &["3", "client", "1", "2"]);
+        assert_eq!(&read[..4], &["4", "client", "1", "2"]);
         assert_eq!(read[5], "broken_mod");
         assert_eq!(read[9], "false", "client did not fail");
         assert_eq!(read[10], "true", "client settings retain their identity");
-        assert_eq!(read[13], "broken_mod [integrated-server]");
-        assert_eq!(read[17], "true", "server failure is actionable");
+        assert_eq!(read[12], "process:broken_mod");
+        assert_eq!(read[14], "broken_mod [integrated-server]");
+        assert_eq!(read[18], "true", "server failure is actionable");
         assert_eq!(
-            read[18], "true",
+            read[19], "true",
             "server settings retain their own identity"
         );
-        assert_eq!(read[22], "", "a startup callback has no hook surface");
-        assert_eq!(read[23], "running");
-        assert_eq!(read[27], "1");
+        assert_eq!(read[23], "", "a startup callback has no hook surface");
+        assert_eq!(read[24], "running");
+        assert_eq!(read[28], "integrated-server:broken_mod");
+        assert_eq!(read[29], "1");
         assert_eq!(
-            read[28],
+            read[30],
             "[integrated-server] server composition could not register its command",
         );
     }

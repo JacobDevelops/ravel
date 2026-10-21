@@ -1,4 +1,4 @@
-//! Holds launch-supplied packs for world and create-world staging hooks.
+//! Owns launch-supplied pack publication and its JVM crossings.
 //!
 //! Repository creation selects packs; create-world initialization must also reload
 //! staged data. Persistence admission itself never writes a pack; legacy worlds
@@ -6,9 +6,13 @@
 //! Repeated writes are safe because `write_game_pack` leaves identical trees untouched.
 
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
+
+use crate::runtime::LoaderRuntime;
 
 use ravel_loader::Supplied;
 
+pub(crate) mod crossings;
 mod writer;
 
 pub(crate) use writer::replaced_paths;
@@ -24,6 +28,36 @@ pub const GAME_PACK_DIRECTORY: &str = "ravel";
 
 const ASSET_DESCRIPTION: &str = "Assets supplied by the Ravel mods this instance runs.";
 const DATA_DESCRIPTION: &str = "Data supplied by the Ravel mods this world was opened with.";
+
+/// Result of publishing the selected launch's data pack.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[must_use]
+pub enum PackOutcome {
+    /// No loader runtime is installed, so no publication was attempted.
+    RuntimeUnavailable,
+    /// Publication was refused; the installed runtime holds a diagnostic notice.
+    Refused,
+    /// The existing pack already holds the selected launch's content.
+    Unchanged,
+    /// The selected launch's pack was written.
+    Written,
+}
+
+/// Writes the selected launch's world data pack before discovery.
+///
+/// Admission of saved world data is independent of this operation. Filesystem
+/// refusals are also recorded as runtime notices; a missing runtime is explicit.
+pub fn write_world_datapack(world: &Path) -> PackOutcome {
+    crate::runtime::selected().map_or(PackOutcome::RuntimeUnavailable, |runtime| {
+        runtime.write_world_pack(world)
+    })
+}
+
+fn write_staged_datapack(directory: &Path) -> PackOutcome {
+    crate::runtime::selected().map_or(PackOutcome::RuntimeUnavailable, |runtime| {
+        runtime.write_staged_pack(directory)
+    })
+}
 
 /// The folder-source identifier for [`GAME_PACK_DIRECTORY`].
 #[must_use]
@@ -109,6 +143,101 @@ fn data_pack_metadata(description: &str) -> String {
         description,
     )
 }
+// Reject paths whose tree replacement could overwrite the game directory.
+fn admissible_world(world: &Path, game: &Path) -> Result<(), String> {
+    if !world.is_absolute() {
+        return Err(format!(
+            "`{}` is not an absolute path, so it names a directory relative to the game's own",
+            world.display()
+        ));
+    }
+    if !world.is_dir() {
+        return Err(format!(
+            "`{}` is not an existing directory",
+            world.display()
+        ));
+    }
+    let world = world
+        .canonicalize()
+        .map_err(|error| format!("world path cannot be resolved: {error}"))?;
+    let game = game
+        .canonicalize()
+        .map_err(|error| format!("launch directory cannot be resolved: {error}"))?;
+    if game.starts_with(&world) {
+        return Err(format!(
+            "`{}` holds the game directory `{}`, and a pack is written by replacing a tree \
+             inside the path it is given",
+            world.display(),
+            game.display()
+        ));
+    }
+    pack_targets_are_real(&world)
+}
+
+// The writer replaces these entries, so a link among them would redirect it outside `world`.
+fn pack_targets_are_real(world: &Path) -> Result<(), String> {
+    let packs = world.join(WORLD_DATA_PACKS);
+    let roots = [installed_pack_root(world), staged_pack_root(world)];
+    for path in std::iter::once(packs).chain(roots.iter().flat_map(|root| replaced_paths(root))) {
+        if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Err(format!(
+                "`{}` is a symbolic link, and a pack is written only to real directories \
+                 inside the world",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+impl LoaderRuntime {
+    pub(crate) fn write_world_pack(&self, world: &Path) -> PackOutcome {
+        self.put_pack(world, write_world_pack)
+    }
+
+    pub(crate) fn write_staged_pack(&self, directory: &Path) -> PackOutcome {
+        self.put_pack(directory, write_staged_pack)
+    }
+
+    fn put_pack(
+        &self,
+        path: &Path,
+        write: fn(&Path, &Supplied) -> Result<Written, GamePackError>,
+    ) -> PackOutcome {
+        let directory = path.display();
+        let launch = &self.launch;
+        if let Err(refusal) = admissible_world(path, &launch.game_directory) {
+            self.inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .report
+                .note(&format!(
+                    "no data pack was written into `{directory}`, so this world reads none of \
+                     the mods' recipes or tags: {refusal}"
+                ));
+            return PackOutcome::Refused;
+        }
+        match write(path, &launch.supplied) {
+            Ok(written) if written.changed() => PackOutcome::Written,
+            Ok(_) => PackOutcome::Unchanged,
+            Err(error) => {
+                self.inner
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .report
+                    .note(&format!(
+                        "`{directory}` could not be given the mods' data pack, so this world \
+                         reads none of their recipes or tags: {error}"
+                    ));
+                PackOutcome::Refused
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod admission_tests;
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

@@ -3,24 +3,50 @@
 
 use std::sync::PoisonError;
 
-use ravel_core::{ContentId, ContentKind, DiagnosticMessage, RegistryKey, Side};
+use ravel_core::{ContentId, ContentKind, RegistryKey, Side};
 use ravel_host_api::{CommandInvocation, GameEvent, HostError};
 use ravel_loader::{DispatchRefused, broadcast, deliver_command};
 use ravel_minecraft::{HookTarget, HookValue};
 
 use super::{Inner, LoaderRuntime};
-use crate::outward;
+use crate::{guard::report, outward};
 
-pub(super) const EVENTS: [(&str, GameEvent); 5] = [
-    ("server.tick", GameEvent::ServerTick),
-    ("server.tick-integrated", GameEvent::ServerTick),
-    ("client.tick", GameEvent::ClientTick),
+pub(super) const EVENTS: [(&str, GameEvent, EventSide); 5] = [
+    ("server.tick", GameEvent::ServerTick, EventSide::Server),
+    (
+        "server.tick-integrated",
+        GameEvent::ServerTick,
+        EventSide::World,
+    ),
+    ("client.tick", GameEvent::ClientTick, EventSide::Process),
     (
         "resource.load-server-resources",
         GameEvent::ResourcesReloaded,
+        EventSide::Process,
     ),
-    ("resource.reload-client-packs", GameEvent::ResourcesReloaded),
+    (
+        "resource.reload-client-packs",
+        GameEvent::ResourcesReloaded,
+        EventSide::Process,
+    ),
 ];
+
+#[derive(Clone, Copy)]
+pub(super) enum EventSide {
+    Process,
+    Server,
+    World,
+}
+
+impl EventSide {
+    fn resolve(self, process: Side) -> Option<Side> {
+        match self {
+            Self::Process => Some(process),
+            Self::Server => (process != Side::Client).then_some(process),
+            Self::World => Some(process.world_side()),
+        }
+    }
+}
 
 pub(super) const COMMAND: &str = "command.perform-prefixed";
 
@@ -40,6 +66,16 @@ pub(crate) enum Undelivered {
     Failed(HostError),
     Declined(HostError),
     Precondition(&'static str),
+}
+
+impl Undelivered {
+    pub(crate) fn context(&self) -> &'static str {
+        match self {
+            Self::Refused(_) | Self::Precondition(_) => "hook delivery refused",
+            Self::Failed(_) => "hook delivery failed",
+            Self::Declined(_) => "hook delivery declined",
+        }
+    }
 }
 
 impl std::fmt::Display for Undelivered {
@@ -145,17 +181,8 @@ impl Inner {
     fn work(&self, target: &HookTarget, values: &[HookValue<'_>]) -> Option<Work> {
         let id = target.id().as_str();
         let process_side = self.loaded.machine().side();
-        if id == "server.tick" && process_side == Side::Client {
-            // IntegratedServer calls its superclass tick; only its own hook delivers.
-            return None;
-        }
-        if let Some((_, event)) = EVENTS.iter().find(|(hook, _)| *hook == id) {
-            let side = if id == "server.tick-integrated" {
-                process_side.world_side()
-            } else {
-                process_side
-            };
-            return Some(Work::Event(*event, side));
+        if let Some((_, event, side)) = EVENTS.iter().find(|(hook, _, _)| *hook == id) {
+            return Some(Work::Event(*event, side.resolve(process_side)?));
         }
         if id != COMMAND {
             return None;
@@ -229,10 +256,7 @@ impl Inner {
     fn deliver(&mut self, work: &Work) {
         // Dispatch refusals are per-call diagnostics, not pre-world launch failures.
         if let Err(error) = self.deliver_checked(work) {
-            eprintln!(
-                "[ravel] hook delivery refused: {}",
-                DiagnosticMessage::redacted(&error.to_string()).text()
-            );
+            report(error.context(), &error);
         }
     }
 
@@ -241,10 +265,7 @@ impl Inner {
         match ravel_loader::take_play_requests(&mut loaded, self.report.environment()) {
             Ok(drained) => {
                 if let Some(error) = drained.failure() {
-                    eprintln!(
-                        "[ravel] hook delivery refused: {}",
-                        DiagnosticMessage::redacted(&error.to_string()).text()
-                    );
+                    report("play request failed", error);
                 }
                 self.outward.extend(
                     drained
@@ -255,10 +276,50 @@ impl Inner {
             }
             // The halt already has its owning failure attribution.
             Err(DispatchRefused::Halted { .. }) => {}
-            Err(error) => eprintln!(
-                "[ravel] play request drain refused: {}",
-                DiagnosticMessage::redacted(&error.to_string()).text()
-            ),
+            Err(error) => report("play request drain refused", &error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EVENTS, Side, Undelivered};
+    use ravel_core::LifecycleState;
+    use ravel_host_api::HostError;
+
+    #[test]
+    fn hook_table_retains_each_executing_side_rule() {
+        for (hook, _, rule) in EVENTS {
+            for process in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
+                let expected = match hook {
+                    "server.tick" if process == Side::Client => None,
+                    "server.tick-integrated" => Some(process.world_side()),
+                    _ => Some(process),
+                };
+                assert_eq!(rule.resolve(process), expected, "{hook} on {process:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn callback_diagnostic_contexts_preserve_outcome_distinctions() {
+        let error = HostError::Panicked {
+            mod_id: "example_mod".parse().expect("valid mod identifier"),
+            state: LifecycleState::Running,
+        };
+        assert_eq!(Undelivered::Failed(error).context(), "hook delivery failed");
+        let refusal = HostError::OperationRefused {
+            mod_id: "example_mod".parse().expect("valid mod identifier"),
+            state: LifecycleState::Running,
+            detail: "choose a destination".to_owned(),
+        };
+        assert_eq!(
+            Undelivered::Declined(refusal).context(),
+            "hook delivery declined"
+        );
+        assert_eq!(
+            Undelivered::Precondition("unavailable").context(),
+            "hook delivery refused"
+        );
     }
 }

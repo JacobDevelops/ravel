@@ -916,7 +916,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:default:true
-mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
+mods=1:46:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:019:process:client_only1:213:configuration7:running8:required4:true5:false4:true1:021:process:configuration1:310:registries7:running8:required4:true5:false5:false1:018:process:registries1:410:saved_data7:running8:required4:true5:false5:false1:018:process:saved_data1:511:server_only8:resolved8:required5:false5:false5:false1:019:process:server_only1:0
 EXPECTED
 	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
 	printf '[ravel] rewritten targets: %s=%s\n' "$settings_target" "$settings_methods"
@@ -1049,7 +1049,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=verbose:player:false
-mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
+mods=1:46:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:019:process:client_only1:213:configuration7:running8:required4:true5:false4:true1:021:process:configuration1:310:registries7:running8:required4:true5:false5:false1:018:process:registries1:410:saved_data7:running8:required4:true5:false5:false1:018:process:saved_data1:511:server_only8:resolved8:required5:false5:false5:false1:019:process:server_only1:0
 EXPECTED
 	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
 )"
@@ -1204,7 +1204,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:player:true
-mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
+mods=1:46:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:019:process:client_only1:213:configuration7:running8:required4:true5:false4:true1:021:process:configuration1:310:registries7:running8:required4:true5:false5:false1:018:process:registries1:410:saved_data7:running8:required4:true5:false5:false1:018:process:saved_data1:511:server_only8:resolved8:required5:false5:false5:false1:019:process:server_only1:0
 EXPECTED
 	printf '[ravel] rewrote 1 classes and %s methods; 4 hook invocations reached native code\n' "$settings_methods"
 )"
@@ -1571,8 +1571,8 @@ javac -Xlint:all -Werror -d "$side/no-entry-method" \
 	"$root/jvm/harness/no-entry-method/net/minecraft/server/Main.java"
 
 side_expected="$(cat <<'EXPECTED'
-client=mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
-dedicated=mods=1:316:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:01:0
+client=mods=1:46:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:019:process:client_only1:213:configuration7:running8:required4:true5:false4:true1:021:process:configuration1:310:registries7:running8:required4:true5:false5:false1:018:process:registries1:410:saved_data7:running8:required4:true5:false5:false1:018:process:saved_data1:511:server_only8:resolved8:required5:false5:false5:false1:019:process:server_only1:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
+dedicated=mods=1:416:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:021:process:configuration1:210:registries7:running8:required4:true5:false5:false1:018:process:registries1:310:saved_data7:running8:required4:true5:false5:false1:018:process:saved_data1:411:server_only7:running8:required4:true5:false5:false1:019:process:server_only1:511:client_only8:resolved8:required5:false5:false5:false1:019:process:client_only1:0
 EXPECTED
 )"
 side_observed=""

@@ -475,7 +475,7 @@ mod tests {
             (CLIENT_ONLY_PACKAGE, client_owner()),
             (SERVER_ONLY_PACKAGE, server_owner()),
         ];
-        let running = ravel_bootstrap_runtime::environment();
+        let running = ravel_minecraft_adapter::environment();
         for (document, expected) in manifests {
             let manifest =
                 ravel_package::PackageManifest::parse(document).expect("a shipped manifest parses");
@@ -517,7 +517,7 @@ mod tests {
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
-        let running = ravel_bootstrap_runtime::environment();
+        let running = ravel_minecraft_adapter::environment();
         let root = game
             .join(ravel_core::paths::INSTANCE_DIRECTORY)
             .join(ravel_core::paths::PACKAGES_DIRECTORY)

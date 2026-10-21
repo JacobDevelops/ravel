@@ -8,10 +8,11 @@ use std::sync::{Mutex, PoisonError};
 
 use ravel_config::LayeredConfiguration;
 
-use ravel_core::{DiagnosticMessage, FailureEnvironment};
+use ravel_core::DiagnosticMessage;
 #[cfg(test)]
 use ravel_host_api::Mod;
 use ravel_loader::{Loaded, ModSurface, Supplied};
+use ravel_minecraft_adapter::environment;
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::outward;
@@ -26,7 +27,7 @@ pub(crate) use dispatch::Undelivered;
 
 pub use installation::{
     InstallError, install, install_integrated, integrated_installed, is_installed,
-    process_launch_context,
+    process_game_directory,
 };
 pub(crate) use installation::{installed, integrated_runtime, selected, with_selected};
 
@@ -322,23 +323,16 @@ impl LoaderRuntime {
     #[must_use]
     pub(crate) fn profiling_report(&self) -> ProfilingReport {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        let claims = inner
-            .loaded
-            .machine()
-            .order()
-            .map(|mod_id| {
-                (
-                    mod_id.clone(),
-                    inner.loaded.machine().registry_claim_count(mod_id),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (mod_id, count) in claims {
-            inner
-                .profiler
-                .record_registry_claims(&mod_id, count.try_into().unwrap_or(u64::MAX));
+        let Inner {
+            loaded, profiler, ..
+        } = &mut *inner;
+        for mod_id in loaded.machine().order() {
+            let count = loaded.machine().registry_claim_count(mod_id);
+            profiler.record_registry_claims(mod_id, count.try_into().unwrap_or(u64::MAX));
         }
-        inner.profiler.report()
+        let report = profiler.report();
+        drop(inner);
+        report
     }
 
     /// Reads mod rows and notices under one lock for a consistent live view.
@@ -356,22 +350,6 @@ impl LoaderRuntime {
 #[must_use]
 pub fn pre_world_report() -> PreWorldReport {
     PreWorldReport::new(environment())
-}
-
-/// Returns the pinned runtime environment for admission and failure reports.
-///
-/// # Panics
-/// Panics if this crate's package version is not valid semver.
-#[must_use]
-pub fn environment() -> FailureEnvironment {
-    FailureEnvironment {
-        ravel: env!("CARGO_PKG_VERSION")
-            .parse()
-            .expect("every crate in this workspace carries a semver version"),
-        minecraft: ravel_minecraft_adapter::pinned::MINECRAFT_VERSION.to_owned(),
-        platform: std::env::consts::OS.to_owned(),
-        architecture: std::env::consts::ARCH.to_owned(),
-    }
 }
 
 #[cfg(test)]

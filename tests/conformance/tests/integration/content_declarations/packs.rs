@@ -58,7 +58,7 @@ fn compose_content(
 ) -> Option<ravel_bootstrap_runtime::Composition> {
     let package = include_str!("../../../../../examples/content-mod/package.json");
     let manifest = PackageManifest::parse(package).expect("the shipped manifest is valid");
-    let running = ravel_bootstrap_runtime::environment().minecraft;
+    let running = ravel_minecraft_adapter::environment().minecraft;
     let compatible = manifest.compatibility.check_minecraft(&running).is_ok();
     let composed = compose(
         game,
@@ -264,7 +264,10 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     )
     .expect("the composed runtime should install");
 
-    ravel_bootstrap_runtime::write_world_datapack(&world);
+    assert_eq!(
+        ravel_bootstrap_runtime::write_world_datapack(&world),
+        ravel_bootstrap_runtime::PackOutcome::Written,
+    );
     assert_eq!(
         ravel_bootstrap_runtime::open_world_data(
             world.to_str().expect("the temporary world path is UTF-8"),

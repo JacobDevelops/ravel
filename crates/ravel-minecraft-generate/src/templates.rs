@@ -1313,13 +1313,12 @@ com.example.util.Held -> com.example.util.Held:
     }
 
     #[test]
-    fn both_modern_versions_render_byte_identically_to_the_pre_legacy_baseline() {
+    fn both_modern_versions_match_reviewed_rendered_source_snapshots() {
         let root = repository_root();
-        // Frozen after comparing all four rendered trees with the pre-legacy
-        // namespace algorithm from ymklsluq; ordered by tracked modern version.
+        // Reviewed source bytes and metadata, ordered by tracked modern version.
         let expected = [
-            "3d74a99ef71f52b931e15936a6332e59cdf243a5482f04ea24c8a6013febc8fa",
-            "5b24c82eb0addbaf3e4e777ce92306456b69b81ae9a931d63f36fe1437c19639",
+            "ddc207ec50e99e91347f9528b852ce1e8210cbd45ae73daeadae64e7bafb5981",
+            "0ef62a9946a659ef7116ffb29dea118e558dcc134dc93d9802fdcd66b6e7d8a4",
         ];
         let mut compared = 0;
         for version in inputs::tracked_versions(&root) {

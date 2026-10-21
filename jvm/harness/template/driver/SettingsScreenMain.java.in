@@ -12,7 +12,7 @@ import java.util.List;
 public final class SettingsScreenMain {
     public static void main(String[] args) throws Exception {
         boolean refuseSave = args.length == 1 && "refuse-save".equals(args[0]);
-        {{Screen}} opened = {{ravel RavelSettingsScreen}}.open("configuration");
+        {{Screen}} opened = {{ravel RavelSettingsScreen}}.open("process:configuration");
         {{ravel RavelSettingsScreen}} screen = ({{ravel RavelSettingsScreen}}) opened;
         Method init = {{ravel RavelSettingsScreen}}.class.getDeclaredMethod("{{Screen#init}}");
         init.setAccessible(true);

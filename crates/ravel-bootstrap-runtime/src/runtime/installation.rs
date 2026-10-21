@@ -61,22 +61,14 @@ pub(crate) fn integrated_runtime() -> Option<Arc<LoaderRuntime>> {
         .as_ref()
         .and_then(Weak::upgrade)
 }
-/// Copies the installed process launch context for an integrated-server launch.
+/// Returns the installed process game directory for integrated composition.
 ///
 /// # Errors
 /// Returns [`InstallError::ProcessNotInstalled`] when no process launch exists.
-pub fn process_launch_context() -> Result<(PathBuf, Profiler), InstallError> {
-    let runtime = installed().ok_or(InstallError::ProcessNotInstalled)?;
-    let profiling = runtime
-        .inner
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .profiler
-        .is_on();
-    Ok((
-        runtime.launch.game_directory.clone(),
-        Profiler::from_switch(profiling),
-    ))
+pub fn process_game_directory() -> Result<PathBuf, InstallError> {
+    installed()
+        .map(|runtime| runtime.launch.game_directory.clone())
+        .ok_or(InstallError::ProcessNotInstalled)
 }
 
 /// Whether the calling thread already owns its integrated-server composition.
@@ -87,15 +79,13 @@ pub fn integrated_installed() -> bool {
 
 /// Installs a composition whose lifetime is the integrated server thread's lifetime.
 ///
-/// Its owning handle is dropped when that server thread exits.
+/// Its owning handle is dropped when that server thread exits. The game directory
+/// and current profiling switch are inherited directly from the process runtime.
 /// # Errors
 ///
-/// Refuses an already installed server thread or a non-integrated composition.
-pub fn install_integrated(
-    composition: Composition,
-    game_directory: PathBuf,
-    profiler: Profiler,
-) -> Result<(), InstallError> {
+/// Refuses a missing process runtime, an already installed server thread, or a
+/// non-integrated composition.
+pub fn install_integrated(composition: Composition) -> Result<(), InstallError> {
     if composition.loaded.machine().side() != ravel_core::Side::IntegratedServer {
         return Err(InstallError::WrongSide);
     }
@@ -104,10 +94,17 @@ pub fn install_integrated(
         if slot.is_some() {
             return Err(InstallError::AlreadyInstalled);
         }
+        let process = installed().ok_or(InstallError::ProcessNotInstalled)?;
+        let profiling = process
+            .inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .profiler
+            .is_on();
         let runtime = Arc::new(LoaderRuntime::from_composition(
             composition,
-            game_directory,
-            profiler,
+            process.launch.game_directory.clone(),
+            Profiler::from_switch(profiling),
             pre_world_report(),
         ));
         *INTEGRATED_VIEW

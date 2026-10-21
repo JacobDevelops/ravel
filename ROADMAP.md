@@ -324,7 +324,7 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-composed-host` | JVM harness host composing the fixed test-mod set with the `ravel_bootstrap` library name |
 | `ravel-build` | Player-local host planning, source composition and compilation |
 | `ravel-minecraft` | Version-neutral handles, hooks and capability traits |
-| `ravel-minecraft-adapter` | Generated per-version hook target table and lookup |
+| `ravel-minecraft-adapter` | Generated per-version hook target table, lookup and admission environment identity |
 | `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data |
 | `ravel-config` | Schemas, validation, side/restart flags and layered overrides |
 | `ravel-data` | Content and audio declarations, pack generation, tag/resource merging, server data and render-stage ordering |

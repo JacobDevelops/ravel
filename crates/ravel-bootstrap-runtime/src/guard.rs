@@ -11,6 +11,14 @@ use ravel_minecraft::{HookTarget, HookValue};
 
 use crate::{invocations, runtime};
 
+/// Reports a crossing failure without publishing private paths or credentials.
+pub(crate) fn report(context: &str, error: &impl fmt::Display) {
+    eprintln!(
+        "[ravel] {context}: {}",
+        ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
+    );
+}
+
 /// A semantic refusal, unavailable runtime, or JNI argument error.
 #[derive(Debug)]
 pub(crate) enum HookError {

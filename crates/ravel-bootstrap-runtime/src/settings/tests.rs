@@ -5,7 +5,32 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::{ModId, Reader, Store, document_of, field, file, persist_and_answer, save_with};
+use super::{EditRequest, Identity, ModId, Reader, Store, Target, field, file, persist_and_answer};
+
+fn identity(encoded: &str) -> Identity {
+    let encoded = if encoded.contains(':') {
+        encoded.to_owned()
+    } else {
+        format!("process:{encoded}")
+    };
+    Identity::parse(&encoded).expect("a typed settings identity")
+}
+
+fn document_of(launch: Option<&crate::runtime::LaunchContext>, encoded: &str) -> Option<String> {
+    super::document_of(launch, &identity(encoded))
+}
+
+fn save_with(launch: Option<&crate::runtime::LaunchContext>, payload: &str) -> String {
+    super::save_in(launch, launch, payload)
+}
+
+fn selected_launch<'a>(
+    process: Option<&'a crate::runtime::LaunchContext>,
+    integrated: Option<&'a crate::runtime::LaunchContext>,
+    encoded: &str,
+) -> Option<&'a crate::runtime::LaunchContext> {
+    super::selected_launch(process, integrated, identity(encoded).target)
+}
 
 fn declaration() -> ConfigurationDeclaration {
     ConfigurationDeclaration::parse(
@@ -76,7 +101,7 @@ struct Row {
 
 fn rows(document: &str) -> Vec<Row> {
     let mut reader = Reader::new(document);
-    assert_eq!(reader.field().expect("a version"), "1");
+    assert_eq!(reader.field().expect("a version"), "2");
     assert_eq!(reader.field().expect("an owner"), "example_mod");
     assert_eq!(reader.field().expect("a side"), "client");
 
@@ -145,7 +170,7 @@ impl Screen {
         rows(
             &self
                 .store
-                .document("example_mod")
+                .document(&identity("example_mod"))
                 .expect("the owner is installed"),
         )
     }
@@ -155,7 +180,8 @@ impl Screen {
     }
 
     fn save(&mut self, payload: &str) -> String {
-        persist_and_answer(self.store.apply(&mut Reader::new(payload)), &self.game)
+        let applied = EditRequest::parse(payload).and_then(|request| self.store.apply(request));
+        persist_and_answer(applied, &self.game)
     }
 }
 
@@ -181,8 +207,13 @@ fn document_for(owner: &str, values: &serde_json::Value) -> ValueDocument {
 
 fn edits(owner: &str, values: &[(&str, &str)]) -> String {
     let mut out = String::new();
-    field(&mut out, "1");
-    field(&mut out, owner);
+    field(&mut out, "2");
+    let encoded = if owner.contains(':') {
+        owner.to_owned()
+    } else {
+        format!("process:{owner}")
+    };
+    field(&mut out, &encoded);
     field(&mut out, &values.len().to_string());
     for (key, value) in values {
         field(&mut out, key);
@@ -565,7 +596,7 @@ fn a_payload_for_another_owner_or_one_that_does_not_read_is_refused_whole() {
     let mut screen = screen(None, None);
     let before = screen
         .store
-        .document("example_mod")
+        .document(&identity("example_mod"))
         .expect("the owner is installed");
 
     for payload in [
@@ -575,15 +606,18 @@ fn a_payload_for_another_owner_or_one_that_does_not_read_is_refused_whole() {
     ] {
         assert_eq!(refusals(&screen.save(&payload)).len(), 1, "{payload}");
     }
-    assert_eq!(screen.store.document("example_mod"), Some(before));
+    assert_eq!(
+        screen.store.document(&identity("example_mod")),
+        Some(before)
+    );
 }
 
 #[test]
 fn an_owner_this_process_does_not_hold_has_no_document_rather_than_an_empty_one() {
     let screen = screen(None, None);
 
-    assert_eq!(screen.store.document("other_mod"), None);
-    assert_eq!(screen.store.document("not a mod id"), None);
+    assert_eq!(screen.store.document(&identity("other_mod")), None);
+    assert!(Identity::parse("process:not a mod id").is_none());
 }
 
 #[test]
@@ -606,9 +640,9 @@ fn malformed_settings_and_unknown_owners_have_specific_refusals() {
     field(&mut version, "unsupported");
     for (payload, expected) in [
         (version, "unsupported wire version"),
-        (edits("not a mod id", &[]), "not a mod identifier"),
+        (edits("not a mod id", &[]), "mod identifier is invalid"),
         (edits("other_mod", &[]), "no settings are declared"),
-        ("1:1".to_owned(), "truncated"),
+        ("1:2".to_owned(), "truncated"),
         (
             format!("{}extra", edits("example_mod", &[])),
             "trailing data",
@@ -711,35 +745,36 @@ fn side_launch_with_player(
 }
 
 #[test]
-fn integrated_settings_keep_their_label_and_never_fall_back_to_client_settings() {
+fn integrated_settings_use_typed_routing_and_never_fall_back_to_client_settings() {
     let client = side_launch(Side::Client, game());
     let server = side_launch(Side::IntegratedServer, client.game_directory.clone());
-    let identity = "example_mod [integrated-server]";
-    let selected = super::selected_launch(Some(&client), Some(&server), identity);
+    let identity = "integrated-server:example_mod";
+    let selected = selected_launch(Some(&client), Some(&server), identity);
     assert!(std::ptr::eq(
         selected.expect("the server"),
         std::ptr::from_ref(&server),
     ));
     let document = document_of(selected, identity).expect("server settings");
     let mut reader = Reader::new(&document);
-    assert_eq!(reader.field().as_deref(), Some("1"));
-    assert_eq!(reader.field().as_deref(), Some(identity));
+    assert_eq!(reader.field().as_deref(), Some("2"));
+    assert_eq!(reader.field().as_deref(), Some("example_mod"));
     assert_eq!(reader.field().as_deref(), Some("integrated-server"));
     assert_eq!(reader.count(), Some(2));
     assert_eq!(reader.field().as_deref(), Some("server.flag"));
     assert!(super::configurable(&server).contains(&"example_mod".parse().expect("mod id")));
-    assert!(super::selected_launch(Some(&client), None, identity).is_none());
+    assert!(selected_launch(Some(&client), None, identity).is_none());
     assert!(document_of(Some(&client), identity).is_none());
     assert_eq!(
-        refusals(&save_with(
+        refusals(&super::save_in(
             Some(&client),
+            None,
             &edits(identity, &[("server.flag", "true")])
         ))
         .len(),
         1
     );
     assert!(std::ptr::eq(
-        super::selected_launch(Some(&client), Some(&server), "example_mod").expect("the client"),
+        selected_launch(Some(&client), Some(&server), "example_mod").expect("the client"),
         std::ptr::from_ref(&client),
     ));
 }
@@ -750,12 +785,15 @@ fn saving_either_side_preserves_the_other_sides_player_values() {
     let server = side_launch(Side::IntegratedServer, client.game_directory.clone());
     for (identity, key, value) in [
         ("example_mod", "client.flag", "true"),
-        ("example_mod [integrated-server]", "server.flag", "true"),
+        ("integrated-server:example_mod", "server.flag", "true"),
         ("example_mod", "client.flag", "false"),
     ] {
-        let launch = super::selected_launch(Some(&client), Some(&server), identity);
         assert_eq!(
-            refusals(&save_with(launch, &edits(identity, &[(key, value)]))),
+            refusals(&super::save_in(
+                Some(&client),
+                Some(&server),
+                &edits(identity, &[(key, value)])
+            )),
             Vec::<(String, String)>::new(),
         );
     }
@@ -773,7 +811,7 @@ fn saving_either_side_preserves_the_other_sides_player_values() {
         written.values.get(&"server.flag".parse().expect("key")),
         Some(&json!(true))
     );
-    let server_document = document_of(Some(&server), "example_mod [integrated-server]")
+    let server_document = document_of(Some(&server), "integrated-server:example_mod")
         .expect("server remains available");
     let client_document =
         document_of(Some(&client), "example_mod").expect("client remains available");
@@ -796,13 +834,13 @@ fn side_only_edits_preserve_newer_common_values_from_either_store() {
                     &client,
                     "example_mod",
                     &server,
-                    "example_mod [integrated-server]",
+                    "integrated-server:example_mod",
                     "server.flag",
                 )
             } else {
                 (
                     &server,
-                    "example_mod [integrated-server]",
+                    "integrated-server:example_mod",
                     &client,
                     "example_mod",
                     "client.flag",
@@ -864,10 +902,7 @@ fn saving_cleans_rejected_values_but_keeps_another_sides_valid_replacement() {
         assert_eq!(
             refusals(&save_with(
                 Some(&server),
-                &edits(
-                    "example_mod [integrated-server]",
-                    &[("server.flag", "true")]
-                ),
+                &edits("integrated-server:example_mod", &[("server.flag", "true")]),
             )),
             Vec::<(String, String)>::new(),
         );
@@ -908,4 +943,55 @@ fn a_client_marker_that_is_a_directory_does_not_admit_it() {
     let game = crate::tests::fresh_directory("settings-directory", "marker-is-a-directory");
     std::fs::create_dir(game.join(super::CLIENT_MARKER)).expect("create the directory");
     assert!(super::admit_client_directory(&game).is_err());
+}
+
+#[test]
+fn settings_routes_reject_display_labels_and_unknown_targets() {
+    let mut payload = String::new();
+    for encoded in [
+        "example_mod",
+        "example_mod [integrated-server]",
+        "process:example_mod [integrated-server]",
+        "client:example_mod",
+        "integrated-server:",
+        "integrated-server:example_mod:extra",
+    ] {
+        assert!(Identity::parse(encoded).is_none(), "{encoded}");
+        payload.clear();
+        field(&mut payload, "2");
+        field(&mut payload, encoded);
+        field(&mut payload, "0");
+        assert!(EditRequest::parse(&payload).is_err(), "{encoded}");
+        let refused = refusals(&super::save_in(None, None, &payload));
+        assert_eq!(refused.len(), 1);
+        assert!(refused[0].1.contains("target or mod identifier is invalid"));
+    }
+    assert_eq!(identity("process:example_mod").target, Target::Process);
+    assert_eq!(
+        identity("integrated-server:example_mod").target,
+        Target::IntegratedServer
+    );
+}
+
+#[test]
+fn route_serialization_round_trips_each_typed_target() {
+    let owner = "example_mod".parse().expect("a canonical mod id");
+    for target in [Target::Process, Target::IntegratedServer] {
+        let encoded = Identity::encode(target, &owner);
+        let decoded = Identity::parse(&encoded).expect("a serialized route");
+        assert_eq!(decoded.target, target);
+        assert_eq!(decoded.owner, owner);
+    }
+}
+
+#[test]
+fn truncated_edits_never_apply_an_earlier_valid_edit() {
+    let mut screen = screen(None, None);
+    let mut payload = edits(
+        "example_mod",
+        &[("render.distance", "8"), ("render.fancy", "false")],
+    );
+    payload.pop();
+    assert_eq!(refusals(&screen.save(&payload)).len(), 1);
+    assert_eq!(screen.row("render.distance").value, "12");
 }

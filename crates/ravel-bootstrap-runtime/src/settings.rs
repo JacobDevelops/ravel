@@ -19,10 +19,12 @@ use ravel_core::{DiagnosticMessage, ModId, Side};
 use serde_json::Value;
 
 use crate::guard::{hand_document, text};
-use crate::wire::{Reader, VERSION as WIRE_VERSION, count, field, flag};
+use crate::wire::{Reader, count, field, flag};
 
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
+
+const WIRE_VERSION: &str = "2";
 
 pub(crate) struct Store {
     side: Side,
@@ -41,7 +43,49 @@ impl Store {
     }
 }
 
-pub(crate) const INTEGRATED_SUFFIX: &str = " [integrated-server]";
+/// Human-facing label only; never used to select a runtime.
+pub(crate) const INTEGRATED_LABEL_SUFFIX: &str = " [integrated-server]";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Target {
+    Process,
+    IntegratedServer,
+}
+
+impl Target {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Process => "process",
+            Self::IntegratedServer => "integrated-server",
+        }
+    }
+}
+
+pub(crate) struct Identity {
+    target: Target,
+    owner: ModId,
+}
+
+impl Identity {
+    pub(crate) fn encode(target: Target, owner: &ModId) -> String {
+        format!("{}:{owner}", target.as_str())
+    }
+
+    fn parse(encoded: &str) -> Option<Self> {
+        let (target, owner) = encoded.split_once(':')?;
+        let target = [Target::Process, Target::IntegratedServer]
+            .into_iter()
+            .find(|candidate| candidate.as_str() == target)?;
+        Some(Self {
+            target,
+            owner: owner.parse().ok()?,
+        })
+    }
+
+    fn matches(&self, side: Side) -> bool {
+        (self.target == Target::IntegratedServer) == (side == Side::IntegratedServer)
+    }
+}
 
 pub(crate) fn configurable(launch: &crate::runtime::LaunchContext) -> BTreeSet<ModId> {
     launch
@@ -54,43 +98,37 @@ pub(crate) fn configurable(launch: &crate::runtime::LaunchContext) -> BTreeSet<M
 fn selected_launch<'a>(
     process: Option<&'a crate::runtime::LaunchContext>,
     integrated: Option<&'a crate::runtime::LaunchContext>,
-    owner: &str,
+    target: Target,
 ) -> Option<&'a crate::runtime::LaunchContext> {
-    if owner.ends_with(INTEGRATED_SUFFIX) {
-        integrated
-    } else {
-        process
+    match target {
+        Target::Process => process,
+        Target::IntegratedServer => integrated,
     }
 }
 
-fn owner_on(side: Side, identity: &str) -> Option<ModId> {
-    let owner = match identity.strip_suffix(INTEGRATED_SUFFIX) {
-        Some(owner) if side == Side::IntegratedServer => owner,
-        Some(_) => return None,
-        None => identity,
-    };
-    owner.parse().ok()
-}
-
-fn document(owner: &str) -> Option<String> {
+fn document(encoded: &str) -> Option<String> {
+    let identity = Identity::parse(encoded)?;
     let integrated = crate::runtime::integrated_runtime();
     document_of(
         selected_launch(
             crate::runtime::installed().map(|runtime| &runtime.launch),
             integrated.as_ref().map(|runtime| &runtime.launch),
-            owner,
+            identity.target,
         ),
-        owner,
+        &identity,
     )
 }
 
-fn document_of(launch: Option<&crate::runtime::LaunchContext>, owner: &str) -> Option<String> {
+fn document_of(
+    launch: Option<&crate::runtime::LaunchContext>,
+    identity: &Identity,
+) -> Option<String> {
     let launch = launch?;
     launch
         .settings
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .document(owner)
+        .document(identity)
 }
 
 impl Store {
@@ -102,14 +140,16 @@ impl Store {
             .collect()
     }
 
-    fn document(&self, identity: &str) -> Option<String> {
-        let owner = owner_on(self.side, identity)?;
-        let configuration = self.configurations.get(&owner)?;
+    fn document(&self, identity: &Identity) -> Option<String> {
+        if !identity.matches(self.side) {
+            return None;
+        }
+        let configuration = self.configurations.get(&identity.owner)?;
         let rows = configuration.settings_on(self.side);
 
         let mut out = String::with_capacity(rows.len() * 256 + 64);
         field(&mut out, WIRE_VERSION);
-        field(&mut out, identity);
+        field(&mut out, identity.owner.as_str());
         field(&mut out, self.side.as_str());
         count(&mut out, rows.len());
         for resolved in &rows {
@@ -209,23 +249,30 @@ const fn source_name(source: ValueSource) -> &'static str {
 }
 
 fn save(payload: &str) -> String {
-    let mut reader = Reader::new(payload);
-    let owner = reader
-        .field()
-        .and_then(|_| reader.field())
-        .unwrap_or_default();
     let integrated = crate::runtime::integrated_runtime();
-    save_with(
-        selected_launch(
-            crate::runtime::installed().map(|runtime| &runtime.launch),
-            integrated.as_ref().map(|runtime| &runtime.launch),
-            &owner,
-        ),
+    save_in(
+        crate::runtime::installed().map(|runtime| &runtime.launch),
+        integrated.as_ref().map(|runtime| &runtime.launch),
         payload,
     )
 }
 
-fn save_with(launch: Option<&crate::runtime::LaunchContext>, payload: &str) -> String {
+fn save_in(
+    process: Option<&crate::runtime::LaunchContext>,
+    integrated: Option<&crate::runtime::LaunchContext>,
+    payload: &str,
+) -> String {
+    let request = match EditRequest::parse(payload) {
+        Ok(request) => request,
+        Err(reason) => return refusal("", &reason),
+    };
+    save_with(
+        selected_launch(process, integrated, request.identity.target),
+        request,
+    )
+}
+
+fn save_with(launch: Option<&crate::runtime::LaunchContext>, request: EditRequest) -> String {
     let Some(launch) = launch else {
         return refusal("", "the loader runtime is not installed");
     };
@@ -234,7 +281,7 @@ fn save_with(launch: Option<&crate::runtime::LaunchContext>, payload: &str) -> S
         .settings
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .apply(&mut Reader::new(payload));
+        .apply(request);
     persist_and_answer(applied, &launch.game_directory)
 }
 
@@ -246,17 +293,23 @@ struct Applied {
     rejected: BTreeMap<SettingKey, Option<ValueSchema>>,
 }
 
-impl Store {
-    fn apply(&mut self, reader: &mut Reader) -> Result<Applied, String> {
+struct EditRequest {
+    identity: Identity,
+    edits: Vec<(String, String)>,
+}
+
+impl EditRequest {
+    fn parse(payload: &str) -> Result<Self, String> {
+        let mut reader = Reader::new(payload);
         let version = reader.field().ok_or("the settings payload is truncated")?;
         if version != WIRE_VERSION {
             return Err(format!(
                 "the screen spoke unsupported wire version `{version}`"
             ));
         }
-        let identity = reader.field().ok_or("the settings payload is truncated")?;
-        let owner = owner_on(self.side, &identity)
-            .ok_or("the settings owner is not a mod identifier for this side")?;
+        let encoded = reader.field().ok_or("the settings payload is truncated")?;
+        let identity =
+            Identity::parse(&encoded).ok_or("the settings target or mod identifier is invalid")?;
         let count = reader
             .count()
             .ok_or("the settings edit count could not be read")?;
@@ -272,7 +325,17 @@ impl Store {
         if !reader.finished() {
             return Err("the settings payload contains trailing data".to_owned());
         }
+        Ok(Self { identity, edits })
+    }
+}
 
+impl Store {
+    fn apply(&mut self, request: EditRequest) -> Result<Applied, String> {
+        let EditRequest { identity, edits } = request;
+        if !identity.matches(self.side) {
+            return Err("the settings target does not match this runtime".to_owned());
+        }
+        let owner = identity.owner;
         let side = self.side;
         let configuration = self
             .configurations

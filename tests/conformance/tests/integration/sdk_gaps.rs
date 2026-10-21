@@ -48,7 +48,7 @@ fn drive(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal lifecycle plan");
     ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect("the production driver starts the set");
     machine
@@ -315,7 +315,7 @@ fn round(guarding: bool) -> Round {
     let mut mods: Vec<&mut dyn Mod> = vec![&mut follower, &mut guard];
     let mut machine = interception_machine(&mut mods);
 
-    let environment = ravel_bootstrap_runtime::environment();
+    let environment = ravel_minecraft_adapter::environment();
     let mut loaded = ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
         .expect("all active mods have hosts");
     let admitted = ravel_loader::open_interceptions(&mut loaded, &environment)
@@ -344,7 +344,7 @@ fn interception_machine(mods: &mut [&mut dyn Mod]) -> LifecycleMachine {
         LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal lifecycle plan");
     ravel_loader::start_all(
         &mut ravel_loader::LoadedMods::new(&mut machine, mods).expect("all active mods have hosts"),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect("the production driver starts the interception mods");
     machine
@@ -459,7 +459,7 @@ fn server_data_reaches_resource_collection_after_the_real_lifecycle() {
     let mut loaded = ravel_loader::LoadedMods::new(&mut machine, &mut mods)
         .expect("the running server-data mod has its host");
     let supplied =
-        ravel_loader::open_resources(&mut loaded, &ravel_bootstrap_runtime::environment())
+        ravel_loader::open_resources(&mut loaded, &ravel_minecraft_adapter::environment())
             .expect("the lifecycle declaration reaches resource collection");
     let expected: [(&str, &[u8]); 4] = [
         (

@@ -18,17 +18,15 @@ mod side;
 mod wire;
 
 pub use packs::{
-    GAME_PACK_DIRECTORY, GamePackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id,
-    write_resource_pack, write_world_pack,
+    GAME_PACK_DIRECTORY, GamePackError, PackOutcome, RESOURCE_PACKS, WORLD_DATA_PACKS, Written,
+    pack_id, write_resource_pack, write_world_datapack, write_world_pack,
 };
-pub use persistence::{
-    OpenOutcome, SaveOutcome, open_world_data, save_world_data, write_world_datapack,
-};
+pub use persistence::{OpenOutcome, SaveOutcome, open_world_data, save_world_data};
 /// Whether declared adapter capabilities select the legacy game surface.
 pub use ravel_minecraft_adapter::pinned::LEGACY_ADAPTER;
 pub use runtime::{
-    Composition, InstallError, environment, install, install_integrated, install_panic_hook,
-    integrated_installed, is_installed, pre_world_report, process_launch_context,
+    Composition, InstallError, install, install_integrated, install_panic_hook,
+    integrated_installed, is_installed, pre_world_report, process_game_directory,
 };
 pub use side::{SideError, side_from_agent_code};
 
@@ -44,9 +42,11 @@ pub mod exports {
     };
     pub use crate::mods::ravel_mod_surface;
     pub use crate::outward::ravel_outward_actions;
+    pub use crate::packs::crossings::{
+        ravel_pack_id, ravel_write_staged_datapack, ravel_write_world_datapack,
+    };
     pub use crate::persistence::crossings::{
-        ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
-        ravel_write_staged_datapack, ravel_write_world_datapack,
+        ravel_open_world_persistence, ravel_save_world_persistence,
     };
     pub use crate::profiling::ravel_profiling_report;
     pub use crate::renderer::{

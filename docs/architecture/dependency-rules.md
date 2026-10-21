@@ -75,6 +75,10 @@ stable contracts toward concrete host internals.
   than sharing hook classes or exported symbol sets. So the general crates' claim
   rests on the id set being identical and on their holding no other version-derived
   name, both of which are checked, rather than on a second table being run.
+  `ravel-minecraft-adapter::environment` owns the admission and failure-report
+  identity: the adapter's package semver, its pinned Minecraft version, and the
+  process platform and architecture. Admission callers depend on that adapter,
+  not on the JNI bootstrap runtime, to obtain this identity.
 - `ravel-minecraft` is the highest crate below the host crates that may name a JNI
   type, and `JavaHandle` is the only one it names. Bootstrap-runtime,
   host-runtime and the cdylib hosts form the JNI layer. A hook argument that
@@ -124,6 +128,12 @@ stable contracts toward concrete host internals.
   Java owns game references, vanilla task identity, context ownership, and GL
   calls. It crosses the safe runtime boundary with copied values. See
   [`safety-boundary.md`](safety-boundary.md) for the JNI ownership boundary.
+  Launch callers import `Composition` directly from bootstrap, not through the
+  host-runtime admission facade. Environment identity belongs to the adapter.
+  Installed world-pack writes use `write_world_datapack`, exposed to Java as
+  `ravelWriteWorldDatapack`, and return an explicit `PackOutcome`:
+  `RuntimeUnavailable`, `Refused`, `Unchanged`, or `Written`. Persistence owns world
+  admission and checkpoints, not pack publication.
 
 - `ravel-renderer` owns bounded immutable section values, deduplicated state/model
   keys, CPU cube meshes and conservative face-to-face visibility. It has no JVM,

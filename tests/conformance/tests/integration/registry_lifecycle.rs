@@ -165,7 +165,7 @@ fn every_discovered_counterpart_is_driven_through_lifecycle_admission() {
 #[test]
 fn every_counterpart_registers_with_only_its_required_dependencies_on_each_side() {
     let manifests = manifests();
-    let mut environment = ravel_bootstrap_runtime::environment();
+    let mut environment = ravel_minecraft_adapter::environment();
     environment.minecraft = "1.21.1".to_owned();
     for side in SIDES {
         for manifest in &manifests {
@@ -197,7 +197,7 @@ fn every_counterpart_registers_with_only_its_required_dependencies_on_each_side(
 fn all_counterparts_register_together_in_manifest_dependency_order_on_each_side() {
     let manifests = manifests();
     // This round tests the shipped packages' declared target, not the selected adapter.
-    let mut environment = ravel_bootstrap_runtime::environment();
+    let mut environment = ravel_minecraft_adapter::environment();
     environment.minecraft = "1.21.1".to_owned();
     for side in SIDES {
         let plan = resolve(&manifests, side).expect("the shipped dependency graph resolves");
@@ -239,7 +239,7 @@ fn configured_provider_flags_reach_the_leaf_through_real_loader_startup() {
 
     let manifests = manifests();
     let leaf_manifest = &manifests[0];
-    let environment = ravel_bootstrap_runtime::environment();
+    let environment = ravel_minecraft_adapter::environment();
     for side in SIDES {
         for (ground, tools) in [(false, false), (false, true), (true, false), (true, true)] {
             let selected = required_manifests(leaf_manifest, &manifests, side);

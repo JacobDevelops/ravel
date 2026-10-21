@@ -93,7 +93,7 @@ public final class TitleMenuMain {
 
         Method parse = mods.getClass().getDeclaredMethod("parse", String.class);
         parse.setAccessible(true);
-        String head = field("3") + field("client") + field("0") + field("0");
+        String head = field("4") + field("client") + field("0") + field("0");
         System.out.println("hostile=negativeNotices:" + parse.invoke(mods, head + field("-1")));
         System.out.println(
                 "hostile=shortNoticeBlock:"
@@ -134,7 +134,7 @@ public final class TitleMenuMain {
     }
 
     private static String failure() {
-        return field("3") + field("client") + field("1") + field("1")
+        return field("4") + field("client") + field("1") + field("1")
                 + field("1") + field("brokenmod") + field("failed") + field("required")
                 + field("true") + field("true") + field("false") + field("1")
                 + field("a required registry claim was refused")
@@ -143,6 +143,7 @@ public final class TitleMenuMain {
                 + field("2") + field("brokenmod") + field("otherpack")
                 + field("the claim was already held by another mod and this one asked for it "
                         + "again, so neither could be registered")
+                + field("process:brokenmod")
                 + field("0");
     }
 

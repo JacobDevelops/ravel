@@ -3,7 +3,8 @@
 /** Length-prefixed UTF-16 framing shared with the existing native settings API. */
 final class Wire {
     static final String VERSION = "1";
-    static final String MODS_VERSION = "3";
+    static final String SETTINGS_VERSION = "2";
+    static final String MODS_VERSION = "4";
     private final String text;
     private int at;
 

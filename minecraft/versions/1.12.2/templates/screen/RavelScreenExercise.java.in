@@ -33,7 +33,7 @@ public final class RavelScreenExercise {
             stage = 1;
             client.{{LEGACY_CLIENT#openScreen}}(mods);
         } else if (stage == 1 && mods.drawnFrames() >= 2) {
-            settings = (RavelSettingsScreen) mods.settings("configuration");
+            settings = (RavelSettingsScreen) mods.settings("process:configuration");
             client.{{LEGACY_CLIENT#openScreen}}(settings);
             stage = 2;
         } else if (stage == 2 && settings.drawnFrames() >= 2) {

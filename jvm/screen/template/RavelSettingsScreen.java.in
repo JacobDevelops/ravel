@@ -22,7 +22,8 @@ public final class RavelSettingsScreen extends {{Screen}} {
     private static final int WIDGET_WIDTH = 200;
     private static final int WIDGET_HEIGHT = 20;
 
-    private final String owner;
+    private String owner = "";
+    private final String identity;
 
     private final List<Row> rows = new ArrayList<>();
 
@@ -32,7 +33,7 @@ public final class RavelSettingsScreen extends {{Screen}} {
 
     private RavelSettingsScreen(String owner, {{Screen}} parent) {
         super({{Component}}.{{Component#translatable}}("ravel.config.title"));
-        this.owner = owner;
+        this.identity = owner;
         this.parent = parent;
         rows.addAll(read(Hook.ravelSettingsDocument(owner)));
     }
@@ -76,12 +77,16 @@ public final class RavelSettingsScreen extends {{Screen}} {
                         .{{Button$Builder#build}}());
     }
 
-    private static List<Row> read(String document) {
+    private List<Row> read(String document) {
         if (document == null) {
             return List.of();
         }
         Wire wire = new Wire(document);
-        if (!Wire.VERSION.equals(wire.field()) || wire.field() == null || wire.field() == null) {
+        if (!Wire.SETTINGS_VERSION.equals(wire.field())) {
+            return List.of();
+        }
+        String canonicalOwner = wire.field();
+        if (canonicalOwner == null || wire.field() == null) {
             return List.of();
         }
         int count = wire.count();
@@ -96,7 +101,11 @@ public final class RavelSettingsScreen extends {{Screen}} {
             }
             read.add(row);
         }
-        return wire.finished() ? read : List.of();
+        if (!wire.finished()) {
+            return List.of();
+        }
+        owner = canonicalOwner;
+        return read;
     }
 
     @Override
@@ -108,8 +117,8 @@ public final class RavelSettingsScreen extends {{Screen}} {
             }
         }
         StringBuilder edits = new StringBuilder();
-        Wire.write(edits, Wire.VERSION);
-        Wire.write(edits, owner);
+        Wire.write(edits, Wire.SETTINGS_VERSION);
+        Wire.write(edits, identity);
         Wire.write(edits, Integer.toString(changed.size()));
         for (Row row : changed) {
             Wire.write(edits, row.key);

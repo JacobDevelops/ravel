@@ -18,6 +18,7 @@ ravel-example-stateful-mod.workspace = true
 ravel-host-api.workspace = true
 ravel-host-runtime.workspace = true
 ravel-loader.workspace = true
+ravel-minecraft-adapter.workspace = true
 ravel-observability.workspace = true
 ravel-pack.workspace = true
 ravel-package.workspace = true

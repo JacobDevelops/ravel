@@ -12,6 +12,7 @@ build = "build.rs"
 links = "ravel-minecraft-adapter"
 
 [dependencies]
+ravel-core.workspace = true
 ravel-minecraft.workspace = true
 
 [build-dependencies]

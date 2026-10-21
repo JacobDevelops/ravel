@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 pub(crate) const VERSION: &str = "1";
 
 /// Independent mod-list version, bumped when its row shape changes.
-pub(crate) const MODS_VERSION: &str = "3";
+pub(crate) const MODS_VERSION: &str = "4";
 
 /// Writes one field, prefixed by the length the other side reads it with.
 pub(crate) fn field(out: &mut String, value: &str) {

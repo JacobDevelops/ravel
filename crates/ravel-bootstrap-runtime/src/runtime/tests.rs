@@ -609,7 +609,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
 
 #[test]
 fn every_tick_hook_reaches_the_mod_as_the_event_it_stands_for() {
-    for (hook, expected) in EVENTS {
+    for (hook, expected, _) in EVENTS {
         let side = if expected == GameEvent::ClientTick {
             Side::Client
         } else {
@@ -912,13 +912,14 @@ fn every_direct_hook_projection_is_reviewed_for_the_selected_version() {
     let reviewed: Vec<&str> = TARGETS.iter().map(|target| target.id().as_str()).collect();
     if LEGACY_ADAPTER {
         assert!(
-            EVENTS.iter().all(|(hook, _)| !reviewed.contains(hook)) && !reviewed.contains(&COMMAND),
+            EVENTS.iter().all(|(hook, _, _)| !reviewed.contains(hook))
+                && !reviewed.contains(&COMMAND),
             "legacy semantic events and commands cross through the legacy adapter, not modern hooks"
         );
         return;
     }
 
-    for hook in EVENTS.iter().map(|(hook, _)| *hook).chain([COMMAND]) {
+    for hook in EVENTS.iter().map(|(hook, _, _)| *hook).chain([COMMAND]) {
         assert!(
             reviewed.contains(&hook) || NON_GOALS.iter().any(|goal| goal.as_str() == hook),
             "{hook} is neither a reviewed hook nor a declared non-goal of {MINECRAFT_VERSION}",
@@ -934,18 +935,6 @@ fn the_command_seam_uses_the_selected_version_contract() {
         TARGETS.iter().any(|target| target.id().as_str() == COMMAND),
         !LEGACY_ADAPTER,
         "modern versions receive commands through their reviewed hook; legacy uses its explicit adapter"
-    );
-}
-
-#[test]
-fn the_environment_a_failure_reports_is_the_process_it_happened_in() {
-    let environment = environment();
-
-    assert_eq!(environment.platform, std::env::consts::OS);
-    assert_eq!(environment.architecture, std::env::consts::ARCH);
-    assert_eq!(
-        environment.minecraft,
-        ravel_minecraft_adapter::pinned::MINECRAFT_VERSION
     );
 }
 
@@ -1128,21 +1117,59 @@ fn integrated_composition() -> (super::Composition, Arc<Mutex<Log>>) {
     )
 }
 
+fn isolated_installation_test(name: &str) -> bool {
+    const CHILD: &str = "RAVEL_INSTALLATION_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .args(["--exact", &format!("runtime::tests::{name}"), "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .expect("isolated installation test");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+    true
+}
+
+fn install_client_context(directory: std::path::PathBuf) {
+    let (mut composition, _) = integrated_composition();
+    let (machine, mods, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+    composition.loaded = ravel_loader::Loaded::new(machine, mods).expect("complete set");
+    super::install(
+        composition,
+        super::pre_world_report(),
+        directory,
+        ravel_observability::Profiler::from_switch(true),
+    )
+    .expect("process context");
+}
+
 #[test]
 fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Result<(), String> {
+    if isolated_installation_test(
+        "integrated_composition_is_thread_owned_and_recreated_for_each_server",
+    ) {
+        return Ok(());
+    }
+    install_client_context(std::env::temp_dir().join("ravel-inherited-context"));
     let client_thread_state = super::integrated_installed();
     for _ in 0..2 {
         let log = std::thread::spawn(|| -> Result<Arc<Mutex<Log>>, String> {
             assert!(!super::integrated_installed());
             let (composition, log) = integrated_composition();
-            super::install_integrated(
-                composition,
-                std::env::temp_dir(),
-                ravel_observability::Profiler::from_switch(true),
-            )
-            .map_err(|error| error.to_string())?;
+            super::install_integrated(composition).map_err(|error| error.to_string())?;
             let runtime = super::installation::with_thread_selected(Arc::clone)
                 .ok_or("missing thread-owned runtime")?;
+            assert_eq!(
+                runtime.launch.game_directory,
+                super::process_game_directory().expect("process directory")
+            );
+            assert!(runtime.inner.lock().expect("healthy lock").profiler.is_on());
             assert_eq!(
                 runtime
                     .inner
@@ -1159,22 +1186,14 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
             assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
             let (duplicate, _) = integrated_composition();
             assert_eq!(
-                super::install_integrated(
-                    duplicate,
-                    std::env::temp_dir(),
-                    ravel_observability::Profiler::off()
-                ),
+                super::install_integrated(duplicate),
                 Err(super::InstallError::AlreadyInstalled)
             );
             let (mut wrong_side, _) = integrated_composition();
             let (machine, mods, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
             wrong_side.loaded = ravel_loader::Loaded::new(machine, mods).expect("complete set");
             assert_eq!(
-                super::install_integrated(
-                    wrong_side,
-                    std::env::temp_dir(),
-                    ravel_observability::Profiler::off()
-                ),
+                super::install_integrated(wrong_side),
                 Err(super::InstallError::WrongSide)
             );
             Ok(log)
@@ -1192,39 +1211,36 @@ fn integrated_composition_is_thread_owned_and_recreated_for_each_server() -> Res
 }
 
 #[test]
-fn integrated_install_uses_explicit_context_without_a_process_runtime() {
-    const CHILD: &str = "RAVEL_INTEGRATED_CONTEXT_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
-            .args(["--exact", "runtime::tests::integrated_install_uses_explicit_context_without_a_process_runtime", "--nocapture"])
-            .env(CHILD, "1")
-            .output().expect("isolated integrated install");
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+fn integrated_install_requires_and_inherits_the_current_process_context() {
+    if isolated_installation_test(
+        "integrated_install_requires_and_inherits_the_current_process_context",
+    ) {
         return;
     }
-    assert!(!super::is_installed());
-    assert!(matches!(
-        super::process_launch_context(),
+    assert_eq!(
+        super::process_game_directory(),
         Err(super::InstallError::ProcessNotInstalled)
-    ));
-    let directory = std::env::temp_dir().join("ravel-explicit-integrated-directory");
+    );
     let (composition, _) = integrated_composition();
-    super::install_integrated(
-        composition,
-        directory.clone(),
-        ravel_observability::Profiler::from_switch(true),
-    )
-    .expect("explicit integrated context requires no process runtime");
+    assert_eq!(
+        super::install_integrated(composition),
+        Err(super::InstallError::ProcessNotInstalled)
+    );
+    assert!(!super::integrated_installed());
+    let directory = std::env::temp_dir().join("ravel-inherited-integrated-directory");
+    install_client_context(directory.clone());
+    super::installed()
+        .expect("process runtime")
+        .inner
+        .lock()
+        .expect("healthy lock")
+        .profiler = ravel_observability::Profiler::off();
+    let (composition, _) = integrated_composition();
+    super::install_integrated(composition).expect("inherit process context");
     let runtime =
         super::installation::with_thread_selected(Arc::clone).expect("integrated runtime");
     assert_eq!(runtime.launch.game_directory, directory);
-    assert!(runtime.inner.lock().expect("healthy lock").profiler.is_on());
-    assert!(!super::is_installed());
+    assert!(!runtime.inner.lock().expect("healthy lock").profiler.is_on());
 }
 
 #[test]

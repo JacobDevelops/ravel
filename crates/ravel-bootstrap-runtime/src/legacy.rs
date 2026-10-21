@@ -10,7 +10,7 @@ use jni::{Env, EnvUnowned};
 use ravel_core::ContentId;
 use ravel_network::PacketId;
 
-use crate::guard::{HookError, hand_document, text};
+use crate::guard::{HookError, hand_document, report, text};
 use crate::runtime::{LoaderRuntime, Undelivered};
 use crate::wire::{VERSION, count, field};
 
@@ -53,10 +53,7 @@ fn command_answer(result: Result<(), Undelivered>) -> String {
             .text()
             .to_owned(),
         Err(error) => {
-            eprintln!(
-                "[ravel] legacy command failed: {}",
-                ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
-            );
+            report("legacy command failed", &error);
             "command failed".to_owned()
         }
     }
@@ -101,16 +98,13 @@ pub fn ravel_legacy_event<'local>(
         let kind = text(env, &kind)?;
         let event = ravel_host_api::GameEvent::published(&kind)
             .ok_or_else(|| refused("unknown legacy semantic event".to_owned()))?;
-        let delivery = runtime().and_then(|runtime| {
-            runtime
-                .legacy_event(event)
-                .map_err(|error| refused(error.to_string()))
-        });
-        if let Err(error) = delivery {
-            eprintln!(
-                "[ravel] legacy event refused: {}",
-                ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
-            );
+        match runtime() {
+            Ok(runtime) => {
+                if let Err(error) = runtime.legacy_event(event) {
+                    report(error.context(), &error);
+                }
+            }
+            Err(error) => report("legacy event refused", &error),
         }
         Ok(())
     })
@@ -149,10 +143,7 @@ pub fn ravel_legacy_packet<'local>(
         if let Err(reason) =
             runtime.legacy_packet(PacketId::new(id), payload, to_server != JNI_FALSE)
         {
-            eprintln!(
-                "[ravel] legacy packet dropped: {}",
-                ravel_core::DiagnosticMessage::redacted(&reason.to_string()).text()
-            );
+            report("legacy packet dropped", &reason);
         }
         Ok(())
     })
@@ -323,7 +314,7 @@ mod tests {
         let mut mods: Vec<Box<dyn Mod>> = vec![Box::new(Supplying { owner, declaration })];
         let supplied = ravel_loader::open_resources(
             &mut LoadedMods::new(&mut machine, &mut mods)?,
-            &crate::environment(),
+            &ravel_minecraft_adapter::environment(),
         )?;
         let mut launch = test_launch();
         launch.supplied = supplied;

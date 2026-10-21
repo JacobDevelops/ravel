@@ -41,7 +41,7 @@ pub(super) fn assert_started(
     assert_running(machine, hosts.iter().map(Box::as_ref), side);
     machine
         .world_access(&ravel_observability::PreWorldReport::new(
-            ravel_bootstrap_runtime::environment(),
+            ravel_minecraft_adapter::environment(),
         ))
         .expect("every required active mod is running");
     for host in hosts {

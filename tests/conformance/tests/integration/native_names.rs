@@ -21,6 +21,7 @@ fn handwritten_java_natives_match_the_rust_exports() {
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/legacy.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/mods.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/outward.rs"),
+        include_str!("../../../../crates/ravel-bootstrap-runtime/src/packs/crossings.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/persistence/crossings.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/profiling.rs"),
         include_str!("../../../../crates/ravel-bootstrap-runtime/src/renderer.rs"),

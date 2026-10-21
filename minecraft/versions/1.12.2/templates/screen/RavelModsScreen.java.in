@@ -38,8 +38,8 @@ public final class RavelModsScreen extends LegacyRavelScreen {
     public int actionable() { return actionable; }
 
     public {{SCREEN}} settings(String owner) {
-        for (Entry entry : entries) if (entry.modId.equals(owner) && entry.configurable)
-            return RavelSettingsScreen.open(owner, this);
+        for (Entry entry : entries) if (entry.settingsIdentity.equals(owner) && entry.configurable)
+            return RavelSettingsScreen.open(entry.settingsIdentity, this);
         throw new IllegalArgumentException("mod has no settings on this side: " + owner);
     }
     @Override
@@ -66,7 +66,7 @@ public final class RavelModsScreen extends LegacyRavelScreen {
             }
             settingsLine += entry.lines().size() - 1;
             if (entry.configurable && line == settingsLine) {
-                {{LEGACY_CLIENT}}.{{LEGACY_CLIENT#getInstance}}().{{LEGACY_CLIENT#openScreen}}(settings(entry.modId));
+                {{LEGACY_CLIENT}}.{{LEGACY_CLIENT#getInstance}}().{{LEGACY_CLIENT#openScreen}}(settings(entry.settingsIdentity));
                 return;
             }
         }
@@ -90,7 +90,7 @@ public final class RavelModsScreen extends LegacyRavelScreen {
     }
     public static final class Entry {
         private final int position;
-        private final String modId, state, requirement;
+        private final String modId, state, requirement, settingsIdentity;
         private final boolean loadsHere, actionable, configurable;
         private final List<String> failures = new ArrayList<>();
         Entry(Wire wire) {
@@ -109,6 +109,7 @@ public final class RavelModsScreen extends LegacyRavelScreen {
                 failures.add((kind.isEmpty() ? "failed in " + failedIn : kind) + " " + version
                         + " at " + surfaceKind + " " + surface + " via " + String.join(" -> ", chain) + ": " + detail);
             }
+            settingsIdentity = required(wire);
         }
         public String modId() { return modId; }
         public int position() { return position; }

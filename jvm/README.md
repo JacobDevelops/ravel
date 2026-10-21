@@ -173,6 +173,12 @@ pinned set or remove all its local jars to use the tracked locks.
   and settings targets and expected method counts from the generated hook table.
   Persistence uses remapped class files where Java cannot express the linked
   signatures.
+  Mod-list wire version 4 carries each settings route independently of its
+  human-facing label. Settings wire version 2 uses `process:<mod-id>` or
+  `integrated-server:<mod-id>` identities; Java preserves that opaque route when
+  opening and saving, while Rust parses and validates the complete save once
+  before selecting a runtime or applying edits. An integrated-server display
+  suffix is never a routing instruction.
 - **Cluster** installs packages, discovers and verifies them, then plays, saves,
   exits, and reloads a world across processes. The reload must write a successor
   record; a corrupted record must refuse the world.

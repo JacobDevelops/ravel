@@ -12,7 +12,7 @@ use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    Composition, GamePackError, InstallError, SideError, environment, install, pre_world_report,
+    Composition, GamePackError, InstallError, SideError, install, pre_world_report,
     write_resource_pack,
 };
 use ravel_config::file;
@@ -23,6 +23,7 @@ use ravel_loader::{
     Loaded, LoadedMods, ResourceRefused, admitted, discover, open_configuration, open_resources,
     start_all,
 };
+use ravel_minecraft_adapter::environment;
 use ravel_observability::Profiler;
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
@@ -167,29 +168,37 @@ pub fn enter(
 pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
     ravel_bootstrap_runtime::install_panic_hook();
     env.with_env(|env| -> Result<(), LaunchError> {
-        if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
-            env.throw(LaunchError::IndependentIntegratedUnsupported.redacted())?;
-            return Ok(());
-        }
-        if !ravel_bootstrap_runtime::integrated_installed() {
-            let result = ravel_bootstrap_runtime::process_launch_context()
-                .map_err(LaunchError::Install)
-                .and_then(|(directory, profiler)| {
-                    let composition = compose(
-                        &directory,
-                        Side::IntegratedServer,
-                        members(Side::IntegratedServer),
-                    )?;
-                    ravel_bootstrap_runtime::install_integrated(composition, directory, profiler)
-                        .map_err(LaunchError::Install)
-                });
-            if let Err(error) = result {
-                env.throw(error.redacted())?;
-            }
+        if let Err(error) = initialize_integrated(members) {
+            env.throw(error.redacted())?;
         }
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+}
+
+/// Composes and installs an independent legacy integrated server on its owning thread.
+///
+/// Repeated calls on that thread retain its existing runtime without constructing members.
+/// Modern adapters use the process runtime and reject independent initialization.
+///
+/// # Errors
+///
+/// Returns an error for modern adapters, a missing process runtime, or composition or installation failure.
+pub fn initialize_integrated(members: impl FnOnce(Side) -> Vec<Member>) -> Result<(), LaunchError> {
+    if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        return Err(LaunchError::IndependentIntegratedUnsupported);
+    }
+    if ravel_bootstrap_runtime::integrated_installed() {
+        return Ok(());
+    }
+    let directory =
+        ravel_bootstrap_runtime::process_game_directory().map_err(LaunchError::Install)?;
+    let composition = compose(
+        &directory,
+        Side::IntegratedServer,
+        members(Side::IntegratedServer),
+    )?;
+    ravel_bootstrap_runtime::install_integrated(composition).map_err(LaunchError::Install)
 }
 
 /// Constructs, composes, and installs members only if no runtime is installed.
@@ -432,6 +441,119 @@ mod tests {
     use ravel_host_api::Mod;
 
     use super::{Member, admit, environment};
+
+    fn isolated_integrated_test(name: &str) -> bool {
+        const CHILD: &str = "RAVEL_HOST_INTEGRATED_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            return false;
+        }
+        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", &format!("tests::{name}"), "--nocapture"])
+            .env(CHILD, "1")
+            .output()
+            .expect("isolated integrated initialization");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        true
+    }
+
+    #[test]
+    fn integrated_initialize_rejects_before_constructing_members() {
+        if isolated_integrated_test("integrated_initialize_rejects_before_constructing_members") {
+            return;
+        }
+        let mut constructed = false;
+        let error = super::initialize_integrated(|_| {
+            constructed = true;
+            Vec::new()
+        })
+        .expect_err("independent initialization needs a legacy process");
+        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            assert!(matches!(
+                error,
+                super::LaunchError::Install(super::InstallError::ProcessNotInstalled)
+            ));
+        } else {
+            assert!(matches!(
+                error,
+                super::LaunchError::IndependentIntegratedUnsupported
+            ));
+        }
+        assert!(!constructed);
+        assert!(!ravel_bootstrap_runtime::integrated_installed());
+    }
+
+    #[test]
+    fn integrated_initialize_selects_the_adapter_and_server_thread_lifetime() {
+        if isolated_integrated_test(
+            "integrated_initialize_selects_the_adapter_and_server_thread_lifetime",
+        ) {
+            return;
+        }
+        let game =
+            std::env::temp_dir().join(format!("ravel-integrated-init-{}", std::process::id()));
+        std::fs::create_dir_all(&game).expect("game directory");
+        super::initialize(&game, Side::Client, Vec::new, true).expect("client process");
+        for _ in 0..2 {
+            std::thread::spawn(|| {
+                let mut constructed = false;
+                let result = super::initialize_integrated(|side| {
+                    assert_eq!(side, Side::IntegratedServer);
+                    constructed = true;
+                    Vec::new()
+                });
+                if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+                    result.expect("independent server");
+                    assert!(constructed);
+                    assert!(ravel_bootstrap_runtime::integrated_installed());
+                    super::initialize_integrated(|_| panic!("duplicate factory"))
+                        .expect("repeated server entry retains its runtime");
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(super::LaunchError::IndependentIntegratedUnsupported)
+                    ));
+                    assert!(!constructed);
+                    assert!(!ravel_bootstrap_runtime::integrated_installed());
+                }
+            })
+            .join()
+            .expect("integrated server thread");
+        }
+        std::fs::remove_dir_all(game).expect("remove game directory");
+    }
+
+    #[test]
+    fn integrated_initialize_propagates_composition_failure_without_installing() {
+        if isolated_integrated_test(
+            "integrated_initialize_propagates_composition_failure_without_installing",
+        ) {
+            return;
+        }
+        if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            return;
+        }
+        let game =
+            std::env::temp_dir().join(format!("ravel-integrated-refused-{}", std::process::id()));
+        std::fs::create_dir_all(&game).expect("game directory");
+        super::initialize(&game, Side::Client, Vec::new, false).expect("client process");
+        let (_, id, states) = member("broken", &["integrated_server"]);
+        let error = super::initialize_integrated(|_| {
+            vec![Member {
+                package: "{".to_owned(),
+                value: Box::new(Recording { id, states }),
+            }]
+        })
+        .expect_err("malformed package refuses composition");
+        assert!(matches!(error, super::LaunchError::Manifest(_)));
+        assert!(!ravel_bootstrap_runtime::integrated_installed());
+        super::initialize_integrated(|_| Vec::new()).expect("a corrected launch can retry");
+        std::fs::remove_dir_all(game).expect("remove game directory");
+    }
 
     #[test]
     fn initialize_only_publishes_resource_packs_for_modern_adapters() {

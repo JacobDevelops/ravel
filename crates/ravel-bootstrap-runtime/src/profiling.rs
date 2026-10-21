@@ -11,6 +11,7 @@ use ravel_observability::{Metric, ProfilingReport};
 
 use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
+use crate::settings::INTEGRATED_LABEL_SUFFIX;
 use crate::wire::{VERSION, count, field, flag};
 
 /// The system property a launch turns the collectors on with.
@@ -62,7 +63,7 @@ fn render(report: &ProfilingReport, integrated: Option<&ProfilingReport>) -> Str
     ) {
         if server {
             label.clear();
-            write!(label, "{} [integrated-server]", entry.mod_id)
+            write!(label, "{}{INTEGRATED_LABEL_SUFFIX}", entry.mod_id)
                 .expect("writing into a String cannot fail");
             field(&mut out, &label);
         } else {

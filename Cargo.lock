@@ -339,6 +339,7 @@ dependencies = [
  "ravel-core",
  "ravel-host-runtime",
  "ravel-loader",
+ "ravel-minecraft-adapter",
  "ravel-package",
  "semver",
  "sha2",
@@ -355,6 +356,7 @@ dependencies = [
  "ravel-core",
  "ravel-host-runtime",
  "ravel-loader",
+ "ravel-minecraft-adapter",
  "ravel-package",
  "ravel-test-mod-audio",
  "ravel-test-mod-client-only",
@@ -391,6 +393,7 @@ dependencies = [
  "ravel-host-api",
  "ravel-host-runtime",
  "ravel-loader",
+ "ravel-minecraft-adapter",
  "ravel-observability",
  "ravel-pack",
  "ravel-package",
@@ -503,6 +506,7 @@ dependencies = [
  "ravel-data",
  "ravel-host-api",
  "ravel-loader",
+ "ravel-minecraft-adapter",
  "ravel-observability",
  "ravel-package",
  "ravel-resolve",
@@ -538,6 +542,7 @@ dependencies = [
 name = "ravel-minecraft-adapter"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
  "ravel-minecraft",
  "ravel-minecraft-generate",
 ]

@@ -1,12 +1,28 @@
 #![forbid(unsafe_code)]
 
-//! Generated version data in [`pinned`] and reviewed hook lookup through [`target`].
+//! Generated version data, admission environment identity, and reviewed hook lookup.
 
 use ravel_minecraft::{HookId, HookTarget};
 
 /// The target table generated from the pinned version's reviewed inventory.
 pub mod pinned {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
+/// Returns the pinned runtime environment for admission and failure reports.
+///
+/// # Panics
+/// Panics if this crate's package version is not valid semver.
+#[must_use]
+pub fn environment() -> ravel_core::FailureEnvironment {
+    ravel_core::FailureEnvironment {
+        ravel: env!("CARGO_PKG_VERSION")
+            .parse()
+            .expect("every crate in this workspace carries a semver version"),
+        minecraft: pinned::MINECRAFT_VERSION.to_owned(),
+        platform: std::env::consts::OS.to_owned(),
+        architecture: std::env::consts::ARCH.to_owned(),
+    }
 }
 
 /// Finds a reviewed hook in the generated target table.
@@ -24,6 +40,16 @@ mod tests {
     use ravel_minecraft_generate::{Kind, hook_inventory};
 
     use super::{pinned, target};
+
+    #[test]
+    fn admission_environment_identifies_the_selected_adapter_and_process() {
+        let environment = super::environment();
+
+        assert_eq!(environment.ravel.to_string(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(environment.minecraft, pinned::MINECRAFT_VERSION);
+        assert_eq!(environment.platform, std::env::consts::OS);
+        assert_eq!(environment.architecture, std::env::consts::ARCH);
+    }
 
     #[test]
     fn the_adapter_reports_the_version_its_data_directory_is_named_for() {

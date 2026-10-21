@@ -101,7 +101,7 @@ public final class RavelModsScreen extends RavelScrolling {
             }
         }
         for (Entry entry : configurable()) {
-            rows.add(Row.settings(entry.modId));
+            rows.add(Row.settings(entry.settingsIdentity, entry.modId));
         }
 
         int shown = shown();
@@ -115,8 +115,8 @@ public final class RavelModsScreen extends RavelScrolling {
             if (row.owner == null) {
                 {{Screen#addRenderableWidget}}(label(row.text, y));
             } else {
-                {{Button}} entry = settings(row.owner, y);
-                drawnSettings.put(row.owner, entry);
+                {{Button}} entry = settings(row.owner, row.text, y);
+                drawnSettings.put(row.text, entry);
                 {{Screen#addRenderableWidget}}(entry);
             }
             y += Layout.ROW;
@@ -272,10 +272,10 @@ public final class RavelModsScreen extends RavelScrolling {
                 centre(), y, box, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text), {{Screen#font}});
     }
 
-    private {{Button}} settings(String owner, int y) {
+    private {{Button}} settings(String owner, String label, int y) {
         final String named = owner;
         return {{Button}}.{{Button#builder}}(
-                        {{Component}}.{{Component#literal}}("Settings: " + named),
+                        {{Component}}.{{Component#literal}}("Settings: " + label),
                         new {{Button$OnPress}}() {
                             @Override
                             public void {{Button$OnPress#onPress}}({{Button}} pressed) {
@@ -310,12 +310,12 @@ public final class RavelModsScreen extends RavelScrolling {
             return new Row(text, null);
         }
 
-        static Row settings(String owner) {
-            return new Row(null, owner);
+        static Row settings(String owner, String label) {
+            return new Row(label, owner);
         }
 
         String label() {
-            return owner == null ? text : "Settings: " + owner;
+            return owner == null ? text : "Settings: " + text;
         }
     }
 
@@ -371,6 +371,7 @@ public final class RavelModsScreen extends RavelScrolling {
 
         int position;
         String modId = "";
+        String settingsIdentity = "";
         String state = "";
         String requirement = "";
         boolean loadsHere;
@@ -409,7 +410,8 @@ public final class RavelModsScreen extends RavelScrolling {
             entry.actionable = act.equals("true");
             entry.configurable = configurable.equals("true");
             if (failures == 0) {
-                return entry;
+                entry.settingsIdentity = wire.field();
+                return entry.settingsIdentity == null ? null : entry;
             }
 
             entry.failed = true;
@@ -437,7 +439,8 @@ public final class RavelModsScreen extends RavelScrolling {
             }
             entry.chain = chain;
             entry.detail = wire.field();
-            return entry.detail == null ? null : entry;
+            entry.settingsIdentity = wire.field();
+            return entry.detail == null || entry.settingsIdentity == null ? null : entry;
         }
 
         public int position() {

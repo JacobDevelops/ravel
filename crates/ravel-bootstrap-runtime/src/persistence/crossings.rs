@@ -1,11 +1,11 @@
-//! JNI input admission and wire encoding for world persistence and data packs.
+//! JNI input admission and wire encoding for world persistence.
 
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{JNI_FALSE, jboolean, jint};
+use jni::sys::{JNI_FALSE, jboolean};
 use jni::{Env, EnvUnowned};
 use ravel_save::{MAX_AGGREGATE_BYTES, SavedDataError};
 
-use super::{OpenOutcome, SaveOutcome, StagedPack, open_world_data, runtime, save_world_data};
+use super::{OpenOutcome, SaveOutcome, open_world_data, save_world_data};
 use crate::guard::{HookError, hand_document, text};
 
 enum Incoming {
@@ -108,55 +108,6 @@ pub fn ravel_save_world_persistence<'local>(
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-/// Writes the world data pack before pack discovery; failures become notices.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteWorldDatapack")]
-pub fn ravel_write_world_datapack<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    world: JString<'local>,
-) {
-    env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
-        let world = text(env, &world)?;
-        super::write_world_datapack(std::path::Path::new(&world));
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
-}
-
-/// Stages the data pack and returns 0 for absent, 1 for unchanged, or 2 for changed.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteStagedDatapack")]
-pub fn ravel_write_staged_datapack<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    directory: JString<'local>,
-) -> jint {
-    env.with_env(|env: &mut Env<'local>| -> Result<jint, HookError> {
-        let directory = text(env, &directory)?;
-        let Ok(runtime) = runtime() else {
-            return Ok(jint::from(StagedPack::Nothing));
-        };
-        Ok(jint::from(
-            runtime.write_staged_pack(std::path::Path::new(&directory)),
-        ))
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-/// Returns the game-facing identifier of Ravel's data pack.
-///
-/// # Panics
-/// Panics are translated into a JVM exception by the JNI guard.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelPackId")]
-pub fn ravel_pack_id<'local>(env: EnvUnowned<'local>, _class: JClass<'local>) -> JString<'local> {
-    hand_document(env, |_| Ok(Some(crate::packs::pack_id().to_owned())))
 }
 
 #[cfg(test)]

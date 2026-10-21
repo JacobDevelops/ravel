@@ -26,7 +26,7 @@ fn id(text: &str) -> ModId {
 }
 
 fn environment() -> ravel_core::FailureEnvironment {
-    let running = ravel_bootstrap_runtime::environment();
+    let running = ravel_minecraft_adapter::environment();
     ravel_core::FailureEnvironment {
         ravel: running.ravel,
         minecraft: running.minecraft,
@@ -458,7 +458,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
             .expect("all active mods have hosts"),
         BTreeMap::new(),
         |_| Ok(None),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect_err("settings nothing reads are settings a player changes with no effect");
 
@@ -475,7 +475,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
             .expect("all active mods have hosts"),
         BTreeMap::new(),
         |_| Ok(None),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect("a mod with no settings has nothing to read");
     assert_eq!(configured.order(), []);
@@ -508,7 +508,7 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
             .expect("all active mods have hosts"),
         BTreeMap::from([(owner.clone(), Ok(pack))]),
         |_| Ok(Some(player.clone())),
-        &ravel_bootstrap_runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect("a dropped value is not a refusal");
 

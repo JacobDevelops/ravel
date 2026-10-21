@@ -100,7 +100,7 @@ fn supplied(mods: &[(&str, &[(&str, &str)])]) -> Supplied {
     let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
     open_resources(
         &mut LoadedMods::new(&mut machine, &mut hosts).expect("complete host set"),
-        &crate::runtime::environment(),
+        &ravel_minecraft_adapter::environment(),
     )
     .expect("every declaration is its own")
 }

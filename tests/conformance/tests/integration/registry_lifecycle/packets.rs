@@ -22,7 +22,7 @@ fn assert_declined_packets_keep_running<M: Mod>(
         .expect("the owner has a shipped manifest");
     let mut machine =
         LifecycleMachine::new(side, vec![lifecycle_entry(&manifest)]).expect("a legal lifecycle");
-    let environment = ravel_bootstrap_runtime::environment();
+    let environment = ravel_minecraft_adapter::environment();
     let mut mods: [&mut dyn Mod; 1] = [&mut owner];
     start_all(
         &mut LoadedMods::new(&mut machine, &mut mods).expect("the owner is hosted"),

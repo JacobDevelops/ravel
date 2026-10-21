@@ -23,17 +23,21 @@ public final class LegacyScreensMain {
     }
 
     private static void locks() throws Exception {
-        Object screen = LegacyScreens.openSettings("configuration", null);
+        require(Hook.ravelSettingsDocument("configuration [integrated-server]") == null,
+                "a presentation suffix cannot select a settings runtime");
+        require(Hook.ravelSettingsDocument("process:configuration [integrated-server]") == null,
+                "a typed route still requires a canonical mod identifier");
+        Object screen = LegacyScreens.openSettings("process:configuration", null);
         require(((List<?>) call(screen, "keys")).contains("dedicated.motd"), "actual server declaration supplies locked row");
         require(Boolean.FALSE.equals(call(screen, "editable", "dedicated.motd")), "real pack fixes the server setting");
         String original = (String) call(screen, "value", "dedicated.motd");
         require("Pack".equals(original), "displayed lock value comes from actual pack file");
         require(Boolean.FALSE.equals(call(screen, "edit", "dedicated.motd", "forbidden")), "Java rejects locked edit");
         require(original.equals(call(screen, "value", "dedicated.motd")), "locked editor value remains unchanged");
-        String response = Hook.ravelSaveSettings("1:113:configuration1:114:dedicated.motd9:forbidden");
+        String response = Hook.ravelSaveSettings("1:221:process:configuration1:114:dedicated.motd9:forbidden");
         require(!"1:0".equals(response) && response.contains("dedicated.motd"), "native save independently refuses locked edit");
         call(screen, "cancel");
-        Object reopened = LegacyScreens.openSettings("configuration", null);
+        Object reopened = LegacyScreens.openSettings("process:configuration", null);
         require(original.equals(call(reopened, "value", "dedicated.motd")), "refused native lock edit cannot persist");
         call(reopened, "cancel");
         System.out.println("legacy-settings-lock=passed");
@@ -42,7 +46,7 @@ public final class LegacyScreensMain {
     private static void settings() throws Exception {
         // This offline fixture skips client startup, which normally writes the save-admission marker.
         Files.writeString(Path.of("options.txt"), "version:1\n", StandardOpenOption.CREATE_NEW);
-        Object screen = LegacyScreens.openSettings("configuration", null);
+        Object screen = LegacyScreens.openSettings("process:configuration", null);
         require(screen != null, "real generated settings screen opens");
         require("configuration".equals(call(screen, "owner")), "native settings owner");
         Object keys = call(screen, "keys");
@@ -64,7 +68,7 @@ public final class LegacyScreensMain {
         call(screen, "edit", "client.enabled", "false");
         call(screen, "cancel");
         require(Boolean.TRUE.equals(call(screen, "finished")), "cancel ends session");
-        Object reopened = LegacyScreens.openSettings("configuration", null);
+        Object reopened = LegacyScreens.openSettings("process:configuration", null);
         require(original.equals(call(reopened, "value", "client.enabled")), "cancel does not cross native save");
         call(reopened, "edit", "client.enabled", "not-a-boolean");
         require(Boolean.FALSE.equals(call(reopened, "save")), "native schema refuses invalid edit");
@@ -72,7 +76,7 @@ public final class LegacyScreensMain {
         require(Boolean.FALSE.equals(call(reopened, "finished")), "refusal keeps editor open");
         call(reopened, "edit", "client.enabled", "false");
         require(Boolean.TRUE.equals(call(reopened, "save")), "native valid edit saves: " + call(reopened, "refused"));
-        Object saved = LegacyScreens.openSettings("configuration", null);
+        Object saved = LegacyScreens.openSettings("process:configuration", null);
         require("false".equals(call(saved, "value", "client.enabled")), "reopen observes native saved value");
         // Restore the fixture through exactly the same public save path.
         call(saved, "edit", "client.enabled", original);
@@ -93,7 +97,7 @@ public final class LegacyScreensMain {
             }
         }
         require(configuration, "configuration fixture appears in mod menu");
-        Object settings = call(mods, "settings", "configuration");
+        Object settings = call(mods, "settings", "process:configuration");
         require("configuration".equals(call(settings, "owner")), "menu opens settings for selected native owner");
         Object refusal = LegacyScreens.openWorldRefused("legacy world admission refused");
         require("legacy world admission refused".equals(call(refusal, "diagnostic")), "native refusal presentation");

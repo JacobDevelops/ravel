@@ -150,6 +150,11 @@ final class LegacyGeometryProof {
                 generation, LegacyRenderer.ownerThread(), draw);
     }
 
+    static long[] compareBaked(int[] emitted, byte[] oracle) {
+        requireOwner(LegacyRenderer.currentGeneration());
+        return (long[]) call("compareBaked", new Class<?>[]{int[].class, byte[].class}, emitted, oracle);
+    }
+
     static void bindVanillaBuffer(int buffer) {
         long generation = LegacyRenderer.currentGeneration();
         requireOwner(generation);
@@ -177,7 +182,13 @@ final class LegacyGeometryProof {
                 if (index != 0) json.append(',');
                 json.append('"').append(NAMES[index]).append("\":").append(values[index]);
             }
-            json.append("}}\n");
+            json.append("},\"bakedMetrics\":[");
+            long[] baked = LegacyBakedCapture.metrics();
+            for (int index = 0; index < baked.length; index++) {
+                if (index != 0) json.append(',');
+                json.append(baked[index]);
+            }
+            json.append("]}\n");
             Path path = Path.of(destination);
             if (path.toAbsolutePath().getParent() != null) Files.createDirectories(path.toAbsolutePath().getParent());
             Files.writeString(path, json);

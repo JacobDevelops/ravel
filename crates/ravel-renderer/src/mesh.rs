@@ -272,7 +272,7 @@ impl MeshResult {
     pub fn is_complete(&self) -> bool {
         self.unsupported.is_empty()
     }
-    /// Open-space connectivity derived from the captured opaque predicates.
+    /// Open-space reachability derived from the captured opaque predicates.
     #[must_use]
     pub fn visibility(&self) -> Visibility {
         self.visibility

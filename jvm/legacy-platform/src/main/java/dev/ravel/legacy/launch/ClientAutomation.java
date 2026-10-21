@@ -485,15 +485,33 @@ final class ClientAutomation implements Runnable {
         long[] values = (long[]) rendererType().getMethod("bakedMetrics").invoke(null);
         String[] names = {"comparedSections", "busySections", "unsupportedSections", "staleSections",
                 "quads", "mismatchedWords", "cpuNanos", "maxInputBytes", "maxOutputBytes",
-                "animatedSpriteObservations"};
+                "animatedSpriteObservations", "firstMismatchedWord", "resourceGeneration", "atlasGeneration",
+                "glComparedSections", "glStaleSections", "glUnsupportedSections",
+                "glUploadedBytes", "glPeakBufferBytes", "glUploadNanos", "glComparisonNanos"};
         require(values.length == names.length, "Baked metric schema mismatch");
-        require(values[0] > 0 && values[4] > 0 && values[5] == 0,
+        require(values[0] > 0 && values[4] > 0 && values[5] == 0 && values[10] == -1,
                 "Baked CPU comparison missing or differs from vanilla");
         StringBuilder json = new StringBuilder("{\"comparison\":\"Rust-emission-vs-final-vanilla-BLOCK-words\","
-                + "\"drawable\":false,\"maxQuadsPerSection\":8192");
+                + "\"drawable\":true,\"worldSubstitution\":false,\"maxQuadsPerSection\":8192");
         for (int i = 0; i < names.length; i++)
             json.append(",\"").append(names[i]).append("\":").append(values[i]);
-        return json.append('}').toString();
+        long[][] goldens = (long[][]) rendererType().getMethod("bakedGoldens").invoke(null);
+        json.append(",\"goldens\":[");
+        String[] scenes = {"opaque", "cutout-mipped", "cutout", "translucent", "animated", "staged-reload", "unload"};
+        for (int scene = 0; scene < scenes.length; scene++) {
+            if (scene > 0) json.append(',');
+            long[] row = goldens[scene];
+            String reason = scene == 6 ? "retired-generation-drawing-refused-no-post-unload-pixels"
+                    : row[0] == 0 ? "no-admitted-complete-baked-section-for-this-scene"
+                    : row[4] == 0 || row[5] == 0 ? "no-foreground-in-section-local-negative-z-projection"
+                    : scene == 4 ? "animated-sprite-observed-in-mixed-section-not-isolated-animation-parity"
+                    : scene == 5 ? "post-reload-section-comparison-not-controlled-staged-atlas-pixel-scene"
+                    : "section-layer-comparison-not-controlled-full-world-golden";
+            json.append("{\"scene\":\"").append(scenes[scene])
+                    .append("\",\"status\":\"unsupported\",\"reason\":\"").append(reason)
+                    .append("\",\"values\":").append(Arrays.toString(row)).append('}');
+        }
+        return json.append("]}").toString();
     }
 
     private String snapshotProof() throws Exception {

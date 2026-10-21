@@ -207,4 +207,41 @@ def geometry_proof(path: Path, started: float) -> Proof:
     coverage = sum((pixels[0][i] != 0) != (pixels[2][i] != 0) for i in range(0, PROOF_IMAGE_BYTES, 4))
     if rgba != vanilla['rgbaMismatchPixels'] or coverage != vanilla['coverageMismatchPixels']:
         raise RuntimeError('Vanilla mismatch counts do not match raw pixels')
+    baked_proof(proof['baked'])
     return proof
+
+
+def baked_proof(proof: Proof) -> None:
+    labels = {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
+              'worldSubstitution': False, 'maxQuadsPerSection': 8192}
+    nonnegative = ('busySections', 'unsupportedSections', 'staleSections', 'animatedSpriteObservations',
+                   'glStaleSections', 'glUnsupportedSections')
+    positive = ('comparedSections', 'quads', 'cpuNanos', 'maxInputBytes', 'maxOutputBytes',
+                'resourceGeneration', 'atlasGeneration', 'glComparedSections',
+                'glUploadedBytes', 'glPeakBufferBytes', 'glUploadNanos', 'glComparisonNanos')
+    if not (all(proof.get(key) == value and type(proof.get(key)) is type(value) for key, value in labels.items())
+            and all(type(proof.get(key)) is int and proof[key] >= 0 for key in nonnegative)
+            and all(type(proof.get(key)) is int and proof[key] > 0 for key in positive)
+            and type(proof.get('mismatchedWords')) is int and proof['mismatchedWords'] == 0
+            and type(proof.get('firstMismatchedWord')) is int and proof['firstMismatchedWord'] == -1
+            and proof['resourceGeneration'] == proof['atlasGeneration']
+            and proof['maxInputBytes'] <= 8_000_000 and proof['maxOutputBytes'] <= 4_000_000
+            and proof['glComparedSections'] <= proof['comparedSections']
+            and proof['glPeakBufferBytes'] <= 8192 * 112 and proof['glPeakBufferBytes'] % 112 == 0
+            and proof['glUploadedBytes'] % 224 == 0 and proof['glUploadedBytes'] <= proof['quads'] * 224):
+        raise RuntimeError('Bounded independently atlas-scoped Rust baked comparison missing or mismatched')
+    scenes = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'staged-reload', 'unload')
+    rows = proof.get('goldens')
+    if not isinstance(rows, list) or len(rows) != len(scenes):
+        raise RuntimeError('Complete baked golden scene matrix missing')
+    for expected, row in zip(scenes, rows):
+        if not isinstance(row, dict):
+            raise RuntimeError(f'Malformed baked golden row: {expected}')
+        values = row.get('values')
+        if not (row.get('scene') == expected and row.get('status') == 'unsupported'
+                and isinstance(row.get('reason'), str) and row['reason']
+                and isinstance(values, list) and len(values) == 7
+                and all(type(value) is int and value >= 0 for value in values)
+                and all(value <= values[0] * PROOF_IMAGE_PIXELS for value in values[1:6])
+                and values[6] % 4 == 0 and values[6] <= values[0] * 8192 * 4):
+            raise RuntimeError(f'Untruthful or malformed baked golden disposition: {expected}')

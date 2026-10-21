@@ -97,7 +97,13 @@ impl Renderer {
         generation > 0 && generation == self.generation
     }
 
-    fn admits(&self, event: jint, generation: jlong, thread_id: jlong, on_renderer_thread: bool) -> bool {
+    fn admits(
+        &self,
+        event: jint,
+        generation: jlong,
+        thread_id: jlong,
+        on_renderer_thread: bool,
+    ) -> bool {
         if !matches!(
             event,
             RELOAD | UNLOAD | FRAME | TERRAIN | LAYER | UPDATE | COMPILE | TASK | UPLOAD

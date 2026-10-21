@@ -38,6 +38,7 @@ server="${entries[1]}"
 
 # Real generated inventory: every method must contain native and adapter calls.
 (cd "$work" && "${native[@]}" -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
+(cd "$work" && "${native[@]}" -Dravel.renderer=geometry-proof -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.ExecutableMain
 # ExecutableMain checks the actual legacy fire-damage refusal crossing.
 section refusal

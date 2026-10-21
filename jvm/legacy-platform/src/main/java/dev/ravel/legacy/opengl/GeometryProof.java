@@ -43,6 +43,8 @@ public final class GeometryProof {
     private static boolean capabilityRefused;
     private static int textureUnits;
     private static int depth;
+    private static byte[] bakedPixels;
+    private static float[] bakedDepth;
 
     private GeometryProof() { }
 
@@ -121,6 +123,10 @@ public final class GeometryProof {
     }
 
     private static void initialize() {
+        if (bakedPixels == null) {
+            bakedPixels = new byte[PIXELS * 4];
+            bakedDepth = new float[PIXELS];
+        }
         GLCapabilities caps = GL.getCapabilities();
         if (context != null) {
             if (context != caps) throw new IllegalStateException("Geometry GL context changed without cleanup");
@@ -263,6 +269,151 @@ public final class GeometryProof {
         return count;
     }
 
+    public static synchronized long[] compareBaked(int[] emitted, byte[] oracle) {
+        if (emitted.length != 4 + 8192 * 28 || oracle.length != 16 + 8192 * 112)
+            throw new IllegalArgumentException("Invalid bounded baked output");
+        if (capabilityRefused) return new long[]{-1};
+        try {
+            initialize();
+        } catch (CapabilityUnsupported unsupported) {
+            capabilityRefused = true;
+            backend = "unsupported";
+            return new long[]{-1};
+        }
+        if (textureUnits < 2) return new long[]{-1};
+        int active = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        int atlas = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        int lightmap = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GL13.glActiveTexture(active);
+        if (atlas == 0 || lightmap == 0) return new long[]{-1};
+        int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+        int buffer = generate();
+        long[] result = new long[32];
+        long started = System.nanoTime();
+        int offset = 0;
+        try {
+            for (int layer = 0; layer < 4; layer++) {
+                int quads = emitted[layer];
+                if (quads < 0 || quads > 8192 - offset / 112 || quads != littleInt(oracle, layer * 4))
+                    throw new IllegalArgumentException("Baked layer counts differ from final buffers");
+                if (quads > 0) bakedLayer(emitted, oracle, offset, quads, layer, buffer, atlas, lightmap, result);
+                offset += quads * 112;
+            }
+            result[31] = System.nanoTime() - started;
+            return result;
+        } finally {
+            bind(GL15.GL_ARRAY_BUFFER, previous);
+            delete(buffer);
+        }
+    }
+
+    private static int littleInt(byte[] bytes, int offset) {
+        return (bytes[offset] & 255) | (bytes[offset + 1] & 255) << 8
+                | (bytes[offset + 2] & 255) << 16 | bytes[offset + 3] << 24;
+    }
+
+    private static void bakedLayer(int[] emitted, byte[] oracle, int offset, int quads, int layer,
+            int buffer, int atlas, int lightmap, long[] result) {
+        int bytes = quads * 112;
+        result[28] += 2L * bytes;
+        result[29] = Math.max(result[29], bytes);
+        staging.clear().limit(bytes);
+        staging.asIntBuffer().put(emitted, 4 + offset / 4, bytes / 4);
+        bind(GL15.GL_ARRAY_BUFFER, buffer);
+        long uploadStarted = System.nanoTime();
+        data(GL15.GL_ARRAY_BUFFER, staging);
+        result[30] += System.nanoTime() - uploadStarted;
+        bakedSubmit(buffer, quads * 4, layer, atlas, lightmap);
+        readback.get(0, bakedPixels);
+        readback.asFloatBuffer().get(PIXELS, bakedDepth);
+        staging.clear().put(oracle, 16 + offset, bytes).flip();
+        uploadStarted = System.nanoTime();
+        data(GL15.GL_ARRAY_BUFFER, staging);
+        result[30] += System.nanoTime() - uploadStarted;
+        bakedSubmit(buffer, quads * 4, layer, atlas, lightmap);
+        bakedDifference(result, layer * 7, quads * 4);
+    }
+
+    private static void bakedDifference(long[] result, int base, int vertices) {
+        result[base] = 1;
+        result[base + 6] = vertices;
+        for (int pixel = 0; pixel < PIXELS; pixel++) {
+            boolean differs = false, actual = false, reference = false;
+            for (int channel = 0; channel < 4; channel++) {
+                int index = pixel * 4 + channel;
+                byte value = readback.get(index);
+                differs |= bakedPixels[index] != value;
+                if (channel == 3) {
+                    actual |= bakedPixels[index] != 0;
+                    reference |= value != 0;
+                }
+            }
+            if (differs) result[base + 1]++;
+            if (actual != reference) result[base + 2]++;
+            if (Math.abs(bakedDepth[pixel] - readback.getFloat(PIXELS * 4 + pixel * 4)) > 2.0 / 0xffffff)
+                result[base + 3]++;
+            if (actual) result[base + 4]++;
+            if (reference) result[base + 5]++;
+        }
+    }
+
+    private static void bakedSubmit(int buffer, int vertices, int layer, int atlas, int lightmap) {
+        try (State state = new State()) {
+            state.prepare();
+            GL11.glClearColor(0, 0, 0, 0);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            bind(GL15.GL_ARRAY_BUFFER, buffer);
+            GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+            GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
+            GL11.glVertexPointer(3, GL11.GL_FLOAT, 28, 0L);
+            GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12L);
+            bakedTexture(GL13.GL_TEXTURE0, atlas, GL11.GL_FLOAT, 16L);
+            bakedTexture(GL13.GL_TEXTURE1, lightmap, GL11.GL_SHORT, 24L);
+            GL11.glEnable(GL11.GL_ALPHA_TEST);
+            GL11.glAlphaFunc(GL11.GL_GREATER, 0.1f);
+            if (layer == 3) {
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GL11.glDepthMask(false);
+            }
+            try {
+                GL11.glDrawArrays(GL11.GL_QUADS, 0, vertices);
+                readback.clear();
+                GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE,
+                        readback.slice(0, PIXELS * 4));
+                GL11.glReadPixels(0, 0, SIZE, SIZE, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT,
+                        readback.slice(PIXELS * 4, PIXELS * 4));
+            } finally {
+                resetBakedArrays();
+            }
+        }
+    }
+
+    private static void resetBakedArrays() {
+        GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
+        bind(GL15.GL_ARRAY_BUFFER, vertexBuffer);
+        GL11.glVertexPointer(3, GL11.GL_SHORT, MeshWire.SOLID_VERTEX_STRIDE, 0L);
+        GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12L);
+        GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
+        GL13.glClientActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glTexCoordPointer(2, GL11.GL_FLOAT, 28, 16L);
+        GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+        GL13.glClientActiveTexture(GL13.GL_TEXTURE1);
+        GL11.glTexCoordPointer(2, GL11.GL_SHORT, 28, 24L);
+        GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+    }
+
+    private static void bakedTexture(int unit, int texture, int type, long offset) {
+        GL13.glActiveTexture(unit);
+        GL13.glClientActiveTexture(unit);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+        GL11.glTexCoordPointer(2, type, 28, offset);
+    }
+
     private static float[] readDepth() {
         float[] result = new float[PIXELS];
         readback.asFloatBuffer().get(PIXELS, result);
@@ -364,6 +515,8 @@ public final class GeometryProof {
         vertexArray = 0;
         staging = readback = null;
         mesh = null;
+        bakedPixels = null;
+        bakedDepth = null;
         lastVanilla = null;
         context = null;
         capabilityRefused = false;

@@ -139,9 +139,36 @@ public final class GenericMain {
             }
     }
 
+    private static void bakedShapeRefusals() {
+        for (HookTarget hook : Hook.TARGETS) {
+            if (!hook.hookMethod().startsWith("legacyBaked")) continue;
+            rejectBakedShape(new HookTarget(hook.internalClass(), hook.member(), hook.descriptor(),
+                    true, hook.hookMethod(), hook.hookDescriptor()));
+            String descriptor = switch (hook.hookMethod()) {
+                case "legacyBakedQuad" -> "()[J";
+                case "legacyBakedVertices" -> "([J)V";
+                case "legacyBakedAo" -> hook.descriptor().replace("[F", "[I");
+                default -> "(I)V";
+            };
+            rejectBakedShape(new HookTarget(hook.internalClass(), hook.member(), descriptor,
+                    false, hook.hookMethod(), hook.hookDescriptor()));
+        }
+    }
+
+    private static void rejectBakedShape(HookTarget hook) {
+        Transformer transformer = new Transformer(new HookTarget[]{hook}, true);
+        byte[] original = target(hook);
+        require(transformer.transform(null, GenericMain.class.getClassLoader(), hook.internalClass(),
+                null, null, original) == null, "accepted baked descriptor drift " + hook);
+        require(!transformer.isInstalled(hook.hookMethod()) && transformer.rewrittenMethods() == 0
+                && transformer.transformedClasses() == 0 && !transformer.transformationFailures().isEmpty(),
+                "baked descriptor drift lost fail-closed evidence " + hook);
+    }
+
     public static void main(String[] arguments) {
         require(Hook.LEGACY_ADAPTER, "not the legacy adapter");
         missingEntryBeforeStartup();
+        bakedShapeRefusals();
         java.util.Set<String> required = new java.util.HashSet<>(java.util.List.of(
                 "legacyBootstrap", "legacyBlockRegister", "legacyItemRegister",
                 "legacyBlockStateFromMetadata", "legacyBlockMetadataFromState", "legacyItemMetadata",
@@ -154,16 +181,21 @@ public final class GenericMain {
                 "legacyRendererFrame", "legacyRendererTerrain", "legacyRendererLayer",
                 "legacyRendererUpdate", "legacyRendererCompile", "legacyRendererWorker",
                 "legacyRendererWorkerComplete", "legacyRendererUpload", "legacyRendererUnload",
-                "legacyRendererClose", "legacyRendererTaskCreate"));
+                "legacyRendererClose", "legacyRendererTaskCreate", "legacyBakedModel", "legacyBakedQuad",
+                "legacyBakedAo", "legacyBakedTint", "legacyBakedVertices", "legacyBakedLight",
+                "legacyBakedColor", "legacyBakedPosition"));
         for (HookTarget hook : Hook.TARGETS) required.remove(hook.hookMethod());
         require(required.isEmpty(), "missing original/supplemental legacy hooks: " + required);
         for (HookTarget hook : Hook.TARGETS) {
+            boolean dormant = hook.hookMethod().startsWith("legacyBaked")
+                    && !System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof");
             Transformer transformer = new Transformer(new HookTarget[] {hook}, true);
             byte[] original = target(hook);
             byte[] rewritten = transformer.transform(null, GenericMain.class.getClassLoader(),
                     hook.internalClass(), null, null, original);
-            require(rewritten != null && !Arrays.equals(original, rewritten), "unchanged " + hook);
-            ClassModel model = ClassFile.of().parse(rewritten);
+            require(dormant ? rewritten == null : rewritten != null && !Arrays.equals(original, rewritten),
+                    "unexpected baked default-off bytecode change or missing selected rewrite " + hook);
+            ClassModel model = ClassFile.of().parse(dormant ? original : rewritten);
             if (Agent.sideOf(hook.internalClass()) != Agent.UNNAMED) {
                 MethodModel entry = model.methods().stream().filter(candidate ->
                         candidate.methodName().equalsString("main")).findFirst().orElseThrow();
@@ -172,15 +204,22 @@ public final class GenericMain {
             }
             MethodModel method = model.methods().stream().filter(candidate ->
                     candidate.methodName().equalsString(hook.member())).findFirst().orElseThrow();
-            require(calls(method, "dev/ravel/jvm/Hook", hook.hookMethod()) == 1, "missing native prologue " + hook);
-            require(calls(method, "dev/ravel/jvm/Hook", "legacyObserve") == 1, "missing observation " + hook);
-            adapterFixtureTests(hook, method);
-            rendererFixtureTests(hook, method);
+            require(calls(method, "dev/ravel/jvm/Hook", hook.hookMethod()) == (dormant ? 0 : 1),
+                    "wrong native prologue selection " + hook);
+            require(calls(method, "dev/ravel/jvm/Hook", "legacyObserve") == (dormant ? 0 : 1),
+                    "wrong observation selection " + hook);
+            if (dormant) require(method.code().orElseThrow().elementStream()
+                    .noneMatch(element -> element instanceof InvokeInstruction), "dormant baked invocation " + hook);
+            else {
+                adapterFixtureTests(hook, method);
+                rendererFixtureTests(hook, method);
+            }
             for (String wrapper : java.util.List.of("Integer", "Long", "Float", "Double", "Boolean")) {
                 require(calls(method, "java/lang/" + wrapper, "valueOf") == 0, "boxing allocation " + hook);
             }
-            require(transformer.isInstalled(hook.hookMethod()) && transformer.rewrittenMethods() == 1
-                    && transformer.transformedClasses() == 1, "unpublished rewrite " + hook);
+            require(transformer.isInstalled(hook.hookMethod()) == !dormant
+                    && transformer.rewrittenMethods() == (dormant ? 0 : 1)
+                    && transformer.transformedClasses() == (dormant ? 0 : 1), "unpublished rewrite " + hook);
             require(transformer.transformationFailures().isEmpty(), "failed " + hook);
         }
         HookTarget good = new HookTarget("fixture/Partial", "run", "()V", true, "probe", "()V");

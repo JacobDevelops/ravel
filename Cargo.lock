@@ -601,6 +601,9 @@ dependencies = [
 [[package]]
 name = "ravel-renderer"
 version = "0.0.0"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "ravel-resolve"

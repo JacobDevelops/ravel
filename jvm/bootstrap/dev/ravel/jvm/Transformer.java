@@ -312,6 +312,7 @@ public final class Transformer implements ClassFileTransformer {
             PrependTransform prepend;
             try {
                 prepend = new PrependTransform(target);
+                if (prepend.dormantBaked) continue;
                 rewritten =
                         context.transformClass(
                                 context.parse(rewritten),
@@ -341,7 +342,7 @@ public final class Transformer implements ClassFileTransformer {
         if (rewrittenByClass != null && !matched.isEmpty()) {
             rewrittenByClass.put(internalName.replace('/', '.'), matched.size());
         }
-        return rewritten;
+        return matched.isEmpty() ? entered : rewritten;
     }
 
     /**
@@ -447,12 +448,15 @@ public final class Transformer implements ClassFileTransformer {
         private int paletteCalls;
         private boolean paletteField;
         private int legacyReceiver;
+        private final boolean dormantBaked;
 
         private PrependTransform(HookTarget target) {
             this.target = target;
             targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
             hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
             returnKind = TypeKind.from(targetType.returnType()).asLoadable();
+            dormantBaked = target.hookMethod().startsWith("legacyBaked")
+                    && !System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof");
             if (isTitleMenu(target)
                     && TypeKind.from(targetType.returnType()) != TypeKind.INT
                     && returnKind != TypeKind.VOID) {
@@ -877,6 +881,14 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyRendererUpload" -> "instance:(L)V";
                 case "legacyRendererUnload" -> "instance:(LL)V";
                 case "legacyRendererTaskCreate" -> "instance:(LLD)V";
+                case "legacyBakedModel" -> "instance:(LLLLLZJ)Z";
+                case "legacyBakedQuad" -> "instance:()L";
+                case "legacyBakedAo" -> "instance:(LLLLLL)V";
+                case "legacyBakedTint" -> "instance:(LLLI)I";
+                case "legacyBakedVertices" -> "instance:(L)V";
+                case "legacyBakedLight" -> "instance:(IIII)V";
+                case "legacyBakedColor" -> "instance:(FFFI)V";
+                case "legacyBakedPosition" -> "instance:(DDD)V";
                 default -> null;
             };
             if (expected == null) {
@@ -891,6 +903,18 @@ public final class Transformer implements ClassFileTransformer {
                 throw new IllegalArgumentException(target.hookMethod()
                         + " adapter capture requires " + expected + ", found " + actual);
             }
+            requireBakedArrayShape();
+        }
+
+        private void requireBakedArrayShape() {
+            String method = target.hookMethod();
+            boolean valid = switch (method) {
+                case "legacyBakedQuad" -> targetType.returnType().descriptorString().equals("[I");
+                case "legacyBakedVertices" -> targetType.parameterType(0).descriptorString().equals("[I");
+                case "legacyBakedAo" -> targetType.parameterType(4).descriptorString().equals("[F");
+                default -> true;
+            };
+            if (!valid) throw new IllegalArgumentException(method + " requires its reviewed primitive array");
         }
 
         private static String captureKind(ClassDesc type) {

@@ -95,7 +95,21 @@ def geometry_proof_fixture() -> renderer_proof.Proof:
             'depthMismatchPixels': 1, 'totalPixels': 4096},
         'metrics': metrics, 'info': ['geometry-proof', 'OpenGL15',
             'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'],
-        'finalMetrics': final}
+        'finalMetrics': final, 'baked': baked_proof_fixture()}
+
+
+def baked_proof_fixture() -> renderer_proof.Proof:
+    scenes = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'staged-reload', 'unload')
+    return {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
+            'worldSubstitution': False, 'maxQuadsPerSection': 8192, 'comparedSections': 1,
+            'busySections': 0, 'unsupportedSections': 0, 'staleSections': 0, 'quads': 1,
+            'mismatchedWords': 0, 'firstMismatchedWord': -1, 'cpuNanos': 1,
+            'maxInputBytes': 1000, 'maxOutputBytes': 1000, 'animatedSpriteObservations': 0,
+            'resourceGeneration': 1, 'atlasGeneration': 1, 'glComparedSections': 1,
+            'glStaleSections': 0, 'glUnsupportedSections': 0,
+            'glUploadedBytes': 224, 'glPeakBufferBytes': 112, 'glUploadNanos': 1, 'glComparisonNanos': 1,
+            'goldens': [{'scene': scene, 'status': 'unsupported', 'reason': 'no-controlled-scene',
+                        'values': [0] * 7} for scene in scenes]}
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -103,6 +117,28 @@ def png_chunk(kind: bytes, data: bytes) -> bytes:
 
 
 class RendererProofTests(unittest.TestCase):
+    def test_baked_requires_independent_atlas_and_observable_mismatch(self):
+        proof = baked_proof_fixture()
+        renderer_proof.baked_proof(proof)
+        for field, invalid in (('atlasGeneration', 2), ('resourceGeneration', 0),
+                               ('firstMismatchedWord', 0), ('mismatchedWords', 1),
+                               ('drawable', False), ('comparedSections', 0),
+                               ('glComparedSections', 0), ('glStaleSections', -1),
+                               ('glPeakBufferBytes', 8192 * 112 + 112),
+                               ('glUploadedBytes', 225), ('glUploadNanos', 0),
+                               ('maxInputBytes', 8_000_001), ('maxOutputBytes', 4_000_001),
+                               ('quads', True), ('goldens', [])):
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof | {field: invalid})
+
+    def test_baked_rejects_unmeasured_success_and_impossible_counts(self):
+        for change in ({'status': 'passed'}, {'reason': ''}, {'values': [0, 1, 0, 0, 0, 0, 0]},
+                       {'values': [1, 0, 0, 0, 0, 0, 3]}, {'scene': 'different'}):
+            proof = baked_proof_fixture()
+            proof['goldens'][0].update(change)
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof)
+
     def test_geometry_selection_requires_fresh_separate_proof(self):
         proof = renderer_proof_fixture()
         proof['mesh']['upload'] = 'bounded-native-wire-java-owned-offscreen-gl'

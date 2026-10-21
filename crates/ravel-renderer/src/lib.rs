@@ -90,12 +90,23 @@ impl std::fmt::Display for SnapshotError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidGeneration => formatter.write_str("invalid snapshot generation"),
-            Self::InvalidLengths { states, light, geometry } => write!(
-                formatter, "snapshot lengths must be {CELL_COUNT}: states={states}, light={light}, geometry={geometry}"
+            Self::InvalidLengths {
+                states,
+                light,
+                geometry,
+            } => write!(
+                formatter,
+                "snapshot lengths must be {CELL_COUNT}: states={states}, light={light}, geometry={geometry}"
             ),
-            Self::InvalidState { index, state } => write!(formatter, "invalid state identity {state} at cell {index}"),
-            Self::InvalidGeometry { index, flag } => write!(formatter, "invalid geometry flag {flag} at cell {index}"),
-            Self::InconsistentGeometry { state } => write!(formatter, "inconsistent geometry for state {state}"),
+            Self::InvalidState { index, state } => {
+                write!(formatter, "invalid state identity {state} at cell {index}")
+            }
+            Self::InvalidGeometry { index, flag } => {
+                write!(formatter, "invalid geometry flag {flag} at cell {index}")
+            }
+            Self::InconsistentGeometry { state } => {
+                write!(formatter, "inconsistent geometry for state {state}")
+            }
             Self::PaletteLimit => formatter.write_str("snapshot palette limit exceeded"),
         }
     }
@@ -117,7 +128,6 @@ impl Cell {
     pub fn state_key(self) -> u32 {
         self.state
     }
-
 
     /// Captured full-opaque predicate, with air key zero unconditionally empty.
     #[must_use]

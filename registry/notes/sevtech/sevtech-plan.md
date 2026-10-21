@@ -304,12 +304,16 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   physical trials (three off/three on) and separate strict reductions completed with disclosed
   frame/copy/upload/residency/RSS/heap/device-VRAM results and frozen-versus-live artifact differences.
   Stress p95/p99 trial-median changes were +3.19%/+0.32%, not a like-for-like vanilla speedup.
-  Slices 6–7 retain model/texture/AO/layer/reload fidelity and default cutover.
-  This is not full visual parity or demonstrated resource savings.
-  Slice 6 currently adds [owned baked inputs and independent CPU emission](baked-models.md);
-  this is not slice-6 acceptance. Its live integration, textured golden-scene matrix,
-  fresh selection-on/off trials and final gates remain unproven. Historical slice-5
-  measurements must not be carried forward as current slice-6 results.
+  Slice 6 adds [owned baked inputs, independent emission and shaded comparisons](baked-models.md):
+  actual model positions/atlas UVs, tint/AO multipliers, combined light and translucent order cross a
+  bounded primitive contract. Selected Java-owned offscreen GL submits those emitted vertices against
+  the live atlas/lightmap and compares final vanilla buffers and readbacks; vanilla still owns world drawing.
+  Default-off baked targets are not rewritten or installed. Matching admitted opaque/cutout section layers
+  do not establish full-world golden fidelity; unsupported translucent/animated/staged-reload/unload
+  dispositions remain explicit in the slice-6 note. Six new frozen RTX 5090 trials and separate strict
+  reductions are distinct from historical slice-5 results; physical selected trials admitted no complete
+  baked comparison, unlike Xvfb. Next is slice 7, including that admission gap, not automatic default
+  cutover or a demonstrated resource saving.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

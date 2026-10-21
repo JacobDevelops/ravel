@@ -130,7 +130,11 @@ fn capture_error(error: SnapshotError) -> Captured {
             geometry,
         } => failure(
             2,
-            [super::metric_long(states), super::metric_long(light), super::metric_long(geometry)],
+            [
+                super::metric_long(states),
+                super::metric_long(light),
+                super::metric_long(geometry),
+            ],
         ),
         SnapshotError::InvalidState { index, state } => {
             failure(3, [super::metric_long(index), jlong::from(state), 0])
@@ -374,11 +378,12 @@ mod tests {
         let first = Lifecycle::new(Renderer::new());
         let second = Lifecycle::new(Renderer::new());
         let receipt = admit(&first, 1, 1, || {
-            let nested = admit(&second, 1, 1, || Ok(Some(captured())))
-                .expect("independent admission");
+            let nested =
+                admit(&second, 1, 1, || Ok(Some(captured()))).expect("independent admission");
             assert!(nested.is_some());
             Ok(Some(captured()))
-        }).expect("outer admission");
+        })
+        .expect("outer admission");
         assert!(receipt.is_some());
     }
 

@@ -30,7 +30,10 @@ public final class LegacyRenderer {
                 LegacyMeshWork.frame();
             }
             case "legacyRendererTerrain" -> ownerEvent(4);
-            case "legacyRendererLayer" -> ownerEvent(5);
+            case "legacyRendererLayer" -> {
+                ownerEvent(5);
+                LegacyBakedCapture.draw();
+            }
             case "legacyRendererUpdate" -> {
                 ownerEvent(6);
                 LegacyMeshWork.poll();
@@ -84,6 +87,7 @@ public final class LegacyRenderer {
 
     public static long[] snapshotMetrics() { return LegacySectionSnapshot.metrics(); }
     public static long[] bakedMetrics() { return LegacyBakedCapture.metrics(); }
+    public static long[][] bakedGoldens() { return LegacyBakedCapture.goldens(); }
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }

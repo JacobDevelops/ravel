@@ -49,7 +49,7 @@ pub fn encode(completion: &Completion) -> Result<Vec<u8>, MeshError> {
     bytes.extend_from_slice(&VERSION.to_le_bytes());
     bytes.extend_from_slice(&completion.generation.to_le_bytes());
     bytes.extend_from_slice(&completion.job_id.to_le_bytes());
-    let status = completion.outcome() as u32;
+    let status = completion.outcome().code();
     for value in [status, count(vertices)?, count(indices)?, count(materials)?] {
         bytes.extend_from_slice(&value.to_le_bytes());
     }

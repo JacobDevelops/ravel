@@ -129,7 +129,11 @@ def main() -> None:
     sections = set()
     if section_record.is_file() and section_record.stat().st_mtime >= started:
         sections = set(re.split(r'[\s,]+', section_record.read_text().strip()))
-    missing_hooks = sorted(name for name, count in hooks.items() if count == 0)
+    dormant_hooks = sorted(name for name in hooks if name.startswith('legacy.baked-')
+                           and os.environ.get('RAVEL_LEGACY_RENDERER', 'vanilla') == 'vanilla')
+    if any(hooks[name] != 0 for name in dormant_hooks):
+        errors.append('Default-off baked hooks unexpectedly crossed native instrumentation')
+    missing_hooks = sorted(name for name, count in hooks.items() if count == 0 and name not in dormant_hooks)
     missing_sections = sorted(SECTIONS - sections)
     passed = (not errors and not missing_hooks and not missing_sections and harness.returncode == 0
               and all(process['exit'] == 0 for process in processes))
@@ -138,6 +142,7 @@ def main() -> None:
                                      'supplementalHooks': {k: v for k, v in hooks.items() if k in SUPPLEMENTAL},
                                      'sections': sorted(sections), 'persistence': persistence,
                                      'renderer': renderer,
+                                     'dormantDefaultOffHooks': dormant_hooks,
                                      'missingHooks': missing_hooks, 'missingSections': missing_sections,
                                      'errors': errors, 'passed': passed}, indent=2) + '\n').encode())
     if not passed:

@@ -93,6 +93,17 @@ pub enum Outcome {
     Failed = 2,
 }
 
+impl Outcome {
+    /// Stable metadata and geometry-wire discriminant.
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::Complete => 0,
+            Self::Incomplete => 1,
+            Self::Failed => 2,
+        }
+    }
+}
+
 /// Sole owned publication for one admitted key.
 #[derive(Debug)]
 pub struct Completion {
@@ -122,7 +133,6 @@ impl Completion {
         }
     }
 }
-
 
 /// Bounded scalar counters; duration/output totals saturate rather than grow storage.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -157,7 +167,7 @@ pub struct WorkerStats {
 
 struct Job {
     snapshot: SectionSnapshot,
-    job_id: u64,
+    id: u64,
     admitted: Instant,
 }
 
@@ -172,7 +182,7 @@ impl Slot {
     fn job_id(&self) -> Option<u64> {
         match self {
             Self::Vacant => None,
-            Self::Queued(job) => Some(job.job_id),
+            Self::Queued(job) => Some(job.id),
             Self::Running(job_id) | Self::Completed(job_id) => Some(*job_id),
         }
     }
@@ -284,7 +294,7 @@ impl WorkerPool {
             .max(state.stats.reserved_bytes);
         state.slots[index] = Slot::Queued(Job {
             snapshot,
-            job_id,
+            id: job_id,
             admitted: Instant::now(),
         });
         drop(state);
@@ -333,11 +343,9 @@ impl WorkerPool {
         publish: impl FnOnce(Option<&Completion>) -> T,
     ) -> T {
         self.peek_ready(|ready| {
-            publish(
-                ready.iter().flatten().copied().find(|completion| {
-                    completion.generation == generation && completion.job_id == job_id
-                }),
-            )
+            publish(ready.iter().flatten().copied().find(|completion| {
+                completion.generation == generation && completion.job_id == job_id
+            }))
         })
     }
 
@@ -575,7 +583,7 @@ fn take_job(shared: &Shared) -> Option<(usize, Job)> {
         if let Some(index) = index {
             let slot = std::mem::replace(&mut state.slots[index], Slot::Vacant);
             if let Slot::Queued(job) = slot {
-                state.slots[index] = Slot::Running(job.job_id);
+                state.slots[index] = Slot::Running(job.id);
                 return Some((index, job));
             }
         }
@@ -589,7 +597,7 @@ fn take_job(shared: &Shared) -> Option<(usize, Job)> {
 fn execute(shared: &Shared, index: usize, job: Job) -> Completion {
     let queue_wait_nanos = nanos(job.admitted.elapsed().as_nanos());
     let started = Instant::now();
-    let result = mesh(&job.snapshot, job.job_id, || {
+    let result = mesh(&job.snapshot, job.id, || {
         shared.generation.load(Ordering::Acquire) != job.snapshot.generation()
             || shared.cancelled[index].load(Ordering::Acquire)
     });
@@ -600,7 +608,7 @@ fn execute(shared: &Shared, index: usize, job: Job) -> Completion {
     drop(job.snapshot);
     Completion {
         generation,
-        job_id: job.job_id,
+        job_id: job.id,
         result,
         queue_wait_nanos,
         mesh_nanos,

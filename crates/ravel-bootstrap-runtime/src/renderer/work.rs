@@ -315,7 +315,7 @@ fn completion_values(completion: &Completion) -> [jlong; 11] {
     [
         super::metric_long(completion.generation),
         super::metric_long(completion.job_id),
-        jlong::from(completion.outcome() as u32),
+        jlong::from(completion.outcome().code()),
         super::metric_long(completion.queue_wait_nanos),
         super::metric_long(completion.mesh_nanos),
         super::metric_long(completion.output_bytes),
@@ -330,8 +330,9 @@ fn completion_values(completion: &Completion) -> [jlong; 11] {
 fn statistics(renderer: &Renderer) -> [jlong; 18] {
     let stats = renderer.workers.as_ref().map(WorkerPool::stats);
     let stats = stats.as_ref().or(renderer.retired_stats.as_ref());
-    let stats =
-        stats.filter(|stats| renderer.draining || super::metric_long(stats.generation) == renderer.generation);
+    let stats = stats.filter(|stats| {
+        renderer.draining || super::metric_long(stats.generation) == renderer.generation
+    });
     statistics_values(renderer, renderer.generation, stats)
 }
 

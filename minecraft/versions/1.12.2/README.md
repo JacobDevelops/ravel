@@ -1,6 +1,6 @@
 # Minecraft 1.12.2 version data
 
-This version carries 40 reviewed hooks and records 14 non-goals. The original
+This version carries 48 reviewed hooks and records 14 non-goals. The original
 22 hooks are supplemented by seven bridges: `legacy.world-open`,
 `legacy.world-open-integrated`, `legacy.command-install`, `legacy.command-execute`,
 `legacy.item-fire-damage`, `legacy.title-init`, and `legacy.global-palette-size`.

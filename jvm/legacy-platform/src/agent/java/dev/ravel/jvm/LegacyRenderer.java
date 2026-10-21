@@ -88,6 +88,11 @@ public final class LegacyRenderer {
     public static long[] snapshotMetrics() { return LegacySectionSnapshot.metrics(); }
     public static long[] bakedMetrics() { return LegacyBakedCapture.metrics(); }
     public static long[][] bakedGoldens() { return LegacyBakedCapture.goldens(); }
+    public static long[] bakedWorld() { return LegacyBakedCapture.world(); }
+    public static byte[][] bakedReadbacks(int scene) { return LegacyBakedCapture.readbacks(scene); }
+    public static void bakedDesignate(int scene, int x, int y, int z) { LegacyBakedCapture.designate(scene, x, y, z); }
+    public static void bakedPhase(int phase) { LegacyBakedCapture.phase(phase); }
+    public static int bakedCoverage(int phase) { return LegacyBakedCapture.coverage(phase); }
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }

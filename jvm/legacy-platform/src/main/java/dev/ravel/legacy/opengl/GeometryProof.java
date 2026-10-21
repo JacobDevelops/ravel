@@ -45,6 +45,7 @@ public final class GeometryProof {
     private static int depth;
     private static byte[] bakedPixels;
     private static float[] bakedDepth;
+    private static byte[][] bakedRetained;
 
     private GeometryProof() { }
 
@@ -269,9 +270,10 @@ public final class GeometryProof {
         return count;
     }
 
-    public static synchronized long[] compareBaked(int[] emitted, byte[] oracle) {
+    public static synchronized long[] compareBaked(int[] emitted, byte[] oracle, boolean retain) {
         if (emitted.length != 4 + 8192 * 28 || oracle.length != 16 + 8192 * 112)
             throw new IllegalArgumentException("Invalid bounded baked output");
+        bakedRetained = null;
         if (capabilityRefused) return new long[]{-1};
         try {
             initialize();
@@ -291,6 +293,7 @@ public final class GeometryProof {
         int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
         int buffer = generate();
         long[] result = new long[32];
+        byte[][] retained = retain ? new byte[4][] : null;
         long started = System.nanoTime();
         int offset = 0;
         try {
@@ -299,9 +302,11 @@ public final class GeometryProof {
                 if (quads < 0 || quads > 8192 - offset / 112 || quads != littleInt(oracle, layer * 4))
                     throw new IllegalArgumentException("Baked layer counts differ from final buffers");
                 if (quads > 0) bakedLayer(emitted, oracle, offset, quads, layer, buffer, atlas, lightmap, result);
+                if (quads > 0 && retained != null) retained[layer] = rawSample();
                 offset += quads * 112;
             }
             result[31] = System.nanoTime() - started;
+            bakedRetained = retained;
             return result;
         } finally {
             bind(GL15.GL_ARRAY_BUFFER, previous);
@@ -334,6 +339,22 @@ public final class GeometryProof {
         result[30] += System.nanoTime() - uploadStarted;
         bakedSubmit(buffer, quads * 4, layer, atlas, lightmap);
         bakedDifference(result, layer * 7, quads * 4);
+    }
+
+    /** Last retained comparison's per-layer raw arms: emitted RGBA, depth, then oracle RGBA, depth. */
+    public static synchronized byte[][] bakedReadbacks() {
+        byte[][] retained = bakedRetained;
+        bakedRetained = null;
+        return retained;
+    }
+
+    private static byte[] rawSample() {
+        ByteBuffer raw = ByteBuffer.allocate(PIXELS * 16).order(ByteOrder.LITTLE_ENDIAN);
+        raw.put(bakedPixels);
+        for (float value : bakedDepth) raw.putFloat(value);
+        for (int index = 0; index < PIXELS * 4; index++) raw.put(readback.get(index));
+        for (int pixel = 0; pixel < PIXELS; pixel++) raw.putFloat(readback.getFloat(PIXELS * 4 + pixel * 4));
+        return raw.array();
     }
 
     private static void bakedDifference(long[] result, int base, int vertices) {
@@ -517,6 +538,7 @@ public final class GeometryProof {
         mesh = null;
         bakedPixels = null;
         bakedDepth = null;
+        bakedRetained = null;
         lastVanilla = null;
         context = null;
         capabilityRefused = false;

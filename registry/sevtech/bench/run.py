@@ -34,6 +34,31 @@ GEOMETRY_METRICS = (
     'generation', 'key',
 )
 GEOMETRY_FIDELITY = 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'
+BAKED_METRICS = 30
+BAKED_REFUSALS = range(20, 29)
+
+
+def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
+    from prepare import require
+    baked, world = data.get('bakedMetrics'), data.get('bakedWorld')
+    require(isinstance(baked, list) and len(baked) == BAKED_METRICS
+            and all(type(value) is int for value in baked)
+            and isinstance(world, list) and len(world) == 7
+            and all(type(value) is int and value >= 0 for value in world),
+            'baked metrics schema differs')
+    counters = baked[:10] + baked[11:]
+    require(baked[10] == -1 and all(value >= 0 for value in counters), 'baked counters must be nonnegative')
+    if renderer == 'vanilla':
+        require(not any(counters) and not any(world), 'vanilla arm performed baked work')
+        return
+    require(baked[0] > 0 and baked[4] > 0 and baked[5] == 0 and baked[11] == baked[12] > 0 and baked[29] == 0,
+            'selected arm admitted no complete matching baked comparison')
+    require(baked[13] > 0 and baked[16] > 0 and 0 < world[0] <= 4 * baked[13]
+            and world[4] > 0 and world[5] > 0 and all(value <= world[0] * 4096 for value in world[1:6]),
+            'selected arm drew no shaded baked comparison')
+    require(not any(world[1:4]), 'selected shaded baked comparison mismatched pixels')
+    require(sum(baked[index] for index in BAKED_REFUSALS) == baked[2],
+            'baked refusal reasons do not account for unsupported sections')
 
 
 def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
@@ -53,6 +78,7 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
             'geometry metrics fields differ')
     require(all(type(value) is int and value >= 0 for value in metrics.values()),
             'geometry metrics must be nonnegative integers')
+    validate_baked_export(data, renderer)
     if renderer == 'vanilla':
         require(data.get('backend') == 'not-selected' and not any(metrics.values()),
                 'vanilla arm performed geometry work')

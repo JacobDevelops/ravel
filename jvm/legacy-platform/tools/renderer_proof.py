@@ -207,15 +207,83 @@ def geometry_proof(path: Path, started: float) -> Proof:
     coverage = sum((pixels[0][i] != 0) != (pixels[2][i] != 0) for i in range(0, PROOF_IMAGE_BYTES, 4))
     if rgba != vanilla['rgbaMismatchPixels'] or coverage != vanilla['coverageMismatchPixels']:
         raise RuntimeError('Vanilla mismatch counts do not match raw pixels')
-    baked_proof(proof['baked'])
+    baked_proof(proof['baked'], path.parent, started)
     return proof
 
 
-def baked_proof(proof: Proof) -> None:
+BAKED_SCENES = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'staged-reload', 'unload',
+                'translucent-fluid')
+BAKED_REFUSALS = ('refusedQuadBudget', 'refusedUncolored', 'refusedForeignBuilder', 'refusedObservation',
+                  'refusedIncompleteQuad', 'refusedUnaccountedVertices', 'refusedRetiredAtFinish',
+                  'refusedRustDecode', 'refusedRustOther')
+BAKED_SAMPLE_BYTES = 16 + PROOF_IMAGE_PIXELS * 16
+BAKED_SAMPLE_LIMIT = 8
+BAKED_DESIGNATED = 5
+BAKED_DEPTH_TOLERANCE = 2.0 / 0xffffff
+BAKED_MEASURED = 'controlled-section-rust-emission-vs-final-vanilla-buffer-offscreen'
+BAKED_FLUID = 'fluid-tessellation-not-baked-quad-provenance'
+
+
+def float32(value: float) -> float:
+    return struct.unpack('<f', struct.pack('<f', value))[0]
+
+
+def baked_sample(data: bytes, scene: int) -> tuple[list[int], int]:
+    """Recounts one raw emitted/oracle readback pair exactly as the GL comparison counts it."""
+    if len(data) != BAKED_SAMPLE_BYTES:
+        raise RuntimeError('Baked raw readback size invalid')
+    header, layer, vertices, designated = struct.unpack_from('<4i', data)
+    if (header != scene or not 0 <= layer < 4 or vertices <= 0 or vertices % 4
+            or not 0 <= designated < BAKED_DESIGNATED):
+        raise RuntimeError('Baked raw readback header invalid')
+    if layer != (0, 1, 2, 3, 0)[designated]:
+        raise RuntimeError('Baked raw readback layer differs from its designated scene')
+    pixels = PROOF_IMAGE_PIXELS
+    emitted, oracle = data[16:16 + pixels * 4], data[16 + pixels * 8:16 + pixels * 12]
+    emitted_depth = struct.unpack_from(f'<{pixels}f', data, 16 + pixels * 4)
+    oracle_depth = struct.unpack_from(f'<{pixels}f', data, 16 + pixels * 12)
+    counts = [1, 0, 0, 0, 0, 0, vertices]
+    for pixel in range(pixels):
+        left, right = emitted[pixel * 4:pixel * 4 + 4], oracle[pixel * 4:pixel * 4 + 4]
+        counts[1] += left != right
+        counts[2] += (left[3] != 0) != (right[3] != 0)
+        counts[3] += abs(float32(emitted_depth[pixel] - oracle_depth[pixel])) > BAKED_DEPTH_TOLERANCE
+        counts[4] += left[3] != 0
+        counts[5] += right[3] != 0
+    return counts, designated
+
+
+def baked_golden(row: Proof, scene: int, directory: Path, started: float) -> None:
+    name, values, files = BAKED_SCENES[scene], row.get('values'), row.get('readbacks')
+    if not (row.get('scene') == name and isinstance(values, list) and len(values) == 7
+            and all(type(value) is int and value >= 0 for value in values)
+            and isinstance(files, list) and len(files) <= BAKED_SAMPLE_LIMIT):
+        raise RuntimeError(f'Malformed baked golden row: {name}')
+    if scene == len(BAKED_SCENES) - 1:
+        if row.get('status') != 'unsupported' or row.get('reason') != BAKED_FLUID or any(values) or files:
+            raise RuntimeError(f'Untruthful baked golden disposition: {name}')
+        return
+    if row.get('status') != 'measured' or row.get('reason') != BAKED_MEASURED:
+        raise RuntimeError(f'Untruthful baked golden disposition: {name}')
+    totals, sections = [0] * 7, []
+    for index, file in enumerate(files):
+        path = directory / f'baked-golden-{scene}-{index}.raw'
+        if file != path.name or not path.is_file() or path.stat().st_mtime < started:
+            raise RuntimeError(f'No fresh baked raw readback: {path}')
+        counts, section = baked_sample(path.read_bytes(), scene)
+        totals = [total + count for total, count in zip(totals, counts)]
+        sections.append(section)
+    expected = [scene] if scene < BAKED_DESIGNATED else list(range(BAKED_DESIGNATED))
+    if (totals != values or sorted(sections) != expected or any(values[1:4])
+            or values[4] == 0 or values[5] == 0):
+        raise RuntimeError(f'Baked golden counts differ from raw readbacks: {name}')
+
+
+def baked_proof(proof: Proof, directory: Path, started: float) -> None:
     labels = {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
               'worldSubstitution': False, 'maxQuadsPerSection': 8192}
     nonnegative = ('busySections', 'unsupportedSections', 'staleSections', 'animatedSpriteObservations',
-                   'glStaleSections', 'glUnsupportedSections')
+                   'glStaleSections', 'glUnsupportedSections', 'controlledDeferredSections', *BAKED_REFUSALS)
     positive = ('comparedSections', 'quads', 'cpuNanos', 'maxInputBytes', 'maxOutputBytes',
                 'resourceGeneration', 'atlasGeneration', 'glComparedSections',
                 'glUploadedBytes', 'glPeakBufferBytes', 'glUploadNanos', 'glComparisonNanos')
@@ -225,23 +293,22 @@ def baked_proof(proof: Proof) -> None:
             and type(proof.get('mismatchedWords')) is int and proof['mismatchedWords'] == 0
             and type(proof.get('firstMismatchedWord')) is int and proof['firstMismatchedWord'] == -1
             and proof['resourceGeneration'] == proof['atlasGeneration']
+            and sum(proof[key] for key in BAKED_REFUSALS) == proof['unsupportedSections']
             and proof['maxInputBytes'] <= 8_000_000 and proof['maxOutputBytes'] <= 4_000_000
             and proof['glComparedSections'] <= proof['comparedSections']
             and proof['glPeakBufferBytes'] <= 8192 * 112 and proof['glPeakBufferBytes'] % 112 == 0
             and proof['glUploadedBytes'] % 224 == 0 and proof['glUploadedBytes'] <= proof['quads'] * 224):
         raise RuntimeError('Bounded independently atlas-scoped Rust baked comparison missing or mismatched')
-    scenes = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'staged-reload', 'unload')
+    world = proof.get('world')
+    if not (isinstance(world, list) and len(world) == 7 and all(type(value) is int and value >= 0 for value in world)
+            and 0 < world[0] <= 4 * proof['glComparedSections']
+            and not any(world[1:4])
+            and all(value <= world[0] * PROOF_IMAGE_PIXELS for value in world[1:6])):
+        raise RuntimeError('Baked whole-run GL comparison totals missing or impossible')
     rows = proof.get('goldens')
-    if not isinstance(rows, list) or len(rows) != len(scenes):
+    if not (isinstance(rows, list) and len(rows) == len(BAKED_SCENES) and all(isinstance(row, dict) for row in rows)):
         raise RuntimeError('Complete baked golden scene matrix missing')
-    for expected, row in zip(scenes, rows):
-        if not isinstance(row, dict):
-            raise RuntimeError(f'Malformed baked golden row: {expected}')
-        values = row.get('values')
-        if not (row.get('scene') == expected and row.get('status') == 'unsupported'
-                and isinstance(row.get('reason'), str) and row['reason']
-                and isinstance(values, list) and len(values) == 7
-                and all(type(value) is int and value >= 0 for value in values)
-                and all(value <= values[0] * PROOF_IMAGE_PIXELS for value in values[1:6])
-                and values[6] % 4 == 0 and values[6] <= values[0] * 8192 * 4):
-            raise RuntimeError(f'Untruthful or malformed baked golden disposition: {expected}')
+    for scene, row in enumerate(rows):
+        baked_golden(row, scene, directory, started)
+    if any(sum(row['values'][index] for row in rows) > world[index] for index in range(7)):
+        raise RuntimeError('Baked golden totals exceed whole-run GL comparison totals')

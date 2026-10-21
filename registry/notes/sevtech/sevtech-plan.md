@@ -304,16 +304,18 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   physical trials (three off/three on) and separate strict reductions completed with disclosed
   frame/copy/upload/residency/RSS/heap/device-VRAM results and frozen-versus-live artifact differences.
   Stress p95/p99 trial-median changes were +3.19%/+0.32%, not a like-for-like vanilla speedup.
-  Slice 6 adds [owned baked inputs, independent emission and shaded comparisons](baked-models.md):
+  Slice 6 completed [owned baked inputs, independent emission and shaded comparisons](baked-models.md):
   actual model positions/atlas UVs, tint/AO multipliers, combined light and translucent order cross a
   bounded primitive contract. Selected Java-owned offscreen GL submits those emitted vertices against
   the live atlas/lightmap and compares final vanilla buffers and readbacks; vanilla still owns world drawing.
-  Default-off baked targets are not rewritten or installed. Matching admitted opaque/cutout section layers
-  do not establish full-world golden fidelity; unsupported translucent/animated/staged-reload/unload
-  dispositions remain explicit in the slice-6 note. Six new frozen RTX 5090 trials and separate strict
-  reductions are distinct from historical slice-5 results; physical selected trials admitted no complete
-  baked comparison, unlike Xvfb. Next is slice 7, including that admission gap, not automatic default
-  cutover or a demonstrated resource saving.
+  Default-off baked targets are not rewritten or installed. All seven controlled
+  opaque/cutout/translucent/animated/staged-reload/unload golden rows are measured
+  with independently recounted raw readbacks and zero mismatches; fluid tessellation
+  remains explicitly unsupported. Six fresh frozen RTX 5090 trials passed, with
+  complete shaded comparisons in every selected trial, plus separate Xvfb acceptance.
+  These bounded section-layer results do not establish full-world fidelity.
+  Next is slice 7: complete shaded residency and resource/atlas replacement,
+  not automatic default cutover or a demonstrated resource saving.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

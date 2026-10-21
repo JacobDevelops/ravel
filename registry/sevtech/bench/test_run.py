@@ -19,6 +19,8 @@ class GeometryExport(TypedDict):
     fidelity: str
     upload: str
     metrics: dict[str, int]
+    bakedMetrics: list[int]
+    bakedWorld: list[int]
 
 
 class RunPolicyTests(TestCase):
@@ -141,17 +143,53 @@ class RunPolicyTests(TestCase):
             with self.assertRaisesRegex(ValueError, "vanilla"):
                 run.validate_geometry_export(out, "vanilla", 0)
 
+    def test_selected_arm_requires_admitted_shaded_baked_comparisons(self) -> None:
+        cases = ((0, 0), (4, 0), (5, 1), (10, 0), (12, 2), (13, 0), (16, 0), (20, 1),
+                 (27, 1), (2, -1), (29, 1))
+        for index, value in cases:
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as raw:
+                data = self.geometry_export("geometry-proof")
+                data["bakedMetrics"][index] = value
+                out = Path(raw)
+                (out / "geometry-upload.json").write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    run.validate_geometry_export(out, "geometry-proof", 0)
+        for world in ([0, 0, 0, 0, 1, 1, 4], [9, 0, 0, 0, 1, 1, 4], [1, 0, 0, 0, 0, 1, 4],
+                      [1, 1, 0, 0, 1, 1, 4], [1, 0, 1, 0, 1, 1, 4], [1, 0, 0, 1, 1, 1, 4],
+                      [1, 4097, 0, 0, 1, 1, 4], [1, 0, 0]):
+            with self.subTest(world=world), tempfile.TemporaryDirectory() as raw:
+                data = self.geometry_export("geometry-proof")
+                data["bakedWorld"] = world
+                out = Path(raw)
+                (out / "geometry-upload.json").write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    run.validate_geometry_export(out, "geometry-proof", 0)
+        with tempfile.TemporaryDirectory() as raw:
+            data = self.geometry_export("vanilla")
+            data["bakedMetrics"][1] = 1
+            out = Path(raw)
+            (out / "geometry-upload.json").write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "baked"):
+                run.validate_geometry_export(out, "vanilla", 0)
+
     @staticmethod
     def geometry_export(renderer: str) -> GeometryExport:
         metrics = dict.fromkeys(run.GEOMETRY_METRICS, 0)
+        baked = [0] * run.BAKED_METRICS
+        baked[10] = -1
+        world = [0] * 7
         if renderer == "geometry-proof":
             metrics.update(copiedMeshes=1, copiedBytes=100, uploads=1, uploadBytes=60,
                            submissions=1, cleanups=1, maxResidentBytes=60,
                            maxStagingBytes=1_212_416)
+            for index, value in ((0, 2), (2, 1), (4, 6), (11, 1), (12, 1), (13, 2), (16, 224), (25, 1)):
+                baked[index] = value
+            world = [2, 0, 0, 0, 30, 30, 24]
         return {"schemaVersion": 1, "selection": renderer,
                 "backend": "OpenGL15" if renderer == "geometry-proof" else "not-selected",
                 "fidelity": run.GEOMETRY_FIDELITY,
-                "upload": "bounded-native-wire-java-owned-offscreen-gl", "metrics": metrics}
+                "upload": "bounded-native-wire-java-owned-offscreen-gl", "metrics": metrics,
+                "bakedMetrics": baked, "bakedWorld": world}
 
 
 if __name__ == "__main__":

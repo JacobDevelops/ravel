@@ -13,11 +13,31 @@ import java.util.IdentityHashMap;
 final class LegacyBakedCapture {
     private static final int LIMIT = 8192;
     private static final int RECORD = 232;
-    private static final long[] METRICS = new long[20];
+    static final int SCENES = 8;
+    static final int DESIGNATED = 5;
+    static final int SAMPLES = 8;
+    static final int READBACK_BYTES = 16 + 64 * 64 * 16;
+    private static final int QUAD_BUDGET = 20;
+    private static final int UNCOLORED = 21;
+    private static final int FOREIGN_BUILDER = 22;
+    private static final int OBSERVATION = 23;
+    private static final int INCOMPLETE_QUAD = 24;
+    private static final int UNACCOUNTED_VERTICES = 25;
+    private static final int RETIRED_AT_FINISH = 26;
+    private static final int RUST_DECODE = 27;
+    private static final int RUST_OTHER = 28;
+    private static final long[] METRICS = new long[30];
     private static volatile Capture queued;
     static { METRICS[10] = -1; }
-    private static final long[][] GOLDENS = new long[7][7];
-    private static long firstResource;
+    private static final long[][] GOLDENS = new long[SCENES][7];
+    private static final long[] WORLD = new long[7];
+    private static final byte[][][] RAW = new byte[SCENES][SAMPLES][];
+    private static final int[] RETAINED = new int[SCENES];
+    private static final int[][] ORIGINS = new int[DESIGNATED][];
+    private static final int[] COVERAGE = new int[3];
+    private static int phase;
+    private static long designatedResource;
+    private static long phaseRenderer;
     private static Capture storage;
     private static volatile Capture active;
 
@@ -30,8 +50,13 @@ final class LegacyBakedCapture {
         try {
             if (storage == null) storage = new Capture();
             storage.begin(task, x, y, z);
-            active = storage;
         } catch (Throwable failure) { throw new IllegalStateException("Baked capture initialization failed", failure); }
+        if (controlledWindow() && !storage.needed()) {
+            storage.release();
+            METRICS[29]++;
+            return;
+        }
+        active = storage;
     }
 
     static synchronized void clear() {
@@ -42,8 +67,33 @@ final class LegacyBakedCapture {
     }
 
     static synchronized long[] metrics() { return METRICS.clone(); }
+    static synchronized long[] world() { return WORLD.clone(); }
     static synchronized long[][] goldens() {
         return Arrays.stream(GOLDENS).map(long[]::clone).toArray(long[][]::new);
+    }
+
+    static synchronized byte[][] readbacks(int scene) {
+        return Arrays.stream(RAW[scene], 0, RETAINED[scene]).map(byte[]::clone).toArray(byte[][]::new);
+    }
+
+    static synchronized void designate(int scene, int x, int y, int z) {
+        if (phase != 0 || scene < 0 || scene >= DESIGNATED || ((x | y | z) & 15) != 0)
+            throw new IllegalArgumentException("Golden sections are designated once, section-aligned, before reload");
+        ORIGINS[scene] = new int[]{x, y, z};
+        designatedResource = LegacyRuntime.completedResourceGeneration();
+    }
+
+    static synchronized void phase(int next) {
+        if (next != phase + 1 || next > 2) throw new IllegalStateException("Golden phases advance in order");
+        phase = next;
+        phaseRenderer = LegacyRenderer.currentGeneration();
+    }
+
+    static synchronized int coverage(int target) { return COVERAGE[target]; }
+
+    // While a designated phase is incomplete, only designated sections wait for the next GL drain.
+    private static boolean controlledWindow() {
+        return ORIGINS[0] != null && COVERAGE[phase] != (1 << DESIGNATED) - 1;
     }
 
     static void draw() {
@@ -58,21 +108,38 @@ final class LegacyBakedCapture {
             METRICS[14]++;
             return;
         }
-        long[] result = LegacyGeometryProof.compareBaked(capture.output, capture.oracle.array());
+        int designated = capture.designated();
+        int scene = designated < 0 ? -1 : capture.scene(designated);
+        boolean retain = scene >= 0 && RETAINED[scene] < SAMPLES && (COVERAGE[phase] & 1 << designated) == 0;
+        long[] result = LegacyGeometryProof.compareBaked(capture.output, capture.oracle.array(), retain);
         if (result.length != 32) { METRICS[15]++; return; }
         METRICS[13]++;
         METRICS[16] += result[28]; METRICS[17] = Math.max(METRICS[17], result[29]);
         METRICS[18] += result[30]; METRICS[19] += result[31];
-        if (firstResource == 0) firstResource = capture.source.getLong(16);
+        byte[][] raw = retain ? LegacyGeometryProof.bakedReadbacks() : null;
         for (int layer = 0; layer < 4; layer++) {
-            addGolden(layer, result, layer * 7);
-            if (capture.animated > 0) addGolden(4, result, layer * 7);
-            if (capture.source.getLong(16) > firstResource) addGolden(5, result, layer * 7);
+            if (result[layer * 7] == 0) continue;
+            add(WORLD, result, layer * 7);
+            if (raw != null && raw[layer] != null && RETAINED[scene] < SAMPLES)
+                retain(scene, designated, layer, result, raw[layer]);
         }
     }
 
-    private static void addGolden(int scene, long[] result, int base) {
-        for (int index = 0; index < 7; index++) GOLDENS[scene][index] += result[base + index];
+    private static void retain(int scene, int designated, int layer, long[] result, byte[] raw) {
+        ByteBuffer sample = ByteBuffer.allocate(READBACK_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        sample.putInt(scene).putInt(layer).putInt((int) result[layer * 7 + 6]).putInt(designated).put(raw);
+        RAW[scene][RETAINED[scene]++] = sample.array();
+        add(GOLDENS[scene], result, layer * 7);
+        COVERAGE[phase] |= 1 << designated;
+    }
+
+    private static void add(long[] target, long[] result, int base) {
+        for (int index = 0; index < 7; index++) target[index] += result[base + index];
+    }
+
+    private static void refuse(int reason) {
+        METRICS[2]++;
+        METRICS[reason]++;
     }
 
     private static Capture current() {
@@ -95,7 +162,7 @@ final class LegacyBakedCapture {
             capture.builder = builder;
             capture.pending = false;
             Arrays.fill(capture.ao, 1.0f);
-        } catch (Throwable failure) { capture.failed = true; }
+        } catch (Throwable failure) { capture.fail(OBSERVATION); }
     }
 
     static void observe(String id, Object receiver, Object result, int number) {
@@ -111,7 +178,7 @@ final class LegacyBakedCapture {
                     Object sprite = capture.access.sprite.invokeExact(receiver);
                     Integer identity = capture.sprites.get(sprite);
                     if (identity == null) {
-                        if (capture.sprites.size() == LIMIT) { capture.failed = true; return; }
+                        if (capture.sprites.size() == LIMIT) { capture.fail(OBSERVATION); return; }
                         identity = capture.sprites.size();
                         capture.sprites.put(sprite, identity);
                     }
@@ -125,7 +192,7 @@ final class LegacyBakedCapture {
                 case "legacyBakedTint" -> capture.tint = number;
                 default -> { }
             }
-        } catch (Throwable failure) { capture.failed = true; }
+        } catch (Throwable failure) { capture.fail(OBSERVATION); }
     }
 
     static void vertices(Object builder, int[] words) {
@@ -135,7 +202,7 @@ final class LegacyBakedCapture {
     private static synchronized void verticesCurrent(Object builder, int[] words) {
         Capture capture = current();
         if (capture == null || capture.builder != builder) return;
-        if (words.length != 28 || capture.pending) { capture.failed = true; return; }
+        if (words.length != 28 || capture.pending) { capture.fail(OBSERVATION); return; }
         System.arraycopy(words, 0, capture.words, 0, 28);
         for (int i = 0; i < 4; i++) capture.light[i] = words[i * 7 + 6];
         Arrays.fill(capture.rgb, 1.0f);
@@ -160,7 +227,7 @@ final class LegacyBakedCapture {
     private static synchronized void colorCurrent(Object builder, float r, float g, float b, int index) {
         Capture capture = current();
         if (capture == null || capture.builder != builder || !capture.pending) return;
-        if (index < 1 || index > 4) { capture.failed = true; return; }
+        if (index < 1 || index > 4) { capture.fail(OBSERVATION); return; }
         int offset = (4 - index) * 3;
         capture.rgb[offset] = r; capture.rgb[offset + 1] = g; capture.rgb[offset + 2] = b;
     }
@@ -174,7 +241,7 @@ final class LegacyBakedCapture {
         if (capture == null || capture.builder != builder || !capture.pending) return;
         capture.pending = false;
         try { capture.append(builder, x, y, z); }
-        catch (Throwable failure) { capture.failed = true; }
+        catch (Throwable failure) { capture.fail(OBSERVATION); }
     }
 
     static synchronized void finish(Object task) {
@@ -182,10 +249,11 @@ final class LegacyBakedCapture {
         if (capture == null || capture.task != task) return;
         active = null;
         try {
-            if (capture.failed || capture.pending || !LegacyRenderer.accepts(capture.generation)) {
-                METRICS[2]++; return;
-            }
-            capture.compare();
+            int reason = capture.refusal != 0 ? capture.refusal
+                    : capture.pending ? INCOMPLETE_QUAD
+                    : !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
+            if (reason != 0) refuse(reason);
+            else capture.compare();
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
         } finally { capture.release(); }
@@ -203,6 +271,7 @@ final class LegacyBakedCapture {
         final int[] light = new int[4];
         final float[] ao = new float[4];
         final float[] rgb = new float[12];
+        final int[] origin = new int[3];
         Object task;
         Object builder;
         long generation;
@@ -212,10 +281,14 @@ final class LegacyBakedCapture {
         int tint;
         int count;
         int animated;
+        int refusal;
         boolean pending;
-        boolean failed;
 
         Capture() throws ReflectiveOperationException { }
+
+        void fail(int reason) {
+            if (refusal == 0) refusal = reason;
+        }
 
         void begin(Object task, float x, float y, float z) throws Throwable {
             release();
@@ -225,26 +298,52 @@ final class LegacyBakedCapture {
             Object buffers = access.buffers.invokeExact(task);
             for (int i = 0; i < 4; i++) builders[i] = access.get.invokeExact(buffers, i);
             camera[0] = x; camera[1] = y; camera[2] = z;
+            Object position = access.origin.get((Object) access.chunk.invokeExact(task));
+            origin[0] = (int) access.originX.invokeExact(position);
+            origin[1] = (int) access.originY.invokeExact(position);
+            origin[2] = (int) access.originZ.invokeExact(position);
             source.clear().position(32);
             source.putLong(16, LegacyRuntime.completedResourceGeneration());
             source.putLong(24, LegacyRuntime.atlasResourceGeneration());
-            count = 0; animated = 0; failed = false;
+            count = 0; animated = 0; refusal = 0;
         }
 
         void append(Object builder, double x, double y, double z) throws Throwable {
-            if (count == LIMIT || access.uncolored.getBoolean(builder)) { failed = true; return; }
+            if (count == LIMIT) { fail(QUAD_BUDGET); return; }
+            if (access.uncolored.getBoolean(builder)) { fail(UNCOLORED); return; }
             int layer = -1;
             for (int i = 0; i < 4; i++) if (builders[i] == builder) layer = i;
-            if (layer < 0) { failed = true; return; }
+            if (layer < 0) { fail(FOREIGN_BUILDER); return; }
+            double offsetX = access.x.getDouble(builder);
+            double offsetY = access.y.getDouble(builder);
+            double offsetZ = access.z.getDouble(builder);
             source.putInt(state).putInt(sprite).putInt(layer).putInt(tint);
-            source.putDouble(x + access.x.getDouble(builder));
-            source.putDouble(y + access.y.getDouble(builder));
-            source.putDouble(z + access.z.getDouble(builder));
+            source.putDouble(x + offsetX).putDouble(y + offsetY).putDouble(z + offsetZ);
             for (int word : words) source.putInt(word);
             for (float value : ao) source.putFloat(value);
             for (float value : rgb) source.putFloat(value);
             for (int value : light) source.putInt(value);
             count++;
+        }
+
+        int designated() {
+            for (int index = 0; index < DESIGNATED; index++)
+                if (ORIGINS[index] != null && Arrays.equals(ORIGINS[index], origin)) return index;
+            return -1;
+        }
+
+        boolean needed() {
+            int designated = designated();
+            return designated >= 0 && (COVERAGE[phase] & 1 << designated) == 0;
+        }
+
+        int scene(int designated) {
+            long resource = source.getLong(16);
+            return switch (phase) {
+                case 0 -> resource != designatedResource || designated == 4 && animated == 0 ? -1 : designated;
+                case 1 -> resource > designatedResource && generation >= phaseRenderer ? 5 : -1;
+                default -> generation >= phaseRenderer ? 6 : -1;
+            };
         }
 
         boolean resourceCurrent() {
@@ -263,9 +362,8 @@ final class LegacyBakedCapture {
             int vertices = 0;
             for (int i = 0; i < 4; i++) {
                 int length = (int) access.count.invokeExact(builders[i]);
-                if (length < 0 || length % 4 != 0 || length > (LIMIT * 4) - vertices) {
-                    METRICS[2]++; return;
-                }
+                if (length < 0 || length % 4 != 0) { refuse(UNACCOUNTED_VERTICES); return; }
+                if (length > (LIMIT * 4) - vertices) { refuse(QUAD_BUDGET); return; }
                 vertices += length;
                 oracle.putInt(i * 4, length / 4);
                 ByteBuffer buffer = (ByteBuffer) access.buffer.invokeExact(builders[i]);
@@ -273,17 +371,24 @@ final class LegacyBakedCapture {
                 view.clear().limit(length * 28);
                 oracle.put(view);
             }
-            if (vertices != count * 4) { METRICS[2]++; return; }
+            if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return; }
             if (!resourceCurrent()) { METRICS[3]++; return; }
             source.putInt(0, count);
             long[] result = Hook.ravelRendererBaked(generation, source.array(), oracle.array(), output);
             if (!resourceCurrent() || !LegacyRenderer.accepts(generation)) { METRICS[3]++; return; }
             if (result.length == 0) { METRICS[3]++; return; }
-            if (result.length != 6 || result[0] < 0) { METRICS[2]++; return; }
+            if (result.length != 6 || result[0] < 0) {
+                refuse(result.length == 6 && result[1] == 2 ? RUST_DECODE : RUST_OTHER);
+                return;
+            }
+            publish(result);
+        }
+
+        private void publish(long[] result) {
             METRICS[0]++;
             METRICS[4] += result[0]; METRICS[5] += result[1]; METRICS[6] += result[3];
             if (result[2] >= 0 && METRICS[10] < 0) METRICS[10] = result[2];
-            if (count > 0) queued = this;
+            if (count > 0 && (!controlledWindow() || needed())) queued = this;
             METRICS[7] = Math.max(METRICS[7], result[4]);
             METRICS[8] = Math.max(METRICS[8], result[5]); METRICS[9] += animated;
             METRICS[11] = source.getLong(16);
@@ -311,6 +416,11 @@ final class LegacyBakedCapture {
         final Field z = field("LEGACY_BUFFER_BUILDER", "offsetZ");
         final Field uncolored = field("LEGACY_BUFFER_BUILDER", "uncolored");
         final Field brightness = field("LEGACY_BAKED_AO", "brightness");
+        final MethodHandle chunk = handle("LEGACY_COMPILE_TASK", "getChunk", Object.class, Object.class);
+        final Field origin = field("LEGACY_RENDER_CHUNK", "origin");
+        final MethodHandle originX = handle("LEGACY_VEC3I", "getX", int.class, Object.class);
+        final MethodHandle originY = handle("LEGACY_VEC3I", "getY", int.class, Object.class);
+        final MethodHandle originZ = handle("LEGACY_VEC3I", "getZ", int.class, Object.class);
 
         Access() throws ReflectiveOperationException { }
 

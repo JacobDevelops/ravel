@@ -141,7 +141,15 @@ final class ClientAutomation implements Runnable {
                 rendererBeforeReload = rendererMetric("currentGeneration");
             }
             requireSeed();
-            if (Boolean.getBoolean("ravel.legacy.acceptance")) reloadResources();
+            if (Boolean.getBoolean("ravel.legacy.acceptance")) {
+                Object server = onGame(() -> invoke(game, "F", new Class<?>[0]));
+                double[] ground = geometrySelected() ? designateGoldenScenes(server) : null;
+                reloadResources();
+                if (ground != null) {
+                    measureGolden(server, 1);
+                    teleport(server, ground[0], ground[1], ground[2], ground);
+                }
+            }
     }
 
     private void requireLiveProbes() throws Exception {
@@ -481,37 +489,127 @@ final class ClientAutomation implements Runnable {
                 geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof() + "}\n");
     }
 
+    private static final String[] BAKED_NAMES = {"comparedSections", "busySections", "unsupportedSections",
+            "staleSections", "quads", "mismatchedWords", "cpuNanos", "maxInputBytes", "maxOutputBytes",
+            "animatedSpriteObservations", "firstMismatchedWord", "resourceGeneration", "atlasGeneration",
+            "glComparedSections", "glStaleSections", "glUnsupportedSections",
+            "glUploadedBytes", "glPeakBufferBytes", "glUploadNanos", "glComparisonNanos",
+            "refusedQuadBudget", "refusedUncolored", "refusedForeignBuilder", "refusedObservation",
+            "refusedIncompleteQuad", "refusedUnaccountedVertices", "refusedRetiredAtFinish",
+            "refusedRustDecode", "refusedRustOther", "controlledDeferredSections"};
+    private static final String[] BAKED_SCENES = {"opaque", "cutout-mipped", "cutout", "translucent",
+            "animated", "staged-reload", "unload", "translucent-fluid"};
+
     private String bakedProof() throws Exception {
         long[] values = (long[]) rendererType().getMethod("bakedMetrics").invoke(null);
-        String[] names = {"comparedSections", "busySections", "unsupportedSections", "staleSections",
-                "quads", "mismatchedWords", "cpuNanos", "maxInputBytes", "maxOutputBytes",
-                "animatedSpriteObservations", "firstMismatchedWord", "resourceGeneration", "atlasGeneration",
-                "glComparedSections", "glStaleSections", "glUnsupportedSections",
-                "glUploadedBytes", "glPeakBufferBytes", "glUploadNanos", "glComparisonNanos"};
-        require(values.length == names.length, "Baked metric schema mismatch");
+        require(values.length == BAKED_NAMES.length, "Baked metric schema mismatch");
         require(values[0] > 0 && values[4] > 0 && values[5] == 0 && values[10] == -1,
                 "Baked CPU comparison missing or differs from vanilla");
         StringBuilder json = new StringBuilder("{\"comparison\":\"Rust-emission-vs-final-vanilla-BLOCK-words\","
                 + "\"drawable\":true,\"worldSubstitution\":false,\"maxQuadsPerSection\":8192");
-        for (int i = 0; i < names.length; i++)
-            json.append(",\"").append(names[i]).append("\":").append(values[i]);
+        for (int i = 0; i < BAKED_NAMES.length; i++)
+            json.append(",\"").append(BAKED_NAMES[i]).append("\":").append(values[i]);
+        json.append(",\"world\":").append(Arrays.toString((long[]) rendererType().getMethod("bakedWorld").invoke(null)));
         long[][] goldens = (long[][]) rendererType().getMethod("bakedGoldens").invoke(null);
+        require(goldens.length == BAKED_SCENES.length, "Baked golden schema mismatch");
         json.append(",\"goldens\":[");
-        String[] scenes = {"opaque", "cutout-mipped", "cutout", "translucent", "animated", "staged-reload", "unload"};
-        for (int scene = 0; scene < scenes.length; scene++) {
+        for (int scene = 0; scene < BAKED_SCENES.length; scene++) {
             if (scene > 0) json.append(',');
-            long[] row = goldens[scene];
-            String reason = scene == 6 ? "retired-generation-drawing-refused-no-post-unload-pixels"
-                    : row[0] == 0 ? "no-admitted-complete-baked-section-for-this-scene"
-                    : row[4] == 0 || row[5] == 0 ? "no-foreground-in-section-local-negative-z-projection"
-                    : scene == 4 ? "animated-sprite-observed-in-mixed-section-not-isolated-animation-parity"
-                    : scene == 5 ? "post-reload-section-comparison-not-controlled-staged-atlas-pixel-scene"
-                    : "section-layer-comparison-not-controlled-full-world-golden";
-            json.append("{\"scene\":\"").append(scenes[scene])
-                    .append("\",\"status\":\"unsupported\",\"reason\":\"").append(reason)
-                    .append("\",\"values\":").append(Arrays.toString(row)).append('}');
+            json.append(goldenRow(scene, goldens[scene]));
         }
         return json.append("]}").toString();
+    }
+
+    private String goldenRow(int scene, long[] row) throws Exception {
+        byte[][] samples = (byte[][]) rendererType().getMethod("bakedReadbacks", int.class).invoke(null, scene);
+        StringBuilder files = new StringBuilder();
+        for (int index = 0; index < samples.length; index++) {
+            String name = "baked-golden-" + scene + "-" + index + ".raw";
+            Files.write(evidence.resolve(name), samples[index]);
+            files.append(index > 0 ? ",\"" : "\"").append(name).append('"');
+        }
+        boolean measured = row[0] > 0 && row[4] > 0 && row[5] > 0;
+        String reason = scene == 7 ? "fluid-tessellation-not-baked-quad-provenance"
+                : row[0] == 0 ? "no-admitted-controlled-section"
+                : !measured ? "no-foreground-in-section-local-negative-z-projection"
+                : "controlled-section-rust-emission-vs-final-vanilla-buffer-offscreen";
+        return "{\"scene\":\"" + BAKED_SCENES[scene] + "\",\"status\":\"" + (measured ? "measured" : "unsupported")
+                + "\",\"reason\":\"" + reason + "\",\"values\":" + Arrays.toString(row)
+                + ",\"readbacks\":[" + files + "]}";
+    }
+
+    private static final int GOLDEN_Y = 192;
+    private static final String[][] GOLDEN_BLOCKS = {
+            {"minecraft:stone 0", "minecraft:planks 0"}, {"minecraft:iron_bars 0", "minecraft:glass_pane 0"},
+            {"minecraft:glass 0", "minecraft:web 0"}, {"minecraft:stained_glass 14", "minecraft:ice 0"},
+            {"minecraft:sea_lantern 0", "minecraft:magma 0"}};
+    private static final int[][] GOLDEN_CHUNKS = {{1, -1}, {1, 0}, {1, 1}, {0, -1}, {0, 1}};
+    private int[] goldenOrigin;
+
+    // Controlled arrangements occupy separate sky sections around the viewing platform.
+    private double[] designateGoldenScenes(Object server) throws Exception {
+        double[] ground = onGame(this::playerState);
+        goldenOrigin = new int[]{Math.floorDiv((int) Math.floor(ground[0]), 16) * 16,
+                Math.floorDiv((int) Math.floor(ground[2]), 16) * 16};
+        for (int scene = 0; scene < GOLDEN_BLOCKS.length; scene++)
+            rendererType().getMethod("bakedDesignate", int.class, int.class, int.class, int.class)
+                    .invoke(null, scene, goldenOrigin[0] + GOLDEN_CHUNKS[scene][0] * 16,
+                            GOLDEN_Y, goldenOrigin[1] + GOLDEN_CHUNKS[scene][1] * 16);
+        int placed = onServer(server, () -> command(server, "setblock " + (goldenOrigin[0] + 8) + " "
+                + (GOLDEN_Y + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
+        require(placed > 0, "Golden viewing platform was not placed");
+        measureGolden(server, 0);
+        return ground;
+    }
+
+    private void measureGolden(Object server, int phase) throws Exception {
+        if (phase > 0) rendererType().getMethod("bakedPhase", int.class).invoke(null, phase);
+        teleport(server, goldenOrigin[0] + 8.5, GOLDEN_Y + 8, goldenOrigin[1] + 8.5, new double[]{0, 0, 0, -90, 0});
+        long interval = TimeUnit.SECONDS.toNanos(3);
+        long[] refilled = {System.nanoTime() - interval};
+        int all = (1 << GOLDEN_BLOCKS.length) - 1;
+        try {
+            await("Controlled baked golden scenes measured in phase " + phase, () -> {
+                int covered = goldenCoverage(phase);
+                if (covered == all) return true;
+                if (System.nanoTime() - refilled[0] >= interval) {
+                    int scene = Integer.numberOfTrailingZeros(~covered & all);
+                    double yaw = Math.toDegrees(Math.atan2(-GOLDEN_CHUNKS[scene][0], GOLDEN_CHUNKS[scene][1]));
+                    teleport(server, goldenOrigin[0] + 8.5, GOLDEN_Y + 8, goldenOrigin[1] + 8.5,
+                            new double[]{0, 0, 0, yaw, 0});
+                    onServer(server, () -> refillGolden(server, scene));
+                    refilled[0] = System.nanoTime();
+                }
+                return false;
+            }, TimeUnit.MINUTES.toNanos(3));
+        } catch (IllegalStateException failure) {
+            throw new IllegalStateException(failure.getMessage() + " coverage="
+                    + Integer.toBinaryString(goldenCoverage(phase)) + " baked="
+                    + Arrays.toString((long[]) rendererType().getMethod("bakedMetrics").invoke(null)), failure);
+        }
+    }
+
+    private int goldenCoverage(int phase) throws ReflectiveOperationException {
+        return (int) rendererType().getMethod("bakedCoverage", int.class).invoke(null, phase);
+    }
+
+    // Clearing then refilling one section in a server task republishes it and forces a fresh compile.
+    private Void refillGolden(Object server, int scene) throws Exception {
+        int x = goldenOrigin[0] + GOLDEN_CHUNKS[scene][0] * 16;
+        int z = goldenOrigin[1] + GOLDEN_CHUNKS[scene][1] * 16;
+        String low = " " + (GOLDEN_Y + 6) + " " + (z + 6) + " ";
+        String high = " " + (GOLDEN_Y + 9) + " " + (z + 9) + " ";
+        command(server, "fill " + (x + 6) + low + (x + 9) + high + "minecraft:air 0");
+        for (int half = 0; half < 2; half++)
+            require(command(server, "fill " + (x + 6 + half * 2) + low + (x + 7 + half * 2) + high
+                    + GOLDEN_BLOCKS[scene][half]) > 0, "Golden scene fill failed: " + GOLDEN_BLOCKS[scene][half]);
+        return null;
+    }
+
+    // Pinned 1.12.2: MinecraftServer.N() command handler, bl.a(bn, String) executes as the server source.
+    private int command(Object server, String text) throws ReflectiveOperationException {
+        return (int) invoke(invoke(server, "N", new Class<?>[0]), "a",
+                new Class<?>[] {type("bn"), String.class}, server, text);
     }
 
     private String snapshotProof() throws Exception {
@@ -797,6 +895,12 @@ final class ClientAutomation implements Runnable {
             rendererReopened = rendererMetric("currentGeneration");
             require(rendererAccepts(rendererReopened) && !rendererAccepts(rendererAfterReload),
                     "Renderer reopen accepted old generation");
+            if (geometrySelected()) {
+                Object server = onGame(() -> invoke(game, "F", new Class<?>[0]));
+                double[] ground = onGame(this::playerState);
+                measureGolden(server, 2);
+                teleport(server, ground[0], ground[1], ground[2], ground);
+            }
         }
         requireSeed();
         snapshot("08-reopened");

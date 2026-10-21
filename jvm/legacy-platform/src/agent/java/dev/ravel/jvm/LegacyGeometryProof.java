@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 /** Optional platform bridge; the default diagnostic path never loads or initializes GL. */
 final class LegacyGeometryProof {
@@ -150,9 +151,15 @@ final class LegacyGeometryProof {
                 generation, LegacyRenderer.ownerThread(), draw);
     }
 
-    static long[] compareBaked(int[] emitted, byte[] oracle) {
+    static long[] compareBaked(int[] emitted, byte[] oracle, boolean retain) {
         requireOwner(LegacyRenderer.currentGeneration());
-        return (long[]) call("compareBaked", new Class<?>[]{int[].class, byte[].class}, emitted, oracle);
+        return (long[]) call("compareBaked", new Class<?>[]{int[].class, byte[].class, boolean.class},
+                emitted, oracle, retain);
+    }
+
+    static byte[][] bakedReadbacks() {
+        requireOwner(LegacyRenderer.currentGeneration());
+        return (byte[][]) call("bakedReadbacks", new Class<?>[0]);
     }
 
     static void bindVanillaBuffer(int buffer) {
@@ -182,13 +189,11 @@ final class LegacyGeometryProof {
                 if (index != 0) json.append(',');
                 json.append('"').append(NAMES[index]).append("\":").append(values[index]);
             }
-            json.append("},\"bakedMetrics\":[");
-            long[] baked = LegacyBakedCapture.metrics();
-            for (int index = 0; index < baked.length; index++) {
-                if (index != 0) json.append(',');
-                json.append(baked[index]);
-            }
-            json.append("]}\n");
+            json.append("},\"bakedMetrics\":");
+            json.append(Arrays.toString(LegacyBakedCapture.metrics()).replace(" ", ""));
+            json.append(",\"bakedWorld\":");
+            json.append(Arrays.toString(LegacyBakedCapture.world()).replace(" ", ""));
+            json.append("}\n");
             Path path = Path.of(destination);
             if (path.toAbsolutePath().getParent() != null) Files.createDirectories(path.toAbsolutePath().getParent());
             Files.writeString(path, json);

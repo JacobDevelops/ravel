@@ -165,10 +165,10 @@ public final class LegacyRuntime {
         reloading = receiver;
     }
 
+    // Vanilla stitches its first block atlas while registering the model manager, after the
+    // first reload completed; that stitch reads the completed generation's resources.
     private static synchronized void atlas() {
-        if (reloading != null) {
-            atlasGeneration = generation;
-        }
+        atlasGeneration = reloading != null ? generation : completedGeneration;
     }
 
     private static synchronized void completeReload(Object receiver) throws ReflectiveOperationException {

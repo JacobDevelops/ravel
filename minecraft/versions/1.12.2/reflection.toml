@@ -706,6 +706,9 @@ descriptor = "()Ljava/util/concurrent/locks/ReentrantLock;"
 [[reflected.member]]
 name = "getBuffers"
 descriptor = "()Lnet/minecraft/client/render/world/ChunkBufferBuilders;"
+[[reflected.member]]
+name = "getChunk"
+descriptor = "()Lnet/minecraft/client/render/world/RenderChunk;"
 
 [[reflected]]
 name = "LEGACY_CHUNK_BUFFERS"

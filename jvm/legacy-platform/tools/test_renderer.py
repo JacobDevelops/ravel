@@ -76,7 +76,7 @@ def mesh_proof_fixture() -> renderer_proof.Proof:
             'frameP50Nanos': 100, 'frameP95Nanos': 200, 'frameP99Nanos': 300}
 
 
-def geometry_proof_fixture() -> renderer_proof.Proof:
+def geometry_proof_fixture(directory: Path) -> renderer_proof.Proof:
     names = ('copiedMeshes copiedBytes copyNanos uploads uploadBytes uploadNanos residentBytes '
              'maxResidentBytes stagingBytes maxStagingBytes submissions submissionNanos refusedMeshes '
              'cleanups liveBuffers liveFramebuffers referenceMismatchPixels vanillaComparisons '
@@ -95,21 +95,41 @@ def geometry_proof_fixture() -> renderer_proof.Proof:
             'depthMismatchPixels': 1, 'totalPixels': 4096},
         'metrics': metrics, 'info': ['geometry-proof', 'OpenGL15',
             'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'],
-        'finalMetrics': final, 'baked': baked_proof_fixture()}
+        'finalMetrics': final, 'baked': baked_proof_fixture(directory)}
 
 
-def baked_proof_fixture() -> renderer_proof.Proof:
-    scenes = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'staged-reload', 'unload')
+def baked_sample(scene: int, designated: int, oracle_red: int = 10) -> bytes:
+    pixels = renderer_proof.PROOF_IMAGE_PIXELS
+    emitted, oracle = bytearray(pixels * 4), bytearray(pixels * 4)
+    emitted[0], emitted[3], oracle[0], oracle[3] = 10, 255, oracle_red, 255
+    depth = struct.pack(f'<{pixels}f', 0.5, *([1.0] * (pixels - 1)))
+    layer = (0, 1, 2, 3, 0)[designated] if 0 <= designated < 5 else 0
+    return struct.pack('<4i', scene, layer, 4, designated) + bytes(emitted) + depth + bytes(oracle) + depth
+
+
+def baked_proof_fixture(directory: Path) -> renderer_proof.Proof:
+    goldens = []
+    for scene, name in enumerate(renderer_proof.BAKED_SCENES[:-1]):
+        sections = [scene] if scene < renderer_proof.BAKED_DESIGNATED else list(range(5))
+        files = [f'baked-golden-{scene}-{index}.raw' for index in range(len(sections))]
+        for file, section in zip(files, sections):
+            (directory / file).write_bytes(baked_sample(scene, section))
+        count = len(sections)
+        goldens.append({'scene': name, 'status': 'measured', 'reason': renderer_proof.BAKED_MEASURED,
+                        'values': [count, 0, 0, 0, count, count, 4 * count], 'readbacks': files})
+    goldens.append({'scene': 'translucent-fluid', 'status': 'unsupported',
+                    'reason': renderer_proof.BAKED_FLUID, 'values': [0] * 7, 'readbacks': []})
     return {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
-            'worldSubstitution': False, 'maxQuadsPerSection': 8192, 'comparedSections': 1,
-            'busySections': 0, 'unsupportedSections': 0, 'staleSections': 0, 'quads': 1,
+            'worldSubstitution': False, 'maxQuadsPerSection': 8192, 'comparedSections': 4,
+            'busySections': 0, 'unsupportedSections': 2, 'staleSections': 0, 'quads': 1,
             'mismatchedWords': 0, 'firstMismatchedWord': -1, 'cpuNanos': 1,
-            'maxInputBytes': 1000, 'maxOutputBytes': 1000, 'animatedSpriteObservations': 0,
-            'resourceGeneration': 1, 'atlasGeneration': 1, 'glComparedSections': 1,
+            'maxInputBytes': 1000, 'maxOutputBytes': 1000, 'animatedSpriteObservations': 1,
+            'resourceGeneration': 1, 'atlasGeneration': 1, 'glComparedSections': 4,
             'glStaleSections': 0, 'glUnsupportedSections': 0,
             'glUploadedBytes': 224, 'glPeakBufferBytes': 112, 'glUploadNanos': 1, 'glComparisonNanos': 1,
-            'goldens': [{'scene': scene, 'status': 'unsupported', 'reason': 'no-controlled-scene',
-                        'values': [0] * 7} for scene in scenes]}
+            **dict.fromkeys(renderer_proof.BAKED_REFUSALS, 0),
+            'refusedUnaccountedVertices': 1, 'refusedQuadBudget': 1,
+            'controlledDeferredSections': 3, 'world': [16, 0, 0, 0, 16, 16, 64], 'goldens': goldens}
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -118,26 +138,63 @@ def png_chunk(kind: bytes, data: bytes) -> bytes:
 
 class RendererProofTests(unittest.TestCase):
     def test_baked_requires_independent_atlas_and_observable_mismatch(self):
-        proof = baked_proof_fixture()
-        renderer_proof.baked_proof(proof)
-        for field, invalid in (('atlasGeneration', 2), ('resourceGeneration', 0),
-                               ('firstMismatchedWord', 0), ('mismatchedWords', 1),
-                               ('drawable', False), ('comparedSections', 0),
-                               ('glComparedSections', 0), ('glStaleSections', -1),
-                               ('glPeakBufferBytes', 8192 * 112 + 112),
-                               ('glUploadedBytes', 225), ('glUploadNanos', 0),
-                               ('maxInputBytes', 8_000_001), ('maxOutputBytes', 4_000_001),
-                               ('quads', True), ('goldens', [])):
-            with self.subTest(field=field), self.assertRaises(RuntimeError):
-                renderer_proof.baked_proof(proof | {field: invalid})
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            proof = baked_proof_fixture(directory)
+            renderer_proof.baked_proof(proof, directory, 0)
+            for field, invalid in (('atlasGeneration', 2), ('resourceGeneration', 0),
+                                   ('firstMismatchedWord', 0), ('mismatchedWords', 1),
+                                   ('drawable', False), ('comparedSections', 0),
+                                   ('glComparedSections', 0), ('glStaleSections', -1),
+                                   ('glPeakBufferBytes', 8192 * 112 + 112),
+                                   ('glUploadedBytes', 225), ('glUploadNanos', 0),
+                                   ('maxInputBytes', 8_000_001), ('maxOutputBytes', 4_000_001),
+                                   ('quads', True), ('goldens', []), ('refusedRustDecode', 1),
+                                   ('refusedQuadBudget', 0), ('world', [3, 0, 0, 0, 3, 3, 12]),
+                                   ('world', [17, 0, 0, 0, 16, 16, 64]), ('world', [16, 0, 0])):
+                with self.subTest(field=field), self.assertRaises(RuntimeError):
+                    renderer_proof.baked_proof(proof | {field: invalid}, directory, 0)
+            with self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof, directory, float('inf'))
 
-    def test_baked_rejects_unmeasured_success_and_impossible_counts(self):
-        for change in ({'status': 'passed'}, {'reason': ''}, {'values': [0, 1, 0, 0, 0, 0, 0]},
-                       {'values': [1, 0, 0, 0, 0, 0, 3]}, {'scene': 'different'}):
-            proof = baked_proof_fixture()
-            proof['goldens'][0].update(change)
-            with self.subTest(change=change), self.assertRaises(RuntimeError):
-                renderer_proof.baked_proof(proof)
+    def test_baked_goldens_are_recounted_from_raw_readbacks(self):
+        for change in ({'status': 'passed'}, {'status': 'unsupported'}, {'reason': ''},
+                       {'values': [1, 1, 0, 0, 1, 1, 4]}, {'values': [1, 0, 0, 0, 1, 1, 8]},
+                       {'values': [2, 0, 0, 0, 2, 2, 8]}, {'scene': 'different'}, {'readbacks': []},
+                       {'readbacks': ['baked-golden-1-0.raw']}):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as raw:
+                directory = Path(raw)
+                proof = baked_proof_fixture(directory)
+                proof['goldens'][0].update(change)
+                with self.assertRaises(RuntimeError):
+                    renderer_proof.baked_proof(proof, directory, 0)
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            proof = baked_proof_fixture(directory)
+            (directory / 'baked-golden-3-0.raw').write_bytes(baked_sample(3, 3, oracle_red=11))
+            with self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof, directory, 0)
+            proof['goldens'][3]['values'][1] = proof['world'][1] = 1
+            with self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof, directory, 0)
+            proof['goldens'][3]['values'][1] = proof['world'][1] = 0
+            for sample in (baked_sample(4, 3), baked_sample(3, 3)[:-1], baked_sample(3, 5),
+                           struct.pack('<i', 3) + struct.pack('<i', 0) + baked_sample(3, 3)[8:]):
+                (directory / 'baked-golden-3-0.raw').write_bytes(sample)
+                with self.subTest(sample=len(sample)), self.assertRaises(RuntimeError):
+                    renderer_proof.baked_proof(proof, directory, 0)
+
+    def test_baked_fluid_row_stays_unsupported_and_sections_are_complete(self):
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            proof = baked_proof_fixture(directory)
+            proof['goldens'][7].update(status='measured')
+            with self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof, directory, 0)
+            proof = baked_proof_fixture(directory)
+            (directory / 'baked-golden-5-4.raw').write_bytes(baked_sample(5, 3))
+            with self.assertRaises(RuntimeError):
+                renderer_proof.baked_proof(proof, directory, 0)
 
     def test_geometry_selection_requires_fresh_separate_proof(self):
         proof = renderer_proof_fixture()
@@ -175,9 +232,9 @@ class RendererProofTests(unittest.TestCase):
                 (path.parent / 'geometry-vanilla.rgba').write_bytes(vanilla)
 
     def test_geometry_self_reference_mismatch_bounds_and_cleanup_are_strict(self):
-        proof = geometry_proof_fixture()
-        metrics, final = proof['metrics'], proof['finalMetrics']
         with tempfile.TemporaryDirectory() as directory:
+            proof = geometry_proof_fixture(Path(directory))
+            metrics, final = proof['metrics'], proof['finalMetrics']
             path = Path(directory) / 'geometry-upload.json'
             png = (b'\x89PNG\r\n\x1a\n'
                    + png_chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 64, 8, 6, 0, 0, 0))

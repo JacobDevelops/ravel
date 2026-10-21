@@ -43,6 +43,13 @@ are captured independently and must match, nonzero. Java rechecks resource and
 lifecycle ownership after JNI emission and again before GL draining. Cancellation,
 a failed resort or a retired generation never authorizes drawing.
 
+Vanilla stitches its first block atlas from resource-listener registration after
+the initial reload has completed. That out-of-reload install adopts the completed
+resource generation; installs during a reload retain the active generation.
+Before the first completed reload, generation zero remains inadmissible. This
+avoids requiring an artificial F3+T reload before physical trials can admit
+complete baked comparisons.
+
 Selected capture admits one owning compile thread, 8,192 source quads and fixed
 source/oracle/output buffers. Busy, oversized, uncolored, incomplete-provenance,
 unaccounted final vertices (including fluid tessellation) and stale inputs are
@@ -70,44 +77,53 @@ Private benchmark exports include the complete baked metric vector separately
 from the earlier geometric upload/residency metrics. External Python validation
 checks strict numeric types, bounds, independently captured generation agreement,
 first mismatch, GL admission and every golden disposition, with malformed-evidence
-negative tests. It validates the exported evidence schema; it does not independently
-recompute the cumulative baked pixel counts from raw readbacks.
+negative tests. For controlled golden samples it independently recounts RGBA,
+coverage, depth and foreground from fresh raw paired readbacks, checks the
+reported vertex count against the raw header, and requires zero pixel mismatches.
 
 ## Golden-scene matrix retained, not narrowed
 
-The selected Xvfb run measured the following admitted section-layer comparisons
-against final vanilla buffers and RGBA/depth readbacks. A scene with no samples is
-**not measured**, not a zero-mismatch success. Counts below are cumulative over
-nonempty 64-by-64 offscreen comparisons, not controlled full-world screenshots.
+The final selected live Xvfb run measured all seven baked scenes below against
+final vanilla buffers. Five designated 4-by-4-by-4 block arrangements occupy separate sections
+within one chunk of the viewing platform, inside the harness's render-distance-2
+window. Iron bars and glass panes exercise mipped cutout independently of fancy
+graphics. The raw headers confirm layers 0/1/2/3 for opaque/mipped/unmipped/
+translucent respectively. Counts are bounded 64-by-64 offscreen comparisons, not
+controlled full-world screenshots. Python independently recounted every retained
+paired RGBA/depth readback and agreed with every reported total.
 
-| Required scene | Samples | RGBA / coverage / depth mismatches | Disposition and exact limit |
-| --- | --- | --- | --- |
-| Opaque textured models | 39 | 0 / 0 / 0 | Unsupported as full-world golden: section-layer comparison only; 30,000 foreground pixels per arm |
-| Cutout models, mipped | 16 | 0 / 0 / 0 | Unsupported as full-world golden: section-layer comparison only; 7,376 foreground pixels per arm |
-| Cutout models, unmipped | 18 | 0 / 0 / 0 | Unsupported as full-world golden: section-layer comparison only; 6,143 foreground pixels per arm |
-| Translucent models/fluids | 0 | Not measured | No admitted complete baked section; fluid tessellation is not baked-quad provenance |
-| Animated atlas sprites | 0 | Not measured | No admitted complete baked section with animated provenance |
-| Staged resource reload | 0 | Not measured | No admitted shaded section after the first compared resource generation |
-| Staged world unload/reopen | 0 | Not measured | Retired-generation drawing refused; no post-unload pixel comparison |
+| Required scene | Samples | RGBA / coverage / depth mismatches | Foreground pixels per arm | Vertices |
+| --- | --- | --- | --- | --- |
+| Opaque textured models | 1 | 0 / 0 / 0 | 256 | 384 |
+| Cutout models, mipped | 1 | 0 / 0 / 0 | 188 | 5,184 |
+| Cutout models, unmipped | 1 | 0 / 0 / 0 | 256 | 768 |
+| Translucent models | 1 | 0 / 0 / 0 | 256 | 512 |
+| Animated atlas sprites | 1 | 0 / 0 / 0 | 256 | 384 |
+| Staged resource reload, all five sections | 5 | 0 / 0 / 0 | 1,212 | 7,232 |
+| Staged world unload/reopen, all five sections | 5 | 0 / 0 / 0 | 1,212 | 7,232 |
+| Translucent fluids | 0 | Unsupported, not a match | 0 | 0 |
 
-That functional run admitted 290 CPU comparisons and 16,939 quads, with zero
-mismatched BLOCK words and first mismatch -1; 190 busy, 267 unsupported and one
-stale section remained explicit. Independent resource/atlas generations were both
-2. It drained 39 GL comparisons, with zero GL stale/unsupported outcomes, uploading
-3,794,336 bytes with a 103,712-byte peak transient VBO. CPU upload validation took
-463,364 ns cumulatively; complete GL comparisons took 26,016,262 ns. These numbers
-describe the exercised run, not an admission-rate guarantee.
+Fluid tessellation does not carry baked-quad provenance and is explicitly
+unsupported; it is not silently folded into the translucent-model result.
+The final selected live run admitted 434 CPU comparisons and 23,454 quads with zero
+mismatched BLOCK words and first mismatch -1. Busy/unsupported/stale counts were
+335/211/0; all unsupported sections had unaccounted vertices, not Rust decoding
+failures. Resource/atlas generations were both 2. The 59 GL comparisons uploaded
+5,253,696 bytes with a 145,152-byte peak transient VBO, zero GL stale/unsupported
+outcomes and zero pixel/coverage/depth mismatches. CPU upload validation took
+843,283 ns cumulatively; complete comparisons took 43,889,224 ns.
+These describe the exercised run, not an admission-rate guarantee.
 
 ## Frozen physical trials and verification
 
 Six completed warm-filesystem trials used one frozen candidate with SHA256
-`4eb84d5fe498a3de8be4e74df38b97d7f8c36a94093f7ac28ea874d340279e40`:
+`b65267c84b374df92ddc2f63ea81a58cadf7d66fff950fef98ef44ba9a54b8ea`:
 three selection-off (`vanilla`) and three selection-on (`geometry-proof`).
 The locked RTX 5090 display was `:0`; seed was 8675309, dimensions 1280-by-720,
 render distance 12, unlimited frames, G1 and 4,096/8,192 MiB initial/maximum heap.
 Temurin 27+35 and the null audio driver were identical across arms. These are
 Ravel-versus-Ravel observations, not a vanilla speedup experiment. Private trial
-names are `wp5s6b-off-warm-filesystem-1` through `-3` and the corresponding `on`
+names are `wp5s6d-off-warm-filesystem-1` through `-3` and the corresponding `on`
 names; separate strict reductions retain every scene's compile/upload timing,
 frame stalls and memory samples without pooling frame distributions.
 
@@ -117,12 +133,12 @@ VRAM is not per-process attribution.
 
 | Trial | Spawn idle | Square exploration | Loaded chunk stress | RSS | Heap | VRAM |
 | --- | --- | --- | --- | --- | --- | --- |
-| Off 1 | 0.502/0.548/0.887 | 0.732/0.925/1.236 | 0.790/0.913/1.235 | 5409.6 | 2684.3 | 1435 |
-| Off 2 | 0.646/0.868/1.291 | 0.702/0.930/1.242 | 0.743/0.935/1.253 | 5478.7 | 2711.8 | 1443 |
-| Off 3 | 0.511/0.559/0.902 | 0.741/0.945/1.241 | 0.796/0.943/1.247 | 5454.7 | 2708.2 | 1439 |
-| On 1 | 0.593/0.711/0.997 | 0.735/0.937/1.262 | 0.790/0.874/1.246 | 5550.0 | 2736.4 | 1437 |
-| On 2 | 0.577/0.696/0.998 | 0.737/0.940/1.286 | 0.790/0.921/1.290 | 5582.0 | 2740.8 | 1435 |
-| On 3 | 0.516/0.561/0.898 | 0.743/0.964/1.280 | 0.798/0.932/1.254 | 5511.7 | 2691.7 | 1437 |
+| Off 1 | 0.501/0.543/0.883 | 0.737/0.948/1.248 | 0.790/0.943/1.249 | 5443.2 | 2668.5 | 1437 |
+| Off 2 | 0.500/0.547/0.870 | 0.735/0.954/1.257 | 0.789/0.949/1.282 | 5413.4 | 2688.6 | 1431 |
+| Off 3 | 0.500/0.543/0.882 | 0.730/0.929/1.228 | 0.786/0.917/1.231 | 5416.9 | 2700.1 | 1437 |
+| On 1 | 0.506/0.554/0.883 | 0.730/0.945/1.255 | 0.788/0.938/1.255 | 5484.1 | 2672.4 | 1437 |
+| On 2 | 0.576/0.658/0.940 | 0.736/0.963/1.288 | 0.796/0.948/1.272 | 5502.5 | 2684.3 | 1447 |
+| On 3 | 0.510/0.556/0.899 | 0.746/0.948/1.285 | 0.798/0.947/1.271 | 5517.4 | 2712.7 | 1443 |
 
 Loaded-stress vanilla compile/upload hook durations below are observational CPU
 durations, not GPU execution time. Each timing cell is p50/p95/p99 in milliseconds.
@@ -134,37 +150,54 @@ check; no isolated nanosecond cost is inferred from whole-application difference
 
 | Trial | Compile | Upload | Geometry uploads / bytes | Peak geometric resident bytes |
 | --- | --- | --- | --- | --- |
-| Off 1 | 0.0063/14.6126/35.3492 | 0.0015/0.0047/0.0103 | 0 / 0 | 0 |
-| Off 2 | 0.0680/19.1526/41.0130 | 0.0016/0.0043/0.0072 | 0 / 0 | 0 |
-| Off 3 | 0.0360/15.0665/38.2957 | 0.0015/0.0047/0.0100 | 0 / 0 | 0 |
-| On 1 | 0.2478/14.5757/37.1494 | 0.0016/0.0047/0.0106 | 384 / 6558768 | 68832 |
-| On 2 | 0.0714/15.1110/36.9885 | 0.0015/0.0046/0.0104 | 401 / 6811296 | 68832 |
-| On 3 | 0.2060/14.7226/35.6131 | 0.0015/0.0046/0.0105 | 383 / 6568560 | 68832 |
+| Off 1 | 0.006/14.890/36.376 | 0.002/0.005/0.010 | 0 / 0 | 0 |
+| Off 2 | 0.036/14.498/35.867 | 0.002/0.005/0.010 | 0 / 0 | 0 |
+| Off 3 | 0.014/14.877/36.202 | 0.001/0.005/0.010 | 0 / 0 | 0 |
+| On 1 | 0.206/14.456/36.843 | 0.002/0.005/0.010 | 392 / 6620640 | 68832 |
+| On 2 | 0.229/14.617/36.326 | 0.002/0.005/0.011 | 391 / 6337056 | 68832 |
+| On 3 | 0.211/14.295/36.593 | 0.002/0.005/0.010 | 357 / 6118896 | 68832 |
 
-Crucially, **none of the three physical selected trials admitted a complete baked
-CPU comparison or shaded GL upload**. Their busy/unsupported/stale section counters
-were respectively 22927/4050/127, 22978/3735/92 and 23155/4101/106. Baked emitted
-quads, uploaded bytes and peak baked VBO bytes were zero because no baked result
-was admitted, not because shaded rendering is free. These trials measure selected
-instrumentation/refusal overhead and geometric work, not shaded throughput or
-fidelity. The Xvfb functional run above is the exercised shaded GL evidence.
-The physical admission gap remains an explicit slice-7 prerequisite.
+All six physical trials exited zero and passed the strict export gate. Each
+selected trial admitted complete shaded comparisons; the dormant trials admitted
+none. All selected BLOCK-word and RGBA/coverage/depth mismatch counts were zero,
+with first mismatched word -1. All selected unsupported counts below are explained
+by unaccounted vertices; Rust decode refusals were zero. Resource/atlas generations
+were both 1, and no controlled-scene deferral ran in physical trials.
+
+| Selected trial | CPU sections / quads | Busy / unsupported / stale | Shaded GL comparisons | Uploaded bytes / peak VBO bytes | Foreground pixels per arm |
+| --- | --- | --- | --- | --- | --- |
+| On 1 | 2914 / 362382 | 23275 / 882 / 112 | 533 | 81173568 / 359184 | 653877 |
+| On 2 | 2934 / 378707 | 23292 / 921 / 115 | 538 | 84830368 / 378224 | 650948 |
+| On 3 | 2927 / 361405 | 22485 / 911 / 103 | 532 | 80954720 / 360752 | 670549 |
+
+The separate `wp5s6d-functional` Xvfb/software-GL trial also exited zero and
+passed the strict gate: 2,601 CPU sections, 280,336 quads, 415 shaded GL comparisons,
+62,795,264 uploaded bytes, a 354,816-byte peak VBO and 513,380 foreground pixels
+per arm, with zero word/pixel/coverage/depth mismatches. It is excluded from the
+physical reductions. These bounded comparisons do not establish full-world
+fidelity or a resource saving versus vanilla.
 
 Final gates exited zero: all-target/all-feature Clippy with warnings denied,
 legacy agent build, default live, selected live and the complete verification
 task after a fresh coverage-target removal. Each of Minecraft 1.12.2, 1.21.1 and
-26.1.2 passed 4,360 workspace tests plus its empty-composition test; all three JVM
-compile/harness rows and version gates passed. Coverage was 94.04% lines, 93.35%
-regions and 92.64% functions. Independent read-only review had no remaining
-findings after the hook, lifecycle, GL refusal and evidence-validation fixes.
+26.1.2 passed 4,377 workspace tests plus its empty-composition test; all three JVM
+compile/harness rows and version gates passed. Coverage was 93.99% lines, 93.28%
+regions and 92.59% functions. Independent read-only review found no blockers after
+the hook, lifecycle, GL refusal and strict evidence-validation fixes.
+An earlier selected live attempt timed out awaiting fresh geometry drains after
+stress teleport 6; a fresh legacy build and selected live rerun passed without
+changing that timeout, drain threshold or any golden assertion. A separate
+attempt after verification had regenerated the modern agent and correctly refused
+the non-legacy adapter before the successful legacy rebuild.
 
 ## Next: slice 7
 
-Keep selection off and vanilla authoritative until controlled full-world scenes
-cover opaque, both cutout modes, translucent/fluids, animated sprites, resource
-replacement and unload/reopen. Preserve exact refusal reasons rather than treating
-empty scenes as matches. Independent raw baked readback reduction remains distinct
-from schema validation. Establish complete shaded residency/resource replacement,
-then evaluate default world cutover only against faithful golden scenes and fresh
-like-for-like measurements. The current bounded comparison is not authorization
-to remove vanilla drawing or claim a speedup.
+Next is complete generation-keyed shaded residency and resource/atlas replacement,
+including retirement before unload/reopen and the handling of currently refused
+sections. The controlled section-layer matrix is measured, but full-world fidelity
+and fluid tessellation remain unsupported. Keep selection off and vanilla
+authoritative while extending the same independent raw-readback oracle to those
+boundaries; preserve exact refusal reasons and never treat empty scenes as
+matches. Default world cutover requires faithful full-world golden scenes and
+fresh like-for-like measurements. The bounded comparison does not authorize
+removing vanilla drawing or claiming a speedup.

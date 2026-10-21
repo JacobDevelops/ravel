@@ -193,7 +193,15 @@ public final class LegacyRuntimeMain {
                 "successful reload/atlas did not publish exactly one matching generation");
         LegacyRuntime.exit("legacyAtlasReload", receiver, null, null, 0, null, 0);
         require(LegacyRuntime.atlasResourceGeneration() == succeeded,
-                "atlas outside an active reload invented a generation");
+                "registration-time atlas changed the completed resource generation");
+        LegacyRuntime.beginGeneration(receiver);
+        LegacyRuntime.exit("legacyResourceReload", receiver, null, null, 0, null, 0);
+        long registered = LegacyRuntime.completedResourceGeneration();
+        require(registered == succeeded + 1 && LegacyRuntime.atlasResourceGeneration() == succeeded,
+                "reload without a stitch moved the installed atlas generation");
+        LegacyRuntime.exit("legacyAtlasReload", receiver, null, null, 0, null, 0);
+        require(LegacyRuntime.atlasResourceGeneration() == registered,
+                "registration-time atlas did not adopt its completed resource generation");
         Object first = new Object();
         LegacyRuntime.enter("legacyRecipeRegister", receiver, "fixture:lifecycle", first, 0);
         LegacyRuntime.exit("legacyRecipeRegister", receiver, "fixture:lifecycle", first, 0, null, 0);

@@ -65,7 +65,7 @@ pub(crate) fn repin_locks(
 pub(crate) fn replace_pin(
     document: &str,
     table: &str,
-    sha256: &str,
+    sha256: &Sha256Digest,
     bytes: u64,
 ) -> Result<String, GenerateError> {
     let mut rewritten = String::with_capacity(document.len());
@@ -78,7 +78,7 @@ pub(crate) fn replace_pin(
         }
         if inside && line.starts_with("sha256 = ") {
             rewritten.push_str("sha256 = \"");
-            rewritten.push_str(sha256);
+            rewritten.push_str(&sha256.to_string());
             rewritten.push('"');
             pinned_hash = true;
         } else if inside && line.starts_with("bytes = ") {
@@ -103,9 +103,9 @@ pub(crate) fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
-/// Hex-encoded SHA-256 of some bytes.
-pub(crate) fn sha256(bytes: &[u8]) -> String {
-    Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string()
+/// SHA-256 of some bytes, kept typed until a text boundary.
+pub(crate) fn sha256(bytes: &[u8]) -> Sha256Digest {
+    Sha256Digest::from_bytes(Sha256::digest(bytes).into())
 }
 
 #[cfg(test)]
@@ -212,11 +212,12 @@ sha256 = \"bb\"
 bytes = 2
 ";
 
-        let rewritten = super::replace_pin(document, "[inputs.mappingsLock]", "cc", 3)
+        let digest = ravel_core::Sha256Digest::from_bytes([0xcc; 32]);
+        let rewritten = super::replace_pin(document, "[inputs.mappingsLock]", &digest, 3)
             .expect("the table is there to rewrite");
 
         assert!(
-            rewritten.contains("sha256 = \"cc\"\nbytes = 3\n"),
+            rewritten.contains(&format!("sha256 = \"{digest}\"\nbytes = 3\n")),
             "{rewritten}"
         );
         assert!(
@@ -234,7 +235,7 @@ bytes = 2
         let error = super::replace_pin(
             "[inputs.stubsLock]\npath = \"a\"\n",
             "[inputs.stubsLock]",
-            "cc",
+            &ravel_core::Sha256Digest::from_bytes([0xcc; 32]),
             3,
         )
         .expect_err("there is no pin to rewrite");
@@ -261,7 +262,7 @@ bytes = 2
     #[test]
     fn hashing_matches_the_digest_the_adapter_inputs_pin() {
         assert_eq!(
-            sha256(b""),
+            sha256(b"").to_string(),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         assert_eq!(

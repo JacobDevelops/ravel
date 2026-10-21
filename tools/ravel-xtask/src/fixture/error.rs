@@ -1,5 +1,6 @@
 //! Fixture reconstruction and verification failures.
 
+use ravel_core::Sha256Digest;
 use std::fmt;
 
 /// A fixture reconstruction or verification failure.
@@ -16,9 +17,9 @@ pub enum FixtureError {
         /// Artifact being checked.
         artifact: &'static str,
         /// Recorded SHA-256.
-        expected: String,
+        expected: Sha256Digest,
         /// Observed SHA-256.
-        actual: String,
+        actual: Sha256Digest,
     },
     /// The archive could not provide its manifest.
     Archive(String),
@@ -93,6 +94,7 @@ impl std::error::Error for FixtureError {}
 #[cfg(test)]
 mod tests {
     use super::FixtureError;
+    use ravel_core::Sha256Digest;
     use std::error::Error;
 
     #[test]
@@ -119,10 +121,15 @@ mod tests {
             (
                 FixtureError::HashMismatch {
                     artifact: "archive",
-                    expected: "abc123".to_owned(),
-                    actual: "def456".to_owned(),
+                    expected: Sha256Digest::from_bytes([0; 32]),
+                    actual: Sha256Digest::from_bytes([255; 32]),
                 },
-                "archive SHA-256 mismatch: expected abc123, observed def456",
+                concat!(
+                    "archive SHA-256 mismatch: expected ",
+                    "0000000000000000000000000000000000000000000000000000000000000000",
+                    ", observed ",
+                    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                ),
             ),
             (
                 FixtureError::MetadataMismatch {

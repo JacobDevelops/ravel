@@ -42,8 +42,6 @@ stable contracts toward concrete host internals.
   `noak` retains raw JVM descriptors and decodes modified UTF-8; `zip` provides
   archive integrity and bounded DEFLATE reads; `proguard` parses mapping records.
   Artifact admission, descriptor validation and mapping uniqueness remain ours.
-  SHA-256 pins require 64 ASCII hexadecimal digits and canonicalize letter case
-  before integrity and lock-provenance comparisons.
   JVM names and descriptor tokens live in its classfile module, shared by source
   rendering, hook-shape classification and tooling inventory counts.
   Xtask consumes typed adapter admission and hook inventory facts instead of
@@ -107,65 +105,25 @@ stable contracts toward concrete host internals.
 - Testkit may depend on the loader and public contracts to construct process
   harnesses, but production libraries never depend on testkit. Local fixtures
   are never package or source dependencies.
-- Counterpart crates in `registry/mods/*` are members of the root Cargo
-  workspace and consume the public SDK, not loader or JVM internals. Colocation
-  does not relax the mod-author boundary. Cargo path dependencies stay within
-  the checkout; authorized ignored local fixtures remain runtime test inputs,
-  never package or source dependencies.
+- Counterpart crates in `registry/mods/*` consume `ravel-sdk` and no other internal
+  Ravel crate, including in dev-dependencies. A counterpart may depend on another
+  counterpart required by its contract, and on vetted third-party author
+  dependencies such as `serde`, `serde_json`, and `num-traits`. These declarations
+  inherit workspace dependencies. Colocation does not relax the mod-author
+  boundary. Authorized ignored local fixtures remain runtime inputs, never package
+  or source dependencies.
 
-- `ravel-bootstrap-runtime` is the safe JNI integration runtime, built as an rlib and linked
-  into a host cdylib. Production dependencies are restricted to host crates
-  (`ravel-host-runtime` and the cdylib hosts); `ravel-build` and
-  `tests/conformance` have test-only dev-dependency exceptions.
-  Launch callers import `Composition` and `environment` directly from bootstrap,
-  not through the host-runtime admission facade.
-  The composed host and player-generated hosts own the JVM-loadable
-  `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
-  It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
-  and exposes only safe Rust upward. SDK and mod dependency graphs must not reach it.
-  The host JNI entries delegate side decoding and redacted exceptions to
-  `ravel-host-runtime` and install the panic reporter before constructing members.
-  In-process initialization does not replace the process panic hook. Bootstrap
-  owns the installed composition, including the admitted package-version map used
-  to check saved-data requirements. `ravel_host_runtime::compose` freezes the
-  loader's admitted interception ordering after registration but before layering
-  supplied files, so failed optional interceptors contribute no pack bytes.
-  Runtime saves use that owned cache instead of
-  recollecting declarations or re-admitting conflicting claims.
-  Runtime construction requires a `LaunchContext`; installation returns an
-  `InstallError` rather than losing its admission failure. Loader owns saved-data
-  admission and outward-request dispatch, while bootstrap attributes interceptions
-  to their owners. Save veto ownership comes from `Round::refused_by`. Failed
-  owners' saved payloads remain opaque, and installed package metadata never
-  substitutes for a mod's saved-data declarations.
-  Callback dispatch and world persistence borrow the environment owned by the
-  runtime's pre-world report; hooks do not reconstruct version or platform strings.
-  Bootstrap's pack module owns resource, staged-data, and world-data destinations,
-  pack identity, descriptions, pinned metadata, and the idempotent staged tree
-  writer; loader supplies admitted resource sets without writing Minecraft packs.
-  Legacy adapters inject their resource proxy directly, so host initialization
-  skips resource-pack generation and options seeding for them. Modern resource-pack
-  selection uses `pack_id()` (`file/ravel`). Installed world-pack writes use
-  `write_world_datapack`, exposed to Java as `ravelWriteWorldDatapack`; opening world
-  persistence only admits and stages saved data. Legacy world admission writes no
-  datapack because that adapter has no datapack output. Host initialization takes
-  the game directory explicitly, with cwd resolved only at the process JNI entry;
-  integrated servers reuse that installed launch directory.
-  A composition owns a loader `Loaded` pair that validates and orders its mods once;
-  callbacks and persistence borrow that pair infallibly. Per-call dispatch refusals
-  return to their caller rather than poisoning the launch report. A composition is
-  consumed into private runtime state: package versions live only in the lifecycle
-  owner, and settings borrow the launch directory when saving.
-  Hooks dispatch through the installed runtime, not a second observer registry;
-  legacy integrated servers retain their thread-owned runtime selection. Server
-  commands and world-save interceptions carry the executing integrated-server side
-  even when the distribution is a client. World-open and save crossings are exposed
-  as `open_world_data` and `save_world_data`.
-  Renderer lifecycle generations also belong to bootstrap runtime, outside the
-  SDK closure. Java supplies copied event, generation and thread scalars; Rust
-  owns the generation barrier and stale-generation admission. Worker observations
-  do not require the integrated server's thread-selected composition. Java keeps
-  game references, vanilla task identity, context ownership and all GL calls.
+- `ravel-bootstrap-runtime` is the safe JNI integration runtime, linked as an rlib
+  into JVM-loadable host cdylibs. Production dependencies are restricted to host
+  crates; `ravel-build` and conformance tests have test-only exceptions. SDK and
+  mod dependency graphs must not reach it.
+  Bootstrap owns launch composition, installed runtime state, hook attribution,
+  pack destinations, world persistence, and renderer lifecycle generations.
+  Loader owns mod admission, lifecycle ordering, saved-data admission, and
+  outward-request dispatch; it does not write Minecraft packs.
+  Java owns game references, vanilla task identity, context ownership, and GL
+  calls. It crosses the safe runtime boundary with copied values. See
+  [`safety-boundary.md`](safety-boundary.md) for the JNI ownership boundary.
 
 - `ravel-renderer` owns bounded immutable section values, deduplicated state/model
   keys, CPU cube meshes and conservative face-to-face visibility. It has no JVM,

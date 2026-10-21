@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::hooks::HookInventory;
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 use crate::tracked::collect_files;
 use crate::version_boundary::VersionAdapters;
 
@@ -49,7 +49,14 @@ pub(crate) fn verify_hook_name_literals(
     adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    let manifest = match agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+    let text = match read_text(root, &root.join(AGENT_SOURCE_MANIFEST)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let manifest = match agent_source_manifest(&text) {
         Ok(manifest) => manifest,
         Err(error) => {
             violations.push(error);
@@ -58,7 +65,7 @@ pub(crate) fn verify_hook_name_literals(
     };
 
     for path in java_sources(root, violations) {
-        let relative = relative_label(root, &path);
+        let relative = redacted_path(root, &path);
         let selected = Path::new(&relative);
         let modern = compiled_bootstrap_source(selected, false, &manifest);
         let legacy = compiled_bootstrap_source(selected, true, &manifest);
@@ -184,7 +191,7 @@ fn legacy_hook_literals(source: &str) -> Vec<&str> {
     literals
 }
 
-const AGENT_SOURCE_MANIFEST: &str = include_str!("../../../../jvm/build/agent-sources.txt");
+const AGENT_SOURCE_MANIFEST: &str = "jvm/build/agent-sources.txt";
 
 fn agent_source_manifest(text: &str) -> Result<Vec<(&str, &str)>, String> {
     let mut sources = Vec::with_capacity(text.lines().count());

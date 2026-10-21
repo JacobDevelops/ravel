@@ -181,8 +181,15 @@ cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
 script_runner = "bash"
 script = '''
 set -euo pipefail
-export PATH="$HOME/.cargo/bin:$PATH"
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
+
+# Shared cached objects retain the checkout paths used for instrumentation.
+# This supported bypass is inherited by llvm-cov and nextest's Cargo processes;
+# plain Cargo ignores it on machines without mbx.
+export MBX_DISABLE=1
+# cargo make may itself have inherited an active mbx session's rustc wrapper.
+unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+unset CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER
 
 # Profiles from deleted sources otherwise survive and drag the figure down.
 cargo llvm-cov clean --workspace

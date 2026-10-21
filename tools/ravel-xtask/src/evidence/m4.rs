@@ -10,11 +10,14 @@ use serde_json::Value;
 use crate::evidence::closure::{
     CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
+use crate::evidence::model::admit;
 use crate::evidence::rules::{
     Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
-    has_native_attestation, require, require_fields, require_rows,
+    has_native_attestation, require,
 };
-use crate::json::{array, nonempty, number};
+use crate::json::{array, number};
+
+mod model;
 
 const M4_MANIFEST_RULES: &[(Rule, &str)] = &[
     (
@@ -69,50 +72,48 @@ const M4_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "linux-process-matrix.json",
         rule: |value| {
+            let record: model::ProcessMatrix<'_> = admit(value)?;
             require(
-                value["workPackage"] == "M4-W8",
+                record.work_package.0 == "M4-W8",
                 "/workPackage must be M4-W8",
             )?;
             require(
-                value["protocol"] == "m4-gate-matrix-v1",
+                record.protocol.0 == "m4-gate-matrix-v1",
                 "/protocol must be m4-gate-matrix-v1",
             )?;
-            require(value["result"] == "pass", "/result must be pass")?;
+            require(record.result.0 == "pass", "/result must be pass")?;
             require(
-                value["platform"]["os"] == "linux",
+                record.platform.os.0 == "linux",
                 "/platform/os must be linux",
             )?;
             require(
-                value["platform"]["architecture"] == "x86_64",
+                record.platform.architecture.0 == "x86_64",
                 "/platform/architecture must be x86_64",
             )?;
             require(
-                value["gameLaunch"]["occurred"] == false,
+                !record.game_launch.occurred,
                 "/gameLaunch/occurred must be false",
             )?;
             require(
-                nonempty(value, "/gameLaunch/whyItIsNotHere"),
-                "/gameLaunch/whyItIsNotHere",
-            )?;
-            require(
-                number(value, "/gate/exitStatus") == Some(0.0),
+                record.gate.exit_status.as_f64() == Some(0.0),
                 "/gate/exitStatus",
             )?;
             require(
-                number(value, "/gate/tests/run").is_some_and(|count| count > 0.0),
+                record
+                    .gate
+                    .tests
+                    .run
+                    .as_f64()
+                    .is_some_and(|count| count > 0.0),
                 "/gate/tests/run",
             )?;
-            require_rows(value, "/processes", |row| {
-                require_fields(
-                    row,
-                    &["/surface", "/command", "/proves", "/doesNotProve"],
-                    |value| value.as_str().is_some_and(|text| !text.is_empty()),
-                )?;
+            for (index, process) in record.processes.0.iter().enumerate() {
                 require(
-                    number(row, "/exitStatus") == Some(0.0),
+                    process.exit_status.as_f64() == Some(0.0),
                     "/exitStatus must be zero",
                 )
-            })?;
+                .map_err(|error| format!("/processes/{index}{error}"))?;
+            }
             Ok(())
         },
         description: "a Linux process matrix in which every recorded gate process exited zero and says what it \
@@ -123,30 +124,24 @@ const M4_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "sdk-surface.json",
         rule: |value| {
-            let mut packages = array(value, "/workPackages")
+            let record: model::Surface<'_> = admit(value)?;
+            let mut packages = record
+                .work_packages
+                .0
                 .iter()
-                .filter_map(|row| row["id"].as_str())
+                .map(|row| row.id.0)
                 .collect::<Vec<_>>();
             packages.sort_unstable();
 
             require(
-                value["workPackage"] == "M4-W8",
+                record.work_package.0 == "M4-W8",
                 "/workPackage must be M4-W8",
             )?;
             require(
-                value["protocol"] == "m4-surface-v1",
+                record.protocol.0 == "m4-surface-v1",
                 "/protocol must be m4-surface-v1",
             )?;
-            require(array(value, "/workPackages").len() == 7, "/workPackages")?;
-            for pointer in [
-                "/inventory/crates",
-                "/inventory/testMods",
-                "/inventory/examples",
-                "/inventory/guideDocuments",
-                "/inventory/conformanceSuites",
-            ] {
-                require(!array(value, pointer).is_empty(), pointer)?;
-            }
+            require(record.work_packages.0.len() == 7, "/workPackages")?;
             require(
                 packages
                     == [
@@ -154,14 +149,6 @@ const M4_RECORDS: &[RecordDefinition] = &[
                     ],
                 "/workPackages must name M4-W1 through M4-W7 exactly",
             )?;
-            require_rows(value, "/workPackages", |row| {
-                require(nonempty(row, "/shipped"), "/shipped")?;
-                require(
-                    !array(row, "/provenBy").is_empty(),
-                    "/provenBy must not be empty",
-                )?;
-                require(nonempty(row, "/notProven"), "/notProven")
-            })?;
             Ok(())
         },
         description: "an SDK surface record inventorying what each of M4-W1 through M4-W7 shipped, what proves \

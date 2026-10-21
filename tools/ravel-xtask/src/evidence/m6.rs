@@ -9,139 +9,42 @@ use serde_json::Value;
 use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
-use crate::json::{array, column_sum, nonempty, number, sum};
+use crate::json::{array, column_sum, number, same, sum};
 
 use crate::evidence::closure::{
     CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
-use crate::evidence::rules::{require, require_fields, require_rows, unique_by};
+use crate::evidence::model::admit;
+use crate::evidence::rules::require;
 
-fn counterpart_record(v: &Value) -> Result<(), String> {
-    require(v["workPackage"] == "M6-W6", "/workPackage must be M6-W6")?;
+mod model;
+
+fn verify_counterpart_record(value: &Value) -> Result<(), String> {
+    let summary: model::CounterpartRecord<'_> = admit(value)?;
     require(
-        v["protocol"] == "m6-counterpart-v1",
+        summary.work_package.0 == "M6-W6",
+        "/workPackage must be M6-W6",
+    )?;
+    require(
+        summary.protocol.0 == "m6-counterpart-v1",
         "/protocol must be m6-counterpart-v1",
     )?;
-    require(v["result"] == "pass", "/result must be pass")?;
-    counterpart_wave(v)?;
-    let counterparts = array(v, "/counterparts");
-    require_rows(v, "/counterparts", counterpart_row)?;
+    require(summary.result.0 == "pass", "/result must be pass")?;
+    require(summary.wave.frozen, "/wave/frozen")?;
+    let counterparts = &summary.counterparts.0;
     require(
-        unique_by(counterparts, |left, right| left["id"] == right["id"]),
+        counterparts.iter().enumerate().all(|(index, counterpart)| {
+            counterparts[..index]
+                .iter()
+                .all(|other| other.id.0 != counterpart.id.0)
+        }),
         "/counterparts must have unique id",
-    )?;
-    counterpart_process(v)?;
-    rewrite_integrity_record(v)?;
-    require(v["totals"].is_object(), "/totals")?;
-    require_fields(
-        v,
-        &[
-            "/totals/counterparts",
-            "/totals/observableAreas",
-            "/totals/declarableOnly",
-            "/totals/exercised",
-        ],
-        Value::is_number,
-    )?;
-    Ok(())
-}
-
-fn counterpart_wave(v: &Value) -> Result<(), String> {
-    require(v["wave"].is_object(), "/wave")?;
-    require(v["wave"]["frozen"] == true, "/wave/frozen")?;
-    require_rows(v, "/wave/entries", |row| {
-        require(nonempty(row, "/id"), "/id")?;
-        require(nonempty(row, "/reason"), "/reason")?;
-        require(row["dependencies"].is_array(), "/dependencies")?;
-
-        Ok(())
-    })?;
-    Ok(())
-}
-
-fn counterpart_process(v: &Value) -> Result<(), String> {
-    require(v["cluster"].is_object(), "/cluster")?;
-    require(nonempty(v, "/cluster/scenario"), "/cluster/scenario")?;
-    require_rows(v, "/cluster/steps", |row| {
-        require(nonempty(row, "/name"), "/name")?;
-        require(nonempty(row, "/result"), "/result")?;
-
-        Ok(())
-    })?;
-    require_fields(
-        v,
-        &[
-            "/processValidation/template",
-            "/processValidation/checklist",
-            "/processValidation/evidenceSchema",
-            "/processValidation/secondCounterpart",
-        ],
-        |value| value.as_str().is_some_and(|text| !text.is_empty()),
     )
 }
 
-fn rewrite_integrity_record(v: &Value) -> Result<(), String> {
-    require_fields(v, &["/rewriteIntegrity/enforcing"], Value::is_boolean)?;
-    require_fields(
-        v,
-        &[
-            "/rewriteIntegrity/lexicon",
-            "/rewriteIntegrity/identifierSet",
-        ],
-        |v| v.as_str().is_some_and(|s| !s.is_empty()),
-    )?;
-    require_fields(
-        v,
-        &[
-            "/rewriteIntegrity/filesScanned",
-            "/rewriteIntegrity/artifactsScanned",
-            "/rewriteIntegrity/violations",
-            "/rewriteIntegrity/specificationViolations",
-            "/rewriteIntegrity/mutationProof/sourceInjection/exitStatus",
-            "/rewriteIntegrity/mutationProof/artifactInjection/exitStatus",
-            "/rewriteIntegrity/mutationProof/cleanRun/exitStatus",
-        ],
-        Value::is_number,
-    )
-}
-
-fn counterpart_row(row: &Value) -> Result<(), String> {
-    require(nonempty(row, "/id"), "/id")?;
-    require(nonempty(row, "/entry"), "/entry")?;
-    require(row["specification"].is_object(), "/specification")?;
-    require(
-        matches!(
-            row["specification"]["route"].as_str(),
-            Some("source" | "observed")
-        ),
-        "/specification/route must be source or observed",
-    )?;
-    require_fields(
-        row,
-        &[
-            "/specification/accepted",
-            "/specification/structureReviewed",
-            "/specification/carriesUpstreamIdentifier",
-        ],
-        Value::is_boolean,
-    )?;
-    require_fields(
-        row,
-        &["/observableAreas", "/declarableOnly", "/exercised"],
-        Value::is_number,
-    )?;
-    require(row["provenance"].is_object(), "/provenance")?;
-    require(
-        row["provenance"]["complete"].is_boolean(),
-        "/provenance/complete",
-    )?;
-    require_fields(row, &["/suites/total", "/suites/failed"], Value::is_number)?;
-    Ok(())
-}
-
-fn same_wave_entries(v: &Value) -> bool {
-    let counterparts = array(v, "/counterparts");
-    let entries = array(v, "/wave/entries");
+fn same_wave_entries(value: &Value) -> bool {
+    let counterparts = array(value, "/counterparts");
+    let entries = array(value, "/wave/entries");
     counterparts
         .iter()
         .all(|row| entries.iter().any(|entry| row["entry"] == entry["id"]))
@@ -152,7 +55,7 @@ fn same_wave_entries(v: &Value) -> bool {
 
 const M6_RECORDS: &[RecordDefinition] = &[RecordDefinition {
     name: "counterpart-summary.json",
-    rule: counterpart_record,
+    rule: verify_counterpart_record,
     description: "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
  counterpart with its observable areas as numbers, the cluster scenario's steps, the \
  process-validation artefacts, and the rewrite-integrity check's scan counts and both \
@@ -162,70 +65,75 @@ const M6_RECORDS: &[RecordDefinition] = &[RecordDefinition {
 
 const M6_ARITHMETIC: &[(Rule, &str)] = &[
     (
-        |v| {
-            number(v, "/totals/counterparts")
-                == Value::from(array(v, "/counterparts").len()).as_f64()
+        |value| {
+            number(value, "/totals/counterparts")
+                == Value::from(array(value, "/counterparts").len()).as_f64()
         },
         "the total counts the rows the record itself lists",
     ),
     (
-        |v| {
-            column_sum(v, "/counterparts", "/observableAreas")
-                .zip(number(v, "/totals/observableAreas"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                column_sum(value, "/counterparts", "/observableAreas"),
+                number(value, "/totals/observableAreas"),
+            )
         },
         "the observable-area total is the sum of the counterparts' own",
     ),
     (
-        |v| {
-            column_sum(v, "/counterparts", "/declarableOnly")
-                .zip(number(v, "/totals/declarableOnly"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                column_sum(value, "/counterparts", "/declarableOnly"),
+                number(value, "/totals/declarableOnly"),
+            )
         },
         "the declarable-only total is the sum of the counterparts' own",
     ),
     (
-        |v| {
-            column_sum(v, "/counterparts", "/exercised")
-                .zip(number(v, "/totals/exercised"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                column_sum(value, "/counterparts", "/exercised"),
+                number(value, "/totals/exercised"),
+            )
         },
         "the exercised total is the sum of the counterparts' own",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|v| {
-                sum(v, &["/declarableOnly", "/exercised"])
-                    .zip(number(v, "/observableAreas"))
-                    .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            array(value, "/counterparts").iter().all(|value| {
+                same(
+                    sum(value, &["/declarableOnly", "/exercised"]),
+                    number(value, "/observableAreas"),
+                )
             })
         },
         "an observable area is either exercised by a running process or declarable-only",
     ),
     (
-        |v| {
-            sum(v, &["/totals/declarableOnly", "/totals/exercised"])
-                .zip(number(v, "/totals/observableAreas"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                sum(value, &["/totals/declarableOnly", "/totals/exercised"]),
+                number(value, "/totals/observableAreas"),
+            )
         },
         "the denominator M6's green sits over is the sum of its two halves",
     ),
     (
-        |v| {
-            array(v, "/counterparts")
+        |value| {
+            array(value, "/counterparts")
                 .iter()
-                .all(|v| number(v, "/observableAreas").is_some_and(|n| n > 0.0))
+                .all(|value| number(value, "/observableAreas").is_some_and(|n| n > 0.0))
         },
         "a counterpart with no observable area declared nothing to be green about",
     ),
     (
-        |v| same_wave_entries(v),
+        |value| same_wave_entries(value),
         "M6-W3 asks for one accepted behaviour specification per frozen wave entry, so a \
          counterpart outside the wave and a wave entry with no counterpart are both refused",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|row| {
+        |value| {
+            array(value, "/counterparts").iter().all(|row| {
                 row.pointer("/specification/accepted")
                     .and_then(Value::as_bool)
                     == Some(true)
@@ -234,8 +142,8 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
         "M6-W3 asks that every entry's behaviour specification be accepted",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|row| {
+        |value| {
+            array(value, "/counterparts").iter().all(|row| {
                 row.pointer("/specification/carriesUpstreamIdentifier")
                     .and_then(Value::as_bool)
                     == Some(false)
@@ -244,8 +152,8 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
         "M6-W3 asks that no specification carry an upstream identifier",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|row| {
+        |value| {
+            array(value, "/counterparts").iter().all(|row| {
                 row.pointer("/specification/structureReviewed")
                     .and_then(Value::as_bool)
                     == Some(true)
@@ -255,32 +163,33 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
          what caught the defect the sampling did not",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|row| {
+        |value| {
+            array(value, "/counterparts").iter().all(|row| {
                 row.pointer("/provenance/complete").and_then(Value::as_bool) == Some(true)
             })
         },
         "M6-W6's gate row asks for complete provenance",
     ),
     (
-        |v| {
-            array(v, "/counterparts").iter().all(|v| {
-                (number(v, "/suites/total").is_some_and(|n| n > 0.0))
-                    && (number(v, "/suites/failed") == Some(0.0))
+        |value| {
+            array(value, "/counterparts").iter().all(|value| {
+                (number(value, "/suites/total").is_some_and(|n| n > 0.0))
+                    && (number(value, "/suites/failed") == Some(0.0))
             })
         },
         "M6-W3 asks that each package's suites pass, and a package running none passed none",
     ),
     (
-        |v| array(v, "/counterparts").len() >= 2,
+        |value| array(value, "/counterparts").len() >= 2,
         "M6-W5 validates the authoring process against a second independent counterpart, which \
          needs two",
     ),
     (
-        |v| {
-            v.pointer("/processValidation/secondCounterpart")
+        |value| {
+            value
+                .pointer("/processValidation/secondCounterpart")
                 .is_some_and(|second| {
-                    array(v, "/counterparts")
+                    array(value, "/counterparts")
                         .iter()
                         .any(|row| row.get("id") == Some(second))
                 })
@@ -288,47 +197,48 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
         "M6-W5's second counterpart has to be one the record carries a row for",
     ),
     (
-        |v| {
+        |value| {
             ["fresh-play", "save", "exit", "reload"].iter().all(|name| {
-                array(v, "/cluster/steps")
+                array(value, "/cluster/steps")
                     .iter()
                     .any(|row| row["name"] == *name)
-            }) && array(v, "/cluster/steps")
+            }) && array(value, "/cluster/steps")
                 .iter()
                 .all(|row| row["result"] == "pass")
         },
         "M6-W4's verification is a fresh play, save, exit and reload scenario that passes",
     ),
     (
-        |v| {
-            v.pointer("/rewriteIntegrity/enforcing")
+        |value| {
+            value
+                .pointer("/rewriteIntegrity/enforcing")
                 .and_then(Value::as_bool)
                 == Some(true)
         },
         "M6-W6's gate row asks that the rewrite-integrity check be enforcing rather than advisory",
     ),
     (
-        |v| number(v, "/rewriteIntegrity/violations") == Some(0.0),
+        |value| number(value, "/rewriteIntegrity/violations") == Some(0.0),
         "a counterpart carrying an upstream identifier fails the check, so closure cannot record \
          one that it carried",
     ),
     (
-        |v| number(v, "/rewriteIntegrity/specificationViolations") == Some(0.0),
+        |value| number(value, "/rewriteIntegrity/specificationViolations") == Some(0.0),
         "M6-W3 asks that no specification carry an upstream identifier, and the check reads the \
          specifications too",
     ),
     (
-        |v| {
-            (number(v, "/rewriteIntegrity/filesScanned").is_some_and(|n| n > 0.0))
-                && (number(v, "/rewriteIntegrity/artifactsScanned").is_some_and(|n| n > 0.0))
+        |value| {
+            (number(value, "/rewriteIntegrity/filesScanned").is_some_and(|n| n > 0.0))
+                && (number(value, "/rewriteIntegrity/artifactsScanned").is_some_and(|n| n > 0.0))
         },
         "the check reads every counterpart source file and every generated artefact, and one \
          enforcing the rule over source files only has not satisfied the obligation",
     ),
     (
-        |v| {
+        |value| {
             number(
-                v,
+                value,
                 "/rewriteIntegrity/mutationProof/sourceInjection/exitStatus",
             )
             .is_some_and(|n| n.abs() > 0.0)
@@ -337,9 +247,9 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
          source file must produce a nonzero exit",
     ),
     (
-        |v| {
+        |value| {
             number(
-                v,
+                value,
                 "/rewriteIntegrity/mutationProof/artifactInjection/exitStatus",
             )
             .is_some_and(|n| n.abs() > 0.0)
@@ -348,58 +258,70 @@ const M6_ARITHMETIC: &[(Rule, &str)] = &[
          artefact must produce a nonzero exit",
     ),
     (
-        |v| number(v, "/rewriteIntegrity/mutationProof/cleanRun/exitStatus") == Some(0.0),
+        |value| number(value, "/rewriteIntegrity/mutationProof/cleanRun/exitStatus") == Some(0.0),
         "a check that fails the unmutated tree proves nothing about the mutations it also failed",
     ),
 ];
 
 const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
-    ("/environment/settings/counterparts/counterparts", |v| {
-        v.pointer("/counterparts")
+    ("/environment/settings/counterparts/counterparts", |value| {
+        value
+            .pointer("/counterparts")
             .and_then(Value::as_array)
             .map(|rows| Value::from(rows.len()))
     }),
-    ("/environment/settings/counterparts/waveEntries", |v| {
-        v.pointer("/wave/entries")
+    ("/environment/settings/counterparts/waveEntries", |value| {
+        value
+            .pointer("/wave/entries")
             .and_then(Value::as_array)
             .map(|rows| Value::from(rows.len()))
     }),
-    ("/environment/settings/counterparts/observableAreas", |v| {
-        column_sum(v, "/counterparts", "/observableAreas")
+    (
+        "/environment/settings/counterparts/observableAreas",
+        |value| {
+            column_sum(value, "/counterparts", "/observableAreas")
+                .and_then(serde_json::Number::from_f64)
+                .map(Value::Number)
+        },
+    ),
+    (
+        "/environment/settings/counterparts/declarableOnly",
+        |value| {
+            column_sum(value, "/counterparts", "/declarableOnly")
+                .and_then(serde_json::Number::from_f64)
+                .map(Value::Number)
+        },
+    ),
+    ("/environment/settings/counterparts/exercised", |value| {
+        column_sum(value, "/counterparts", "/exercised")
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
     }),
-    ("/environment/settings/counterparts/declarableOnly", |v| {
-        column_sum(v, "/counterparts", "/declarableOnly")
-            .and_then(serde_json::Number::from_f64)
-            .map(Value::Number)
-    }),
-    ("/environment/settings/counterparts/exercised", |v| {
-        column_sum(v, "/counterparts", "/exercised")
-            .and_then(serde_json::Number::from_f64)
-            .map(Value::Number)
-    }),
-    ("/environment/settings/rewriteIntegrity/filesScanned", |v| {
-        v.pointer("/rewriteIntegrity/filesScanned").cloned()
-    }),
+    (
+        "/environment/settings/rewriteIntegrity/filesScanned",
+        |value| value.pointer("/rewriteIntegrity/filesScanned").cloned(),
+    ),
     (
         "/environment/settings/rewriteIntegrity/artifactsScanned",
-        |v| v.pointer("/rewriteIntegrity/artifactsScanned").cloned(),
+        |value| value.pointer("/rewriteIntegrity/artifactsScanned").cloned(),
     ),
-    ("/environment/settings/rewriteIntegrity/violations", |v| {
-        v.pointer("/rewriteIntegrity/violations").cloned()
-    }),
+    (
+        "/environment/settings/rewriteIntegrity/violations",
+        |value| value.pointer("/rewriteIntegrity/violations").cloned(),
+    ),
     (
         "/environment/settings/rewriteIntegrity/sourceInjectionExitStatus",
-        |v| {
-            v.pointer("/rewriteIntegrity/mutationProof/sourceInjection/exitStatus")
+        |value| {
+            value
+                .pointer("/rewriteIntegrity/mutationProof/sourceInjection/exitStatus")
                 .cloned()
         },
     ),
     (
         "/environment/settings/rewriteIntegrity/artifactInjectionExitStatus",
-        |v| {
-            v.pointer("/rewriteIntegrity/mutationProof/artifactInjection/exitStatus")
+        |value| {
+            value
+                .pointer("/rewriteIntegrity/mutationProof/artifactInjection/exitStatus")
                 .cloned()
         },
     ),

@@ -48,6 +48,8 @@ Claim a `ContentKind::Command` entry in the registration window and implement
 so you are never asked to run a command you do not own and never have to check.
 A command's arguments are text a player typed and nothing has interpreted them
 for you.
+An invocation's `side` is `Side::IntegratedServer` or `Side::DedicatedServer`, the
+world side that executes it. The loader rejects any other value.
 
 Two mods cannot claim the same command root, and a command owned by a mod that
 does not load on the executing side is refused by name rather than swallowed.

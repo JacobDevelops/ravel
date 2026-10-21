@@ -12,6 +12,7 @@ pub(crate) mod m5;
 pub(crate) mod m6;
 pub(crate) mod m7;
 pub(crate) mod manifest;
+mod model;
 pub(crate) mod records;
 pub(crate) mod rules;
 pub(crate) mod spikes;

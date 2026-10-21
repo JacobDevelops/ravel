@@ -23,7 +23,7 @@ fn write_admitted(root: &Path, pin: &str, revision: &str) {
             r#"{{{RECORDED_RUN},"revision":{{"id":"{revision}"}},
                 "benchmarks":{{"protocolVersion":"v1",
                 "results":[{{"name":"record.json","sha256":"{}"}}]}}}}"#,
-            crate::hex_digest(&Sha256::digest(record.as_bytes()))
+            ravel_core::Sha256Digest::from_bytes(Sha256::digest(record.as_bytes()).into())
         ),
     )
     .expect("manifest should be writable");

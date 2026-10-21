@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use ravel_core::{MINECRAFT_VERSION_SELECTION, ModId};
 
@@ -47,10 +47,10 @@ pub fn build(
     }
     resolve_locked_graph(plan, &workspace, game_directory)?;
 
-    let output = Command::new("cargo")
+    let output = plan
+        .compiler
+        .cargo_command()
         .current_dir(&workspace)
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .env_remove("RUSTC")
         .arg("build")
         .arg("--release")
         .arg("--locked")
@@ -111,10 +111,10 @@ fn resolve_locked_graph(
             source: error,
         })?;
     }
-    let output = Command::new("cargo")
+    let output = plan
+        .compiler
+        .cargo_command()
         .current_dir(workspace)
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .env_remove("RUSTC")
         .args(["metadata", "--offline", "--format-version", "1"])
         .arg("--manifest-path")
         .arg(workspace.join(HOST_DIRECTORY).join("Cargo.toml"))
@@ -284,7 +284,8 @@ fn field<'a>(package: &'a toml::Value, name: &str) -> Option<&'a str> {
 
 fn author_closure(packages: &[toml::Value]) -> BTreeSet<usize> {
     dependency_closure(packages, |package| {
-        field(package, "name").is_some_and(|name| crate::AUTHOR_SEEDS.contains(&name))
+        field(package, "name")
+            .is_some_and(|name| name == "ravel-sdk" || crate::AUTHOR_DEPENDENCIES.contains(&name))
     })
 }
 

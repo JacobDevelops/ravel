@@ -94,8 +94,7 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
             unavailable.insert(version.as_str());
         }
         eligibility.insert(version.clone(), facts);
-        let generation_only = value == Eligibility::GenerationOnly;
-        if generation_only {
+        if value == Eligibility::GenerationOnly {
             report.notices.push(format!(
                 "Minecraft {version} is generation-only: adapter-test obligation not yet met"
             ));
@@ -108,17 +107,22 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
         }
     }
     for record in &GATE_RECORDS {
-        let text = verify_record(
-            root,
+        let text = match read_record(root, record) {
+            Ok(text) => text,
+            Err(error) => {
+                report.violations.push(error);
+                continue;
+            }
+        };
+        verify_record(
+            &text,
             record,
             &versions,
             &eligibility,
             &unavailable,
             &mut report,
         );
-        if record.verb == "ran"
-            && let Some(text) = text
-        {
+        if record.verb == "ran" {
             verify_harness_sections(&text, record.path, &versions, &mut report.violations);
         }
     }
@@ -127,20 +131,13 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
 }
 
 fn verify_record(
-    root: &Path,
+    text: &str,
     record: &Record,
     versions: &[String],
     eligibility: &VersionAdapters,
     unavailable: &BTreeSet<&str>,
     report: &mut GateVersionsReport,
-) -> Option<String> {
-    let text = match read_record(root, record) {
-        Ok(text) => text,
-        Err(error) => {
-            report.violations.push(error);
-            return None;
-        }
-    };
+) {
     let mut reached_live = false;
     for version in versions {
         let generation_only = eligibility
@@ -191,7 +188,6 @@ fn verify_record(
         }
     }
     verify_live_coverage(record, reached_live, report);
-    Some(text)
 }
 
 fn verify_live_coverage(record: &Record, reached_live: bool, report: &mut GateVersionsReport) {

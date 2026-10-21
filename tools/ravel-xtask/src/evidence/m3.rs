@@ -13,9 +13,13 @@ use crate::evidence::rules::{
     Rule, all_gates_closed, has_exact_benchmark_results, has_exact_work_packages,
     has_native_attestation, require,
 };
-use crate::json::{array, number};
+use crate::json::array;
 use crate::text::read_text;
 use crate::text::{NumberAt, numbers_before, stated_counts, verify_stated_counts};
+
+use crate::evidence::model::admit;
+
+mod model;
 
 const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
@@ -88,29 +92,32 @@ const M3_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "class-loader-identity.json",
         rule: |value| {
+            let record: model::Identity = admit(value)?;
+            require(record.observed.same_object, "/observed/sameObject")?;
             require(
-                value["observed"]["sameObject"] == true,
-                "/observed/sameObject",
-            )?;
-            require(
-                value["conclusion"]["candidateTwoIsAvailable"] == true,
+                record.conclusion.candidate_two_is_available,
                 "/conclusion/candidateTwoIsAvailable",
             )?;
-            for pointer in [
-                "/rewrite/classesRewritten",
-                "/rewrite/methodsRewritten",
-                "/rewrite/nativeInvocations",
+            for (count, requirement) in [
+                (
+                    &record.rewrite.classes_rewritten,
+                    "/rewrite/classesRewritten",
+                ),
+                (
+                    &record.rewrite.methods_rewritten,
+                    "/rewrite/methodsRewritten",
+                ),
+                (
+                    &record.rewrite.native_invocations,
+                    "/rewrite/nativeInvocations",
+                ),
             ] {
-                require(
-                    number(value, pointer).is_some_and(|count| count > 0.0),
-                    pointer,
-                )?;
+                require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
             }
             require(
-                value["rewrite"]["reachedNativeCode"] == true,
+                record.rewrite.reached_native_code,
                 "/rewrite/reachedNativeCode",
-            )?;
-            Ok(())
+            )
         },
         description: "a class-loader identity record showing the loader that resolved a rewritten game class \
      is the system loader, measured in a launch that rewrote classes and reached native code",
@@ -119,21 +126,25 @@ const M3_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "pack-compile.json",
         rule: |value| {
-            require(value["gate"] == "ADG-2", "/gate must be ADG-2")?;
+            let record: model::PackCompile<'_> = admit(value)?;
+            require(record.gate.0 == "ADG-2", "/gate must be ADG-2")?;
             require(
-                value["protocol"] == "m3-pack-compile-v1",
+                record.protocol.0 == "m3-pack-compile-v1",
                 "/protocol must be m3-pack-compile-v1",
             )?;
-            for pointer in [
-                "/compile/repeats",
-                "/compile/baselineMilliseconds",
-                "/compile/marginalColdMillisecondsPerMod",
-                "/disk/toolchainBytes",
+            for (count, requirement) in [
+                (&record.compile.repeats, "/compile/repeats"),
+                (
+                    &record.compile.baseline_milliseconds,
+                    "/compile/baselineMilliseconds",
+                ),
+                (
+                    &record.compile.marginal_cold_milliseconds_per_mod,
+                    "/compile/marginalColdMillisecondsPerMod",
+                ),
+                (&record.disk.toolchain_bytes, "/disk/toolchainBytes"),
             ] {
-                require(
-                    number(value, pointer).is_some_and(|count| count > 0.0),
-                    pointer,
-                )?;
+                require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
             }
             Ok(())
         },
@@ -144,29 +155,20 @@ const M3_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "profiling-overhead.json",
         rule: |value| {
+            let record: model::Profiling<'_> = admit(value)?;
             require(
-                value["workPackage"] == "M3-W6",
+                record.work_package.0 == "M3-W6",
                 "/workPackage must be M3-W6",
             )?;
             require(
-                value["budget"]["protocol"] == "m2-loader-budget-v1",
+                record.budget.protocol.0 == "m2-loader-budget-v1",
                 "/budget/protocol must be m2-loader-budget-v1",
             )?;
             require(
-                value["budget"]["hardwareProfile"] == "linux-reference-v1",
+                record.budget.hardware_profile.0 == "linux-reference-v1",
                 "/budget/hardwareProfile must be linux-reference-v1",
             )?;
-            profiling_off_tick_limit(value)?;
-            require(
-                !array(value, "/collectors/attributionAccuracy").is_empty(),
-                "/collectors/attributionAccuracy",
-            )?;
-            require(
-                value
-                    .pointer("/collectors/unsupported")
-                    .is_some_and(Value::is_array),
-                "/collectors/unsupported",
-            )?;
+            verify_profiling_off_tick_limit(value)?;
             Ok(())
         },
         description: "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
@@ -175,49 +177,109 @@ const M3_RECORDS: &[RecordDefinition] = &[
     },
     RecordDefinition {
         name: "linux-process-matrix.json",
-        rule: |value| {
-            require(
-                value["workPackage"] == "M3-W7",
-                "/workPackage must be M3-W7",
-            )?;
-            require(value["result"] == "pass", "/result must be pass")?;
-            for pointer in [
-                "/instance/withoutAnotherLoader",
-                "/instance/stockComponentsExact",
-                "/screens/titleMenuButtonPresent",
-                "/screens/allThreeOpenedInThisCampaign",
-                "/screens/settings/persistenceRoundTrip",
-                "/commandAndSavedData/vanillaCommandExecutedThroughInput",
-                "/commandAndSavedData/relaunchVerifiedExactValue",
-                "/worldPersistenceRoundTrip/createSaveExitReload/aggregateByteIdenticalAcrossTheRoundTrip",
-                "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/worldRefused",
-                "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/integratedServerNeverStarted",
-            ] {
-                require(value.pointer(pointer) == Some(&Value::Bool(true)), pointer)?;
-            }
-            for pointer in [
-                "/instance/otherLoaderComponents",
-                "/instance/modJars",
-                "/instance/recognizedLoaderModJars",
-                "/rewrite/transformationFailures",
-            ] {
-                require(number(value, pointer) == Some(0.0), pointer)?;
-            }
-            for pointer in ["/rewrite/classesRewritten", "/rewrite/nativeInvocations"] {
-                require(
-                    number(value, pointer).is_some_and(|count| count > 0.0),
-                    pointer,
-                )?;
-            }
-            Ok(())
-        },
+        rule: verify_m3_process_matrix,
         description: "a Linux process-matrix record showing every M3 surface passing natively in an instance \
      the scan proves holds no other loader, with the world round trip preserving bytes and \
      refusing a world it cannot read",
         required: true,
     },
 ];
-fn profiling_off_tick_limit(value: &Value) -> Result<(), String> {
+
+fn verify_m3_process_matrix(value: &Value) -> Result<(), String> {
+    let record: model::ProcessMatrix<'_> = admit(value)?;
+    require(
+        record.work_package.0 == "M3-W7",
+        "/workPackage must be M3-W7",
+    )?;
+    require(record.result.0 == "pass", "/result must be pass")?;
+    verify_m3_process_flags(&record)?;
+    for (count, requirement) in [
+        (
+            &record.instance.other_loader_components,
+            "/instance/otherLoaderComponents",
+        ),
+        (&record.instance.mod_jars, "/instance/modJars"),
+        (
+            &record.instance.recognized_loader_mod_jars,
+            "/instance/recognizedLoaderModJars",
+        ),
+        (
+            &record.rewrite.transformation_failures,
+            "/rewrite/transformationFailures",
+        ),
+    ] {
+        require(count.as_f64() == Some(0.0), requirement)?;
+    }
+    for (count, requirement) in [
+        (
+            &record.rewrite.classes_rewritten,
+            "/rewrite/classesRewritten",
+        ),
+        (
+            &record.rewrite.native_invocations,
+            "/rewrite/nativeInvocations",
+        ),
+    ] {
+        require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+    }
+    Ok(())
+}
+
+fn verify_m3_process_flags(record: &model::ProcessMatrix<'_>) -> Result<(), String> {
+    let persistence = &record.world_persistence_round_trip;
+    for (holds, requirement) in [
+        (
+            record.instance.without_another_loader,
+            "/instance/withoutAnotherLoader",
+        ),
+        (
+            record.instance.stock_components_exact,
+            "/instance/stockComponentsExact",
+        ),
+        (
+            record.screens.title_menu_button_present,
+            "/screens/titleMenuButtonPresent",
+        ),
+        (
+            record.screens.all_three_opened_in_this_campaign,
+            "/screens/allThreeOpenedInThisCampaign",
+        ),
+        (
+            record.screens.settings.persistence_round_trip,
+            "/screens/settings/persistenceRoundTrip",
+        ),
+        (
+            record
+                .command_and_saved_data
+                .vanilla_command_executed_through_input,
+            "/commandAndSavedData/vanillaCommandExecutedThroughInput",
+        ),
+        (
+            record.command_and_saved_data.relaunch_verified_exact_value,
+            "/commandAndSavedData/relaunchVerifiedExactValue",
+        ),
+        (
+            persistence
+                .create_save_exit_reload
+                .aggregate_byte_identical_across_the_round_trip,
+            "/worldPersistenceRoundTrip/createSaveExitReload/aggregateByteIdenticalAcrossTheRoundTrip",
+        ),
+        (
+            persistence.fail_closed_on_an_unreadable_world.world_refused,
+            "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/worldRefused",
+        ),
+        (
+            persistence
+                .fail_closed_on_an_unreadable_world
+                .integrated_server_never_started,
+            "/worldPersistenceRoundTrip/failClosedOnAnUnreadableWorld/integratedServerNeverStarted",
+        ),
+    ] {
+        require(holds, requirement)?;
+    }
+    Ok(())
+}
+fn verify_profiling_off_tick_limit(value: &Value) -> Result<(), String> {
     let mut failure = Err("/budget/limits must contain metric profiling.off.perTick".to_owned());
     for (index, limit) in array(value, "/budget/limits")
         .iter()
@@ -225,17 +287,19 @@ fn profiling_off_tick_limit(value: &Value) -> Result<(), String> {
         .filter(|(_, limit)| limit["metric"] == "profiling.off.perTick")
     {
         let checked = (|| {
+            let limit: model::ProfilingLimit = admit(limit)?;
             require(
-                limit["operator"] == "less-than-or-equal",
-                "/operator must be less-than-or-equal",
-            )?;
-            require(
-                number(limit, "/measured").is_some_and(|measured| measured > 0.0),
+                limit
+                    .measured
+                    .as_f64()
+                    .is_some_and(|measured| measured > 0.0),
                 "/measured must be positive",
             )?;
             require(
-                number(limit, "/measured")
-                    .zip(number(limit, "/limit"))
+                limit
+                    .measured
+                    .as_f64()
+                    .zip(limit.limit.as_f64())
                     .is_some_and(|(measured, bound)| measured <= bound),
                 "/limit must not be below measured",
             )

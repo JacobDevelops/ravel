@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::rules::Milestone;
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 
 const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
     "fn", "struct", "enum", "trait", "union", "const", "static", "type",
@@ -65,7 +65,7 @@ pub(crate) fn verify_finding_anchors_value(
     sources: &FindingSources,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, manifest_path);
+    let label = redacted_path(root, manifest_path);
     let mut findings = Vec::new();
     for field in ["deviations", "risks"] {
         let Some(rows) = document[field].as_array() else {

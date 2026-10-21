@@ -22,29 +22,24 @@ pub(crate) fn read_text(root: &Path, path: &Path) -> Result<String, String> {
         &rooted
     };
     fs::read_to_string(resolved)
-        .map_err(|error| format!("cannot read {}: {error}", relative_label(root, path)))
+        .map_err(|error| format!("cannot read {}: {error}", redacted_path(root, path)))
 }
 
-pub(crate) fn relative_label(root: &Path, path: &Path) -> String {
-    let label = path.strip_prefix(root).map_or_else(
-        |_| redacted_path(root, path),
-        |relative| relative.display().to_string(),
-    );
-    label.replace('\\', "/")
-}
 pub(crate) fn redacted_path(root: &Path, path: &Path) -> String {
-    if path.is_relative() {
-        return path.display().to_string();
-    }
-    path.strip_prefix(root).map_or_else(
-        |_| {
-            path.file_name().map_or_else(
-                || "an unnamed path".to_owned(),
-                |name| name.to_string_lossy().into_owned(),
-            )
-        },
-        |relative| relative.display().to_string(),
-    )
+    let label = if path.is_relative() && !path.starts_with(root) {
+        path.display().to_string()
+    } else {
+        path.strip_prefix(root).map_or_else(
+            |_| {
+                path.file_name().map_or_else(
+                    || "an unnamed path".to_owned(),
+                    |name| name.to_string_lossy().into_owned(),
+                )
+            },
+            |relative| relative.display().to_string(),
+        )
+    };
+    label.replace('\\', "/")
 }
 const CARDINALS: [&str; 21] = [
     "zero",
@@ -139,9 +134,6 @@ pub(crate) fn numbers_after(document: &str, noun: &[&str]) -> Vec<usize> {
             continue;
         }
         let to = (at + noun.len() + COUNT_LOOKBACK).min(words.len());
-        if from >= to {
-            continue;
-        }
         if let Some(count) = words[from..to].iter().find_map(|word| numeral(word)) {
             found.push(count);
         }
@@ -179,13 +171,13 @@ pub(crate) enum NumberAt {
     AfterPhrase,
 }
 
-pub(crate) fn stated_counts(document: &str, phrase: &str, side: NumberAt) -> Vec<usize> {
+pub(crate) fn stated_counts(document: &str, phrase: &str, number_at: NumberAt) -> Vec<usize> {
     let mut counts = Vec::new();
     let mut offset = 0;
     while let Some(found) = document[offset..].find(phrase) {
         let at = offset + found;
         offset = at + phrase.len();
-        let digits = match side {
+        let digits = match number_at {
             NumberAt::BeforePhrase => {
                 let head = document[..at].trim_end();
                 let start =

@@ -7,12 +7,15 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::evidence::closure::{verify_closure_records, verify_manifest_closure};
+use crate::evidence::model::admit;
+use crate::evidence::rules::require;
 use crate::evidence::rules::{Rule, has_exact_benchmark_results, has_exact_work_packages};
-use crate::evidence::rules::{require, require_rows, unique_by};
-use crate::json::{array, nonempty, number};
+use crate::json::array;
 use crate::text::read_text;
 
 const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
+
+mod model;
 
 const VOID_LIMITS: &[(&str, &str)] = &[
     (
@@ -94,12 +97,12 @@ const M2_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "noop-pipeline.json",
         rule: |value| {
-            require_rows(value, "/runs", |run| {
-                require(
-                    run["repeatedRunIsIdentical"] == true,
-                    "/repeatedRunIsIdentical",
-                )
-            })
+            let record: model::Noop = admit(value)?;
+            for (index, run) in record.runs.0.iter().enumerate() {
+                require(run.repeated_run_is_identical, "/repeatedRunIsIdentical")
+                    .map_err(|error| format!("/runs/{index}{error}"))?;
+            }
+            Ok(())
         },
         description: "a no-op pipeline record whose run is identical when repeated",
         required: false,
@@ -107,25 +110,23 @@ const M2_RECORDS: &[RecordDefinition] = &[
     RecordDefinition {
         name: "pre-world-gate.json",
         rule: |value| {
-            require(
-                value["gate"]["refusesWorldAccess"] == true,
-                "/gate/refusesWorldAccess",
-            )?;
-            require(value["gate"]["ranModCode"] == false, "/gate/ranModCode")
+            let record: model::PreWorld = admit(value)?;
+            require(record.gate.refuses_world_access, "/gate/refusesWorldAccess")?;
+            require(!record.gate.ran_mod_code, "/gate/ranModCode")
         },
         description: "a pre-world gate record showing invalid packages refused before any mod code ran",
         required: false,
     },
     RecordDefinition {
         name: "loader-overhead.json",
-        rule: m2_budget_limits,
+        rule: verify_m2_budget_limits,
         description: "a loader overhead record whose budget lines each name one metric and a unit, and set an \
      upper limit above the positive measurement that limit was derived from",
         required: true,
     },
     RecordDefinition {
         name: "prism-launch.json",
-        rule: m2_prism_launch,
+        rule: verify_m2_prism_launch,
         description: "a launch record showing the official client reaching Ravel from an attested stock Prism, \
      with the transformer's own count of what it rewrote inside that process and of the hook \
      invocations that reached native code, and no other loader present",
@@ -133,76 +134,72 @@ const M2_RECORDS: &[RecordDefinition] = &[
     },
 ];
 
-fn m2_budget_limits(value: &Value) -> Result<(), String> {
-    let limits = array(value, "/budget/limits");
+fn verify_m2_budget_limits(value: &Value) -> Result<(), String> {
+    let record: model::BudgetRecord<'_> = admit(value)?;
+    let limits = &record.budget.limits.0;
     require(
-        unique_by(limits, |left, right| left["metric"] == right["metric"]),
+        limits.iter().enumerate().all(|(index, limit)| {
+            limits[..index]
+                .iter()
+                .all(|other| other.metric.0 != limit.metric.0)
+        }),
         "/budget/limits unique metric",
     )?;
-    require_rows(value, "/budget/limits", |limit| {
-        require(nonempty(limit, "/metric"), "/metric")?;
-        require(nonempty(limit, "/unit"), "/unit")?;
+    for (index, limit) in limits.iter().enumerate() {
+        let measured = limit.measured.as_f64();
         require(
-            limit["operator"] == "less-than-or-equal",
-            "/operator must be less-than-or-equal",
-        )?;
-        require(
-            number(limit, "/measured").is_some_and(|measured| measured > 0.0),
+            measured.is_some_and(|measured| measured > 0.0),
             "/measured must be positive",
-        )?;
+        )
+        .map_err(|error| format!("/budget/limits/{index}{error}"))?;
         require(
-            number(limit, "/measured")
-                .zip(number(limit, "/limit"))
+            measured
+                .zip(limit.limit.as_f64())
                 .is_some_and(|(measured, upper)| upper > measured),
             "/limit must exceed measured",
-        )?;
-
-        Ok(())
-    })?;
+        )
+        .map_err(|error| format!("/budget/limits/{index}{error}"))?;
+    }
     Ok(())
 }
 
-fn m2_prism_launch(value: &Value) -> Result<(), String> {
-    let launch = &value["launch"];
-    let rewrite = &value["ravel"]["rewrite"];
+fn verify_m2_prism_launch(value: &Value) -> Result<(), String> {
+    let record: model::PrismProbe = admit(value)?;
+    let rewrite = &record.ravel.rewrite;
     require(
-        launch["provesStockLaunch"] == true,
+        record.launch.proves_stock_launch,
         "/launch/provesStockLaunch",
     )?;
     require(
-        launch.get("objection").is_some_and(Value::is_null),
-        "/launch/objection",
-    )?;
-    require(
-        launch["attestation"]["stockLauncher"] == true,
+        record.launch.attestation.stock_launcher,
         "/launch/attestation/stockLauncher",
     )?;
     require(
-        value["ravel"]["reachedGameProcess"] == true,
+        record.ravel.reached_game_process,
         "/ravel/reachedGameProcess",
     )?;
-    require(rewrite["reported"] == true, "/ravel/rewrite/reported")?;
+    require(rewrite.reported, "/ravel/rewrite/reported")?;
+    require(rewrite.reached_ravel, "/ravel/rewrite/reachedRavel")?;
+    for (count, requirement) in [
+        (
+            &rewrite.classes_rewritten,
+            "/ravel/rewrite/classesRewritten",
+        ),
+        (
+            &rewrite.methods_rewritten,
+            "/ravel/rewrite/methodsRewritten",
+        ),
+        (
+            &rewrite.native_invocations,
+            "/ravel/rewrite/nativeInvocations",
+        ),
+    ] {
+        require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+    }
     require(
-        rewrite["reachedRavel"] == true,
-        "/ravel/rewrite/reachedRavel",
-    )?;
-    require(
-        number(rewrite, "/classesRewritten").is_some_and(|count| count > 0.0),
-        "/ravel/rewrite/classesRewritten",
-    )?;
-    require(
-        number(rewrite, "/methodsRewritten").is_some_and(|count| count > 0.0),
-        "/ravel/rewrite/methodsRewritten",
-    )?;
-    require(
-        number(rewrite, "/nativeInvocations").is_some_and(|count| count > 0.0),
-        "/ravel/rewrite/nativeInvocations",
-    )?;
-    require(
-        value["instance"]["withoutAnotherLoader"] == true,
+        record.instance.without_another_loader,
         "/instance/withoutAnotherLoader",
-    )?;
-    Ok(())
+    )
 }
 
 pub(crate) fn verify_m2_integrity(

@@ -11,13 +11,66 @@ use crate::scaffold::java_shape::{
     AGENT_JAR_SOURCES, REFLECTION_FILE, TRANSFORMER_SHAPE_RECORD, verify_hook_name_literals,
     verify_screen_templates, verify_transformer_shape,
 };
-use crate::test_support::{adapter_document, temporary_root, version_directory};
+use crate::test_support::{adapter_document, version_directory};
 use crate::version_boundary::{VERSION_DATA, verify_version_directories};
+
+fn temporary_root(label: &str) -> PathBuf {
+    let root = crate::test_support::temporary_root(label);
+    fs::create_dir_all(root.join("jvm/build")).expect("manifest directory should be creatable");
+    fs::write(
+        root.join(super::AGENT_SOURCE_MANIFEST),
+        "core Boot\ncore Agent\ncore Transformer\ncore HookTarget\ncore Members\n\
+         modern Content\nmodern Datapack\nmodern Outward\nmodern Persistence\nmodern Screens\n",
+    )
+    .expect("fixture manifest should be writable");
+    root
+}
+
+#[test]
+fn java_verifiers_read_the_manifest_from_the_verified_root()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = reflection_root("runtime-manifest", "");
+    let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
+    let source = "String name = \"net.minecraft.Custom\"; target.hookMethod().equals(\"missingHook\"); GameNames.ONE;";
+    fs::write(sources.join("Content.java"), source)?;
+    let mut violations = Vec::new();
+    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+    for selected in ["Content", "CustomModern"] {
+        fs::write(
+            root.join(super::AGENT_SOURCE_MANIFEST),
+            format!("core CustomCore\nmodern {selected}\n"),
+        )?;
+        fs::write(sources.join(format!("{selected}.java")), source)?;
+        verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+        verify_persistence_reflection(&root, &adapters, &mut violations);
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(
+            violations
+                .iter()
+                .all(|error| error.contains(&format!("{selected}.java")))
+        );
+        violations.clear();
+    }
+    fs::remove_file(root.join(super::AGENT_SOURCE_MANIFEST))?;
+    verify_hook_name_literals(&root, &inventories, &adapters, &mut violations);
+    verify_persistence_reflection(&root, &adapters, &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(
+        violations
+            .iter()
+            .all(|error| error.contains(super::AGENT_SOURCE_MANIFEST))
+    );
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
 
 #[test]
 fn agent_source_selection_shares_the_build_manifest() -> Result<(), String> {
     use super::{AGENT_SOURCE_MANIFEST, agent_source_manifest, compiled_bootstrap_source};
-    let sources = agent_source_manifest(AGENT_SOURCE_MANIFEST)?;
+    let root = crate::test_support::repository_root();
+    let text = crate::text::read_text(&root, &root.join(AGENT_SOURCE_MANIFEST))?;
+    let sources = agent_source_manifest(&text)?;
     for &(group, name) in &sources {
         let path = PathBuf::from(format!("jvm/bootstrap/dev/ravel/jvm/{name}.java"));
         assert!(compiled_bootstrap_source(&path, false, &sources), "{name}");

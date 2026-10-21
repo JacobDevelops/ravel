@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export ALSOFT_DRIVERS="${ALSOFT_DRIVERS-null}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 module="$root/jvm/legacy-platform"
 work="$root/tests/fixtures/local/legacy-platform"

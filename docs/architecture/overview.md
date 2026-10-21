@@ -143,15 +143,9 @@ Ravel into a Java mod host.
   New workload findings belong to new records. SevTech's 254 manifest references,
   5 bundled jars and 259 total jar inputs are distinct metrics; loaded containers
   remain unknown until observed, never inferred from the input denominator.
-  M7 `library-summary` records using protocol `m7-library-v2` require
-  `fixture = { id, artifactSet: { count, sha256 } }`; that identity and artifact
-  set must match the selected `registry/inventory/<id>/graph.json` fixture.
-  SevTech's denominator is 259 jar inputs, not 254 manifest references or 273
-  declared identities. Historical `m7-library-v1` rejects the `fixture` field and
-  retains its original M5 inventory-summary binding and arithmetic unchanged.
-  Protocol choice is explicit: historical open-M7 replay retains v1's original
-  criteria; fixture-bound v2 can record new-workload library evidence, but does
-  not close historical M7 or forward WP9 by changing the denominator.
+  M7 protocol-specific fixture bindings and arithmetic are enforced by the
+  milestone record validators; replay does not close historical M7 or forward WP9
+  by changing the workload denominator.
   A graph node's `loader: ""` means the artifact declares no loader identifier;
   it does not mean the reference pack is vanilla or authorize hosting its jars.
   Legacy reference loader identity comes from the pinned pack descriptor.
@@ -160,15 +154,15 @@ Ravel into a Java mod host.
   A genuine compatibility alias lives only in
   `registry/mods/<package>/aliases.json`, whose rows contain the upstream id,
   native id and canonical replacement id.
-- **Toolchain and cache.** Player mod builds share one exactly pinned toolchain
-  and one reconstructible Cargo build cache per machine across instances.
+- **Toolchain and cache.** Player mod builds track the installation's `nightly`
+  channel and share one reconstructible Cargo build cache per machine across instances.
   Cargo's cache keys separate different builds, and its lock serializes concurrent
   access; cache size and eviction remain open work.
-  Each generated workspace selects the installation's pinned toolchain channel
-  with the minimal profile, without developer components or extra targets.
-  That generated toolchain file and the installation's `Cargo.lock` participate
-  in its build fingerprint.
-  Cargo runs from that workspace so rustup selects its pinned compiler.
+  Each generated workspace selects that channel with the minimal profile,
+  without developer components or extra targets.
+  The generated toolchain file, resolved `rustc -vV` identity and installation's
+  `Cargo.lock` participate in its build fingerprint, so updating nightly invalidates
+  a cached player build. Cargo runs from that workspace to select its compiler.
   Cargo resolves generated local host and mod entries offline; every resolved external name, version, source,
   and checksum must match an installation lock entry before compilation runs
   with `--locked`. An unvetted third-party resolution is refused, not silently

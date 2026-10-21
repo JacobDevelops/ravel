@@ -141,8 +141,8 @@ resolves; rewrite it through a JSON parser before the next command.
   advising removal of `target/llvm-cov-target` does not fix it.
 - The toolchain tracks the moving `nightly` channel by request, so a new nightly can turn the gate red
   without a code change; fix new lints at the cause rather than re-pinning a date.
-- Registry wording must stay inside the frozen lexicon: a `src/tests/` directory and the word
-  "connectivity" both failed the registry checks.
+- Registry wording must stay inside the frozen lexicon: a `src/tests/` directory and one renderer runbook
+  term both failed the registry boundary checks, so run them before landing wording changes.
 
 ## Durable decisions and evidence boundaries
 

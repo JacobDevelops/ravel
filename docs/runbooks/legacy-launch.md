@@ -36,6 +36,11 @@ OpenAL owns the sound device and context. Matching LWJGL3 APIs are reused rather
 than reimplemented. No LWJGL2 Java or native artifact is placed on the runtime
 class path. The dedicated server has a separate launch path.
 
+Legacy launch and benchmark commands default `ALSOFT_DRIVERS` to `null`, so
+OpenAL still opens and mixes audio without sending sound to speakers. An
+explicit caller value is preserved. Live acceptance still checks the audio
+device and context.
+
 `vanilla-1.12.2-lwjgl.tsv` records the exact client constant-pool surface,
 including class, descriptor, inherited member, superclass and invocation
 references. Build verification regenerates and compares this inventory before

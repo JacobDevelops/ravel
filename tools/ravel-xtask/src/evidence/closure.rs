@@ -53,13 +53,7 @@ fn verify_carried_figures(
 }
 
 fn same_figure(claimed: &Value, measured: &Value) -> bool {
-    claimed == measured
-        || claimed
-            .as_f64()
-            .zip(measured.as_f64())
-            .is_some_and(|(claimed, measured)| {
-                claimed.partial_cmp(&measured) == Some(std::cmp::Ordering::Equal)
-            })
+    claimed == measured || crate::json::same(claimed.as_f64(), measured.as_f64())
 }
 
 #[derive(Default)]

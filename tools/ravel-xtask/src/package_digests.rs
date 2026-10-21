@@ -7,9 +7,8 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-use ravel_package::{
-    IntegrityError, PackageManifest, Sha256Digest, verify_provenance, verify_source_file,
-};
+use ravel_core::Sha256Digest;
+use ravel_package::{IntegrityError, PackageManifest, verify_provenance, verify_source_file};
 
 /// The file inside a package directory that declares it.
 const MANIFEST_FILE: &str = "package.json";
@@ -26,9 +25,9 @@ pub struct StaleDigest {
     /// The package-relative path the manifest declares.
     pub path: String,
     /// The digest the manifest recorded.
-    pub declared: String,
+    pub declared: Sha256Digest,
     /// The digest the file actually has.
-    pub actual: String,
+    pub actual: Sha256Digest,
 }
 
 impl fmt::Display for StaleDigest {
@@ -152,13 +151,12 @@ fn record(
     declared: Sha256Digest,
     actual: Sha256Digest,
 ) {
-    let actual = actual.to_string();
     if let Some((_, span)) = spans.iter().find(|(owner, _)| *owner == path) {
-        replacements.push((*span, actual.clone()));
+        replacements.push((*span, actual.to_string()));
     }
     stale.push(StaleDigest {
         path,
-        declared: declared.to_string(),
+        declared,
         actual,
     });
 }
@@ -279,6 +277,7 @@ fn string_entries(document: &str) -> Vec<(String, Span)> {
 #[cfg(test)]
 mod tests {
     use super::{MANIFEST_FILE, refresh_digests, stale_digests, string_entries};
+    use ravel_core::Sha256Digest;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -379,6 +378,9 @@ mod tests {
             ["src/lib.rs", "provenance.json"],
             "reported in declaration order, source files then the provenance record"
         );
+        assert!(stale.iter().all(|entry| {
+            entry.declared == Sha256Digest::from_bytes([0; 32]) && entry.actual != entry.declared
+        }));
 
         let rewritten = package.manifest_text();
         assert!(!rewritten.contains(ZEROES), "{rewritten}");

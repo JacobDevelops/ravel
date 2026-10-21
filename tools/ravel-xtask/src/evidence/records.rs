@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::Path;
 
+use ravel_core::Sha256Digest;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -11,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::evidence::closure::LoadedRecords;
 use crate::evidence::rules::Rule;
 use crate::json::{array, number, read_json};
-use crate::text::relative_label;
+use crate::text::redacted_path;
 
 mod binding;
 
@@ -20,7 +21,7 @@ use binding::{TrackedDigest, names_a_path, verify_review, verify_tracked_digest}
 #[derive(Deserialize)]
 struct Artifact<'a> {
     name: &'a str,
-    sha256: &'a str,
+    sha256: Sha256Digest,
 }
 
 #[derive(Deserialize)]
@@ -95,7 +96,7 @@ pub(crate) fn verify_recorded_manifest(
         Err(error) => {
             violations.push(format!(
                 "{} records invalid artifacts: {error}",
-                relative_label(root, path)
+                redacted_path(root, path)
             ));
             return;
         }
@@ -111,7 +112,7 @@ pub(crate) fn verify_recorded_manifest(
 }
 
 fn verify_recorded_run(root: &Path, path: &Path, manifest: &Value, violations: &mut Vec<String>) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let records_run = !array(manifest, "/commands").is_empty();
     let records_tests = manifest["tests"].is_object();
     if !records_run && !records_tests {
@@ -178,11 +179,11 @@ fn verify_admitted_inventory(
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let Some(directory) = path.parent() else {
         return;
     };
-    let prefix = format!("{}/", relative_label(root, directory));
+    let prefix = format!("{}/", redacted_path(root, directory));
     let named: BTreeSet<_> = artifacts.results().map(|artifact| artifact.name).collect();
     for record in tracked.iter().filter_map(|path| path.strip_prefix(&prefix)) {
         if Path::new(record)
@@ -206,7 +207,7 @@ fn verify_revisions(
     records: &LoadedRecords,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let Some(directory) = path.parent() else {
         return;
     };
@@ -317,7 +318,7 @@ fn verify_inputs(
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     for input in inputs {
         if !tracked.contains(input.name) {
             violations.push(format!(
@@ -365,9 +366,9 @@ fn verify_inputs(
     }
 }
 
-fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<String, String> {
+fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<Sha256Digest, String> {
     let bytes = crate::vcs::revision_bytes(root, revision, name)?;
-    Ok(crate::hex_digest(&Sha256::digest(&bytes)))
+    Ok(Sha256Digest::from_bytes(Sha256::digest(&bytes).into()))
 }
 
 fn verify_artifact_digests(
@@ -377,7 +378,7 @@ fn verify_artifact_digests(
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let Some(directory) = path.parent() else {
         return;
     };
@@ -463,7 +464,7 @@ pub(crate) fn verify_recorded_review_value(
         Ok(review) => verify_review(root, path, &review, tracked, violations),
         Err(error) => violations.push(format!(
             "{} records invalid review metadata: {error}",
-            relative_label(root, path)
+            redacted_path(root, path)
         )),
     }
 }

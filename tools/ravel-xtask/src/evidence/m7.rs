@@ -9,138 +9,30 @@ use serde_json::Value;
 use crate::evidence::rules::{
     Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
-use crate::json::{array, column_sum, nonempty, number, read_json, sum};
+use crate::json::{array, column_sum, number, read_json, same, sum};
 
 use crate::evidence::closure::{
     CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
-use crate::evidence::rules::{require, require_fields, require_rows, unique_by};
+use crate::evidence::rules::unique_by;
 
-fn legacy_fixture_total() -> Result<f64, String> {
-    static TOTAL: std::sync::LazyLock<Result<f64, String>> = std::sync::LazyLock::new(|| {
-        parse_legacy_fixture_total(include_str!(
-            "../../../../tests/fixtures/descriptors/atm10-tts-2.0.2.json"
-        ))
-    });
-    TOTAL.clone()
+mod model;
+use model::{LibrarySummary, Protocol};
+
+fn legacy_fixture_total(root: &Path) -> Result<f64, String> {
+    let path = "tests/fixtures/descriptors/atm10-tts-2.0.2.json";
+    let descriptor = read_json(root, &root.join(path))?;
+    number(&descriptor, "/manifest/expectedReferenceCount")
+        .ok_or_else(|| format!("{path}: missing numeric /manifest/expectedReferenceCount"))
 }
 
-fn parse_legacy_fixture_total(source: &str) -> Result<f64, String> {
-    let descriptor: Value = serde_json::from_str(source)
-        .map_err(|error| format!("cannot parse pinned historical fixture descriptor: {error}"))?;
-    number(&descriptor, "/manifest/expectedReferenceCount").ok_or_else(|| {
-        "pinned historical fixture descriptor is missing numeric /manifest/expectedReferenceCount"
-            .to_owned()
-    })
-}
-
-fn library_protocol(v: &Value) -> Result<(), String> {
-    match v["protocol"].as_str() {
-        Some("m7-library-v1") => require(v["fixture"].is_null(), "/fixture must be null for v1"),
-        Some("m7-library-v2") => {
-            require(
-                v["fixture"].is_object(),
-                "/fixture must be an object for v2",
-            )?;
-            require(nonempty(v, "/fixture/id"), "/fixture/id")?;
-            require(
-                v["fixture"]["artifactSet"].is_object(),
-                "/fixture/artifactSet",
-            )?;
-            require(v["correction"].is_null(), "/correction must be null for v2")?;
-            require_fields(
-                v,
-                &[
-                    "/entries/total",
-                    "/entries/accepted",
-                    "/entries/blocked",
-                    "/entries/unstarted",
-                ],
-                |value| value.as_u64().is_some(),
-            )?;
-            require(
-                v["entries"]["total"]
-                    .as_u64()
-                    .is_some_and(|total| total > 0),
-                "v2 entries.total must be positive",
-            )
-        }
-        _ => Err("/protocol must be m7-library-v1 or m7-library-v2".to_owned()),
-    }
-}
-
-fn library_record(v: &Value) -> Result<(), String> {
-    require(v["workPackage"] == "M7-W5", "/workPackage must be M7-W5")?;
-    library_protocol(v)?;
-    require(v["result"] == "pass", "/result must be pass")?;
-    require(v["entries"].is_object(), "/entries")?;
-    require_fields(
-        v,
-        &[
-            "/entries/total",
-            "/entries/accepted",
-            "/entries/blocked",
-            "/entries/unstarted",
-        ],
-        Value::is_number,
-    )?;
-    library_waves_and_correction(v)?;
-    library_counts(v)
-}
-
-fn library_waves_and_correction(v: &Value) -> Result<(), String> {
-    if !v["correction"].is_null() {
-        require(
-            v["correction"].is_object(),
-            "/correction must be an object or null",
-        )?;
-        require_fields(
-            v,
-            &["/correction/from", "/correction/total"],
-            Value::is_number,
-        )?;
-        require(nonempty(v, "/correction/reason"), "/correction/reason")?;
-    }
-    require_rows(v, "/waves", |wave| {
-        require_fields(wave, &["/index", "/entries"], Value::is_number)?;
-        require(wave["dependsOn"].is_array(), "/dependsOn must be an array")?;
-        require(
-            array(wave, "/dependsOn").iter().all(Value::is_number),
-            "/dependsOn must contain numbers",
-        )?;
-
-        Ok(())
-    })?;
-    Ok(())
-}
-
-fn library_counts(v: &Value) -> Result<(), String> {
-    require_fields(
-        v,
-        &[
-            "/dependencies/resolved",
-            "/dependencies/unresolved",
-            "/registries/resolved",
-            "/registries/unresolved",
-            "/provenance/present",
-            "/provenance/missing",
-            "/routing/absorbed",
-            "/routing/remaining",
-            "/routing/runnableToday",
-            "/routing/blocked",
-            "/suites/packages/total",
-            "/suites/packages/failed",
-            "/suites/clusters/total",
-            "/suites/clusters/failed",
-        ],
-        Value::is_number,
-    )?;
-    Ok(())
+fn verify_library_record(value: &Value) -> Result<(), String> {
+    LibrarySummary::read(value)?.verify()
 }
 
 const M7_RECORDS: &[RecordDefinition] = &[RecordDefinition {
     name: "library-summary.json",
-    rule: library_record,
+    rule: verify_library_record,
     description: "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
  depends on, any evidence correction with the figure it replaced and its reason, and the \
  dependency, registry, provenance, routing and suite figures M7-W5 audits",
@@ -149,92 +41,78 @@ const M7_RECORDS: &[RecordDefinition] = &[RecordDefinition {
 
 const M7_ARITHMETIC: &[(Rule, &str)] = &[
     (
-        |v| {
-            sum(
-                v,
-                &[
-                    "/entries/accepted",
-                    "/entries/blocked",
-                    "/entries/unstarted",
-                ],
+        |value| {
+            same(
+                sum(
+                    value,
+                    &[
+                        "/entries/accepted",
+                        "/entries/blocked",
+                        "/entries/unstarted",
+                    ],
+                ),
+                number(value, "/entries/total"),
             )
-            .zip(number(v, "/entries/total"))
-            .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
         },
         "M7-W4's burn-up ledger asks that the accepted, blocked and unstarted totals equal the \
          verified fixture total",
     ),
     (
-        |v| {
-            (number(v, "/entries/blocked") == Some(0.0))
-                && (number(v, "/entries/unstarted") == Some(0.0))
+        |value| {
+            (number(value, "/entries/blocked") == Some(0.0))
+                && (number(value, "/entries/unstarted") == Some(0.0))
         },
         "a wave cannot close with failing or unclassified entries, so the library cannot close \
          with any",
     ),
     (
-        |v| {
-            number(v, "/entries/accepted")
-                .zip(number(v, "/entries/total"))
-                .is_some_and(|(a, b)| a.total_cmp(&b).is_eq())
+        |value| {
+            same(
+                number(value, "/entries/accepted"),
+                number(value, "/entries/total"),
+            )
         },
         "M7-W5's audit is the whole fixture, and a counterpart absent from it is not present",
     ),
     (
-        |v| {
-            if v["protocol"] == "m7-library-v2" {
-                true
-            } else {
-                legacy_fixture_total().map_or(true, |expected| {
-                    number(v, "/entries/total")
-                        .is_some_and(|total| total.total_cmp(&expected).is_eq())
-                }) || (v["correction"].is_object()
-                    && number(v, "/correction/total")
-                        .zip(number(v, "/entries/total"))
-                        .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
-            }
-        },
-        "M7-W5 audits the pinned historical reference total or an explicit correction under v1, \
-         or a positive whole-number total bound to the verified workload inventory under v2",
-    ),
-    (
-        |v| number(v, "/dependencies/unresolved") == Some(0.0),
+        |value| number(value, "/dependencies/unresolved") == Some(0.0),
         "M7-W5's gate row asks for zero unresolved dependencies",
     ),
     (
-        |v| number(v, "/registries/unresolved") == Some(0.0),
+        |value| number(value, "/registries/unresolved") == Some(0.0),
         "M7-W5's gate row asks for zero unresolved registries",
     ),
     (
-        |v| {
-            (number(v, "/provenance/present")
-                .zip(number(v, "/entries/total"))
-                .is_some_and(|(a, b)| a.total_cmp(&b).is_eq()))
-                && (number(v, "/provenance/missing") == Some(0.0))
+        |value| {
+            (same(
+                number(value, "/provenance/present"),
+                number(value, "/entries/total"),
+            )) && (number(value, "/provenance/missing") == Some(0.0))
         },
         "M7-W5's gate row asks that all provenance be present",
     ),
     (
-        |v| {
-            column_sum(v, "/waves", "/entries")
-                .zip(number(v, "/entries/total"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                column_sum(value, "/waves", "/entries"),
+                number(value, "/entries/total"),
+            )
         },
         "the waves the work was ordered by carry the whole library between them",
     ),
     (
-        |v| {
-            unique_by(array(v, "/waves"), |left, right| {
+        |value| {
+            unique_by(array(value, "/waves"), |left, right| {
                 left["index"].as_f64() == right["index"].as_f64()
             })
         },
         "two waves sharing an index are one wave counted twice, and order is what a wave is for",
     ),
     (
-        |v| {
-            array(v, "/waves").iter().all(|wave| {
+        |value| {
+            array(value, "/waves").iter().all(|wave| {
                 array(wave, "/dependsOn").iter().all(|dependency| {
-                    array(v, "/waves").iter().any(|other| {
+                    array(value, "/waves").iter().any(|other| {
                         other["index"]
                             .as_f64()
                             .is_some_and(|index| Some(index) == dependency.as_f64())
@@ -245,8 +123,8 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
         "M7-W1's graph closure proves no wave depends on an unavailable wave",
     ),
     (
-        |v| {
-            array(v, "/waves").iter().all(|wave| {
+        |value| {
+            array(value, "/waves").iter().all(|wave| {
                 array(wave, "/dependsOn").iter().all(|dependency| {
                     dependency
                         .as_f64()
@@ -258,37 +136,39 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
         "M7-W1's graph closure proves no wave depends on a later wave",
     ),
     (
-        |v| {
-            sum(v, &["/routing/absorbed", "/routing/remaining"])
-                .zip(number(v, "/entries/total"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                sum(value, &["/routing/absorbed", "/routing/remaining"]),
+                number(value, "/entries/total"),
+            )
         },
         "M7-W1's routing counts, per entry, how much Ravel already ships and how much remains",
     ),
     (
-        |v| {
-            sum(v, &["/routing/runnableToday", "/routing/blocked"])
-                .zip(number(v, "/entries/total"))
-                .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
+        |value| {
+            same(
+                sum(value, &["/routing/runnableToday", "/routing/blocked"]),
+                number(value, "/entries/total"),
+            )
         },
         "an entry is runnable today or it is blocked, and the two account for the library",
     ),
     (
-        |v| number(v, "/routing/blocked") == Some(0.0),
+        |value| number(value, "/routing/blocked") == Some(0.0),
         "a library whose entries cannot be run today is not the complete library M7 delivers",
     ),
     (
-        |v| {
-            (number(v, "/suites/packages/total").is_some_and(|n| n > 0.0))
-                && (number(v, "/suites/packages/failed") == Some(0.0))
+        |value| {
+            (number(value, "/suites/packages/total").is_some_and(|n| n > 0.0))
+                && (number(value, "/suites/packages/failed") == Some(0.0))
         },
         "M7-W6's gate row asks that all package suites pass, and a library running none passed \
          none",
     ),
     (
-        |v| {
-            (number(v, "/suites/clusters/total").is_some_and(|n| n > 0.0))
-                && (number(v, "/suites/clusters/failed") == Some(0.0))
+        |value| {
+            (number(value, "/suites/clusters/total").is_some_and(|n| n > 0.0))
+                && (number(value, "/suites/clusters/failed") == Some(0.0))
         },
         "M7-W6's gate row asks that all cluster suites pass, and a library running none passed \
          none",
@@ -296,9 +176,9 @@ const M7_ARITHMETIC: &[(Rule, &str)] = &[
 ];
 
 const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
-    ("/environment/settings/library/entries", |v| {
+    ("/environment/settings/library/entries", |value| {
         sum(
-            v,
+            value,
             &[
                 "/entries/accepted",
                 "/entries/blocked",
@@ -308,38 +188,40 @@ const M7_CARRIED_FIGURES: &[(&str, Figure)] = &[
         .and_then(serde_json::Number::from_f64)
         .map(Value::Number)
     }),
-    ("/environment/settings/library/accepted", |v| {
-        v.pointer("/entries/accepted").cloned()
+    ("/environment/settings/library/accepted", |value| {
+        value.pointer("/entries/accepted").cloned()
     }),
-    ("/environment/settings/library/blocked", |v| {
-        v.pointer("/entries/blocked").cloned()
+    ("/environment/settings/library/blocked", |value| {
+        value.pointer("/entries/blocked").cloned()
     }),
-    ("/environment/settings/library/unstarted", |v| {
-        v.pointer("/entries/unstarted").cloned()
+    ("/environment/settings/library/unstarted", |value| {
+        value.pointer("/entries/unstarted").cloned()
     }),
-    ("/environment/settings/library/waves", |v| {
-        v.pointer("/waves")
+    ("/environment/settings/library/waves", |value| {
+        value
+            .pointer("/waves")
             .and_then(Value::as_array)
             .map(|rows| Value::from(rows.len()))
     }),
     (
         "/environment/settings/library/dependenciesUnresolved",
-        |v| v.pointer("/dependencies/unresolved").cloned(),
+        |value| value.pointer("/dependencies/unresolved").cloned(),
     ),
-    ("/environment/settings/library/registriesUnresolved", |v| {
-        v.pointer("/registries/unresolved").cloned()
+    (
+        "/environment/settings/library/registriesUnresolved",
+        |value| value.pointer("/registries/unresolved").cloned(),
+    ),
+    ("/environment/settings/library/provenancePresent", |value| {
+        value.pointer("/provenance/present").cloned()
     }),
-    ("/environment/settings/library/provenancePresent", |v| {
-        v.pointer("/provenance/present").cloned()
+    ("/environment/settings/library/absorbed", |value| {
+        value.pointer("/routing/absorbed").cloned()
     }),
-    ("/environment/settings/library/absorbed", |v| {
-        v.pointer("/routing/absorbed").cloned()
+    ("/environment/settings/library/packageSuites", |value| {
+        value.pointer("/suites/packages/total").cloned()
     }),
-    ("/environment/settings/library/packageSuites", |v| {
-        v.pointer("/suites/packages/total").cloned()
-    }),
-    ("/environment/settings/library/clusterSuites", |v| {
-        v.pointer("/suites/clusters/total").cloned()
+    ("/environment/settings/library/clusterSuites", |value| {
+        value.pointer("/suites/clusters/total").cloned()
     }),
 ];
 
@@ -399,20 +281,50 @@ pub(crate) fn verify_m7_manifest(
 }
 
 fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
-    if record["protocol"] == "m7-library-v2" {
-        if let Err(requirement) = library_protocol(record) {
-            violations.push(format!(
-                "evidence/m7/{}: failed {requirement}",
-                M7_FIGURES.record
-            ));
+    match LibrarySummary::read(record).and_then(|summary| {
+        summary.verify()?;
+        Ok(summary)
+    }) {
+        Ok(summary) => match &summary.protocol {
+            Protocol::Historical { correction } => {
+                verify_m7_historical_total(
+                    root,
+                    summary.entry_total(),
+                    correction.as_ref(),
+                    violations,
+                );
+            }
+            Protocol::Workload { fixture } => {
+                verify_m7_workload_total(root, record, fixture, summary.entry_total(), violations);
+            }
+        },
+        Err(error) => violations.push(format!("evidence/m7/library-summary.json: {error}")),
+    }
+}
+
+fn verify_m7_historical_total(
+    root: &Path,
+    total: &serde_json::Number,
+    correction: Option<&model::Correction<'_>>,
+    violations: &mut Vec<String>,
+) {
+    let expected = match legacy_fixture_total(root) {
+        Ok(expected) => expected,
+        Err(error) => {
+            violations.push(error);
             return;
         }
-        verify_m7_workload_total(root, record, violations);
-        return;
-    }
-    if !record["fixture"].is_null() {
-        violations.push("M7 v1 requires a null fixture".to_owned());
-        return;
+    };
+    let audited = total.as_f64();
+    if !same(audited, Some(expected))
+        && !correction.is_some_and(|correction| same(correction.total.as_f64(), audited))
+    {
+        let recorded = total;
+        violations.push(format!(
+            "evidence/m7/library-summary.json audits {recorded} entries while \
+             tests/fixtures/descriptors/atm10-tts-2.0.2.json pins {expected}; \
+             M7-W5 must audit the pinned historical total or an explicit correction"
+        ));
     }
     let inventory = root.join("evidence/m5/inventory-summary.json");
     // Historical M5 evidence is optional for isolated M7 closure records.
@@ -427,7 +339,7 @@ fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mu
         }
     };
     let (Some(audited), Some(verified)) = (
-        record.pointer("/entries/total").and_then(Value::as_f64),
+        audited,
         inventory
             .pointer("/artifacts/total")
             .and_then(Value::as_f64),
@@ -440,12 +352,13 @@ fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mu
         );
         return;
     };
-    if audited.total_cmp(&verified).is_eq() {
+    if same(Some(audited), Some(verified)) {
         return;
     }
-    let corrects_the_inventory = record["correction"].is_object()
-        && record["correction"]["from"].as_f64() == Some(verified)
-        && record["correction"]["total"].as_f64() == Some(audited);
+    let corrects_the_inventory = correction.is_some_and(|correction| {
+        same(correction.from.as_f64(), Some(verified))
+            && same(correction.total.as_f64(), Some(audited))
+    });
     if !corrects_the_inventory {
         violations.push(format!(
             "evidence/m7/library-summary.json audits {audited} entries while \
@@ -455,17 +368,23 @@ fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mu
     }
 }
 
-fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
-    let Some(id) = record["fixture"]["id"].as_str().filter(|id| {
-        !id.is_empty()
-            && id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
-            && !id.starts_with('.')
-    }) else {
+fn verify_m7_workload_total(
+    root: &Path,
+    record: &Value,
+    fixture: &model::Fixture<'_>,
+    total: &serde_json::Number,
+    violations: &mut Vec<String>,
+) {
+    let id = fixture.id;
+    if !(!id.is_empty()
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
+        && !id.starts_with('.'))
+    {
         violations.push("M7 fixture must name a safe workload inventory id".to_owned());
         return;
-    };
+    }
     let path = root.join(format!("registry/inventory/{id}/graph.json"));
     let inventory = match read_json(root, &path) {
         Ok(inventory) => inventory,
@@ -474,33 +393,31 @@ fn verify_m7_workload_total(root: &Path, record: &Value, violations: &mut Vec<St
             return;
         }
     };
-    let binding = &record["fixture"];
+    let binding = &fixture.artifact_set;
     let count = inventory
         .pointer("/fixture/artifactSet/count")
         .and_then(Value::as_u64);
     let digest = inventory
         .pointer("/fixture/artifactSet/sha256")
         .and_then(Value::as_str);
-    let valid_digest = digest
-        .is_some_and(|digest| ravel_package::Sha256Digest::try_from(digest.to_owned()).is_ok());
+    let digest = digest.and_then(|digest| ravel_core::Sha256Digest::try_from(digest).ok());
     for (valid, requirement) in [
-        (inventory["fixture"]["id"] == binding["id"], "fixture.id"),
+        (inventory["fixture"]["id"] == fixture.id, "fixture.id"),
         (
             count.is_some_and(|count| count > 0),
             "fixture.artifactSet.count must be positive",
         ),
         (
-            valid_digest,
+            digest.is_some(),
             "fixture.artifactSet.sha256 must be a SHA-256 digest",
         ),
         (
-            inventory["fixture"]["artifactSet"] == binding["artifactSet"],
+            count == Some(binding.count)
+                && digest == Some(binding.sha256)
+                && record["fixture"]["artifactSet"] == inventory["fixture"]["artifactSet"],
             "fixture.artifactSet",
         ),
-        (
-            record.pointer("/entries/total").and_then(Value::as_u64) == count,
-            "entries.total",
-        ),
+        (total.as_u64() == count, "entries.total"),
     ] {
         if !valid {
             violations.push(format!(
@@ -524,11 +441,6 @@ pub(crate) fn verify_m7_integrity(
 ) -> LoadedRecords {
     let records = read_records(root, Milestone::M7, M7_RECORDS, violations);
     if let Some(record) = records.carried(&M7_FIGURES) {
-        if record["protocol"] != "m7-library-v2"
-            && let Err(error) = legacy_fixture_total()
-        {
-            violations.push(error);
-        }
         verify_m7_verified_fixture_total(root, record, violations);
         verify_milestone_figures(Milestone::M7, record, manifest, &M7_FIGURES, violations);
     }

@@ -582,7 +582,7 @@ fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["rewriteIntegrity"]["mutationProof"]["sourceInjection"] = serde_json::json!({});
-    assert!(super::counterpart_record(&record).is_err());
+    assert!(super::verify_counterpart_record(&record).is_err());
     assert!(!M6_ARITHMETIC[20].0(&record));
 }
 
@@ -590,12 +590,12 @@ fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
 fn counterpart_schema_refuses_string_counts_and_duplicate_ids() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
-    assert!(super::counterpart_record(&record).is_ok());
+    assert!(super::verify_counterpart_record(&record).is_ok());
     record["counterparts"][1]["id"] = serde_json::json!("c1");
-    assert!(super::counterpart_record(&record).is_err());
+    assert!(super::verify_counterpart_record(&record).is_err());
     record["counterparts"][1]["id"] = serde_json::json!("c2");
     record["totals"]["observableAreas"] = serde_json::json!("10");
-    assert!(super::counterpart_record(&record).is_err());
+    assert!(super::verify_counterpart_record(&record).is_err());
 }
 
 #[test]
@@ -604,18 +604,20 @@ fn counterpart_failure_names_the_frozen_wave_clause() {
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["wave"]["frozen"] = serde_json::json!(false);
     assert_eq!(
-        super::counterpart_record(&record),
+        super::verify_counterpart_record(&record),
         Err("/wave/frozen".to_owned())
     );
 }
 
 #[test]
-fn counterpart_failure_points_to_the_actual_row_field() {
+fn counterpart_admission_reports_the_typed_numeric_error() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["counterparts"][0]["observableAreas"] = serde_json::Value::Null;
+    let error = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+        .expect_err("null must not deserialize as a number");
     assert_eq!(
-        super::counterpart_record(&record),
-        Err("/counterparts/0/observableAreas".to_owned())
+        super::verify_counterpart_record(&record),
+        Err(format!("/counterparts/0/observableAreas: {error}"))
     );
 }

@@ -14,7 +14,7 @@ use zip::read::{ZipFile, ZipFileEntry};
 use zip::result::{ZipError, ZipResult};
 use zip::unstable::stream::{ZipStreamReader, ZipStreamVisitor};
 
-use crate::hex_digest;
+use ravel_core::Sha256Digest;
 
 mod error;
 pub use error::FixtureError;
@@ -55,7 +55,7 @@ pub struct FixtureSource {
     /// Local archive filename.
     pub file_name: String,
     /// Expected archive SHA-256.
-    pub sha256: String,
+    pub sha256: Sha256Digest,
 }
 
 /// Expected fields in a `CurseForge` client-pack manifest.
@@ -65,7 +65,7 @@ pub struct ExpectedManifest {
     /// Archive member containing the manifest.
     pub entry: String,
     /// Expected manifest SHA-256.
-    pub sha256: String,
+    pub sha256: Sha256Digest,
     /// `CurseForge` manifest type.
     pub manifest_type: String,
     /// `CurseForge` manifest format version.
@@ -124,7 +124,7 @@ pub fn load_fixture_descriptor(path: &Path) -> Result<FixtureDescriptor, Fixture
 /// # Errors
 ///
 /// Returns an error when the file cannot be opened or read.
-pub fn sha256_file(path: &Path) -> Result<String, FixtureError> {
+pub fn sha256_file(path: &Path) -> Result<Sha256Digest, FixtureError> {
     let mut file = File::open(path)
         .map_err(|error| FixtureError::Io(format!("cannot open {}: {error}", path.display())))?;
     let mut hasher = Sha256::new();
@@ -138,7 +138,7 @@ pub fn sha256_file(path: &Path) -> Result<String, FixtureError> {
         }
         hasher.update(&buffer[..count]);
     }
-    Ok(hex_digest(&hasher.finalize()))
+    Ok(Sha256Digest::from_bytes(hasher.finalize().into()))
 }
 
 /// Verifies an archive digest and its pinned `CurseForge` manifest.
@@ -422,14 +422,18 @@ fn verify_manifest(
     })
 }
 
-fn require_hash(artifact: &'static str, expected: &str, actual: &str) -> Result<(), FixtureError> {
-    if expected.eq_ignore_ascii_case(actual) {
+fn require_hash(
+    artifact: &'static str,
+    expected: &Sha256Digest,
+    actual: &Sha256Digest,
+) -> Result<(), FixtureError> {
+    if expected == actual {
         Ok(())
     } else {
         Err(FixtureError::HashMismatch {
             artifact,
-            expected: expected.to_owned(),
-            actual: actual.to_owned(),
+            expected: *expected,
+            actual: *actual,
         })
     }
 }
@@ -446,8 +450,8 @@ fn require_metadata(field: &'static str, expected: &str, actual: &str) -> Result
     }
 }
 
-fn sha256_bytes(bytes: &[u8]) -> String {
-    hex_digest(&Sha256::digest(bytes))
+fn sha256_bytes(bytes: &[u8]) -> Sha256Digest {
+    Sha256Digest::from_bytes(Sha256::digest(bytes).into())
 }
 
 fn remove_partial(path: &Path) {
@@ -506,6 +510,25 @@ mod tests {
     };
 
     #[test]
+    fn byte_hashing_retains_the_canonical_digest() {
+        let actual = super::sha256_bytes(b"abc");
+        assert_eq!(
+            actual.to_string(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(super::require_hash("bytes", &actual, &actual), Ok(()));
+        let expected = ravel_core::Sha256Digest::from_bytes([0; 32]);
+        assert_eq!(
+            super::require_hash("bytes", &expected, &actual),
+            Err(FixtureError::HashMismatch {
+                artifact: "bytes",
+                expected,
+                actual,
+            })
+        );
+    }
+
+    #[test]
     fn descriptor_policy_rejects_each_unsafe_boundary() {
         let mut descriptor = valid_descriptor();
         descriptor.schema_version = 2;
@@ -534,21 +557,24 @@ mod tests {
         let mut descriptor = valid_descriptor();
         descriptor.manifest.expected_reference_count = 0;
         assert_invalid(&descriptor, "non-empty");
-
-        let mut descriptor = valid_descriptor();
-        descriptor.source.sha256 = "not-a-digest".to_owned();
-        assert_invalid(&descriptor, "source.sha256");
     }
 
     #[test]
-    fn descriptor_hashes_share_the_lowercase_package_digest_policy() {
-        let mut descriptor = valid_descriptor();
+    fn descriptor_hashes_are_admitted_as_canonical_digests_during_deserialization() {
+        let descriptor = valid_descriptor();
         verify_descriptor(&descriptor).expect("lowercase digests should pass");
-        descriptor.source.sha256.make_ascii_uppercase();
-        assert_invalid(&descriptor, "source.sha256");
-        descriptor = valid_descriptor();
-        descriptor.manifest.sha256.make_ascii_uppercase();
-        assert_invalid(&descriptor, "manifest.sha256");
+        let canonical = serde_json::to_value(&descriptor).expect("descriptor serializes");
+        let round_trip: FixtureDescriptor =
+            serde_json::from_value(canonical).expect("canonical descriptor deserializes");
+        assert_eq!(round_trip.source.sha256, descriptor.source.sha256);
+        assert_eq!(round_trip.manifest.sha256, descriptor.manifest.sha256);
+        for field in ["source", "manifest"] {
+            for invalid in ["not-a-digest".to_owned(), "A".repeat(64)] {
+                let mut value = serde_json::to_value(&descriptor).expect("descriptor serializes");
+                value[field]["sha256"] = invalid.into();
+                assert!(serde_json::from_value::<FixtureDescriptor>(value).is_err());
+            }
+        }
     }
 
     #[test]

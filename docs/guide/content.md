@@ -111,8 +111,8 @@ A recipe is the exception, and it is the exception on purpose. Ravel writes no
 recipe body, because the shape of one is a Minecraft version's to decide and the
 versions disagree about it: an ingredient is an object in one and a bare name in
 the next. So `ContentKind::Recipe` claims the name and you supply the bytes
-through `ContentDeclaration::resource`, exactly as you supply a model. A recipe
-you declare and never write is a name nothing stands behind.
+through `ContentDeclaration::server_entry`, which takes a server-data kind, a name
+and the bytes. A recipe you declare and never write is a name nothing stands behind.
 
 ## The registries that exist
 

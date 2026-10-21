@@ -209,7 +209,7 @@ fn unreadable_production_text_reports_the_read_failure() {
         let mut violations = Vec::new();
         let members = maintained_members(&root, &mut violations);
         verify_production_fences(&root, &members, &mut violations);
-        let relative = crate::text::relative_label(&root, &path);
+        let relative = crate::text::redacted_path(&root, &path);
         assert!(
             violations
                 .iter()

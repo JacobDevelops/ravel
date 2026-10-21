@@ -2,13 +2,12 @@
 
 use serde_json::Value;
 
-use crate::evidence::rules::has_exact_work_packages;
-use crate::evidence::rules::require_manifest_rule;
+use crate::evidence::closure::verify_manifest_closure;
+use crate::evidence::rules::{Rule, has_exact_work_packages, require_manifest_rule};
 use crate::json::array;
 
-pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>) {
-    require_manifest_rule(
-        manifest,
+const M0_MANIFEST_RULES: &[(Rule, &str)] = &[
+    (
         |value| {
             has_exact_work_packages(
                 value,
@@ -18,28 +17,27 @@ pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>)
             )
         },
         "M0 manifest must include every work package from M0-W1 through M0-W9 exactly once",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             value["versions"]["minecraft"] == "26.1.2"
                 && value["versions"]["neoforge"] == "26.1.2.78"
                 && value["versions"]["fixture"] == "ATM11 0.2.1"
         },
         "M0 manifest must pin Minecraft 26.1.2, NeoForge 26.1.2.78, and ATM11 0.2.1",
-        violations,
-    );
-    require_manifest_rule(
-        manifest,
+    ),
+    (
         |value| {
             array(value, "/platformEvidence")
                 .iter()
                 .any(m0_platform_matches)
         },
         "M0 manifest must include native Linux x86_64 launch evidence",
-        violations,
-    );
+    ),
+];
+
+pub(crate) fn verify_m0_manifest(manifest: &Value, violations: &mut Vec<String>) {
+    verify_manifest_closure(manifest, M0_MANIFEST_RULES, violations);
 }
 
 fn m0_platform_matches(value: &Value) -> bool {

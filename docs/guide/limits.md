@@ -54,19 +54,20 @@ its manifest stops it too. You can build a conforming mod, test it thoroughly as
 a library, and install it into an instance to have it validated and compiled into
 a host. You cannot yet drop it into an instance and see it run.
 
-One thing to plan around while that is true: a generated workspace supplies
-`ravel-sdk`, `serde`, `serde_json` and the installed peer crates for mod dependencies.
+A generated workspace supplies `ravel-sdk`, `serde`, `serde_json`, `num-traits`
+and installed peer crates for mod dependencies through workspace inheritance.
 Peer paths follow their actual installation directories, not their crate names.
 Inheriting any other `ravel-*` crate is refused: author code uses the SDK facade,
-not loader internals. Other dependencies must name their own versions rather than
-inherit one, and their exact
-name, version, source and checksum must already be pinned by the Ravel installation's
-`Cargo.lock`, and belong to the SDK closure or the explicitly supported
-`serde`, `serde_json` and `num-traits` dependency closures. For example,
-`num-traits = { version = "0.2.19", default-features = false }` uses a vetted
-dependency. Internal tooling and JNI crates are not mod-facing dependencies just
+not loader internals. Explicit dependency versions remain supported, but their exact
+name, version, source and checksum must already be pinned by the installation's
+`Cargo.lock` and belong to the SDK closure or the supported author dependency
+closures. Internal tooling and JNI crates are not mod-facing dependencies merely
 because the installation lock contains them. Unvetted dependencies are refused,
 even if Cargo has cached them locally. See the [build contract](../architecture/overview.md).
+
+Player builds track the moving `nightly` compiler channel. Updating it invalidates
+the cached build through the resolved compiler identity; it can also introduce
+new compiler errors or lints without changing your mod's source.
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side, and it no longer runs at `premain` either.
@@ -181,11 +182,11 @@ audio has both ends and no launched game has run them:
 
 Declaring against `render_stages`, and against the two interception points no
 hook resolves, is designing against a specification that is tested now and — for
-drawing — is not connected later. `world_shaping` and `server_data` are different:
-they produce real output today. World shaping writes a record the world stores;
-server-data declarations become entries in the installed world's data pack through
-`ContentDeclaration`, where datapack-capable adapters let Minecraft read them.
-The legacy adapter has no datapack output.
+drawing — is not connected later. `world_shaping` produces a validated
+`GenerationRecord` for library callers, but no host path reads or persists it:
+declaring it does not change a launched world. `server_data` declarations become
+entries in the installed world's data pack through `ContentDeclaration`, where
+datapack-capable adapters let Minecraft read them. The legacy adapter has no datapack output.
 
 **A shared library your mod provides is declared and nothing reads the
 declaration.** `provision` is the fourth surface in that state, and it is

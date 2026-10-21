@@ -297,7 +297,9 @@ fn written_declarations() -> &'static str {
          \x20    * parser it may borrow; a length says where a field ends whatever is\n\
          \x20    * inside it.\n\
          \x20    *\n\
-         \x20    * @param owner the canonical mod id whose settings to read\n\
+         \x20    * @param owner the opaque typed route from the mod-list document,\n\
+         \x20    *     {@code process:<mod-id>} or {@code integrated-server:<mod-id>};\n\
+         \x20    *     a display suffix is never a routing identity\n\
          \x20    * @return the settings document, or {@code null} when this process\n\
          \x20    *     holds no configuration for that owner\n\
          \x20    */\n\

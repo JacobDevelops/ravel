@@ -10,11 +10,15 @@
 //! dependencies and the host cannot name mods. Generated hosts may use other
 //! installation-pinned dependencies. Player workspaces keep
 //! the installation's Rust channel with the minimal profile, not its developer
-//! components or cross-compilation targets.
+//! components or cross-compilation targets. Plan fingerprints include the resolved
+//! compiler's `rustc -vV` output, so moving channels invalidate prior plans.
+//! Planning and building require `rustup` on `PATH`. A missing selected channel
+//! is installed with the minimal profile; successful installed-channel lookups
+//! never refresh a moving channel.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ravel_core::ModId;
 use ravel_core::paths::HOST_DIRECTORY;
@@ -34,10 +38,8 @@ use generate::{host_manifest, host_source, workspace_manifest};
 /// The entry function `ravel_sdk::export_mod!` writes into a package.
 pub const ENTRY_FUNCTION: &str = "__ravel_entry";
 
-// Workspace-lent dependencies and explicitly versioned author seeds are separate:
-// num-traits is admitted without adding a workspace inheritance convention.
-const AUTHOR_DEPENDENCIES: &[&str] = &["serde", "serde_json"];
-const AUTHOR_SEEDS: &[&str] = &["ravel-sdk", "serde", "serde_json", "num-traits"];
+/// Dependencies lent to authors and used alongside the SDK as lockfile closure seeds.
+const AUTHOR_DEPENDENCIES: &[&str] = &["serde", "serde_json", "num-traits"];
 
 /// What a host will be generated from, and the bytes that generate it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +48,7 @@ pub struct HostPlan {
     installation_lock: String,
     members: Vec<PlannedMember>,
     fingerprint: Sha256Digest,
+    compiler: ResolvedCompiler,
 }
 
 impl HostPlan {
@@ -67,7 +70,7 @@ impl HostPlan {
         &self.members
     }
 
-    /// Returns the generated-byte digest, not Cargo's build-cache key.
+    /// Returns the generated-input and resolved-compiler digest, not Cargo's build-cache key.
     #[must_use]
     pub const fn fingerprint(&self) -> &Sha256Digest {
         &self.fingerprint
@@ -89,8 +92,16 @@ pub struct PlannedMember {
 ///
 /// # Errors
 /// Returns a refusal for missing or invalid installation inputs, Cargo manifests,
-/// or duplicate or reserved crate names.
+/// duplicate or reserved crate names, or an unavailable installation compiler.
 pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, BuildRefused> {
+    plan_with_compiler(discovered, ravel_root, resolve_compiler)
+}
+
+fn plan_with_compiler(
+    discovered: &Discovered,
+    ravel_root: &Path,
+    compiler: impl FnOnce(&Path, &str) -> Result<ResolvedCompiler, BuildRefused>,
+) -> Result<HostPlan, BuildRefused> {
     let mut members = Vec::with_capacity(discovered.packages().len());
     for package in discovered.packages() {
         let directory = package.directory().to_owned();
@@ -138,8 +149,25 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
         host_source(&members),
     );
 
+    let compiler = compiler(ravel_root, &files["rust-toolchain.toml"])?;
+    let fingerprint = plan_fingerprint(&files, &installation_lock, &compiler.identity);
+
+    Ok(HostPlan {
+        files,
+        installation_lock,
+        members,
+        fingerprint,
+        compiler,
+    })
+}
+
+fn plan_fingerprint(
+    files: &BTreeMap<String, String>,
+    installation_lock: &str,
+    compiler: &[u8],
+) -> Sha256Digest {
     let mut digest = Sha256::new();
-    for (path, contents) in &files {
+    for (path, contents) in files {
         digest.update(path.as_bytes());
         digest.update([0]);
         digest.update(contents.as_bytes());
@@ -148,16 +176,128 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
     digest.update(b"installation Cargo.lock");
     digest.update([0]);
     digest.update(installation_lock.as_bytes());
-    let mut bytes = [0_u8; 32];
-    bytes.copy_from_slice(&digest.finalize());
-    let fingerprint = Sha256Digest::from_bytes(bytes);
+    digest.update([0]);
+    digest.update(b"rustc -vV");
+    digest.update([0]);
+    digest.update(compiler);
+    Sha256Digest::from_bytes(digest.finalize().into())
+}
 
-    Ok(HostPlan {
-        files,
-        installation_lock,
-        members,
-        fingerprint,
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ResolvedCompiler {
+    channel: String,
+    rustc: PathBuf,
+    identity: Vec<u8>,
+}
+
+impl ResolvedCompiler {
+    fn cargo_command(&self) -> std::process::Command {
+        let mut command = std::process::Command::new("rustup");
+        command.args(["run", &self.channel, "cargo"]);
+        command
+            .env("RUSTUP_TOOLCHAIN", &self.channel)
+            .env("RUSTC", &self.rustc)
+            .env("CARGO_BUILD_RUSTC", &self.rustc);
+        command
+    }
+}
+
+fn resolve_compiler(root: &Path, toolchain: &str) -> Result<ResolvedCompiler, BuildRefused> {
+    let invalid = |detail| BuildRefused::Installation {
+        file: "rust-toolchain.toml".to_owned(),
+        detail,
+    };
+    let parsed: toml::Table =
+        toml::from_str(toolchain).map_err(|error| invalid(error.to_string()))?;
+    let channel = parsed
+        .get("toolchain")
+        .and_then(|table| table.get("channel"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| invalid("no toolchain.channel is declared".to_owned()))?;
+    let rustc = resolve_rustc(root, channel)?;
+    let identity = compiler_output(
+        std::process::Command::new(&rustc)
+            .arg("-vV")
+            .current_dir(root),
+    )?;
+    Ok(ResolvedCompiler {
+        channel: channel.to_owned(),
+        rustc,
+        identity,
     })
+}
+
+fn resolve_rustc(root: &Path, channel: &str) -> Result<PathBuf, BuildRefused> {
+    let lookup = || {
+        std::process::Command::new("rustup")
+            .args(["which", "--toolchain", channel, "rustc"])
+            .current_dir(root)
+            .output()
+            .map_err(|source| BuildRefused::Toolchain { source })
+    };
+    let mut output = lookup()?;
+    if !output.status.success() {
+        // A successful lookup never updates an already installed moving channel.
+        let installed = std::process::Command::new("rustup")
+            .args([
+                "toolchain",
+                "install",
+                channel,
+                "--profile",
+                "minimal",
+                "--no-self-update",
+            ])
+            .current_dir(root)
+            .output()
+            .map_err(|source| BuildRefused::Toolchain { source })?;
+        compiler_status(&installed)?;
+        output = lookup()?;
+    }
+    compiler_path(compiler_identity(output)?)
+}
+
+fn compiler_path(bytes: Vec<u8>) -> Result<PathBuf, BuildRefused> {
+    let path = String::from_utf8(bytes).map_err(|error| BuildRefused::Toolchain {
+        source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+    })?;
+    if path.trim().is_empty() {
+        return Err(BuildRefused::Toolchain {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "rustup returned an empty compiler path",
+            ),
+        });
+    }
+    Ok(PathBuf::from(path.trim()))
+}
+
+fn compiler_output(command: &mut std::process::Command) -> Result<Vec<u8>, BuildRefused> {
+    let output = command
+        .output()
+        .map_err(|source| BuildRefused::Toolchain { source })?;
+    compiler_identity(output)
+}
+
+fn compiler_status(output: &std::process::Output) -> Result<(), BuildRefused> {
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(BuildRefused::Toolchain {
+        source: std::io::Error::other(String::from_utf8_lossy(&output.stderr).trim().to_owned()),
+    })
+}
+
+fn compiler_identity(output: std::process::Output) -> Result<Vec<u8>, BuildRefused> {
+    compiler_status(&output)?;
+    if output.stdout.is_empty() {
+        return Err(BuildRefused::Toolchain {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "compiler resolution returned no identity",
+            ),
+        });
+    }
+    Ok(output.stdout)
 }
 
 fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {

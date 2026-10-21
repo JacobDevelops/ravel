@@ -20,17 +20,18 @@ pub(super) fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), 
     let text = fs::read_to_string(&path).map_err(|error| {
         GenerateError::io(file_name(&adapter.inputs.version_manifest.path), error)
     })?;
-    if major_version(&text).is_none() && adapter.is_legacy() {
-        let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
-            GenerateError::Input(format!("invalid legacy version manifest: {error}"))
-        })?;
-        if manifest.get("javaVersion").is_none() && manifest.is_object() {
-            return Ok(());
-        }
-    }
-    let declared = major_version(&text).ok_or_else(|| {
+    let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
         GenerateError::Input(format!(
-            "{} states no javaVersion.majorVersion, so nothing says what release this version runs",
+            "cannot parse {}: {error}",
+            file_name(&adapter.inputs.version_manifest.path)
+        ))
+    })?;
+    if adapter.is_legacy() && manifest.is_object() && manifest.get("javaVersion").is_none() {
+        return Ok(());
+    }
+    let declared = major_version(manifest).map_err(|error| {
+        GenerateError::Input(format!(
+            "cannot read javaVersion.majorVersion from {}: {error}",
             file_name(&adapter.inputs.version_manifest.path)
         ))
     })?;
@@ -45,7 +46,7 @@ pub(super) fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), 
 }
 
 /// The `javaVersion.majorVersion` one version manifest states.
-fn major_version(text: &str) -> Option<u16> {
+fn major_version(value: serde_json::Value) -> Result<u16, serde_json::Error> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Manifest {
@@ -56,8 +57,8 @@ fn major_version(text: &str) -> Option<u16> {
     struct JavaVersion {
         major_version: u16,
     }
-    let manifest: Manifest = serde_json::from_str(text).ok()?;
-    Some(manifest.java_version.major_version)
+    let manifest: Manifest = serde_json::from_value(value)?;
+    Ok(manifest.java_version.major_version)
 }
 
 #[cfg(test)]
@@ -136,20 +137,60 @@ mod tests {
   "javaVersion": {"component": "java-runtime-delta", "majorVersion": 21}
 }"#;
 
-        assert_eq!(super::major_version(manifest), Some(21));
         assert_eq!(
-            super::major_version(r#"{"javaVersion":{"component":"jre-legacy","majorVersion":8}}"#),
-            Some(8)
+            super::major_version(serde_json::from_str(manifest).expect("JSON")).expect("release"),
+            21
+        );
+        assert_eq!(
+            super::major_version(
+                serde_json::json!({"javaVersion":{"component":"jre-legacy","majorVersion":8}})
+            )
+            .expect("release"),
+            8
         );
     }
 
     #[test]
     fn metadata_numbers_are_read_only_from_valid_json_at_the_declared_path() {
-        for value in ["21.5", "-21", "65536", "\"21\"", "21garbage"] {
+        for value in ["21.5", "-21", "65536", "\"21\""] {
             let java = format!(r#"{{"javaVersion":{{"majorVersion":{value}}}}}"#);
-            assert_eq!(super::major_version(&java), None, "{java}");
+            let parsed = serde_json::from_str(&java).expect("valid JSON");
+            assert!(super::major_version(parsed).is_err(), "{java}");
         }
-        let outside = r#"{"javaVersion":{},"elsewhere":{"majorVersion":21}}"#;
-        assert_eq!(super::major_version(outside), None);
+        let outside = serde_json::json!({"javaVersion":{},"elsewhere":{"majorVersion":21}});
+        assert!(super::major_version(outside).is_err());
+    }
+
+    #[test]
+    fn malformed_manifests_report_parse_details_instead_of_missing_metadata() {
+        let root = std::env::temp_dir().join(format!(
+            "ravel-manifest-parse-details-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("temporary directory");
+        let mut adapter = legacy_adapter();
+        adapter.inputs.version_manifest.path = "version.json".to_owned();
+        for legacy in [true, false] {
+            if !legacy {
+                adapter.capabilities.clear();
+            }
+            for text in [
+                "{",
+                r#"{"javaVersion":{"majorVersion":"8"}}"#,
+                r#"{"javaVersion":{"majorVersion":65536}}"#,
+            ] {
+                std::fs::write(root.join("version.json"), text).expect("manifest");
+                let error = super::verify_java_release(&root, &adapter)
+                    .expect_err("malformed manifests are never historical omissions");
+                let message = error.to_string();
+                assert!(message.contains("version.json"), "{message}");
+                assert!(
+                    message.contains("cannot parse") || message.contains("invalid"),
+                    "{message}"
+                );
+                assert!(!message.contains("states no javaVersion"), "{message}");
+            }
+        }
+        std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

@@ -10,6 +10,8 @@ use noak::reader::attributes::AttributeContent;
 use noak::reader::cpool::{ConstantPool, Index, Utf8};
 use noak::reader::{Attribute, Class};
 
+use crate::{GenerateError, mapping};
+
 /// One validated JVM type, retaining its exact spelling for opaque handles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DescriptorType<'a> {
@@ -103,6 +105,70 @@ pub(super) fn method_types(
     let (returns, after) = descriptor_type(&rest[1..], true)?;
     if !after.is_empty() {
         return Err(format!("{descriptor} declares more than one return type"));
+    }
+    Ok((parameters, returns))
+}
+
+/// Returns exact parameter descriptors after validating the complete method signature.
+///
+/// # Errors
+///
+/// Returns an error for malformed signatures or invalid internal class names.
+pub fn descriptor_parameters(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
+    let (parameters, _) = verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    Ok(parameters.into_iter().map(|kind| kind.descriptor).collect())
+}
+
+/// Returns the internal class names in a complete method or field descriptor.
+///
+/// # Errors
+///
+/// Returns an error for incomplete types, invalid internal class names, or trailing input.
+pub fn descriptor_classes(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
+    if descriptor.starts_with('(') {
+        let (parameters, returns) =
+            verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
+        Ok(parameters
+            .into_iter()
+            .chain(std::iter::once(returns))
+            .filter_map(DescriptorType::class_name)
+            .collect())
+    } else {
+        let kind = field_type(descriptor).map_err(GenerateError::Unsupported)?;
+        if let Some(name) = kind.class_name() {
+            mapping::verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
+        }
+        Ok(kind.class_name().into_iter().collect())
+    }
+}
+
+/// Counts borrowed opaque handles, excluding copied strings and byte payloads.
+///
+/// # Errors
+///
+/// Returns an error for malformed signatures or invalid internal class names.
+pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError> {
+    let (parameters, _) = verified_method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    Ok(parameters
+        .into_iter()
+        .filter(|kind| {
+            if kind.dimensions != 0 {
+                return kind.descriptor != "[B";
+            }
+            kind.descriptor.starts_with('L') && kind.name != "java/lang/String"
+        })
+        .count())
+}
+
+/// Validates class names in every parameter and the return type.
+pub(super) fn verified_method_types(
+    descriptor: &str,
+) -> Result<(Vec<DescriptorType<'_>>, DescriptorType<'_>), String> {
+    let (parameters, returns) = method_types(descriptor)?;
+    for kind in parameters.iter().copied().chain(std::iter::once(returns)) {
+        if let Some(name) = kind.class_name() {
+            mapping::verify_internal_class_name(name)?;
+        }
     }
     Ok((parameters, returns))
 }
@@ -863,5 +929,61 @@ mod tests {
                 .super_class,
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod descriptor_api_tests {
+    #[test]
+    fn descriptor_classes_cover_arrays_parameters_and_returns() {
+        assert_eq!(
+            crate::descriptor_classes("([[Lgame/Level;[I)Lgame/Level;").expect("valid descriptor"),
+            ["game/Level", "game/Level"]
+        );
+        assert_eq!(
+            crate::descriptor_classes("([I)V").expect("primitive descriptor"),
+            Vec::<&str>::new()
+        );
+        for descriptor in [
+            "Lgame/Level",
+            "Lgame/Level;I",
+            "(Lgame/Level;)Vx",
+            "[V",
+            "(Lgame/a)V;)V",
+            "Lgame/bad.name;",
+            "(Lgame/bad.name;)V",
+            "Lgame//Level;",
+            "Lgame/;",
+        ] {
+            assert!(
+                crate::descriptor_classes(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
+    }
+    #[test]
+    fn method_helpers_verify_parameter_and_return_class_names() {
+        for descriptor in [
+            "(Lgame/bad.name;)V",
+            "([Lgame//Level;)V",
+            "()Lgame/bad.name;",
+            "()[Lgame/;",
+            "(I)Vx",
+        ] {
+            assert!(
+                crate::descriptor_parameters(descriptor).is_err(),
+                "{descriptor}"
+            );
+            assert!(
+                crate::descriptor_handle_count(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
+        let descriptor = "(I[BLjava/lang/String;[[Lgame/Level;)Lgame/Level;";
+        assert_eq!(
+            crate::descriptor_parameters(descriptor).ok(),
+            Some(vec!["I", "[B", "Ljava/lang/String;", "[[Lgame/Level;"])
+        );
+        assert_eq!(crate::descriptor_handle_count(descriptor).ok(), Some(1));
     }
 }

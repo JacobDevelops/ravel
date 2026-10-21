@@ -173,7 +173,8 @@ class SummaryTests(SummaryFixture, unittest.TestCase):
 
     def test_runtime_cohort_mismatch_refused_only_within_group(self):
         for field, value in (("javaVersion", "different Java"), ("candidateSha256", "b" * 64),
-                             ("argv", ["/java", "-Xmx4G"]), ("classpathSha256", ["e" * 64])):
+                             ("argv", ["/java", "-Xmx4G"]), ("classpathSha256", ["e" * 64]),
+                             ("audio_driver", "null")):
             with self.subTest(field=field):
                 trials = [{"trial": str(index), "instance": "original", "cache": "warm-filesystem",
                            "workload_protocol": self.protocol(), "runtime_cohort": self.cohort(),
@@ -185,6 +186,30 @@ class SummaryTests(SummaryFixture, unittest.TestCase):
                 candidates = [{**trial, "instance": "ravel",
                                "runtime_cohort": {**self.cohort(), field: value}} for trial in trials]
                 self.assertEqual(len(summary.aggregate(trials + candidates)), 2)
+
+    def test_audio_driver_cohorts_preserve_historical_trials_and_refuse_mixing(self):
+        for drivers in ((None, None, None), ("null", "null", "null"),
+                        (None, None, "null"), ("null", "null", "pulse")):
+            with self.subTest(drivers=drivers), tempfile.TemporaryDirectory() as directory:
+                trials = []
+                for index, driver in enumerate(drivers):
+                    root = Path(directory) / str(index)
+                    root.mkdir()
+                    self.make_trial(root)
+                    path = root / "result.json"
+                    result = json.loads(path.read_text())
+                    result["trial"] = str(index)
+                    if driver is not None:
+                        result["audio_driver"] = driver
+                    path.write_text(json.dumps(result))
+                    trial = summary.summarize_trial(root)
+                    self.assertEqual(trial["runtime_cohort"]["audio_driver"], driver)
+                    trials.append(trial)
+                if len(set(drivers)) == 1:
+                    self.assertEqual(summary.aggregate(trials)[0]["trial_count"], 3)
+                else:
+                    with self.assertRaisesRegex(ValueError, "differing runtime/build cohorts"):
+                        summary.aggregate(trials)
 
     def test_missing_actual_java_version_refused(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -25,6 +25,11 @@ pub(crate) fn number(value: &Value, pointer: &str) -> Option<f64> {
     value.pointer(pointer).and_then(Value::as_f64)
 }
 
+pub(crate) fn same(left: Option<f64>, right: Option<f64>) -> bool {
+    left.zip(right)
+        .is_some_and(|(left, right)| left.total_cmp(&right).is_eq())
+}
+
 pub(crate) fn sum(value: &Value, pointers: &[&str]) -> Option<f64> {
     pointers
         .iter()

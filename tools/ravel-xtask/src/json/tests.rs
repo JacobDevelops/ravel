@@ -94,3 +94,13 @@ fn nested_json_diagnostics_use_the_supplied_repository_root() {
     assert!(!error.contains(&root.display().to_string()), "{error}");
     fs::remove_dir_all(root).expect("temporary root should remove");
 }
+
+#[test]
+fn figures_require_both_values_and_use_one_total_order() {
+    use super::same;
+    assert!(same(Some(42.0), Some(42.0)));
+    assert!(!same(None, None));
+    assert!(!same(Some(42.0), None));
+    assert!(!same(None, Some(42.0)));
+    assert!(!same(Some(-0.0), Some(0.0)));
+}

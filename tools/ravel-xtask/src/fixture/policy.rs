@@ -60,16 +60,6 @@ pub(super) fn verify_descriptor(descriptor: &FixtureDescriptor) -> Result<(), Fi
             "fixture must pin a non-empty CurseForge manifest.json".to_owned(),
         ));
     }
-    for (field, hash) in [
-        ("source.sha256", descriptor.source.sha256.as_str()),
-        ("manifest.sha256", descriptor.manifest.sha256.as_str()),
-    ] {
-        if ravel_package::Sha256Digest::try_from(hash.to_owned()).is_err() {
-            return Err(FixtureError::InvalidDescriptor(format!(
-                "fixture descriptor {field} must be a lowercase 64-character hexadecimal SHA-256"
-            )));
-        }
-    }
     Ok(())
 }
 

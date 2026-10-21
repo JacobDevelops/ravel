@@ -56,10 +56,9 @@ pub(crate) fn verify_pack_format(
     }
     let text = jar_text(archive, JAR_VERSION)?;
     let declared = adapter.pack_format;
-    let stated = pack_versions(&text).ok_or_else(|| {
+    let stated = pack_versions(&text).map_err(|error| {
         GenerateError::Input(format!(
-            "{JAR_VERSION} in the pinned jar states no pack_version, so nothing says which pack \
-             formats this version reads"
+            "cannot read pack_version from {JAR_VERSION} in the pinned jar: {error}"
         ))
     })?;
     let expected = (
@@ -117,7 +116,7 @@ const PACK_METADATA: &str = "pack.mcmeta";
 const JAR_VERSION: &str = "version.json";
 
 /// The resource and data pack formats one jar's `version.json` states.
-fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
+fn pack_versions(text: &str) -> Result<(u16, u16, u16, u16), serde_json::Error> {
     #[derive(Deserialize)]
     struct Version {
         pack_version: PackVersion,
@@ -136,8 +135,8 @@ fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
             data_minor: u16,
         },
     }
-    let version: Version = serde_json::from_str(text).ok()?;
-    Some(match version.pack_version {
+    let version: Version = serde_json::from_str(text)?;
+    Ok(match version.pack_version {
         PackVersion::Joined { resource, data } => (resource, 0, data, 0),
         PackVersion::Split {
             resource_major,
@@ -656,17 +655,20 @@ mod metadata_tests {
     #[test]
     fn both_spellings_of_a_jars_pack_version_are_read_and_neither_reads_the_other() {
         let joined = r#"{"data": 9, "pack_version": {"resource": 34, "data": 48}}"#;
-        assert_eq!(super::pack_versions(joined), Some((34, 0, 48, 0)));
+        assert_eq!(
+            super::pack_versions(joined).expect("joined formats"),
+            (34, 0, 48, 0)
+        );
 
         let split = r#"{"pack_version": {"resource_major": 84, "resource_minor": 0,
           "data_major": 101, "data_minor": 1}, "world_version": 4790}"#;
-        assert_eq!(super::pack_versions(split), Some((84, 0, 101, 1)));
-
-        assert_eq!(super::pack_versions(r#"{"world_version": 4790}"#), None);
         assert_eq!(
-            super::pack_versions(r#"{"pack_version": {"data": 48}}"#),
-            None
+            super::pack_versions(split).expect("split formats"),
+            (84, 0, 101, 1)
         );
+
+        assert!(super::pack_versions(r#"{"world_version": 4790}"#).is_err());
+        assert!(super::pack_versions(r#"{"pack_version": {"data": 48}}"#).is_err());
     }
     #[test]
     fn only_explicit_legacy_capability_accepts_a_jar_without_pack_version_metadata() {
@@ -703,10 +705,36 @@ mod metadata_tests {
     #[test]
     fn pack_numbers_must_be_valid_json_at_the_declared_path() {
         let nested = r#"{"pack_version":{"note":{"resource":1},"data":48,"resource":34}}"#;
-        assert_eq!(super::pack_versions(nested), Some((34, 0, 48, 0)));
+        assert_eq!(
+            super::pack_versions(nested).expect("valid pack versions"),
+            (34, 0, 48, 0)
+        );
         for value in ["21.5", "-21", "65536", "\"21\"", "21garbage"] {
             let packs = format!(r#"{{"pack_version":{{"resource":{value},"data":48}}}}"#);
-            assert_eq!(super::pack_versions(&packs), None, "{packs}");
+            assert!(super::pack_versions(&packs).is_err(), "{packs}");
+        }
+    }
+
+    #[test]
+    fn pack_metadata_parse_failures_keep_the_json_diagnostic() {
+        let adapter: Adapter =
+            toml::from_str(&document("unobfuscated-class-files", "")).expect("modern adapter");
+        for text in [
+            "{",
+            "{}",
+            r#"{"pack_version":{"resource":65536,"data":48}}"#,
+        ] {
+            let archive =
+                jar::fixture::parse(jar::fixture::stored("version.json", text.as_bytes()))
+                    .expect("version metadata archive");
+            let error =
+                super::verify_pack_format(&adapter, &archive).expect_err("invalid metadata");
+            let message = error.to_string();
+            assert!(
+                message.contains("cannot read pack_version from version.json"),
+                "{message}"
+            );
+            assert!(!message.contains("states no pack_version"), "{message}");
         }
     }
 }

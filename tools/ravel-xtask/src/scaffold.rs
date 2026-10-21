@@ -9,7 +9,7 @@ pub(crate) mod java_shape;
 use crate::evidence::accounting::verify_accounting;
 use crate::evidence::manifest::verify_evidence_records;
 use crate::json::read_json;
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 use crate::tracked::{collect_files, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
     verify_version_boundary, verify_version_directories, verify_version_readmes,
@@ -191,7 +191,7 @@ fn verify_production_fences(root: &Path, members: &[String], violations: &mut Ve
                 || line.starts_with("#![expect(unsafe_code)")
                 || line.starts_with("#[expect(unsafe_code)")
         }) {
-            let relative = relative_label(root, &path);
+            let relative = redacted_path(root, &path);
             violations.push(format!(
                 "unsafe code is permitted in a maintained crate: {relative}"
             ));

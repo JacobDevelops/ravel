@@ -204,44 +204,39 @@ impl Mapping {
         let Self::NameMap(names) = self else {
             return self.require_runtime_member(class, member, descriptor);
         };
-        if !names.inherited_hooks || kind != super::inputs::Kind::InstanceMethod {
-            return self.require_runtime_member(class, member, descriptor);
-        }
-        if !names.classes.contains_key(class)
+        if !names.inherited_hooks
+            || kind != super::inputs::Kind::InstanceMethod
+            || !names.classes.contains_key(class)
             || names.members.get(class).is_some_and(|members| {
                 members.contains_key(&(member.to_owned(), descriptor.to_owned()))
             })
         {
             return self.require_runtime_member(class, member, descriptor);
         }
-        let direct = Err(GenerateError::Unresolved(format!(
-            "the client mapping names {class} but not its {member}{descriptor}"
-        )));
         let candidates =
             self.inherited_hook_candidates(archive, names, class, member, descriptor)?;
-        if candidates.len() == 1 {
-            let pair = candidates
-                .into_iter()
-                .next()
-                .expect("one inherited candidate");
-            if names
-                .linked
-                .get(class)
-                .and_then(|members| members.get(&pair))
-                .is_some_and(|reviewed| reviewed != member)
-            {
-                return Err(GenerateError::Unresolved(format!(
-                    "{class}.{member}{descriptor} inherits a pair explicitly mapped to another name"
-                )));
+        let mut candidates = candidates.into_iter();
+        match (candidates.next(), candidates.next()) {
+            (None, _) => Err(GenerateError::Unresolved(format!(
+                "the client mapping names {class} but not its {member}{descriptor}"
+            ))),
+            (Some(pair), None) => {
+                if names
+                    .linked
+                    .get(class)
+                    .and_then(|members| members.get(&pair))
+                    .is_some_and(|reviewed| reviewed != member)
+                {
+                    return Err(GenerateError::Unresolved(format!(
+                        "{class}.{member}{descriptor} inherits a pair explicitly mapped to another name"
+                    )));
+                }
+                Ok(pair)
             }
-            return Ok(pair);
+            _ => Err(GenerateError::Unresolved(format!(
+                "{class}.{member}{descriptor} has conflicting inherited mappings"
+            ))),
         }
-        if candidates.is_empty() {
-            return direct;
-        }
-        Err(GenerateError::Unresolved(format!(
-            "{class}.{member}{descriptor} has conflicting inherited mappings"
-        )))
     }
 
     fn inherited_hook_candidates(
@@ -889,7 +884,7 @@ fn verify_member_name(name: &str) -> Result<(), String> {
 /// Uses the shared JVM tokenizer rather than accepting malformed descriptors.
 fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
     if method {
-        crate::verified_method_types(descriptor)?;
+        classfile::verified_method_types(descriptor)?;
     } else {
         let kind = classfile::field_type(descriptor)?;
         if let Some(name) = kind.class_name() {
@@ -2093,15 +2088,7 @@ mod descriptor_tests {
                 .expect("the valid array descriptor must map"),
             "[[La;"
         );
-        assert_eq!(
-            crate::descriptor_classes(descriptor).expect("the valid descriptor must list classes"),
-            ["game/Level", "game/Level"]
-        );
         assert!(verify_descriptor("(I)V", true).is_ok());
-        assert_eq!(
-            crate::descriptor_classes("([I)V").expect("the valid primitive descriptor must parse"),
-            Vec::<&str>::new()
-        );
     }
 
     #[test]
@@ -2111,50 +2098,8 @@ mod descriptor_tests {
                 map_descriptor(&BTreeMap::new(), descriptor).is_err(),
                 "{descriptor}"
             );
-            assert!(
-                crate::descriptor_classes(descriptor).is_err(),
-                "{descriptor}"
-            );
         }
         assert!(verify_descriptor("Lgame/bad.name;", false).is_err());
         assert!(verify_descriptor("(Lgame/bad.name;)V", true).is_err());
-        for descriptor in [
-            "(Lgame/a)V;)V",
-            "Lgame/bad.name;",
-            "(Lgame/bad.name;)V",
-            "Lgame//Level;",
-            "Lgame/;",
-        ] {
-            assert!(
-                crate::descriptor_classes(descriptor).is_err(),
-                "{descriptor}"
-            );
-        }
-    }
-
-    #[test]
-    fn method_helpers_verify_parameter_and_return_class_names() {
-        for descriptor in [
-            "(Lgame/bad.name;)V",
-            "([Lgame//Level;)V",
-            "()Lgame/bad.name;",
-            "()[Lgame/;",
-            "(I)Vx",
-        ] {
-            assert!(
-                crate::descriptor_parameters(descriptor).is_err(),
-                "{descriptor}"
-            );
-            assert!(
-                crate::descriptor_handle_count(descriptor).is_err(),
-                "{descriptor}"
-            );
-        }
-        let descriptor = "(I[BLjava/lang/String;[[Lgame/Level;)Lgame/Level;";
-        assert_eq!(
-            crate::descriptor_parameters(descriptor).ok(),
-            Some(vec!["I", "[B", "Ljava/lang/String;", "[[Lgame/Level;"])
-        );
-        assert_eq!(crate::descriptor_handle_count(descriptor).ok(), Some(1));
     }
 }

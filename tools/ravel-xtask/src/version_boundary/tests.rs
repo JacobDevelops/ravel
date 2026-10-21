@@ -9,6 +9,22 @@ use crate::version_boundary::{
 };
 
 #[test]
+fn matrix_eligibility_preserves_cli_spellings() {
+    for (eligibility, text) in [
+        (super::MatrixEligibility::Live, "live"),
+        (super::MatrixEligibility::GenerationOnly, "generation-only"),
+        (
+            super::MatrixEligibility::Unavailable {
+                missing: "mapping.tiny".to_owned(),
+            },
+            "unavailable: mapping.tiny is absent",
+        ),
+    ] {
+        assert_eq!(eligibility.to_string(), text);
+    }
+}
+
+#[test]
 fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
     let root = temporary_root("matrix-mappings");
     version_directory(&root, "1.12.2", &[]);
@@ -25,19 +41,23 @@ fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
     .expect("adapter should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
-        "unavailable: mapping.tiny is absent"
+        super::MatrixEligibility::Unavailable {
+            missing: "mapping.tiny".to_owned()
+        }
     );
     fs::write(root.join("mapping.tiny"), "pinned by generator")
         .expect("mapping should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
-        "unavailable: mapping-io.jar is absent"
+        super::MatrixEligibility::Unavailable {
+            missing: "mapping-io.jar".to_owned()
+        }
     );
     fs::write(root.join("mapping-io.jar"), "pinned by generator")
         .expect("normalizer should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
-        "generation-only"
+        super::MatrixEligibility::GenerationOnly
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -60,7 +80,7 @@ fn modern_versions_cannot_downgrade_or_misspell_eligibility() {
         .expect("adapter should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "26.1.2").expect("default eligibility"),
-        "live"
+        super::MatrixEligibility::Live
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

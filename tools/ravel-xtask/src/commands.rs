@@ -123,9 +123,23 @@ fn report_outcome(result: Result<(), Box<dyn Error>>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("operation failed: {error}");
+            eprintln!("operation failed: {}", FailureReport(error.as_ref()));
             ExitCode::FAILURE
         }
+    }
+}
+
+struct FailureReport<'a>(&'a dyn Error);
+
+impl std::fmt::Display for FailureReport<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.0)?;
+        let mut source = self.0.source();
+        while let Some(cause) = source {
+            write!(formatter, ": {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
     }
 }
 
@@ -226,7 +240,9 @@ fn scan_instance(directory: &Path) -> Vec<String> {
         .map(|finding| {
             format!(
                 "{} is present: {} ({})",
-                finding.loader, finding.marker, finding.kind
+                finding.loader.as_str(),
+                finding.marker,
+                finding.kind.as_str()
             )
         })
         .collect::<Vec<_>>();
@@ -250,6 +266,21 @@ mod tests {
     use super::dispatch;
     use std::path::Path;
     use std::process::ExitCode;
+
+    #[test]
+    fn operation_failures_render_the_outer_context_and_original_refusal_once() {
+        let error = ravel_xtask::host::HostBuildRefused::Discovery(
+            ravel_loader::DiscoveryRefused::NotAPackage {
+                directory: "packages".to_owned(),
+            },
+        );
+        let rendered = super::FailureReport(&error).to_string();
+        assert_eq!(
+            rendered,
+            "host package discovery failed: `packages` is installed beside the packages and is not one"
+        );
+        assert!(!rendered.contains(env!("CARGO_MANIFEST_DIR")));
+    }
 
     #[test]
     fn unknown_and_incomplete_commands_return_usage_status() {

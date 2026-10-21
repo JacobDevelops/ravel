@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ravel_minecraft_generate::{AdapterFacts, Eligibility, adapter_facts};
 
 use crate::hooks::{HookInventory, hook_counts, hook_inventory};
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
@@ -49,8 +49,32 @@ pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
 
 pub(crate) type VersionAdapters = BTreeMap<String, AdapterFacts>;
 
+/// Whether a version can run in the matrix, or which input prevents generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MatrixEligibility {
+    /// The adapter is eligible for live testing.
+    Live,
+    /// The adapter is only eligible for generation.
+    GenerationOnly,
+    /// A declared mapping input is absent.
+    Unavailable {
+        /// The missing repository-relative input path.
+        missing: String,
+    },
+}
+
+impl std::fmt::Display for MatrixEligibility {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Live => formatter.write_str("live"),
+            Self::GenerationOnly => formatter.write_str("generation-only"),
+            Self::Unavailable { missing } => write!(formatter, "unavailable: {missing} is absent"),
+        }
+    }
+}
+
 /// Reports matrix eligibility from typed manifest data and its actual mapping input.
-pub fn matrix_eligibility(root: &Path, version: &str) -> Result<String, String> {
+pub fn matrix_eligibility(root: &Path, version: &str) -> Result<MatrixEligibility, String> {
     if !tracked_versions(root)?
         .iter()
         .any(|tracked| tracked == version)
@@ -65,13 +89,14 @@ pub fn matrix_eligibility(root: &Path, version: &str) -> Result<String, String> 
         .iter()
         .find(|path| !root.join(path).is_file())
     {
-        return Ok(format!("unavailable: {path} is absent"));
+        return Ok(MatrixEligibility::Unavailable {
+            missing: path.clone(),
+        });
     }
     Ok(match facts.eligibility {
-        Eligibility::Live => "live",
-        Eligibility::GenerationOnly => "generation-only",
-    }
-    .to_owned())
+        Eligibility::Live => MatrixEligibility::Live,
+        Eligibility::GenerationOnly => MatrixEligibility::GenerationOnly,
+    })
 }
 
 /// Validates version inputs once and retains every admitted hook inventory.
@@ -253,6 +278,8 @@ pub(crate) fn verify_version_boundary(
     );
 }
 
+type ClassExcuses = BTreeMap<&'static str, BTreeMap<&'static str, (&'static str, bool)>>;
+
 fn verify_boundary_files(
     root: &Path,
     files: &[PathBuf],
@@ -261,11 +288,16 @@ fn verify_boundary_files(
     scan_complete: bool,
     violations: &mut Vec<String>,
 ) {
-    let excuses = VERSION_CLASS_EXCUSES
+    let mut excuses: ClassExcuses = VERSION_CLASS_EXCUSES
         .iter()
-        .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
-        .collect::<Vec<_>>();
-    let mut excuse_matched = vec![false; excuses.len()];
+        .map(|(file, excused, reason)| {
+            let classes = excused
+                .iter()
+                .map(|class| (*class, (*reason, false)))
+                .collect();
+            (*file, classes)
+        })
+        .collect();
 
     let mut unreadable = BTreeSet::new();
     for path in files {
@@ -275,41 +307,36 @@ fn verify_boundary_files(
         ) {
             continue;
         }
-        if !verify_boundary_source(
-            root,
-            path,
-            versions,
-            classes,
-            &excuses,
-            &mut excuse_matched,
-            violations,
-        ) {
-            unreadable.insert(relative_label(root, path));
+        let relative = redacted_path(root, path);
+        match read_text(root, path) {
+            Ok(source) => verify_boundary_source(
+                &relative,
+                &source,
+                versions,
+                classes,
+                &mut excuses,
+                violations,
+            ),
+            Err(error) => {
+                violations.push(error);
+                unreadable.insert(relative);
+            }
         }
     }
 
     if scan_complete {
-        verify_class_excuses(&excuses, &excuse_matched, &unreadable, violations);
+        verify_class_excuses(&excuses, &unreadable, violations);
     }
 }
 
 fn verify_boundary_source(
-    root: &Path,
-    path: &Path,
+    relative: &str,
+    source: &str,
     versions: &BTreeSet<String>,
     classes: &[String],
-    excuses: &[(&str, &str)],
-    excuse_matched: &mut [bool],
+    excuses: &mut ClassExcuses,
     violations: &mut Vec<String>,
-) -> bool {
-    let source = match read_text(root, path) {
-        Ok(source) => source,
-        Err(error) => {
-            violations.push(error);
-            return false;
-        }
-    };
-    let relative = relative_label(root, path);
+) {
     if versions.iter().any(|version| source.contains(version)) {
         violations.push(format!(
             "hardcoded Minecraft version outside version data ({SWEPT_SCOPE}): {relative}"
@@ -320,11 +347,11 @@ fn verify_boundary_source(
         if !source.contains(class.as_str()) && !source.contains(&dotted) {
             continue;
         }
-        if let Some(index) = excuses
-            .iter()
-            .position(|(file, excused)| *file == relative && *excused == class.as_str())
+        if let Some((_, matched)) = excuses
+            .get_mut(relative)
+            .and_then(|excused| excused.get_mut(class.as_str()))
         {
-            excuse_matched[index] = true;
+            *matched = true;
             continue;
         }
         violations.push(format!(
@@ -332,22 +359,24 @@ fn verify_boundary_source(
              {relative} names {class}"
         ));
     }
-    true
 }
 
 fn verify_class_excuses(
-    excuses: &[(&str, &str)],
-    excuse_matched: &[bool],
+    excuses: &ClassExcuses,
     unreadable: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    for (index, matched) in excuse_matched.iter().enumerate() {
-        let (file, class) = excuses[index];
-        if !matched && !unreadable.contains(file) {
-            violations.push(format!(
-                "stale version-class excuse: {file} no longer names {class}, \
-                 so the excuse is unearned and has to go"
-            ));
+    for (&file, classes) in excuses {
+        if unreadable.contains(file) {
+            continue;
+        }
+        for (&class, &(reason, matched)) in classes {
+            if !matched {
+                violations.push(format!(
+                    "stale version-class excuse: {file} no longer names {class}, \
+                     so the excuse is unearned and has to go (reason: {reason})"
+                ));
+            }
         }
     }
 }
@@ -408,7 +437,7 @@ fn version_class_names(
                 Err(error) => {
                     violations.push(format!(
                         "cannot parse {} as TOML: {error}",
-                        relative_label(root, &path)
+                        redacted_path(root, &path)
                     ));
                 }
             }

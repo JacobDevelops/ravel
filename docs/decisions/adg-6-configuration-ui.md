@@ -9,11 +9,11 @@ decision is unchanged and both are under "What has to change, precisely". Amende
 again after M3-W8's ADR-conformance audit, to describe the per-frame screen seam
 the shipped hook inventory actually has; the decision is unchanged there too and
 the amendment is at "Amendment: the extraction hook is the screen seam".
-[ADG-7](adg-7-world-persistence.md) reuses this decision's Ravel-owned screen
+ADG-7 reuses this decision's Ravel-owned screen
 mechanism for persistence refusal, but persistence itself is not an ADG-6 concern.
 The condition this record set for reopening its central rejection was met during
 M6-W2 and answered there, in
-[Carrying an action outward](carrying-an-action-outward.md); "Amendment: the
+*Carrying an action outward* (record since removed); "Amendment: the
 deferred question was asked" below says what that changes here, which is nothing.
 
 ## Decision
@@ -60,7 +60,7 @@ recorded that "what decides it is a property no measurement here was addressed
 to". The same holds here.
 
 A reviewer is entitled to challenge that.
-[`README.md`](README.md) states the bar as "a measurement exists, a rejection is
+The decisions README, since removed, states the bar as "a measurement exists, a rejection is
 explicit, and the limits are written down", and this record satisfies the second
 and third and not the first. The honest position is that the bar is written for
 gates choosing between mechanisms that all exist, which ADG-1, ADG-3 and ADG-4
@@ -72,17 +72,17 @@ scheduling judgement about M3-W3 rather than a fact about the mechanism.
 What follows is drawn from measurements taken for other gates and from the
 26.1.2 targets resolved at M3-W0.
 
-- **The boundary runs one way.** [ADG-1](adg-1-jvm-entry.md) enters the game as a
+- **The boundary runs one way.** ADG-1 (record since removed) enters the game as a
   premain agent, rewrites hook targets, and binds callbacks to Rust through an
   exported JNI-mangled symbol. Java calls Rust. Nothing in that record, in
-  [ADG-3](adg-3-bindings.md), or in the generator provides a call in the other
+  ADG-3 (record since removed), or in the generator provides a call in the other
   direction, and
   [`m3-hook-targets.md`](../architecture/m3-hook-targets.md) states the
   consequence directly: rendering a screen from Rust "needs Ravel to call **into**
   Minecraft, and no accepted ADR provides that".
 - **A crossing costs about ten nanoseconds and a field read about nine.** ADG-1
   measures a hook crossing at 10.02 ns p50 through an agent-rewritten call site
-  and a generated hook class. [ADG-4](adg-4-state-ownership.md) measures a
+  and a generated hook class. ADG-4 (record since removed) measures a
   Java-authoritative flow at 8.61 ns p50 and prices a field read at about 8.6 ns
   reached by calling the native method directly. ADG-4's "Limits of this
   evidence" is explicit that these are different paths, that neither is the bare
@@ -410,9 +410,6 @@ The stale sentences are the defect. Changing code to match them would have delet
 the only screen observation the version admits, on the authority of a sentence
 nobody had checked against `hooks.toml` — and `hooks.toml` is re-pinned by
 ceremony, which is a further reason a prose error is not a licence to edit it.
-`verify_decision_hook_claims` in `tools/ravel-xtask/src/lib.rs` now fails
-`ravel-verify-scaffold` if a decision record denies a hook the inventory declares,
-so this particular pair cannot drift apart again in silence.
 
 ## Amendment: the deferred question was asked
 
@@ -420,7 +417,7 @@ Amended during M6-W2. "Rejected" above says of a Rust-drawn screen that "if Rave
 ever needs to call into the game for another reason, that is a new gate with its
 own measurement, and this decision should be revisited then rather than assumed."
 Playing a sound a mod declared turned out to be that other reason, the gate was
-taken, and it is [Carrying an action outward](carrying-an-action-outward.md).
+taken, and it is *Carrying an action outward*, a record since removed.
 
 **This decision is revisited and unchanged.** The new gate decided that an action
 crosses outward as an instruction the Java adapter performs, so Rust still calls

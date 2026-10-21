@@ -12,7 +12,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ravel-sdk = { path = "<path to ravel>/crates/ravel-sdk" }
+ravel-sdk.workspace = true
 ```
 
 One dependency to *declare* — not one crate to compile. `ravel-sdk` is a facade
@@ -22,15 +22,23 @@ resolves and locks a good many packages and your `Cargo.lock` will say so. What
 manifest holds and the only name your code can write, and a transitive
 dependency is not nameable in Rust.
 
-`ravel-sdk` is not published to a registry today, so a mod outside this
-repository depends on it by path against a checkout. **The path has to point
-inside a complete Ravel checkout, not at a copied-out directory.**
-`crates/ravel-sdk/Cargo.toml` inherits `edition`, `license`, `publish` and
-`rust-version` from the workspace root, so a `crates/ravel-sdk` on its own does
-not build — cargo refuses it for the inherited keys before it gets as far as your
-code. Clone the repository and point at it there. Inside the repository — which
-is what the `examples/` crates are — it is `ravel-sdk.workspace = true`. See
-[What does not work yet](limits.md).
+The player's generated workspace supplies `ravel-sdk` through workspace inheritance,
+so the shipped manifest must not contain your development machine's SDK path.
+For local development, put your mod inside a small wrapper workspace whose root
+`Cargo.toml` supplies that dependency:
+
+```toml
+[workspace]
+members = ["copper-lanterns"]
+resolver = "3"
+
+[workspace.dependencies]
+ravel-sdk = { path = "<path to ravel>/crates/ravel-sdk" }
+```
+
+The path must point inside a complete Ravel checkout: the SDK inherits package
+metadata from its root and cannot build as a copied-out directory. Keep the wrapper
+outside your shipped package. See [What does not work yet](limits.md).
 
 `ravel-sdk` is the whole of the author-facing surface. There is deliberately no
 path through it to the loader, to the JVM bindings, to a Minecraft version's
@@ -102,9 +110,9 @@ export_mod!(|side| CopperLanterns::new(side));
 
 ## Refusing
 
-Every method returns `Result<(), ModError>`. The refusal a mod raises is
-`ModError::Refused`, and it carries three things: the mod's own id, the lifecycle
-state it was in, and a sentence in the mod's own words.
+Every method returns `Result<(), ModError>`. Refuse with `ModError::refused("…")`,
+which carries only a sentence in your own words; convert another error's text
+with `ModError::from_display`.
 
 ```rust
 Err(ModError::refused(
@@ -112,9 +120,8 @@ Err(ModError::refused(
 ))
 ```
 
-Fill all three honestly. The loader attributes a failure to the mod and the phase
-the refusal names, and a report that blames the wrong phase is a report that
-sends a player looking in the wrong place.
+The host attaches your mod's id and the lifecycle phase of the hook it called,
+so a refusal names only the reason.
 
 ## Testing it
 

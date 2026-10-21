@@ -337,6 +337,7 @@ def runtime_inputs(inputs: Any, directory: Path) -> list[dict[str, str]]:
 
 def runtime_cohort(directory: Path) -> dict[str, Any]:
     command = json.loads((directory / "command.json").read_text())
+    result = json.loads((directory / "result.json").read_text())
     provenance = command.get("provenance", {})
     version = provenance.get("javaVersion")
     require(isinstance(version, str) and bool(version), "missing actual Java version provenance")
@@ -349,6 +350,7 @@ def runtime_cohort(directory: Path) -> dict[str, Any]:
             isinstance(candidate, str) and re.fullmatch(r"[0-9a-f]{64}", candidate),
             "missing candidate build provenance")
     cohort = {"javaVersion": version, "candidateSha256": candidate, "classpathSha256": hashes,
+              "audio_driver": result.get("audio_driver"),
               "argv": [value.replace(str(directory.resolve()), "<trial>") for value in argv]}
     if "runtimeInputs" in provenance:
         cohort["runtimeInputs"] = runtime_inputs(provenance["runtimeInputs"], directory)

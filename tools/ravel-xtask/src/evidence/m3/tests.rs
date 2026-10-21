@@ -271,3 +271,20 @@ fn compact_and_pretty_matrices_check_every_string_leaf() {
         std::fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 }
+
+#[test]
+fn typed_identity_admission_names_the_exact_numeric_field() {
+    let mut record = tracked_record("class-loader-identity.json");
+    record["rewrite"]["nativeInvocations"] = Value::Null;
+    let rule = M3_RECORDS
+        .iter()
+        .find(|definition| definition.name == "class-loader-identity.json")
+        .expect("identity record must have an admission rule")
+        .rule;
+    let reason = <serde_json::Number as serde::Deserialize>::deserialize(&Value::Null)
+        .expect_err("null must not deserialize as a number");
+    assert_eq!(
+        rule(&record),
+        Err(format!("/rewrite/nativeInvocations: {reason}"))
+    );
+}

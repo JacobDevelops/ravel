@@ -137,6 +137,7 @@ def mesh_proof(mesh: dict) -> None:
 
 def launch(action: str, connected: bool = False, suffix: str = '') -> dict[str, object]:
     environment = os.environ.copy()
+    environment.setdefault('ALSOFT_DRIVERS', 'null')
     environment['RAVEL_LEGACY_PROBES'] = str(WORK / 'evidence-harness-agent/classes')
     environment['RAVEL_PACKET_LIVE'] = tempfile.mkdtemp(prefix='packets-', dir=WORK)
     environment['RAVEL_LEGACY_EVIDENCE_SUFFIX'] = suffix

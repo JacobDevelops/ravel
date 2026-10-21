@@ -132,37 +132,6 @@ pub(crate) fn unique_by(rows: &[Value], same_key: impl Fn(&Value, &Value) -> boo
         .all(|(index, row)| rows[..index].iter().all(|other| !same_key(other, row)))
 }
 
-pub(crate) fn require_nonempty_array<'a>(
-    value: &'a Value,
-    pointer: &'static str,
-) -> Result<&'a [Value], String> {
-    let rows = array(value, pointer);
-    require(!rows.is_empty(), pointer)?;
-    Ok(rows)
-}
-
-pub(crate) fn require_fields(
-    value: &Value,
-    pointers: &[&'static str],
-    predicate: fn(&Value) -> bool,
-) -> Result<(), String> {
-    for pointer in pointers {
-        require(value.pointer(pointer).is_some_and(predicate), pointer)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn require_rows(
-    value: &Value,
-    pointer: &'static str,
-    rule: impl Fn(&Value) -> Result<(), String>,
-) -> Result<(), String> {
-    for (index, row) in require_nonempty_array(value, pointer)?.iter().enumerate() {
-        rule(row).map_err(|requirement| format!("{pointer}/{index}{requirement}"))?;
-    }
-    Ok(())
-}
-
 pub(crate) type Rule = fn(&Value) -> bool;
 pub(crate) type Figure = fn(&Value) -> Option<Value>;
 

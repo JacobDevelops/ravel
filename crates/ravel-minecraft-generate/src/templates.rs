@@ -1309,7 +1309,7 @@ com.example.util.Held -> com.example.util.Held:
             )
             .expect("writing a snapshot to a String cannot fail");
         }
-        inputs::sha256(snapshot.as_bytes())
+        inputs::sha256(snapshot.as_bytes()).to_string()
     }
 
     #[test]

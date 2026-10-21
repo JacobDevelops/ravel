@@ -174,10 +174,12 @@ def run(args: argparse.Namespace) -> None:
     if args.cache == 'cold-data-cache':
         evict_inputs(instance, out)
     hardware(out, args.functional_only)
+    environment = os.environ.copy()
+    environment.setdefault('ALSOFT_DRIVERS', 'null')
     start = time.monotonic_ns()
     with (out / 'launcher.log').open('w') as log, (out / 'process.csv').open('w') as raw:
-        process = subprocess.Popen(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                                   start_new_session=True)
+        process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=log,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
         writer = csv.writer(raw)
         writer.writerow(['monotonic_ns', 'pid', 'rss_kib', 'peak_rss_kib', 'cpu_ticks'])
         failure = None
@@ -200,7 +202,7 @@ def run(args: argparse.Namespace) -> None:
     result = {'trial': args.trial, 'instance': args.instance, 'cache': args.cache,
               'start_monotonic_ns': start, 'wall_seconds': (time.monotonic_ns()-start)/1e9,
               'launcher_exit': process.returncode, 'complete': (out / 'complete').exists(),
-              'monitor_error': failure,
+              'monitor_error': failure, 'audio_driver': environment['ALSOFT_DRIVERS'],
               'measurement': 'functional-only' if args.functional_only else 'physical',
               'display': os.environ['DISPLAY']}
     (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

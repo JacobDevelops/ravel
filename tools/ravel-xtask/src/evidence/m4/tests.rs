@@ -577,3 +577,22 @@ fn archive_inventory_without_repository_history_is_not_verifiable() {
     assert!(violations[0].contains("git:"), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
+
+#[test]
+fn typed_process_admission_names_the_exact_row_and_field() {
+    let root = crate::test_support::repository_root();
+    let mut record = read_json(&root, &root.join("evidence/m4/linux-process-matrix.json"))
+        .expect("tracked M4 process matrix should parse");
+    record["processes"][0]["exitStatus"] = serde_json::Value::Null;
+    let rule = super::M4_RECORDS
+        .iter()
+        .find(|definition| definition.name == "linux-process-matrix.json")
+        .expect("process matrix must have an admission rule")
+        .rule;
+    let reason = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+        .expect_err("null must not deserialize as a number");
+    assert_eq!(
+        rule(&record),
+        Err(format!("/processes/0/exitStatus: {reason}"))
+    );
+}

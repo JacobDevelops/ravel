@@ -138,8 +138,10 @@ The client renders through OpenGL and needs somewhere to draw.
 
 ### Orchestration — built as a pure model, run later
 
-`ravel_acceptance` supplies `Scenario`, `Step`, `Assertion`, `Directive`,
-`ProgressionCheckpoint`, and `Transcript`. These data models and assertion and
+`ravel_acceptance` supplies `Scenario`, `Step`, `Assertion`, `Directive`, and
+`Transcript`. A progression checkpoint is a `ravel_core::ContentId`, the same
+identity `ravel_pack` gives a progression state; a scenario orders its checkpoints
+explicitly. These data models and assertion and
 verdict arithmetic are decidable without a game and tested now. The loop that
 waits for an occasion, carries a directive, captures an observation, evaluates
 an assertion and records a verdict is not implemented. It waits on M8-W0 and a

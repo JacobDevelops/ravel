@@ -57,8 +57,9 @@ written here, and do not write one — a milestone closes and this sentence woul
 
 Judge the gate by its exit status, not an individual task's test summary. Run heavy checks (`ravel:verify`,
 workspace clippy, live launches) through `numen run -- <command>` so concurrent agents serialise instead of
-contending for the target directory, GPU and shared legacy artifacts. If coverage lists paths from another
-checkout, remove `target/llvm-cov-target` and rerun; stale rows survive deleted sibling workspaces.
+contending for the target directory, GPU and shared legacy artifacts. The coverage task sets
+`MBX_DISABLE=1` so host-wide compilation caches cannot reuse instrumented objects with foreign
+checkout paths. Cleaning the local coverage target alone does not prevent that reuse.
 
 Package digests in `package.json` are written by
 `cargo run -q -p ravel-xtask -- package digests <dir>` and confirmed with the same command plus `--check`;
@@ -87,8 +88,10 @@ regenerate them for every package whose sources a change touches.
   Never track fixture contents, credentials, launcher tokens, or raw captures.
 - Scaffold checks discover maintained Cargo members from their directories. Adding or removing a
   member only requires its Cargo workspace wiring, including `[workspace.dependencies]` when used.
-- Registry counterparts, examples and test mods depend on `ravel-sdk` alone, dev-dependencies included:
-  player builds vet every mod-reachable crate against the SDK closure.
+- Registry counterparts, examples and test mods may depend on no internal Ravel crate except `ravel-sdk`,
+  including dev-dependencies. Counterparts may also name sibling counterparts declared as required package
+  dependencies. Third-party dependencies must belong to the installation lock's vetted SDK or author
+  dependency closures (`serde`, `serde_json`, `num-traits`), as enforced by the player build boundary.
 
 ## Version control
 

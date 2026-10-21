@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::{numbers_after, numbers_before, read_text, redacted_path, relative_label};
+use super::{numbers_after, numbers_before, read_text, redacted_path};
 use crate::test_support::temporary_root;
 
 #[test]
@@ -44,6 +44,14 @@ fn gate_output_never_names_an_absolute_path() {
         redacted_path(root, Path::new("/somewhere/else/manifest.json")),
         "manifest.json"
     );
+    assert_eq!(
+        redacted_path(root, Path::new(r"nested\record.txt")),
+        "nested/record.txt"
+    );
+    assert_eq!(
+        redacted_path(root, &root.join(r"nested\record.txt")),
+        "nested/record.txt"
+    );
 }
 #[test]
 fn text_loading_uses_the_supplied_root_and_keeps_relative_error_labels() {
@@ -60,7 +68,7 @@ fn text_loading_uses_the_supplied_root_and_keeps_relative_error_labels() {
         "recorded"
     );
     assert_eq!(
-        relative_label(&root, &root.join(relative)),
+        redacted_path(&root, &root.join(relative)),
         "nested/record.txt"
     );
     let error =
@@ -91,7 +99,7 @@ fn text_loading_accepts_paths_already_prefixed_by_a_relative_root() {
         read_text(&root, &prefixed).expect("prefixed record should read"),
         "recorded"
     );
-    assert_eq!(relative_label(&root, &prefixed), "record.txt");
+    assert_eq!(redacted_path(&root, &prefixed), "record.txt");
     let absolute = std::env::current_dir()
         .expect("current directory")
         .join(&prefixed);
@@ -165,6 +173,10 @@ fn a_following_count_starts_immediately_after_its_noun() {
         [3]
     );
     assert_eq!(numbers_after("rounds: 5", &["rounds"]), [5]);
+    assert_eq!(
+        numbers_after("blocking findings", &["blocking", "findings"]),
+        Vec::<usize>::new()
+    );
     assert_eq!(
         numbers_after("rounds: one two three four 5", &["rounds"]),
         [1]

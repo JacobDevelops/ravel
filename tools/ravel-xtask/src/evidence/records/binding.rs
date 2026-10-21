@@ -4,10 +4,11 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+use ravel_core::Sha256Digest;
 use sha2::{Digest, Sha256};
 
 use super::Review;
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 
 pub(super) fn verify_review(
     root: &Path,
@@ -19,7 +20,7 @@ pub(super) fn verify_review(
     let Some(artifact) = &review.record else {
         return;
     };
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let Some(directory) = path.parent() else {
         return;
     };
@@ -112,7 +113,7 @@ pub(super) struct TrackedDigest<'a> {
     pub(super) manifest_path: &'a Path,
     pub(super) directory: &'a Path,
     pub(super) name: &'a str,
-    pub(super) recorded: &'a str,
+    pub(super) recorded: Sha256Digest,
 }
 
 pub(super) fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String>) {
@@ -137,7 +138,7 @@ pub(super) fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut
         violations.push(format!("{label} records its own digest, which cannot bind"));
         return;
     }
-    let relative = relative_label(root, &path);
+    let relative = redacted_path(root, &path);
     if !tracked.contains(&relative) {
         violations.push(format!(
             "{label} records a {kind} that the repository does not track, so its digest binds \
@@ -154,8 +155,8 @@ pub(super) fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut
     }
 }
 
-fn file_digest(path: &Path) -> Result<String, String> {
+fn file_digest(path: &Path) -> Result<Sha256Digest, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("cannot read the recorded file: {error}"))?;
-    Ok(crate::hex_digest(&Sha256::digest(&bytes)))
+    Ok(Sha256Digest::from_bytes(Sha256::digest(&bytes).into()))
 }

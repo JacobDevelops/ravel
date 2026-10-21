@@ -155,23 +155,27 @@ fn complete_inventory_summary() -> serde_json::Value {
 }
 
 #[test]
-fn inventory_numbers_identify_the_missing_field() {
+fn inventory_admission_reports_the_typed_numeric_error() {
     let mut record = complete_inventory_summary();
-    assert!(super::inventory_record(&record).is_ok());
+    assert!(super::verify_inventory_record(&record).is_ok());
     record["reads"]["archiveReads"] = serde_json::Value::Null;
+    let error = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+        .expect_err("null must not deserialize as a number");
     assert_eq!(
-        super::inventory_record(&record),
-        Err("/reads/archiveReads".to_owned())
+        super::verify_inventory_record(&record),
+        Err(format!("/reads/archiveReads: {error}"))
     );
 }
 
 #[test]
-fn bound_artifact_hashes_remain_lowercase_only_and_name_the_row() {
+fn bound_artifact_hashes_report_the_canonical_lowercase_error() {
     let mut record = complete_inventory_summary();
-    assert!(super::inventory_record(&record).is_ok());
+    assert!(super::verify_inventory_record(&record).is_ok());
     record["boundArtifacts"][0]["sha256"] = "A".repeat(64).into();
+    let error = ravel_core::Sha256Digest::try_from("A".repeat(64))
+        .expect_err("uppercase digest must refuse");
     assert_eq!(
-        super::inventory_record(&record),
-        Err("/boundArtifacts/0/sha256 must be a lowercase SHA-256 digest".to_owned(),)
+        super::verify_inventory_record(&record),
+        Err(format!("/boundArtifacts/0/sha256: {error}"))
     );
 }

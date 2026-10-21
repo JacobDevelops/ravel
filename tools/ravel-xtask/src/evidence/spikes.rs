@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::evidence::rules::Rule;
 use crate::evidence::rules::verify_redaction_value;
 use crate::json::{array, nonempty, number, read_json, schema_matches};
-use crate::text::relative_label;
+use crate::text::redacted_path;
 
 pub(crate) const SPIKE_GATES: &[(&str, &str)] = &[
     ("adg-1", "ADG-1"),
@@ -63,7 +63,7 @@ pub(crate) fn spike_result_paths(
 }
 
 fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
-    let label = relative_label(root, path);
+    let label = redacted_path(root, path);
     let document = match read_json(root, path) {
         Ok(document) => document,
         Err(error) => {

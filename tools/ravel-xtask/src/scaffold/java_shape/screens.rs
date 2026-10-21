@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::reflection::GAME_PACKAGES;
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 use crate::tracked::collect_files;
 use crate::version_boundary::{VERSION_DATA, tracked_versions};
 
@@ -22,7 +22,7 @@ pub(crate) fn verify_screen_templates(root: &Path, violations: &mut Vec<String>)
     }
 
     for path in templates {
-        let relative = relative_label(root, &path);
+        let relative = redacted_path(root, &path);
         let source = match read_text(root, &path) {
             Ok(source) => source,
             Err(error) => {

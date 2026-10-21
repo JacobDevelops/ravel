@@ -42,10 +42,11 @@ license = "MIT"
 ravel-sdk.workspace = true
 ```
 
-`ravel-sdk` is the whole of what a counterpart depends on, except where the specification says the
-entry loads only if another wave entry does. A dependency on a sibling counterpart is declared here
-and recorded in `provenance.json` under the `counterpart` category, which is what RVL-002 and
-RVL-086 do.
+`ravel-sdk` is the only internal Ravel crate a counterpart may depend on. Where the specification says
+the entry loads only if another wave entry does, declare that sibling counterpart here and record it
+in `provenance.json` under the `counterpart` category, as RVL-002 and RVL-086 do. Third-party
+dependencies must come from the installation lock's vetted SDK or author dependency closures
+(`serde`, `serde_json`, `num-traits`); use workspace inheritance for the lent author crates.
 
 ## `package.json`
 

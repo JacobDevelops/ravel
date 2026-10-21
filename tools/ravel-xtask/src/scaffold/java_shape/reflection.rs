@@ -9,7 +9,7 @@ use super::{
     AGENT_JAR_SOURCES, AGENT_SOURCE_MANIFEST, LEGACY_AGENT_SOURCES, REFLECTION_FILE,
     agent_source_manifest, compiled_bootstrap_source, java_sources,
 };
-use crate::text::{read_text, relative_label};
+use crate::text::{read_text, redacted_path};
 use crate::version_boundary::{VERSION_DATA, VersionAdapters};
 
 pub(super) const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
@@ -159,7 +159,10 @@ fn verify_role_reachability(
     // screen/persistence templates and harness-only roles, validated by the generator's
     // template/member resolution and tracked-inventory test. Direct bootstrap usage alone
     // cannot establish that a legacy declaration is unused.
-    for role in surface.roles.iter().filter(|_| !surface.legacy_adapter) {
+    if surface.legacy_adapter {
+        return;
+    }
+    for role in &surface.roles {
         let inside = format!("L{};", role.class.replace('.', "/"));
         let passed_to_a_reached_lookup = surface.roles.iter().any(|reaching| {
             reached.contains(reaching.name.as_str())
@@ -183,47 +186,114 @@ fn quoted_argument(text: &str) -> Option<&str> {
     text.trim().strip_prefix('"')?.strip_suffix('"')
 }
 
+enum Member {
+    None,
+    Argument,
+    Constructor,
+}
+
+struct Anchor {
+    file: &'static str,
+    call: &'static str,
+    role_argument: usize,
+    member: Member,
+    qualified: bool,
+}
+
+const LEGACY_LOOKUP_ANCHORS: &[Anchor] = &[
+    Anchor {
+        file: "",
+        call: "LegacyNames.className(",
+        role_argument: 0,
+        member: Member::None,
+        qualified: true,
+    },
+    Anchor {
+        file: "",
+        call: "LegacyNames.member(",
+        role_argument: 0,
+        member: Member::Argument,
+        qualified: true,
+    },
+    Anchor {
+        file: "",
+        call: "LegacyAccess.type(",
+        role_argument: 0,
+        member: Member::None,
+        qualified: true,
+    },
+    Anchor {
+        file: "",
+        call: "LegacyAccess.call(",
+        role_argument: 0,
+        member: Member::Argument,
+        qualified: true,
+    },
+    Anchor {
+        file: "",
+        call: "LegacyAccess.field(",
+        role_argument: 0,
+        member: Member::Argument,
+        qualified: true,
+    },
+    Anchor {
+        file: "",
+        call: "LegacyAccess.create(",
+        role_argument: 0,
+        member: Member::Constructor,
+        qualified: true,
+    },
+    Anchor {
+        file: "/LegacyCommand.java",
+        call: "type(",
+        role_argument: 0,
+        member: Member::None,
+        qualified: false,
+    },
+    Anchor {
+        file: "/LegacyCommand.java",
+        call: "member(",
+        role_argument: 0,
+        member: Member::Argument,
+        qualified: false,
+    },
+    Anchor {
+        file: "/LegacyPersistence.java",
+        call: "call(",
+        role_argument: 1,
+        member: Member::Argument,
+        qualified: false,
+    },
+];
+
 fn verify_legacy_lookups(
     surface: &ReflectiveSurface,
     relative: &str,
     source: &str,
     violations: &mut Vec<String>,
 ) {
-    let anchors = [
-        ("", "LegacyNames.className(", 0, false),
-        ("", "LegacyNames.member(", 0, true),
-        ("", "LegacyAccess.type(", 0, false),
-        ("", "LegacyAccess.call(", 0, true),
-        ("", "LegacyAccess.field(", 0, true),
-        ("", "LegacyAccess.create(", 0, false),
-        ("/LegacyCommand.java", "type(", 0, false),
-        ("/LegacyCommand.java", "member(", 0, true),
-        ("/LegacyPersistence.java", "call(", 1, true),
-    ];
-    for (file, anchor, index, member_lookup) in anchors {
-        if !relative.ends_with(file) {
+    for anchor in LEGACY_LOOKUP_ANCHORS {
+        if !relative.ends_with(anchor.file) {
             continue;
         }
-        for (at, _) in source.match_indices(anchor) {
-            if !anchor.contains('.')
+        for (at, _) in source.match_indices(anchor.call) {
+            if !anchor.qualified
                 && source[..at].chars().next_back().is_some_and(|character| {
                     character == '.' || character.is_ascii_alphanumeric() || character == '_'
                 })
             {
                 continue;
             }
-            let tail = &source[at + anchor.len()..];
+            let tail = &source[at + anchor.call.len()..];
             let arguments = tail.split(')').next().unwrap_or(tail);
-            let mut arguments = arguments.split(',').skip(index);
+            let mut arguments = arguments.split(',').skip(anchor.role_argument);
             let Some(role) = arguments.next().and_then(quoted_argument) else {
                 continue;
             };
-            let member = if member_lookup {
-                arguments.next().and_then(quoted_argument)
-            } else if anchor == "LegacyAccess.create(" {
-                Some("<init>")
-            } else {
-                None
+            let member = match anchor.member {
+                Member::Argument => arguments.next().and_then(quoted_argument),
+                Member::Constructor => Some("<init>"),
+                Member::None => None,
             };
             verify_legacy_lookup(surface, relative, role, member, violations);
         }
@@ -348,7 +418,14 @@ pub(crate) fn verify_persistence_reflection(
     adapters: &VersionAdapters,
     violations: &mut Vec<String>,
 ) {
-    let manifest = match agent_source_manifest(AGENT_SOURCE_MANIFEST) {
+    let text = match read_text(root, &root.join(AGENT_SOURCE_MANIFEST)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let manifest = match agent_source_manifest(&text) {
         Ok(manifest) => manifest,
         Err(error) => {
             violations.push(error);
@@ -369,41 +446,28 @@ pub(crate) fn verify_persistence_reflection(
     let mut spelled: Vec<(String, String)> = Vec::new();
     let mut reached: Vec<(String, String)> = Vec::new();
     for path in &sources {
-        let relative = relative_label(root, path);
+        let relative = redacted_path(root, path);
         let selected = Path::new(&relative);
-        let modern = compiled_bootstrap_source(selected, false, &manifest);
         let legacy = compiled_bootstrap_source(selected, true, &manifest);
-        if !surfaces.iter().any(|surface| {
-            (surface.legacy_adapter && legacy) || (!surface.legacy_adapter && modern)
-        }) {
+        if !surfaces
+            .iter()
+            .any(|surface| compiled_bootstrap_source(selected, surface.legacy_adapter, &manifest))
+        {
             continue;
         }
         match read_text(root, path) {
             Ok(source) => {
-                for surface in surfaces
-                    .iter()
-                    .filter(|surface| surface.legacy_adapter && legacy)
-                {
-                    verify_legacy_lookups(surface, &relative, &source, violations);
+                if legacy {
+                    for surface in surfaces.iter().filter(|surface| surface.legacy_adapter) {
+                        verify_legacy_lookups(surface, &relative, &source, violations);
+                    }
                 }
-                for name in game_class_literals(&source) {
-                    violations.push(format!(
-                        "{relative} spells the game class {name} as a literal; \
-                         {AGENT_JAR_SOURCES} is one source tree for every tracked version, so a \
-                         game name written here is one version's spelling asserted over all of \
-                         them and is the obfuscated name of none. Reach it as {GAME_NAMES}.<role> \
-                         and declare the role in each version's {REFLECTION_FILE}"
-                    ));
-                }
-                spelled.extend(
-                    generated_constants(&source, GAME_NAMES)
-                        .into_iter()
-                        .map(|role| (relative.clone(), role)),
-                );
-                reached.extend(
-                    generated_constants(&source, GAME_MEMBERS)
-                        .into_iter()
-                        .map(|member| (relative.clone(), member)),
+                verify_reflection_source(
+                    &relative,
+                    &source,
+                    &mut spelled,
+                    &mut reached,
+                    violations,
                 );
             }
             Err(error) => violations.push(error),
@@ -411,4 +475,32 @@ pub(crate) fn verify_persistence_reflection(
     }
 
     verify_persistence_reflection_roles(&surfaces, &manifest, &spelled, &reached, violations);
+}
+
+fn verify_reflection_source(
+    relative: &str,
+    source: &str,
+    spelled: &mut Vec<(String, String)>,
+    reached: &mut Vec<(String, String)>,
+    violations: &mut Vec<String>,
+) {
+    for name in game_class_literals(source) {
+        violations.push(format!(
+            "{relative} spells the game class {name} as a literal; \
+             {AGENT_JAR_SOURCES} is one source tree for every tracked version, so a \
+             game name written here is one version's spelling asserted over all of \
+             them and is the obfuscated name of none. Reach it as {GAME_NAMES}.<role> \
+             and declare the role in each version's {REFLECTION_FILE}"
+        ));
+    }
+    spelled.extend(
+        generated_constants(source, GAME_NAMES)
+            .into_iter()
+            .map(|role| (relative.to_owned(), role)),
+    );
+    reached.extend(
+        generated_constants(source, GAME_MEMBERS)
+            .into_iter()
+            .map(|member| (relative.to_owned(), member)),
+    );
 }

@@ -15,7 +15,7 @@ class SummaryFixture:
 
     def cohort(self) -> dict[str, Any]:
         return {"javaVersion": "fixture Java 8", "candidateSha256": None,
-                "classpathSha256": ["f" * 64],
+                "classpathSha256": ["f" * 64], "audio_driver": None,
                 "argv": ["/java", "-Xmx8G", "-javaagent:/observer.jar=<trial>", "Main"]}
 
     def make_trial(self, root: Path) -> None:

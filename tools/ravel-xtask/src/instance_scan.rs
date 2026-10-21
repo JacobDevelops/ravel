@@ -6,15 +6,79 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// A competing loader family recognized by the scanner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Loader {
+    /// Fabric Loader.
+    Fabric,
+    /// Quilt Loader.
+    Quilt,
+    /// Minecraft Forge.
+    Forge,
+    /// `NeoForge`.
+    NeoForge,
+    /// A marker shared by Forge-derived loaders.
+    ForgeFamily,
+    /// A marker shared by Mixin-based loaders.
+    MixinBasedLoader,
+}
+
+impl Loader {
+    /// The stable evidence spelling of this loader family.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Fabric => "fabric",
+            Self::Quilt => "quilt",
+            Self::Forge => "forge",
+            Self::NeoForge => "neoforge",
+            Self::ForgeFamily => "forge-family",
+            Self::MixinBasedLoader => "mixin-based-loader",
+        }
+    }
+}
+
+/// How a competing loader marker was discovered.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MarkerKind {
+    /// A launcher-declared component.
+    LauncherComponent,
+    /// A launcher-declared main class.
+    LaunchMainClass,
+    /// A launcher component override.
+    ComponentPatch,
+    /// A loader configuration file.
+    LoaderConfig,
+    /// A loader-created runtime directory.
+    LoaderRuntimeDirectory,
+    /// An unpacked loader library.
+    LoaderLibrary,
+}
+
+impl MarkerKind {
+    /// The stable evidence spelling of this marker kind.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LauncherComponent => "launcher-component",
+            Self::LaunchMainClass => "launch-main-class",
+            Self::ComponentPatch => "component-patch",
+            Self::LoaderConfig => "loader-config",
+            Self::LoaderRuntimeDirectory => "loader-runtime-directory",
+            Self::LoaderLibrary => "loader-library",
+        }
+    }
+}
+
 /// A marker that proves a competing loader is present, and why it proves it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Finding {
     /// The loader the marker belongs to.
-    pub loader: &'static str,
+    pub loader: Loader,
     /// The marker itself: a Prism component uid, a relative path, or a class name.
     pub marker: &'static str,
     /// How the marker was found, which is what says how strong it is.
-    pub kind: &'static str,
+    pub kind: MarkerKind,
 }
 
 /// What scanning one launcher instance found.
@@ -61,7 +125,9 @@ impl InstanceScan {
             .map(|finding| {
                 format!(
                     "\n      {{ \"loader\": \"{}\", \"marker\": \"{}\", \"kind\": \"{}\" }}",
-                    finding.loader, finding.marker, finding.kind
+                    finding.loader.as_str(),
+                    finding.marker,
+                    finding.kind.as_str()
                 )
             })
             .collect::<Vec<_>>()
@@ -92,9 +158,9 @@ impl InstanceScan {
 
 /// A marker that proves one loader is installed, and the reason it proves it.
 struct Marker {
-    loader: &'static str,
+    loader: Loader,
     identifier: &'static str,
-    kind: &'static str,
+    kind: MarkerKind,
 }
 
 /// Loader components as the launcher itself names them.
@@ -107,34 +173,34 @@ struct Marker {
 /// project publishes to the launcher metadata service, so a match is exact.
 const COMPONENT_MARKERS: &[Marker] = &[
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "net.fabricmc.fabric-loader",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "net.fabricmc.intermediary",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "org.quiltmc.quilt-loader",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "org.quiltmc.hashed",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
     Marker {
-        loader: "forge",
+        loader: Loader::Forge,
         identifier: "net.minecraftforge",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
     Marker {
-        loader: "neoforge",
+        loader: Loader::NeoForge,
         identifier: "net.neoforged",
-        kind: "launcher-component",
+        kind: MarkerKind::LauncherComponent,
     },
 ];
 
@@ -147,34 +213,34 @@ const COMPONENT_MARKERS: &[Marker] = &[
 /// disabled component, but it cannot carry a main class it does not launch.
 const LAUNCH_MARKERS: &[Marker] = &[
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "net.fabricmc.loader.impl.launch.knot.KnotClient",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "net.fabricmc.loader.impl.launch.knot.KnotServer",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "org.quiltmc.loader.impl.launch.knot.KnotClient",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
     Marker {
-        loader: "forge-family",
+        loader: Loader::ForgeFamily,
         identifier: "cpw.mods.bootstraplauncher.BootstrapLauncher",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
     Marker {
-        loader: "forge",
+        loader: Loader::Forge,
         identifier: "net.minecraftforge.bootstrap.ForgeBootstrap",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
     Marker {
-        loader: "neoforge",
+        loader: Loader::NeoForge,
         identifier: "net.neoforged.bootstrap.Bootstrap",
-        kind: "launch-main-class",
+        kind: MarkerKind::LaunchMainClass,
     },
 ];
 
@@ -185,24 +251,24 @@ const LAUNCH_MARKERS: &[Marker] = &[
 /// alone carries the claim and nothing inside it has to be read.
 const PATCH_MARKERS: &[Marker] = &[
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "patches/net.fabricmc.fabric-loader.json",
-        kind: "component-patch",
+        kind: MarkerKind::ComponentPatch,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "patches/org.quiltmc.quilt-loader.json",
-        kind: "component-patch",
+        kind: MarkerKind::ComponentPatch,
     },
     Marker {
-        loader: "forge",
+        loader: Loader::Forge,
         identifier: "patches/net.minecraftforge.json",
-        kind: "component-patch",
+        kind: MarkerKind::ComponentPatch,
     },
     Marker {
-        loader: "neoforge",
+        loader: Loader::NeoForge,
         identifier: "patches/net.neoforged.json",
-        kind: "component-patch",
+        kind: MarkerKind::ComponentPatch,
     },
 ];
 
@@ -216,51 +282,51 @@ const PATCH_MARKERS: &[Marker] = &[
 /// dependency — so each one's presence has only one explanation.
 const GAME_DIRECTORY_MARKERS: &[Marker] = &[
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: ".fabric",
-        kind: "loader-runtime-directory",
+        kind: MarkerKind::LoaderRuntimeDirectory,
     },
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "config/fabric_loader_dependencies.json",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: ".quilt",
-        kind: "loader-runtime-directory",
+        kind: MarkerKind::LoaderRuntimeDirectory,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "config/quilt_loader_dependencies.json",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     Marker {
-        loader: "forge-family",
+        loader: Loader::ForgeFamily,
         identifier: "config/fml.toml",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     Marker {
-        loader: "forge-family",
+        loader: Loader::ForgeFamily,
         identifier: "defaultconfigs",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     Marker {
-        loader: "forge",
+        loader: Loader::Forge,
         identifier: "config/forge-client.toml",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     Marker {
-        loader: "neoforge",
+        loader: Loader::NeoForge,
         identifier: "config/neoforge-client.toml",
-        kind: "loader-config",
+        kind: MarkerKind::LoaderConfig,
     },
     // Every one of the four is built on Mixin, and Mixin writes its transformed
     // classes here. Nothing else in a Minecraft install does.
     Marker {
-        loader: "mixin-based-loader",
+        loader: Loader::MixinBasedLoader,
         identifier: ".mixin.out",
-        kind: "loader-runtime-directory",
+        kind: MarkerKind::LoaderRuntimeDirectory,
     },
 ];
 
@@ -270,24 +336,24 @@ const GAME_DIRECTORY_MARKERS: &[Marker] = &[
 /// no residue, which is the case a freshly imported modpack presents.
 const LIBRARY_MARKERS: &[Marker] = &[
     Marker {
-        loader: "fabric",
+        loader: Loader::Fabric,
         identifier: "libraries/net/fabricmc",
-        kind: "loader-library",
+        kind: MarkerKind::LoaderLibrary,
     },
     Marker {
-        loader: "quilt",
+        loader: Loader::Quilt,
         identifier: "libraries/org/quiltmc",
-        kind: "loader-library",
+        kind: MarkerKind::LoaderLibrary,
     },
     Marker {
-        loader: "forge",
+        loader: Loader::Forge,
         identifier: "libraries/net/minecraftforge",
-        kind: "loader-library",
+        kind: MarkerKind::LoaderLibrary,
     },
     Marker {
-        loader: "neoforge",
+        loader: Loader::NeoForge,
         identifier: "libraries/net/neoforged",
-        kind: "loader-library",
+        kind: MarkerKind::LoaderLibrary,
     },
 ];
 
@@ -543,9 +609,9 @@ mod tests {
             "the report must not carry a path segment from the instance"
         );
         for finding in &scan.findings {
-            assert!(!finding.loader.contains(username));
+            assert!(!finding.loader.as_str().contains(username));
             assert!(!finding.marker.contains(username));
-            assert!(!finding.kind.contains(username));
+            assert!(!finding.kind.as_str().contains(username));
         }
         for obstacle in &scan.obstacles {
             assert!(!obstacle.contains(username));

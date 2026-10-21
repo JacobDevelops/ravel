@@ -350,6 +350,8 @@ fn generated_dependency_and_host_names_refuse_during_planning() {
         "serde",
         "serde_json",
         "serde-json",
+        "num-traits",
+        "num_traits",
         "jni",
         "ravel-core",
         "ravel_core",
@@ -826,13 +828,14 @@ fn generated_dependency_tables_expose_sdk_author_dependencies_and_planned_peers(
         dependencies.keys().map(String::as_str).collect::<Vec<_>>(),
         [
             "consumer-crate",
+            "num-traits",
             "provider-crate",
             "ravel-sdk",
             "serde",
             "serde_json",
         ]
     );
-    for name in ["serde", "serde_json"] {
+    for &name in super::AUTHOR_DEPENDENCIES {
         assert_eq!(dependencies[name], root["workspace"]["dependencies"][name]);
     }
     for member in plan.members() {
@@ -926,7 +929,10 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
         fs::copy(ravel_root().join(file), root.join(file)).expect("installation input copy");
     }
     let discovered = discover(&instance).expect("empty instance");
-    let first = plan(&discovered, &root).expect("first plan");
+    let first = super::plan_with_compiler(&discovered, &root, |_, _| {
+        Ok(compiler_fixture(b"rustc first"))
+    })
+    .expect("first plan");
     let original = fs::read_to_string(root.join("rust-toolchain.toml")).expect("toolchain");
     fs::write(
         root.join("rust-toolchain.toml"),
@@ -935,9 +941,11 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
     .expect("comment edit");
     assert_eq!(
         first.fingerprint(),
-        plan(&discovered, &root)
-            .expect("same channel")
-            .fingerprint()
+        super::plan_with_compiler(&discovered, &root, |_, _| Ok(compiler_fixture(
+            b"rustc first"
+        )))
+        .expect("same channel")
+        .fingerprint()
     );
     let installed: toml::Table = original.parse().expect("installation toolchain");
     let changed_channel = if installed["toolchain"]["channel"].as_str() == Some("nightly") {
@@ -953,7 +961,10 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
         ),
     )
     .expect("changed channel");
-    let second = plan(&discovered, &root).expect("second plan");
+    let second = super::plan_with_compiler(&discovered, &root, |_, _| {
+        Ok(compiler_fixture(b"rustc second"))
+    })
+    .expect("second plan");
     let toolchain: toml::Table = second.files()["rust-toolchain.toml"]
         .parse()
         .expect("toolchain");
@@ -975,6 +986,129 @@ fn changing_the_installation_toolchain_changes_the_plan_fingerprint() {
     assert!(matches!(refused, BuildRefused::InstallationIo { file, .. }
             if file == "rust-toolchain.toml"));
     fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn a_floating_channels_resolved_compiler_changes_the_plan_fingerprint() {
+    let instance = instance("resolved-compiler-fingerprint");
+    let root = instance.join("installation");
+    fs::create_dir(&root).expect("installation directory");
+    for file in ["Cargo.toml", "Cargo.lock"] {
+        fs::copy(ravel_root().join(file), root.join(file)).expect("installation input copy");
+    }
+    fs::write(
+        root.join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"nightly\"\n",
+    )
+    .expect("floating channel");
+    let discovered = discover(&instance).expect("empty instance");
+    let resolve = |identity: &[u8]| {
+        super::plan_with_compiler(&discovered, &root, |selected_root, toolchain| {
+            assert_eq!(selected_root, root);
+            assert!(toolchain.contains("nightly"));
+            Ok(compiler_fixture(identity))
+        })
+        .expect("resolved compiler plan")
+    };
+    let first = resolve(b"rustc 1\ncommit-hash: a\nhost: x\n");
+    let same = resolve(b"rustc 1\ncommit-hash: a\nhost: x\n");
+    let changed = resolve(b"rustc 1\ncommit-hash: b\nhost: x\n");
+    assert_eq!(first, same);
+    assert_eq!(first.files(), changed.files());
+    assert_ne!(first.fingerprint(), changed.fingerprint());
+    let refused = super::plan_with_compiler(&discovered, &root, |_, _| {
+        Err(BuildRefused::Toolchain {
+            source: std::io::Error::other("unavailable compiler"),
+        })
+    })
+    .expect_err("unresolved compilers cannot produce a reusable fingerprint");
+    assert!(refused.to_string().contains("unavailable compiler"));
+    fs::remove_dir_all(instance).expect("cleanup");
+}
+
+fn compiler_fixture(identity: &[u8]) -> super::ResolvedCompiler {
+    super::ResolvedCompiler {
+        channel: "nightly".to_owned(),
+        rustc: PathBuf::from("/installation/toolchains/nightly/bin/rustc"),
+        identity: identity.to_vec(),
+    }
+}
+
+#[test]
+fn cargo_command_explicitly_selects_the_fingerprinted_compiler() {
+    use std::ffi::OsStr;
+    let compiler = compiler_fixture(b"selected compiler");
+    let command = compiler.cargo_command();
+    assert_eq!(command.get_program(), OsStr::new("rustup"));
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["run", "nightly", "cargo"].map(OsStr::new)
+    );
+    let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        env[OsStr::new("RUSTUP_TOOLCHAIN")],
+        Some(OsStr::new("nightly"))
+    );
+    for key in ["RUSTC", "CARGO_BUILD_RUSTC"] {
+        assert_eq!(env[OsStr::new(key)], Some(compiler.rustc.as_os_str()));
+    }
+}
+
+#[test]
+fn the_installation_channel_resolves_to_the_reported_compiler() {
+    let root = ravel_root();
+    let toolchain = fs::read_to_string(root.join("rust-toolchain.toml")).expect("toolchain");
+    let compiler = super::resolve_compiler(&root, &toolchain).expect("installation compiler");
+    assert!(compiler.rustc.is_absolute());
+    assert!(compiler.rustc.is_file());
+    assert!(compiler.identity.starts_with(b"rustc "));
+    assert_eq!(
+        compiler.identity,
+        super::compiler_output(Command::new(&compiler.rustc).arg("-vV"))
+            .expect("resolved executable identity")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn compiler_output_rejects_process_failures_empty_identity_and_invalid_paths() {
+    use std::os::unix::process::ExitStatusExt;
+    let output = |code, stdout: &[u8], stderr: &[u8]| std::process::Output {
+        status: std::process::ExitStatus::from_raw(code << 8),
+        stdout: stdout.to_vec(),
+        stderr: stderr.to_vec(),
+    };
+    let failed = super::compiler_identity(output(1, b"ignored", b"selected compiler unavailable"))
+        .expect_err("nonzero subprocess exit");
+    assert!(matches!(&failed, BuildRefused::Toolchain { .. }));
+    assert!(failed.to_string().contains("selected compiler unavailable"));
+    assert!(matches!(
+        super::compiler_identity(output(0, b"", b"")),
+        Err(BuildRefused::Toolchain { .. })
+    ));
+    assert!(matches!(
+        super::compiler_path(vec![0xff]),
+        Err(BuildRefused::Toolchain { .. })
+    ));
+    assert!(matches!(
+        super::compiler_path(b" \n".to_vec()),
+        Err(BuildRefused::Toolchain { .. })
+    ));
+    assert_eq!(
+        super::compiler_path(b"/installation/bin/rustc\n".to_vec()).expect("compiler path"),
+        PathBuf::from("/installation/bin/rustc")
+    );
+}
+
+#[test]
+fn compiler_spawn_failure_is_a_toolchain_refusal() {
+    let root = instance("missing-compiler-executable");
+    let absent = root.join("no-such-rustc");
+    assert!(matches!(
+        super::compiler_output(&mut Command::new(absent)),
+        Err(BuildRefused::Toolchain { .. })
+    ));
+    fs::remove_dir_all(root).expect("cleanup");
 }
 
 #[test]
@@ -1401,10 +1535,19 @@ fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) 
         .expect("registry manifest")
         .parse()
         .expect("valid registry manifest");
-    assert!(
-        manifest["dependencies"]["num-traits"]
-            .get("workspace")
-            .is_none()
+    assert_eq!(
+        manifest["dependencies"]["num-traits"]["workspace"].as_bool(),
+        Some(true)
+    );
+    install_with(
+        &instance,
+        "explicit-numeric",
+        "explicit_numeric",
+        "explicit-numeric",
+        &format!(
+            "{EXPORTING_SOURCE}\npub fn numeric() -> Option<u8> {{ num_traits::cast(1_u16) }}\n"
+        ),
+        "ravel-sdk.workspace = true\nnum-traits = { version = \"0.2.19\", default-features = false }\n",
     );
     copy_tree(
         &source,

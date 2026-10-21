@@ -12,8 +12,7 @@ use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    Composition, GamePackError, InstallError, SideError, install, pre_world_report,
-    write_resource_pack,
+    Composition, GamePackError, InstallError, SideError, install, write_resource_pack,
 };
 use ravel_config::file;
 use ravel_core::{ModId, Side};
@@ -24,7 +23,7 @@ use ravel_loader::{
     start_all,
 };
 use ravel_minecraft_adapter::environment;
-use ravel_observability::Profiler;
+use ravel_observability::{PreWorldReport, Profiler};
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
 use semver::Version;
@@ -185,7 +184,7 @@ pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side)
 ///
 /// Returns an error for modern adapters, a missing process runtime, or composition or installation failure.
 pub fn initialize_integrated(members: impl FnOnce(Side) -> Vec<Member>) -> Result<(), LaunchError> {
-    if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+    if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         return Err(LaunchError::IndependentIntegratedUnsupported);
     }
     if ravel_bootstrap_runtime::integrated_installed() {
@@ -216,9 +215,9 @@ pub fn initialize(
         return Err(LaunchError::Install(InstallError::AlreadyInstalled));
     }
     let composition = compose(game_directory, side, members())?;
-    let mut report = pre_world_report();
+    let mut report = PreWorldReport::new(environment());
     // Legacy injects its resource proxy directly; a second pack would shadow it.
-    if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+    if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         // The client scans resource packs during startup, before runtime installation.
         write_resource_pack(game_directory, &composition.resources).map_err(LaunchError::Pack)?;
         let seeded = seed_pack(game_directory).map_err(LaunchError::Options)?;
@@ -258,6 +257,18 @@ fn pack_notice(seeded: &Seeded, side: Side) -> Option<String> {
              game starts. {ending}"
             )
         }),
+        Seeded::RecordUnreadable(reason) => {
+            let mut notice = format!(
+                "Ravel could not read its resource-pack offer record, so it did not switch the pack \
+                 on or change this instance's settings. Repair the offer record before restarting. \
+                 The reason was: {reason}."
+            );
+            if advisable {
+                notice.push(' ');
+                notice.push_str(ending);
+            }
+            Some(notice)
+        }
         Seeded::Unrecorded(reason) => Some(format!(
             "Ravel could not keep its record of having offered this instance the resource pack \
              its mods supply, so it will offer again the next time the game starts — turning the \
@@ -472,7 +483,7 @@ mod tests {
             Vec::new()
         })
         .expect_err("independent initialization needs a legacy process");
-        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
             assert!(matches!(
                 error,
                 super::LaunchError::Install(super::InstallError::ProcessNotInstalled)
@@ -506,7 +517,7 @@ mod tests {
                     constructed = true;
                     Vec::new()
                 });
-                if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+                if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
                     result.expect("independent server");
                     assert!(constructed);
                     assert!(ravel_bootstrap_runtime::integrated_installed());
@@ -534,7 +545,7 @@ mod tests {
         ) {
             return;
         }
-        if !ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
             return;
         }
         let game =
@@ -582,7 +593,7 @@ mod tests {
         std::fs::write(game.join("options.txt"), original).expect("initial settings");
         super::initialize(&game, Side::Client, Vec::new, false).expect("empty launch");
         let settings = std::fs::read_to_string(game.join("options.txt")).expect("player settings");
-        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
             assert!(!game.join("resourcepacks/ravel").exists());
             assert!(!game.join("ravel/seeded-packs").exists());
             assert_eq!(settings, original);
@@ -622,7 +633,7 @@ mod tests {
                     .expect("empty interceptions"),
                 installed_packages: std::collections::BTreeMap::new(),
             },
-            ravel_bootstrap_runtime::pre_world_report(),
+            ravel_observability::PreWorldReport::new(environment()),
             game.clone(),
             ravel_observability::Profiler::off(),
         )
@@ -792,11 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn an_optional_refused_interceptor_contributes_no_resource_or_world_pack_bytes() {
-        let game =
-            std::env::temp_dir().join(format!("ravel-refused-interceptor-{}", std::process::id()));
-        let world = game.join("world");
-        std::fs::create_dir_all(&world).expect("world directory");
+    fn an_optional_refused_interceptor_contributes_no_generated_resources() {
         let (package, id, _) = member("optional_interceptor", &["client", "integrated-server"]);
         let admitted = admit(
             Side::Client,
@@ -823,23 +830,6 @@ mod tests {
             "failed owner files must not be layered"
         );
         assert_eq!(machine.state(&id), Ok(LifecycleState::Failed));
-        ravel_bootstrap_runtime::write_resource_pack(&game, &resources).expect("resource pack");
-        ravel_bootstrap_runtime::write_world_pack(&world, &resources).expect("world pack");
-        assert!(
-            !game
-                .join(ravel_bootstrap_runtime::RESOURCE_PACKS)
-                .join(ravel_bootstrap_runtime::GAME_PACK_DIRECTORY)
-                .join("assets/optional_interceptor/textures/failed.png")
-                .exists()
-        );
-        assert!(
-            !world
-                .join(ravel_bootstrap_runtime::WORLD_DATA_PACKS)
-                .join(ravel_bootstrap_runtime::GAME_PACK_DIRECTORY)
-                .join("data/optional_interceptor/recipe/failed.json")
-                .exists()
-        );
-        std::fs::remove_dir_all(game).expect("remove scratch game");
     }
 
     struct Recording {
@@ -1177,8 +1167,22 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_offer_records_do_not_claim_the_pack_was_offered() {
+        let outcome = super::Seeded::RecordUnreadable(super::OptionsError::test_error());
+        let notice = super::pack_notice(&outcome, Side::Client).expect("failure notice");
+        assert!(notice.contains("did not switch the pack on"), "{notice}");
+        assert!(notice.contains("Options, Resource Packs"), "{notice}");
+        assert!(!notice.contains("offer again"), "{notice}");
+        let dedicated = super::pack_notice(&outcome, Side::DedicatedServer).expect("record notice");
+        assert!(
+            !dedicated.contains("Options, Resource Packs"),
+            "{dedicated}"
+        );
+    }
+
+    #[test]
     fn only_a_launch_whose_pack_is_off_by_accident_tells_the_player_anything() {
-        use super::{Seeded, pack_notice, pre_world_report};
+        use super::{Seeded, pack_notice};
 
         for silent in [Seeded::Added, Seeded::Present, Seeded::AlreadyOffered] {
             assert_eq!(pack_notice(&silent, Side::Client), None, "{silent:?}");
@@ -1187,7 +1191,8 @@ mod tests {
         for loud in [
             Seeded::NoSettings,
             Seeded::Unreadable("[unclosed".to_owned()),
-            Seeded::Unrecorded("permission denied".to_owned()),
+            Seeded::Unrecorded(super::OptionsError::test_error()),
+            Seeded::RecordUnreadable(super::OptionsError::test_error()),
         ] {
             let notice = pack_notice(&loud, Side::Client)
                 .unwrap_or_else(|| panic!("{loud:?} is not silent"));
@@ -1202,7 +1207,7 @@ mod tests {
                 .contains("options.txt")
         );
 
-        let mut report = pre_world_report();
+        let mut report = super::PreWorldReport::new(environment());
         report.note(&pack_notice(&Seeded::NoSettings, Side::Client).expect("this one is loud"));
         assert_eq!(report.notices().len(), 1);
         assert!(
@@ -1268,7 +1273,7 @@ mod tests {
             );
         }
 
-        let unrecorded = Seeded::Unrecorded("permission denied".to_owned());
+        let unrecorded = Seeded::Unrecorded(super::OptionsError::test_error());
         for side in Side::ALL {
             assert!(
                 pack_notice(&unrecorded, side).is_some(),

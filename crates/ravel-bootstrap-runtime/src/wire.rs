@@ -10,6 +10,16 @@ pub(crate) const VERSION: &str = "1";
 /// Independent mod-list version, bumped when its row shape changes.
 pub(crate) const MODS_VERSION: &str = "4";
 
+/// Appends a human-facing label, never an identity used to select a runtime.
+pub(crate) fn integrated_row(out: &mut String, id: &impl std::fmt::Display) {
+    write!(out, "{id} [integrated-server]").expect("writing into a String cannot fail");
+}
+
+/// Appends a human-facing notice, never an identity used to select a runtime.
+pub(crate) fn integrated_note(out: &mut String, text: &impl std::fmt::Display) {
+    write!(out, "[integrated-server] {text}").expect("writing into a String cannot fail");
+}
+
 /// Writes one field, prefixed by the length the other side reads it with.
 pub(crate) fn field(out: &mut String, value: &str) {
     write!(out, "{}:{value}", value.encode_utf16().count())

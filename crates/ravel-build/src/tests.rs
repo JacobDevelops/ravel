@@ -535,7 +535,7 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   ).expect(\"the generated host initializes\");\n\
          \x20   let world = std::path::Path::new(&game).join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
-         \x20   if !ravel_bootstrap_runtime::LEGACY_ADAPTER {\n\
+         \x20   if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {\n\
          \x20       assert_eq!(ravel_bootstrap_runtime::write_world_datapack(&world), ravel_bootstrap_runtime::PackOutcome::Written);\n\
          \x20   }\n\
          \x20   assert_eq!(\n\
@@ -545,7 +545,7 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          }\n";
 
 fn the_written_packs_hold_the_examples_content(instance: &Path) {
-    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+    if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         assert!(!instance.join("resourcepacks/ravel").exists());
         assert!(!instance.join("saves/Driven/datapacks").exists());
         return;
@@ -650,6 +650,7 @@ fn write_driver(instance: &Path) -> PathBuf {
              ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
              ravel-generated-host = {{ path = \"../ravel/host\" }}\n\
              ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n\
+             ravel-minecraft-adapter = {{ path = \"{root}/crates/ravel-minecraft-adapter\" }}\n\
              ravel-bootstrap-runtime = {{ path = \"{root}/crates/ravel-bootstrap-runtime\" }}\n",
             root = root.display()
         ),
@@ -696,7 +697,7 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
 
     the_written_packs_hold_the_examples_content(instance);
     let settings = fs::read_to_string(instance.join("options.txt")).expect("player settings");
-    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+    if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         assert_eq!(settings, "resourcePacks:[\"vanilla\"]\n");
         assert!(!instance.join("ravel/seeded-packs").exists());
     } else {

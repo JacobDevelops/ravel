@@ -70,7 +70,7 @@ fn members(side: Side) -> Vec<Member> {
             value: Box::new(ServerOnlyMod::new(side, &server_work_log())),
         },
     ];
-    if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+    if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
         members.push(Member {
             package: COMMANDS_PACKAGE.to_owned(),
             value: Box::new(CommandsMod::new()),
@@ -229,7 +229,7 @@ mod tests {
             let supplied = super::members(side);
             assert_eq!(
                 supplied.len(),
-                if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+                if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
                     8
                 } else {
                     5
@@ -298,7 +298,7 @@ mod tests {
             .filter(|key| key.kind() == ravel_core::ContentKind::Command)
             .map(|key| key.id().to_string())
             .collect();
-        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
             assert_eq!(
                 commands,
                 [
@@ -384,7 +384,7 @@ mod tests {
         let driven: Vec<&ModId> = machine.entries().map(|entry| &entry.mod_id).collect();
         assert_eq!(
             driven.len(),
-            if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+            if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
                 8
             } else {
                 5
@@ -416,7 +416,7 @@ mod tests {
             .to_owned()
             .try_into()
             .map_err(|error: ravel_core::RelativePathError| error.to_string())?;
-        if ravel_bootstrap_runtime::LEGACY_ADAPTER {
+        if ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
             assert_eq!(
                 composition.resources.bytes(&path),
                 Some(

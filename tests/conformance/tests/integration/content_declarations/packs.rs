@@ -258,7 +258,7 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
 
     ravel_bootstrap_runtime::install(
         composition,
-        ravel_bootstrap_runtime::pre_world_report(),
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
         game.clone(),
         ravel_observability::Profiler::off(),
     )

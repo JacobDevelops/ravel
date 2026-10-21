@@ -17,16 +17,16 @@ mod settings;
 mod side;
 mod wire;
 
+#[cfg(test)]
+mod test_support;
+
 pub use packs::{
-    GAME_PACK_DIRECTORY, GamePackError, PackOutcome, RESOURCE_PACKS, WORLD_DATA_PACKS, Written,
-    pack_id, write_resource_pack, write_world_datapack, write_world_pack,
+    GamePackError, PackOutcome, Written, pack_id, write_resource_pack, write_world_datapack,
 };
-pub use persistence::{OpenOutcome, SaveOutcome, open_world_data, save_world_data};
-/// Whether declared adapter capabilities select the legacy game surface.
-pub use ravel_minecraft_adapter::pinned::LEGACY_ADAPTER;
+pub use persistence::{OpenOutcome, SaveOutcome, open_world_data};
 pub use runtime::{
     Composition, InstallError, install, install_integrated, install_panic_hook,
-    integrated_installed, is_installed, pre_world_report, process_game_directory,
+    integrated_installed, is_installed, process_game_directory,
 };
 pub use side::{SideError, side_from_agent_code};
 
@@ -63,17 +63,6 @@ pub mod exports {
 mod tests {
     use ravel_minecraft::HookKind;
     use ravel_minecraft_adapter::pinned::{LEGACY_ADAPTER, TARGETS};
-
-    /// Creates an empty per-process directory under the system temporary directory, clearing
-    /// whatever an earlier run left behind.
-    pub(crate) fn fresh_directory(label: &str, name: &str) -> std::path::PathBuf {
-        let at = std::env::temp_dir().join(format!("ravel-{label}-{}-{name}", std::process::id()));
-        if at.exists() {
-            std::fs::remove_dir_all(&at).expect("remove the previous test directory");
-        }
-        std::fs::create_dir_all(&at).expect("a writable temporary directory");
-        at
-    }
 
     #[test]
     fn every_callable_target_has_an_exported_symbol_and_no_field_does() {

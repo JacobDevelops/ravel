@@ -90,7 +90,8 @@ mod tests {
     use ravel_loader::{LifecycleEntry, Requirement};
 
     use super::document_of;
-    use crate::runtime::{DocumentFixture, LoaderRuntime};
+    use crate::runtime::LoaderRuntime;
+    use crate::test_support::DocumentFixture;
     use crate::wire::fields;
 
     fn id(name: &str) -> ModId {
@@ -119,8 +120,11 @@ mod tests {
     fn an_installed_set_that_claimed_nothing_answers_with_an_empty_table() {
         let mut fixture = fixture(&["example_mod"]);
         fixture.start_with_claims(&[]);
-        let runtime =
-            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
+        let runtime = LoaderRuntime::new(
+            fixture.machine,
+            fixture.mods,
+            crate::test_support::test_launch(),
+        );
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -134,8 +138,11 @@ mod tests {
             ("item:second_mod:ingot".parse().expect("valid key"), None),
             ("block:first_mod:copper".parse().expect("valid key"), None),
         ]);
-        let runtime =
-            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
+        let runtime = LoaderRuntime::new(
+            fixture.machine,
+            fixture.mods,
+            crate::test_support::test_launch(),
+        );
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -176,8 +183,11 @@ mod tests {
                 random_ticks: false,
             })),
         )]);
-        let runtime =
-            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
+        let runtime = LoaderRuntime::new(
+            fixture.machine,
+            fixture.mods,
+            crate::test_support::test_launch(),
+        );
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 
@@ -207,8 +217,11 @@ mod tests {
             ("recipe:example_mod:alloy".parse().expect("valid key"), None),
             ("block:example_mod:copper".parse().expect("valid key"), None),
         ]);
-        let runtime =
-            LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
+        let runtime = LoaderRuntime::new(
+            fixture.machine,
+            fixture.mods,
+            crate::test_support::test_launch(),
+        );
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
 

@@ -9,7 +9,8 @@ use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, Supplied};
 use ravel_minecraft::{HookId, HookKind, HookTarget, HookValue};
 
 use super::dispatch::{COMMAND, EVENTS};
-use super::{LoaderRuntime, advance_through, environment};
+use super::{LoaderRuntime, environment};
+use crate::test_support::advance_through;
 
 use ravel_data::PlayRequest;
 
@@ -134,7 +135,7 @@ fn running(
 ) -> (LoaderRuntime, Arc<Mutex<Log>>) {
     let (machine, mods, log) = parts(side, claims, behaviour);
     (
-        LoaderRuntime::new(machine, mods, crate::runtime::test_launch()),
+        LoaderRuntime::new(machine, mods, crate::test_support::test_launch()),
         log,
     )
 }
@@ -181,7 +182,7 @@ fn held(side: Side, host: Box<dyn Mod>) -> LoaderRuntime {
     };
     let mut machine = LifecycleMachine::new(side, vec![entry]).expect("a legal plan");
     advance_through(&mut machine, LifecycleState::Running);
-    LoaderRuntime::new(machine, vec![host], crate::runtime::test_launch())
+    LoaderRuntime::new(machine, vec![host], crate::test_support::test_launch())
 }
 
 #[test]
@@ -303,7 +304,7 @@ fn an_outward_request_cannot_impersonate_another_owner() {
 
 fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
     let (machine, mods) = driven_pair(behaviour, log);
-    LoaderRuntime::new(machine, mods, crate::runtime::test_launch())
+    LoaderRuntime::new(machine, mods, crate::test_support::test_launch())
 }
 
 fn driven_pair(
@@ -356,7 +357,7 @@ fn outward_drains_follow_lifecycle_order_after_service_slot_reordering() {
     let log = Arc::new(Mutex::new(Log::default()));
     let (machine, mut mods) = driven_pair(Behaviour::Records, &log);
     mods.swap(0, 1);
-    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let runtime = LoaderRuntime::new(machine, mods, crate::test_support::test_launch());
 
     runtime.observe(&target("client.tick"), &[]);
 
@@ -486,7 +487,7 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
             id: id(MOD),
             drains: Arc::clone(&drains),
         })],
-        crate::runtime::test_launch(),
+        crate::test_support::test_launch(),
     );
     for _ in 0..2 {
         runtime.observe(&target("client.tick"), &[]);
@@ -527,7 +528,7 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
     )
     .expect("one owner");
     let drains = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut refusing: Vec<Box<dyn Mod>> = vec![Box::new(super::RefusingStart {
+    let mut refusing: Vec<Box<dyn Mod>> = vec![Box::new(crate::test_support::RefusingStart {
         owner: id(MOD),
         state: LifecycleState::Running,
         detail: "owner stopped before delivery",
@@ -543,7 +544,7 @@ fn owners_failed_before_outward_delivery_are_never_drained() {
             id: id(MOD),
             drains: Arc::clone(&drains),
         })],
-        crate::runtime::test_launch(),
+        crate::test_support::test_launch(),
     );
     runtime.observe(&target("client.tick"), &[]);
     assert_eq!(drains.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -563,7 +564,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
                 .expect("empty interceptions"),
             installed_packages: BTreeMap::new(),
         },
-        super::pre_world_report(),
+        ravel_observability::PreWorldReport::new(environment()),
         std::env::temp_dir(),
         ravel_observability::Profiler::off(),
     )
@@ -588,7 +589,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
                     .expect("empty interceptions"),
                 installed_packages: BTreeMap::new(),
             },
-            super::pre_world_report(),
+            ravel_observability::PreWorldReport::new(environment()),
             std::env::temp_dir(),
             ravel_observability::Profiler::from_switch(true),
         ),
@@ -696,7 +697,7 @@ fn integrated_commands_run_the_probe_fixture_on_a_client_distribution() {
         &environment(),
     )
     .expect("the fixture registers its commands");
-    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let runtime = LoaderRuntime::new(machine, mods, crate::test_support::test_launch());
     runtime.observe(
         &target(COMMAND),
         &[HookValue::Text(format!(
@@ -763,7 +764,7 @@ fn integrated_commands_refuse_a_client_only_owner() {
     );
     assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
     assert_eq!(machine.failure(&owner), Ok(None));
-    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let runtime = LoaderRuntime::new(machine, mods, crate::test_support::test_launch());
     let mut inner = runtime.inner.lock().expect("healthy lock");
     assert_eq!(
         inner.deliver_checked(&super::dispatch::Work::Command(invocation)),
@@ -1134,7 +1135,7 @@ fn install_client_context(directory: std::path::PathBuf) {
     composition.loaded = ravel_loader::Loaded::new(machine, mods).expect("complete set");
     super::install(
         composition,
-        super::pre_world_report(),
+        ravel_observability::PreWorldReport::new(environment()),
         directory,
         ravel_observability::Profiler::from_switch(true),
     )
@@ -1327,7 +1328,7 @@ fn packet_admission_rejects_required_failure_before_the_halt_latch() {
             })
         })
         .collect();
-    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let runtime = LoaderRuntime::new(machine, mods, crate::test_support::test_launch());
     assert!(runtime.accepts_packet_owner(&id("innocent")));
     assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
     {
@@ -1570,7 +1571,7 @@ fn integrated_ticks_exclude_client_only_and_parked_server_only_owners()
             Ok(module)
         })
         .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
-    let runtime = LoaderRuntime::new(machine, mods, crate::runtime::test_launch());
+    let runtime = LoaderRuntime::new(machine, mods, crate::test_support::test_launch());
     runtime.observe(&target("server.tick-integrated"), &[]);
     assert_eq!(
         log.lock().map_err(|error| error.to_string())?.seen,

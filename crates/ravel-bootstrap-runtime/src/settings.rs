@@ -43,9 +43,6 @@ impl Store {
     }
 }
 
-/// Human-facing label only; never used to select a runtime.
-pub(crate) const INTEGRATED_LABEL_SUFFIX: &str = " [integrated-server]";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Target {
     Process,
@@ -464,7 +461,8 @@ fn write_refusal(out: &mut String, key: &str, reason: &str) {
     field(out, reason);
 }
 
-/// Returns one owner's settings document.
+/// Returns the settings document for a `process:<mod>` or `integrated-server:<mod>`
+/// identity, or null when the target, owner, or selected runtime side does not match.
 ///
 /// # Panics
 /// Panics are translated into a JVM exception by the JNI guard.
@@ -472,10 +470,10 @@ fn write_refusal(out: &mut String, key: &str, reason: &str) {
 pub fn ravel_settings_document<'local>(
     env: EnvUnowned<'local>,
     _class: JClass<'local>,
-    owner: JString<'local>,
+    identity: JString<'local>,
 ) -> JString<'local> {
     DOCUMENT_CROSSINGS.fetch_add(1, Ordering::Relaxed);
-    hand_document(env, |env| Ok(document(&text(env, &owner)?)))
+    hand_document(env, |env| Ok(document(&text(env, &identity)?)))
 }
 
 /// Applies settings edits and returns refusals.

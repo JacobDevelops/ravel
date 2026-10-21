@@ -707,7 +707,7 @@ fn saving_without_a_disk_document_preserves_unedited_valid_player_values() {
 
 #[test]
 fn a_directory_the_client_has_started_in_is_admitted() {
-    let game = crate::tests::fresh_directory("settings-directory", "started");
+    let game = crate::test_support::fresh_directory("settings-directory", "started");
     std::fs::write(game.join(super::CLIENT_MARKER), "version:1\n")
         .expect("the marker should be writable");
     assert_eq!(super::admit_client_directory(&game), Ok(()));
@@ -932,7 +932,7 @@ fn saving_cleans_rejected_values_but_keeps_another_sides_valid_replacement() {
 
 #[test]
 fn a_directory_with_no_client_marker_is_refused_and_says_which_sign() {
-    let game = crate::tests::fresh_directory("settings-directory", "elsewhere");
+    let game = crate::test_support::fresh_directory("settings-directory", "elsewhere");
     let refused = super::admit_client_directory(&game).expect_err("no marker is refused");
     assert!(refused.contains(super::CLIENT_MARKER), "{refused}");
     assert!(refused.contains(&game.display().to_string()), "{refused}");
@@ -940,7 +940,7 @@ fn a_directory_with_no_client_marker_is_refused_and_says_which_sign() {
 
 #[test]
 fn a_client_marker_that_is_a_directory_does_not_admit_it() {
-    let game = crate::tests::fresh_directory("settings-directory", "marker-is-a-directory");
+    let game = crate::test_support::fresh_directory("settings-directory", "marker-is-a-directory");
     std::fs::create_dir(game.join(super::CLIENT_MARKER)).expect("create the directory");
     assert!(super::admit_client_directory(&game).is_err());
 }

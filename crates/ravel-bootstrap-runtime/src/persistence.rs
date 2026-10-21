@@ -107,7 +107,7 @@ pub fn open_world_data(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bo
 
 /// Produces the aggregate selected by the save receiver's identity.
 #[must_use]
-pub fn save_world_data(identity_raw: &str) -> SaveOutcome {
+pub(crate) fn save_world_data(identity_raw: &str) -> SaveOutcome {
     let runtime = match runtime() {
         Ok(runtime) => runtime,
         Err(error) => return SaveOutcome::Failed(error),

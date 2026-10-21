@@ -20,11 +20,11 @@ pub use writer::{GamePackError, Written};
 use writer::{Half, write_game_pack};
 
 /// Where a client scans for packs a player can enable.
-pub const RESOURCE_PACKS: &str = "resourcepacks";
+pub(crate) const RESOURCE_PACKS: &str = "resourcepacks";
 /// Where a world's automatically enabled packs live.
-pub const WORLD_DATA_PACKS: &str = "datapacks";
+pub(crate) const WORLD_DATA_PACKS: &str = "datapacks";
 /// The one directory Ravel writes in either place.
-pub const GAME_PACK_DIRECTORY: &str = "ravel";
+pub(crate) const GAME_PACK_DIRECTORY: &str = "ravel";
 
 const ASSET_DESCRIPTION: &str = "Assets supplied by the Ravel mods this instance runs.";
 const DATA_DESCRIPTION: &str = "Data supplied by the Ravel mods this world was opened with.";
@@ -59,7 +59,7 @@ fn write_staged_datapack(directory: &Path) -> PackOutcome {
     })
 }
 
-/// The folder-source identifier for [`GAME_PACK_DIRECTORY`].
+/// The folder-source identifier for the installed `ravel` resource-pack directory.
 #[must_use]
 pub fn pack_id() -> &'static str {
     concat!("file/", "ravel")
@@ -99,7 +99,7 @@ pub fn write_resource_pack(
 /// # Errors
 ///
 /// Returns an error if the pack cannot be written.
-pub fn write_world_pack(world: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
+fn write_world_pack(world: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
     write_data_pack(&installed_pack_root(world), supplied)
 }
 
@@ -246,7 +246,7 @@ mod tests {
     use ravel_loader::Supplied;
 
     fn directory(name: &str) -> PathBuf {
-        crate::tests::fresh_directory("world-pack", name)
+        crate::test_support::fresh_directory("world-pack", name)
     }
 
     #[test]

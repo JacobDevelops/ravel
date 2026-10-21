@@ -3,16 +3,13 @@
 //! Integrated-server measurements remain separate labelled rows. Client header
 //! fields retain their original meaning and wire version.
 
-use std::fmt::Write;
-
 use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
 use ravel_observability::{Metric, ProfilingReport};
 
 use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
-use crate::settings::INTEGRATED_LABEL_SUFFIX;
-use crate::wire::{VERSION, count, field, flag};
+use crate::wire::{VERSION, count, field, flag, integrated_note, integrated_row};
 
 /// The system property a launch turns the collectors on with.
 pub(crate) const SWITCH: &str = "-Dravel.profiling=true";
@@ -63,8 +60,7 @@ fn render(report: &ProfilingReport, integrated: Option<&ProfilingReport>) -> Str
     ) {
         if server {
             label.clear();
-            write!(label, "{}{INTEGRATED_LABEL_SUFFIX}", entry.mod_id)
-                .expect("writing into a String cannot fail");
+            integrated_row(&mut label, &entry.mod_id);
             field(&mut out, &label);
         } else {
             field(&mut out, entry.mod_id.as_str());
@@ -85,13 +81,14 @@ fn render(report: &ProfilingReport, integrated: Option<&ProfilingReport>) -> Str
     }
     if let Some(server) = integrated {
         label.clear();
-        write!(
-            label,
-            "[integrated-server] {} ticks; profiling {}. Header tick count and slow-callback threshold describe the client; server rows retain independent costs.",
-            server.ticks(),
-            if server.is_on() { "on" } else { "off" },
-        )
-        .expect("writing into a String cannot fail");
+        integrated_note(
+            &mut label,
+            &format_args!(
+                "{} ticks; profiling {}. Header tick count and slow-callback threshold describe the client; server rows retain independent costs.",
+                server.ticks(),
+                if server.is_on() { "on" } else { "off" },
+            ),
+        );
         field(&mut out, &label);
     }
 
@@ -132,7 +129,8 @@ mod tests {
     use ravel_observability::{Metric, Profiler};
 
     use super::document_with_integrated;
-    use crate::runtime::{LoaderRuntime, advance_through};
+    use crate::runtime::LoaderRuntime;
+    use crate::test_support::advance_through;
     use crate::wire::fields;
 
     fn mod_id(name: &str) -> ModId {
@@ -184,8 +182,8 @@ mod tests {
             machine,
             mods,
             profiler,
-            crate::runtime::pre_world_report(),
-            crate::runtime::test_launch(),
+            ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
+            crate::test_support::test_launch(),
             std::collections::BTreeMap::new(),
         ))
     }

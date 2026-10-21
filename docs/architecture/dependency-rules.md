@@ -79,6 +79,7 @@ stable contracts toward concrete host internals.
   identity: the adapter's package semver, its pinned Minecraft version, and the
   process platform and architecture. Admission callers depend on that adapter,
   not on the JNI bootstrap runtime, to obtain this identity.
+  Adapter-pinned facts, including legacy selection, come directly from `ravel-minecraft-adapter`.
 - `ravel-minecraft` is the highest crate below the host crates that may name a JNI
   type, and `JavaHandle` is the only one it names. Bootstrap-runtime,
   host-runtime and the cdylib hosts form the JNI layer. A hook argument that

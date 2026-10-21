@@ -5,7 +5,6 @@
 //! typed settings identity routes requests independently of those display labels.
 
 use std::collections::BTreeSet;
-use std::fmt::Write;
 
 use jni::EnvUnowned;
 use jni::objects::{JClass, JString};
@@ -14,8 +13,8 @@ use ravel_loader::{ModEntry, Requirement};
 
 use crate::guard::hand_document;
 use crate::runtime::LoaderRuntime;
-use crate::settings::{INTEGRATED_LABEL_SUFFIX, Identity, Target};
-use crate::wire::{MODS_VERSION, count, field, flag};
+use crate::settings::{Identity, Target};
+use crate::wire::{MODS_VERSION, count, field, flag, integrated_note, integrated_row};
 
 /// Encodes the live mod list, or returns nothing before runtime installation.
 fn document() -> Option<String> {
@@ -76,8 +75,7 @@ fn document_with_integrated(
     {
         // The label is presentation only; the row carries a separate settings target.
         label.clear();
-        write!(label, "{}{INTEGRATED_LABEL_SUFFIX}", entry.mod_id)
-            .expect("writing into a String cannot fail");
+        integrated_row(&mut label, &entry.mod_id);
         labelled_row(
             &mut out,
             client.entries().len() + index,
@@ -93,8 +91,7 @@ fn document_with_integrated(
     }
     for notice in server_notices {
         label.clear();
-        write!(label, "[integrated-server] {}", notice.text())
-            .expect("writing into a String cannot fail");
+        integrated_note(&mut label, &notice.text());
         field(&mut out, &label);
     }
     Some(out)
@@ -204,7 +201,8 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::document_with_integrated;
-    use crate::runtime::{DocumentFixture, LoaderRuntime};
+    use crate::runtime::LoaderRuntime;
+    use crate::test_support::DocumentFixture;
     use crate::wire::fields;
 
     fn mod_id(name: &str) -> ModId {
@@ -243,7 +241,11 @@ mod tests {
     }
 
     fn running(fixture: DocumentFixture) -> LoaderRuntime {
-        LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch())
+        LoaderRuntime::new(
+            fixture.machine,
+            fixture.mods,
+            crate::test_support::test_launch(),
+        )
     }
 
     fn machine(entries: Vec<LifecycleEntry>) -> DocumentFixture {
@@ -251,7 +253,7 @@ mod tests {
     }
 
     fn refuse_start(plan: &mut DocumentFixture, state: LifecycleState) {
-        plan.mods = vec![Box::new(crate::runtime::RefusingStart {
+        plan.mods = vec![Box::new(crate::test_support::RefusingStart {
             owner: mod_id("broken_mod"),
             state,
             detail: "failed",
@@ -463,14 +465,15 @@ mod tests {
 
     /// A runtime whose pre-world report already carries one notice.
     fn noticed(fixture: DocumentFixture, notice: &str) -> LoaderRuntime {
-        let mut report = crate::runtime::pre_world_report();
+        let mut report =
+            ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment());
         report.note(notice);
         LoaderRuntime::with_observers(
             fixture.machine,
             fixture.mods,
             ravel_observability::Profiler::off(),
             report,
-            crate::runtime::test_launch(),
+            crate::test_support::test_launch(),
             std::collections::BTreeMap::new(),
         )
     }
@@ -573,11 +576,11 @@ mod tests {
     #[test]
     fn the_screen_reads_the_set_as_it_stands_rather_than_as_it_launched() {
         let mut fixture = machine(vec![entry("broken_mod", Requirement::Required)]);
-        crate::runtime::advance_through(&mut fixture.machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut fixture.machine, LifecycleState::Running);
         let runtime = LoaderRuntime::new(
             fixture.machine,
             vec![Box::new(RefusingObserver(mod_id("broken_mod")))],
-            crate::runtime::test_launch(),
+            crate::test_support::test_launch(),
         );
         let before = fields(
             &document_with_integrated(Some(&runtime), None, &configurable(&[]))

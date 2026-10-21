@@ -30,6 +30,20 @@ fn runtime() -> Result<std::sync::Arc<LoaderRuntime>, HookError> {
     crate::runtime::selected().ok_or(HookError::Unavailable)
 }
 
+fn admitted_channel(channel: &str) -> Result<ContentId, &'static str> {
+    if channel.len() > MAX_CHANNEL_BYTES {
+        return Err("channel exceeds the byte limit");
+    }
+    channel.parse().map_err(|_| "invalid channel identity")
+}
+
+fn admitted_packet(channel: &str, payload_len: Option<usize>) -> Result<ContentId, &'static str> {
+    if payload_len.is_none_or(|len| len > MAX_PACKET_BYTES) {
+        return Err("null payload or payload exceeds the byte limit");
+    }
+    admitted_channel(channel)
+}
+
 fn commands(runtime: &LoaderRuntime) -> String {
     let keys = runtime.command_keys();
     let mut output = String::new();
@@ -122,20 +136,24 @@ pub fn ravel_legacy_packet<'local>(
 ) {
     env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
         let channel = text(env, &channel)?;
-        if channel.len() > MAX_CHANNEL_BYTES
-            || bytes.is_null()
-            || bytes.len(env)? > MAX_PACKET_BYTES
-        {
-            eprintln!("[ravel] legacy packet dropped: invalid channel or payload bounds");
-            return Ok(());
-        }
-        let Ok(id) = channel.parse::<ContentId>() else {
-            eprintln!("[ravel] legacy packet dropped: invalid channel identity");
-            return Ok(());
+        let payload_len = if bytes.is_null() {
+            None
+        } else {
+            Some(bytes.len(env)?)
         };
-        let Some(runtime) = crate::runtime::selected() else {
-            eprintln!("[ravel] legacy packet dropped: no selected runtime");
-            return Ok(());
+        let id = match admitted_packet(&channel, payload_len) {
+            Ok(id) => id,
+            Err(error) => {
+                report("legacy packet dropped", &error);
+                return Ok(());
+            }
+        };
+        let runtime = match runtime() {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                report("legacy packet dropped", &error);
+                return Ok(());
+            }
         };
         let payload = env.convert_byte_array(&bytes)?;
         // Network input refusals must not unwind vanilla's dispatch loop. Trusted
@@ -159,11 +177,9 @@ pub fn ravel_legacy_packet_owner<'local>(
 ) -> jboolean {
     env.with_env(|env: &mut Env<'local>| -> Result<jboolean, HookError> {
         let channel = text(env, &channel)?;
-        let owned = channel.len() <= MAX_CHANNEL_BYTES
-            && channel.parse::<ContentId>().is_ok_and(|id| {
-                crate::runtime::selected()
-                    .is_some_and(|runtime| runtime.accepts_packet_owner(id.namespace()))
-            });
+        let owned = admitted_channel(&channel).is_ok_and(|id| {
+            runtime().is_ok_and(|runtime| runtime.accepts_packet_owner(id.namespace()))
+        });
         Ok(if owned { jni::sys::JNI_TRUE } else { JNI_FALSE })
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -233,7 +249,8 @@ mod tests {
     use ravel_loader::{LifecycleEntry, LifecycleMachine, LoadedMods, Requirement};
 
     use super::{command_answer, commands, resource_paths};
-    use crate::runtime::{DocumentFixture, LoaderRuntime, Undelivered, test_launch};
+    use crate::runtime::{LoaderRuntime, Undelivered};
+    use crate::test_support::{DocumentFixture, test_launch};
     use crate::wire::fields;
 
     #[test]
@@ -247,6 +264,16 @@ mod tests {
             "static final int MAX_CHANNEL_BYTES = {};",
             super::MAX_CHANNEL_BYTES
         )));
+    }
+
+    #[test]
+    fn packet_admission_checks_inclusive_bounds_and_identity() {
+        let channel = format!("a:{}", "b".repeat(super::MAX_CHANNEL_BYTES - 2));
+        assert!(super::admitted_packet(&channel, Some(super::MAX_PACKET_BYTES)).is_ok());
+        assert!(super::admitted_channel(&format!("{channel}b")).is_err());
+        assert!(super::admitted_packet(&channel, Some(super::MAX_PACKET_BYTES + 1)).is_err());
+        assert!(super::admitted_channel("not-an-identity").is_err());
+        assert!(super::admitted_packet(&channel, None).is_err());
     }
 
     #[test]

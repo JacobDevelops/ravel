@@ -29,6 +29,7 @@ jni.workspace = true
 ravel-bootstrap-runtime.workspace = true
 ravel-core.workspace = true
 ravel-host-runtime.workspace = true
+ravel-minecraft-adapter.workspace = true
 ravel-test-mod-audio = { workspace = true, optional = true }
 ravel-test-mod-client-only = { workspace = true, optional = true }
 ravel-test-mod-commands = { workspace = true, optional = true }
@@ -40,7 +41,6 @@ ravel-test-mod-server-only = { workspace = true, optional = true }
 
 [dev-dependencies]
 ravel-loader.workspace = true
-ravel-minecraft-adapter.workspace = true
 ravel-package.workspace = true
 ravel-config.workspace = true
 serde_json.workspace = true

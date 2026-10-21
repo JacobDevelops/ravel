@@ -20,7 +20,7 @@ fn opening_another_world_freezes_the_live_checkpoint_before_delivery() {
 }
 
 fn scratch(name: &str) -> std::path::PathBuf {
-    crate::tests::fresh_directory("world-guard", name)
+    crate::test_support::fresh_directory("world-guard", name)
 }
 
 use std::collections::BTreeSet;
@@ -39,7 +39,8 @@ use serde_json::json;
 
 use super::{OpenOutcome, SaveOutcome, WorldIdentity};
 use crate::packs::PackOutcome;
-use crate::runtime::{LoaderRuntime, advance_through};
+use crate::runtime::LoaderRuntime;
+use crate::test_support::advance_through;
 
 const OWNER: &str = "saved_data";
 const OTHER_OWNER: &str = "other_saved_data";
@@ -257,7 +258,9 @@ impl ravel_core::StructuredFailure for Unresolvable {
 }
 
 fn running() -> (LoaderRuntime, Arc<Held>) {
-    running_with(crate::runtime::pre_world_report())
+    running_with(ravel_observability::PreWorldReport::new(
+        ravel_minecraft_adapter::environment(),
+    ))
 }
 
 fn running_with(report: ravel_observability::PreWorldReport) -> (LoaderRuntime, Arc<Held>) {
@@ -266,8 +269,10 @@ fn running_with(report: ravel_observability::PreWorldReport) -> (LoaderRuntime, 
 }
 
 fn running_pair() -> (LoaderRuntime, Arc<Held>, Arc<Held>) {
-    let (runtime, mut held) =
-        owners_running(&[OWNER, OTHER_OWNER], crate::runtime::pre_world_report());
+    let (runtime, mut held) = owners_running(
+        &[OWNER, OTHER_OWNER],
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
+    );
     let second = held.remove(1);
     (runtime, held.remove(0), second)
 }
@@ -291,7 +296,7 @@ fn owners_running_with_requirement(
             hosts,
             ravel_observability::Profiler::off(),
             report,
-            crate::runtime::test_launch(),
+            crate::test_support::test_launch(),
             std::collections::BTreeMap::new(),
         ),
         held,
@@ -413,8 +418,8 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
             machine,
             hosts,
             ravel_observability::Profiler::off(),
-            crate::runtime::pre_world_report(),
-            crate::runtime::test_launch(),
+            ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
+            crate::test_support::test_launch(),
             std::collections::BTreeMap::new(),
         ),
         held,
@@ -489,8 +494,8 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
         machine,
         hosts,
         ravel_observability::Profiler::off(),
-        crate::runtime::pre_world_report(),
-        crate::runtime::test_launch(),
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
+        crate::test_support::test_launch(),
         std::collections::BTreeMap::new(),
     );
     runtime
@@ -681,7 +686,7 @@ fn foreign_envelopes_cannot_overwrite_live_or_failed_owners() {
         let [_, writer] = held.as_slice() else {
             panic!("the fixture has two owners");
         };
-        let runtime = LoaderRuntime::new(machine, hosts, crate::runtime::test_launch());
+        let runtime = LoaderRuntime::new(machine, hosts, crate::test_support::test_launch());
         let stored = stored_owning(&[(OWNER, version(2), 7), (OTHER_OWNER, version(2), 11)]);
         runtime
             .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
@@ -764,7 +769,7 @@ fn interception_callback_failure_is_attributed_to_the_asked_owner() {
 fn optional_running() -> (LoaderRuntime, Arc<Held>) {
     let (runtime, mut held) = owners_running_with_requirement(
         &[OWNER],
-        crate::runtime::pre_world_report(),
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
         Requirement::Optional,
     );
     (runtime, held.remove(0))
@@ -773,7 +778,7 @@ fn optional_running() -> (LoaderRuntime, Arc<Held>) {
 fn failed_optional() -> (LoaderRuntime, Arc<Held>) {
     let (machine, hosts, mut held) = owner_parts(&[OWNER], Requirement::Optional, true);
     (
-        LoaderRuntime::new(machine, hosts, crate::runtime::test_launch()),
+        LoaderRuntime::new(machine, hosts, crate::test_support::test_launch()),
         held.remove(0),
     )
 }
@@ -902,7 +907,7 @@ fn save_panics_are_caught_and_attributed_for_every_requirement() {
     for requirement in [Requirement::Required, Requirement::Optional] {
         let (runtime, held) = owners_running_with_requirement(
             &[OWNER],
-            crate::runtime::pre_world_report(),
+            ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
             requirement,
         );
         runtime
@@ -944,7 +949,7 @@ fn admitted_interception_declarations_are_not_requeried_during_world_saves() {
     for requirement in [Requirement::Required, Requirement::Optional] {
         let (runtime, held) = owners_running_with_requirement(
             &[OWNER],
-            crate::runtime::pre_world_report(),
+            ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
             requirement,
         );
         runtime
@@ -1000,7 +1005,7 @@ fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
                 id: id(OWNER),
                 held: Arc::clone(&held),
             })],
-            crate::runtime::test_launch(),
+            crate::test_support::test_launch(),
         );
         runtime
             .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -1260,8 +1265,8 @@ fn shipped_running() -> LoaderRuntime {
         machine,
         vec![Box::new(shipped)],
         ravel_observability::Profiler::off(),
-        crate::runtime::pre_world_report(),
-        crate::runtime::test_launch(),
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
+        crate::test_support::test_launch(),
         std::collections::BTreeMap::new(),
     )
 }
@@ -1873,7 +1878,8 @@ fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
 
 #[test]
 fn a_refusal_the_machine_never_saw_still_withholds_the_world() {
-    let mut report = crate::runtime::pre_world_report();
+    let mut report =
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment());
     report.refuse(
         &ravel_observability::Subject::of(id("example_mod")),
         &Unresolvable,

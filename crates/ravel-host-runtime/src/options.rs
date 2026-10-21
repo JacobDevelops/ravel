@@ -11,7 +11,7 @@ const KEY: &str = "resourcePacks:";
 use ravel_core::paths::{INSTANCE_DIRECTORY, SEEDED_PACKS_FILE};
 
 /// Outcome of offering the resource pack in the player's settings.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum Seeded {
     /// The id was added to the list and the file rewritten.
     Added,
@@ -23,15 +23,17 @@ pub enum Seeded {
     NoSettings,
     /// The list is not a list of names, so nothing was rewritten.
     Unreadable(String),
+    /// The offer record could not be read, so settings were left untouched.
+    RecordUnreadable(OptionsError),
     /// The pack was offered and the record of that could not be kept.
-    Unrecorded(String),
+    Unrecorded(OptionsError),
 }
 
 /// Enables Ravel's pack once, then preserves the player's choice.
 ///
 /// Missing settings files are not created; malformed pack lists are left untouched.
 /// Other lines and their line endings are preserved byte for byte.
-/// Offer-record failures return [`Seeded::Unrecorded`] without failing the launch.
+/// Offer-record failures return a distinct nonfatal outcome without failing the launch.
 ///
 /// # Errors
 ///
@@ -44,7 +46,7 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
         Ok(true) => return Ok(Seeded::AlreadyOffered),
         Ok(false) => {}
         // An unreadable offer record must neither fail launch nor change settings.
-        Err(refused) => return Ok(Seeded::Unrecorded(refused.to_string())),
+        Err(refused) => return Ok(Seeded::RecordUnreadable(refused)),
     }
 
     let settings = game_directory.join(OPTIONS);
@@ -82,7 +84,7 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
 fn record_offer(record: &Path, made: Seeded) -> Seeded {
     match write_record(record) {
         Ok(()) => made,
-        Err(refused) => Seeded::Unrecorded(refused.to_string()),
+        Err(refused) => Seeded::Unrecorded(refused),
     }
 }
 
@@ -197,6 +199,16 @@ pub struct OptionsError {
     source: io::Error,
 }
 
+#[cfg(test)]
+impl OptionsError {
+    pub(super) fn test_error() -> Self {
+        Self {
+            path: PathBuf::from("offer-record"),
+            source: io::Error::new(io::ErrorKind::PermissionDenied, "record permission denied"),
+        }
+    }
+}
+
 impl fmt::Display for OptionsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -247,10 +259,10 @@ mod tests {
             &format!("{SURROUNDING}resourcePacks:[]\nrenderDistance:12\n"),
         );
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         assert_eq!(
             settings(&game),
@@ -267,10 +279,10 @@ mod tests {
         let game = directory("existing-list");
         write_settings(&game, "resourcePacks:[\"file/mine\",\"vanilla\"]\n");
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         assert_eq!(
             settings(&game),
@@ -286,17 +298,17 @@ mod tests {
     fn a_pack_the_player_removed_after_the_first_seed_is_not_put_back() {
         let game = directory("player-wins");
         write_settings(&game, "resourcePacks:[]\n");
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         write_settings(&game, "resourcePacks:[]\n");
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::AlreadyOffered
-        );
+        ));
         assert_eq!(settings(&game), "resourcePacks:[]\n");
         assert!(
             std::fs::read_to_string(game.join(INSTANCE_DIRECTORY).join(SEEDED_PACKS_FILE))
@@ -311,10 +323,10 @@ mod tests {
         let game = directory("no-key");
         write_settings(&game, SURROUNDING);
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         assert_eq!(
             settings(&game),
@@ -329,10 +341,10 @@ mod tests {
         let near = "incompatibleResourcePacks:[\"file/old\"]\nlegacyresourcePacks:[\"file/x\"]\n";
         write_settings(&game, &format!("{near}resourcePacks:[]\n"));
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         assert_eq!(
             settings(&game),
@@ -365,10 +377,10 @@ mod tests {
         }
 
         write_settings(&game, "resourcePacks:[]\n");
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
@@ -376,10 +388,10 @@ mod tests {
     fn an_instance_with_no_settings_file_is_given_none() {
         let game = directory("no-settings");
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::NoSettings
-        );
+        ));
 
         assert!(!game.join(OPTIONS).exists(), "no settings file is invented");
         assert!(
@@ -390,10 +402,10 @@ mod tests {
         );
 
         write_settings(&game, "resourcePacks:[]\n");
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
@@ -403,37 +415,38 @@ mod tests {
         let written = format!("resourcePacks:[\"{}\"]\n", pack_id());
         write_settings(&game, &written);
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Present
-        );
+        ));
 
         assert_eq!(settings(&game), written);
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::AlreadyOffered
-        );
+        ));
         std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
-    fn a_record_that_cannot_be_kept_leaves_the_launch_running_and_does_so_every_time() {
-        let game = directory("unrecordable");
+    fn an_unreadable_offer_record_never_changes_settings_or_refuses_launch() {
+        let game = directory("unreadable-record");
         write_settings(&game, "resourcePacks:[]\n");
-        // A file blocks the directory regardless of permission handling.
-        std::fs::write(game.join(INSTANCE_DIRECTORY), b"not a directory").expect("a writable file");
+        let record = game.join(INSTANCE_DIRECTORY).join(SEEDED_PACKS_FILE);
+        std::fs::create_dir_all(record.parent().expect("record parent")).expect("record directory");
+        std::fs::write(&record, [0xff]).expect("non-UTF-8 record");
 
         for attempt in 1..=2 {
             let outcome = seed_pack(&game).expect("a record Ravel cannot keep is not a refusal");
 
-            assert!(
-                matches!(outcome, Seeded::Unrecorded(_)),
-                "attempt {attempt}: {outcome:?}"
-            );
+            let Seeded::RecordUnreadable(error) = &outcome else {
+                panic!("attempt {attempt}: expected unreadable offer record, got {outcome:?}");
+            };
+            assert!(std::error::Error::source(error).is_some());
             assert_eq!(
                 settings(&game),
                 "resourcePacks:[]\n",
-                "attempt {attempt}: a record that cannot be kept edits nothing"
+                "attempt {attempt}: an unreadable record edits nothing"
             );
         }
         std::fs::remove_dir_all(game).expect("remove temporary directory");
@@ -458,7 +471,10 @@ mod tests {
 
         let outcome = seed_pack(&game).expect("a record Ravel cannot keep is not a refusal");
 
-        assert!(matches!(outcome, Seeded::Unrecorded(_)), "{outcome:?}");
+        let Seeded::Unrecorded(error) = &outcome else {
+            panic!("expected failed offer recording");
+        };
+        assert!(std::error::Error::source(error).is_some());
         assert_eq!(
             settings(&game),
             format!("resourcePacks:[\"{}\"]\n", pack_id()),
@@ -481,10 +497,10 @@ mod tests {
         let game = directory("crlf");
         write_settings(&game, "fov:0.0\r\nresourcePacks:[]\r\nlang:en_us\r\n");
 
-        assert_eq!(
+        assert!(matches!(
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
-        );
+        ));
 
         assert_eq!(
             settings(&game),

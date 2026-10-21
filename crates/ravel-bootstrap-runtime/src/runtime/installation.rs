@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 use ravel_observability::{PreWorldReport, Profiler};
 
-use super::{Composition, LoaderRuntime, pre_world_report};
+use super::{Composition, LoaderRuntime};
 
 static RUNTIME: OnceLock<(std::thread::ThreadId, ravel_core::Side, Arc<LoaderRuntime>)> =
     OnceLock::new();
@@ -105,7 +105,7 @@ pub fn install_integrated(composition: Composition) -> Result<(), InstallError> 
             composition,
             process.launch.game_directory.clone(),
             Profiler::from_switch(profiling),
-            pre_world_report(),
+            PreWorldReport::new(ravel_minecraft_adapter::environment()),
         ));
         *INTEGRATED_VIEW
             .lock()

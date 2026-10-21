@@ -12,7 +12,7 @@ fn a_world_path_that_names_no_absolute_directory_is_refused() {
 }
 
 fn scratch(name: &str) -> std::path::PathBuf {
-    crate::tests::fresh_directory("world-guard", name)
+    crate::test_support::fresh_directory("world-guard", name)
 }
 
 #[test]
@@ -177,13 +177,13 @@ fn world_pack_refusals_leave_files_untouched_and_publish_notices() {
 fn pack_runtime(game: std::path::PathBuf) -> crate::runtime::LoaderRuntime {
     let machine = ravel_loader::LifecycleMachine::new(ravel_core::Side::Client, Vec::new())
         .expect("empty host set");
-    let mut launch = crate::runtime::test_launch();
+    let mut launch = crate::test_support::test_launch();
     launch.game_directory = game;
     crate::runtime::LoaderRuntime::with_observers(
         machine,
         Vec::new(),
         ravel_observability::Profiler::off(),
-        crate::runtime::pre_world_report(),
+        ravel_observability::PreWorldReport::new(ravel_minecraft_adapter::environment()),
         launch,
         std::collections::BTreeMap::new(),
     )

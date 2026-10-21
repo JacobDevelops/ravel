@@ -101,7 +101,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "9ee8e5406e21167bd060f738a4e61421b3e42fcc971f3a096ee7dbfffeb0fcc8"
+        "sha256": "720353230d5ce952b1edfe1d010da49f71c2badee799a224bad110be796e50e8"
       },
       {
         "path": "src/recipes.rs",
@@ -113,7 +113,7 @@
       },
       {
         "path": "src/tier.rs",
-        "sha256": "2080408f19ba8d555f5c2c8b9055b82ad36118e4765a89758e6fba67ffae75cd"
+        "sha256": "90c1684ba2b21775631c642972979e06c714e16b240f61bbf42fda40b0cde862"
       },
       {
         "path": "src/tools.rs",

@@ -145,7 +145,7 @@ impl Report {
 
 /// Why a command did not run.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refusal {
+pub enum CommandRefused {
     /// The command was typed on a side it does not run on.
     WrongSide {
         /// The command that refused.
@@ -157,7 +157,7 @@ pub enum Refusal {
     Argument(PopulationError),
 }
 
-impl fmt::Display for Refusal {
+impl fmt::Display for CommandRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::WrongSide { command, side } => {
@@ -168,7 +168,7 @@ impl fmt::Display for Refusal {
     }
 }
 
-impl std::error::Error for Refusal {
+impl std::error::Error for CommandRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Argument(source) => Some(source),
@@ -259,17 +259,17 @@ impl Console {
     ///
     /// # Errors
     ///
-    /// Returns [`Refusal::WrongSide`] on a side the command does not run on, and
-    /// [`Refusal::Argument`] when the words after the root literal are not a
+    /// Returns [`CommandRefused::WrongSide`] on a side the command does not run on, and
+    /// [`CommandRefused::Argument`] when the words after the root literal are not a
     /// selection. Nothing is read or changed in either case.
     pub fn run(
         &mut self,
         command: Command,
         side: Side,
         arguments: &[String],
-    ) -> Result<Report, Refusal> {
+    ) -> Result<Report, CommandRefused> {
         if !command.runs_on(side) {
-            return Err(Refusal::WrongSide { command, side });
+            return Err(CommandRefused::WrongSide { command, side });
         }
         match command {
             Command::Tally => Ok(self.tally()),
@@ -287,8 +287,8 @@ impl Console {
         }
     }
 
-    fn sweep(&mut self, arguments: &[String]) -> Result<Report, Refusal> {
-        let selector = Selector::parse(arguments).map_err(Refusal::Argument)?;
+    fn sweep(&mut self, arguments: &[String]) -> Result<Report, CommandRefused> {
+        let selector = Selector::parse(arguments).map_err(CommandRefused::Argument)?;
         if self.population.selection_holds_players(&selector) {
             return Ok(Report::SweptRefusedPlayers);
         }
@@ -308,7 +308,7 @@ impl Console {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, Console, MAX_RETAINED, ROOTS, Refusal, Report};
+    use super::{Command, CommandRefused, Console, MAX_RETAINED, ROOTS, Report};
     use crate::population::Line;
     use crate::presentation::text;
     use ravel_sdk::Side;
@@ -344,9 +344,9 @@ mod tests {
                 &words("not a selection"),
             )
             .expect_err("not a legal selection");
-        assert!(matches!(refused, Refusal::Argument(_)));
+        assert!(matches!(refused, CommandRefused::Argument(_)));
         assert!(std::error::Error::source(&refused).is_some());
-        let refused = Refusal::WrongSide {
+        let refused = CommandRefused::WrongSide {
             command: Command::Sweep,
             side: Side::Client,
         };
@@ -486,7 +486,7 @@ mod tests {
         let before = console.population().total();
         assert!(matches!(
             console.run(Command::Sweep, Side::DedicatedServer, &words("cow bat")),
-            Err(Refusal::Argument(_))
+            Err(CommandRefused::Argument(_))
         ));
         assert_eq!(console.population().total(), before);
     }
@@ -500,7 +500,7 @@ mod tests {
             assert!(command.runs_on(Side::DedicatedServer));
             assert!(matches!(
                 console.run(command, Side::Client, &words("all")),
-                Err(Refusal::WrongSide { .. })
+                Err(CommandRefused::WrongSide { .. })
             ));
         }
         assert_eq!(

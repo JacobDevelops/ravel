@@ -274,7 +274,7 @@ pub struct Enchanting {
     /// The second input and how much of it one level costs.
     pub second: (Ingredient, u64),
     /// The enchantment applied.
-    pub enchantment: String,
+    pub enchantment: ContentId,
     /// The highest level that enchantment reaches.
     pub maximum: u32,
 }
@@ -289,7 +289,7 @@ pub enum RecipeRefused {
     /// The target already carries this enchantment at this level or above.
     NotAnUpgrade,
     /// The target carries an enchantment this one cannot coexist with.
-    Incompatible(String),
+    Incompatible(ContentId),
 }
 
 impl fmt::Display for RecipeRefused {
@@ -320,13 +320,16 @@ pub struct Enchanted {
     /// How much of the second input was consumed.
     pub second: u64,
     /// The entry the target became.
-    pub target: String,
+    pub target: ContentId,
 }
 
-/// The entry a plain book becomes.
-pub const PLAIN_BOOK: &str = "minecraft:book";
-/// The entry a plain book is enchanted into.
-pub const ENCHANTED_BOOK: &str = "minecraft:enchanted_book";
+/// The entry a plain book becomes when enchanted.
+#[must_use]
+pub fn enchanted_book() -> ContentId {
+    "minecraft:enchanted_book"
+        .parse()
+        .expect("declared book identity")
+}
 
 impl Enchanting {
     /// Applies this recipe to a target.
@@ -344,8 +347,8 @@ impl Enchanting {
         first: &Stack,
         second: &Stack,
         target: &Stack,
-        held: &BTreeMap<String, u32>,
-        compatible: &dyn Fn(&str, &str) -> bool,
+        held: &BTreeMap<ContentId, u32>,
+        compatible: &dyn Fn(&ContentId, &ContentId) -> bool,
         catalogue: &dyn Catalogue,
     ) -> Result<Enchanted, RecipeRefused> {
         if !self.first.0.matches(first, catalogue) || !self.second.0.matches(second, catalogue) {
@@ -370,13 +373,12 @@ impl Enchanting {
                 return Err(RecipeRefused::Incompatible(present.clone()));
             }
         }
-        let entry = if PLAIN_BOOK.split_once(':')
-            == Some((target.entry.namespace().as_str(), target.entry.path()))
-        {
-            ENCHANTED_BOOK.to_owned()
-        } else {
-            target.entry.to_string()
-        };
+        let entry =
+            if target.entry.namespace().as_str() == "minecraft" && target.entry.path() == "book" {
+                enchanted_book()
+            } else {
+                target.entry.clone()
+            };
         Ok(Enchanted {
             level,
             first: self.first.1 * u64::from(level),
@@ -452,7 +454,7 @@ pub struct Emptying {
     /// The recipe's own identifier.
     pub id: String,
     /// The entry an emptied container becomes.
-    pub result: String,
+    pub result: ContentId,
 }
 
 impl Emptying {
@@ -690,12 +692,12 @@ mod tests {
             id: "test:enchanting".to_owned(),
             first: (Ingredient::Entry("a:one".parse().expect("item id")), 4),
             second: (Ingredient::Entry("a:two".parse().expect("item id")), 2),
-            enchantment: "test:sharpness".to_owned(),
+            enchantment: "test:sharpness".parse().expect("enchantment id"),
             maximum: 5,
         };
         let table = Table::default();
         let held = BTreeMap::new();
-        let always = |_: &str, _: &str| true;
+        let always = |_: &ContentId, _: &ContentId| true;
 
         let answer = recipe
             .apply(
@@ -710,7 +712,10 @@ mod tests {
         assert_eq!(answer.level, 3);
         assert_eq!(answer.first, 12);
         assert_eq!(answer.second, 6);
-        assert_eq!(answer.target, "a:sword");
+        assert_eq!(
+            answer.target,
+            "a:sword".parse::<ContentId>().expect("item id")
+        );
 
         let capped = recipe
             .apply(
@@ -731,30 +736,30 @@ mod tests {
             id: "test:enchanting".to_owned(),
             first: (Ingredient::Entry("a:one".parse().expect("item id")), 4),
             second: (Ingredient::Entry("a:two".parse().expect("item id")), 2),
-            enchantment: "test:sharpness".to_owned(),
+            enchantment: "test:sharpness".parse().expect("enchantment id"),
             maximum: 5,
         };
         let table = Table::default();
         let held = BTreeMap::new();
-        let always = |_: &str, _: &str| true;
+        let always = |_: &ContentId, _: &ContentId| true;
 
         let book = recipe
             .apply(
                 &stack("a:one", 4),
                 &stack("a:two", 2),
-                &stack(PLAIN_BOOK, 1),
+                &stack("minecraft:book", 1),
                 &held,
                 &always,
                 &table,
             )
             .expect("one level");
-        assert_eq!(book.target, ENCHANTED_BOOK);
+        assert_eq!(book.target, enchanted_book());
 
         assert_eq!(
             recipe.apply(
                 &stack("a:one", 3),
                 &stack("a:two", 2),
-                &stack(PLAIN_BOOK, 1),
+                &stack("minecraft:book", 1),
                 &held,
                 &always,
                 &table
@@ -769,14 +774,14 @@ mod tests {
             id: "test:enchanting".to_owned(),
             first: (Ingredient::Entry("a:one".parse().expect("item id")), 1),
             second: (Ingredient::Entry("a:two".parse().expect("item id")), 1),
-            enchantment: "test:sharpness".to_owned(),
+            enchantment: "test:sharpness".parse().expect("enchantment id"),
             maximum: 5,
         };
         let table = Table::default();
         let mut held = BTreeMap::new();
-        held.insert("test:looting".to_owned(), 2);
+        held.insert("test:looting".parse().expect("enchantment id"), 2);
 
-        let compatible = |_: &str, _: &str| true;
+        let compatible = |_: &ContentId, _: &ContentId| true;
         assert!(
             recipe
                 .apply(
@@ -791,7 +796,7 @@ mod tests {
             "a compatible enchantment already present does not refuse the craft"
         );
 
-        let incompatible = |_: &str, _: &str| false;
+        let incompatible = |_: &ContentId, _: &ContentId| false;
         assert_eq!(
             recipe.apply(
                 &stack("a:one", 3),
@@ -801,7 +806,9 @@ mod tests {
                 &incompatible,
                 &table
             ),
-            Err(RecipeRefused::Incompatible("test:looting".to_owned()))
+            Err(RecipeRefused::Incompatible(
+                "test:looting".parse().expect("enchantment id")
+            ))
         );
     }
 
@@ -811,13 +818,13 @@ mod tests {
             id: "test:enchanting".to_owned(),
             first: (Ingredient::Entry("a:one".parse().expect("item id")), 1),
             second: (Ingredient::Entry("a:two".parse().expect("item id")), 1),
-            enchantment: "test:sharpness".to_owned(),
+            enchantment: "test:sharpness".parse().expect("enchantment id"),
             maximum: 5,
         };
         let table = Table::default();
-        let always = |_: &str, _: &str| true;
+        let always = |_: &ContentId, _: &ContentId| true;
         let mut held = BTreeMap::new();
-        held.insert("test:sharpness".to_owned(), 3);
+        held.insert("test:sharpness".parse().expect("enchantment id"), 3);
 
         assert_eq!(
             recipe.apply(
@@ -875,7 +882,7 @@ mod tests {
         );
         let recipe = Emptying {
             id: "test:emptying".to_owned(),
-            result: "a:empty".to_owned(),
+            result: "a:empty".parse().expect("item id"),
         };
 
         let last = vec![

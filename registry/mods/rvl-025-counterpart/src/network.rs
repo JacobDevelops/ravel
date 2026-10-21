@@ -444,6 +444,22 @@ pub enum Held {
     Other,
 }
 
+impl Held {
+    /// Classifies a sent stack by this package's registered identity.
+    #[must_use]
+    pub fn of(stack: &Stack) -> Self {
+        if stack.identity.namespace().as_str() != crate::MOD_ID {
+            return Self::Other;
+        }
+        match stack.identity.path() {
+            "pattern_card" => Self::PatternCard,
+            "match_item" => Self::MatchItem,
+            "carrier" | "filled_carrier" => Self::Carrier,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// What a payload's validation decided.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Applied {

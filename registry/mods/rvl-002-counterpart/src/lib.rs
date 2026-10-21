@@ -54,7 +54,6 @@ use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
-use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_321_counterpart::model::{Crop, Tier};
 
@@ -80,8 +79,8 @@ pub struct Entry {
     flags: FlagTable,
     ground_conversion_enabled: bool,
     top_tools_enchantable: bool,
-    tier: Tier,
-    crops: Vec<Crop>,
+    tier: Result<Tier, ModError>,
+    crops: Result<Vec<Crop>, ModError>,
     adjusted: bool,
     reloads: u32,
     entered: Vec<LifecycleState>,
@@ -98,25 +97,25 @@ impl Entry {
     /// crops, all six registered and none of them adjusted yet.
     #[must_use]
     pub fn new() -> Self {
-        let tier = tier::registered(
-            format!("{MOD_ID}:{}", tier::PATH)
-                .parse()
-                .expect("the declared tier has a legal identity"),
-        );
-        let crops = crops::DECLARED
-            .iter()
-            .map(|declared| {
-                declared.crop(
-                    ContentId::new(Self::declared_id().clone(), declared.path)
-                        .expect("the declared crop has a legal path"),
-                    &tier.id,
-                    declared
-                        .material_id(MOD_ID)
-                        .parse()
-                        .expect("a legal material identity"),
-                )
-            })
-            .collect();
+        let tier = ContentId::new(Self::declared_id().clone(), tier::PATH)
+            .map(tier::registered)
+            .map_err(ModError::from_display);
+        let crops = tier.as_ref().map_err(Clone::clone).and_then(|tier| {
+            crops::DECLARED
+                .iter()
+                .map(|declared| {
+                    Ok(declared.crop(
+                        ContentId::new(Self::declared_id().clone(), declared.path)
+                            .map_err(ModError::from_display)?,
+                        &tier.id,
+                        declared
+                            .material_id(MOD_ID)
+                            .parse()
+                            .map_err(ModError::from_display)?,
+                    ))
+                })
+                .collect()
+        });
         Self {
             declaration: Self::declaration(),
             settings: Settings::shipped(),
@@ -149,28 +148,6 @@ impl Entry {
             .map_err(ModError::from_display)
     }
 
-    fn answer_flag(&self, arguments: &JsonValue) -> ServiceResponse {
-        let Some(flag) = arguments.get("flag").and_then(JsonValue::as_str) else {
-            return ServiceResponse::new(json!({
-                "answered": false, "refused": "a flag request names no flag"
-            }));
-        };
-        let flag = match flag.parse() {
-            Ok(flag) => flag,
-            Err(error) => {
-                return ServiceResponse::new(json!({
-                    "answered": false, "refused": format!("{error}")
-                }));
-            }
-        };
-        if !self.flags.is_published(&flag) {
-            return ServiceResponse::new(json!({
-                "answered": false, "refused": "this entry has not published that flag"
-            }));
-        }
-        ServiceResponse::new(json!({"answered": true, "enabled": self.flags.enabled(&flag)}))
-    }
-
     /// The dependency's ground conversion flag, resolved through its service.
     #[must_use]
     pub const fn ground_conversion_enabled(&self) -> bool {
@@ -184,15 +161,13 @@ impl Entry {
     }
 
     /// The sixth tier.
-    #[must_use]
-    pub const fn tier(&self) -> &Tier {
-        &self.tier
+    pub fn tier(&self) -> Result<&Tier, ModError> {
+        self.tier.as_ref().map_err(Clone::clone)
     }
 
     /// The six crops, all registered whatever state they are in.
-    #[must_use]
-    pub fn crops(&self) -> &[Crop] {
-        &self.crops
+    pub fn crops(&self) -> Result<&[Crop], ModError> {
+        self.crops.as_deref().map_err(Clone::clone)
     }
 
     /// How many reloads this entry has seen.
@@ -221,19 +196,30 @@ impl Entry {
     /// anchor.
     ///
     /// # Errors
-    /// Returns the settings refusal before changing tiers or crops.
+    /// Returns a retained settings, tier or crop refusal, or an invalid packaged
+    /// identity. Retained refusals are checked before changing tiers or crops.
     pub fn adjust(&mut self) -> Result<(), ModError> {
         let fertilisable = self.settings()?.crops_fertilisable;
+        self.tier()?;
+        self.crops()?;
         tier::adjust(
-            &mut self.tier,
-            ContentId::new(Self::declared_id().clone(), "ground").expect("a legal ground path"),
-            ContentId::new(Self::declared_id().clone(), "material").expect("a legal material path"),
+            self.tier.as_mut().map_err(|error| error.clone())?,
+            ContentId::new(Self::declared_id().clone(), "ground")
+                .map_err(ModError::from_display)?,
+            ContentId::new(Self::declared_id().clone(), "material")
+                .map_err(ModError::from_display)?,
             fertilisable,
         );
-        for (crop, declared) in self.crops.iter_mut().zip(crops::DECLARED) {
+        for (crop, declared) in self
+            .crops
+            .as_mut()
+            .map_err(|error| error.clone())?
+            .iter_mut()
+            .zip(crops::DECLARED)
+        {
             crop.foundation = Some(
                 ContentId::new(Self::declared_id().clone(), declared.anchor)
-                    .expect("a legal foundation path"),
+                    .map_err(ModError::from_display)?,
             );
         }
         self.adjusted = true;
@@ -287,6 +273,8 @@ impl Mod for Entry {
         if state == LifecycleState::Constructed {
             self.declaration.as_ref().map_err(Clone::clone)?;
             self.settings()?;
+            self.tier()?;
+            self.crops()?;
         }
         self.entered.push(state);
         Ok(())
@@ -337,7 +325,7 @@ impl Mod for Entry {
         if request.id != Self::flags_service()? {
             return Err(ModError::refused("this entry does not answer that service"));
         }
-        Ok(self.answer_flag(&request.arguments))
+        Ok(ServiceResponse::new(self.flags.answer(&request.arguments)))
     }
 
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -351,31 +339,9 @@ impl Mod for Entry {
                 ravel_sdk::json!({"flag": flag.to_string()}),
             );
             let response = directory.call(&request).map_err(ModError::from_display)?;
-            if response
-                .value()
-                .get("answered")
-                .and_then(JsonValue::as_bool)
-                != Some(true)
-            {
-                let reason = response
-                    .value()
-                    .get("refused")
-                    .and_then(JsonValue::as_str)
-                    .unwrap_or("the flag service did not answer the request");
-                return Err(ModError::refused(format!(
-                    "{} refused {flag}: {reason}",
-                    request.id
-                )));
-            }
-            *value = response
-                .value()
-                .get("enabled")
-                .and_then(JsonValue::as_bool)
-                .ok_or_else(|| {
-                    ModError::refused(format!(
-                        "{} refused {flag}: the flag service did not answer a boolean",
-                        request.id
-                    ))
+            *value =
+                rvl_042_counterpart::flags::read_answer(response.value()).map_err(|reason| {
+                    ModError::refused(format!("{} refused {flag}: {reason}", request.id))
                 })?;
         }
         [self.top_tools_enchantable, self.ground_conversion_enabled] = values;
@@ -396,7 +362,7 @@ export_mod!(Entry::new());
 mod tests {
     use super::*;
     use ravel_sdk::content::{RegistrationRefused, RegistryKey};
-    use ravel_sdk::json;
+    use ravel_sdk::{JsonValue, json};
     use rvl_321_counterpart::model::Crafted;
 
     struct Provider(rvl_321_counterpart::Entry);
@@ -593,14 +559,45 @@ mod tests {
     }
 
     #[test]
+    fn retained_identity_failures_refuse_construction_and_adjustment() {
+        let refusal = ModError::refused("invalid packaged content identity");
+        for failed_tier in [true, false] {
+            let mut entry = Entry::new();
+            if failed_tier {
+                entry.tier = Err(refusal.clone());
+            } else {
+                entry.crops = Err(refusal.clone());
+            }
+            assert_eq!(entry.adjust(), Err(refusal.clone()));
+            assert_eq!(
+                entry.enter(LifecycleState::Constructed),
+                Err(refusal.clone())
+            );
+            assert!(!entry.adjusted());
+        }
+    }
+
+    #[test]
     fn a_fresh_entry_registers_all_six_crops_and_has_not_adjusted_them() {
         let entry = Entry::new();
-        assert_eq!(entry.crops().len(), crops::COUNT);
-        assert!(entry.crops().iter().all(|crop| crop.enabled));
-        assert!(entry.crops().iter().all(|crop| crop.foundation.is_none()));
+        assert_eq!(entry.crops().expect("valid crops").len(), crops::COUNT);
+        assert!(
+            entry
+                .crops()
+                .expect("valid crops")
+                .iter()
+                .all(|crop| crop.enabled)
+        );
+        assert!(
+            entry
+                .crops()
+                .expect("valid crops")
+                .iter()
+                .all(|crop| crop.foundation.is_none())
+        );
         assert!(!entry.adjusted());
-        assert_eq!(entry.tier().value, tier::VALUE);
-        assert_eq!(entry.tier().ground, None);
+        assert_eq!(entry.tier().expect("valid tier").value, tier::VALUE);
+        assert_eq!(entry.tier().expect("valid tier").ground, None);
         assert_eq!(
             entry.settings().expect("valid settings"),
             &Settings::shipped().expect("valid defaults")
@@ -612,10 +609,15 @@ mod tests {
         let mut entry = Entry::new();
         entry.adjust().expect("valid settings");
         assert!(entry.adjusted());
-        assert!(entry.tier().ground.is_some());
-        assert!(entry.tier().material.is_some());
-        assert!(!entry.tier().second_drop);
-        for (crop, declared) in entry.crops().iter().zip(crops::DECLARED) {
+        assert!(entry.tier().expect("valid tier").ground.is_some());
+        assert!(entry.tier().expect("valid tier").material.is_some());
+        assert!(!entry.tier().expect("valid tier").second_drop);
+        for (crop, declared) in entry
+            .crops()
+            .expect("valid crops")
+            .iter()
+            .zip(crops::DECLARED)
+        {
             assert_eq!(
                 crop.foundation,
                 Some(
@@ -671,6 +673,7 @@ mod tests {
         let entry = Entry::new();
         let mut ids: Vec<String> = entry
             .crops()
+            .expect("valid crops")
             .iter()
             .map(|crop| match &crop.crafted {
                 Crafted::Entry { id, .. } | Crafted::Tag(id) => id.to_string(),
@@ -696,7 +699,7 @@ mod tests {
         let entry = Entry::new();
         let declaration = Entry::declaration().expect("the packaged declaration is well formed");
         let mut shaped = 0;
-        for crop in entry.crops() {
+        for crop in entry.crops().expect("valid crops") {
             let Crafted::Tag(id) = &crop.crafted else {
                 continue;
             };
@@ -791,16 +794,16 @@ mod tests {
     fn a_reload_changes_nothing_because_this_entry_owns_nothing_a_reload_rebuilds() {
         let mut entry = Entry::new();
         entry.adjust().expect("valid settings");
-        let tier = entry.tier().clone();
-        let crops = entry.crops().to_vec();
+        let tier = entry.tier().expect("valid tier").clone();
+        let crops = entry.crops().expect("valid crops").to_vec();
         for _ in 0..5 {
             entry
                 .observe(GameEvent::ResourcesReloaded)
                 .expect("a reload is a signal this entry sees");
         }
         assert_eq!(entry.reloads(), 5);
-        assert_eq!(entry.tier(), &tier);
-        assert_eq!(entry.crops(), crops.as_slice());
+        assert_eq!(entry.tier().expect("valid tier"), &tier);
+        assert_eq!(entry.crops().expect("valid crops"), crops.as_slice());
         assert_eq!(
             data::OWNS_PERSISTED_STATE,
             entry

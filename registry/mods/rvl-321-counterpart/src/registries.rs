@@ -26,7 +26,7 @@ use crate::model::{ChargeType, Crop, CropKind, Derived, Tier};
 /// the sentence each entry renders as are what stands in for the log: a host
 /// that has one writes these, and a test reads them either way.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Refusal {
+pub enum RegistryDeclarationRefused {
     /// A crop whose path collides with a registered crop's, in any namespace.
     CropPath(String),
     /// A tier, kind, modifier or charge type colliding on its full identifier.
@@ -37,7 +37,7 @@ pub enum Refusal {
     Closed(String),
 }
 
-impl fmt::Display for Refusal {
+impl fmt::Display for RegistryDeclarationRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CropPath(id) => {
@@ -55,7 +55,7 @@ impl fmt::Display for Refusal {
     }
 }
 
-impl std::error::Error for Refusal {}
+impl std::error::Error for RegistryDeclarationRefused {}
 
 /// The suffix each per-crop registration is named with.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,7 +123,7 @@ pub struct Registries {
     charges: Vec<ChargeType>,
     claimed: BTreeMap<ravel_sdk::content::ContentId, ravel_sdk::content::ContentId>,
     crop_window_open: bool,
-    refused: Vec<Refusal>,
+    refused: Vec<RegistryDeclarationRefused>,
 }
 
 impl Registries {
@@ -159,11 +159,13 @@ impl Registries {
     /// what makes an extension's opt-out final.
     pub fn register_crop(&mut self, mut crop: Crop, extension: Derived) -> bool {
         if !self.crop_window_open {
-            self.refused.push(Refusal::Closed(crop.id.to_string()));
+            self.refused
+                .push(RegistryDeclarationRefused::Closed(crop.id.to_string()));
             return false;
         }
         if self.crops.iter().any(|held| held.path() == crop.path()) {
-            self.refused.push(Refusal::CropPath(crop.id.to_string()));
+            self.refused
+                .push(RegistryDeclarationRefused::CropPath(crop.id.to_string()));
             return false;
         }
         crop.derived = crop.derived.narrowed_by(extension);
@@ -174,7 +176,8 @@ impl Registries {
     /// Registers a tier, refused on full identifier collision only.
     pub fn register_tier(&mut self, tier: Tier) -> bool {
         if self.tiers.iter().any(|held| held.id == tier.id) {
-            self.refused.push(Refusal::Identifier(tier.id));
+            self.refused
+                .push(RegistryDeclarationRefused::Identifier(tier.id));
             return false;
         }
         self.tiers.push(tier);
@@ -184,7 +187,8 @@ impl Registries {
     /// Registers a crop kind, refused on full identifier collision only.
     pub fn register_kind(&mut self, kind: CropKind) -> bool {
         if self.kinds.iter().any(|held| held.id == kind.id) {
-            self.refused.push(Refusal::Identifier(kind.id));
+            self.refused
+                .push(RegistryDeclarationRefused::Identifier(kind.id));
             return false;
         }
         self.kinds.push(kind);
@@ -194,7 +198,8 @@ impl Registries {
     /// Registers a slotted modifier, refused on full identifier collision only.
     pub fn register_modifier(&mut self, modifier: Modifier) -> bool {
         if self.modifiers.iter().any(|held| held.id == modifier.id) {
-            self.refused.push(Refusal::Identifier(modifier.id));
+            self.refused
+                .push(RegistryDeclarationRefused::Identifier(modifier.id));
             return false;
         }
         self.modifiers.push(modifier);
@@ -208,7 +213,8 @@ impl Registries {
     /// that overlaps an earlier one is dropped whole rather than partly.
     pub fn register_charge(&mut self, charge: ChargeType) -> bool {
         if self.charges.iter().any(|held| held.id == charge.id) {
-            self.refused.push(Refusal::Identifier(charge.id));
+            self.refused
+                .push(RegistryDeclarationRefused::Identifier(charge.id));
             return false;
         }
         if let Some(taken) = charge
@@ -216,7 +222,8 @@ impl Registries {
             .iter()
             .find(|creature| self.claimed.contains_key(*creature))
         {
-            self.refused.push(Refusal::Creature(taken.clone()));
+            self.refused
+                .push(RegistryDeclarationRefused::Creature(taken.clone()));
             return false;
         }
         for creature in &charge.creatures {
@@ -301,7 +308,7 @@ impl Registries {
 
     /// Everything that was refused, in the order it was refused.
     #[must_use]
-    pub fn refused(&self) -> &[Refusal] {
+    pub fn refused(&self) -> &[RegistryDeclarationRefused] {
         &self.refused
     }
 }
@@ -521,7 +528,7 @@ mod tests {
         assert_eq!(registries.crops().len(), 0);
         assert_eq!(
             registries.refused(),
-            [Refusal::Closed("a:one".to_owned())].as_slice()
+            [RegistryDeclarationRefused::Closed("a:one".to_owned())].as_slice()
         );
 
         registries.open_crop_window();
@@ -580,7 +587,7 @@ mod tests {
         assert_eq!(registries.charges().len(), 1);
         assert_eq!(
             registries.refused().last(),
-            Some(&Refusal::Creature(
+            Some(&RegistryDeclarationRefused::Creature(
                 "test:creature".parse().expect("a legal creature identity")
             )),
             "claiming is global and first wins"

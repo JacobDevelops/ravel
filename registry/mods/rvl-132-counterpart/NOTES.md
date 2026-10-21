@@ -75,7 +75,7 @@ meet the vocabulary's own set, so a caller writing one filter for all three kind
 | §2 the two compatibility bundles at the compatibility point | implemented | `src/capabilities.rs`, `src/lib.rs` |
 | §2 clearing the recipe caches when a server stops | implemented, and on reload too | `src/lib.rs`, `src/cache.rs` |
 | §3 four of the six settings | implemented; three implemented, one carried-but-inert | `src/settings.rs` |
-| §3 the two abort settings changing what loading does | implemented | `src/lib.rs`, `src/recipes.rs` |
+| §3 the two abort settings changing what loading does | implemented for bundle loading and caller-controlled recipe enumeration; recipe abort has no entry reader | `src/lib.rs`, `src/recipes.rs` |
 | §3 the two outbound-network settings | not shipped, deliberately | `src/settings.rs` |
 | §3 the ignore list rebuilding the comparator on every load | implemented | `src/settings.rs`, `src/lib.rs` |
 | §4 the three ingredient kinds and their registered names | implemented, names coined | `src/kinds.rs` |
@@ -216,10 +216,12 @@ other direction: a Ravel package declares its own names and never the host's.
 - **`diagnostics.log_unequal_data` is carried but inert.** It is declared, resolved and readable as
   `Settings::log_unequal_data`, and nothing reads it. Ravel's SDK publishes no logging facility, so
   there is no honest way to implement "log every unequal comparison" here; declaring the setting and
-  quietly doing nothing under it would be worse than saying so. The two settings §3 makes change what
-  loading does are wired: `compatibility.abort_on_failure` at `Entry::load_compatibility`, which
-  records the failure in `Entry::bundle_failures` and carries on at the shipped default, and
-  `recipes.abort_on_invalid` at `Station::enumerate`.
+  quietly doing nothing under it would be worse than saying so.
+- **`recipes.abort_on_invalid` is carried but not wired into entry loading.** The setting is
+  declared and resolved. `Station::enumerate` accepts an explicit abort argument from its caller;
+  the entry does not enumerate station recipes or forward this setting. Only
+  `compatibility.abort_on_failure` changes loading at `Entry::load_compatibility`, which records
+  failures in `Entry::bundle_failures` and carries on at the shipped default.
 - **The brewing view's running result starts as the first input (§11, inferred).** §11 says the
   simulation "mixes the given inputs in order, each against the running result" without saying what
   the running result is before the first mix. Starting from the first input is the only reading under

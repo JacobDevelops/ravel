@@ -403,7 +403,7 @@ impl Default for EscapeField {
     }
 }
 
-fn data_tag(data: &Components) -> Tag {
+pub(crate) fn data_tag(data: &Components) -> Tag {
     Tag::Compound(
         data.iter()
             .map(|(name, value)| (name.clone(), value_tag(value)))
@@ -1160,10 +1160,7 @@ mod tests {
 
     #[test]
     fn a_stack_under_the_cap_round_trips_without_the_escape_field() {
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            12,
-        );
+        let stack = crate::stack("minecraft:stone", 12);
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert!(!fields.contains_key(EscapeField::placeholder().name()));
@@ -1172,10 +1169,7 @@ mod tests {
 
     #[test]
     fn a_stack_above_the_cap_writes_a_clamped_count_and_the_true_one() {
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            5_000,
-        );
+        let stack = crate::stack("minecraft:stone", 5_000);
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert_eq!(fields.get("count"), Some(&Tag::Int(99)));
@@ -1188,10 +1182,7 @@ mod tests {
 
     #[test]
     fn a_stack_of_exactly_the_cap_still_carries_the_escape_field() {
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            COUNT_CAP,
-        );
+        let stack = crate::stack("minecraft:stone", COUNT_CAP);
         let tag = stack_tag(&stack).expect("a stack inside the kind's range");
         let fields = tag.fields().expect("a compound");
         assert_eq!(fields.get("count"), Some(&Tag::Int(99)));
@@ -1222,10 +1213,7 @@ mod tests {
     #[test]
     fn an_escape_field_of_another_spelling_is_not_read() {
         let written = stack_tag_with(
-            &Stack::of(
-                "minecraft:stone".parse().expect("a valid content identity"),
-                500,
-            ),
+            &crate::stack("minecraft:stone", 500),
             &EscapeField::supplied(Some("other_count")).expect("a spelling"),
         )
         .expect("a stack inside the kind's range");
@@ -1334,11 +1322,7 @@ mod tests {
                 Value::Sequence(vec![Value::Whole(1), Value::Whole(2)]),
             ),
         ]);
-        let stack = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(data);
+        let stack = crate::stack("minecraft:axe", 1).carrying(data);
         assert_eq!(
             stack_from(&stack_tag(&stack).expect("a stack inside the kind's range")),
             Ok(stack)
@@ -1368,19 +1352,13 @@ mod tests {
 
     #[test]
     fn a_portion_round_trips_with_and_without_data() {
-        let plain = Portion::of(
-            "minecraft:water".parse().expect("a valid fluid identity"),
-            1_000,
-        );
+        let plain = crate::portion("minecraft:water", 1_000);
         assert_eq!(
             portion_from(&portion_tag(&plain).expect("a portion inside the kind's range")),
             Ok(plain)
         );
-        let detailed = Portion::of(
-            "minecraft:water".parse().expect("a valid fluid identity"),
-            1_000,
-        )
-        .carrying(Components::from([("tint".to_owned(), Value::Whole(4))]));
+        let detailed = crate::portion("minecraft:water", 1_000)
+            .carrying(Components::from([("tint".to_owned(), Value::Whole(4))]));
         assert_eq!(
             portion_from(&portion_tag(&detailed).expect("a portion inside the kind's range")),
             Ok(detailed)
@@ -1465,10 +1443,7 @@ mod tests {
     #[test]
     fn the_kinds_write_and_read_through_the_vocabularys_own_methods() {
         let items = Stackable::default();
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            200,
-        );
+        let stack = crate::stack("minecraft:stone", 200);
         assert_eq!(items.read(&items.write(&stack)), Ok(stack));
         assert_eq!(
             Scalar.read(&Scalar.write(&Charge::of(9))),
@@ -1481,10 +1456,7 @@ mod tests {
     #[test]
     fn a_candidate_round_trips_with_its_flags() {
         let candidate = Candidate {
-            value: Stack::of(
-                "minecraft:stone".parse().expect("a valid content identity"),
-                3,
-            ),
+            value: crate::stack("minecraft:stone", 3),
             under: Flags::slot(Stack::IDENTITY),
         };
         let tag = candidate_tag(&candidate, stack_tag).expect("a candidate in range");
@@ -1510,10 +1482,7 @@ mod tests {
         let mut set = CandidateSet::new();
         for count in 1..4 {
             set.add(Candidate {
-                value: Stack::of(
-                    "minecraft:stone".parse().expect("a valid content identity"),
-                    count,
-                ),
+                value: crate::stack("minecraft:stone", count),
                 under: Flags::slot(Stack::COUNT),
             })
             .expect("inside the ceiling");
@@ -1595,10 +1564,7 @@ mod tests {
         let mut set = CandidateSet::new();
         for count in 1..3 {
             set.add(Candidate {
-                value: Stack::of(
-                    "minecraft:stone".parse().expect("a valid content identity"),
-                    count,
-                ),
+                value: crate::stack("minecraft:stone", count),
                 under: Flags::slot(Stack::COUNT),
             })
             .expect("inside the ceiling");
@@ -1710,11 +1676,7 @@ mod tests {
             ("rate".to_owned(), Value::Decimal(0.5)),
             ("absent".to_owned(), Value::Decimal(f64::NAN)),
         ]);
-        let stack = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(data.clone());
+        let stack = crate::stack("minecraft:axe", 1).carrying(data.clone());
         let read = stack_from(&stack_tag(&stack).expect("a stack inside the kind's range"))
             .expect("a stack this module wrote");
         assert_eq!(read.data, data);

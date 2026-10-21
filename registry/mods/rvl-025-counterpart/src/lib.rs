@@ -432,7 +432,9 @@ impl Entry {
         held: network::Held,
     ) -> Result<(), ModError> {
         let payload: network::HeldItem = delivery.decode().map_err(ModError::from)?;
-        if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
+        if network::apply_held_item(held, network::Held::of(&payload.sent), &payload)
+            != network::Applied::Accepted
+        {
             return Ok(());
         }
         let record = match held {
@@ -1237,7 +1239,7 @@ mod tests {
         entry.holding_mut().kind = network::Held::Carrier;
         let before = entry.carrier().clone();
 
-        let mut sent = Stack::of("counterpart:carrier").expect("legal");
+        let mut sent = Stack::of("rvl_025_counterpart:carrier").expect("legal");
         sent.components.insert(
             Record::CarrierContents.as_str().to_owned(),
             json!({
@@ -1258,6 +1260,43 @@ mod tests {
             &before,
             "a record naming an item the carrier does not support is not installed"
         );
+    }
+
+    #[test]
+    fn a_wholesale_payload_with_a_valid_record_refuses_a_different_item_kind() {
+        let mut entry = Entry::new(Side::DedicatedServer);
+        entry.holding_mut().kind = network::Held::Carrier;
+        let before = entry.carrier().clone();
+        let mut carrier = Carrier::new();
+        let mut device = Stack::of("counterpart:device").expect("legal");
+        device.carrier_ready = true;
+        carrier.insert(1, device).expect("supported device");
+        for identity in [
+            "minecraft:stone",
+            "rvl_025_counterpart:match_item",
+            "counterpart:carrier",
+            "rvl_025_counterpart:carrier",
+        ] {
+            let mut sent = Stack::of(identity).expect("legal");
+            sent.components.insert(
+                Record::CarrierContents.as_str().to_owned(),
+                carrier.to_saved().to_string(),
+            );
+            entry
+                .receive_packet(&delivery_of(
+                    &network::HeldItem { sent },
+                    Side::DedicatedServer,
+                ))
+                .expect("a declared packet");
+            assert_eq!(
+                entry.carrier(),
+                if identity == "rvl_025_counterpart:carrier" {
+                    &carrier
+                } else {
+                    &before
+                }
+            );
+        }
     }
 
     #[test]

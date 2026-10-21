@@ -4,7 +4,7 @@
 //! the connected region of matching blocks reachable from that position and
 //! validates it against a list of constraints. The result a counterpart owes is
 //! not a boolean: a dependent's whole player-facing experience of building a
-//! multiblock is the message naming what is wrong, so [`Failure`] carries the
+//! multiblock is the message naming what is wrong, so [`DetectionFailure`] carries the
 //! position and the reason.
 //!
 //! The specification records the traversal order as unread. This detector walks
@@ -62,16 +62,16 @@ pub enum Constraint {
 
 /// Why a detection failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Failure {
+pub struct DetectionFailure {
     /// Where the failure was found.
     pub at: Position,
     /// What is wrong, in the words a dependent shows a player.
-    pub reason: Reason,
+    pub reason: ShapeRefused,
 }
 
 /// What was wrong with a region.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Reason {
+pub enum ShapeRefused {
     /// The starting position holds nothing the predicates admit.
     NothingAtTheStart,
     /// The region is the wrong size.
@@ -104,7 +104,7 @@ pub enum Reason {
     },
 }
 
-impl fmt::Display for Reason {
+impl fmt::Display for ShapeRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NothingAtTheStart => formatter.write_str("nothing here belongs to the shape"),
@@ -135,7 +135,7 @@ impl fmt::Display for Reason {
     }
 }
 
-impl std::error::Error for Reason {}
+impl std::error::Error for ShapeRefused {}
 
 /// A region that satisfied every constraint.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -186,18 +186,18 @@ impl Region {
 ///
 /// # Errors
 ///
-/// Returns [`Failure`] naming the position and the reason, which is what a
+/// Returns [`DetectionFailure`] naming the position and the reason, which is what a
 /// dependent shows a player.
 pub fn detect(
     start: Position,
     block_at: &dyn Fn(Position) -> Option<String>,
     admits: &dyn Fn(&str) -> bool,
     constraints: &[Constraint],
-) -> Result<Region, Failure> {
+) -> Result<Region, DetectionFailure> {
     if !block_at(start).is_some_and(|block| admits(&block)) {
-        return Err(Failure {
+        return Err(DetectionFailure {
             at: start,
-            reason: Reason::NothingAtTheStart,
+            reason: ShapeRefused::NothingAtTheStart,
         });
     }
     let mut found: BTreeSet<Position> = BTreeSet::new();
@@ -214,9 +214,9 @@ pub fn detect(
             }
             if block_at(next).is_some_and(|block| admits(&block)) {
                 if found.len() >= MAX_VISITED {
-                    return Err(Failure {
+                    return Err(DetectionFailure {
                         at: next,
-                        reason: Reason::TooLarge { limit: MAX_VISITED },
+                        reason: ShapeRefused::TooLarge { limit: MAX_VISITED },
                     });
                 }
                 found.insert(next);
@@ -258,7 +258,7 @@ fn validate(
     region: &Region,
     block_at: &dyn Fn(Position) -> Option<String>,
     constraints: &[Constraint],
-) -> Result<(), Failure> {
+) -> Result<(), DetectionFailure> {
     let at = region.lowest;
     let count_of = |wanted: &str| {
         region
@@ -281,9 +281,9 @@ fn validate(
             Constraint::Cube => {
                 let extent = region.extent();
                 if extent[0] != extent[1] || extent[1] != extent[2] {
-                    return Err(Failure {
+                    return Err(DetectionFailure {
                         at,
-                        reason: Reason::NotACube { extent },
+                        reason: ShapeRefused::NotACube { extent },
                     });
                 }
             }
@@ -302,9 +302,9 @@ fn validate(
                     .iter()
                     .find(|position| region.is_interior(**position))
                 {
-                    return Err(Failure {
+                    return Err(DetectionFailure {
                         at: *inside,
-                        reason: Reason::NotHollow,
+                        reason: ShapeRefused::NotHollow,
                     });
                 }
             }
@@ -319,20 +319,20 @@ fn validate(
     Ok(())
 }
 
-fn wrong_size(region: &Region, wanted: usize) -> Failure {
-    Failure {
+fn wrong_size(region: &Region, wanted: usize) -> DetectionFailure {
+    DetectionFailure {
         at: region.lowest,
-        reason: Reason::WrongSize {
+        reason: ShapeRefused::WrongSize {
             found: region.size(),
             wanted,
         },
     }
 }
 
-fn wrong_count(at: Position, block: &str, found: usize, wanted: usize) -> Failure {
-    Failure {
+fn wrong_count(at: Position, block: &str, found: usize, wanted: usize) -> DetectionFailure {
+    DetectionFailure {
         at,
-        reason: Reason::WrongCount {
+        reason: ShapeRefused::WrongCount {
             block: block.to_owned(),
             found,
             wanted,
@@ -361,9 +361,9 @@ mod tests {
         let level = |_at: Position| None;
         assert_eq!(
             detect([4, 4, 4], &level, &everything, &[]),
-            Err(Failure {
+            Err(DetectionFailure {
                 at: [4, 4, 4],
-                reason: Reason::NothingAtTheStart,
+                reason: ShapeRefused::NothingAtTheStart,
             })
         );
     }
@@ -374,8 +374,8 @@ mod tests {
         let refused = detect([0, 0, 0], &level, &|_block| false, &[]);
         assert!(matches!(
             refused,
-            Err(Failure {
-                reason: Reason::NothingAtTheStart,
+            Err(DetectionFailure {
+                reason: ShapeRefused::NothingAtTheStart,
                 ..
             })
         ));
@@ -408,9 +408,9 @@ mod tests {
         ] {
             assert_eq!(
                 detect([0, 0, 0], &level, &everything, &[constraint]),
-                Err(Failure {
+                Err(DetectionFailure {
                     at: [0, 0, 0],
-                    reason: Reason::WrongSize { found: 27, wanted },
+                    reason: ShapeRefused::WrongSize { found: 27, wanted },
                 })
             );
         }
@@ -436,9 +436,9 @@ mod tests {
         };
         assert_eq!(
             detect([0, 0, 0], &level, &everything, &[Constraint::Cube]),
-            Err(Failure {
+            Err(DetectionFailure {
                 at: [0, 0, 0],
-                reason: Reason::NotACube { extent: [4, 1, 1] },
+                reason: ShapeRefused::NotACube { extent: [4, 1, 1] },
             })
         );
         assert!(detect([0, 0, 0], &cube(3), &everything, &[Constraint::Cube]).is_ok());
@@ -459,9 +459,9 @@ mod tests {
                 &everything,
                 &[Constraint::ExactCount("core".to_owned(), 2)]
             ),
-            Err(Failure {
+            Err(DetectionFailure {
                 at: [0, 0, 0],
-                reason: Reason::WrongCount {
+                reason: ShapeRefused::WrongCount {
                     block: "core".to_owned(),
                     found: 1,
                     wanted: 2,
@@ -488,8 +488,8 @@ mod tests {
                 &everything,
                 &[Constraint::MinimumCount("core".to_owned(), 9)]
             ),
-            Err(Failure {
-                reason: Reason::WrongCount { .. },
+            Err(DetectionFailure {
+                reason: ShapeRefused::WrongCount { .. },
                 ..
             })
         ));
@@ -500,9 +500,9 @@ mod tests {
         let level = cube(3);
         assert_eq!(
             detect([0, 0, 0], &level, &everything, &[Constraint::Hollow]),
-            Err(Failure {
+            Err(DetectionFailure {
                 at: [1, 1, 1],
-                reason: Reason::NotHollow,
+                reason: ShapeRefused::NotHollow,
             })
         );
         let shell = |at: Position| {
@@ -515,11 +515,11 @@ mod tests {
     #[test]
     fn a_failure_reads_as_the_message_a_dependent_shows() {
         assert_eq!(
-            Reason::NothingAtTheStart.to_string(),
+            ShapeRefused::NothingAtTheStart.to_string(),
             "nothing here belongs to the shape"
         );
         assert_eq!(
-            Reason::WrongSize {
+            ShapeRefused::WrongSize {
                 found: 3,
                 wanted: 9
             }
@@ -527,12 +527,12 @@ mod tests {
             "the shape holds 3 blocks and wants 9"
         );
         assert!(
-            Reason::NotACube { extent: [4, 1, 1] }
+            ShapeRefused::NotACube { extent: [4, 1, 1] }
                 .to_string()
                 .contains('4')
         );
         assert!(
-            Reason::WrongCount {
+            ShapeRefused::WrongCount {
                 block: "core".to_owned(),
                 found: 1,
                 wanted: 2
@@ -540,8 +540,15 @@ mod tests {
             .to_string()
             .contains("core")
         );
-        assert_eq!(Reason::NotHollow.to_string(), "the shape is not hollow");
-        assert!(Reason::TooLarge { limit: 9 }.to_string().contains('9'));
+        assert_eq!(
+            ShapeRefused::NotHollow.to_string(),
+            "the shape is not hollow"
+        );
+        assert!(
+            ShapeRefused::TooLarge { limit: 9 }
+                .to_string()
+                .contains('9')
+        );
     }
 
     #[test]

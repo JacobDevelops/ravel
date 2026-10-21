@@ -71,7 +71,7 @@ pub use crate::quantity::{
 };
 pub use crate::query::{ParseError, Query, Segment};
 pub use crate::settings::{Framework, Scope, Settings};
-pub use crate::shapes::{Constraint, Failure, Reason, Region};
+pub use crate::shapes::{Constraint, DetectionFailure, Region, ShapeRefused};
 pub use crate::storage::{
     Attempt, Difference, Inconsistent, Slotted, SlottedStore, Store as QuantityStore, Tank,
     ValueBox, difference, move_quantity,

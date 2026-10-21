@@ -482,12 +482,119 @@ fn check_limit(slot: Option<usize>, limit: u64) -> Result<(), StoreRefused> {
     Ok(())
 }
 
+/// Grows a stack, held to a limit, answering with what did not fit.
+#[must_use]
+pub fn grow(stack: &Stack, by: u64, limit: u64) -> (Stack, u64) {
+    let mut grown = stack.clone();
+    let room = limit.saturating_sub(grown.count);
+    let taken = by.min(room);
+    grown.count += taken;
+    (grown, by - taken)
+}
+
+/// Reduces a stack, optionally yielding the crafting remainder at zero.
+///
+/// Reducing to nothing answers with the remainder when one was supplied, which
+/// is what a reusable entry relies on, and with nothing otherwise.
+#[must_use]
+pub fn reduce(stack: &Stack, by: u64, remainder: Option<Stack>) -> Option<Stack> {
+    let left = stack.count.saturating_sub(by);
+    if left == 0 {
+        return remainder;
+    }
+    let mut reduced = stack.clone();
+    reduced.count = left;
+    Some(reduced)
+}
+
+/// Merges one stack into another, answering with the merged stack and the rest.
+///
+/// Two stacks combine only on the same entry and the same data; the merged stack
+/// is filled up to the limit and any overflow comes back as the rest. A stack
+/// that cannot combine comes back whole.
+#[must_use]
+pub fn insert(into: &Stack, incoming: &Stack, limit: u64) -> (Stack, Option<Stack>) {
+    if into.is_empty() {
+        let (merged, over) = grow(
+            &Stack::new(incoming.entry.clone(), 0),
+            incoming.count,
+            limit,
+        );
+        let mut merged = merged;
+        merged.data = incoming.data.clone();
+        return (merged, rest(incoming, over));
+    }
+    if !into.merges_with(incoming) {
+        return (into.clone(), Some(incoming.clone()));
+    }
+    let (merged, over) = grow(into, incoming.count, limit);
+    (merged, rest(incoming, over))
+}
+
+fn rest(incoming: &Stack, over: u64) -> Option<Stack> {
+    if over == 0 {
+        return None;
+    }
+    let mut left = incoming.clone();
+    left.count = over;
+    Some(left)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn id(entry: &str) -> ContentId {
         entry.parse().expect("a valid test identity")
+    }
+    #[test]
+    fn growing_a_stack_answers_with_what_did_not_fit() {
+        let (grown, over) = grow(&Stack::new(id("test:one"), 60), 10, 64);
+        assert_eq!(grown.count, 64);
+        assert_eq!(over, 6);
+    }
+
+    #[test]
+    fn reducing_to_nothing_yields_the_remainder_when_one_was_supplied() {
+        let stack = Stack::new(id("test:one"), 1);
+        assert_eq!(reduce(&stack, 1, None), None);
+        assert_eq!(
+            reduce(&stack, 1, Some(Stack::new(id("test:empty"), 1))),
+            Some(Stack::new(id("test:empty"), 1))
+        );
+        assert_eq!(
+            reduce(&Stack::new(id("test:one"), 5), 2, None),
+            Some(Stack::new(id("test:one"), 3))
+        );
+    }
+
+    #[test]
+    fn two_stacks_on_the_same_entry_and_data_merge_up_to_the_limit() {
+        let (merged, rest) = insert(
+            &Stack::new(id("test:one"), 30),
+            &Stack::new(id("test:one"), 40),
+            64,
+        );
+        assert_eq!(merged.count, 64);
+        assert_eq!(rest, Some(Stack::new(id("test:one"), 6)));
+
+        let (kept, refused) = insert(
+            &Stack::new(id("test:one"), 1),
+            &Stack::new(id("test:two"), 1),
+            64,
+        );
+        assert_eq!(kept, Stack::new(id("test:one"), 1));
+        assert_eq!(refused, Some(Stack::new(id("test:two"), 1)));
+    }
+
+    #[test]
+    fn an_insert_into_an_empty_slot_takes_the_incoming_data() {
+        let mut incoming = Stack::new(id("test:one"), 3);
+        incoming.data = ravel_sdk::json!({ "charge": 2 });
+        let (merged, rest) = insert(&Stack::new(id("test:empty"), 0), &incoming, 64);
+        assert_eq!(merged.count, 3);
+        assert_eq!(merged.data, incoming.data);
+        assert_eq!(rest, None);
     }
 
     fn store(slots: usize) -> Store {

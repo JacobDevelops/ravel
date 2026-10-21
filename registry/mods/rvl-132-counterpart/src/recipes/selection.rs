@@ -79,10 +79,10 @@ impl Closure {
         keep: impl Fn(&Stack, &Stack) -> bool,
     ) -> Result<Vec<Converted>, RecipeRefused> {
         let mut recipes = Vec::new();
-        let mut seen: BTreeSet<(String, String, String)> = BTreeSet::new();
-        let mut reached: BTreeSet<String> = BTreeSet::new();
+        let mut seen = BTreeSet::new();
+        let mut reached = BTreeSet::new();
         let mut frontier = vec![base.clone()];
-        reached.insert(identify(base));
+        reached.insert(identity(base));
         while !frontier.is_empty() {
             let mut next = Vec::new();
             for input in &frontier {
@@ -93,7 +93,7 @@ impl Closure {
                     if output.is_empty() || !keep(input, &output) {
                         continue;
                     }
-                    let key = (identify(ingredient), identify(input), identify(&output));
+                    let key = (identity(ingredient), identity(input), identity(&output));
                     if !seen.insert(key) {
                         continue;
                     }
@@ -101,7 +101,7 @@ impl Closure {
                         return Err(RecipeRefused::ProbableCycle { cap: self.cap });
                     }
                     recipes.push(brewing_recipe(ingredient, input, &output));
-                    if reached.insert(identify(&output)) {
+                    if reached.insert(identity(&output)) {
                         next.push(output);
                     }
                 }
@@ -154,13 +154,16 @@ impl Closure {
     }
 }
 
+fn identity(value: &Stack) -> (ravel_sdk::content::ContentId, crate::data::Components) {
+    (value.identity.clone(), value.data.clone())
+}
+
 fn identify(value: &Stack) -> String {
-    let data: Vec<String> = value
-        .data
-        .iter()
-        .map(|(name, held)| format!("{name}={held:?}"))
-        .collect();
-    format!("{}#{}", value.identity, data.join(","))
+    format!(
+        "{}#{}",
+        value.identity,
+        crate::forms::data_tag(&value.data).to_json()
+    )
 }
 
 /// One brewing result as a four-position recipe.
@@ -203,6 +206,32 @@ mod tests {
 
     fn stack(name: &str) -> Stack {
         Stack::of(name.parse().expect("a valid identity"), 1)
+    }
+
+    #[test]
+    fn distinct_nan_components_remain_distinct_in_closure_keys_and_recipe_ids() {
+        use crate::data::Value;
+
+        let mut first = stack("test:ingredient");
+        first.data.insert(
+            "value".to_owned(),
+            Value::Decimal(f64::from_bits(0x7ff8_0000_0000_0001)),
+        );
+        let mut second = first.clone();
+        second.data.insert(
+            "value".to_owned(),
+            Value::Decimal(f64::from_bits(0x7ff8_0000_0000_0002)),
+        );
+        let recipes = Closure::shipped()
+            .compute(
+                &stack("test:water"),
+                &[first, second],
+                |_, input| (input.identity.path() == "water").then(|| stack("test:output")),
+                |_, _| true,
+            )
+            .expect("finite closure");
+        assert_eq!(recipes.len(), 2);
+        assert_ne!(recipes[0].id, recipes[1].id);
     }
 
     fn mix(ingredient: &Stack, running: &Stack) -> Option<Stack> {

@@ -44,7 +44,7 @@ pub const MAXIMUM_ENTRIES: usize = 4096;
 
 /// Why one written entry was not read.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Rejected {
+pub enum OverrideRejected {
     /// The entry does not hold exactly one pair separator.
     NotAPair,
     /// One of the two selectors is not a shape the language admits.
@@ -57,7 +57,7 @@ pub enum Rejected {
     TableFull,
 }
 
-impl fmt::Display for Rejected {
+impl fmt::Display for OverrideRejected {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let said = match self {
             Self::NotAPair => {
@@ -74,7 +74,7 @@ impl fmt::Display for Rejected {
     }
 }
 
-impl std::error::Error for Rejected {}
+impl std::error::Error for OverrideRejected {}
 
 /// One row: which tool, which material, and what one of it is worth.
 #[derive(Clone, Debug, PartialEq)]
@@ -93,7 +93,7 @@ pub struct Skipped {
     /// The line as it was written.
     pub written: String,
     /// What was wrong with it.
-    pub reason: Rejected,
+    pub reason: OverrideRejected,
 }
 
 /// The whole table, in the order it was written.
@@ -122,7 +122,7 @@ impl Table {
                 Ok(row) if table.rows.len() < MAXIMUM_ENTRIES => table.rows.push(row),
                 Ok(_) => table.skipped.push(Skipped {
                     written: written.to_owned(),
-                    reason: Rejected::TableFull,
+                    reason: OverrideRejected::TableFull,
                 }),
                 Err(reason) => table.skipped.push(Skipped {
                     written: written.to_owned(),
@@ -133,10 +133,10 @@ impl Table {
         table
     }
 
-    fn read_entry(written: &str, default_namespace: &str) -> Result<Override, Rejected> {
+    fn read_entry(written: &str, default_namespace: &str) -> Result<Override, OverrideRejected> {
         let mut halves = written.split(PAIR_SEPARATOR);
         let (Some(left), Some(right), None) = (halves.next(), halves.next(), halves.next()) else {
-            return Err(Rejected::NotAPair);
+            return Err(OverrideRejected::NotAPair);
         };
         let (material_text, multiplier) = match right.split_once(MULTIPLIER_SEPARATOR) {
             None => (right.trim(), DEFAULT_MULTIPLIER),
@@ -144,9 +144,9 @@ impl Table {
                 let read = written_multiplier
                     .trim()
                     .parse::<f64>()
-                    .map_err(|_| Rejected::UnreadableMultiplier)?;
+                    .map_err(|_| OverrideRejected::UnreadableMultiplier)?;
                 if !read.is_finite() || read <= 0.0 {
-                    return Err(Rejected::NonPositiveMultiplier);
+                    return Err(OverrideRejected::NonPositiveMultiplier);
                 }
                 (material.trim(), read)
             }
@@ -209,9 +209,9 @@ impl Table {
     }
 }
 
-fn selector(text: &str, default_namespace: &str) -> Result<Expression, Rejected> {
+fn selector(text: &str, default_namespace: &str) -> Result<Expression, OverrideRejected> {
     if text.is_empty() {
-        return Err(Rejected::UnreadableSelector);
+        return Err(OverrideRejected::UnreadableSelector);
     }
     let completed = if text.contains(':') {
         text.to_owned()
@@ -222,7 +222,7 @@ fn selector(text: &str, default_namespace: &str) -> Result<Expression, Rejected>
         // A whole namespace is the one shape the table refuses, and it is refused
         // however it is spelled: `tag:*` names the namespace `tag` rather than a
         // tag, so admitting it on the prefix would admit the shape by spelling.
-        Expression::Nothing | Expression::Namespace(_) => Err(Rejected::UnreadableSelector),
+        Expression::Nothing | Expression::Namespace(_) => Err(OverrideRejected::UnreadableSelector),
         readable @ (Expression::Tag(_) | Expression::Entry(_)) => Ok(readable),
     }
 }
@@ -310,14 +310,17 @@ mod tests {
         );
         assert_eq!(table.rows().len(), 1);
         assert_eq!(table.skipped().len(), 3);
-        assert_eq!(table.skipped()[1].reason, Rejected::NotAPair);
+        assert_eq!(table.skipped()[1].reason, OverrideRejected::NotAPair);
     }
 
     #[test]
     fn a_multiplier_that_is_not_a_number_drops_the_entry_rather_than_the_table() {
         let table = Table::parse("example:pick=example:ingot@later", HOST);
         assert_eq!(table.rows().len(), 0);
-        assert_eq!(table.skipped()[0].reason, Rejected::UnreadableMultiplier);
+        assert_eq!(
+            table.skipped()[0].reason,
+            OverrideRejected::UnreadableMultiplier
+        );
     }
 
     #[test]
@@ -329,7 +332,10 @@ mod tests {
         ] {
             let table = Table::parse(written, HOST);
             assert_eq!(table.rows().len(), 0, "{written} is refused");
-            assert_eq!(table.skipped()[0].reason, Rejected::NonPositiveMultiplier);
+            assert_eq!(
+                table.skipped()[0].reason,
+                OverrideRejected::NonPositiveMultiplier
+            );
         }
     }
 
@@ -358,7 +364,10 @@ mod tests {
     fn a_namespace_wildcard_is_not_a_selector_this_table_admits() {
         let table = Table::parse("example:*=example:ingot", HOST);
         assert_eq!(table.rows().len(), 0);
-        assert_eq!(table.skipped()[0].reason, Rejected::UnreadableSelector);
+        assert_eq!(
+            table.skipped()[0].reason,
+            OverrideRejected::UnreadableSelector
+        );
     }
 
     #[test]
@@ -370,17 +379,17 @@ mod tests {
         let table = Table::parse(&written, HOST);
         assert_eq!(table.rows().len(), MAXIMUM_ENTRIES);
         assert_eq!(table.skipped().len(), 3);
-        assert_eq!(table.skipped()[0].reason, Rejected::TableFull);
+        assert_eq!(table.skipped()[0].reason, OverrideRejected::TableFull);
     }
 
     #[test]
     fn every_rejection_says_what_was_wrong_in_words() {
         for reason in [
-            Rejected::NotAPair,
-            Rejected::UnreadableSelector,
-            Rejected::UnreadableMultiplier,
-            Rejected::NonPositiveMultiplier,
-            Rejected::TableFull,
+            OverrideRejected::NotAPair,
+            OverrideRejected::UnreadableSelector,
+            OverrideRejected::UnreadableMultiplier,
+            OverrideRejected::NonPositiveMultiplier,
+            OverrideRejected::TableFull,
         ] {
             assert_ne!(reason.to_string(), "");
         }

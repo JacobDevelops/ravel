@@ -203,7 +203,7 @@ impl std::error::Error for Mismatch {}
 
 /// Why a table refused a declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DeclareRefused {
+pub enum ActionRefused {
     /// An action with no name, which nothing could look up.
     EmptyName,
     /// A name already declared.
@@ -212,7 +212,7 @@ pub enum DeclareRefused {
     Full,
 }
 
-impl fmt::Display for DeclareRefused {
+impl fmt::Display for ActionRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyName => formatter.write_str("an action with no name names nothing"),
@@ -222,7 +222,7 @@ impl fmt::Display for DeclareRefused {
     }
 }
 
-impl std::error::Error for DeclareRefused {}
+impl std::error::Error for ActionRefused {}
 
 /// What one action does when it arrives.
 pub trait Handler {
@@ -304,23 +304,23 @@ impl Actions {
     ///
     /// # Errors
     ///
-    /// Returns [`DeclareRefused::EmptyName`] for an unnamed action,
-    /// [`DeclareRefused::Duplicate`] for a name already declared, and
-    /// [`DeclareRefused::Full`] past [`MAX_ACTIONS`].
+    /// Returns [`ActionRefused::EmptyName`] for an unnamed action,
+    /// [`ActionRefused::Duplicate`] for a name already declared, and
+    /// [`ActionRefused::Full`] past [`MAX_ACTIONS`].
     pub fn declare(
         &mut self,
         name: &str,
         shape: Shape,
         handler: Box<dyn Handler>,
-    ) -> Result<(), DeclareRefused> {
+    ) -> Result<(), ActionRefused> {
         if name.is_empty() {
-            return Err(DeclareRefused::EmptyName);
+            return Err(ActionRefused::EmptyName);
         }
         if self.table.contains_key(name) {
-            return Err(DeclareRefused::Duplicate(name.to_owned()));
+            return Err(ActionRefused::Duplicate(name.to_owned()));
         }
         if self.table.len() >= MAX_ACTIONS {
-            return Err(DeclareRefused::Full);
+            return Err(ActionRefused::Full);
         }
         self.order.push(name.to_owned());
         self.table.insert(name.to_owned(), (shape, handler));
@@ -370,7 +370,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::{
-        Actions, DeclareRefused, Dispatch, Handler, MAX_ACTIONS, Mismatch, Shape, Slot, Surface,
+        ActionRefused, Actions, Dispatch, Handler, MAX_ACTIONS, Mismatch, Shape, Slot, Surface,
     };
     use crate::transport::{Action, Argument, ArgumentKind};
 
@@ -537,14 +537,14 @@ mod tests {
         let mut actions = Actions::on(Surface::Menu);
         assert_eq!(
             actions.declare("", Shape::none(), Box::new(|_: &[Argument]| {})),
-            Err(DeclareRefused::EmptyName)
+            Err(ActionRefused::EmptyName)
         );
         actions
             .declare("one", Shape::none(), Box::new(|_: &[Argument]| {}))
             .expect("a fresh table");
         assert_eq!(
             actions.declare("one", Shape::none(), Box::new(|_: &[Argument]| {})),
-            Err(DeclareRefused::Duplicate("one".to_owned()))
+            Err(ActionRefused::Duplicate("one".to_owned()))
         );
         for index in 1..MAX_ACTIONS {
             actions
@@ -557,7 +557,7 @@ mod tests {
         }
         assert_eq!(
             actions.declare("past", Shape::none(), Box::new(|_: &[Argument]| {})),
-            Err(DeclareRefused::Full)
+            Err(ActionRefused::Full)
         );
         assert_eq!(actions.declared().len(), MAX_ACTIONS);
     }

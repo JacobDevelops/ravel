@@ -272,6 +272,41 @@ mod tests {
     use ravel_sdk::config::ValueError;
 
     #[test]
+    fn each_boolean_override_changes_only_its_own_setting() {
+        use ravel_sdk::config::ValueDocument;
+        use ravel_sdk::json;
+        for key in [
+            ABORT_ON_INVALID_RECIPE,
+            ABORT_ON_BUNDLE_FAILURE,
+            LOG_UNEQUAL_DATA,
+        ] {
+            let written = ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1, "owner": crate::MOD_ID, "values": {(key): true},
+                })
+                .to_string(),
+            )
+            .expect("a legal override");
+            let resolved = LayeredConfiguration::resolve(
+                declaration().expect("a legal declaration"),
+                Some(&written),
+                None,
+            )
+            .expect("the override resolves");
+            let settings = Settings::read(&resolved).expect("typed settings");
+            assert_eq!(
+                settings.abort_on_invalid_recipe,
+                key == ABORT_ON_INVALID_RECIPE
+            );
+            assert_eq!(
+                settings.abort_on_bundle_failure,
+                key == ABORT_ON_BUNDLE_FAILURE
+            );
+            assert_eq!(settings.log_unequal_data, key == LOG_UNEQUAL_DATA);
+        }
+    }
+
+    #[test]
     fn a_missing_declared_key_is_returned_instead_of_defaulted() {
         for name in KEYS {
             let changed = DOCUMENT.replace(name, "renamed.key");

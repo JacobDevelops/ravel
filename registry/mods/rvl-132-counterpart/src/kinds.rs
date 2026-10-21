@@ -626,7 +626,7 @@ impl Ingredient for Stackable {
     }
 
     fn ignoring_quantity(&self) -> Flags {
-        Flags::slot(Stack::IDENTITY).combine(Flags::slot(Stack::DATA))
+        Flags::of(self.ignoring_quantity_conditions())
     }
 
     fn ignoring_quantity_conditions(&self) -> Conditions {
@@ -778,7 +778,7 @@ impl Ingredient for Fluid {
     }
 
     fn ignoring_quantity(&self) -> Flags {
-        Flags::slot(Portion::FLUID).combine(Flags::slot(Portion::DATA))
+        Flags::of(self.ignoring_quantity_conditions())
     }
 
     fn ignoring_quantity_conditions(&self) -> Conditions {
@@ -1166,10 +1166,7 @@ mod tests {
     #[test]
     fn an_instance_projects_onto_each_of_its_categories_and_onto_nothing_else() {
         let kind = stackable();
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            4,
-        );
+        let stack = crate::stack("minecraft:stone", 4);
         assert_eq!(
             kind.project(&stack, &Stack::CATEGORIES[0]),
             Some(Projection::Named(stack.identity.clone()))
@@ -1256,14 +1253,8 @@ mod tests {
         // every empty stack equal would collapse two the matcher calls
         // different into one key.
         let kind = Stackable::default();
-        let left = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            0,
-        );
-        let right = Stack::of(
-            "minecraft:dirt".parse().expect("a valid content identity"),
-            0,
-        );
+        let left = crate::stack("minecraft:stone", 0);
+        let right = crate::stack("minecraft:dirt", 0);
         assert_ne!(kind.compare(&left, &right), Ordering::Equal);
         assert!(!kind.matches(&left, &right, kind.exact_conditions()));
         assert_eq!(
@@ -1275,11 +1266,8 @@ mod tests {
     #[test]
     fn two_zero_volume_portions_of_different_fluids_are_not_one_key() {
         let kind = Fluid::default();
-        let left = Portion::of(
-            "minecraft:water".parse().expect("a valid fluid identity"),
-            0,
-        );
-        let right = Portion::of("minecraft:lava".parse().expect("a valid fluid identity"), 0);
+        let left = crate::portion("minecraft:water", 0);
+        let right = crate::portion("minecraft:lava", 0);
         assert_ne!(kind.compare(&left, &right), Ordering::Equal);
         assert!(!kind.matches(&left, &right, kind.exact_conditions()));
     }
@@ -1297,14 +1285,8 @@ mod tests {
     #[test]
     fn two_stacks_alike_but_for_count_match_when_quantity_is_ignored() {
         let kind = stackable();
-        let one = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            1,
-        );
-        let many = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            40,
-        );
+        let one = crate::stack("minecraft:stone", 1);
+        let many = crate::stack("minecraft:stone", 40);
         assert!(kind.matches(&one, &many, kind.ignoring_quantity().conditions()));
         assert!(!kind.matches(&one, &many, kind.exactly().conditions()));
         assert!(kind.matches(&one, &many, kind.anything().conditions()));
@@ -1314,16 +1296,8 @@ mod tests {
     fn matching_instances_digest_alike_under_the_same_set() {
         let kind = stackable();
         let data = Components::from([("wear".to_owned(), Value::Whole(3))]);
-        let one = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(data.clone());
-        let other = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(data);
+        let one = crate::stack("minecraft:axe", 1).carrying(data.clone());
+        let other = crate::stack("minecraft:axe", 1).carrying(data);
         let under = kind.exactly().conditions();
         assert!(kind.matches(&one, &other, under));
         assert_eq!(kind.digest(&one, under), kind.digest(&other, under));
@@ -1333,16 +1307,10 @@ mod tests {
     fn an_ignored_component_kind_makes_two_stacks_match_and_digest_alike() {
         let comparator = Comparator::new(["wear".to_owned()]).expect("a small list");
         let kind = Stackable::with(comparator);
-        let sharp = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
-        let blunt = Stack::of(
-            "minecraft:axe".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
+        let sharp = crate::stack("minecraft:axe", 1)
+            .carrying(Components::from([("wear".to_owned(), Value::Whole(0))]));
+        let blunt = crate::stack("minecraft:axe", 1)
+            .carrying(Components::from([("wear".to_owned(), Value::Whole(90))]));
         let under = kind.exactly().conditions();
         assert!(kind.matches(&sharp, &blunt, under));
         assert_eq!(kind.digest(&sharp, under), kind.digest(&blunt, under));
@@ -1391,15 +1359,9 @@ mod tests {
             ),
             Ordering::Less
         );
-        let plain = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            1,
-        );
-        let detailed = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            1,
-        )
-        .carrying(Components::from([("a".to_owned(), Value::Whole(1))]));
+        let plain = crate::stack("minecraft:stone", 1);
+        let detailed = crate::stack("minecraft:stone", 1)
+            .carrying(Components::from([("a".to_owned(), Value::Whole(1))]));
         assert_eq!(kind.compare(&plain, &detailed), Ordering::Less);
     }
 
@@ -1517,10 +1479,7 @@ mod tests {
     #[test]
     fn rebuilding_an_unchanged_quantity_answers_an_equal_value() {
         let kind = stackable();
-        let stack = Stack::of(
-            "minecraft:stone".parse().expect("a valid content identity"),
-            3,
-        );
+        let stack = crate::stack("minecraft:stone", 3);
         assert_eq!(kind.with_quantity(&stack, 3), Ok(stack.clone()));
         assert_eq!(kind.with_quantity(&stack, 4).map(|s| s.count), Ok(4));
         assert_eq!(stack.count, 3);

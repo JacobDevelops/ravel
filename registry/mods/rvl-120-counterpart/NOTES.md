@@ -267,14 +267,6 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
   declared on the client side, the three server settings are declared `common` for the reason above,
   and a client and a server that disagree about §3 disagree silently.
 
-## A gap found in the published surface
-
-- **`ravel_sdk::save::SavedDataVersion::new` answers an `Option` and `SavedDataError` has no arm for
-  a zero version.** A package that builds its version from a constant has to invent an error to carry
-  the impossible case, and `save::version` names `NoVersionsDeclared` for it, which is the nearest
-  true statement rather than the right one. A `SavedDataError::ZeroVersion`, or a checked constructor
-  that returns the error type the rest of the module uses, would close it.
-
 ## Evidence
 
 Every rule with a number, an ordering, a refusal or a format has an inline test: the 32-bit check's

@@ -342,6 +342,11 @@ impl ChargeType {
     }
 }
 
+pub(crate) fn own(path: &str) -> ContentId {
+    ContentId::new(crate::MOD_ID.parse().expect("declared mod identity"), path)
+        .expect("declared content path")
+}
+
 /// The six tiers this entry ships.
 ///
 /// Five numbered one to five with matching values, and one side tier for the
@@ -351,21 +356,9 @@ impl ChargeType {
 #[must_use]
 pub fn shipped_tiers() -> Vec<Tier> {
     let mut tiers: Vec<Tier> = (1..=5)
-        .map(|value| {
-            Tier::new(
-                format!("{}:tier_{value}", crate::MOD_ID)
-                    .parse()
-                    .expect("a legal tier identity"),
-                value,
-            )
-        })
+        .map(|value| Tier::new(own(&format!("tier_{value}")), value))
         .collect();
-    tiers.push(Tier::new(
-        format!("{}:tier_side", crate::MOD_ID)
-            .parse()
-            .expect("a legal tier identity"),
-        1,
-    ));
+    tiers.push(Tier::new(own("tier_side"), 1));
     tiers
 }
 
@@ -373,18 +366,8 @@ pub fn shipped_tiers() -> Vec<Tier> {
 #[must_use]
 pub fn shipped_kinds() -> Vec<CropKind> {
     vec![
-        CropKind::new(
-            format!("{}:kind_material", crate::MOD_ID)
-                .parse()
-                .expect("a legal kind identity"),
-            "stem_material",
-        ),
-        CropKind::new(
-            format!("{}:kind_creature", crate::MOD_ID)
-                .parse()
-                .expect("a legal kind identity"),
-            "stem_creature",
-        ),
+        CropKind::new(own("kind_material"), "stem_material"),
+        CropKind::new(own("kind_creature"), "stem_creature"),
     ]
 }
 

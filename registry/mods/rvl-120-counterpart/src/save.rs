@@ -28,6 +28,8 @@ pub const MAX_NAME: usize = 128;
 
 /// The version this build writes.
 pub const VERSION: u32 = 1;
+const SAVED_VERSION: SavedDataVersion =
+    SavedDataVersion::new(VERSION).expect("declared nonzero version");
 
 /// The records a save holds, keyed by the names their owners chose.
 #[derive(Clone, Debug, Default)]
@@ -121,29 +123,26 @@ impl GlobalData {
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError`] when the declared version is not a legal one,
-    /// which for a constant is a packaging failure.
+    /// Returns [`SavedDataError`] if no readable versions are declared; this
+    /// package always declares its checked constant version.
     pub fn declaration() -> Result<SavedDataDeclaration, SavedDataError> {
-        SavedDataDeclaration::new(crate::Entry::declared_id().clone(), [version()?])
+        SavedDataDeclaration::new(crate::Entry::declared_id().clone(), [SAVED_VERSION])
     }
 
     /// Builds the envelope the loader stores.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SavedDataError`] when the declared version is not a legal one.
-    pub fn envelope(&self) -> Result<SavedDataEnvelope, SavedDataError> {
-        let version = version()?;
+    #[must_use]
+    pub fn envelope(&self) -> SavedDataEnvelope {
+        let version = SAVED_VERSION;
         let records: BTreeMap<&str, &JsonValue> = self
             .held
             .iter()
             .map(|(name, record)| (name.as_str(), record))
             .collect();
-        Ok(SavedDataEnvelope::current(
+        SavedDataEnvelope::current(
             crate::Entry::declared_id().clone(),
             version,
             json!({ "scope": SCOPE, "records": records }),
-        ))
+        )
     }
 
     /// Reads the store back out of a stored payload.
@@ -172,18 +171,6 @@ impl GlobalData {
         }
         Ok(Self { held })
     }
-}
-
-/// The version this build writes, as the loader names one.
-///
-/// # Errors
-///
-/// Returns [`SavedDataError::NoVersionsDeclared`] when [`VERSION`] is zero,
-/// which a version may not be and which for a constant is a packaging failure.
-fn version() -> Result<SavedDataVersion, SavedDataError> {
-    SavedDataVersion::new(VERSION).ok_or_else(|| SavedDataError::NoVersionsDeclared {
-        owner: crate::Entry::declared_id().clone(),
-    })
 }
 
 /// Why the global store refused.
@@ -321,7 +308,7 @@ mod tests {
         data.write(Side::DedicatedServer, "counter", json!({ "count": 3 }))
             .expect("a server reaches it");
 
-        let envelope = data.envelope().expect("the declared version is legal");
+        let envelope = data.envelope();
         let payload = envelope.payload();
         assert_eq!(payload["scope"], SCOPE);
 

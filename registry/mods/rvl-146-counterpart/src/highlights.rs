@@ -116,7 +116,7 @@ impl Bounds {
 
 /// One highlight.
 #[derive(Clone, Debug)]
-pub struct Entry {
+pub struct Highlight {
     key: Key,
     expires: Moment,
     bounds: Bounds,
@@ -124,7 +124,7 @@ pub struct Entry {
     predicate: Option<fn() -> bool>,
 }
 
-impl Entry {
+impl Highlight {
     /// Returns what this entry is keyed by.
     #[must_use]
     pub const fn key(&self) -> &Key {
@@ -185,7 +185,7 @@ impl std::error::Error for AddRefused {}
 /// Every highlight the client is holding.
 #[derive(Clone, Debug, Default)]
 pub struct Highlights {
-    entries: BTreeMap<Key, Entry>,
+    entries: BTreeMap<Key, Highlight>,
 }
 
 impl Highlights {
@@ -239,7 +239,7 @@ impl Highlights {
         }
         self.entries.insert(
             key.clone(),
-            Entry {
+            Highlight {
                 key,
                 expires: now.after(lifetime),
                 bounds,
@@ -266,7 +266,7 @@ impl Highlights {
     /// Expires nothing: an entry whose time has passed is not shown, and
     /// removing it is [`Highlights::expire`]'s job on its own schedule.
     #[must_use]
-    pub fn visible(&self, level: &str, now: Moment) -> Vec<&Entry> {
+    pub fn visible(&self, level: &str, now: Moment) -> Vec<&Highlight> {
         self.entries
             .values()
             .filter(|entry| {
@@ -277,7 +277,7 @@ impl Highlights {
 
     /// Returns the entry held under a key.
     #[must_use]
-    pub fn get(&self, key: &Key) -> Option<&Entry> {
+    pub fn get(&self, key: &Key) -> Option<&Highlight> {
         self.entries.get(key)
     }
 
@@ -367,7 +367,7 @@ mod tests {
         assert_eq!(
             highlights
                 .get(&key("overworld", 0, Some(Face::Down)))
-                .map(super::Entry::expires),
+                .map(super::Highlight::expires),
             Some(Moment(100)),
             "the held entry keeps its own expiry"
         );
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(
             highlights
                 .get(&key("overworld", 0, None))
-                .map(super::Entry::expires),
+                .map(super::Highlight::expires),
             Some(Moment(1_050))
         );
         assert_eq!(Moment(u64::MAX).after(10), Moment(u64::MAX));

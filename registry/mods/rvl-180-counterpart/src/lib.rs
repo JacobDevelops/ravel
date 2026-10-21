@@ -49,7 +49,7 @@ use ravel_sdk::prelude::*;
 use ravel_sdk::sides::ClientOnly;
 
 pub use crate::colour::Dye;
-pub use crate::commands::{Command, Console, Refusal, Report};
+pub use crate::commands::{Command, CommandRefused, Console, Report};
 pub use crate::grouping::{Aggregation, GroupingError, Resolution};
 pub use crate::population::{Line, Population, PopulationError, Selector};
 pub use crate::presentation::{Display, Readout};
@@ -343,7 +343,7 @@ export_mod!(|side| Entry::new(side));
 mod tests {
     use super::{__ravel_entry, ClientState, Entry, MAX_HELD_READOUTS, MOD_ID, OPERATOR_ONLY};
     use crate::colour::Dye;
-    use crate::commands::{Command, Report};
+    use crate::commands::{Command, CommandRefused, Report};
     use crate::grouping::{self, TAG_COUNT};
     use crate::presentation::{self, Readout};
     use crate::sprites;
@@ -461,10 +461,12 @@ mod tests {
             .record("cow", 4, false)
             .expect("a legal kind");
 
-        assert!(
-            shared
-                .run_command(&invocation("entity_sweep", Side::Client, &["cow"]))
-                .is_err()
+        assert_eq!(
+            shared.run_command(&invocation("entity_tally", Side::Client, &["cow"])),
+            Err(ModError::from_display(CommandRefused::WrongSide {
+                command: Command::Tally,
+                side: Side::Client,
+            })),
         );
         assert_eq!(shared.console().population().count_of("cow"), 4);
         assert!(

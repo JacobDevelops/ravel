@@ -268,17 +268,7 @@ pub fn ceiling_of_single(value: f32) -> i32 {
 }
 
 fn saturating(value: f64) -> i32 {
-    if value.is_nan() {
-        return 0;
-    }
-    if value >= f64::from(i32::MAX) {
-        return i32::MAX;
-    }
-    if value <= f64::from(i32::MIN) {
-        return i32::MIN;
-    }
-    num_traits::ToPrimitive::to_i32(&value.trunc())
-        .expect("a finite value between the i32 bounds fits after truncation")
+    num_traits::AsPrimitive::<i32>::as_(value)
 }
 
 /// The six faces a block may be mounted against, in ordinal order.

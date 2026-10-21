@@ -44,7 +44,7 @@ use ravel_sdk::{JsonValue, ModId, json};
 
 /// Why the saved spellings could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpellingsUnavailable {
+pub enum SavedSpellingsUnavailable {
     /// The build supplied nothing.
     NotSupplied,
     /// A spelling is empty.
@@ -54,7 +54,7 @@ pub enum SpellingsUnavailable {
     NotDistinct,
 }
 
-impl fmt::Display for SpellingsUnavailable {
+impl fmt::Display for SavedSpellingsUnavailable {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotSupplied => formatter.write_str("the build supplied no saved spellings"),
@@ -64,7 +64,7 @@ impl fmt::Display for SpellingsUnavailable {
     }
 }
 
-impl std::error::Error for SpellingsUnavailable {}
+impl std::error::Error for SavedSpellingsUnavailable {}
 
 /// The three keys an existing world holds.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -95,15 +95,15 @@ impl Spellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::NotSupplied`] when the build supplied
+    /// Returns [`SavedSpellingsUnavailable::NotSupplied`] when the build supplied
     /// nothing, and what [`Spellings::parse`] returns otherwise.
-    pub fn declared() -> Result<Self, SpellingsUnavailable> {
+    pub fn declared() -> Result<Self, SavedSpellingsUnavailable> {
         let document = option_env!("RVL_146_COUNTERPART_MEMORY_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(SavedSpellingsUnavailable::NotSupplied)?;
         let current = option_env!("RVL_146_COUNTERPART_CURRENT_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(SavedSpellingsUnavailable::NotSupplied)?;
         let remembered = option_env!("RVL_146_COUNTERPART_REMEMBERED_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(SavedSpellingsUnavailable::NotSupplied)?;
         Self::parse(document, current, remembered)
     }
 
@@ -111,19 +111,19 @@ impl Spellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::Empty`] for an empty spelling and
-    /// [`SpellingsUnavailable::NotDistinct`] when two of the three are the same
+    /// Returns [`SavedSpellingsUnavailable::Empty`] for an empty spelling and
+    /// [`SavedSpellingsUnavailable::NotDistinct`] when two of the three are the same
     /// word, which would make one entry overwrite the other.
     pub fn parse(
         document: &str,
         current: &str,
         remembered: &str,
-    ) -> Result<Self, SpellingsUnavailable> {
+    ) -> Result<Self, SavedSpellingsUnavailable> {
         if document.is_empty() || current.is_empty() || remembered.is_empty() {
-            return Err(SpellingsUnavailable::Empty);
+            return Err(SavedSpellingsUnavailable::Empty);
         }
         if current == remembered {
-            return Err(SpellingsUnavailable::NotDistinct);
+            return Err(SavedSpellingsUnavailable::NotDistinct);
         }
         Ok(Self {
             document: document.to_owned(),
@@ -308,7 +308,7 @@ mod tests {
     use ravel_sdk::save::SavedDataEnvelope;
     use ravel_sdk::{JsonValue, json};
 
-    use super::{Memory, ReadFailure, Resolution, Spellings, SpellingsUnavailable};
+    use super::{Memory, ReadFailure, Resolution, SavedSpellingsUnavailable, Spellings};
 
     fn owner() -> ravel_sdk::ModId {
         "rvl_146_counterpart"
@@ -462,19 +462,19 @@ mod tests {
     fn three_ways_a_supplied_set_of_spellings_is_refused_and_the_declared_one_is_absent() {
         assert_eq!(
             Spellings::parse("", "a", "b"),
-            Err(SpellingsUnavailable::Empty)
+            Err(SavedSpellingsUnavailable::Empty)
         );
         assert_eq!(
             Spellings::parse("d", "a", ""),
-            Err(SpellingsUnavailable::Empty)
+            Err(SavedSpellingsUnavailable::Empty)
         );
         assert_eq!(
             Spellings::parse("d", "a", "a"),
-            Err(SpellingsUnavailable::NotDistinct)
+            Err(SavedSpellingsUnavailable::NotDistinct)
         );
         assert_eq!(
             Spellings::declared(),
-            Err(SpellingsUnavailable::NotSupplied),
+            Err(SavedSpellingsUnavailable::NotSupplied),
             "no build here supplies an existing world's keys"
         );
     }

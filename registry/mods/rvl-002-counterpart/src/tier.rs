@@ -5,7 +5,7 @@
 //! is here is this entry's one instance of it, the two-pass shape that instance
 //! needs, and the one boolean the whole progression gate rests on.
 
-use rvl_042_counterpart::arithmetic::Colour;
+use rvl_042_counterpart::colour::Colour;
 use rvl_321_counterpart::model::Tier;
 
 /// The path this entry's tier is registered at, inside its own namespace.

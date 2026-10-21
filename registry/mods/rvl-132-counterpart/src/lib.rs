@@ -502,6 +502,22 @@ impl Mod for Entry {
 export_mod!(Entry::new());
 
 #[cfg(test)]
+fn stack(name: impl AsRef<str>, count: rvl_210_counterpart::quantity::Amount) -> kinds::Stack {
+    kinds::Stack::of(
+        name.as_ref().parse().expect("a valid fixture identity"),
+        count,
+    )
+}
+
+#[cfg(test)]
+fn portion(name: impl AsRef<str>, amount: rvl_210_counterpart::quantity::Amount) -> kinds::Portion {
+    kinds::Portion::of(
+        name.as_ref().parse().expect("a valid fixture identity"),
+        amount,
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::MOD_ID;
@@ -707,12 +723,28 @@ mod tests {
 
     #[test]
     fn the_abort_setting_turns_a_bundle_failure_into_a_refusal() {
-        let mut entry = run_to_registered();
+        let written = ravel_sdk::config::ValueDocument::parse(
+            &ravel_sdk::json!({
+                "schemaVersion": 1, "owner": MOD_ID,
+                "values": {(settings::ABORT_ON_BUNDLE_FAILURE): true},
+            })
+            .to_string(),
+        )
+        .expect("a legal override");
+        let resolved = LayeredConfiguration::resolve(
+            settings::declaration().expect("a legal declaration"),
+            Some(&written),
+            None,
+        )
+        .expect("the override resolves");
+        let mut entry =
+            Entry::with_settings(Settings::read(&resolved).map_err(ModError::from_display));
         entry
-            .settings
-            .as_mut()
-            .expect("valid settings")
-            .abort_on_bundle_failure = true;
+            .enter(LifecycleState::Constructed)
+            .expect("a fresh configured entry");
+        entry
+            .enter(LifecycleState::Registered)
+            .expect("a fresh configured entry");
         assert!(matches!(
             entry.load_compatibility(None),
             Err(EntryRefused::Bundle(_))

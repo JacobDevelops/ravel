@@ -35,7 +35,7 @@ Ravel rather than rebuilt.
 | §9 published events, the one that is published here | implemented | `src/arithmetic.rs` |
 | §9 published events, the other three | declarable only | `src/arithmetic.rs` |
 | §10 reusable entries | implemented | `src/reusable.rs` |
-| §11 derived arithmetic | implemented | `src/arithmetic.rs` |
+| §11 derived arithmetic | implemented | `src/arithmetic.rs`, `src/inventory.rs`, `src/colour.rs` |
 | §12 client presentation | gating only | `src/settings.rs` |
 | §13 the command | declared as a name only; execution explicitly refused as host-blocked | `src/lib.rs` |
 

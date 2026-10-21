@@ -48,7 +48,7 @@ pub const MAX_ELEMENT_BYTES: usize = 1 << 20;
 
 /// Why the pair spellings could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpellingsUnavailable {
+pub enum PairSpellingsUnavailable {
     /// The build supplied nothing.
     NotSupplied,
     /// A spelling is empty.
@@ -57,7 +57,7 @@ pub enum SpellingsUnavailable {
     NotDistinct,
 }
 
-impl fmt::Display for SpellingsUnavailable {
+impl fmt::Display for PairSpellingsUnavailable {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotSupplied => formatter.write_str("the build supplied no pair spellings"),
@@ -67,7 +67,7 @@ impl fmt::Display for SpellingsUnavailable {
     }
 }
 
-impl std::error::Error for SpellingsUnavailable {}
+impl std::error::Error for PairSpellingsUnavailable {}
 
 /// The two field names a pair is written under.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -96,13 +96,13 @@ impl PairSpellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::NotSupplied`] when the build supplied
+    /// Returns [`PairSpellingsUnavailable::NotSupplied`] when the build supplied
     /// nothing, and what [`PairSpellings::parse`] returns otherwise.
-    pub fn declared() -> Result<Self, SpellingsUnavailable> {
+    pub fn declared() -> Result<Self, PairSpellingsUnavailable> {
         let first = option_env!("RVL_146_COUNTERPART_PAIR_FIRST_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(PairSpellingsUnavailable::NotSupplied)?;
         let second = option_env!("RVL_146_COUNTERPART_PAIR_SECOND_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(PairSpellingsUnavailable::NotSupplied)?;
         Self::parse(first, second)
     }
 
@@ -110,14 +110,14 @@ impl PairSpellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::Empty`] for an empty spelling and
-    /// [`SpellingsUnavailable::NotDistinct`] when both are one word.
-    pub fn parse(first: &str, second: &str) -> Result<Self, SpellingsUnavailable> {
+    /// Returns [`PairSpellingsUnavailable::Empty`] for an empty spelling and
+    /// [`PairSpellingsUnavailable::NotDistinct`] when both are one word.
+    pub fn parse(first: &str, second: &str) -> Result<Self, PairSpellingsUnavailable> {
         if first.is_empty() || second.is_empty() {
-            return Err(SpellingsUnavailable::Empty);
+            return Err(PairSpellingsUnavailable::Empty);
         }
         if first == second {
-            return Err(SpellingsUnavailable::NotDistinct);
+            return Err(PairSpellingsUnavailable::NotDistinct);
         }
         Ok(Self {
             first: first.to_owned(),
@@ -445,7 +445,7 @@ mod tests {
 
     use super::{
         ComponentForm, DocumentRefused, MAX_ELEMENT_BYTES, MAX_LIST_ELEMENTS, PairSpellings,
-        SpellingsUnavailable, WireRefused, read_compound, read_list, read_map, read_optional,
+        PairSpellingsUnavailable, WireRefused, read_compound, read_list, read_map, read_optional,
         read_pair, write_list, write_map, write_optional, write_pair,
     };
 
@@ -484,19 +484,19 @@ mod tests {
     fn three_ways_a_supplied_pair_spelling_is_refused_and_the_declared_one_is_absent() {
         assert_eq!(
             PairSpellings::parse("", "b"),
-            Err(SpellingsUnavailable::Empty)
+            Err(PairSpellingsUnavailable::Empty)
         );
         assert_eq!(
             PairSpellings::parse("a", ""),
-            Err(SpellingsUnavailable::Empty)
+            Err(PairSpellingsUnavailable::Empty)
         );
         assert_eq!(
             PairSpellings::parse("a", "a"),
-            Err(SpellingsUnavailable::NotDistinct)
+            Err(PairSpellingsUnavailable::NotDistinct)
         );
         assert_eq!(
             PairSpellings::declared(),
-            Err(SpellingsUnavailable::NotSupplied)
+            Err(PairSpellingsUnavailable::NotSupplied)
         );
     }
 

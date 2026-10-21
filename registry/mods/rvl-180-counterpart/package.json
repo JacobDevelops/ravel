@@ -59,7 +59,7 @@
       },
       {
         "path": "src/commands.rs",
-        "sha256": "b029d1df89c085b0f7da2507a40e6b7ee9147cb0a628a78add3e7532d720c0c0"
+        "sha256": "bb2f53510e024db3dadfe03e5cd690d024bcc5494b0918dc5e46adc6cbfef28c"
       },
       {
         "path": "src/dumps.rs",
@@ -71,7 +71,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "8236e6c4918411623ab3fd165762c3e97926616dc46dd94414d744048fa6347d"
+        "sha256": "cef8fe256a95e9c7f6a434b44dd6d8c460370327b95c6d268d73e8ebfbb9d0ea"
       },
       {
         "path": "src/presentation.rs",

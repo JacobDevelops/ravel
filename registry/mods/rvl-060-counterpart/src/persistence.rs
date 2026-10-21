@@ -11,9 +11,9 @@
 //! exactly what Ravel's sandbox should not let a package do on its own
 //! initiative.
 //!
-//! So this package exposes "a durable per-package directory" and lets Ravel
-//! decide where it is: [`DurableStorage`] joins a host-supplied root to a
-//! validated package name and touches no file at all. It writes no explanatory
+//! So this package exposes "a durable per-package directory": [`DurableStorage`]
+//! joins an explicitly supplied root to a validated package name and touches no file.
+//! The shipped entry chooses a working-directory-relative root. It writes no explanatory
 //! file, reads no environment variable and knows nothing about the operating
 //! system. Creating and reading the subdirectory stays the dependent's job,
 //! which is the one part of §6.1 the original also leaves alone.
@@ -94,18 +94,17 @@ impl std::fmt::Display for StorageError {
 
 impl std::error::Error for StorageError {}
 
-/// A durable place a package may keep things, wherever Ravel put it.
+/// A durable place a package may keep things under a caller-chosen root.
 ///
-/// This is the whole of §6.1 that survives. The root arrives from the host; this
-/// type decides only that a package's own subdirectory is one segment named
-/// after the package, and never that the root is under a user's home.
+/// The shipped entry uses a relative root; its paths resolve against the working directory
+/// when opened. This type validates only the package's single-segment subdirectory.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DurableStorage {
     root: String,
 }
 
 impl DurableStorage {
-    /// Names a durable root the host supplied.
+    /// Names an explicitly supplied durable root.
     #[must_use]
     pub fn under(root: &str) -> Self {
         Self {
@@ -113,7 +112,7 @@ impl DurableStorage {
         }
     }
 
-    /// Returns the root, as the host named it.
+    /// Returns the root, as supplied.
     #[must_use]
     pub fn root(&self) -> &str {
         &self.root
@@ -320,15 +319,14 @@ impl Record {
     /// Returns [`SavedDataError`] when the version set is empty, which the
     /// constant below makes impossible.
     pub fn declaration(owner: ModId) -> Result<SavedDataDeclaration, SavedDataError> {
-        let version = SavedDataVersion::new(VERSION).ok_or(SavedDataError::NoVersionsDeclared {
-            owner: owner.clone(),
-        })?;
-        SavedDataDeclaration::new(owner, [version])
+        SavedDataDeclaration::new(owner, [SAVED_VERSION])
     }
 }
 
 /// The one saved-data version this package writes.
 pub const VERSION: u32 = 1;
+const SAVED_VERSION: SavedDataVersion =
+    SavedDataVersion::new(VERSION).expect("declared nonzero version");
 
 /// Why a read fell back to the default.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

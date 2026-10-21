@@ -182,7 +182,7 @@ impl std::error::Error for QuantityRefused {}
 
 /// Why the declared form's spellings could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpellingsUnavailable {
+pub enum PortionSpellingsUnavailable {
     /// The build supplied nothing.
     NotSupplied,
     /// A spelling is empty.
@@ -192,7 +192,7 @@ pub enum SpellingsUnavailable {
     NotDistinct,
 }
 
-impl fmt::Display for SpellingsUnavailable {
+impl fmt::Display for PortionSpellingsUnavailable {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotSupplied => formatter.write_str("the build supplied no ingredient spellings"),
@@ -202,7 +202,7 @@ impl fmt::Display for SpellingsUnavailable {
     }
 }
 
-impl std::error::Error for SpellingsUnavailable {}
+impl std::error::Error for PortionSpellingsUnavailable {}
 
 /// The two field names a recipe file writes a portion under.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -231,15 +231,15 @@ impl PortionSpellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::NotSupplied`] when the build supplied
+    /// Returns [`PortionSpellingsUnavailable::NotSupplied`] when the build supplied
     /// nothing, and what [`PortionSpellings::parse`] returns otherwise. There is
     /// no default: a package that has to agree with a pack author's recipe file
     /// cannot fall back to a placeholder and still claim to agree.
-    pub fn declared() -> Result<Self, SpellingsUnavailable> {
+    pub fn declared() -> Result<Self, PortionSpellingsUnavailable> {
         let matcher = option_env!("RVL_146_COUNTERPART_INGREDIENT_MATCHER_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(PortionSpellingsUnavailable::NotSupplied)?;
         let count = option_env!("RVL_146_COUNTERPART_INGREDIENT_COUNT_KEY")
-            .ok_or(SpellingsUnavailable::NotSupplied)?;
+            .ok_or(PortionSpellingsUnavailable::NotSupplied)?;
         Self::parse(matcher, count)
     }
 
@@ -247,14 +247,14 @@ impl PortionSpellings {
     ///
     /// # Errors
     ///
-    /// Returns [`SpellingsUnavailable::Empty`] for an empty spelling and
-    /// [`SpellingsUnavailable::NotDistinct`] when both are one word.
-    pub fn parse(matcher: &str, count: &str) -> Result<Self, SpellingsUnavailable> {
+    /// Returns [`PortionSpellingsUnavailable::Empty`] for an empty spelling and
+    /// [`PortionSpellingsUnavailable::NotDistinct`] when both are one word.
+    pub fn parse(matcher: &str, count: &str) -> Result<Self, PortionSpellingsUnavailable> {
         if matcher.is_empty() || count.is_empty() {
-            return Err(SpellingsUnavailable::Empty);
+            return Err(PortionSpellingsUnavailable::Empty);
         }
         if matcher == count {
-            return Err(SpellingsUnavailable::NotDistinct);
+            return Err(PortionSpellingsUnavailable::NotDistinct);
         }
         Ok(Self {
             matcher: matcher.to_owned(),
@@ -558,7 +558,7 @@ mod tests {
 
     use super::{
         Consumed, Flavour, MAX_ACCEPTED, MAX_COUNT, MAX_MATCHER_BYTES, Matcher, Portion,
-        PortionSpellings, QuantityRefused, SpellingsUnavailable, Stack,
+        PortionSpellings, PortionSpellingsUnavailable, QuantityRefused, Stack,
     };
 
     fn id(path: &str) -> ContentId {
@@ -765,19 +765,19 @@ mod tests {
     fn three_ways_the_declared_spellings_are_refused_and_the_declared_pair_is_absent() {
         assert_eq!(
             PortionSpellings::parse("", "count"),
-            Err(SpellingsUnavailable::Empty)
+            Err(PortionSpellingsUnavailable::Empty)
         );
         assert_eq!(
             PortionSpellings::parse("matcher", ""),
-            Err(SpellingsUnavailable::Empty)
+            Err(PortionSpellingsUnavailable::Empty)
         );
         assert_eq!(
             PortionSpellings::parse("both", "both"),
-            Err(SpellingsUnavailable::NotDistinct)
+            Err(PortionSpellingsUnavailable::NotDistinct)
         );
         assert_eq!(
             PortionSpellings::declared(),
-            Err(SpellingsUnavailable::NotSupplied),
+            Err(PortionSpellingsUnavailable::NotSupplied),
             "no build input supplies them here, and nothing defaults"
         );
     }

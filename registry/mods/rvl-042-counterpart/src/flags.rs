@@ -119,6 +119,38 @@ impl FlagTable {
     pub fn enabled(&self, id: &FlagId) -> bool {
         self.published.get(id).is_some_and(|predicate| predicate())
     }
+
+    /// Answers the shared flags service request.
+    #[must_use]
+    pub fn answer(&self, arguments: &JsonValue) -> JsonValue {
+        let Some(flag) = arguments.get("flag").and_then(JsonValue::as_str) else {
+            return json!({"answered": false, "refused": "a flag request names no flag"});
+        };
+        let flag = match flag.parse() {
+            Ok(flag) => flag,
+            Err(error) => return json!({"answered": false, "refused": format!("{error}")}),
+        };
+        if !self.is_published(&flag) {
+            return json!({
+                "answered": false, "refused": "this entry has not published that flag"
+            });
+        }
+        json!({"answered": true, "enabled": self.enabled(&flag)})
+    }
+}
+
+/// Reads a shared flags service response, preserving its refusal text.
+pub fn read_answer(value: &JsonValue) -> Result<bool, &str> {
+    if value.get("answered").and_then(JsonValue::as_bool) != Some(true) {
+        return Err(value
+            .get("refused")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("the flag service did not answer the request"));
+    }
+    value
+        .get("enabled")
+        .and_then(JsonValue::as_bool)
+        .ok_or("the flag service did not answer a boolean")
 }
 
 /// A dependent's handle on a flag it knows only by identity.
@@ -206,6 +238,28 @@ mod tests {
 
     fn id(name: &str) -> FlagId {
         name.parse().expect("the test identities are legal")
+    }
+
+    #[test]
+    fn the_service_protocol_distinguishes_disabled_flags_from_refused_requests() {
+        let mut table = FlagTable::new();
+        table.publish_constant(id("test:disabled"), false);
+        table.publish_constant(id("test:enabled"), true);
+        for (flag, enabled) in [("test:disabled", false), ("test:enabled", true)] {
+            assert_eq!(
+                read_answer(&table.answer(&json!({"flag": flag}))),
+                Ok(enabled)
+            );
+        }
+        for request in [
+            json!({}),
+            json!({"flag": "invalid"}),
+            json!({"flag": "test:missing"}),
+        ] {
+            assert!(read_answer(&table.answer(&request)).is_err());
+        }
+        assert!(read_answer(&json!({"answered": true})).is_err());
+        assert!(read_answer(&json!({"enabled": true})).is_err());
     }
 
     #[test]

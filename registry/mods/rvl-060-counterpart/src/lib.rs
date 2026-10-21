@@ -247,7 +247,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Builds the library on a side, with the durable root the host chose.
+    /// Builds the library on a side, with an explicitly chosen durable root.
     ///
     /// Construction is where §2's two construction-time steps land: the durable
     /// directory is named, and the side-appropriate registry accessor is
@@ -307,7 +307,7 @@ impl Entry {
         &mut self.registries
     }
 
-    /// Returns the durable storage the host chose the root of.
+    /// Returns the durable storage under the root chosen at construction.
     #[must_use]
     pub const fn storage(&self) -> &DurableStorage {
         &self.storage
@@ -445,7 +445,14 @@ impl Mod for Entry {
     }
 }
 
-export_mod!(|side| Entry::new(side, "."));
+/// The shipped durable paths are relative to the process working directory.
+const DURABLE_ROOT: &str = ".";
+
+fn shipped_entry(side: Side) -> Entry {
+    Entry::new(side, DURABLE_ROOT)
+}
+
+export_mod!(|side| shipped_entry(side));
 
 /// This package's own sources, so a test can assert on what they do not hold.
 ///
@@ -583,6 +590,16 @@ mod tests {
         let shared = Entry::new(Side::DedicatedServer, "/root");
         assert_eq!(shared.registries().source(), RegistrySource::RunningServer);
         assert!(shared.registries().get().is_err());
+    }
+
+    #[test]
+    fn the_shipped_entry_names_its_working_directory_relative_storage() {
+        let entry = super::shipped_entry(Side::DedicatedServer);
+        assert_eq!(entry.storage().root(), ".");
+        assert_eq!(
+            entry.storage().for_package("example"),
+            Ok("./example".to_owned())
+        );
     }
 
     #[test]

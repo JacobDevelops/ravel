@@ -561,17 +561,7 @@ fn compound(tag: &Tag) -> Option<&BTreeMap<String, Tag>> {
 
 fn equal_at_width(expected: f64, candidate: &Tag) -> bool {
     // Integer-width matching truncates, with the original NaN-zero and saturation rules.
-    let integer = || {
-        expected.trunc().to_i64().unwrap_or_else(|| {
-            if expected.is_nan() {
-                0
-            } else if expected.is_sign_negative() {
-                i64::MIN
-            } else {
-                i64::MAX
-            }
-        })
-    };
+    let integer = || num_traits::AsPrimitive::<i64>::as_(expected);
     match *candidate {
         Tag::Byte(value) => i8::try_from(integer()).is_ok_and(|narrow| narrow == value),
         Tag::Short(value) => i16::try_from(integer()).is_ok_and(|narrow| narrow == value),

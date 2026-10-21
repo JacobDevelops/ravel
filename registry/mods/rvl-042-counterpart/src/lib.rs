@@ -15,11 +15,13 @@
 //! - [`inventory`] — the saved shape of a store, with counts above the normal
 //!   maximum;
 //! - [`reusable`] — the crafting remainder of an entry declared reusable;
-//! - [`arithmetic`] — the sweeping, radial, stack and colour arithmetic;
+//! - [`arithmetic`] — the sweeping, radial and harvest arithmetic;
+//! - [`colour`] — the packed colour, saturation and opacity arithmetic;
 //! - [`settings`] — what a player and a pack may change about all of it;
 //! - [`dumps`] — the documents those rules render, kept beside the source.
 
 pub mod arithmetic;
+pub mod colour;
 pub mod dumps;
 pub mod flags;
 pub mod inventory;
@@ -33,7 +35,8 @@ use ravel_sdk::content::{ContentDeclaration, ContentKind};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 
-pub use crate::arithmetic::{Colour, Mature, Position, SweepReport};
+pub use crate::arithmetic::{Mature, Position, SweepReport};
+pub use crate::colour::Colour;
 pub use crate::flags::{FlagId, FlagReference, FlagTable, Predicate};
 pub use crate::inventory::{Access, Facing, LoadReport, Stack, Store, StoreRefused};
 pub use crate::reusable::{Reusable, UsesLeft};

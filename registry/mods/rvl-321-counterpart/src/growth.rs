@@ -166,13 +166,7 @@ pub fn pulse_delay(seconds: u32, draw: f64) -> u32 {
     let variation = draw.clamp(0.0, 1.0) * 0.2;
     let jitter = 0.9 + variation;
     let seconds = (f64::from(seconds) * jitter).trunc();
-    let whole = num_traits::ToPrimitive::to_u32(&seconds).unwrap_or_else(|| {
-        if seconds.is_nan() || seconds < 0.0 {
-            0
-        } else {
-            u32::MAX
-        }
-    });
+    let whole = num_traits::AsPrimitive::<u32>::as_(seconds);
     whole.saturating_mul(20)
 }
 

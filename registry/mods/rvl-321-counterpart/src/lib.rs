@@ -280,28 +280,6 @@ impl Entry {
             .map_err(ModError::from_display)
     }
 
-    fn answer_flag(&self, arguments: &JsonValue) -> ServiceResponse {
-        let Some(flag) = arguments.get("flag").and_then(JsonValue::as_str) else {
-            return ServiceResponse::new(json!({
-                "answered": false, "refused": "a flag request names no flag"
-            }));
-        };
-        let flag = match flag.parse() {
-            Ok(flag) => flag,
-            Err(error) => {
-                return ServiceResponse::new(json!({
-                    "answered": false, "refused": format!("{error}")
-                }));
-            }
-        };
-        if !self.flags.is_published(&flag) {
-            return ServiceResponse::new(json!({
-                "answered": false, "refused": "this entry has not published that flag"
-            }));
-        }
-        ServiceResponse::new(json!({"answered": true, "enabled": self.flags.enabled(&flag)}))
-    }
-
     fn contribute(&mut self, arguments: &JsonValue) -> JsonValue {
         let before = self.registries.refused().len();
         let id = arguments.get("id").and_then(JsonValue::as_str);
@@ -447,7 +425,7 @@ impl Mod for Entry {
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         if request.id == Self::flags_service()? {
-            return Ok(self.answer_flag(&request.arguments));
+            return Ok(ServiceResponse::new(self.flags.answer(&request.arguments)));
         }
         let service = Self::contribution_service()?;
         if request.id != service {

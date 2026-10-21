@@ -18,7 +18,7 @@ use ravel_sdk::content::{
     RegistryKey,
 };
 use ravel_sdk::tags::TagId;
-use rvl_042_counterpart::arithmetic::Colour;
+use rvl_042_counterpart::colour::Colour;
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::repair::Shape;

@@ -82,7 +82,7 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "29fceae02c5f9698b3d120bbdf5ef6b56b973f94c153695a936e2288b61b6c49"
+        "sha256": "7d3f3a4975deaa190fe1122e537d99ca17af2bccf891176c39c2559b41cf9a5f"
       },
       {
         "path": "src/dumps.rs",
@@ -90,7 +90,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "9c5b58071c4bbbe46dae51ba6ccffd69eb8f7d4f1a5d2aa43103efd6e9aa2a22"
+        "sha256": "5d06201661a6e019d661986f55840c591fb453b383db24126d48567d85016b5c"
       },
       {
         "path": "src/machines.rs",
@@ -102,7 +102,7 @@
       },
       {
         "path": "src/network.rs",
-        "sha256": "cd854df067bb198c7d29a89963bce873dd5e9e3500ae99e0ca16179a8d827b33"
+        "sha256": "11fdd7b669e926b061477541630a94417776834ce059451ad0b218bd638613be"
       },
       {
         "path": "src/ordering.rs",
@@ -114,7 +114,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "df42d8f0f3f7be4655db5310f79b0d3060d3ff2d00d4394cff5d5e947405e508"
+        "sha256": "6e018290e8e48870a72b45de91807d244d5240f54d2a13f5fada5b77d2765573"
       },
       {
         "path": "src/forms.rs",

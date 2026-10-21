@@ -46,35 +46,21 @@ pub fn documents() -> Vec<(&'static str, String)> {
 /// it: a real crop catalogue belongs to whoever declares it.
 fn subjects() -> Vec<(Crop, Tier, CropKind)> {
     let mut subjects = Vec::new();
-    for tier in crate::model::shipped_tiers() {
-        let mut tier = tier;
+    for mut tier in crate::model::shipped_tiers() {
         let tier_path = tier.id.path().to_owned();
         tier.adjust(
-            format!("{}:{tier_path}_ground", crate::MOD_ID)
-                .parse()
-                .expect("a legal ground identity"),
-            format!("{}:{tier_path}_material", crate::MOD_ID)
-                .parse()
-                .expect("a legal material identity"),
+            crate::model::own(&format!("{tier_path}_ground")),
+            crate::model::own(&format!("{tier_path}_material")),
         );
-        for kind in crate::model::shipped_kinds() {
-            let mut kind = kind;
+        for mut kind in crate::model::shipped_kinds() {
             let kind_path = kind.id.path().to_owned();
-            kind.adjust(
-                format!("{}:{kind_path}_seed", crate::MOD_ID)
-                    .parse()
-                    .expect("a legal seed identity"),
-            );
+            kind.adjust(crate::model::own(&format!("{kind_path}_seed")));
             let crop = Crop::new(
-                format!("{}:{tier_path}_{kind_path}", crate::MOD_ID)
-                    .parse()
-                    .expect("a legal crop identity"),
+                crate::model::own(&format!("{tier_path}_{kind_path}")),
                 tier.id.clone(),
                 kind.id.clone(),
                 Crafted::Entry {
-                    id: format!("{}:{tier_path}_crafted", crate::MOD_ID)
-                        .parse()
-                        .expect("a legal material identity"),
+                    id: crate::model::own(&format!("{tier_path}_crafted")),
                     data: None,
                 },
             );

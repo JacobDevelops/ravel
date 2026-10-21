@@ -305,10 +305,7 @@ impl Mod for Entry {
         if self.global.is_empty() {
             return Ok(None);
         }
-        self.global
-            .envelope()
-            .map(Some)
-            .map_err(ModError::from_display)
+        Ok(Some(self.global.envelope()))
     }
 }
 

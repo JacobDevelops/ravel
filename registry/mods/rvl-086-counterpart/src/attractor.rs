@@ -73,7 +73,7 @@ pub struct Toggle {
 
 /// Why a toggle was refused.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Rejected {
+pub enum ToggleRejected {
     /// The index names a slot outside the container's slot list.
     OutOfRange,
     /// The container declares more slots than this handler will look into.
@@ -84,7 +84,7 @@ pub enum Rejected {
     NotAnAttractor,
 }
 
-impl std::fmt::Display for Rejected {
+impl std::fmt::Display for ToggleRejected {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::OutOfRange => "the slot index is outside the container",
@@ -95,7 +95,7 @@ impl std::fmt::Display for Rejected {
     }
 }
 
-impl std::error::Error for Rejected {}
+impl std::error::Error for ToggleRejected {}
 
 /// One slot of the container a toggle names.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -150,21 +150,21 @@ impl Toggle {
     ///
     /// # Errors
     ///
-    /// Returns the first [`Rejected`] the request earns. Nothing is changed on
+    /// Returns the first [`ToggleRejected`] the request earns. Nothing is changed on
     /// any refusal.
-    pub fn apply(self, container: &mut Container) -> Result<Switched, Rejected> {
+    pub fn apply(self, container: &mut Container) -> Result<Switched, ToggleRejected> {
         if !u32::try_from(container.slots.len()).is_ok_and(|count| count <= MAXIMUM_SLOTS) {
-            return Err(Rejected::ContainerTooLarge);
+            return Err(ToggleRejected::ContainerTooLarge);
         }
         let slot = usize::try_from(self.slot)
             .ok()
             .and_then(|index| container.slots.get_mut(index))
-            .ok_or(Rejected::OutOfRange)?;
+            .ok_or(ToggleRejected::OutOfRange)?;
         if !slot.owned_by_sender {
-            return Err(Rejected::NotTheSenders);
+            return Err(ToggleRejected::NotTheSenders);
         }
         if !slot.attractor {
-            return Err(Rejected::NotAnAttractor);
+            return Err(ToggleRejected::NotAnAttractor);
         }
         let was = slot.switched_on;
         slot.switched_on = !was;
@@ -424,7 +424,7 @@ mod tests {
         for named in [1, 2, u32::MAX] {
             assert_eq!(
                 Toggle { slot: named }.apply(&mut open),
-                Err(Rejected::OutOfRange),
+                Err(ToggleRejected::OutOfRange),
                 "slot {named} is outside a container of one"
             );
         }
@@ -436,7 +436,7 @@ mod tests {
         let mut open = container(Vec::new());
         assert_eq!(
             Toggle { slot: 0 }.apply(&mut open),
-            Err(Rejected::OutOfRange)
+            Err(ToggleRejected::OutOfRange)
         );
     }
 
@@ -448,7 +448,7 @@ mod tests {
         ]);
         assert_eq!(
             Toggle { slot: 0 }.apply(&mut open),
-            Err(Rejected::ContainerTooLarge)
+            Err(ToggleRejected::ContainerTooLarge)
         );
     }
 
@@ -461,7 +461,7 @@ mod tests {
         }]);
         assert_eq!(
             Toggle { slot: 0 }.apply(&mut open),
-            Err(Rejected::NotTheSenders)
+            Err(ToggleRejected::NotTheSenders)
         );
         assert!(!open.slots[0].switched_on);
     }
@@ -471,7 +471,7 @@ mod tests {
         let mut open = container(vec![mine(false, false)]);
         assert_eq!(
             Toggle { slot: 0 }.apply(&mut open),
-            Err(Rejected::NotAnAttractor)
+            Err(ToggleRejected::NotAnAttractor)
         );
     }
 

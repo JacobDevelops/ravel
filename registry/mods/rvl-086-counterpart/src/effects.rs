@@ -29,7 +29,7 @@ pub struct Timed {
 
 /// What the eater already holds of one effect.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Held {
+pub struct HeldEffect {
     /// The amplifier they hold it at.
     pub amplifier: u32,
     /// The ticks left of it.
@@ -60,7 +60,7 @@ pub struct Applied {
 /// behaviour rather than a rule anyone wrote down, and it is reproduced because
 /// the alternative changes every duration the entry produces.
 #[must_use]
-pub fn durations(sequence: &[Timed], held: &dyn Fn(&str) -> Option<Held>) -> Vec<Applied> {
+pub fn durations(sequence: &[Timed], held: &dyn Fn(&str) -> Option<HeldEffect>) -> Vec<Applied> {
     let mut accumulator = 0_u32;
     let mut applied = Vec::with_capacity(sequence.len());
     for timed in sequence {
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn an_effect_the_eater_holds_above_its_threshold_replaces_the_accumulator() {
         let applied = durations(&sequence(), &|effect| {
-            (effect == "example:first").then_some(Held {
+            (effect == "example:first").then_some(HeldEffect {
                 amplifier: 1,
                 remaining: 1000,
             })
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn the_accumulator_is_shared_so_an_earlier_effect_extends_a_later_one() {
         let applied = durations(&sequence(), &|effect| {
-            (effect == "example:first").then_some(Held {
+            (effect == "example:first").then_some(HeldEffect {
                 amplifier: 1,
                 remaining: 1000,
             })
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn an_effect_held_below_its_threshold_does_not_touch_the_accumulator() {
         let applied = durations(&sequence(), &|effect| {
-            (effect == "example:third").then_some(Held {
+            (effect == "example:third").then_some(HeldEffect {
                 amplifier: 0,
                 remaining: 5000,
             })
@@ -267,11 +267,11 @@ mod tests {
     #[test]
     fn a_later_effect_replaces_the_accumulator_the_earlier_one_set() {
         let applied = durations(&sequence(), &|effect| match effect {
-            "example:first" => Some(Held {
+            "example:first" => Some(HeldEffect {
                 amplifier: 1,
                 remaining: 1000,
             }),
-            "example:third" => Some(Held {
+            "example:third" => Some(HeldEffect {
                 amplifier: 3,
                 remaining: 40,
             }),
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn a_remaining_duration_at_the_top_of_its_range_does_not_wrap() {
         let applied = durations(&sequence(), &|effect| {
-            (effect == "example:first").then_some(Held {
+            (effect == "example:first").then_some(HeldEffect {
                 amplifier: 1,
                 remaining: u32::MAX,
             })

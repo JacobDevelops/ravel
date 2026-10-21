@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "cb710ab35917145bb6192988f3af4aa504ddc91bac3ec508799278933b89d4f4"
+        "sha256": "a9f36088813d5e6093789d42847adc19377819cbce1250a7287217abb3c2b149"
       },
       {
         "path": "aliases.json",
@@ -83,19 +83,19 @@
       },
       {
         "path": "src/forms.rs",
-        "sha256": "4e91d9fd56e2770cd8451de4b2006f2be23c18b0ef173a64bf51c1266db62035"
+        "sha256": "eb249161a8397ade1973c8d70a92c9aa42979f5061f918bdb1122414b5adfc06"
       },
       {
         "path": "src/holdings.rs",
-        "sha256": "fdcf8907d947612ecb7ba50173d9064d2e8e703009d28d3807c6ea29d4904e12"
+        "sha256": "ded72f58c92d4133190e6cd53d9f89b29c2c03d0f7567f6673aa3b84c0754c95"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "e629e93c69834fc9d2dd912155067e9f229ccb21e8822480100dc05532059f02"
+        "sha256": "f5b2561928344b0da2a45723ac29b58c4d0a88df86746532e7a7004821c7db0a"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "219236e888c1d8f6d6ea81be8a259ca6ec037a3d51f15feca936e5010a717726"
+        "sha256": "a4fb5421911ed619ccea831fc4aa3991894df3abf22e750b196a9dc1daf7ca23"
       },
       {
         "path": "src/readings.rs",
@@ -103,19 +103,19 @@
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "aac7f76a3d1af2714a8a8e24d7e6d1140d29bb791f60d896d50edaac6df071f0"
+        "sha256": "4fb2a26df54b6b6a18be90f8ccc99819d1def3ce2764cb3a320acbaed5f1ef5e"
       },
       {
         "path": "src/recipes/selection.rs",
-        "sha256": "bfe89dd38cc32d214f5f1be6281f127ec79a43f7974bb95b55863946d44ccb78"
+        "sha256": "5483872a76bb3838896e1b61a1648265c17b768b7bec97db453bf6f86766dbbe"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "d63092e5bd6454315006dc5aab22013afad59b1c6c1475a35b68c4eb295a8aa8"
+        "sha256": "3aa5c2f610eaccda2b7885334b52eaade5371d9ef49a053a4735c59dcbbbe6d2"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "cf76f4c8dcf04e3af4116c06b0d612f26c4e75f69c973c568b45f8b21c3e1f97"
+        "sha256": "94914067aadcbb2827c8854785869267daa03191fbf86303070eac2ca48c9195"
       }
     ]
   },

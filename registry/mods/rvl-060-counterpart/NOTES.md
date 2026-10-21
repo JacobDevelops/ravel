@@ -222,8 +222,10 @@ Nine of these are §13's own table. The rest are this package's, and each says w
 
 §6.1's two directories are a fourth decline, and the specification calls it that rather than
 host-blocked: a package writing into the user's home on its own initiative is outside what Ravel's
-sandbox should permit. `persistence::DurableStorage` joins a host-supplied root to a validated
-single-segment package name, touches no file, reads no environment variable, and knows nothing about
+sandbox should permit. `persistence::DurableStorage` joins an explicitly supplied root to a validated
+single-segment package name. The shipped entry chooses `DURABLE_ROOT = "."`, so paths resolve against
+the process working directory when opened; the SDK supplies no game-directory argument. It touches
+no file, reads no environment variable, and knows nothing about
 the operating system. It writes no explanatory file either. Any dependent that had recorded an
 absolute path would break; none is known to, and none was read.
 

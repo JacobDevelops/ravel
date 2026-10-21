@@ -230,7 +230,7 @@ impl Marked {
         table: &FieldTypes,
         values: &BTreeMap<String, JsonValue>,
     ) -> Result<JsonValue, PersistError> {
-        let mut compound = json!({});
+        let mut compound = BTreeMap::new();
         for (field, declared) in self.fields() {
             if !table.holds(declared) {
                 return Err(PersistError::NoFieldType {
@@ -244,11 +244,9 @@ impl Marked {
                 .ok_or_else(|| PersistError::NoValue {
                     field: field.to_owned(),
                 })?;
-            if let Some(object) = compound.as_object_mut() {
-                object.insert(field.to_owned(), value);
-            }
+            compound.insert(field.to_owned(), value);
         }
-        Ok(compound)
+        Ok(compound.into_iter().collect())
     }
 
     /// Reads the marked fields back out of a compound.
@@ -340,12 +338,11 @@ impl Counters {
     /// Writes the counters for saving.
     #[must_use]
     pub fn save(&self) -> JsonValue {
-        let mut counters = json!({});
-        if let Some(object) = counters.as_object_mut() {
-            for (name, held) in &self.held {
-                object.insert(name.clone(), json!(held));
-            }
-        }
+        let counters = self
+            .held
+            .iter()
+            .map(|(name, held)| (name.clone(), json!(held)))
+            .collect::<JsonValue>();
         json!({ "counters": counters })
     }
 

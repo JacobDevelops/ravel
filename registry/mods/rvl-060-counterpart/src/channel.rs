@@ -30,7 +30,6 @@
 //! contract here is declared through Ravel's own networking declaration and the
 //! list is dropped.
 
-use num_traits::ToPrimitive;
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{Direction, PacketContract, PacketId};
 use ravel_sdk::{JsonValue, ModId};
@@ -494,21 +493,8 @@ impl Position {
     /// Returns the chunk this position sits in.
     #[must_use]
     pub fn chunk(self) -> (i64, i64) {
-        // Preserve zero for NaN and saturation at the signed coordinate bounds.
         let chunk = |coordinate: f64| {
-            coordinate
-                .floor()
-                .to_i64()
-                .unwrap_or_else(|| {
-                    if coordinate.is_nan() {
-                        0
-                    } else if coordinate.is_sign_negative() {
-                        i64::MIN
-                    } else {
-                        i64::MAX
-                    }
-                })
-                .div_euclid(16)
+            num_traits::AsPrimitive::<i64>::as_(coordinate.floor()).div_euclid(16)
         };
         (chunk(self.x), chunk(self.z))
     }

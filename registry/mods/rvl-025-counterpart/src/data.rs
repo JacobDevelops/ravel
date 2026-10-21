@@ -205,22 +205,17 @@ impl Store {
     /// Writes the whole store as one document.
     #[must_use]
     pub fn to_saved(&self) -> JsonValue {
-        let mut document = serde_map();
-        for record in Record::ALL {
-            let Some(entries) = self.records.get(record.as_str()) else {
-                continue;
-            };
-            let mut written = serde_map();
-            for (key, value) in entries {
-                if let Some(object) = written.as_object_mut() {
-                    object.insert(key.clone(), value.clone());
-                }
-            }
-            if let Some(object) = document.as_object_mut() {
-                object.insert(record.as_str().to_owned(), written);
-            }
-        }
-        document
+        Record::ALL
+            .iter()
+            .filter_map(|record| {
+                let entries = self.records.get(record.as_str())?;
+                let written = entries
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect::<JsonValue>();
+                Some((record.as_str().to_owned(), written))
+            })
+            .collect()
     }
 
     /// Reads a whole store back.
@@ -258,10 +253,6 @@ impl Store {
         }
         Ok(store)
     }
-}
-
-fn serde_map() -> JsonValue {
-    ravel_sdk::json!({})
 }
 
 /// One stack of items, as every record here writes one.

@@ -180,7 +180,7 @@ mod tests {
                     UPGRADE_CEILING: 1,
                     ENERGY_PER_TICK: 0,
                     ENERGY_CAPACITY: i32::MAX,
-                    ENERGY_ACCEPTED: i32::MAX,
+                    ENERGY_ACCEPTED: 7,
                 },
             })
             .to_string(),
@@ -198,7 +198,7 @@ mod tests {
                 upgrade_ceiling: 1,
                 energy_per_tick: 0,
                 energy_capacity: i32::MAX,
-                energy_accepted: i32::MAX,
+                energy_accepted: 7,
             }
         );
     }

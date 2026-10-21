@@ -14,8 +14,7 @@
 
 use ravel_sdk::save::SavedDataVersion;
 use ravel_sdk::{JsonValue, json};
-use rvl_042_counterpart::arithmetic::insert;
-use rvl_042_counterpart::inventory::{Store, StoreRefused};
+use rvl_042_counterpart::inventory::{Store, StoreRefused, insert};
 use rvl_042_counterpart::{Position, Stack};
 
 /// The energy a machine's store holds with no upgrade.
@@ -142,13 +141,7 @@ impl Upgrade {
     #[must_use]
     pub fn operation_ticks(self, base: u32) -> u32 {
         let ticks = (f64::from(base) * self.operation).trunc();
-        num_traits::ToPrimitive::to_u32(&ticks).unwrap_or_else(|| {
-            if ticks.is_nan() || ticks < 0.0 {
-                0
-            } else {
-                u32::MAX
-            }
-        })
+        num_traits::AsPrimitive::<u32>::as_(ticks)
     }
 
     /// The fuel usage a base is raised to.
@@ -295,6 +288,7 @@ impl Energy {
     }
 
     /// Charges the store, answering whether it could pay.
+    #[must_use]
     pub fn charge(&mut self, cost: u32) -> bool {
         let cost = u64::from(cost);
         if self.amount < cost {
@@ -431,10 +425,9 @@ pub fn tick_recipe_machine(
             reset: true,
         });
     }
-    if energy.amount < u64::from(step.usage) {
+    if !energy.charge(step.usage) {
         return Err(Stalled::Unpowered);
     }
-    energy.charge(step.usage);
     let progress = step.progress + 1;
     Ok(Ticked {
         progress: if progress >= step.operation {
@@ -518,7 +511,9 @@ pub fn tick_harvester(
         Found::Crop => SCAN_COST,
         Found::Nothing => 0,
     };
-    energy.charge(charged);
+    if !energy.charge(charged) {
+        return Err(Stalled::Unpowered);
+    }
     Ok(Swept {
         progress: 0,
         cursor: if area == 0 {
@@ -872,11 +867,7 @@ pub fn fit(target: &Target, held: &[Slotted], offers: [Offer; 2]) -> Fitted {
                     slot,
                 };
                 match fitted.slotted.iter().position(|held| held.slot == slot) {
-                    Some(position) => {
-                        if fitted.slotted[position] != written {
-                            fitted.slotted[position] = written;
-                        }
-                    }
+                    Some(position) => fitted.slotted[position] = written,
                     None => fitted.slotted.push(written),
                 }
             }
@@ -984,6 +975,29 @@ fn saved_optional_u32(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scan_that_cannot_pay_its_cost_stalls_without_charging() {
+        let mut energy = Energy {
+            amount: 5,
+            ..Energy::default()
+        };
+        assert_eq!(
+            tick_harvester(
+                &mut energy,
+                Held::default(),
+                1,
+                Timing {
+                    operation: 0,
+                    usage: 1
+                },
+                Redstone::Gated { powered: false },
+                Found::Crop,
+            ),
+            Err(Stalled::Unpowered),
+        );
+        assert_eq!(energy.amount, 5);
+    }
 
     #[test]
     fn each_derived_operation_time_truncates_toward_zero() {

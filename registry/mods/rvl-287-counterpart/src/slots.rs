@@ -429,8 +429,8 @@ impl Grid {
             .ok()
             .zip(usize::try_from(height).ok())
             .and_then(|(width, height)| width.checked_mul(height))
-            .unwrap_or(0);
-        if width == 0 || height == 0 || area == 0 || area > MAX_CELLS {
+            .unwrap_or(usize::MAX);
+        if !(1..=MAX_CELLS).contains(&area) {
             return Err(SlotError::UnusableGrid(area));
         }
         if declared > area {

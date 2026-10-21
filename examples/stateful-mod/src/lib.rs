@@ -178,12 +178,14 @@ impl Mod for Journal {
     }
 
     /// Reads the current payload after the loader has applied migrations.
+    /// Absence starts a fresh journal, including when switching from another world.
     ///
     /// # Errors
     ///
     /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
     fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
+            self.entries.clear();
             return Ok(());
         };
         let stored = envelope
@@ -318,6 +320,15 @@ mod tests {
             .open_saved_data(Some(&envelope))
             .expect("its own shape");
         assert_eq!(reopened.entries(), journal.entries());
+    }
+
+    #[test]
+    fn opening_a_world_without_saved_data_clears_the_previous_world() {
+        let mut journal = opened(2, &json!({ "entries": ["previous world"] }))
+            .expect("the previous world has valid data");
+        journal.open_saved_data(None).expect("absence initializes");
+        let empty: &[String] = &[];
+        assert_eq!(journal.entries(), empty);
     }
 
     #[test]

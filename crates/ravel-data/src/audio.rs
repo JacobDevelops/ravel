@@ -68,7 +68,7 @@ impl AudioEvent {
 /// let owner: ModId = "example_mod".parse().expect("a legal mod id");
 /// let mut declared = AudioDeclaration::new(owner);
 ///
-/// let chime = declared.entry("door_opens", b"the supplied bytes")?;
+/// let chime = declared.entry("door_opens", b"the supplied bytes".to_vec())?;
 /// let event = declared.event("door_opens")?;
 /// assert_eq!(event.entry(), chime.name());
 ///
@@ -80,6 +80,7 @@ impl AudioEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioDeclaration {
     owner: ModId,
+    // Every entry shares `owner`, so its path keys it without allocating to look it up.
     entries: BTreeMap<String, (ContentId, Vec<u8>)>,
     events: BTreeMap<ContentId, AudioEvent>,
 }
@@ -107,7 +108,7 @@ impl AudioDeclaration {
     ///
     /// Returns [`AudioError::Name`] when `name` is not a legal content path, and
     /// [`AudioError::DuplicateEntry`] when this mod already declared it.
-    pub fn entry(&mut self, name: &str, bytes: &[u8]) -> Result<AudioEntry, AudioError> {
+    pub fn entry(&mut self, name: &str, bytes: Vec<u8>) -> Result<AudioEntry, AudioError> {
         let id = ContentId::new(self.owner.clone(), name)
             .map_err(|source| AudioError::Name { source })?;
         if self.entries.contains_key(name) {
@@ -115,8 +116,7 @@ impl AudioDeclaration {
                 name: name.to_owned(),
             });
         }
-        self.entries
-            .insert(name.to_owned(), (id.clone(), bytes.to_vec()));
+        self.entries.insert(name.to_owned(), (id.clone(), bytes));
         Ok(AudioEntry { id })
     }
 
@@ -154,6 +154,24 @@ impl AudioDeclaration {
         self.events.values()
     }
 
+    /// Returns the declared event that plays the entry named `name`, declaring nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AudioError::UnknownEntry`] when this mod declared no such entry, and
+    /// [`AudioError::UnknownEvent`] when it declared the entry but no event plays it.
+    pub fn declared_event(&self, name: &str) -> Result<&AudioEvent, AudioError> {
+        let (id, _) = self
+            .entries
+            .get(name)
+            .ok_or_else(|| AudioError::UnknownEntry {
+                name: name.to_owned(),
+            })?;
+        self.events
+            .get(id)
+            .ok_or_else(|| AudioError::UnknownEvent { id: id.clone() })
+    }
+
     /// Asks for a declared `event` to be played on `side`.
     ///
     /// Playback requires a declared event rather than an unchecked name.
@@ -171,12 +189,12 @@ impl AudioDeclaration {
     pub fn play(&self, event: &AudioEvent, side: Side) -> Result<PlayRequest, AudioError> {
         if !self.events.contains_key(event.id()) {
             return Err(AudioError::UnknownEvent {
-                name: event.entry().to_owned(),
+                id: event.id().clone(),
             });
         }
         if side.is_server() {
             return Err(AudioError::WrongSide {
-                name: event.entry().to_owned(),
+                id: event.id().clone(),
                 side,
             });
         }
@@ -233,20 +251,20 @@ pub enum AudioError {
         /// The name declared twice.
         name: String,
     },
-    /// An event was declared for an entry this mod does not own.
+    /// An event lookup named an entry this mod does not own.
     UnknownEntry {
         /// The entry the event named.
         name: String,
     },
-    /// A play call named an entry no event plays.
+    /// No declared event plays this entry, or a play call named an undeclared event.
     UnknownEvent {
-        /// The entry the call named.
-        name: String,
+        /// The qualified entry the event plays, owner included.
+        id: ContentId,
     },
     /// Playing was asked for on a side that cannot play.
     WrongSide {
-        /// The entry the call named.
-        name: String,
+        /// The qualified entry the event plays, owner included.
+        id: ContentId,
         /// The side it was asked on.
         side: Side,
     },
@@ -290,13 +308,13 @@ impl fmt::Display for AudioError {
                 formatter,
                 "no audio entry `{name}` is declared, so an event for it would play nothing"
             ),
-            Self::UnknownEvent { name } => write!(
+            Self::UnknownEvent { id } => write!(
                 formatter,
-                "no event plays the audio entry `{name}`, so there is nothing to ask for"
+                "no event plays the audio entry `{id}`, so there is nothing to ask for"
             ),
-            Self::WrongSide { name, side } => write!(
+            Self::WrongSide { id, side } => write!(
                 formatter,
-                "`{}` has no sound to play with, so `{name}` is refused there rather than skipped",
+                "`{}` has no sound to play with, so `{id}` is refused there rather than skipped",
                 side.as_str()
             ),
         }
@@ -330,7 +348,7 @@ mod tests {
     fn declared() -> AudioDeclaration {
         let mut declared = AudioDeclaration::new(owner());
         declared
-            .entry("door_opens", BYTES)
+            .entry("door_opens", BYTES.to_vec())
             .expect("a first claim on an unclaimed name is taken");
         declared
             .event("door_opens")
@@ -343,7 +361,7 @@ mod tests {
         let mut declared = AudioDeclaration::new(owner());
 
         let entry = declared
-            .entry("door_opens", BYTES)
+            .entry("door_opens", BYTES.to_vec())
             .expect("a first claim on an unclaimed name is taken");
         let event = declared
             .event("door_opens")
@@ -356,6 +374,32 @@ mod tests {
         assert_eq!(entry.id().to_string(), "sample:door_opens");
         assert_eq!(declared.bytes("door_opens"), Some(BYTES));
         assert_eq!(declared.entries().collect::<Vec<_>>(), ["door_opens"]);
+    }
+
+    #[test]
+    fn looking_up_an_event_declares_nothing() {
+        let mut declared = AudioDeclaration::new(owner());
+        assert!(matches!(
+            declared.declared_event("door_opens"),
+            Err(AudioError::UnknownEntry { .. })
+        ));
+        declared
+            .entry("door_opens", BYTES.to_vec())
+            .expect("a first claim");
+
+        let refusal = declared
+            .declared_event("door_opens")
+            .expect_err("an entry no event plays has no event to find");
+        assert_eq!(
+            refusal,
+            AudioError::UnknownEvent {
+                id: "sample:door_opens".parse().expect("a legal content id"),
+            }
+        );
+        assert_eq!(declared.events().count(), 0);
+
+        let event = declared.event("door_opens").expect("the entry exists");
+        assert_eq!(declared.declared_event("door_opens"), Ok(&event));
     }
 
     #[test]
@@ -373,10 +417,12 @@ mod tests {
     #[test]
     fn one_name_holds_one_sound() {
         let mut declared = AudioDeclaration::new(owner());
-        declared.entry("door_opens", BYTES).expect("a first claim");
+        declared
+            .entry("door_opens", BYTES.to_vec())
+            .expect("a first claim");
 
         let refusal = declared
-            .entry("door_opens", b"other bytes")
+            .entry("door_opens", b"other bytes".to_vec())
             .expect_err("a second claim on one name is refused");
 
         assert!(matches!(refusal, AudioError::DuplicateEntry { .. }));
@@ -389,7 +435,7 @@ mod tests {
     fn a_name_that_is_not_a_content_path_is_refused() {
         let mut declared = AudioDeclaration::new(owner());
         let refusal = declared
-            .entry("Door Opens", BYTES)
+            .entry("Door Opens", BYTES.to_vec())
             .expect_err("a capital and a space are not a content path");
         assert!(matches!(refusal, AudioError::Name { .. }));
     }
@@ -428,16 +474,20 @@ mod tests {
         let mut declared = AudioDeclaration::new(owner());
 
         declared
-            .entry("door_opens", BYTES)
+            .entry("door_opens", BYTES.to_vec())
             .expect("a server may own the bytes it will never play");
     }
 
     #[test]
     fn an_event_from_another_owner_is_refused_before_the_side_is_read() {
         let mut declared = AudioDeclaration::new(owner());
-        declared.entry("door_opens", BYTES).expect("a first claim");
+        declared
+            .entry("door_opens", BYTES.to_vec())
+            .expect("a first claim");
         let mut other = AudioDeclaration::new("other".parse().expect("valid owner"));
-        other.entry("door_opens", BYTES).expect("other's entry");
+        other
+            .entry("door_opens", BYTES.to_vec())
+            .expect("other's entry");
         let event = other.event("door_opens").expect("other's event");
 
         let refusal = declared
@@ -448,7 +498,7 @@ mod tests {
         assert_eq!(refusal.wrong_side(), None);
         assert_eq!(
             refusal.to_string(),
-            "no event plays the audio entry `door_opens`, so there is nothing to ask for"
+            "no event plays the audio entry `other:door_opens`, so there is nothing to ask for"
         );
     }
 
@@ -457,7 +507,9 @@ mod tests {
         let source = declared();
         let event = source.events().next().expect("source event");
         let mut target = AudioDeclaration::new(owner());
-        target.entry("door_opens", BYTES).expect("target entry");
+        target
+            .entry("door_opens", BYTES.to_vec())
+            .expect("target entry");
         assert!(matches!(
             target.play(event, Side::Client),
             Err(AudioError::UnknownEvent { .. })

@@ -276,12 +276,15 @@ fn the_loader_carries_the_versions_the_mod_declares() {
     let machine = running(&mut saved);
 
     assert_eq!(
-        machine.saved_data_versions(saved.id()),
-        Ok(&saved
+        &machine
+            .entry(saved.id())
+            .expect("admitted owner")
+            .saved_data_versions,
+        &saved
             .declaration()
             .expect("valid declaration")
             .versions()
-            .collect::<BTreeSet<_>>()),
+            .collect::<BTreeSet<_>>(),
         "a plan that lost the declared versions could not decide a world"
     );
 }

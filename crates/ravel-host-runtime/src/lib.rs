@@ -62,7 +62,7 @@ pub fn compose(
     let mut loaded = owned.borrow();
     let configurations = open_configuration(
         &mut loaded,
-        &packs,
+        packs,
         |owner| file::read(game_directory, owner),
         &environment(),
     )
@@ -831,6 +831,119 @@ mod tests {
         assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
         assert_eq!(composition.configurations.len(), 1);
         std::fs::remove_dir_all(game).expect("remove launch directory");
+    }
+
+    fn configuration_member(name: &str) -> Member {
+        let (package, id, _) = member(name, &["client"]);
+        Member {
+            package,
+            value: Box::new(CountingConfiguration {
+                id,
+                calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }),
+        }
+    }
+
+    fn broken_pack_directory(fault: &str, requirement: &str) -> std::path::PathBuf {
+        let game = std::env::temp_dir().join(format!(
+            "ravel-pack-configuration-{requirement}-{fault}-{}",
+            std::process::id()
+        ));
+        let owner = "broken_configuration".parse().expect("owner");
+        let path = ravel_config::file::pack_path(&game, &owner);
+        std::fs::create_dir_all(path.parent().expect("pack directory")).expect("pack directory");
+        if fault == "unreadable" {
+            std::fs::create_dir(&path).expect("a directory cannot be read as a document");
+        } else {
+            let document = match fault {
+                "malformed" => "{",
+                "owner" => r#"{"schemaVersion":1,"owner":"other_mod","values":{}}"#,
+                "layer" => {
+                    r#"{"schemaVersion":1,"owner":"broken_configuration","values":{"unknown":1}}"#
+                }
+                _ => unreachable!("known pack fault"),
+            };
+            std::fs::write(path, document).expect("write broken pack document");
+        }
+        game
+    }
+
+    #[test]
+    fn composition_attributes_required_pack_file_and_layer_failures() {
+        for fault in ["malformed", "owner", "unreadable", "layer"] {
+            let game = broken_pack_directory(fault, "required");
+            let result = super::compose(
+                &game,
+                Side::Client,
+                vec![configuration_member("broken_configuration")],
+            );
+            let Err(super::LaunchError::Config(refused)) = result else {
+                panic!("{fault} must reach the owner's configuration refusal");
+            };
+            assert_eq!(
+                refused.mod_id(),
+                Some(&"broken_configuration".parse().expect("owner"))
+            );
+            if fault == "layer" {
+                assert!(matches!(refused, ravel_loader::ConfigRefused::Layer { .. }));
+            } else {
+                assert!(matches!(
+                    refused,
+                    ravel_loader::ConfigRefused::PackFile { .. }
+                ));
+            }
+            std::fs::remove_dir_all(game).expect("remove launch directory");
+        }
+    }
+
+    #[test]
+    fn host_pack_reads_isolate_optional_file_and_layer_failures() {
+        for fault in ["malformed", "owner", "unreadable", "layer"] {
+            let game = broken_pack_directory(fault, "optional");
+            let super::Admitted {
+                mut entries,
+                mut mods,
+                ..
+            } = admit(
+                Side::Client,
+                vec![
+                    configuration_member("broken_configuration"),
+                    configuration_member("healthy_mod"),
+                ],
+            )
+            .expect("package admission");
+            let owner: ModId = "broken_configuration".parse().expect("owner");
+            entries
+                .iter_mut()
+                .find(|entry| entry.mod_id == owner)
+                .expect("owner entry")
+                .requirement = ravel_loader::Requirement::Optional;
+            let mut machine =
+                ravel_loader::LifecycleMachine::new(Side::Client, entries).expect("plan");
+            let mut loaded =
+                ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired mods");
+            let configured = ravel_loader::open_configuration(
+                &mut loaded,
+                ravel_config::file::read_pack(&game).expect("owner errors remain attributable"),
+                |owner| ravel_config::file::read(&game, owner),
+                &environment(),
+            )
+            .expect("optional owner's refusal leaves healthy settings available");
+            assert_eq!(
+                configured.order(),
+                &["healthy_mod".parse::<ModId>().expect("healthy owner")]
+            );
+            ravel_loader::start_all(&mut loaded, &environment()).expect("healthy owner starts");
+            assert_eq!(machine.state(&owner), Ok(LifecycleState::Failed));
+            let failure = machine
+                .failure(&owner)
+                .expect("known owner")
+                .expect("attributed refusal");
+            assert_eq!(failure.mod_id.as_ref(), Some(&owner));
+            assert_eq!(failure.environment, environment());
+            assert_eq!(machine.save_access(), Ok(()));
+            std::fs::remove_dir_all(game).expect("remove launch directory");
+        }
     }
 
     #[test]

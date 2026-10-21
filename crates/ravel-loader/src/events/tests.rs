@@ -1467,7 +1467,7 @@ struct Outward {
 impl Outward {
     fn new(owner: &str, request_owner: &str) -> Self {
         let mut audio = ravel_data::AudioDeclaration::new(id(request_owner));
-        audio.entry("tone", b"audio").expect("valid entry");
+        audio.entry("tone", b"audio".to_vec()).expect("valid entry");
         let event = audio.event("tone").expect("declared entry");
         Self {
             id: id(owner),
@@ -1734,7 +1734,11 @@ fn commands_only_execute_on_the_runtime_world_side() {
                 );
             }
             drop(mods);
-            assert_eq!(host.ran.len(), usize::from(claimed == running));
+            assert_eq!(
+                host.ran.len(),
+                usize::from(claimed == running),
+                "foreign-side commands, including every client command, are refused before the mod"
+            );
         }
     }
 }

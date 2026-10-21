@@ -44,22 +44,22 @@ ravel-test-mod-server-only.workspace = true
 ravel-test-mod-world-shaping.workspace = true
 ravel-composed-host.workspace = true
 ravel-testkit.workspace = true
-rvl-002-counterpart = { path = "../../registry/mods/rvl-002-counterpart", version = "0.1.0" }
-rvl-025-counterpart = { path = "../../registry/mods/rvl-025-counterpart", version = "0.1.0" }
-rvl-042-counterpart = { path = "../../registry/mods/rvl-042-counterpart", version = "0.1.0" }
-rvl-060-counterpart = { path = "../../registry/mods/rvl-060-counterpart", version = "0.1.0" }
-rvl-086-counterpart = { path = "../../registry/mods/rvl-086-counterpart", version = "0.1.0" }
-rvl-120-counterpart = { path = "../../registry/mods/rvl-120-counterpart", version = "0.1.0" }
-rvl-132-counterpart = { path = "../../registry/mods/rvl-132-counterpart", version = "0.1.0" }
-rvl-146-counterpart = { path = "../../registry/mods/rvl-146-counterpart", version = "0.1.0" }
-rvl-180-counterpart = { path = "../../registry/mods/rvl-180-counterpart", version = "4.6.1" }
-rvl-210-counterpart = { path = "../../registry/mods/rvl-210-counterpart", version = "0.1.0" }
-rvl-287-counterpart = { path = "../../registry/mods/rvl-287-counterpart", version = "0.1.0" }
-rvl-321-counterpart = { path = "../../registry/mods/rvl-321-counterpart", version = "0.1.0" }
+rvl-002-counterpart.workspace = true
+rvl-025-counterpart.workspace = true
+rvl-042-counterpart.workspace = true
+rvl-060-counterpart.workspace = true
+rvl-086-counterpart.workspace = true
+rvl-120-counterpart.workspace = true
+rvl-132-counterpart.workspace = true
+rvl-146-counterpart.workspace = true
+rvl-180-counterpart.workspace = true
+rvl-210-counterpart.workspace = true
+rvl-287-counterpart.workspace = true
+rvl-321-counterpart.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
-waystone-ledger = { path = "../../test-mods/waystone-ledger", version = "0.2.0" }
+waystone-ledger.workspace = true
 
 [lints]
 workspace = true

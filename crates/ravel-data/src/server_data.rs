@@ -78,7 +78,7 @@ mod tests {
         let mut declared = ContentDeclaration::new(owner());
         for name in order {
             declared
-                .server_entry(ServerDataKind::Crafting, name, BODY)
+                .server_entry(ServerDataKind::Crafting, name, BODY.to_vec())
                 .expect("each name is claimed once");
         }
         declared
@@ -93,7 +93,7 @@ mod tests {
     fn a_declared_server_entry_reaches_generation() {
         let mut declared = ContentDeclaration::new(owner());
         let path = declared
-            .server_entry(ServerDataKind::Crafting, "plate_from_ingot", BODY)
+            .server_entry(ServerDataKind::Crafting, "plate_from_ingot", BODY.to_vec())
             .expect("a first claim on an unclaimed name is taken");
         let generated = declared.generate();
         assert_eq!(generated.len(), 1);
@@ -135,7 +135,7 @@ mod tests {
         ];
         for (kind, expected) in expected {
             let path = declared
-                .server_entry(kind, "thing", BODY)
+                .server_entry(kind, "thing", BODY.to_vec())
                 .expect("one name under four kinds is four files");
             assert_eq!(path.as_str(), expected);
             assert_eq!(kind.to_string(), kind.as_str());
@@ -147,7 +147,7 @@ mod tests {
     fn a_nested_name_keeps_its_segments_and_gains_the_kinds_extension() {
         let mut declared = ContentDeclaration::new(owner());
         let path = declared
-            .server_entry(ServerDataKind::Crafting, "smelting/plate", BODY)
+            .server_entry(ServerDataKind::Crafting, "smelting/plate", BODY.to_vec())
             .expect("a nested name is a legal content path");
         assert_eq!(path.as_str(), "data/sample/recipe/smelting/plate.json");
     }
@@ -164,12 +164,12 @@ mod tests {
                     .expect("first claim");
             } else {
                 declared
-                    .server_entry(ServerDataKind::Crafting, "plate", BODY)
+                    .server_entry(ServerDataKind::Crafting, "plate", BODY.to_vec())
                     .expect("first claim");
             }
             let before = declared.clone();
             let refusal = declared
-                .server_entry(ServerDataKind::Crafting, "plate", b"{}")
+                .server_entry(ServerDataKind::Crafting, "plate", b"{}".to_vec())
                 .expect_err("a repeated file is refused");
             assert_eq!(
                 refusal,
@@ -200,7 +200,7 @@ mod tests {
         let mut declared = ContentDeclaration::new(owner());
         for name in ["Uppercase", "../elsewhere", ""] {
             let refusal = declared
-                .server_entry(ServerDataKind::Crafting, name, BODY)
+                .server_entry(ServerDataKind::Crafting, name, BODY.to_vec())
                 .expect_err("an invalid content name is refused");
             assert!(matches!(refusal, ContentDeclarationError::Path { .. }));
             assert!(declared.generate().is_empty());
@@ -221,7 +221,7 @@ mod tests {
             .entry(ContentKind::Block, "plate")
             .expect("a block");
         let path = declared
-            .server_entry(ServerDataKind::Loot, "blocks/plate", BODY)
+            .server_entry(ServerDataKind::Loot, "blocks/plate", BODY.to_vec())
             .expect("a supplied loot table replaces the default");
         assert_eq!(declared.supplied_defaults(), std::slice::from_ref(&path));
         assert_eq!(

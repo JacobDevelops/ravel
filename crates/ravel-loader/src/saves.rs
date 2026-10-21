@@ -30,7 +30,7 @@ pub fn produce_saved_data<H: std::ops::DerefMut<Target: Mod>>(
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let result = snapshot(loaded, prior);
     let (machine, _) = loaded.parts();
-    record_refusal(machine, environment, result)
+    attribute_snapshot_refusal(machine, environment, result)
 }
 
 fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
@@ -100,22 +100,11 @@ pub fn open_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     packages: &BTreeMap<ModId, Version>,
     environment: &FailureEnvironment,
 ) -> Result<SavedDataAggregate, SaveRefused> {
-    let result = open(loaded, environment, bytes, packages);
-    let (machine, _) = loaded.parts();
-    record_refusal(machine, environment, result)
-}
-
-fn open<H: std::ops::DerefMut<Target: Mod>>(
-    loaded: &mut LoadedMods<'_, H>,
-    environment: &FailureEnvironment,
-    bytes: Option<&[u8]>,
-    packages: &BTreeMap<ModId, Version>,
-) -> Result<SavedDataAggregate, SaveRefused> {
     let (machine, mods) = loaded.parts();
     let (declarations, chains) = collect_declarations(machine, environment, mods)?;
     let mut aggregate =
         SavedDataAggregate::open_preserving(bytes, &declarations, packages, |owner| {
-            machine.state(owner) == Ok(LifecycleState::Failed)
+            machine.has_failed(owner)
         })
         .map_err(SaveRefused::Data)?;
     let mut originals = migrate(machine, environment, &mut aggregate, &declarations, &chains)?;
@@ -150,7 +139,7 @@ fn migrate(
     let mut originals = Vec::new();
     for declaration in declarations {
         let mod_id = declaration.owner();
-        if machine.state(mod_id) == Ok(LifecycleState::Failed) {
+        if machine.has_failed(mod_id) {
             continue;
         }
         let Some(envelope) = aggregate.envelope(mod_id) else {
@@ -161,15 +150,18 @@ fn migrate(
         if plan.is_current() {
             continue;
         }
-        let chain = chains
-            .iter()
-            .find(|chain| chain.owner() == mod_id)
-            .ok_or_else(|| {
+        let Some(chain) = chains.iter().find(|chain| chain.owner() == mod_id) else {
+            isolate_refusal(
+                machine,
+                environment,
+                mod_id,
                 SaveRefused::Data(SavedDataError::MissingMigration {
                     owner: mod_id.clone(),
                     to: declaration.current(),
-                })
-            })?;
+                }),
+            )?;
+            continue;
+        };
         let Some(payload) = owner_callback(machine, environment, mod_id, || {
             Ok(chain.apply(&plan, envelope.payload()))
         })?
@@ -298,45 +290,29 @@ fn isolate_refusal(
     )
 }
 
-fn record_refusal<T>(
+fn attribute_snapshot_refusal<T>(
     machine: &mut LifecycleMachine,
     environment: &FailureEnvironment,
     result: Result<T, SaveRefused>,
 ) -> Result<T, SaveRefused> {
     if let Err(refused) = &result
         && let Some(owner) = refused.mod_id()
-        && machine.state(owner) != Ok(LifecycleState::Failed)
-        && breaks_owner_contract(refused)
+        && !machine.has_failed(owner)
     {
         let source = match refused {
             SaveRefused::Mod { source, .. } => source.clone(),
-            SaveRefused::Lifecycle(_)
-            | SaveRefused::Data(_)
-            | SaveRefused::ForeignDeclaration { .. }
-            | SaveRefused::ForeignEnvelope { .. } => {
+            SaveRefused::ForeignEnvelope { .. } => {
                 crate::owner_refusal(machine, owner, refused).map_err(SaveRefused::Lifecycle)?
             }
+            SaveRefused::Lifecycle(_)
+            | SaveRefused::Data(_)
+            | SaveRefused::ForeignDeclaration { .. } => return result,
         };
         machine
             .fail_callback(&source, environment, None)
             .map_err(SaveRefused::Lifecycle)?;
     }
     result
-}
-
-fn breaks_owner_contract(refused: &SaveRefused) -> bool {
-    matches!(
-        refused,
-        SaveRefused::Mod { .. }
-            | SaveRefused::ForeignDeclaration { .. }
-            | SaveRefused::ForeignEnvelope { .. }
-            | SaveRefused::Data(
-                SavedDataError::MigrationFailed { .. }
-                    | SavedDataError::MissingMigration { .. }
-                    | SavedDataError::NoVersionsDeclared { .. }
-                    | SavedDataError::MismatchedChain { .. }
-            )
-    )
 }
 
 /// Why world saved data could not be opened or snapshotted.
@@ -372,9 +348,9 @@ pub enum SaveRefused {
 impl SaveRefused {
     /// Returns the mod this refusal is about, when it is about one.
     #[must_use]
-    pub const fn mod_id(&self) -> Option<&ModId> {
+    pub fn mod_id(&self) -> Option<&ModId> {
         match self {
-            Self::Lifecycle(_) => None,
+            Self::Lifecycle(error) => error.mod_id(),
             Self::Data(error) => error.owner(),
             Self::ForeignDeclaration { mod_id, .. }
             | Self::ForeignEnvelope { mod_id, .. }
@@ -467,6 +443,29 @@ mod tests {
     use crate::loaded::LoadedMods;
     use crate::tests::entry;
 
+    #[test]
+    fn lifecycle_refusals_preserve_the_owner_including_halted_worlds() {
+        let owner = id("stored");
+        for error in [
+            crate::LifecycleError::WorldAccessBlocked {
+                mod_id: owner.clone(),
+                state: LifecycleState::Registered,
+            },
+            crate::LifecycleError::WorldAccessHalted {
+                mod_id: owner.clone(),
+            },
+            crate::LifecycleError::PartialStateRefused {
+                mod_id: owner.clone(),
+            },
+        ] {
+            assert_eq!(SaveRefused::Lifecycle(error).mod_id(), Some(&owner));
+        }
+        assert_eq!(
+            SaveRefused::Lifecycle(crate::LifecycleError::AttributionRequired).mod_id(),
+            None
+        );
+    }
+
     struct WorldProbe {
         id: ModId,
         calls: std::cell::Cell<usize>,
@@ -496,6 +495,51 @@ mod tests {
         fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
             self.calls.set(self.calls.get() + 1);
             Ok(None)
+        }
+    }
+
+    #[test]
+    fn missing_migration_is_attributed_where_migration_stops() {
+        for requirement in [Requirement::Required, Requirement::Optional] {
+            let owner = id("stored");
+            let mut entry = entry("stored", &[Side::DedicatedServer]);
+            entry.requirement = requirement;
+            let mut machine =
+                LifecycleMachine::new(Side::DedicatedServer, vec![entry]).expect("valid plan");
+            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            let declaration = SavedDataDeclaration::new(owner.clone(), [version(1), version(2)])
+                .expect("valid declaration");
+            let original =
+                SavedDataEnvelope::current(owner.clone(), version(1), json!({"kept": 1}));
+            let mut aggregate = SavedDataAggregate::fresh();
+            aggregate.replace(original.clone());
+            let environment = environment();
+            let result = super::migrate(
+                &mut machine,
+                &environment,
+                &mut aggregate,
+                &[declaration],
+                &[],
+            );
+            if requirement == Requirement::Required {
+                assert_eq!(
+                    result,
+                    Err(SaveRefused::Data(SavedDataError::MissingMigration {
+                        owner: owner.clone(),
+                        to: version(2),
+                    }))
+                );
+            } else {
+                assert_eq!(result, Ok(Vec::new()));
+            }
+            assert!(machine.has_failed(&owner));
+            assert_eq!(aggregate.envelope(&owner), Some(&original));
+            let attribution = machine
+                .failure(&owner)
+                .expect("tracked")
+                .expect("attributed");
+            assert_eq!(attribution.environment, environment);
+            assert_eq!(attribution.state, LifecycleState::Running);
         }
     }
 

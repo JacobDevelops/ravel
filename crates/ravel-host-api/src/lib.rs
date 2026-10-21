@@ -79,7 +79,8 @@ impl fmt::Display for GameEvent {
 pub struct CommandInvocation {
     /// The claimed key whose root literal was typed.
     pub key: RegistryKey,
-    /// The executing side; singleplayer commands run on [`Side::IntegratedServer`].
+    /// The runtime's world side: [`Side::IntegratedServer`] or [`Side::DedicatedServer`].
+    /// The loader refuses other sides before invoking [`Mod::run_command`].
     pub side: Side,
     /// Untrusted arguments split on whitespace; the mod defines their grammar.
     pub arguments: Vec<String>,
@@ -578,6 +579,8 @@ pub trait Mod: Send {
     /// # Errors
     ///
     /// Returns [`ModError::Unsupported`] by default, or an implementation's refusal.
+    /// Returning an error fails the providing mod. Refuse malformed caller input
+    /// inside a normal [`ServiceResponse`] rather than returning [`ModError`].
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         let _ = request;
         Err(ModError::Unsupported)

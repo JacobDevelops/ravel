@@ -247,7 +247,10 @@ fn the_data_half_holds_the_data_paths_and_none_of_the_assets() {
 #[test]
 fn a_set_supplying_no_assets_writes_a_pack_holding_only_its_metadata() {
     let root = directory("empty").join(GAME_PACK_DIRECTORY);
-    let set = supplied(&[("first_mod", &[("data/first_mod/tags/item/x.json", "{}")])]);
+    let set = supplied(&[(
+        "first_mod",
+        &[("data/first_mod/tags/item/x.json", "{\"values\":[]}")],
+    )]);
 
     write_game_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 

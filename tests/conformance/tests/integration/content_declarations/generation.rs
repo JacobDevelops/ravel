@@ -5,6 +5,7 @@ use ravel_data::ContentDeclaration;
 use ravel_example_content_mod::{ContentMod, RECIPE};
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
+use ravel_sdk::server_data::ServerDataKind;
 
 use super::id;
 
@@ -67,7 +68,11 @@ fn declared_in_another_order() -> ContentDeclaration {
         )
         .expect("the model is supplied once");
     declaration
-        .resource(ContentMod::recipe_path(), RECIPE.to_vec())
+        .server_entry(
+            ServerDataKind::Crafting,
+            "crafting/copper_lantern",
+            RECIPE.to_vec(),
+        )
         .expect("the recipe is supplied once");
 
     for (locale, name) in [("fr_fr", "Lanterne de cuivre"), ("en_us", "Copper Lantern")] {

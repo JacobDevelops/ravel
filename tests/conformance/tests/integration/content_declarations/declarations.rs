@@ -1,7 +1,7 @@
 //! Declaration validation, tag merging, and resource conflicts.
 
 use ravel_core::{ContentId, ContentKind};
-use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId, TagSet};
+use ravel_data::{ContentDeclaration, ContentDeclarationError, TagId, TagResources};
 use ravel_example_content_mod::ContentMod;
 use ravel_sdk::Declared;
 use ravel_sdk::generate::GeneratedFile;
@@ -54,18 +54,21 @@ fn two_mods_contributing_to_one_tag_is_not_a_conflict_and_both_members_survive()
         .tag(&lanterns, &theirs)
         .expect("an item joins an item tag");
 
-    let set = TagSet::merged([&content, &rival]);
-    assert_eq!(set.members(&lanterns).len(), 2);
+    let set = TagResources::merged([&content, &rival]).expect("valid tags");
+    assert_eq!(set.values(&lanterns.generated_path()).len(), 2);
     assert_eq!(
-        set.contributors(&lanterns),
+        set.contributors(&lanterns.generated_path()),
         [ContentMod::declared_id().clone(), id("rival")]
     );
 
-    let reversed = TagSet::merged([&rival, &content]);
-    assert_eq!(set.members(&lanterns), reversed.members(&lanterns));
+    let reversed = TagResources::merged([&rival, &content]).expect("valid tags");
     assert_ne!(
-        set.contributors(&lanterns),
-        reversed.contributors(&lanterns)
+        set.values(&lanterns.generated_path()),
+        reversed.values(&lanterns.generated_path())
+    );
+    assert_ne!(
+        set.contributors(&lanterns.generated_path()),
+        reversed.contributors(&lanterns.generated_path())
     );
 }
 

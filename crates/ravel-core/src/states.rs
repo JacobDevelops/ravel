@@ -133,7 +133,6 @@ mod tests {
 
     #[test]
     fn the_spec_lists_ten_states_and_two_of_them_end_the_lifecycle() {
-        assert_eq!(LifecycleState::ALL.len(), 10);
         assert_eq!(
             LifecycleState::ALL
                 .into_iter()

@@ -174,6 +174,23 @@ struct TransitionContext {
 /// machine.world_access(&ravel_observability::PreWorldReport::new(environment))?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+/// Failure attribution cannot be injected by callers:
+///
+/// ```compile_fail
+/// fn inject(machine: &mut ravel_loader::LifecycleMachine, id: &ravel_core::ModId,
+///           failure: ravel_core::FailureAttribution) {
+///     machine.fail(id, failure);
+/// }
+/// ```
+///
+/// Registry claims must pass through a registration window:
+///
+/// ```compile_fail
+/// fn claim(machine: &mut ravel_loader::LifecycleMachine, id: &ravel_core::ModId,
+///          key: &ravel_core::RegistryKey) {
+///     machine.claim_registry_identifier(id, key, None);
+/// }
+/// ```
 #[derive(Clone, Debug)]
 pub struct LifecycleMachine {
     side: Side,
@@ -248,9 +265,8 @@ impl LifecycleMachine {
 
     /// Iterates eligible members without re-querying tracked state.
     pub(crate) fn eligible(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
-        self.tracked_entries().filter(|(entry, state)| {
-            entry.sides.loads_on(self.side) && *state != LifecycleState::Failed
-        })
+        self.tracked_entries()
+            .filter(|(entry, state)| Self::is_eligible(self.side, entry, *state))
     }
 
     pub(crate) fn tracked_entries_with_failures(
@@ -285,24 +301,11 @@ impl LifecycleMachine {
         self.tracked(mod_id).map(|tracked| tracked.failure.as_ref())
     }
 
-    /// Returns the saved-data versions a canonical identity owns.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LifecycleError::UnknownMod`] when the id is not in the plan.
-    pub fn saved_data_versions(
-        &self,
-        mod_id: &ModId,
-    ) -> Result<&BTreeSet<NonZeroU32>, LifecycleError> {
-        self.tracked(mod_id)
-            .map(|tracked| &tracked.entry.saved_data_versions)
-    }
-
     /// Returns whether the registration barrier has closed.
     ///
     /// Failed and side-parked mods do not hold the barrier open.
     #[must_use]
-    pub fn registration_barrier_closed(&self) -> bool {
+    pub(crate) fn registration_barrier_closed(&self) -> bool {
         self.unregistered().is_none()
     }
 
@@ -318,9 +321,17 @@ impl LifecycleMachine {
     /// Returns whether the mod loads on this side and has not failed.
     #[must_use]
     pub fn loads(&self, mod_id: &ModId) -> bool {
-        self.tracked(mod_id).is_ok_and(|tracked| {
-            tracked.entry.sides.loads_on(self.side) && tracked.state != LifecycleState::Failed
-        })
+        self.tracked(mod_id)
+            .is_ok_and(|tracked| Self::is_eligible(self.side, &tracked.entry, tracked.state))
+    }
+
+    pub(crate) fn has_failed(&self, mod_id: &ModId) -> bool {
+        self.tracked(mod_id)
+            .is_ok_and(|tracked| tracked.state == LifecycleState::Failed)
+    }
+
+    fn is_eligible(side: Side, entry: &LifecycleEntry, state: LifecycleState) -> bool {
+        entry.sides.loads_on(side) && state != LifecycleState::Failed
     }
 
     /// Returns the identity that owns a registry identifier.
@@ -430,7 +441,8 @@ impl LifecycleMachine {
     ///
     /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan and
     /// [`LifecycleError::IllegalTransition`] when the mod has already ended.
-    pub fn fail(
+    #[cfg(test)]
+    pub(crate) fn fail(
         &mut self,
         mod_id: &ModId,
         attribution: FailureAttribution,
@@ -463,30 +475,14 @@ impl LifecycleMachine {
     /// # Errors
     ///
     /// Returns a lifecycle refusal for an unknown owner or an ended lifecycle.
-    pub fn fail_callback(
+    pub(crate) fn fail_callback(
         &mut self,
         error: &ravel_host_api::HostError,
         environment: &FailureEnvironment,
         surface: Option<FailureSurface>,
     ) -> Result<Requirement, LifecycleError> {
-        let mod_id = error.mod_id();
-        let requirement = self.entry(mod_id)?.requirement;
-        if self.state(mod_id)? != LifecycleState::Failed {
-            self.fail(
-                mod_id,
-                FailureAttribution {
-                    mod_id: Some(mod_id.clone()),
-                    version: None,
-                    dependency_chain: Vec::new(),
-                    state: error.state(),
-                    kind: error.failure_kind(),
-                    surface,
-                    environment: environment.clone(),
-                    message: DiagnosticMessage::raw(error.to_string()),
-                },
-            )?;
-        }
-        Ok(requirement)
+        self.fail_callback_attributed(error, environment, surface)
+            .map(|(requirement, _)| requirement)
     }
 
     /// Records a mod callback failure and reports whether the caller must stop.
@@ -506,13 +502,49 @@ impl LifecycleMachine {
         environment: &FailureEnvironment,
         surface: Option<FailureSurface>,
     ) -> Result<(Requirement, &FailureAttribution), LifecycleError> {
-        let requirement = self.fail_callback(error, environment, surface)?;
-        let attribution = self
-            .tracked(error.mod_id())?
-            .failure
-            .as_ref()
-            .expect("fail_callback records attribution before returning");
-        Ok((requirement, attribution))
+        let mod_id = error.mod_id();
+        let Self {
+            entries,
+            transcript,
+            world_mutated,
+            halted,
+            ..
+        } = self;
+        let tracked = entries
+            .iter_mut()
+            .find(|tracked| tracked.entry.mod_id == *mod_id)
+            .ok_or_else(|| LifecycleError::UnknownMod {
+                mod_id: mod_id.clone(),
+            })?;
+        if tracked.state != LifecycleState::Failed {
+            let from = tracked.state;
+            if !from.can_transition_to(LifecycleState::Failed) {
+                return Err(LifecycleError::IllegalTransition {
+                    mod_id: mod_id.clone(),
+                    from,
+                    to: LifecycleState::Failed,
+                });
+            }
+            tracked.state = LifecycleState::Failed;
+            transcript.push(LifecycleEvent {
+                mod_id: mod_id.clone(),
+                state: LifecycleState::Failed,
+            });
+            if *world_mutated && halted.is_none() {
+                *halted = Some(mod_id.clone());
+            }
+        }
+        let attribution = tracked.failure.get_or_insert_with(|| FailureAttribution {
+            mod_id: Some(mod_id.clone()),
+            version: None,
+            dependency_chain: Vec::new(),
+            state: error.state(),
+            kind: error.failure_kind(),
+            surface,
+            environment: environment.clone(),
+            message: DiagnosticMessage::raw(error.to_string()),
+        });
+        Ok((tracked.entry.requirement, attribution))
     }
 
     /// Claims a registry identifier for a mod before the registration barrier.
@@ -527,7 +559,7 @@ impl LifecycleMachine {
     /// [`LifecycleError::ConflictingRegistryClaim`] when already owned, or
     /// [`LifecycleError::MismatchedContentBehaviour`] when the description does
     /// not describe the kind the identifier names.
-    pub fn claim_registry_identifier(
+    pub(crate) fn claim_registry_identifier(
         &mut self,
         mod_id: &ModId,
         identifier: &RegistryKey,
@@ -725,6 +757,9 @@ impl LifecycleMachine {
 }
 
 #[cfg(test)]
+mod spec_invariants;
+
+#[cfg(test)]
 mod tests {
     use std::borrow::Cow;
 
@@ -796,6 +831,9 @@ mod tests {
             !machine.loads(&id("never_installed")),
             "an id outside the plan names nothing"
         );
+        assert!(!machine.has_failed(&id("example_mod")));
+        assert!(!machine.has_failed(&id("server_side_mod")));
+        assert!(!machine.has_failed(&id("never_installed")));
 
         machine
             .fail(
@@ -807,6 +845,7 @@ mod tests {
             !machine.loads(&id("failing_mod")),
             "a mod that failed is not one an integration can build on"
         );
+        assert!(machine.has_failed(&id("failing_mod")));
     }
 
     fn machine_at(target: LifecycleState) -> LifecycleMachine {
@@ -1593,7 +1632,7 @@ mod tests {
 
         assert_eq!(machine.state(&unknown), Err(refusal()));
         assert_eq!(machine.failure(&unknown), Err(refusal()));
-        assert_eq!(machine.saved_data_versions(&unknown), Err(refusal()));
+        assert_eq!(machine.entry(&unknown), Err(refusal()));
         assert_eq!(
             machine.advance(&unknown, LifecycleState::Validated),
             Err(refusal())

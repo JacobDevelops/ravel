@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
 use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
+use ravel_sdk::server_data::ServerDataKind;
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, Side, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -32,13 +33,10 @@ static CONTENT: LazyLock<Result<ContentDeclaration, ModError>> = LazyLock::new(|
     declaration
         .resource(path, SOUND_ALIAS.to_vec())
         .map_err(ModError::from_display)?;
-    let path = "data/audio/recipe/paper_echo.json"
-        .to_owned()
-        .try_into()
-        .map_err(ModError::from_display)?;
     declaration
-        .resource(
-            path,
+        .server_entry(
+            ServerDataKind::Crafting,
+            "paper_echo",
             include_bytes!("../data/audio/recipe/paper_echo.json").to_vec(),
         )
         .map_err(ModError::from_display)?;
@@ -96,7 +94,7 @@ impl AudioMod {
     /// mean [`ENTRY`] is not a legal name.
     pub fn declaration() -> Result<AudioDeclaration, AudioError> {
         let mut declared = AudioDeclaration::new(Self::declared_id().clone());
-        declared.entry(ENTRY, BYTES)?;
+        declared.entry(ENTRY, BYTES.to_vec())?;
         declared.event(ENTRY)?;
         Ok(declared)
     }
@@ -106,16 +104,11 @@ impl AudioMod {
     /// # Errors
     ///
     /// Returns [`AudioError::WrongSide`] on every server side, or
-    /// [`AudioError::UnknownEvent`] if this mod's declaration omits its event.
+    /// [`AudioError::UnknownEntry`] or [`AudioError::UnknownEvent`] if this mod's
+    /// declaration omits its entry or the event that plays it.
     pub fn play(side: Side) -> Result<PlayRequest, AudioError> {
         let declared = Self::declaration()?;
-        let event = declared
-            .events()
-            .find(|event| event.entry() == ENTRY)
-            .ok_or_else(|| AudioError::UnknownEvent {
-                name: ENTRY.to_owned(),
-            })?;
-        declared.play(event, side)
+        declared.play(declared.declared_event(ENTRY)?, side)
     }
 }
 

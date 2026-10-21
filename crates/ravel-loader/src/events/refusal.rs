@@ -152,9 +152,12 @@ impl fmt::Display for DispatchRefused {
                 claimed.as_str(),
                 running.as_str()
             ),
-            Self::EventWrongSide { event, side } => {
-                write!(formatter, "{event:?} does not happen on {side:?}")
-            }
+            Self::EventWrongSide { event, side } => write!(
+                formatter,
+                "`{}` does not happen on the `{}` side",
+                event.as_str(),
+                side.as_str()
+            ),
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",

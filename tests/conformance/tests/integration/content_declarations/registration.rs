@@ -115,7 +115,14 @@ fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes
     machine
         .advance_all(LifecycleState::Registered)
         .expect("a legal step");
-    assert!(machine.registration_barrier_closed());
+    let late: RegistryKey = "block:content:late".parse().expect("valid key");
+    assert_eq!(
+        machine
+            .registration_window(ContentMod::declared_id())
+            .expect("tracked owner")
+            .claim(late.clone()),
+        Err(ravel_host_api::RegistrationRefused::Closed { key: late })
+    );
 }
 
 #[test]

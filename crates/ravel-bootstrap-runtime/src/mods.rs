@@ -146,7 +146,7 @@ fn attribution(out: &mut String, failure: &FailureAttribution) {
         }
         Some(FailureSurface::Packet(name)) => {
             field(out, "packet");
-            field(out, name);
+            field(out, &name.to_string());
         }
     }
     field(out, failure.state.as_str());
@@ -248,6 +248,30 @@ mod tests {
         DocumentFixture::new(Side::Client, entries)
     }
 
+    fn refuse_start(plan: &mut DocumentFixture, state: LifecycleState) {
+        plan.mods = vec![Box::new(crate::runtime::RefusingStart {
+            owner: mod_id("broken_mod"),
+            state,
+            detail: "failed",
+        })];
+        let required = plan
+            .machine
+            .entry(&mod_id("broken_mod"))
+            .expect("tracked owner")
+            .requirement
+            == Requirement::Required;
+        let outcome = ravel_loader::start_all(
+            &mut ravel_loader::LoadedMods::new(&mut plan.machine, &mut plan.mods)
+                .expect("complete hosts"),
+            &crate::runtime::environment(),
+        );
+        assert_eq!(
+            outcome.is_err(),
+            required,
+            "required failures refuse startup"
+        );
+    }
+
     #[test]
     fn a_screen_opened_before_a_set_is_installed_reads_nothing() {
         assert_eq!(
@@ -302,69 +326,69 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_required_mod_is_actionable_and_carries_its_attribution_in_pieces() {
+    fn a_failed_required_mod_is_actionable_and_carries_its_callback_attribution() {
         let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
-        plan.machine
-            .fail(
-                &mod_id("broken_mod"),
-                attribution(
-                    LifecycleState::Constructed,
-                    Some(FailureKind::DependencyCycle),
-                ),
-            )
-            .expect("a mod the machine holds can fail");
-
+        refuse_start(&mut plan, LifecycleState::Constructed);
         let read = fields(
             &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
                 .expect("runtime installed"),
         );
-
         assert_eq!(read[2], "1", "one entry asks the player to act");
         assert_eq!(read[9], "true");
         assert_eq!(read[11], "1", "a failure block follows");
-        assert_eq!(read[12], FailureKind::DependencyCycle.as_str());
-        assert_eq!(read[13], "hook");
-        assert_eq!(read[14], "client.tick");
+        assert_eq!(read[12], "", "a callback failure is not a graph failure");
         assert_eq!(read[15], LifecycleState::Constructed.as_str());
-        assert_eq!(read[16], "1.2.3");
-        assert_eq!(read[17], "2", "the chain crosses in order");
-        assert_eq!(read[18], "base_mod");
-        assert_eq!(read[19], "broken_mod");
+        assert_eq!(
+            read[18],
+            "`broken_mod` refused to enter `constructed`: failed"
+        );
+    }
+
+    #[test]
+    fn a_failure_attribution_keeps_its_kind_version_and_dependency_chain() {
+        let mut payload = String::new();
+        super::attribution(
+            &mut payload,
+            &attribution(
+                LifecycleState::Constructed,
+                Some(FailureKind::DependencyCycle),
+            ),
+        );
+        assert_eq!(
+            fields(&payload),
+            vec![
+                FailureKind::DependencyCycle.as_str(),
+                "hook",
+                "client.tick",
+                "constructed",
+                "1.2.3",
+                "2",
+                "base_mod",
+                "broken_mod",
+                "failed",
+            ],
+        );
     }
 
     #[test]
     fn a_typed_registry_surface_keeps_its_complete_wire_key() {
-        let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
+        let mut payload = String::new();
         let mut failure = attribution(LifecycleState::Running, None);
         failure.surface = Some(FailureSurface::Registry(
             "command:broken_mod:go".parse().expect("valid registry key"),
         ));
-        plan.machine
-            .fail(&mod_id("broken_mod"), failure)
-            .expect("the owner is tracked");
+        super::attribution(&mut payload, &failure);
+        let read = fields(&payload);
 
-        let read = fields(
-            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
-                .expect("runtime installed"),
-        );
-
-        assert_eq!(read[13], "registry");
-        assert_eq!(read[14], "command:broken_mod:go");
-        assert_eq!(
-            read[15], "running",
-            "the key length preserves field framing"
-        );
+        assert_eq!(read[1], "registry");
+        assert_eq!(read[2], "command:broken_mod:go");
+        assert_eq!(read[3], "running", "the key length preserves field framing");
     }
 
     #[test]
     fn a_failed_optional_mod_is_reported_without_asking_the_player_to_fix_it() {
         let mut plan = machine(vec![entry("broken_mod", Requirement::Optional)]);
-        plan.machine
-            .fail(
-                &mod_id("broken_mod"),
-                attribution(LifecycleState::Loaded, None),
-            )
-            .expect("a mod the machine holds can fail");
+        refuse_start(&mut plan, LifecycleState::Loaded);
 
         let read = fields(
             &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
@@ -385,16 +409,10 @@ mod tests {
             "ghp_",
             "secretvalue"
         ));
-        let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
-        plan.machine
-            .fail(&mod_id("broken_mod"), broken)
-            .expect("a mod the machine holds can fail");
-
-        let read = fields(
-            &document_with_integrated(Some(&running(plan)), None, &configurable(&[]))
-                .expect("runtime installed"),
-        );
-        let detail = read[20].clone();
+        let mut payload = String::new();
+        super::attribution(&mut payload, &broken);
+        let read = fields(&payload);
+        let detail = read[8].clone();
 
         assert!(!detail.contains("/home/player"), "{detail}");
         assert!(!detail.contains(concat!("ghp_", "secretvalue")), "{detail}");
@@ -563,11 +581,7 @@ mod tests {
             Side::IntegratedServer,
             vec![entry("broken_mod", Requirement::Required)],
         );
-        let mut failure = attribution(LifecycleState::Running, None);
-        failure.surface = Some(FailureSurface::Hook("server.tick".to_owned()));
-        plan.machine
-            .fail(&mod_id("broken_mod"), failure)
-            .expect("tracked mod");
+        refuse_start(&mut plan, LifecycleState::Running);
         let server = noticed(plan, "server composition could not register its command");
         let declaration = ravel_config::ConfigurationDeclaration::parse(
             r#"{"schemaVersion":1,"owner":"broken_mod","version":1,"settings":[
@@ -602,10 +616,11 @@ mod tests {
             read[18], "true",
             "server settings retain their own identity"
         );
-        assert_eq!(read[22], "server.tick");
-        assert_eq!(read[29], "1");
+        assert_eq!(read[22], "", "a startup callback has no hook surface");
+        assert_eq!(read[23], "running");
+        assert_eq!(read[27], "1");
         assert_eq!(
-            read[30],
+            read[28],
             "[integrated-server] server composition could not register its command",
         );
     }

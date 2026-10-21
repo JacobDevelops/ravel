@@ -11,9 +11,8 @@ use crate::lifecycle::LifecycleMachine;
 /// Membership cannot change after construction. Borrowing for loader operations
 /// therefore neither repeats completeness checks nor reorders the stored mods.
 ///
-/// Prepare registry claims and existing failures on the lifecycle before handing
-/// it over. Once owned, callback delivery records failures through loader
-/// operations; callers can inspect members and failures through [`Self::machine`].
+/// Callback delivery records failures through loader operations; callers can
+/// inspect members and failures through [`Self::machine`].
 ///
 /// Owned membership is not mutable through the public API:
 ///

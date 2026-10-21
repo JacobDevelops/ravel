@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, io};
 
-use ravel_core::ModId;
+use ravel_core::{ModId, RelativePath};
 
 use crate::document::{DocumentError, ValueDocument};
 
@@ -23,28 +23,38 @@ pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
     game_directory.join(DIRECTORY).join(format!("{owner}.json"))
 }
 
+/// One owner's modpack settings path relative to the game directory.
+#[must_use]
+pub fn pack_relative_path(owner: &ModId) -> RelativePath {
+    RelativePath::try_from(format!("{}/{owner}.json", pack_directory()))
+        .expect("a mod id cannot spell an illegal path")
+}
+
+fn pack_directory() -> String {
+    format!("{INSTANCE_DIRECTORY}/{PACK_CONFIG_DIRECTORY}")
+}
+
 /// The file one owner's modpack values live in, at `<game>/ravel/config/<owner>.json`.
 #[must_use]
 pub fn pack_path(game_directory: &Path, owner: &ModId) -> PathBuf {
-    game_directory
-        .join(INSTANCE_DIRECTORY)
-        .join(PACK_CONFIG_DIRECTORY)
-        .join(format!("{owner}.json"))
+    game_directory.join(pack_relative_path(owner).as_str())
 }
+
+/// Pack settings and read failures keyed by the owner named in each file's path.
+pub type PackDocuments = BTreeMap<ModId, Result<ValueDocument, FileError>>;
 
 /// Reads modpack settings documents from `<game>/ravel/config`, keyed by owner.
 ///
 /// `game_directory` is the game directory, not a resource or data pack root.
 /// A missing modpack configuration directory returns an empty map.
+/// Owner-specific read failures remain in the map for lifecycle isolation.
 ///
 /// # Errors
 ///
-/// Returns the same errors as [`read`], plus [`FileError::Name`] for a JSON file
-/// whose name is not a mod id and so names no owner at all.
-pub fn read_pack(game_directory: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileError> {
-    let directory = game_directory
-        .join(INSTANCE_DIRECTORY)
-        .join(PACK_CONFIG_DIRECTORY);
+/// Returns directory I/O errors, or [`FileError::Name`] for a JSON file whose
+/// name is not a mod id and so cannot be attributed to an owner.
+pub fn read_pack(game_directory: &Path) -> Result<PackDocuments, FileError> {
+    let directory = game_directory.join(pack_directory());
     let listing = match fs::read_dir(&directory) {
         Ok(listing) => listing,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
@@ -75,8 +85,14 @@ pub fn read_pack(game_directory: &Path) -> Result<BTreeMap<ModId, ValueDocument>
             .and_then(|stem| stem.to_str())
             .and_then(|stem| stem.parse::<ModId>().ok())
             .ok_or(FileError::Name { file: name })?;
-        if let Some(document) = read_path(&file, &owner)? {
-            documents.insert(owner, document);
+        match read_path(&file, &owner) {
+            Ok(Some(document)) => {
+                documents.insert(owner, Ok(document));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                documents.insert(owner, Err(error));
+            }
         }
     }
     Ok(documents)
@@ -232,6 +248,12 @@ mod tests {
 
     fn owner() -> ravel_core::ModId {
         "example_mod".parse().expect("a valid mod id")
+    }
+
+    #[test]
+    fn relative_pack_path_pins_the_game_directory_layout() {
+        let relative = super::pack_relative_path(&owner());
+        assert_eq!(relative.as_str(), "ravel/config/example_mod.json");
     }
 
     fn directory(name: &str) -> std::path::PathBuf {
@@ -394,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pack_document_naming_one_owner_and_stating_another_refuses_the_whole_layer() {
+    fn a_pack_document_naming_another_owner_retains_its_named_owner_failure() {
         let root = directory("pack-mismatched");
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
         std::fs::create_dir_all(
@@ -409,8 +431,8 @@ mod tests {
         .expect("the file should be writable");
 
         assert!(matches!(
-            super::read_pack(&root),
-            Err(FileError::Owner { named, found })
+            super::read_pack(&root).expect("readable directory").remove(&owner()),
+            Some(Err(FileError::Owner { named, found }))
                 if named == owner() && found == other
         ));
     }

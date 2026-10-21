@@ -97,7 +97,7 @@ impl ContentBehaviour {
 /// One mod's registry entries, tag memberships, translations, and supplied resources.
 ///
 /// Duplicate entries and output paths are refused locally; cross-mod claims and layering
-/// are resolved by the registration barrier, [`crate::TagSet`], and [`crate::ResourceSet`].
+/// are resolved by the registration barrier, [`crate::TagResources`], and [`crate::ResourceSet`].
 ///
 /// # Examples
 ///
@@ -365,7 +365,7 @@ impl ContentDeclaration {
         &mut self,
         kind: ServerDataKind,
         name: &str,
-        bytes: &[u8],
+        bytes: Vec<u8>,
     ) -> Result<RelativePath, ContentDeclarationError> {
         let id = ContentId::new(self.owner.clone(), name)
             .map_err(|source| ContentDeclarationError::Path { source })?;
@@ -373,7 +373,7 @@ impl ContentDeclaration {
             id.namespace(),
             &format!("{}/{}.{}", kind.directory(), id.path(), kind.extension()),
         );
-        self.resource(path.clone(), bytes.to_vec())?;
+        self.resource(path.clone(), bytes)?;
         Ok(path)
     }
 
@@ -768,7 +768,7 @@ mod tests {
             }
             for kind in crate::server_data::ServerDataKind::ALL {
                 assert!(matches!(
-                    declaration.server_entry(kind, candidate, b"{}"),
+                    declaration.server_entry(kind, candidate, b"{}".to_vec()),
                     Err(ContentDeclarationError::Path { .. })
                 ));
             }
@@ -783,7 +783,11 @@ mod tests {
             .entry(ContentKind::Block, "a/b")
             .expect("refusals do not reserve a canonical entry");
         declaration
-            .server_entry(crate::server_data::ServerDataKind::Crafting, "a/b", b"{}")
+            .server_entry(
+                crate::server_data::ServerDataKind::Crafting,
+                "a/b",
+                b"{}".to_vec(),
+            )
             .expect("refusals do not reserve a canonical server path");
         assert!(!declaration.generate().is_empty());
     }

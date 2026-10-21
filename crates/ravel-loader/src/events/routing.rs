@@ -47,7 +47,7 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
                 crate::callback(owner, state, || instance.receive_packet(delivery))
             })
         },
-        FailureSurface::Packet(delivery.id.to_string()),
+        FailureSurface::Packet(delivery.id.id().clone()),
         |error| {
             matches!(
                 error,

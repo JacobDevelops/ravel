@@ -116,6 +116,27 @@ impl DocumentFixture {
     }
 }
 
+#[cfg(test)]
+pub(crate) struct RefusingStart {
+    pub(crate) owner: ravel_core::ModId,
+    pub(crate) state: ravel_core::LifecycleState,
+    pub(crate) detail: &'static str,
+}
+
+#[cfg(test)]
+impl Mod for RefusingStart {
+    fn id(&self) -> &ravel_core::ModId {
+        &self.owner
+    }
+
+    fn enter(&mut self, state: ravel_core::LifecycleState) -> Result<(), ravel_host_api::ModError> {
+        if state == self.state {
+            return Err(ravel_host_api::ModError::refused(self.detail));
+        }
+        Ok(())
+    }
+}
+
 /// Advances every mod in `machine` along the success path, from `Validated` through `last`.
 #[cfg(test)]
 pub(crate) fn advance_through(machine: &mut LifecycleMachine, last: ravel_core::LifecycleState) {

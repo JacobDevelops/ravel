@@ -1,16 +1,16 @@
-//! One test per required invariant of `SPEC.md` §14, driven through the public
-//! lifecycle API so each test fails when the invariant stops holding.
+//! Required invariants of `SPEC.md` §14, including the private failure and
+//! registration boundaries exercised by loader operations.
 
 use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
+use crate::{
+    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement, WorldRefused,
+    executes_mod_code,
+};
 use ravel_core::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId,
     Side, SideSet,
-};
-use ravel_loader::{
-    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement, WorldRefused,
-    executes_mod_code,
 };
 use ravel_observability::PreWorldReport;
 
@@ -468,13 +468,17 @@ fn persistent_data_is_versioned_and_owned_by_a_stable_canonical_mod_id() {
     let mod_id = id("example_mod");
 
     assert_eq!(
-        machine.saved_data_versions(&mod_id).expect("known mod"),
-        &declared
+        machine
+            .entry(&mod_id)
+            .expect("known mod")
+            .saved_data_versions,
+        declared
     );
     assert!(
         machine
-            .saved_data_versions(&id("stateless_mod"))
+            .entry(&id("stateless_mod"))
             .expect("known mod")
+            .saved_data_versions
             .is_empty()
     );
 
@@ -492,11 +496,14 @@ fn persistent_data_is_versioned_and_owned_by_a_stable_canonical_mod_id() {
         )
         .expect("failure is legal from running");
     assert_eq!(
-        machine.saved_data_versions(&mod_id).expect("known mod"),
-        &declared
+        machine
+            .entry(&mod_id)
+            .expect("known mod")
+            .saved_data_versions,
+        declared
     );
     assert_eq!(
-        machine.saved_data_versions(&id("other_mod")),
+        machine.entry(&id("other_mod")),
         Err(LifecycleError::UnknownMod {
             mod_id: id("other_mod")
         })

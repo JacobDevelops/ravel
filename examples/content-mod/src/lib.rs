@@ -9,6 +9,7 @@ use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::generate::GeneratedData;
 use ravel_sdk::resources::RelativePath;
+use ravel_sdk::server_data::ServerDataKind;
 use ravel_sdk::tags::TagId;
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
 
@@ -142,21 +143,6 @@ impl ContentMod {
         .expect("a mod id and a literal cannot spell an illegal path")
     }
 
-    /// Returns the path the crafting recipe is supplied at.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the derived path stops being a legal package path, which would
-    /// mean this mod's own identity can no longer name a file.
-    #[must_use]
-    pub fn recipe_path() -> RelativePath {
-        RelativePath::try_from(format!(
-            "data/{}/recipe/crafting/{LANTERN}.json",
-            Self::declared_id()
-        ))
-        .expect("a mod id and a literal cannot spell an illegal path")
-    }
-
     /// Declares the content used by registration and generated data.
     ///
     /// # Errors
@@ -171,8 +157,9 @@ impl ContentMod {
         let item = declaration
             .entry(ContentKind::Item, LANTERN)
             .map_err(ModError::from_display)?;
+        let recipe = format!("crafting/{LANTERN}");
         declaration
-            .entry(ContentKind::Recipe, &format!("crafting/{LANTERN}"))
+            .entry(ContentKind::Recipe, &recipe)
             .map_err(ModError::from_display)?;
 
         // Block and item tags belong to distinct registries.
@@ -199,7 +186,7 @@ impl ContentMod {
             .resource(Self::model_path(), MODEL.to_vec())
             .map_err(ModError::from_display)?;
         declaration
-            .resource(Self::recipe_path(), RECIPE.to_vec())
+            .server_entry(ServerDataKind::Crafting, &recipe, RECIPE.to_vec())
             .map_err(ModError::from_display)?;
 
         Ok(declaration)

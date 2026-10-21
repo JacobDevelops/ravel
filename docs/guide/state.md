@@ -51,6 +51,11 @@ an unknown key or an illegal value has already been dropped into
 `LayeredConfiguration::rejected` before you see it, so what you receive has been
 validated against your own declaration.
 
+A malformed, unreadable or owner-mismatched pack or player document is attributed
+to the mod named by its filename. An optional owner's failure leaves healthy mods
+running; a required owner's failure stops launch. A directory failure or a filename
+that cannot identify an owner is a global failure rather than a mod-local refusal.
+
 **If you declare settings you must implement `configure`.** The default refuses,
 deliberately: settings nothing reads are settings a player changes with no
 effect, and the loud failure is the useful one.
@@ -113,17 +118,20 @@ Their defaults refuse unsupported callbacks rather than silently dropping a
 declared owner's stored state. A snapshot callback failure blocks the save.
 
 ```rust
-fn read_entries(current: &JsonValue) -> Vec<String> {
-    current
+fn read_entries(current: &JsonValue) -> Result<Vec<String>, ModError> {
+    let entries = current
         .get("entries")
-        .and_then(|value| value.as_array())
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(|entry| entry.as_str().map(str::to_owned))
-                .collect()
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| ModError::refused("the stored payload holds no entry list"))?;
+    entries
+        .iter()
+        .map(|entry| {
+            entry
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| ModError::refused("a stored entry is not text"))
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 fn v(raw: u32) -> SavedDataVersion {
@@ -166,7 +174,7 @@ impl Mod for CopperLanterns {
             self.entries.clear();
             return Ok(());
         };
-        self.entries = read_entries(envelope.payload());
+        self.entries = read_entries(envelope.payload())?;
         Ok(())
     }
 

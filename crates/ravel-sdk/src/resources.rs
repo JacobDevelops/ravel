@@ -1,7 +1,10 @@
 //! Supplied resource files and load-order overrides.
 //!
-//! Declare files in [`crate::content::ContentDeclaration`]. At launch the later
-//! supplier wins, and the loader records which suppliers were overridden.
+//! Declare files in [`crate::content::ContentDeclaration`]. At launch ordinary
+//! resource paths use the later supplier, and the loader records overridden suppliers.
+//! Tag documents at `data/<namespace>/tags/<registry>/*.json` instead merge members
+//! in load order; `replace: true` discards earlier members. Unknown document fields
+//! come from the last contributor rather than merging.
 //! Launch-wide layering belongs to the loader, not individual mods.
 //!
 //! # Examples

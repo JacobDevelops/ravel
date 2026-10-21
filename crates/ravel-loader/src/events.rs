@@ -61,15 +61,12 @@ impl Delivery {
 impl LifecycleMachine {
     fn audience_entries(
         &self,
-        event: GameEvent,
         side: Side,
     ) -> impl Iterator<Item = (&crate::LifecycleEntry, LifecycleState)> {
         self.tracked_entries().filter(move |(entry, state)| {
-            event.happens_on(side)
-                && entry.sides.loads_on(side)
+            entry.sides.loads_on(side)
                 && entry.sides.loads_on(self.side())
-                && (entry.requirement == crate::Requirement::Required
-                    || *state != LifecycleState::Failed)
+                && *state != LifecycleState::Failed
         })
     }
 }
@@ -79,7 +76,7 @@ impl LifecycleMachine {
 /// `side` is the executing side, including integrated-server work in a client process.
 /// Each callback's cost is attributed to `profiler`.
 /// Mod failures stop delivery and are returned in [`Delivery::failure`].
-/// Events that cannot happen on the executing side complete with no recipients.
+/// Events that cannot happen on the executing side are refused before any mod is called.
 ///
 /// # Errors
 ///
@@ -109,7 +106,7 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
         return Err(DispatchRefused::EventWrongSide { event, side });
     }
     let audience: Vec<_> = machine
-        .audience_entries(event, side)
+        .audience_entries(side)
         .map(|(entry, state)| (entry.mod_id.clone(), state))
         .collect();
     for (mod_id, state) in &audience {

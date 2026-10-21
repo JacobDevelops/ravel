@@ -621,7 +621,10 @@ mod tests {
                 FailureSurface::Registry("block:a:b".parse().expect("valid registry key")),
                 "registry",
             ),
-            (FailureSurface::Packet("a:b".to_owned()), "packet"),
+            (
+                FailureSurface::Packet("a:b".parse().expect("valid packet identifier")),
+                "packet",
+            ),
         ] {
             let mut report = report();
             report.refuse(

@@ -15,7 +15,10 @@ const ENABLED: &str = "client.enabled";
 const PROFILE: &str = "common.profile";
 
 /// A mod whose running behavior records the effective configuration it received.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// It holds no setting until the loader hands it the resolved configuration
+/// through [`Mod::configure`], which happens before it enters `running`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ConfigurationMod {
     enabled: bool,
     profile: String,
@@ -23,36 +26,10 @@ pub struct ConfigurationMod {
 }
 
 impl ConfigurationMod {
-    /// Builds the mod with its author defaults.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the packaged identity or declaration stops being valid.
+    /// Builds the mod instance the loader drives and configures.
     #[must_use]
     pub fn new() -> Self {
-        let declaration = Self::declaration();
-        let configuration = LayeredConfiguration::resolve(declaration, None, None)
-            .expect("the author defaults resolve");
-        let mut value = Self {
-            enabled: false,
-            profile: String::new(),
-            observations: Vec::new(),
-        };
-        value
-            .apply(&configuration)
-            .expect("the packaged configuration belongs to this mod");
-        value
-    }
-
-    /// Parses the declaration Ravel installs for this mod.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the tracked declaration stops matching its schema.
-    #[must_use]
-    pub fn declaration() -> ConfigurationDeclaration {
-        ConfigurationDeclaration::parse(DECLARATION)
-            .expect("the packaged configuration declaration is valid")
+        Self::default()
     }
 
     /// Applies one resolved configuration to subsequent behavior.
@@ -93,12 +70,6 @@ impl ConfigurationMod {
     }
 }
 
-impl Default for ConfigurationMod {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[declare_mod(id = "configuration")]
 impl Mod for ConfigurationMod {
     /// Records the effective behavior when the mod starts running.
@@ -134,10 +105,16 @@ impl Mod for ConfigurationMod {
 mod tests {
     use ravel_sdk::config::{
         ConfigurationDeclaration, LayeredConfiguration, PackOverride, SettingSide, ValueDocument,
+        read_shipped,
     };
     use ravel_sdk::{JsonValue, LifecycleState, Mod, ModId, Side, json};
 
-    use super::{ConfigurationMod, MOD_ID};
+    use super::{ConfigurationMod, DECLARATION, MOD_ID};
+
+    fn declaration() -> ConfigurationDeclaration {
+        ConfigurationDeclaration::parse(DECLARATION)
+            .expect("the packaged configuration declaration is valid")
+    }
 
     fn document(values: &JsonValue) -> ValueDocument {
         ValueDocument::parse(
@@ -154,17 +131,33 @@ mod tests {
     #[test]
     fn the_mod_is_packaged_under_a_valid_declaration_for_its_identity() {
         let configuration = ConfigurationMod::new();
-        let declaration = ConfigurationMod::declaration();
+        let declaration = configuration
+            .configuration_declaration()
+            .expect("the packaged declaration parses")
+            .expect("the mod declares its settings");
 
         assert_eq!(configuration.id(), &MOD_ID.parse::<ModId>().expect("an id"));
         assert_eq!(declaration.owner(), configuration.id());
         assert_eq!(declaration.settings().len(), 4);
-        assert_eq!(ConfigurationMod::default(), configuration);
+    }
+
+    #[test]
+    fn the_author_defaults_drive_running_behavior_once_configured() {
+        let mut configured = read_shipped(DECLARATION, |resolved| {
+            let mut configured = ConfigurationMod::new();
+            configured.configure(resolved).map(|()| configured)
+        })
+        .expect("the author defaults configure the mod");
+        configured
+            .enter(LifecycleState::Running)
+            .expect("configuration mod runs");
+
+        assert_eq!(configured.observations(), ["enabled:quiet"]);
     }
 
     #[test]
     fn the_declaration_covers_every_side_and_override_policy() {
-        let declaration = ConfigurationMod::declaration();
+        let declaration = declaration();
         let sides = declaration
             .settings()
             .iter()
@@ -206,8 +199,7 @@ mod tests {
     #[test]
     fn each_process_side_sees_its_own_setting_and_the_common_one() {
         let configuration =
-            LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, None)
-                .expect("defaults resolve");
+            LayeredConfiguration::resolve(declaration(), None, None).expect("defaults resolve");
 
         for (side, specific) in [
             (Side::Client, "client.enabled"),
@@ -226,9 +218,8 @@ mod tests {
     #[test]
     fn invalid_values_are_rejected_before_the_mod_observes_them() {
         let player = document(&json!({ "client.enabled": "yes" }));
-        let configuration =
-            LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&player))
-                .expect("an invalid player value falls back");
+        let configuration = LayeredConfiguration::resolve(declaration(), None, Some(&player))
+            .expect("an invalid player value falls back");
 
         assert_eq!(configuration.rejected().len(), 1);
         assert!(
@@ -244,9 +235,8 @@ mod tests {
             "client.enabled": false,
             "common.profile": "verbose"
         }));
-        let configuration =
-            LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&player))
-                .expect("player values resolve");
+        let configuration = LayeredConfiguration::resolve(declaration(), None, Some(&player))
+            .expect("player values resolve");
         let mut configured = ConfigurationMod::new();
         configured.apply(&configuration).expect("same owner");
         configured

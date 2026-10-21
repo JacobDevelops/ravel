@@ -456,7 +456,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     let refused = open_configuration(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut pair, &mut [&mut deaf, &mut shop])
             .expect("all active mods have hosts"),
-        &BTreeMap::new(),
+        BTreeMap::new(),
         |_| Ok(None),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -473,7 +473,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     let configured = open_configuration(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut alone, &mut [&mut shop])
             .expect("all active mods have hosts"),
-        &BTreeMap::new(),
+        BTreeMap::new(),
         |_| Ok(None),
         &ravel_bootstrap_runtime::environment(),
     )
@@ -506,7 +506,7 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
     let configured = open_configuration(
         &mut ravel_loader::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut stock])
             .expect("all active mods have hosts"),
-        &BTreeMap::from([(owner.clone(), pack)]),
+        BTreeMap::from([(owner.clone(), Ok(pack))]),
         |_| Ok(Some(player.clone())),
         &ravel_bootstrap_runtime::environment(),
     )

@@ -180,12 +180,14 @@ pub enum InterceptRefused {
 }
 
 impl InterceptRefused {
-    /// Returns the declaring mod responsible for this refusal, if there is one.
+    /// Returns the mod this refusal is about, when one is known.
     #[must_use]
-    pub const fn mod_id(&self) -> Option<&ModId> {
+    pub fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::Mod { mod_id, .. } | Self::ForeignDeclaration { mod_id, .. } => Some(mod_id),
-            Self::Refused(_) | Self::Halted { .. } | Self::Lifecycle(_) => None,
+            Self::Halted { by } => Some(by),
+            Self::Lifecycle(error) => error.mod_id(),
+            Self::Refused(_) => None,
         }
     }
 }
@@ -195,7 +197,7 @@ impl fmt::Display for InterceptRefused {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
             Self::Mod { source, .. } => source.fmt(formatter),
-            Self::Halted { by } => write!(formatter, "the mod set is blocked after `{by}` failed"),
+            Self::Halted { by } => write!(formatter, "the set halted after `{by}` failed"),
             Self::ForeignDeclaration { mod_id, owner } => write!(
                 formatter,
                 "`{mod_id}` declared interceptions owned by `{owner}`, and a mod answers only for \
@@ -1095,5 +1097,21 @@ mod tests {
             claimants: vec![id(GUARD), id(LEDGER)],
         });
         assert_eq!(refused.mod_id(), None);
+    }
+
+    #[test]
+    fn halted_and_lifecycle_refusals_identify_the_known_owner() {
+        let owner = id(GUARD);
+        assert_eq!(
+            InterceptRefused::Halted { by: owner.clone() }.mod_id(),
+            Some(&owner)
+        );
+        assert_eq!(
+            InterceptRefused::Lifecycle(crate::LifecycleError::UnknownMod {
+                mod_id: owner.clone(),
+            })
+            .mod_id(),
+            Some(&owner)
+        );
     }
 }

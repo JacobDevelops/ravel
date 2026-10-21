@@ -69,9 +69,17 @@ ravel-test-mod-world-shaping = { path = "test-mods/world-shaping", version = "0.
 ravel-build = { path = "crates/ravel-build", version = "0.0.0" }
 ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
+rvl-002-counterpart = { path = "registry/mods/rvl-002-counterpart", version = "0.1.0" }
+rvl-025-counterpart = { path = "registry/mods/rvl-025-counterpart", version = "0.1.0" }
 rvl-042-counterpart = { path = "registry/mods/rvl-042-counterpart", version = "0.1.0" }
+rvl-060-counterpart = { path = "registry/mods/rvl-060-counterpart", version = "0.1.0" }
+rvl-086-counterpart = { path = "registry/mods/rvl-086-counterpart", version = "0.1.0" }
 rvl-120-counterpart = { path = "registry/mods/rvl-120-counterpart", version = "0.1.0" }
+rvl-132-counterpart = { path = "registry/mods/rvl-132-counterpart", version = "0.1.0" }
+rvl-146-counterpart = { path = "registry/mods/rvl-146-counterpart", version = "0.1.0" }
+rvl-180-counterpart = { path = "registry/mods/rvl-180-counterpart", version = "4.6.1" }
 rvl-210-counterpart = { path = "registry/mods/rvl-210-counterpart", version = "0.1.0" }
+rvl-287-counterpart = { path = "registry/mods/rvl-287-counterpart", version = "0.1.0" }
 rvl-321-counterpart = { path = "registry/mods/rvl-321-counterpart", version = "0.1.0" }
 semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "=1.0.228", features = ["derive"] }
@@ -80,6 +88,7 @@ serde_path_to_error = "0.1.20"
 sha2 = "0.11.0"
 syn = { version = "2.0.119", features = ["full"] }
 toml = "1.1.4"
+waystone-ledger = { path = "test-mods/waystone-ledger", version = "0.2.0" }
 zip = { version = "=9.0.3", default-features = false, features = [
   "deflate-flate2-zlib-rs",
 ] }

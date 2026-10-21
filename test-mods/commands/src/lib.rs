@@ -11,7 +11,7 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "commands";
 
-/// The command that refuses invocations without server-side identity.
+/// The no-argument probe the loader routes only with a server-side identity.
 pub const SERVER_PROBE: &str = "server_probe";
 
 // Claim roots, not subcommands; the mod parses `warp set` and `warp list`.
@@ -110,13 +110,9 @@ impl Mod for CommandsMod {
     ///
     /// # Errors
     ///
-    /// Returns a [`ModError`] when the probe runs on a client or another command
-    /// has no subcommand.
+    /// Returns a [`ModError`] when a command other than the probe has no subcommand.
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let server_probe = invocation.key.id().path() == SERVER_PROBE;
-        if server_probe && !invocation.side.is_server() {
-            return Err(ModError::refused("server_probe requires a server side"));
-        }
         if !server_probe && invocation.arguments.is_empty() {
             return Err(ModError::refused(format!(
                 "`{}` needs a subcommand",
@@ -188,7 +184,7 @@ mod tests {
     fn invocation(root: &str, arguments: &[&str]) -> CommandInvocation {
         CommandInvocation::new(
             CommandsMod::new().key(root),
-            Side::Client,
+            Side::IntegratedServer,
             arguments.iter().map(|word| (*word).to_owned()).collect(),
         )
     }
@@ -288,15 +284,9 @@ mod tests {
     }
 
     #[test]
-    fn the_server_probe_refuses_clients_and_records_both_server_identities() {
+    fn the_server_probe_records_both_server_identities() {
         let mut commands = CommandsMod::new();
         let mut probe = invocation(SERVER_PROBE, &[]);
-        let error = commands.run_command(&probe).expect_err("not a server");
-        assert!(
-            error.to_string().contains("requires a server side"),
-            "{error}"
-        );
-        assert_eq!(commands.invocations(), []);
 
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
             probe.side = side;

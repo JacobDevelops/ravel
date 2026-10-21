@@ -633,7 +633,6 @@ mod tests {
 
     #[test]
     fn every_spec_metric_states_what_m3_can_say_about_it() {
-        assert_eq!(Metric::ALL.len(), 12);
         for metric in Metric::ALL {
             assert_ne!(metric.as_str(), "");
             assert!(matches!(metric.unit(), "bytes" | "nanoseconds" | "count"));

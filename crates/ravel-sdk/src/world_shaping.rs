@@ -3,6 +3,10 @@
 //! [`ShapingRecord::at_creation`] records a [`WorldShaping`] set;
 //! [`ShapingRecord::admit`] refuses a changed set and names missing or added mods.
 //!
+//! No runtime integration exists: no [`crate::Mod`] hook declares a shaping set,
+//! and no world-open path writes or admits a record. These values describe the
+//! check a host would make; a mod calling them checks only itself.
+//!
 //! # Examples
 //!
 //! ```

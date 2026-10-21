@@ -7,8 +7,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 rust-version = "1.95.0"
 
-# One dependency, by path against a checkout, because `ravel-sdk` is not
-# published. Nothing else from the Ravel workspace is named here.
+# Inherit the sole SDK dependency from the Ravel workspace.
 [dependencies]
 ravel-sdk.workspace = true
 

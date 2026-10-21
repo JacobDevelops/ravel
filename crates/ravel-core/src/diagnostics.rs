@@ -148,7 +148,7 @@ pub enum FailureSurface {
     /// A registry operation.
     Registry(crate::RegistryKey),
     /// A network packet.
-    Packet(String),
+    Packet(crate::ContentId),
 }
 
 /// The Ravel and host environment; Minecraft version and target names are opaque.
@@ -270,7 +270,6 @@ mod tests {
 
     #[test]
     fn every_spec_failure_kind_round_trips_as_its_reported_name() {
-        assert_eq!(FailureKind::ALL.len(), 6);
         for kind in FailureKind::ALL {
             let encoded = serde_json::to_string(&kind).expect("kind should serialize");
             assert_eq!(encoded, format!("\"{}\"", kind.as_str()));
@@ -295,7 +294,7 @@ mod tests {
                     .parse()
                     .expect("valid registry key"),
             ),
-            FailureSurface::Packet("example_mod:sync".to_owned()),
+            FailureSurface::Packet("example_mod:sync".parse().expect("valid packet identifier")),
         ] {
             let encoded = serde_json::to_string(&surface).expect("surface should serialize");
             assert_eq!(

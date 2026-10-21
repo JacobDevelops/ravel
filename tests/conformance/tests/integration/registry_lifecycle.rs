@@ -277,7 +277,7 @@ fn configured_provider_flags_reach_the_leaf_through_real_loader_startup() {
                 let mut loaded = LoadedMods::new(&mut machine, &mut mods).expect("complete set");
                 ravel_loader::open_configuration(
                     &mut loaded,
-                    &std::iter::once((document.owner.clone(), document)).collect(),
+                    std::iter::once((document.owner.clone(), Ok(document))).collect(),
                     |_| Ok(None),
                     &environment,
                 )

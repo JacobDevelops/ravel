@@ -165,7 +165,7 @@ impl Entry {
     /// for a constant would be a packaging failure.
     pub fn audio_declaration() -> Result<AudioDeclaration, AudioError> {
         let mut declared = AudioDeclaration::new(Self::declared_id().clone());
-        declared.entry(SOUND, SOUND_BYTES)?;
+        declared.entry(SOUND, SOUND_BYTES.to_vec())?;
         declared.event(SOUND)?;
         Ok(declared)
     }
@@ -186,15 +186,7 @@ impl Entry {
             return Ok(false);
         }
         let request = Self::audio_declaration()
-            .and_then(|declared| {
-                let event = declared
-                    .events()
-                    .find(|event| event.entry() == SOUND)
-                    .ok_or_else(|| AudioError::UnknownEvent {
-                        name: SOUND.to_owned(),
-                    })?;
-                declared.play(event, side)
-            })
+            .and_then(|declared| declared.play(declared.declared_event(SOUND)?, side))
             .map_err(ModError::from_display)?;
         self.asked.push(request);
         Ok(true)

@@ -80,7 +80,7 @@ impl ServerDataMod {
     pub fn declaration() -> Result<ContentDeclaration, ContentDeclarationError> {
         let mut declared = ContentDeclaration::new(Self::declared_id().clone());
         for (kind, name, bytes) in ENTRIES {
-            declared.server_entry(kind, name, bytes)?;
+            declared.server_entry(kind, name, bytes.to_vec())?;
         }
         Ok(declared)
     }

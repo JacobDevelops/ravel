@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_config::{LayerError, LayeredConfiguration, Rejection, ValueDocument, file};
@@ -10,17 +9,21 @@ use crate::loaded::LoadedMods;
 /// Resolves settings in load order for mods on this side that declare them.
 ///
 /// Rejected player values fall back to lower layers and are reported in [`Configured`].
-/// Callback failures are recorded; only required owners stop configuration.
+/// Callback failures, foreign declarations and unusable layers fail their owner;
+/// only required owners (or a halted set) stop configuration.
 /// The paired view has already refused missing mods before any declarations or player reads.
 /// Player documents are read only after the mod's declaration has passed the ownership check.
+/// Pack documents and their owner-specific read errors come from [`file::read_pack`].
+/// Entries for mods without an eligible settings declaration, including their
+/// owner-specific read errors, are ignored on this side.
 ///
 /// # Errors
 ///
-/// Returns a [`ConfigRefused`] for foreign ownership, unreadable player documents,
-/// invalid layers, or a mod's refusal.
+/// Returns a [`ConfigRefused`] when a required owner's declaration, pack or player
+/// document, layers, or `configure` callback is refused, or lifecycle attribution fails.
 pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
     loaded: &mut LoadedMods<'_, H>,
-    packs: &BTreeMap<ModId, ValueDocument>,
+    mut packs: file::PackDocuments,
     mut players: impl FnMut(&ModId) -> Result<Option<ValueDocument>, file::FileError>,
     environment: &FailureEnvironment,
 ) -> Result<Configured, ConfigRefused> {
@@ -57,16 +60,21 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
             continue;
         }
 
-        let player = players(&mod_id).map_err(|source| ConfigRefused::PlayerFile {
-            mod_id: mod_id.clone(),
-            source,
-        })?;
-        let resolved =
-            LayeredConfiguration::resolve(declaration, packs.get(&mod_id), player.as_ref())
-                .map_err(|source| ConfigRefused::Layer {
-                    mod_id: mod_id.clone(),
-                    source,
-                })?;
+        let pack = packs.remove(&mod_id).transpose();
+        let resolved = resolve_configuration(&mod_id, declaration, pack, || players(&mod_id));
+        let resolved = match resolved {
+            Ok(resolved) => resolved,
+            Err(refused) => {
+                crate::lifecycle::isolate_loader_refusal(
+                    machine,
+                    environment,
+                    &mod_id,
+                    refused,
+                    ConfigRefused::Lifecycle,
+                )?;
+                continue;
+            }
+        };
         for dropped in resolved.rejected() {
             configured.dropped.push((mod_id.clone(), dropped.clone()));
         }
@@ -79,6 +87,28 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
     }
 
     Ok(configured)
+}
+
+fn resolve_configuration(
+    mod_id: &ModId,
+    declaration: ravel_config::ConfigurationDeclaration,
+    pack: Result<Option<ValueDocument>, file::FileError>,
+    player: impl FnOnce() -> Result<Option<ValueDocument>, file::FileError>,
+) -> Result<LayeredConfiguration, ConfigRefused> {
+    let pack = pack.map_err(|source| ConfigRefused::PackFile {
+        mod_id: mod_id.clone(),
+        source,
+    })?;
+    let player = player().map_err(|source| ConfigRefused::PlayerFile {
+        mod_id: mod_id.clone(),
+        source,
+    })?;
+    LayeredConfiguration::resolve(declaration, pack.as_ref(), player.as_ref()).map_err(|source| {
+        ConfigRefused::Layer {
+            mod_id: mod_id.clone(),
+            source,
+        }
+    })
 }
 
 fn record_failure(
@@ -137,6 +167,13 @@ impl Configured {
 pub enum ConfigRefused {
     /// The lifecycle refused failure attribution.
     Lifecycle(crate::LifecycleError),
+    /// A pack's settings document for one owner could not be read.
+    PackFile {
+        /// The owner named in the document's file path.
+        mod_id: ModId,
+        /// The file refusal.
+        source: file::FileError,
+    },
     /// A player's settings document could not be read.
     PlayerFile {
         /// The mod whose document could not be read.
@@ -170,10 +207,11 @@ pub enum ConfigRefused {
 impl ConfigRefused {
     /// Returns the mod this refusal is about.
     #[must_use]
-    pub const fn mod_id(&self) -> Option<&ModId> {
+    pub fn mod_id(&self) -> Option<&ModId> {
         match self {
-            Self::Lifecycle(_) => None,
+            Self::Lifecycle(error) => error.mod_id(),
             Self::PlayerFile { mod_id, .. }
+            | Self::PackFile { mod_id, .. }
             | Self::ForeignDeclaration { mod_id, .. }
             | Self::Layer { mod_id, .. }
             | Self::Mod { mod_id, .. } => Some(mod_id),
@@ -185,6 +223,12 @@ impl fmt::Display for ConfigRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::PackFile { mod_id, source } => {
+                write!(
+                    formatter,
+                    "`{mod_id}`'s pack configuration cannot be read: {source}"
+                )
+            }
             Self::PlayerFile { mod_id, source } => {
                 write!(
                     formatter,
@@ -210,7 +254,7 @@ impl std::error::Error for ConfigRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Lifecycle(error) => Some(error),
-            Self::PlayerFile { source, .. } => Some(source),
+            Self::PlayerFile { source, .. } | Self::PackFile { source, .. } => Some(source),
             Self::ForeignDeclaration { .. } => None,
             Self::Layer { source, .. } => Some(source),
             Self::Mod { source, .. } => Some(source),
@@ -223,7 +267,10 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Mod { source, .. } => source.failure_kind(),
-            Self::PlayerFile { .. } | Self::ForeignDeclaration { .. } | Self::Layer { .. } => None,
+            Self::PlayerFile { .. }
+            | Self::PackFile { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::Layer { .. } => None,
         }
     }
 
@@ -231,9 +278,10 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
             Self::Mod { source, .. } => source.lifecycle_state(),
-            Self::PlayerFile { .. } | Self::ForeignDeclaration { .. } | Self::Layer { .. } => {
-                LifecycleState::Discovered
-            }
+            Self::PlayerFile { .. }
+            | Self::PackFile { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::Layer { .. } => LifecycleState::Discovered,
         }
     }
 
@@ -241,7 +289,10 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Mod { source, .. } => source.quotes_untrusted_text(),
-            Self::PlayerFile { .. } | Self::ForeignDeclaration { .. } | Self::Layer { .. } => false,
+            Self::PlayerFile { .. }
+            | Self::PackFile { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::Layer { .. } => false,
         }
     }
 }
@@ -265,7 +316,10 @@ mod tests {
     ) -> Result<super::Configured, ConfigRefused> {
         super::open_configuration(
             loaded,
-            packs,
+            packs
+                .iter()
+                .map(|(owner, document)| (owner.clone(), Ok(document.clone())))
+                .collect(),
             |owner| Ok(players.get(owner).cloned()),
             &crate::tests::environment(),
         )
@@ -278,7 +332,7 @@ mod tests {
         let refused = super::open_configuration(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &BTreeMap::new(),
+            BTreeMap::new(),
             |_| panic!("foreign ownership must be refused before reading player files"),
             &crate::tests::environment(),
         )
@@ -293,7 +347,7 @@ mod tests {
         let refused = super::open_configuration(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("complete host set"),
-            &BTreeMap::new(),
+            BTreeMap::new(),
             |_| {
                 Err(ravel_config::file::FileError::Io {
                     path: "settings.json".into(),
@@ -310,6 +364,12 @@ mod tests {
         assert!(matches!(refused, ConfigRefused::PlayerFile { .. }));
         assert!(std::error::Error::source(&refused).is_some());
         assert_eq!(host.applied, None);
+        assert_eq!(machine.state(&id("first_mod")), Ok(LifecycleState::Failed));
+        let failure = machine
+            .failure(&id("first_mod"))
+            .expect("tracked owner")
+            .expect("recorded refusal");
+        assert_eq!(failure.mod_id.as_ref(), Some(&id("first_mod")));
     }
 
     fn id(value: &str) -> ModId {
@@ -468,7 +528,7 @@ mod tests {
         super::open_configuration(
             &mut crate::LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host])
                 .expect("paired host"),
-            &BTreeMap::new(),
+            BTreeMap::new(),
             |_| panic!("a failed owner must not read player settings"),
             &crate::tests::environment(),
         )
@@ -558,6 +618,60 @@ mod tests {
         assert_eq!(failure.mod_id.as_ref(), Some(&id("deaf_mod")));
         assert_eq!(failure.environment, crate::tests::environment());
         assert!(machine.halted_by().is_none());
+    }
+
+    #[test]
+    fn optional_player_and_pack_faults_are_attributed_and_isolated() {
+        for fault in ["player", "pack-owner", "pack-value", "declaration-owner"] {
+            let mut broken = Settled::new("broken_mod");
+            if fault == "declaration-owner" {
+                broken = broken.declaring_for("other_mod");
+            }
+            let mut later = Settled::new("later_mod");
+            let mut optional = entry("broken_mod", &[Side::DedicatedServer]);
+            optional.requirement = crate::Requirement::Optional;
+            let mut machine = machine(vec![optional, entry("later_mod", &[Side::DedicatedServer])]);
+            let packs = match fault {
+                "pack-owner" => {
+                    BTreeMap::from([(id("broken_mod"), Ok(document("other_mod", "9")))])
+                }
+                "pack-value" => {
+                    BTreeMap::from([(id("broken_mod"), Ok(document("broken_mod", "false")))])
+                }
+                _ => BTreeMap::new(),
+            };
+            let configured = super::open_configuration(
+                &mut crate::LoadedMods::<&mut dyn Mod>::new(
+                    &mut machine,
+                    &mut [&mut broken, &mut later],
+                )
+                .expect("complete mod set"),
+                packs,
+                |owner| {
+                    if owner == &id("broken_mod") && fault == "player" {
+                        Err(ravel_config::file::FileError::Io {
+                            path: "broken_mod.json".into(),
+                            source: std::io::Error::other("unreadable player file"),
+                        })
+                    } else {
+                        Ok(None)
+                    }
+                },
+                &crate::tests::environment(),
+            )
+            .expect("optional owner faults leave healthy owners running");
+            assert_eq!(configured.order(), [id("later_mod")], "{fault}");
+            assert_eq!(broken.applied, None, "{fault}");
+            assert_eq!(later.applied, Some(4), "{fault}");
+            assert_eq!(machine.state(&id("broken_mod")), Ok(LifecycleState::Failed));
+            let failure = machine
+                .failure(&id("broken_mod"))
+                .expect("tracked")
+                .expect("recorded");
+            assert_eq!(failure.mod_id.as_ref(), Some(&id("broken_mod")));
+            assert_eq!(failure.environment, crate::tests::environment());
+            assert!(machine.halted_by().is_none(), "{fault}");
+        }
     }
 
     #[test]
@@ -659,5 +773,24 @@ mod tests {
         assert!(std::error::Error::source(&refused).is_some());
         assert!(!refused.quotes_untrusted_text());
         assert_eq!(host.applied, None);
+        assert_eq!(machine.state(&id("first_mod")), Ok(LifecycleState::Failed));
+        assert!(
+            machine
+                .failure(&id("first_mod"))
+                .expect("tracked")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn lifecycle_configuration_refusals_preserve_known_owner_identity() {
+        let refused = ConfigRefused::Lifecycle(crate::LifecycleError::UnknownMod {
+            mod_id: id("example_mod"),
+        });
+        assert_eq!(refused.mod_id(), Some(&id("example_mod")));
+        assert_eq!(
+            ConfigRefused::Lifecycle(crate::LifecycleError::AttributionRequired).mod_id(),
+            None
+        );
     }
 }

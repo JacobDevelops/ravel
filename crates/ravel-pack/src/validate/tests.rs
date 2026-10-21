@@ -307,6 +307,122 @@ fn two_members_contributing_to_one_tag_are_merged_into_one_file_holding_both() {
 }
 
 #[test]
+fn raw_and_generated_member_tags_share_launch_append_and_replace_rules() {
+    let shared = path("data/c/tags/item/lanterns.json");
+    for first_raw in [false, true] {
+        for replace in [false, true] {
+            let (pack, manifests) = two_members();
+            let mut first = ContentDeclaration::new(id("first_mod"));
+            if first_raw {
+                first
+                    .resource(
+                        shared.clone(),
+                        br#"{"values":["minecraft:stone"],"old":true}"#.to_vec(),
+                    )
+                    .expect("a legal raw tag");
+            } else {
+                let held = first.entry(ContentKind::Item, "lantern").expect("an item");
+                let tag = TagId::new(ContentKind::Item, named("c", "lanterns")).expect("a tag");
+                first.tag(&tag, &held).expect("a matching member");
+            }
+            let mut second = ContentDeclaration::new(id("second_mod"));
+            second.resource(
+                shared.clone(),
+                format!(r##"{{"replace":{replace},"values":[{{"id":"#c:optional","required":false}}],"custom":1}}"##).into_bytes(),
+            ).expect("a legal raw tag");
+            // Input declarations are reversed; unrelated mods resolve in mod-id order.
+            let validated = validate(&pack, &manifests, &[second, first], &[]).expect("tags merge");
+            let actual: serde_json::Value =
+                serde_json::from_slice(validated.file(&shared).expect("merged tag").bytes())
+                    .expect("tag JSON");
+            let earlier = if first_raw {
+                "minecraft:stone"
+            } else {
+                "first_mod:lantern"
+            };
+            let values = if replace {
+                serde_json::json!([{"id":"#c:optional","required":false}])
+            } else {
+                serde_json::json!([earlier, {"id":"#c:optional","required":false}])
+            };
+            assert_eq!(
+                actual,
+                serde_json::json!({"replace":replace,"values":values,"custom":1})
+            );
+            if replace {
+                assert_eq!(
+                    validated.overrides(),
+                    &[ravel_data::Override {
+                        path: shared.clone(),
+                        winner: id("second_mod"),
+                        shadowed: vec![id("first_mod")],
+                    }]
+                );
+            } else {
+                assert_eq!(validated.overrides(), []);
+            }
+        }
+    }
+}
+
+#[test]
+fn member_tag_replacement_follows_dependency_order_not_owner_spelling() {
+    let shared = path("data/c/tags/item/shared.json");
+    let mut pack = PackDeclaration::new(id("example_pack"), Version::new(0, 1, 0));
+    for owner in ["alpha", "zeta"] {
+        pack.pin(id(owner), Version::new(1, 0, 0)).expect("a pin");
+    }
+    let manifests = [
+        manifest("alpha", "1.0.0", Some(("zeta", ">=1.0, <2.0"))),
+        manifest("zeta", "1.0.0", None),
+    ];
+    let mut alpha = ContentDeclaration::new(id("alpha"));
+    alpha
+        .resource(
+            shared.clone(),
+            br#"{"replace":true,"values":["minecraft:stone"]}"#.to_vec(),
+        )
+        .expect("a replacement tag");
+    let mut zeta = ContentDeclaration::new(id("zeta"));
+    let member = zeta.entry(ContentKind::Item, "thing").expect("an item");
+    let tag = TagId::new(ContentKind::Item, named("c", "shared")).expect("a tag");
+    zeta.tag(&tag, &member).expect("an item joins an item tag");
+    let validated =
+        validate(&pack, &manifests, &[alpha, zeta], &[]).expect("dependency order resolves");
+    let actual: serde_json::Value =
+        serde_json::from_slice(validated.file(&shared).expect("merged tag").bytes())
+            .expect("tag JSON");
+    assert_eq!(
+        actual,
+        serde_json::json!({"replace":true,"values":["minecraft:stone"]})
+    );
+    assert_eq!(
+        validated.overrides(),
+        &[ravel_data::Override {
+            path: shared,
+            winner: id("alpha"),
+            shadowed: vec![id("zeta")],
+        }]
+    );
+}
+
+#[test]
+fn malformed_member_tags_name_the_owner_and_path() {
+    let (pack, manifests, mut content) = one_member();
+    let shared = path("data/c/tags/item/lanterns.json");
+    content[0]
+        .resource(shared.clone(), br#"{"values":false}"#.to_vec())
+        .expect("a raw resource");
+    let ClosureError::TagDocument(error) =
+        validate(&pack, &manifests, &content, &[]).expect_err("invalid tag schema is refused")
+    else {
+        panic!("the refusal must identify the malformed tag");
+    };
+    assert_eq!(error.mod_id, id("base_mod"));
+    assert_eq!(error.path, shared);
+}
+
+#[test]
 fn two_members_writing_one_path_that_is_not_a_tag_is_refused_and_both_are_named() {
     let shared = path("assets/shared/models/lantern.json");
     let (pack, manifests) = two_members();

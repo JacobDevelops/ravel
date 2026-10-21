@@ -182,17 +182,20 @@ pub mod state {
         entries: Vec<String>,
     }
 
-    fn read_entries(current: &JsonValue) -> Vec<String> {
-        current
+    fn read_entries(current: &JsonValue) -> Result<Vec<String>, ModError> {
+        let entries = current
             .get("entries")
-            .and_then(|value| value.as_array())
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|entry| entry.as_str().map(str::to_owned))
-                    .collect()
+            .and_then(JsonValue::as_array)
+            .ok_or_else(|| ModError::refused("the stored payload holds no entry list"))?;
+        entries
+            .iter()
+            .map(|entry| {
+                entry
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| ModError::refused("a stored entry is not text"))
             })
-            .unwrap_or_default()
+            .collect()
     }
 
     fn v(raw: u32) -> SavedDataVersion {
@@ -235,7 +238,7 @@ pub mod state {
                 self.entries.clear();
                 return Ok(());
             };
-            self.entries = read_entries(envelope.payload());
+            self.entries = read_entries(envelope.payload())?;
             Ok(())
         }
 
@@ -542,6 +545,14 @@ mod tests {
     #[test]
     fn a_world_holding_nothing_this_mod_owns_initializes_fresh() {
         let mut state = crate::state::CopperLanterns::default();
+        let stored = SavedDataEnvelope::current(
+            crate::state::CopperLanterns::declared_id().clone(),
+            SavedDataVersion::new(2).expect("2 is not zero"),
+            json!({ "entries": ["previous world"] }),
+        );
+        state
+            .open_saved_data(Some(&stored))
+            .expect("the previous world has valid data");
         state
             .open_saved_data(None)
             .expect("absence is not a refusal");
@@ -550,6 +561,41 @@ mod tests {
             .expect("saving succeeds")
             .expect("this mod owns data");
         assert_eq!(saved.payload(), &json!({ "entries": [] }));
+    }
+
+    #[test]
+    fn malformed_saved_entries_refuse_without_replacing_the_previous_state() {
+        let mut state = crate::state::CopperLanterns::default();
+        let version = SavedDataVersion::new(2).expect("2 is not zero");
+        let stored = SavedDataEnvelope::current(
+            crate::state::CopperLanterns::declared_id().clone(),
+            version,
+            json!({ "entries": ["found copper"] }),
+        );
+        state.open_saved_data(Some(&stored)).expect("valid entries");
+        for payload in [
+            json!({}),
+            json!({ "entries": "not an array" }),
+            json!({ "entries": ["valid first entry", 3] }),
+        ] {
+            let malformed = SavedDataEnvelope::current(
+                crate::state::CopperLanterns::declared_id().clone(),
+                version,
+                payload,
+            );
+            let refusal = state
+                .open_saved_data(Some(&malformed))
+                .expect_err("malformed data must not silently disappear");
+            assert!(matches!(refusal, ModError::Refused { .. }));
+            assert_eq!(
+                state
+                    .save_saved_data()
+                    .expect("saving succeeds")
+                    .expect("this mod owns data")
+                    .payload(),
+                stored.payload()
+            );
+        }
     }
 
     #[test]

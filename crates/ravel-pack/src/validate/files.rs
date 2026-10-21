@@ -1,35 +1,26 @@
 use std::collections::BTreeMap;
 
-use ravel_core::paths::{INSTANCE_DIRECTORY, PACK_CONFIG_DIRECTORY};
+use ravel_core::paths::INSTANCE_DIRECTORY;
 use ravel_core::{ModId, RelativePath};
-use ravel_data::{ContentDeclaration, Override, TagSet};
+use ravel_data::{ContentDeclaration, Override, TagResources};
 use ravel_package::PackageManifest;
 use serde_json::{Map, Value};
 
 use super::PackFile;
+use crate::closure::ClosureError;
 use crate::declare::PackDeclaration;
-use crate::error::ClosureError;
 
 /// Builds the pack's files, refusing a contested or reserved path.
 pub(super) fn written_files(
     pack: &PackDeclaration,
     installed: &BTreeMap<&ModId, &PackageManifest>,
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
+    order: &[ModId],
 ) -> Result<(Vec<PackFile>, Vec<Override>), ClosureError> {
     let mut writer: BTreeMap<RelativePath, Writer> = BTreeMap::new();
     let mut files: BTreeMap<RelativePath, Vec<u8>> = BTreeMap::new();
-    let mut overrides: Vec<Override> = Vec::new();
-
-    // Merge tag contributions before member files can overwrite each other's tags.
-    let tags = TagSet::merged(declarations.values().copied());
-    for file in tags.generate().files() {
-        reserved(file.path())?;
-        writer.insert(file.path().clone(), Writer::Members);
-        files.insert(file.path().clone(), file.bytes().to_vec());
-    }
-
-    member_files(declarations, &mut writer, &mut files)?;
-
+    let tags = member_files(declarations, order, &mut writer, &mut files)?;
+    let mut overrides = tags.replacements().to_vec();
     pack_files(pack, &tags, &mut writer, &mut files, &mut overrides)?;
 
     // Manifest resources answer references without becoming pack output.
@@ -53,7 +44,7 @@ pub(super) fn written_files(
 
     for (owner, document) in pack.settings() {
         files.insert(
-            pack_settings_path(owner),
+            ravel_config::file::pack_relative_path(owner),
             document_bytes(&document.to_json()),
         );
     }
@@ -70,14 +61,21 @@ pub(super) fn written_files(
 
 fn member_files(
     declarations: &BTreeMap<&ModId, &ContentDeclaration>,
+    order: &[ModId],
     writer: &mut BTreeMap<RelativePath, Writer>,
     files: &mut BTreeMap<RelativePath, Vec<u8>>,
-) -> Result<(), ClosureError> {
-    for (owner, declaration) in declarations {
-        for file in declaration.generate().files() {
+) -> Result<TagResources, ClosureError> {
+    let mut tags = TagResources::default();
+    for owner in order {
+        let declaration = declarations[owner];
+        let generated = declaration.generate();
+        tags.append(
+            TagResources::from_generated(owner, &generated).map_err(ClosureError::TagDocument)?,
+        );
+        for file in generated.files() {
             let path = file.path().clone();
-            if matches!(writer.get(&path), Some(Writer::Members)) {
-                // The merged tag file above already holds this mod's contribution.
+            if TagResources::is_tag(&path) {
+                // Shared generated and raw tags are emitted once after every member is merged.
                 continue;
             }
             reserved(&path)?;
@@ -92,12 +90,17 @@ fn member_files(
             files.insert(path, file.bytes().to_vec());
         }
     }
-    Ok(())
+    for file in tags.generate().files() {
+        reserved(file.path())?;
+        writer.insert(file.path().clone(), Writer::Members);
+        files.insert(file.path().clone(), file.bytes().to_vec());
+    }
+    Ok(tags)
 }
 
 fn pack_files(
     pack: &PackDeclaration,
-    tags: &TagSet,
+    tags: &TagResources,
     writer: &mut BTreeMap<RelativePath, Writer>,
     files: &mut BTreeMap<RelativePath, Vec<u8>>,
     overrides: &mut Vec<Override>,
@@ -111,11 +114,7 @@ fn pack_files(
                 shadowed: vec![first.clone()],
             }),
             Some(Writer::Members) => {
-                let contributors = tags
-                    .tags()
-                    .find(|tag| tag.generated_path() == supplied.path)
-                    .map(|tag| tags.contributors(tag).to_vec())
-                    .unwrap_or_default();
+                let contributors = tags.contributors(&supplied.path).to_vec();
                 overrides.push(Override {
                     path: supplied.path.clone(),
                     winner: pack.id().clone(),
@@ -158,11 +157,6 @@ fn reserved(path: &RelativePath) -> Result<(), ClosureError> {
 fn ravel_path(rest: &str) -> RelativePath {
     RelativePath::try_from(format!("{INSTANCE_DIRECTORY}/{rest}"))
         .expect("a mod id cannot spell an illegal path")
-}
-
-/// Uses the same pack-settings directory as the configuration reader.
-fn pack_settings_path(owner: &ModId) -> RelativePath {
-    ravel_path(&format!("{PACK_CONFIG_DIRECTORY}/{owner}.json"))
 }
 
 /// Appends a trailing newline if needed.

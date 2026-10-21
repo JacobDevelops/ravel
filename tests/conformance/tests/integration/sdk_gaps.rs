@@ -120,7 +120,7 @@ fn the_same_entries_declared_in_two_orders_generate_the_same_bytes() {
                 .server_entry(
                     ServerDataKind::Crafting,
                     names[*index],
-                    br#"{"result": "determinism_probe:plate"}"#,
+                    br#"{"result": "determinism_probe:plate"}"#.to_vec(),
                 )
                 .expect("each name is claimed once");
         }
@@ -143,7 +143,7 @@ fn the_same_entries_declared_in_two_orders_generate_the_same_bytes() {
 fn a_second_claim_on_one_server_entry_is_refused_by_the_declaration() {
     let mut declared = ServerDataMod::declaration().expect("the declaration is well formed");
     declared
-        .server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}")
+        .server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}".to_vec())
         .expect_err("the mod already declares that entry");
 }
 
@@ -536,13 +536,19 @@ fn the_examples_block_and_item_tags_keep_their_members_and_contributor() {
     use ravel_core::ContentKind;
     use ravel_example_content_mod::ContentMod;
     let declaration = ContentMod::new().declaration().expect("valid declaration");
-    let set = ravel_data::TagSet::merged([&declaration]);
+    let set = ravel_data::TagResources::merged([&declaration]).expect("valid tags");
     for kind in [ContentKind::Block, ContentKind::Item] {
         let tag = ContentMod::lanterns(kind);
-        let members = set.members(&tag);
+        let members = set.values(&tag.generated_path());
         assert_eq!(members.len(), 1, "{tag}");
-        assert_eq!(members[0].kind(), kind);
-        assert_eq!(set.contributors(&tag), [ContentMod::declared_id().clone()]);
+        assert_eq!(
+            members[0],
+            declaration.tag_members(&tag)[0].id().to_string()
+        );
+        assert_eq!(
+            set.contributors(&tag.generated_path()),
+            [ContentMod::declared_id().clone()]
+        );
     }
 }
 
@@ -557,9 +563,9 @@ fn another_mod_joins_the_examples_shared_tag_without_conflicting() {
         .entry(ContentKind::Item, "tin_lantern")
         .expect("a legal entry");
     other.tag(&tag, &theirs).expect("an item joins an item tag");
-    let set = ravel_data::TagSet::merged([&content, &other]);
-    assert_eq!(set.members(&tag).len(), 2);
-    assert_eq!(set.contributors(&tag).len(), 2);
+    let set = ravel_data::TagResources::merged([&content, &other]).expect("valid tags");
+    assert_eq!(set.values(&tag.generated_path()).len(), 2);
+    assert_eq!(set.contributors(&tag.generated_path()).len(), 2);
 }
 
 #[test]
@@ -585,14 +591,17 @@ fn waystone_tags_merge_the_block_and_item_in_their_own_registry() {
     use ravel_core::ContentKind;
     use waystone_ledger::WaystoneLedger;
     let declaration = WaystoneLedger::declaration().expect("valid declaration");
-    let set = ravel_data::TagSet::merged([&declaration]);
+    let set = ravel_data::TagResources::merged([&declaration]).expect("valid tags");
     for kind in [ContentKind::Block, ContentKind::Item] {
         let tag = WaystoneLedger::waystones_tag(kind);
-        let members = set.members(&tag);
+        let members = set.values(&tag.generated_path());
         assert_eq!(members.len(), 1, "{tag}");
-        assert_eq!(members[0].kind(), kind);
         assert_eq!(
-            set.contributors(&tag),
+            members[0],
+            declaration.tag_members(&tag)[0].id().to_string()
+        );
+        assert_eq!(
+            set.contributors(&tag.generated_path()),
             [WaystoneLedger::declared_id().clone()]
         );
     }

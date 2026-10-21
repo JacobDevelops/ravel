@@ -139,8 +139,8 @@ pub struct Dependency {
         skip_serializing_if = "Option::is_none"
     )]
     pub sides: Option<SideSet>,
-    /// The ordering this relationship requires, absent when order does not
-    /// matter.
+    /// The ordering this relationship requires. Absent means `after` for required
+    /// and optional dependencies, and no ordering for discouraged ones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order: Option<DependencyOrder>,
 }
@@ -151,7 +151,8 @@ pub struct Dependency {
 pub enum DependencyRelationship {
     /// The dependant cannot load without it, and its absence fails closed.
     Required,
-    /// The dependant loads with or without it, and orders after it when present.
+    /// The dependant loads without it. A matching version on this side adds
+    /// ordering by `order` (default: after); other versions add no constraint.
     Optional,
     /// The two mods cannot load together.
     Incompatible,

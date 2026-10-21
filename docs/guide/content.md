@@ -52,6 +52,21 @@ is reported through the fallible hook, rather than panicking during loading.
   the members merge. Tags are the only place a mod legitimately writes outside
   its own namespace: the convention namespace is `c`, and a tag there is not a
   claim on it.
+  Launch merges generated and supplied `data/<namespace>/tags/<registry>/*.json`
+  documents in resolved load order. A validated pack retains all members using
+  first occurrences across the resolved `Side::ALL` plans as its canonical
+  cross-side order; common members therefore follow their resolved dependencies.
+  Both paths apply the same rule: appending keeps existing member order and adds
+  only values not already present. A supplied `replace: true` discards earlier
+  members; later contributions still append, and the merged document retains that
+  flag for the game's lower-priority packs. Unknown document fields come from the
+  last contributor.
+  Explicit replacements name discarded contributors in the launch
+  `tag_replacements()` report and the validated pack's override report; ordinary
+  tag appends are not overrides. A pack's own explicitly supplied file remains a
+  complete override of member tags. Invalid tag JSON or tag field types are
+  attributed to the supplying mod: required launch failures stop collection, while
+  optional failures before world mutation discard that mod's entire declaration.
 - **A resource path has one supplier.** Two mods supplying
   `assets/…/lang/en_us.json` is an override, not a conflict — the mod later in the
   resolved load order supplies it, and the mods it shadowed are recorded, because

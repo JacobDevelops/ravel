@@ -84,6 +84,8 @@ pub enum ClosureError {
         /// Why nothing provides it.
         kind: UnprovidedEntry,
     },
+    /// A member supplied malformed tag JSON or invalid tag field types.
+    TagDocument(ravel_data::TagResourceError),
     /// A progression step is gated on an entry nothing in this pack provides.
     Gate {
         /// The step.
@@ -167,6 +169,7 @@ impl fmt::Display for ClosureError {
                 formatter,
                 "`{tag}` holds `{member}`, which nothing in this pack provides: {kind}"
             ),
+            Self::TagDocument(source) => source.fmt(formatter),
             Self::Gate { state, entry, kind } => write!(
                 formatter,
                 "`{state}` is gated on `{entry}`, which nothing in this pack provides: {kind}"
@@ -209,6 +212,7 @@ impl std::error::Error for ClosureError {
         match self {
             Self::Dependency { source, .. } => Some(source.as_ref()),
             Self::Settings { source, .. } => Some(source),
+            Self::TagDocument(source) => Some(source),
             Self::MemberMissing { .. }
             | Self::UnpinnedPackage { .. }
             | Self::PinMismatch { .. }

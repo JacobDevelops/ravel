@@ -4,7 +4,7 @@ use std::fmt;
 use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath};
 
 use crate::declare::ContentDeclaration;
-use crate::generate::{GeneratedData, tag_document};
+use crate::generate::GeneratedData;
 
 /// A named group of entries in one taggable registry; commands are not taggable.
 ///
@@ -113,121 +113,214 @@ impl fmt::Display for TagError {
 
 impl std::error::Error for TagError {}
 
-/// Merged tag members in canonical order, with contributors in supplied load order.
+/// Launch and pack tag documents merged in caller-supplied load order.
 ///
-/// # Examples
-///
-/// ```
-/// use ravel_core::{ContentId, ContentKind, ModId};
-/// use ravel_data::{ContentDeclaration, TagId, TagSet};
-///
-/// fn declare(owner: &str, path: &str) -> ContentDeclaration {
-///     let owner: ModId = owner.parse().expect("a legal mod id");
-///     let tag = TagId::new(
-///         ContentKind::Item,
-///         ContentId::new("c".parse().expect("a legal mod id"), "ingots")
-///             .expect("a legal content path"),
-///     )
-///     .expect("items are taggable");
-///
-///     let mut declaration = ContentDeclaration::new(owner);
-///     let ingot = declaration
-///         .entry(ContentKind::Item, path)
-///         .expect("a legal, undeclared entry");
-///     declaration.tag(&tag, &ingot).expect("an item joins an item tag");
-///     declaration
-/// }
-///
-/// let first = declare("first_mod", "copper_ingot");
-/// let second = declare("second_mod", "tin_ingot");
-/// let set = TagSet::merged([&first, &second]);
-///
-/// let tag = first.tags().next().expect("one tag was declared");
-/// assert_eq!(set.members(tag).len(), 2, "both contributions are kept");
-/// assert_eq!(set.contributors(tag).len(), 2);
-/// ```
+/// Generated and raw tags share this rule. Replacement discards earlier members;
+/// unknown document fields come from the last contributor. Member order is stable.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct TagSet {
-    members: BTreeMap<TagId, Vec<RegistryKey>>,
-    contributors: BTreeMap<TagId, Vec<ModId>>,
+pub struct TagResources {
+    documents: BTreeMap<RelativePath, TagContribution>,
+    replacements: Vec<crate::Override>,
 }
 
-impl TagSet {
-    /// Merges every declaration's tag contributions, in the order given.
-    #[must_use]
-    pub fn merged<'a, D>(declarations: D) -> Self
-    where
-        D: IntoIterator<Item = &'a ContentDeclaration>,
-    {
-        let mut set = Self::default();
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TagContribution {
+    owner: ModId,
+    contributors: Vec<ModId>,
+    document: TagDocument,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+struct TagDocument {
+    #[serde(default)]
+    replace: bool,
+    values: Vec<serde_json::Value>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl TagResources {
+    /// Merges generated and supplied tags in the given declaration load order.
+    ///
+    /// # Errors
+    /// Returns the first malformed tag, attributed to its declaration's owner.
+    pub fn merged<'a>(
+        declarations: impl IntoIterator<Item = &'a ContentDeclaration>,
+    ) -> Result<Self, TagResourceError> {
+        let mut tags = Self::default();
         for declaration in declarations {
-            for tag in declaration.tags() {
-                let contributors = set.contributors.entry(tag.clone()).or_default();
-                if !contributors.contains(declaration.owner()) {
-                    contributors.push(declaration.owner().clone());
-                }
-
-                let members = set.members.entry(tag.clone()).or_default();
-                for member in declaration.tag_members(tag) {
-                    if !members.contains(member) {
-                        members.push(member.clone());
-                    }
-                }
-            }
+            tags.append(Self::from_generated(
+                declaration.owner(),
+                &declaration.generate(),
+            )?);
         }
-        for members in set.members.values_mut() {
-            members.sort_by_key(RegistryKey::to_string);
-        }
-        set
+        Ok(tags)
     }
 
-    /// Returns every tag the set declares, in name order.
-    pub fn tags(&self) -> impl Iterator<Item = &TagId> + '_ {
-        self.members.keys()
-    }
-
-    /// Returns the members of `tag`, in canonical spelling order.
-    #[must_use]
-    pub fn members(&self, tag: &TagId) -> &[RegistryKey] {
-        self.members.get(tag).map_or(&[], Vec::as_slice)
-    }
-
-    /// Returns the mods that contributed to `tag`, in load order.
-    #[must_use]
-    pub fn contributors(&self, tag: &TagId) -> &[ModId] {
-        self.contributors.get(tag).map_or(&[], Vec::as_slice)
-    }
-
-    /// Returns whether the set declares any tag at all.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.members.is_empty()
-    }
-
-    /// Generates one merged file per tag, preserving every contribution.
-    #[must_use]
-    pub fn generate(&self) -> GeneratedData {
-        let mut data = GeneratedData::default();
-        for (tag, members) in &self.members {
-            data.insert(
-                tag.generated_path(),
-                tag_document(
-                    members
-                        .iter()
-                        .map(|member| member.id().to_string())
-                        .collect(),
-                ),
+    /// Parses every tag before admitting any files from this owner.
+    ///
+    /// # Errors
+    /// Returns the supplying mod, path, and reason when any tag has invalid JSON
+    /// or invalid member, `values`, or `replace` field types.
+    pub fn from_generated(owner: &ModId, files: &GeneratedData) -> Result<Self, TagResourceError> {
+        let mut tags = Self::default();
+        for file in files
+            .files()
+            .iter()
+            .filter(|file| Self::is_tag(file.path()))
+        {
+            let document = parse_tag(file.bytes()).map_err(|reason| TagResourceError {
+                mod_id: owner.clone(),
+                path: file.path().clone(),
+                reason,
+            })?;
+            tags.documents.insert(
+                file.path().clone(),
+                TagContribution {
+                    owner: owner.clone(),
+                    contributors: vec![owner.clone()],
+                    document,
+                },
             );
         }
-        data
+        Ok(tags)
+    }
+
+    /// Recognizes Minecraft JSON tag resource paths, including nested tag names.
+    #[must_use]
+    pub fn is_tag(path: &RelativePath) -> bool {
+        let mut parts = path.as_str().split('/');
+        parts.next() == Some("data")
+            && parts.next().is_some()
+            && parts.next() == Some("tags")
+            && parts.next().is_some()
+            && parts.next().is_some()
+            && std::path::Path::new(path.as_str()).extension() == Some(std::ffi::OsStr::new("json"))
+    }
+
+    /// Appends later contributions, recording replacements but not ordinary merges.
+    pub fn append(&mut self, later: Self) {
+        self.replacements.extend(later.replacements);
+        for (path, mut incoming) in later.documents {
+            if let Some(mut earlier) = self.documents.remove(&path) {
+                if incoming.document.replace {
+                    self.replacements.push(crate::Override {
+                        path: path.clone(),
+                        winner: incoming.owner.clone(),
+                        shadowed: earlier.contributors,
+                    });
+                } else {
+                    earlier
+                        .document
+                        .values
+                        .reserve(incoming.document.values.len());
+                    for value in incoming.document.values {
+                        if !earlier.document.values.contains(&value) {
+                            earlier.document.values.push(value);
+                        }
+                    }
+                    incoming.document.values = earlier.document.values;
+                    incoming.document.replace = earlier.document.replace;
+                    for contributor in incoming.contributors {
+                        if !earlier.contributors.contains(&contributor) {
+                            earlier.contributors.push(contributor);
+                        }
+                    }
+                    incoming.contributors = earlier.contributors;
+                }
+            }
+            self.documents.insert(path, incoming);
+        }
+    }
+
+    /// Returns the final contributor used to attribute a merged output path.
+    #[must_use]
+    pub fn supplier(&self, path: &RelativePath) -> Option<&ModId> {
+        self.documents.get(path).map(|tag| &tag.owner)
+    }
+
+    /// Returns members whose values remain in this tag, in supplied order.
+    #[must_use]
+    pub fn contributors(&self, path: &RelativePath) -> &[ModId] {
+        self.documents
+            .get(path)
+            .map_or(&[], |tag| tag.contributors.as_slice())
+    }
+
+    /// Returns raw JSON member values in merged load order, or an empty absent group.
+    #[must_use]
+    pub fn values(&self, path: &RelativePath) -> &[serde_json::Value] {
+        self.documents
+            .get(path)
+            .map_or(&[], |tag| tag.document.values.as_slice())
+    }
+
+    /// Returns explicit replacement events, each naming the mod that discarded members.
+    #[must_use]
+    pub fn replacements(&self) -> &[crate::Override] {
+        &self.replacements
+    }
+
+    /// Generates the shared output bytes used by launch and validated packs.
+    #[must_use]
+    pub fn generate(&self) -> GeneratedData {
+        let mut files = GeneratedData::default();
+        for (path, tag) in &self.documents {
+            let mut bytes = serde_json::to_vec_pretty(&tag.document)
+                .expect("a validated tag document always serializes");
+            bytes.push(b'\n');
+            files.insert(path.clone(), bytes);
+        }
+        files
     }
 }
+
+fn parse_tag(bytes: &[u8]) -> Result<TagDocument, String> {
+    use serde_json::Value;
+    let document: TagDocument = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    for value in &document.values {
+        if value.is_string() {
+            continue;
+        }
+        let valid = value.as_object().is_some_and(|entry| {
+            entry.get("id").is_some_and(Value::is_string)
+                && entry.get("required").is_none_or(Value::is_boolean)
+        });
+        if !valid {
+            return Err("a tag value must be an id string or an object with an id string and optional required boolean".to_owned());
+        }
+    }
+    Ok(document)
+}
+
+/// A malformed tag, attributed to its supplying mod and resource path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TagResourceError {
+    /// The supplying mod.
+    pub mod_id: ModId,
+    /// The malformed tag path.
+    pub path: RelativePath,
+    /// The JSON or tag-schema error.
+    pub reason: String,
+}
+
+impl fmt::Display for TagResourceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "`{}` supplied invalid tag `{}`: {}",
+            self.mod_id, self.path, self.reason
+        )
+    }
+}
+
+impl std::error::Error for TagResourceError {}
 
 #[cfg(test)]
 mod tests {
     use ravel_core::{ContentId, ContentKind, ModId, RegistryKey};
 
-    use super::{TagError, TagId, TagSet};
+    use super::{TagError, TagId, TagResources};
     use crate::declare::ContentDeclaration;
 
     fn id(namespace: &str, path: &str) -> ContentId {
@@ -306,7 +399,9 @@ mod tests {
                 declaration.tag_members(&valid),
                 std::slice::from_ref(&member)
             );
-            let generated = TagSet::merged([&declaration]).generate();
+            let generated = TagResources::merged([&declaration])
+                .expect("valid tags")
+                .generate();
             assert_eq!(
                 generated.paths().collect::<Vec<_>>(),
                 ["data/c/tags/item/kept.json"]
@@ -343,105 +438,52 @@ mod tests {
     }
 
     #[test]
-    fn two_mods_contributing_to_one_tag_keep_both_members_and_are_both_named() {
+    fn shared_tags_keep_members_and_distinct_contributors_in_load_order() {
         let lanterns = tag(ContentKind::Item, "lanterns");
-        let first = contributor("first_mod", ContentKind::Item, "copper_lantern", &lanterns);
-        let second = contributor("second_mod", ContentKind::Item, "tin_lantern", &lanterns);
-
-        let set = TagSet::merged([&first, &second]);
-        assert!(!set.is_empty());
-        assert_eq!(set.tags().collect::<Vec<_>>(), [&lanterns]);
+        let first = contributor("zzz_mod", ContentKind::Item, "copper_lantern", &lanterns);
+        let second = contributor("aaa_mod", ContentKind::Item, "tin_lantern", &lanterns);
+        let path = lanterns.generated_path();
+        let forwards = TagResources::merged([&first, &second, &first]).expect("valid tags");
+        let backwards = TagResources::merged([&second, &first]).expect("valid tags");
         assert_eq!(
-            set.members(&lanterns)
-                .iter()
-                .map(RegistryKey::to_string)
-                .collect::<Vec<_>>(),
-            [
-                "item:first_mod:copper_lantern",
-                "item:second_mod:tin_lantern"
-            ]
+            forwards.values(&path),
+            serde_json::json!(["zzz_mod:copper_lantern", "aaa_mod:tin_lantern"])
+                .as_array()
+                .expect("an array")
         );
         assert_eq!(
-            set.contributors(&lanterns),
-            [
-                "first_mod".parse::<ModId>().expect("a legal mod id"),
-                "second_mod".parse::<ModId>().expect("a legal mod id"),
-            ]
+            backwards.values(&path),
+            serde_json::json!(["aaa_mod:tin_lantern", "zzz_mod:copper_lantern"])
+                .as_array()
+                .expect("an array")
+        );
+        assert_eq!(
+            forwards.contributors(&path),
+            [first.owner().clone(), second.owner().clone()]
+        );
+        assert_eq!(
+            backwards.contributors(&path),
+            [second.owner().clone(), first.owner().clone()]
+        );
+        let generated = forwards.generate();
+        assert_eq!(generated.paths().collect::<Vec<_>>(), [path.as_str()]);
+        let document: serde_json::Value =
+            serde_json::from_slice(generated.file(&path).expect("a tag").bytes())
+                .expect("tag JSON");
+        assert_eq!(
+            document["values"].as_array().expect("values"),
+            forwards.values(&path)
         );
     }
 
     #[test]
-    fn merging_orders_members_by_spelling_rather_than_by_load_order() {
-        let lanterns = tag(ContentKind::Item, "lanterns");
-        let early = contributor("zzz_mod", ContentKind::Item, "lantern", &lanterns);
-        let late = contributor("aaa_mod", ContentKind::Item, "lantern", &lanterns);
-
-        let forwards = TagSet::merged([&early, &late]);
-        let backwards = TagSet::merged([&late, &early]);
-
-        assert_eq!(forwards.members(&lanterns), backwards.members(&lanterns));
-        assert_eq!(
-            forwards.members(&lanterns)[0].id().namespace().as_str(),
-            "aaa_mod"
-        );
-        // Contributors are load order, so these two do differ there.
-        assert_ne!(
-            forwards.contributors(&lanterns),
-            backwards.contributors(&lanterns)
-        );
-    }
-
-    #[test]
-    fn one_mod_contributing_the_same_member_through_two_declarations_is_named_once() {
-        let lanterns = tag(ContentKind::Item, "lanterns");
-        let declaration = contributor("first_mod", ContentKind::Item, "lantern", &lanterns);
-
-        let set = TagSet::merged([&declaration, &declaration]);
-        assert_eq!(set.members(&lanterns).len(), 1);
-        assert_eq!(set.contributors(&lanterns).len(), 1);
-    }
-
-    #[test]
-    fn merging_two_contributions_generates_one_file_holding_both() {
-        // The defect this exists for: both mods derive the same path from the same
-        // tag name, so generating each mod's own view and writing both keeps the
-        // last one and silently drops the other's member.
-        let lanterns = tag(ContentKind::Item, "lanterns");
-        let first = contributor("first_mod", ContentKind::Item, "copper_lantern", &lanterns);
-        let second = contributor("second_mod", ContentKind::Item, "tin_lantern", &lanterns);
-
-        let merged = TagSet::merged([&first, &second]).generate();
-        assert_eq!(
-            merged.paths().collect::<Vec<_>>(),
-            ["data/c/tags/item/lanterns.json"]
-        );
-        let rendered = merged
-            .file(&lanterns.generated_path())
-            .expect("the tag has a file");
-        let text = String::from_utf8(rendered.bytes().to_vec()).expect("generated JSON is UTF-8");
-        assert!(text.contains("first_mod:copper_lantern"), "{text}");
-        assert!(text.contains("second_mod:tin_lantern"), "{text}");
-
-        // Merge declarations before rendering to avoid replacing another mod's members.
-        let alone = first
-            .generate()
-            .file(&lanterns.generated_path())
-            .map(|file| file.bytes().to_vec())
-            .expect("one mod's own view");
-        assert!(
-            !String::from_utf8_lossy(&alone).contains("second_mod"),
-            "one mod's view cannot hold another's contribution"
-        );
-        assert_eq!(TagSet::default().generate().len(), 0);
-    }
-
-    #[test]
-    fn a_tag_nobody_declared_is_an_empty_group_rather_than_an_absent_answer() {
-        let set = TagSet::default();
-        let lanterns = tag(ContentKind::Item, "lanterns");
-        assert!(set.is_empty());
-        assert_eq!(set.members(&lanterns), []);
-        assert_eq!(set.contributors(&lanterns), []);
-        assert_eq!(set, TagSet::merged(Vec::<&ContentDeclaration>::new()));
+    fn absent_shared_tags_have_no_values_contributors_or_generated_files() {
+        let tags =
+            TagResources::merged(Vec::<&ContentDeclaration>::new()).expect("no malformed tags");
+        let path = tag(ContentKind::Item, "lanterns").generated_path();
+        let empty: &[serde_json::Value] = &[];
+        assert_eq!(tags.values(&path), empty);
+        assert_eq!(tags.contributors(&path), []);
+        assert!(tags.generate().is_empty());
     }
 }

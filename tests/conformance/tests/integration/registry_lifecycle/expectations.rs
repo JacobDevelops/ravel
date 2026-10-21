@@ -14,7 +14,12 @@ pub(super) fn assert_running<'a>(
     hosts: impl IntoIterator<Item = &'a dyn Mod>,
     side: Side,
 ) {
-    assert!(machine.registration_barrier_closed());
+    assert!(
+        machine
+            .entries()
+            .filter(|entry| machine.loads(&entry.mod_id))
+            .all(|entry| machine.state(&entry.mod_id) == Ok(LifecycleState::Running))
+    );
     for host in hosts {
         assert_eq!(
             machine.state(host.id()),

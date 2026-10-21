@@ -14,12 +14,13 @@
 //! let plate = declared.server_entry(
 //!     ServerDataKind::Crafting,
 //!     "plate_from_ingot",
-//!     br#"{"result": "example:plate"}"#,
+//!     br#"{"result": "example:plate"}"#.to_vec(),
 //! )?;
 //! assert_eq!(plate.as_str(), "data/example/recipe/plate_from_ingot.json");
 //! let generated = declared.generate();
 //! assert!(generated.file(&plate).is_some());
-//! assert!(declared.server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}").is_err());
+//! let again = declared.server_entry(ServerDataKind::Crafting, "plate_from_ingot", b"{}".to_vec());
+//! assert!(again.is_err());
 //! # Ok::<(), ContentDeclarationError>(())
 //! ```
 

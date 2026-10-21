@@ -167,14 +167,14 @@ fn ingots() -> TagId {
     TagId::new(ContentKind::Item, content("c", "ingots")).expect("items are taggable")
 }
 
-/// Prints what the pack writes and what it took from a member.
+/// Prints what the pack writes and the member or pack responsible for replacements.
 fn report(validated: &ValidatedPack) {
     println!("the pack writes:");
     for file in validated.files() {
         println!("  {}", file.path().as_str());
     }
     for taken in validated.overrides() {
-        println!("the pack supplies {taken}");
+        println!("{} supplies {taken}", taken.winner);
     }
 }
 

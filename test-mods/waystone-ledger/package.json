@@ -33,7 +33,7 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "3bc232198a807f6a7c87c6836ee5b300645c80cd2af04051a961df04ddbb21e1"
+        "sha256": "9d28a35bc01139329a33f9d7eb04a0d7c152b2adeb81b3c48f3938af22be8e5b"
       },
       {
         "path": "src/lib.rs",

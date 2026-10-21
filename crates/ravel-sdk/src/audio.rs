@@ -21,7 +21,7 @@
 //! }
 //!
 //! let mut declared = AudioDeclaration::new(Example::declared_id().clone());
-//! let chime = declared.entry("door_opens", b"the supplied bytes")?;
+//! let chime = declared.entry("door_opens", b"the supplied bytes".to_vec())?;
 //! let event = declared.event("door_opens")?;
 //! assert_eq!(event.entry(), chime.name());
 //!

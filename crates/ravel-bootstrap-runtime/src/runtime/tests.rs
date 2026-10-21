@@ -524,18 +524,27 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
 
 #[test]
 fn owners_failed_before_outward_delivery_are_never_drained() {
-    let (mut machine, _, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+    let mut machine = LifecycleMachine::new(
+        Side::Client,
+        vec![LifecycleEntry {
+            mod_id: id(MOD),
+            sides: SideSet::new([Side::Client]).expect("one side"),
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        }],
+    )
+    .expect("one owner");
     let drains = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    machine
-        .fail_callback(
-            &HostError::Panicked {
-                mod_id: id(MOD),
-                state: LifecycleState::Running,
-            },
-            &environment(),
-            None,
-        )
-        .expect("known owner can fail");
+    let mut refusing: Vec<Box<dyn Mod>> = vec![Box::new(super::RefusingStart {
+        owner: id(MOD),
+        state: LifecycleState::Running,
+        detail: "owner stopped before delivery",
+    })];
+    ravel_loader::start_all(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut refusing).expect("complete hosts"),
+        &environment(),
+    )
+    .expect_err("the required owner refuses startup");
     let runtime = LoaderRuntime::new(
         machine,
         vec![Box::new(PanickingDrain {
@@ -679,7 +688,7 @@ fn a_typed_command_reaches_the_mod_that_claimed_its_key_with_its_arguments() {
 }
 
 #[test]
-fn integrated_commands_run_a_server_gated_fixture_on_a_client_distribution() {
+fn integrated_commands_run_the_probe_fixture_on_a_client_distribution() {
     let host = ravel_test_mod_commands::__ravel_entry(Side::Client);
     let owner = host.id().clone();
     let entry = LifecycleEntry {
@@ -712,7 +721,7 @@ fn integrated_commands_run_a_server_gated_fixture_on_a_client_distribution() {
         .expect("a typed command");
     inner
         .deliver_checked(&work)
-        .expect("the server-gated fixture executes with a server identity");
+        .expect("the loader delivers the probe with a server identity");
     assert_eq!(
         inner.loaded.machine().state(&owner),
         Ok(LifecycleState::Running)
@@ -1233,7 +1242,7 @@ fn checked_events_surface_callback_failures_then_stop_delivery() -> Result<(), S
     );
     assert_eq!(
         refused.expect_err("wrong side").to_string(),
-        "ServerTick does not happen on Client"
+        "`server-tick` does not happen on the `client` side"
     );
     assert!(runtime.legacy_event(GameEvent::ClientTick).is_err());
     assert_eq!(

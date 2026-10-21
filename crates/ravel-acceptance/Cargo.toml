@@ -11,5 +11,8 @@ rust-version.workspace = true
 ravel-core.workspace = true
 ravel-host-api.workspace = true
 
+[dev-dependencies]
+ravel-pack.workspace = true
+
 [lints]
 workspace = true

@@ -7,8 +7,8 @@ use ravel_core::{ModId, RegistryKey, RelativePath, Side};
 use ravel_data::{ContentDeclaration, Override};
 use ravel_package::PackageManifest;
 
+use crate::closure::{ClosureError, UnprovidedEntry};
 use crate::declare::PackDeclaration;
-use crate::error::{ClosureError, UnprovidedEntry};
 
 use files::written_files;
 
@@ -59,7 +59,8 @@ impl ValidatedPack {
             .map(|found| &self.files[found])
     }
 
-    /// Returns every member path replaced by the pack, in path order.
+    /// Returns member tag replacements in load order, then explicit pack overrides.
+    /// Each record names its actual replacing member or pack as the winner.
     #[must_use]
     pub fn overrides(&self) -> &[Override] {
         &self.overrides
@@ -80,18 +81,27 @@ pub fn validate(
     configurations: &[ConfigurationDeclaration],
 ) -> Result<ValidatedPack, ClosureError> {
     let installed = pinned_set(pack, manifests)?;
+    let mut order = Vec::with_capacity(manifests.len());
+    // One cross-side pack retains every member. Admit each mod at its first
+    // occurrence in Side::ALL's resolved plans, preserving common-mod load order.
     for side in Side::ALL {
-        ravel_resolve::resolve(manifests, side).map_err(|source| ClosureError::Dependency {
-            side,
-            source: Box::new(source),
-        })?;
+        let plan =
+            ravel_resolve::resolve(manifests, side).map_err(|source| ClosureError::Dependency {
+                side,
+                source: Box::new(source),
+            })?;
+        for owner in plan.order() {
+            if !order.contains(owner) {
+                order.push(owner.clone());
+            }
+        }
     }
 
     let declarations = declared_content(pack, content)?;
     check_registry_closure(pack, &declarations)?;
     check_progression_closure(pack, &declarations)?;
     check_settings_closure(pack, configurations)?;
-    let (files, overrides) = written_files(pack, &installed, &declarations)?;
+    let (files, overrides) = written_files(pack, &installed, &declarations, &order)?;
 
     Ok(ValidatedPack { files, overrides })
 }

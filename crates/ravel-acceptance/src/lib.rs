@@ -4,10 +4,28 @@
 //!
 //! This crate models plans and recorded evidence; it does not execute directives
 //! or connect to a live game. Callers evaluate assertions against observations.
+//!
+//! Progression checkpoints use the same [`ContentId`] identities as a pack's
+//! declared progression steps. The scenario supplies their expected order;
+//! identity names do not imply an ordering or a universal progression spine.
+//!
+//! ```
+//! use ravel_acceptance::{Assertion, Observation, Scenario, Transcript};
+//! use ravel_core::{ContentId, Side};
+//!
+//! let step = ContentId::new("my_pack".parse()?, "age/steam")?;
+//! let scenario = Scenario::new("steam-age", Side::IntegratedServer)
+//!     .with_checkpoint(step.clone());
+//! let observation = Observation::empty().reaching(step.clone());
+//! assert!(Assertion::CheckpointReached { checkpoint: step }.evaluate(&observation));
+//! assert!(Transcript::checkpoints_in_order(
+//!     scenario.checkpoints(),
+//!     observation.reached(),
+//! ));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
-use core::fmt;
-
-use ravel_core::{RegistryKey, Side};
+use ravel_core::{ContentId, RegistryKey, Side};
 use ravel_host_api::GameEvent;
 
 /// A named, single-sided sequence of steps and expected progression checkpoints.
@@ -16,7 +34,7 @@ pub struct Scenario {
     name: String,
     side: Side,
     steps: Vec<Step>,
-    checkpoints: Vec<ProgressionCheckpoint>,
+    checkpoints: Vec<ContentId>,
 }
 
 impl Scenario {
@@ -38,9 +56,9 @@ impl Scenario {
         self
     }
 
-    /// Appends an expected progression checkpoint in arrival order.
+    /// Appends a pack progression step identity in expected arrival order.
     #[must_use]
-    pub fn with_checkpoint(mut self, checkpoint: ProgressionCheckpoint) -> Self {
+    pub fn with_checkpoint(mut self, checkpoint: ContentId) -> Self {
         self.checkpoints.push(checkpoint);
         self
     }
@@ -65,7 +83,7 @@ impl Scenario {
 
     /// The progression checkpoints in the order they must be reached.
     #[must_use]
-    pub fn checkpoints(&self) -> &[ProgressionCheckpoint] {
+    pub fn checkpoints(&self) -> &[ContentId] {
         &self.checkpoints
     }
 }
@@ -174,8 +192,8 @@ pub enum Assertion {
     },
     /// The observation explicitly reports the checkpoint as reached.
     CheckpointReached {
-        /// The checkpoint the observation must report reached.
-        checkpoint: ProgressionCheckpoint,
+        /// The pack progression step identity the observation must report reached.
+        checkpoint: ContentId,
     },
     /// Every inner assertion holds; an empty list holds.
     All(Vec<Self>),
@@ -188,65 +206,9 @@ impl Assertion {
         match self {
             Self::HoldsAtLeast { key, count } => observation.held_count(key) >= *count,
             Self::BlockPresent { key } => observation.block_present(key),
-            Self::CheckpointReached { checkpoint } => observation.checkpoint_reached(*checkpoint),
+            Self::CheckpointReached { checkpoint } => observation.checkpoint_reached(checkpoint),
             Self::All(inner) => inner.iter().all(|a| a.evaluate(observation)),
         }
-    }
-}
-
-/// A coarse milestone in a pack's ordered progression.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum ProgressionCheckpoint {
-    /// A fresh world has been entered and the walk has begun.
-    WorldEntered,
-    /// The walk has crafted or obtained its first powered machine.
-    FirstMachine,
-    /// The walk has a working automation loop feeding itself.
-    FirstAutomation,
-    /// The walk has reached the dimension the pack's progression centres on.
-    KeyDimensionReached,
-    /// The walk has reached the pack's declared end-state and is complete.
-    ProgressionComplete,
-}
-
-impl ProgressionCheckpoint {
-    /// Every checkpoint, in the order a walk is expected to reach them.
-    pub const ALL: [Self; 5] = [
-        Self::WorldEntered,
-        Self::FirstMachine,
-        Self::FirstAutomation,
-        Self::KeyDimensionReached,
-        Self::ProgressionComplete,
-    ];
-
-    /// The checkpoint's canonical lowercase evidence name.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::WorldEntered => "world-entered",
-            Self::FirstMachine => "first-machine",
-            Self::FirstAutomation => "first-automation",
-            Self::KeyDimensionReached => "key-dimension-reached",
-            Self::ProgressionComplete => "progression-complete",
-        }
-    }
-
-    /// The checkpoint's zero-based position on the progression spine.
-    #[must_use]
-    pub const fn order(self) -> u8 {
-        match self {
-            Self::WorldEntered => 0,
-            Self::FirstMachine => 1,
-            Self::FirstAutomation => 2,
-            Self::KeyDimensionReached => 3,
-            Self::ProgressionComplete => 4,
-        }
-    }
-}
-
-impl fmt::Display for ProgressionCheckpoint {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
     }
 }
 
@@ -255,7 +217,7 @@ impl fmt::Display for ProgressionCheckpoint {
 pub struct Observation {
     held: Vec<(RegistryKey, u32)>,
     present_blocks: Vec<RegistryKey>,
-    reached: Vec<ProgressionCheckpoint>,
+    reached: Vec<ContentId>,
 }
 
 impl Observation {
@@ -287,7 +249,7 @@ impl Observation {
 
     /// Records that `checkpoint` has been reached.
     #[must_use]
-    pub fn reaching(mut self, checkpoint: ProgressionCheckpoint) -> Self {
+    pub fn reaching(mut self, checkpoint: ContentId) -> Self {
         if !self.reached.contains(&checkpoint) {
             self.reached.push(checkpoint);
         }
@@ -311,13 +273,13 @@ impl Observation {
 
     /// Whether `checkpoint` has been reached.
     #[must_use]
-    pub fn checkpoint_reached(&self, checkpoint: ProgressionCheckpoint) -> bool {
-        self.reached.contains(&checkpoint)
+    pub fn checkpoint_reached(&self, checkpoint: &ContentId) -> bool {
+        self.reached.contains(checkpoint)
     }
 
     /// The checkpoints reached, in the order they were recorded.
     #[must_use]
-    pub fn reached(&self) -> &[ProgressionCheckpoint] {
+    pub fn reached(&self) -> &[ContentId] {
         &self.reached
     }
 }
@@ -395,10 +357,24 @@ impl Transcript {
         Verdict::Passed
     }
 
-    /// Whether reached checkpoints are nondecreasing; empty and partial spines qualify.
+    /// Whether reached pack steps follow the scenario's expected order.
+    ///
+    /// Empty and partial walks qualify; unknown identities do not. Repeated
+    /// observations of the same step are allowed. Ordering is declared by the
+    /// scenario, never inferred from the lexical order of content identities.
     #[must_use]
-    pub fn checkpoints_in_order(reached: &[ProgressionCheckpoint]) -> bool {
-        reached.windows(2).all(|w| w[0].order() <= w[1].order())
+    pub fn checkpoints_in_order(expected: &[ContentId], reached: &[ContentId]) -> bool {
+        let mut previous = 0;
+        for checkpoint in reached {
+            let Some(position) = expected.iter().position(|id| id == checkpoint) else {
+                return false;
+            };
+            if position < previous {
+                return false;
+            }
+            previous = position;
+        }
+        true
     }
 }
 
@@ -409,6 +385,11 @@ mod tests {
 
     fn key(kind: &str, path: &str) -> RegistryKey {
         RegistryKey::from_str(&format!("{kind}:ravel_test:{path}")).expect("valid registry key")
+    }
+
+    fn checkpoint(path: &str) -> ContentId {
+        ContentId::new("test_pack".parse().expect("valid mod id"), path)
+            .expect("valid content path")
     }
 
     #[test]
@@ -423,23 +404,20 @@ mod tests {
     #[test]
     fn scenario_preserves_step_and_checkpoint_order() {
         let scenario = Scenario::new("walk", Side::IntegratedServer)
-            .with_checkpoint(ProgressionCheckpoint::WorldEntered)
-            .with_checkpoint(ProgressionCheckpoint::FirstMachine)
+            .with_checkpoint(checkpoint("world_entered"))
+            .with_checkpoint(checkpoint("first_machine"))
             .with_step(Step::new(
                 "enter",
                 GameEvent::ServerTick,
                 None,
                 Assertion::CheckpointReached {
-                    checkpoint: ProgressionCheckpoint::WorldEntered,
+                    checkpoint: checkpoint("world_entered"),
                 },
             ));
         assert_eq!(scenario.steps().len(), 1);
         assert_eq!(
             scenario.checkpoints(),
-            &[
-                ProgressionCheckpoint::WorldEntered,
-                ProgressionCheckpoint::FirstMachine
-            ]
+            &[checkpoint("world_entered"), checkpoint("first_machine")]
         );
     }
 
@@ -458,13 +436,10 @@ mod tests {
         let observation = Observation::empty()
             .with_block(block.clone())
             .with_block(block.clone())
-            .reaching(ProgressionCheckpoint::FirstMachine)
-            .reaching(ProgressionCheckpoint::FirstMachine);
+            .reaching(checkpoint("first_machine"))
+            .reaching(checkpoint("first_machine"));
         assert!(observation.block_present(&block));
-        assert_eq!(
-            observation.reached(),
-            &[ProgressionCheckpoint::FirstMachine]
-        );
+        assert_eq!(observation.reached(), &[checkpoint("first_machine")]);
     }
 
     #[test]
@@ -543,19 +518,28 @@ mod tests {
     }
 
     #[test]
-    fn checkpoint_order_spine_is_monotonic() {
+    fn checkpoint_order_follows_the_scenario_not_identity_sort_order() {
+        let expected = [checkpoint("z_start"), checkpoint("a_end")];
+        assert!(Transcript::checkpoints_in_order(&expected, &expected));
+        assert!(Transcript::checkpoints_in_order(&expected, &expected[1..]));
         assert!(Transcript::checkpoints_in_order(
-            &ProgressionCheckpoint::ALL
+            &expected,
+            &[
+                expected[0].clone(),
+                expected[0].clone(),
+                expected[1].clone()
+            ]
         ));
-        assert!(Transcript::checkpoints_in_order(&[
-            ProgressionCheckpoint::WorldEntered,
-            ProgressionCheckpoint::KeyDimensionReached,
-        ]));
-        assert!(!Transcript::checkpoints_in_order(&[
-            ProgressionCheckpoint::FirstAutomation,
-            ProgressionCheckpoint::FirstMachine,
-        ]));
-        assert!(Transcript::checkpoints_in_order(&[]));
+        assert!(!Transcript::checkpoints_in_order(
+            &expected,
+            &[expected[1].clone(), expected[0].clone()]
+        ));
+        assert!(!Transcript::checkpoints_in_order(
+            &expected,
+            &[checkpoint("unknown")]
+        ));
+        assert!(Transcript::checkpoints_in_order(&expected, &[]));
+        assert!(!Transcript::checkpoints_in_order(&[], &expected));
     }
 
     #[test]
@@ -583,10 +567,17 @@ mod tests {
     }
 
     #[test]
-    fn checkpoint_names_and_order_are_consistent() {
-        for (index, checkpoint) in ProgressionCheckpoint::ALL.into_iter().enumerate() {
-            assert_eq!(usize::from(checkpoint.order()), index);
-            assert_ne!(checkpoint.as_str(), "");
-        }
+    fn checkpoint_assertions_distinguish_pack_namespaces() {
+        let reached = checkpoint("first_machine");
+        let other = ContentId::new("other_pack".parse().expect("valid mod id"), "first_machine")
+            .expect("valid content path");
+        let observation = Observation::empty().reaching(reached.clone());
+        assert!(
+            Assertion::CheckpointReached {
+                checkpoint: reached
+            }
+            .evaluate(&observation)
+        );
+        assert!(!Assertion::CheckpointReached { checkpoint: other }.evaluate(&observation));
     }
 }

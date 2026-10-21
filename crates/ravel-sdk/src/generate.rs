@@ -1,7 +1,9 @@
 //! Deterministic pack generation from content declarations.
 //!
 //! Ravel derives tag and locale paths and orders files by path. Supply
-//! version-specific recipe bodies and models as resource bytes through
+//! version-specific recipe, loot table, advancement and function bodies through
+//! [`crate::content::ContentDeclaration::server_entry`], which derives their
+//! canonical paths, and assets such as models through
 //! [`crate::content::ContentDeclaration::resource`].
 //!
 //! # Examples

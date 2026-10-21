@@ -124,7 +124,16 @@ impl<'a> Resolution<'a> {
     ) -> Result<(), ResolutionError> {
         match dependency.relationship {
             DependencyRelationship::Required => self.require(dependant, dependency),
-            DependencyRelationship::Optional => self.check_and_order(dependant, dependency),
+            DependencyRelationship::Optional => {
+                if self.matching(dependency).is_some() {
+                    self.order(
+                        dependant,
+                        dependency,
+                        dependency.order.unwrap_or(DependencyOrder::After),
+                    );
+                }
+                Ok(())
+            }
             DependencyRelationship::Incompatible => self.refuse(dependant, dependency),
             DependencyRelationship::Discouraged => {
                 self.discourage(dependant, dependency);
@@ -145,25 +154,14 @@ impl<'a> Resolution<'a> {
                 required: dependency.version.clone(),
             });
         }
-        if !self.loading.contains_key(&dependency.id) {
-            return Err(ResolutionError::SideMismatch {
-                dependant: dependant.clone(),
-                dependency: dependency.id.clone(),
-                side: self.side,
-            });
-        }
-        self.check_and_order(dependant, dependency)
-    }
-
-    // Optional dependencies may be absent, but a loading version must satisfy its range.
-    fn check_and_order(
-        &mut self,
-        dependant: &'a ModId,
-        dependency: &'a Dependency,
-    ) -> Result<(), ResolutionError> {
-        let Some(installed) = self.loading.get(&dependency.id) else {
-            return Ok(());
-        };
+        let installed =
+            self.loading
+                .get(&dependency.id)
+                .ok_or_else(|| ResolutionError::SideMismatch {
+                    dependant: dependant.clone(),
+                    dependency: dependency.id.clone(),
+                    side: self.side,
+                })?;
         check_version(dependant, dependency, &installed.version)?;
         self.order(
             dependant,

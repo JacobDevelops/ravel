@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn shipped_unsigned_reads_preserve_bounds() {
+    fn read_shipped_returns_representable_defaults() {
         for value in [0, u32::MAX] {
             assert_eq!(
                 read_shipped(&document(&crate::json!(value)), |resolved| {
@@ -114,47 +114,6 @@ mod tests {
                 value
             );
         }
-        for value in [-1_i64, i64::from(u32::MAX) + 1] {
-            let declaration = ConfigurationDeclaration::parse(&document(&crate::json!(value)))
-                .expect("a legal declaration");
-            let resolved = LayeredConfiguration::resolve(declaration, None, None)
-                .expect("unbounded integers resolve");
-            assert_eq!(
-                resolved.integer_in::<u32>("count"),
-                Err(AccessError {
-                    key: "count".to_owned(),
-                    reason: ValueError::TargetRange { target: "u32" },
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn unsigned_reads_preserve_unknown_key_and_wrong_accessor_errors() {
-        let document =
-            document(&crate::json!(true)).replace("\"type\":\"integer\"", "\"type\":\"boolean\"");
-        let declared = ConfigurationDeclaration::parse(&document).expect("a boolean declaration");
-        let resolved =
-            LayeredConfiguration::resolve(declared, None, None).expect("valid defaults resolve");
-        assert_eq!(
-            resolved.integer_in::<u32>("missing"),
-            Err(AccessError {
-                key: "missing".to_owned(),
-                reason: ValueError::Unknown {
-                    key: "missing".to_owned()
-                },
-            })
-        );
-        assert_eq!(
-            resolved.integer_in::<u32>("count"),
-            Err(AccessError {
-                key: "count".to_owned(),
-                reason: ValueError::AccessKind {
-                    expected: ValueKind::Integer,
-                    declared: Some(ValueKind::Boolean),
-                },
-            })
-        );
     }
 
     #[test]

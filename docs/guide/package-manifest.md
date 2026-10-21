@@ -121,16 +121,20 @@ side is parked before any of its code runs there.
 
 **`dependencies`** each name an `id`, a `relationship` — `required`, `optional`,
 `incompatible`, `discouraged` — and a version range. `order` is `before` or
-`after` and is how you get deterministic load ordering when ordering actually
-matters; declare it only when it does. `sides` narrows a dependency to particular
-sides.
+`after`; required and matching optional dependencies default to `after`.
+Declare `before` to load the dependant first. Discouraged dependencies add no
+ordering unless `order` is explicit. `sides` narrows a dependency to particular sides.
 
 An `optional` relationship is an ordering preference and not a requirement, so
-your mod is admitted whether or not that mod is there. That leaves you needing to
-know which happened, and `Registrar::loads` is the question: pass the other mod's
-id during `register` and it answers whether this launch is running it. Claim the
-integration's content inside that branch and it exists only when the thing it
-integrates with does.
+your mod is admitted whether or not that mod is there. Only a version matching
+the declared range adds ordering; an out-of-range optional dependency does not
+refuse resolution or add an edge. That leaves you needing to know which mod is
+loading, and `Registrar::loads` answers that presence question: pass the other
+mod's id during `register` and it answers whether this launch is running it.
+It does not check your optional dependency's declared version range. Negotiate
+integration compatibility separately before enabling an integration that depends
+on a particular version or service contract. Claim the integration's content
+inside that branch and it exists only when the thing it integrates with does.
 
 ```rust
 fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {

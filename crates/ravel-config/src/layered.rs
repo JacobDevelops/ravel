@@ -232,8 +232,8 @@ impl LayeredConfiguration {
     /// Returns the value in force for `key`.
     ///
     /// # Errors
-    /// Returns [`ValueError::Unknown`] when the key is undeclared.
-    pub fn value(&self, key: &str) -> Result<&Value, ValueError> {
+    /// Returns [`AccessError`] with [`ValueError::Unknown`] when the key is undeclared.
+    pub fn value(&self, key: &str) -> Result<&Value, AccessError> {
         Ok(self.layer(self.setting(key)?).0)
     }
 
@@ -334,9 +334,7 @@ impl LayeredConfiguration {
     }
 
     fn typed_value(&self, key: &str, expected: ValueKind) -> Result<&Value, AccessError> {
-        let setting = self
-            .setting(key)
-            .map_err(|reason| AccessError::new(key, reason))?;
+        let setting = self.setting(key)?;
         let declared = setting.value_schema.kind;
         if declared != Some(expected) {
             return Err(AccessError::new(
@@ -347,19 +345,22 @@ impl LayeredConfiguration {
         Ok(self.layer(setting).0)
     }
 
-    fn setting(&self, key: &str) -> Result<&Setting, ValueError> {
-        self.declaration
-            .setting(key)
-            .ok_or_else(|| ValueError::Unknown {
-                key: key.to_owned(),
-            })
+    fn setting(&self, key: &str) -> Result<&Setting, AccessError> {
+        self.declaration.setting(key).ok_or_else(|| {
+            AccessError::new(
+                key,
+                ValueError::Unknown {
+                    key: key.to_owned(),
+                },
+            )
+        })
     }
 
     /// Returns the layer the value in force for `key` came from.
     ///
     /// # Errors
-    /// Returns [`ValueError::Unknown`] when the key is undeclared.
-    pub fn source(&self, key: &str) -> Result<ValueSource, ValueError> {
+    /// Returns [`AccessError`] with [`ValueError::Unknown`] when the key is undeclared.
+    pub fn source(&self, key: &str) -> Result<ValueSource, AccessError> {
         Ok(self.layer(self.setting(key)?).1)
     }
 
@@ -623,7 +624,7 @@ impl std::error::Error for EditError {
     }
 }
 
-/// A typed configuration read failure retaining the requested setting key.
+/// A configuration read failure retaining the requested setting key.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AccessError {
     /// The requested setting, including malformed or undeclared names.
@@ -967,16 +968,6 @@ mod tests {
     #[test]
     fn an_undeclared_key_is_refused_by_every_accessor() {
         let config = resolved(None, None);
-        let unknown = Err(ValueError::Unknown {
-            key: "render.absent".to_owned(),
-        });
-        assert_eq!(config.value("render.absent"), unknown);
-        assert_eq!(
-            config.source("render.absent"),
-            Err(ValueError::Unknown {
-                key: "render.absent".to_owned(),
-            })
-        );
         let keyed = AccessError::new(
             "render.absent",
             ValueError::Unknown {
@@ -987,6 +978,8 @@ mod tests {
             keyed.to_string(),
             "`render.absent` is not a declared setting"
         );
+        assert_eq!(config.value("render.absent"), Err(keyed.clone()));
+        assert_eq!(config.source("render.absent"), Err(keyed.clone()));
         assert_eq!(config.boolean("render.absent"), Err(keyed.clone()));
         assert_eq!(config.integer("render.absent"), Err(keyed.clone()));
         assert_eq!(
@@ -1287,9 +1280,12 @@ mod tests {
             assert_eq!(config.declaration().setting(key), None);
             assert_eq!(
                 config.value(key),
-                Err(ValueError::Unknown {
-                    key: key.to_owned(),
-                })
+                Err(AccessError::new(
+                    key,
+                    ValueError::Unknown {
+                        key: key.to_owned(),
+                    },
+                ))
             );
             let refused = config
                 .set(key, json!(8), Side::Client)

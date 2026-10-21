@@ -234,19 +234,6 @@ fn id(name: &str) -> ModId {
     name.parse().expect("a legal mod id")
 }
 
-fn attribution() -> ravel_core::FailureAttribution {
-    ravel_core::FailureAttribution {
-        mod_id: Some(id(OWNER)),
-        version: None,
-        dependency_chain: Vec::new(),
-        state: LifecycleState::Running,
-        kind: None,
-        surface: None,
-        environment: crate::runtime::pre_world_report().environment().clone(),
-        message: ravel_core::DiagnosticMessage::raw("this mod stopped working"),
-    }
-}
-
 fn version(raw: u32) -> SavedDataVersion {
     NonZero::new(raw).expect("a non-zero version")
 }
@@ -255,6 +242,7 @@ fn version(raw: u32) -> SavedDataVersion {
 struct Held {
     visits: AtomicU32,
     callbacks: AtomicU32,
+    refuses_start: AtomicBool,
     refuses_production: AtomicBool,
     panics_production: AtomicBool,
     refuses_open: AtomicBool,
@@ -286,7 +274,10 @@ impl Mod for Owning {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        if state == LifecycleState::Running && self.held.refuses_start.load(Ordering::SeqCst) {
+            return Err(ModError::refused("this mod stopped working"));
+        }
         Ok(())
     }
 
@@ -442,7 +433,7 @@ fn owners_running_with_requirement(
     report: ravel_observability::PreWorldReport,
     requirement: Requirement,
 ) -> (LoaderRuntime, Vec<Arc<Held>>) {
-    let (machine, hosts, held) = owner_parts(owners, requirement);
+    let (machine, hosts, held) = owner_parts(owners, requirement, false);
     (
         LoaderRuntime::with_observers(
             machine,
@@ -459,9 +450,10 @@ fn owners_running_with_requirement(
 fn owner_parts(
     owners: &[&str],
     requirement: Requirement,
+    owner_failed: bool,
 ) -> (LifecycleMachine, Vec<Box<dyn Mod>>, Vec<Arc<Held>>) {
     let held: Vec<Arc<Held>> = owners.iter().map(|_| Arc::new(Held::default())).collect();
-    let hosts: Vec<Box<dyn Mod>> = owners
+    let mut hosts: Vec<Box<dyn Mod>> = owners
         .iter()
         .zip(&held)
         .map(|(owner, held)| -> Box<dyn Mod> {
@@ -483,7 +475,18 @@ fn owner_parts(
         .collect();
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("independent mods are a legal plan");
-    advance_through(&mut machine, LifecycleState::Running);
+    if owner_failed {
+        let index = owners
+            .iter()
+            .position(|owner| *owner == OWNER)
+            .expect("failed owner");
+        held[index].refuses_start.store(true, Ordering::SeqCst);
+    }
+    ravel_loader::start_all(
+        &mut LoadedMods::new(&mut machine, &mut hosts).expect("complete hosts"),
+        &crate::runtime::environment(),
+    )
+    .expect("optional startup failure leaves healthy owners running");
     (machine, hosts, held)
 }
 
@@ -828,15 +831,11 @@ fn a_foreign_saved_data_declaration_fails_its_producer_without_opening_another_o
 fn foreign_envelopes_cannot_overwrite_live_or_failed_owners() {
     for (victim_failed, next_world) in [(false, false), (true, false), (false, true), (true, true)]
     {
-        let (mut machine, hosts, held) = owner_parts(&[OWNER, OTHER_OWNER], Requirement::Optional);
+        let (machine, hosts, held) =
+            owner_parts(&[OWNER, OTHER_OWNER], Requirement::Optional, victim_failed);
         let [_, writer] = held.as_slice() else {
             panic!("the fixture has two owners");
         };
-        if victim_failed {
-            machine
-                .fail(&id(OWNER), attribution())
-                .expect("optional owner failed before mutation");
-        }
         let runtime = LoaderRuntime::new(machine, hosts, crate::runtime::test_launch());
         let stored = stored_owning(&[(OWNER, version(2), 7), (OTHER_OWNER, version(2), 11)]);
         runtime
@@ -927,10 +926,7 @@ fn optional_running() -> (LoaderRuntime, Arc<Held>) {
 }
 
 fn failed_optional() -> (LoaderRuntime, Arc<Held>) {
-    let (mut machine, hosts, mut held) = owner_parts(&[OWNER], Requirement::Optional);
-    machine
-        .fail(&id(OWNER), attribution())
-        .expect("optional owner fails before opening");
+    let (machine, hosts, mut held) = owner_parts(&[OWNER], Requirement::Optional, true);
     (
         LoaderRuntime::new(machine, hosts, crate::runtime::test_launch()),
         held.remove(0),
@@ -1984,7 +1980,7 @@ fn assert_fresh_world_pack(world: &std::path::Path) {
                 .join(format!("data/{OWNER}/tags/items/fresh.json"))
         )
         .expect("supplied world tag"),
-        br#"{"values":[]}"#
+        b"{\n  \"replace\": false,\n  \"values\": []\n}\n"
     );
 }
 

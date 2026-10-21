@@ -240,22 +240,20 @@ fn an_optional_dependency_is_absent_without_failing_and_orders_when_present() {
 }
 
 #[test]
-fn an_optional_dependency_present_outside_its_range_is_refused() {
+fn an_optional_dependency_outside_its_range_adds_no_ordering_constraint() {
     let packages = [
         client(
             "example_mod",
             r#"[{ "id": "example_library", "relationship": "optional", "version": "^2.0.0" }]"#,
         ),
-        client("example_library", "[]"),
+        client(
+            "example_library",
+            r#"[{ "id": "example_mod", "relationship": "required", "version": "*" }]"#,
+        ),
     ];
     assert_eq!(
-        failure(&packages, Side::Client),
-        ResolutionError::UnsatisfiedVersion {
-            dependant: id("example_mod"),
-            dependency: id("example_library"),
-            required: "^2.0.0".parse().expect("a valid range"),
-            installed: "1.0.0".parse().expect("a valid version"),
-        }
+        order(&packages, Side::Client),
+        ["example_mod", "example_library"]
     );
 }
 

@@ -1,7 +1,8 @@
 //! Render-stage declarations and contributor ordering.
 //!
-//! Resolution refuses unknown stages and cycles. No mod drawing path is
-//! implemented; these declarations currently describe intended contributions.
+//! Resolution refuses orderings that name a mod contributing to no stage, and
+//! cycles. No mod drawing path is implemented; these declarations currently
+//! describe intended contributions.
 //!
 //! # Examples
 //!

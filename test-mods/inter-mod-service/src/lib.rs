@@ -222,13 +222,15 @@ impl Mod for StockMod {
         Ok(Some(self.chain()))
     }
 
-    /// Migrates the stored payload up to the current version, then reads it.
+    /// Reads the current payload after the loader has applied migrations.
+    /// Absence resets the stock to its fresh-world default.
     ///
     /// # Errors
     ///
     /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
     fn open_saved_data(&mut self, envelope: Option<&SavedDataEnvelope>) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
+            self.stock = Stock::default();
             return Ok(());
         };
         self.read(envelope.payload())
@@ -432,8 +434,12 @@ mod tests {
     }
 
     #[test]
-    fn absence_leaves_fresh_state_rather_than_refusing() {
-        let mut stock = StockMod::new();
+    fn absence_resets_the_previous_world_rather_than_refusing() {
+        let mut stock = opened(
+            3,
+            &json!({ "stock": 12, "currency": "shard", "unitPrice": 7 }),
+        )
+        .expect("the previous world has valid data");
         stock.open_saved_data(None).expect("absence initializes");
         assert_eq!(stock.stock(), &Stock::default());
     }

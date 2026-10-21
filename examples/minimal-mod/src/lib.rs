@@ -34,7 +34,7 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MinimalMod {
     ticks: u64,
-    greeted: u64,
+    greetings: u64,
 }
 
 impl MinimalMod {
@@ -43,7 +43,7 @@ impl MinimalMod {
     pub const fn new() -> Self {
         Self {
             ticks: 0,
-            greeted: 0,
+            greetings: 0,
         }
     }
 
@@ -73,8 +73,8 @@ impl MinimalMod {
 
     /// Returns how many times the claimed command has run.
     #[must_use]
-    pub const fn greeted(&self) -> u64 {
-        self.greeted
+    pub const fn greetings(&self) -> u64 {
+        self.greetings
     }
 }
 
@@ -124,7 +124,7 @@ impl Mod for MinimalMod {
     /// Never returns an error.
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let _ = invocation;
-        self.greeted = self.greeted.saturating_add(1);
+        self.greetings = self.greetings.saturating_add(1);
         Ok(())
     }
 }
@@ -197,7 +197,7 @@ mod tests {
     fn a_fresh_instance_has_seen_nothing() {
         let minimal = MinimalMod::new();
         assert_eq!(minimal.ticks(), 0);
-        assert_eq!(minimal.greeted(), 0);
+        assert_eq!(minimal.greetings(), 0);
     }
 
     #[test]
@@ -272,7 +272,7 @@ mod tests {
         minimal
             .run_command(&invocation)
             .expect("the mod runs the command it claimed");
-        assert_eq!(minimal.greeted(), 2);
+        assert_eq!(minimal.greetings(), 2);
     }
 
     #[test]

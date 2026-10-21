@@ -1,10 +1,16 @@
 use std::path::PathBuf;
 
 use ravel_bootstrap::compose;
-use ravel_config::{EditOutcome, LayeredConfiguration, ValueDocument, ValueSource, file};
+use ravel_config::{
+    ConfigurationDeclaration, EditOutcome, LayeredConfiguration, ValueDocument, ValueSource, file,
+};
 use ravel_core::{LifecycleState, Side};
-use ravel_test_mod_configuration::ConfigurationMod;
 use serde_json::{Value, json};
+
+fn declaration() -> ConfigurationDeclaration {
+    ConfigurationDeclaration::parse(ravel_test_mod_configuration::DECLARATION)
+        .expect("the packaged configuration declaration is valid")
+}
 
 fn document(values: &Value) -> ValueDocument {
     ValueDocument::parse(
@@ -44,9 +50,8 @@ fn the_tracked_declaration_enforces_sides_validation_and_pack_policy() {
         "dedicated.motd": "Player",
         "common.profile": "quiet",
     }));
-    let resolved =
-        LayeredConfiguration::resolve(ConfigurationMod::declaration(), Some(&pack), Some(&player))
-            .expect("the complete pack document resolves");
+    let resolved = LayeredConfiguration::resolve(declaration(), Some(&pack), Some(&player))
+        .expect("the complete pack document resolves");
 
     assert_eq!(resolved.value("client.enabled"), Ok(&json!(true)));
     assert_eq!(resolved.source("client.enabled"), Ok(ValueSource::Player));
@@ -73,20 +78,14 @@ fn the_tracked_declaration_enforces_sides_validation_and_pack_policy() {
     }
 
     let invalid = document(&json!({ "client.enabled": "yes" }));
-    let fallback =
-        LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&invalid))
-            .expect("an invalid player value falls back to its default");
+    let fallback = LayeredConfiguration::resolve(declaration(), None, Some(&invalid))
+        .expect("an invalid player value falls back to its default");
     assert_eq!(fallback.value("client.enabled"), Ok(&json!(true)));
     assert_eq!(fallback.rejected().len(), 1);
 
     let incomplete_pack = document(&json!({ "integrated.mob_limit": 40 }));
     assert!(
-        LayeredConfiguration::resolve(
-            ConfigurationMod::declaration(),
-            Some(&incomplete_pack),
-            None,
-        )
-        .is_err(),
+        LayeredConfiguration::resolve(declaration(), Some(&incomplete_pack), None,).is_err(),
         "a present pack must state the required dedicated-server value"
     );
 }
@@ -94,8 +93,8 @@ fn the_tracked_declaration_enforces_sides_validation_and_pack_policy() {
 #[test]
 fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
     let game = directory("file-round-trip");
-    let mut resolved = LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, None)
-        .expect("author defaults resolve");
+    let mut resolved =
+        LayeredConfiguration::resolve(declaration(), None, None).expect("author defaults resolve");
 
     assert_eq!(
         resolved.set("client.enabled", json!(false), Side::Client),
@@ -113,9 +112,8 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
     let reread = file::read(&game, resolved.owner())
         .expect("the player document is readable")
         .expect("the player document exists");
-    let relaunched =
-        LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&reread))
-            .expect("the persisted player document resolves on relaunch");
+    let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&reread))
+        .expect("the persisted player document resolves on relaunch");
 
     assert_eq!(relaunched.value("client.enabled"), Ok(&json!(false)));
     assert_eq!(relaunched.value("common.profile"), Ok(&json!("verbose")));

@@ -182,7 +182,7 @@ fn open_with_context<H: std::ops::DerefMut<Target: Mod>>(
         }
     }
 
-    order.retain(|owner| context.machine().state(owner) != Ok(LifecycleState::Failed));
+    order.retain(|owner| !context.machine().has_failed(owner));
     Ok(ServiceOrder { order })
 }
 
@@ -390,13 +390,14 @@ pub enum ServiceRefused {
 impl ServiceRefused {
     /// Returns the mod responsible for a refusal, not a foreign declared owner.
     #[must_use]
-    pub const fn mod_id(&self) -> Option<&ModId> {
+    pub fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::NoProvider { consumer, .. } | Self::BrokenProvider { consumer, .. } => {
                 Some(consumer)
             }
             Self::ForeignDeclaration { mod_id, .. } | Self::Mod { mod_id, .. } => Some(mod_id),
-            Self::Lifecycle(_) | Self::Cycle { .. } => None,
+            Self::Lifecycle(error) => error.mod_id(),
+            Self::Cycle { .. } => None,
         }
     }
 }
@@ -499,6 +500,29 @@ mod tests {
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
     use crate::tests::entry;
+
+    #[test]
+    fn lifecycle_refusals_preserve_the_owner_including_halted_worlds() {
+        let owner = id("provider");
+        for error in [
+            crate::LifecycleError::WorldAccessBlocked {
+                mod_id: owner.clone(),
+                state: LifecycleState::Registered,
+            },
+            crate::LifecycleError::WorldAccessHalted {
+                mod_id: owner.clone(),
+            },
+            crate::LifecycleError::PartialStateRefused {
+                mod_id: owner.clone(),
+            },
+        ] {
+            assert_eq!(ServiceRefused::Lifecycle(error).mod_id(), Some(&owner));
+        }
+        assert_eq!(
+            ServiceRefused::Lifecycle(crate::LifecycleError::AttributionRequired).mod_id(),
+            None
+        );
+    }
 
     fn environment() -> ravel_core::FailureEnvironment {
         ravel_core::FailureEnvironment {

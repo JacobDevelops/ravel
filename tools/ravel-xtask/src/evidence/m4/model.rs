@@ -1,6 +1,5 @@
 use crate::evidence::model::{NonemptyRows, NonemptyString};
 use serde::{Deserialize, de::IgnoredAny};
-use serde_json::Number;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +22,8 @@ pub(super) struct ProcessMatrix<'a> {
 
     #[serde(borrow)]
     pub(super) processes: NonemptyRows<Process<'a>>,
+    #[serde(default)]
+    pub(super) checks_outside_the_gate: Vec<Task>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,14 +45,22 @@ pub(super) struct GameLaunch<'a> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Gate {
-    pub(super) exit_status: Number,
+    pub(super) exit_status: i32,
 
     pub(super) tests: Tests,
+    #[serde(default)]
+    pub(super) coverage: Option<Coverage>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Tests {
-    pub(super) run: Number,
+    pub(super) run: u64,
+    #[serde(default)]
+    pub(super) passed: Option<u64>,
+    #[serde(default)]
+    pub(super) failed: Option<u64>,
+    #[serde(default)]
+    pub(super) skipped: Option<u64>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,17 +68,14 @@ pub(super) struct Process<'a> {
     #[serde(rename = "surface")]
     #[serde(borrow)]
     _surface: NonemptyString<'a>,
-    #[serde(rename = "command")]
-    #[serde(borrow)]
-    _command: NonemptyString<'a>,
+    #[serde(flatten)]
+    pub(super) task: Task,
     #[serde(rename = "proves")]
     #[serde(borrow)]
     _proves: NonemptyString<'a>,
     #[serde(rename = "doesNotProve")]
     #[serde(borrow)]
     _does_not_prove: NonemptyString<'a>,
-
-    pub(super) exit_status: Number,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,8 +88,7 @@ pub(super) struct Surface<'a> {
 
     #[serde(borrow)]
     pub(super) work_packages: NonemptyRows<WorkPackage<'a>>,
-    #[serde(rename = "inventory")]
-    _inventory: Inventory,
+    pub(super) inventory: Inventory,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,14 +107,42 @@ pub(super) struct WorkPackage<'a> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Inventory {
-    #[serde(rename = "crates")]
-    _crates: NonemptyRows<IgnoredAny>,
-    #[serde(rename = "testMods")]
-    _test_mods: NonemptyRows<IgnoredAny>,
-    #[serde(rename = "examples")]
-    _examples: NonemptyRows<IgnoredAny>,
-    #[serde(rename = "guideDocuments")]
-    _guide_documents: NonemptyRows<IgnoredAny>,
-    #[serde(rename = "conformanceSuites")]
-    _conformance_suites: NonemptyRows<IgnoredAny>,
+    pub(super) crates: NonemptyRows<String>,
+    pub(super) test_mods: NonemptyRows<String>,
+    pub(super) examples: NonemptyRows<String>,
+    pub(super) guide_documents: NonemptyRows<String>,
+    pub(super) conformance_suites: NonemptyRows<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Task {
+    #[serde(default)]
+    pub(super) command: Command,
+    #[serde(default)]
+    pub(super) exit_status: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Coverage {
+    pub(super) lines_percent: Option<f64>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(untagged)]
+pub(super) enum Command {
+    Named(String),
+    Invalid(IgnoredAny),
+    #[default]
+    Missing,
+}
+
+impl Command {
+    pub(super) fn text(&self) -> Option<&str> {
+        match self {
+            Self::Named(command) => Some(command),
+            Self::Invalid(_) | Self::Missing => None,
+        }
+    }
 }

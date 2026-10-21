@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::evidence::closure::verify_milestone_figures;
+use crate::evidence::m4::verify_m4_figures;
 use crate::evidence::m4::{M4_FIGURES, verify_m4_process_matrix, verify_m4_surface};
 use crate::json::read_json;
 use crate::test_support::temporary_root;
@@ -182,8 +182,22 @@ fn gate_figures_root(label: &str, manifest: &str, matrix: &str) -> PathBuf {
     let milestone = root.join("evidence/m4");
     fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
     fs::write(milestone.join("manifest.json"), manifest).expect("manifest should be writable");
-    fs::write(milestone.join("linux-process-matrix.json"), matrix)
-        .expect("record should be writable");
+    let replacement: serde_json::Value = serde_json::from_str(matrix).expect("matrix should parse");
+    let mut matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../evidence/m4/linux-process-matrix.json"
+    ))
+    .expect("tracked matrix should parse");
+    for (key, value) in replacement.as_object().expect("matrix object") {
+        matrix[key] = value.clone();
+    }
+    if let Some(gate) = matrix.get_mut("gate") {
+        gate["exitStatus"] = 0.into();
+    }
+    fs::write(
+        milestone.join("linux-process-matrix.json"),
+        matrix.to_string(),
+    )
+    .expect("record should be writable");
     root
 }
 
@@ -198,7 +212,7 @@ fn a_manifest_and_a_matrix_reporting_the_same_run_are_accepted() {
     );
 
     let mut violations = Vec::new();
-    verify_milestone_figures(
+    verify_m4_figures(
         crate::evidence::rules::Milestone::M4,
         &read_json(&root, &root.join("evidence/m4").join(M4_FIGURES.record))
             .expect("summary should parse"),
@@ -222,7 +236,7 @@ fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
     );
 
     let mut violations = Vec::new();
-    verify_milestone_figures(
+    verify_m4_figures(
         crate::evidence::rules::Milestone::M4,
         &read_json(&root, &root.join("evidence/m4").join(M4_FIGURES.record))
             .expect("summary should parse"),
@@ -243,8 +257,29 @@ fn process_matrix_root(label: &str, matrix: &str) -> PathBuf {
     let root = temporary_root(label);
     let milestone = root.join("evidence/m4");
     fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
-    fs::write(milestone.join("linux-process-matrix.json"), matrix)
-        .expect("record should be writable");
+    let repository = crate::test_support::repository_root();
+    let mut record = read_json(&repository, &repository.join(super::M4_PROCESS_MATRIX))
+        .expect("tracked process matrix should parse");
+    let replacement: serde_json::Value = serde_json::from_str(matrix).expect("matrix should parse");
+    for (key, value) in replacement.as_object().expect("matrix should be an object") {
+        record[key] = value.clone();
+    }
+    let process = read_json(&repository, &repository.join(super::M4_PROCESS_MATRIX))
+        .expect("tracked process matrix should parse")["processes"][0]
+        .clone();
+    for row in record["processes"]
+        .as_array_mut()
+        .expect("processes should be rows")
+    {
+        for key in ["surface", "proves", "doesNotProve"] {
+            row[key] = process[key].clone();
+        }
+    }
+    fs::write(
+        milestone.join("linux-process-matrix.json"),
+        record.to_string(),
+    )
+    .expect("record should be writable");
     root
 }
 
@@ -386,7 +421,7 @@ fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
             .expect("manifest should parse");
         let mut violations = Vec::new();
 
-        verify_milestone_figures(
+        verify_m4_figures(
             crate::evidence::rules::Milestone::M4,
             &read_json(&root, &root.join("evidence/m4").join(M4_FIGURES.record))
                 .expect("summary should parse"),
@@ -395,23 +430,9 @@ fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
             &mut violations,
         );
 
-        assert_eq!(violations.len(), 5, "{violations:?}");
-        for field in [
-            "total",
-            "passed",
-            "failed",
-            "skipped",
-            "lineCoveragePercent",
-        ] {
-            assert!(
-                violations.iter().any(|violation| violation
-                    == &format!(
-                        "evidence/m4/manifest.json: cannot compare gate run /tests/{field} with \
-                     evidence/m4/linux-process-matrix.json: a required figure is missing or null"
-                    )),
-                "{violations:?}"
-            );
-        }
+        assert_eq!(violations, ["total", "passed", "failed", "skipped", "lineCoveragePercent"].map(|field| format!(
+            "evidence/m4/manifest.json: cannot compare gate run /tests/{field} with evidence/m4/linux-process-matrix.json: a required figure is missing or null"
+        )));
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 }
@@ -448,13 +469,13 @@ fn an_amended_inventory_uses_its_amendment_tree_not_the_manifest_input_baseline(
     let root = surface_root(
         "surface-amended",
         &["README.md"],
-        &[],
-        &surface_record(&["README.md"], &[]),
+        &["sample.rs"],
+        &surface_record(&["README.md"], &["sample.rs"]),
     );
     fs::write(root.join("docs/guide/amended.md"), "").expect("guide should be writable");
     fs::write(
         root.join("evidence/m4/sdk-surface.json"),
-        surface_record(&["README.md", "amended.md"], &[]),
+        surface_record(&["README.md", "amended.md"], &["sample.rs"]),
     )
     .expect("amendment should be writable");
     let output = std::process::Command::new("jj")
@@ -565,7 +586,11 @@ fn historical_suite_root_requires_direct_rust_source_children() {
 fn archive_inventory_without_repository_history_is_not_verifiable() {
     let root = temporary_root("surface-missing-history");
     fs::create_dir_all(root.join("evidence/m4")).expect("directory should be creatable");
-    fs::write(root.join("evidence/m4/sdk-surface.json"), "{}").expect("record should be writable");
+    fs::write(
+        root.join("evidence/m4/sdk-surface.json"),
+        surface_record(&["README.md"], &["sample.rs"]),
+    )
+    .expect("record should be writable");
     let mut violations = Vec::new();
     verify_m4_surface(
         &root,
@@ -589,10 +614,8 @@ fn typed_process_admission_names_the_exact_row_and_field() {
         .find(|definition| definition.name == "linux-process-matrix.json")
         .expect("process matrix must have an admission rule")
         .rule;
-    let reason = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
-        .expect_err("null must not deserialize as a number");
     assert_eq!(
         rule(&record),
-        Err(format!("/processes/0/exitStatus: {reason}"))
+        Err("/processes/0/exitStatus must be zero".to_owned())
     );
 }

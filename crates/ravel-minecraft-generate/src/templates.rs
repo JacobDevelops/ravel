@@ -6,13 +6,140 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::classfile;
+mod roles;
+
 use super::inputs::Adapter;
 use super::mapping::Mapping;
-use super::roles::Roles;
 use super::stubs::Stub;
-use super::{GenerateError, SCREEN_PACKAGE};
+use super::{GenerateError, classfile, inputs};
+use roles::Roles;
 
+/// Where the tracked screen templates live, relative to the repository root.
+pub(super) const SCREEN_TEMPLATES: &str = "jvm/screen/template";
+/// Where the harness's stand-in game classes are templated, relative to the root.
+pub(super) const HARNESS_STAND_IN_TEMPLATES: &str = "jvm/harness/template/game";
+
+/// Where the harness's own driver classes are templated, relative to the root.
+pub(super) const HARNESS_DRIVER_TEMPLATES: &str = "jvm/harness/template/driver";
+
+/// Where the harness's stand-in halves of the sibling artifact are templated.
+pub(super) const HARNESS_SIBLING_TEMPLATES: &str = "jvm/harness/template/sibling";
+
+/// Where a version keeps the harness templates it cannot share, inside its own
+/// version directory: a source only one version renders is that version's data.
+pub(super) const HARNESS_OVERRIDES: &str = "harness";
+/// The package Ravel's own screens are drawn in, wherever the game leaves room
+/// for one.
+const SCREEN_PACKAGE: &str = "dev.ravel.jvm.screen";
+/// Records each harness source's origin so consumers need not infer it from generated text.
+pub(super) fn harness_origins(trees: &[(&str, Sources)]) -> String {
+    let mut lines = BTreeSet::new();
+    for (tree, sources) in trees {
+        for (name, overridden) in &sources.origins {
+            let origin = if *overridden { "override" } else { "shared" };
+            lines.insert(format!("{tree}/{name}={origin}\n"));
+        }
+    }
+    lines.into_iter().collect()
+}
+
+/// Records aliases, including an empty file when no names need restoring.
+pub(super) fn harness_aliases(trees: &[(&str, Sources)]) -> String {
+    let mut lines = BTreeSet::new();
+    for (_, sources) in trees {
+        for (written, linked) in &sources.aliases {
+            lines.insert(format!("{written}={linked}\n"));
+        }
+    }
+    lines.into_iter().collect()
+}
+
+pub(super) fn sources(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    stubs: &[Stub],
+    mapping: &Mapping,
+) -> Result<TemplateSources, GenerateError> {
+    let roles = Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
+    verify_seeded_members_resolve(&roles, stubs, mapping)?;
+    render_sources(root, pinned, &roles, stubs, mapping)
+}
+
+/// Rendered trees retain the labels used to select their overrides.
+pub(super) struct TemplateSources {
+    pub(super) screens: Sources,
+    pub(super) harness: Vec<(&'static str, Sources)>,
+}
+
+/// Renders screens, game stand-ins, drivers, and sibling stand-ins against one role table.
+fn render_sources(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    roles: &Roles,
+    stubs: &[Stub],
+    mapping: &Mapping,
+) -> Result<TemplateSources, GenerateError> {
+    let render = |tree: &Tree<'_>, name_space| {
+        render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
+    };
+    let legacy = pinned.adapter.is_legacy();
+    let screens = if legacy {
+        pinned.directory.join("templates/screen")
+    } else {
+        root.join(SCREEN_TEMPLATES)
+    };
+    let screen_tree = Tree {
+        root,
+        shared: &screens,
+        overrides: screens.join(&pinned.adapter.minecraft),
+        purpose: Purpose::Screen,
+        stand_ins: false,
+    };
+    if legacy {
+        let name_space = name_space(&screen_tree, roles, mapping)?;
+        let screens = render(&screen_tree, name_space)?;
+        return Ok(TemplateSources {
+            screens,
+            harness: Vec::new(),
+        });
+    }
+    let harness = pinned.directory.join(HARNESS_OVERRIDES);
+    let game = root.join(HARNESS_STAND_IN_TEMPLATES);
+    let driver = root.join(HARNESS_DRIVER_TEMPLATES);
+    let sibling = root.join(HARNESS_SIBLING_TEMPLATES);
+    let stand_ins = Tree {
+        root,
+        shared: &game,
+        overrides: harness.join("game"),
+        purpose: Purpose::StandIn,
+        stand_ins: true,
+    };
+    let name_space = name_space(&stand_ins, roles, mapping)?;
+    let screens = render(&screen_tree, name_space)?;
+    let mut rendered = Vec::with_capacity(3);
+    rendered.push(("game", render(&stand_ins, name_space)?));
+    for (name, shared, purpose) in [
+        ("driver", &driver, Purpose::Driver),
+        ("sibling", &sibling, Purpose::Screen),
+    ] {
+        let tree = Tree {
+            root,
+            shared,
+            overrides: harness.join(name),
+            purpose,
+            stand_ins: true,
+        };
+        rendered.push((name, render(&tree, name_space)?));
+    }
+    let reached = std::iter::once(&screens)
+        .chain(rendered.iter().map(|(_, sources)| sources))
+        .collect::<Vec<_>>();
+    verify_added_templates_reached(root, &reached)?;
+    Ok(TemplateSources {
+        screens,
+        harness: rendered,
+    })
+}
 /// The suffix a template carries, over the name of the source it renders.
 const TEMPLATE_SUFFIX: &str = ".in";
 
@@ -146,7 +273,7 @@ pub(super) struct Sources {
 /// Returns an error when a template is unreadable, when it names a role no
 /// admission list binds, when it names a member that role's class does not
 /// declare, or when the names it asks for cannot be written down together.
-pub(super) fn render(
+fn render(
     tree: &Tree<'_>,
     adapter: &Adapter,
     roles: &Roles,
@@ -269,9 +396,10 @@ fn render_roles(
     let mut declared = BTreeSet::new();
     let mut added = Vec::with_capacity(version_only.len());
     for template in read {
-        let mut names = Vec::with_capacity(template.placeholders.len() + 1);
         if purpose == Purpose::StandIn {
-            names.push(template.name.clone());
+            roles
+                .class(&template.name)
+                .map_err(|error| in_template(template, error))?;
             declared.insert(template.name.clone());
             if version_only.contains(&template.path) {
                 added.push((template.name.clone(), template.path.clone()));
@@ -283,13 +411,10 @@ fn render_roles(
                 if role != &template.name || purpose != Purpose::StandIn {
                     referenced.insert(role.clone());
                 }
-                names.push(role.clone());
+                roles
+                    .class(role)
+                    .map_err(|error| in_template(template, error))?;
             }
-        }
-        for role in names {
-            roles
-                .class(&role)
-                .map_err(|error| in_template(template, error))?;
         }
     }
     Ok(TemplateRoles {
@@ -557,7 +682,7 @@ struct Template<'a> {
 /// # Errors
 ///
 /// Returns an error for unreadable or misnamed templates, or unbound roles.
-pub(super) fn name_space(
+fn name_space(
     tree: &Tree<'_>,
     roles: &Roles,
     mapping: &Mapping,
@@ -683,7 +808,7 @@ fn linked_classes(
 /// # Errors
 ///
 /// Returns an error when a seeded member has zero or multiple linked names.
-pub(super) fn verify_seeded_members_resolve(
+fn verify_seeded_members_resolve(
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
@@ -1267,7 +1392,7 @@ com.example.util.Held -> com.example.util.Held:
     }
 
     /// Digests every source path and byte plus deterministic, root-relative metadata.
-    fn modern_snapshot(root: &Path, sources: &crate::TemplateSources) -> String {
+    fn modern_snapshot(root: &Path, sources: &TemplateSources) -> String {
         let mut snapshot = String::new();
         let trees =
             std::iter::once(&sources.screens).chain(sources.harness.iter().map(|(_, tree)| tree));
@@ -1326,12 +1451,11 @@ com.example.util.Held -> com.example.util.Held:
             }
             let lock = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the modern stub lock is tracked");
-            let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
+            let stubs = crate::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the modern stub lock resolves");
             let mapping = obfuscating(&stubs);
-            let bound = Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
-            let actual = super::super::sources(&root, &pinned, &bound, &stubs, &mapping)
-                .expect("the modern sources render");
+            let actual =
+                sources(&root, &pinned, &stubs, &mapping).expect("the modern sources render");
             assert_eq!(
                 modern_snapshot(&root, &actual),
                 *expected
@@ -1378,7 +1502,7 @@ com.example.util.Held -> com.example.util.Held:
                 .expect("the tracked version data should parse");
             let tracked = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the tracked stub lock should be readable");
-            let stubs = super::super::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
+            let stubs = crate::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
             let mapping = obfuscating(&stubs);
 
@@ -1386,7 +1510,7 @@ com.example.util.Held -> com.example.util.Held:
             let shared = if legacy {
                 pinned.directory.join("templates/screen")
             } else {
-                root.join(super::super::SCREEN_TEMPLATES)
+                root.join(SCREEN_TEMPLATES)
             };
             let selected = tree(&shared, &version, Purpose::Screen);
             let screens = render(
@@ -1475,10 +1599,10 @@ com.example.util.Held -> com.example.util.Held:
             }
             let lock = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the tracked stub lock should be readable");
-            let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
+            let stubs = crate::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
             let mapping = obfuscating(&stubs);
-            let shared = root.join(super::super::SCREEN_TEMPLATES);
+            let shared = root.join(SCREEN_TEMPLATES);
             let screens = render(
                 &tree(&shared, &version, Purpose::Screen),
                 &pinned.adapter,

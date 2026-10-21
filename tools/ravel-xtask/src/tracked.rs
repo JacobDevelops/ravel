@@ -145,19 +145,7 @@ pub(crate) fn collect_files(
     directory: &Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
-    let entries = fs::read_dir(directory).map_err(|error| {
-        format!(
-            "cannot read {}: {error}",
-            crate::text::redacted_path(root, directory)
-        )
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|error| {
-            format!(
-                "cannot read {} entry: {error}",
-                crate::text::redacted_path(root, directory)
-            )
-        })?;
+    for entry in crate::text::entries(root, directory)? {
         let path = entry.path();
         if path.ends_with(Path::new("tests/fixtures/local")) {
             continue;

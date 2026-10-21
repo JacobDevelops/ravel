@@ -183,26 +183,22 @@ pub(super) fn from_jar(
 }
 
 /// Refuses a lock whose header disagrees with the inputs it claims to describe.
-fn verify_lock_header(
-    lock: &Lock,
-    adapter: &Adapter,
-    inventory: &Inventory,
-) -> Result<(), GenerateError> {
+fn verify_lock_header(lock: &Lock, adapter: &Adapter) -> Result<(), GenerateError> {
     for (what, tracked, pinned) in [
         (
             "the version",
-            Some(lock.minecraft.as_str()),
-            Some(adapter.minecraft.as_str()),
+            lock.minecraft.as_str(),
+            adapter.minecraft.as_str(),
         ),
         (
             "the mapping source",
-            Some(lock.mapping_source.as_str()),
-            Some(adapter.mapping_source.as_str()),
+            lock.mapping_source.as_str(),
+            adapter.mapping_source.as_str(),
         ),
     ] {
         if tracked != pinned {
             return Err(GenerateError::Drift(format!(
-                "mappings.lock records {what} as {tracked:?} but the adapter inputs pin {pinned:?}"
+                "mappings.lock records {what} as {tracked} but the adapter inputs pin {pinned}"
             )));
         }
     }
@@ -223,6 +219,15 @@ fn verify_lock_header(
                 .as_ref()
                 .and_then(|input| input.sha256),
         ),
+        (
+            "the server jar hash",
+            lock.server_jar_sha256,
+            adapter
+                .inputs
+                .server_jar
+                .as_ref()
+                .and_then(|input| input.sha256),
+        ),
     ] {
         if tracked != pinned {
             return Err(GenerateError::Drift(format!(
@@ -232,19 +237,7 @@ fn verify_lock_header(
             )));
         }
     }
-    let server_hash = adapter
-        .inputs
-        .server_jar
-        .as_ref()
-        .and_then(|input| input.sha256);
-    if lock.server_jar_sha256 != server_hash {
-        return Err(GenerateError::Drift(format!(
-            "mappings.lock records the server jar hash as {} but the adapter inputs pin {}",
-            super::error::DigestPin(lock.server_jar_sha256),
-            super::error::DigestPin(server_hash)
-        )));
-    }
-    verify_lock_shape(lock, adapter, inventory)
+    Ok(())
 }
 
 /// Verifies the lock format and the inventory cardinality it records.
@@ -283,7 +276,8 @@ pub(super) fn from_lock(
 ) -> Result<Vec<Resolved>, GenerateError> {
     let lock: Lock = toml::from_str(tracked)
         .map_err(|error| GenerateError::Input(format!("cannot parse mappings.lock: {error}")))?;
-    verify_lock_header(&lock, adapter, inventory)?;
+    verify_lock_header(&lock, adapter)?;
+    verify_lock_shape(&lock, adapter, inventory)?;
 
     let mut resolved = Vec::with_capacity(inventory.hooks.len());
     for hook in &inventory.hooks {
@@ -394,7 +388,7 @@ mod tests {
         let pinned = pinned();
         let mut lock: super::Lock = toml::from_str(&tracked_lock(&pinned)).expect("tracked lock");
         lock.server_jar_sha256 = Some("ab".repeat(32).try_into().expect("complete digest"));
-        let error = super::verify_lock_header(&lock, &pinned.adapter, &pinned.inventory)
+        let error = super::verify_lock_header(&lock, &pinned.adapter)
             .expect_err("an absent server pin cannot match a recorded digest");
         assert_eq!(
             error.to_string(),

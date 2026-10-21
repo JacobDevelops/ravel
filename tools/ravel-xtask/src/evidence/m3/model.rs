@@ -1,6 +1,5 @@
 use crate::evidence::model::{NonemptyRows, NonemptyString, UpperBoundOperator};
 use serde::{Deserialize, de::IgnoredAny};
-use serde_json::Number;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,11 +23,11 @@ pub(super) struct Conclusion {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct IdentityRewrite {
-    pub(super) classes_rewritten: Number,
+    pub(super) classes_rewritten: u64,
 
-    pub(super) methods_rewritten: Number,
+    pub(super) methods_rewritten: u64,
 
-    pub(super) native_invocations: Number,
+    pub(super) native_invocations: u64,
 
     pub(super) reached_native_code: bool,
 }
@@ -48,16 +47,16 @@ pub(super) struct PackCompile<'a> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Compile {
-    pub(super) repeats: Number,
+    pub(super) repeats: u64,
 
-    pub(super) baseline_milliseconds: Number,
+    pub(super) baseline_milliseconds: f64,
 
-    pub(super) marginal_cold_milliseconds_per_mod: Number,
+    pub(super) marginal_cold_milliseconds_per_mod: f64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Disk {
-    pub(super) toolchain_bytes: Number,
+    pub(super) toolchain_bytes: u64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,8 +77,8 @@ pub(super) struct Budget<'a> {
 
     #[serde(borrow)]
     pub(super) hardware_profile: NonemptyString<'a>,
-    #[serde(rename = "limits")]
-    _limits: NonemptyRows<IgnoredAny>,
+    #[serde(borrow)]
+    pub(super) limits: NonemptyRows<ProfilingLimit<'a>>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,13 +90,15 @@ pub(super) struct Collectors {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct ProfilingLimit {
+pub(super) struct ProfilingLimit<'a> {
+    #[serde(borrow)]
+    pub(super) metric: NonemptyString<'a>,
     #[serde(rename = "operator")]
     _operator: UpperBoundOperator,
 
-    pub(super) measured: Number,
+    pub(super) measured: f64,
 
-    pub(super) limit: Number,
+    pub(super) limit: f64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,6 +117,10 @@ pub(super) struct ProcessMatrix<'a> {
     pub(super) world_persistence_round_trip: WorldPersistence,
 
     pub(super) rewrite: MatrixRewrite,
+    #[serde(default)]
+    pub(super) matrix_not_carried_forward: Option<PriorMatrix>,
+    #[serde(default)]
+    pub(super) surface_campaign: Option<SurfaceCampaign>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,11 +129,11 @@ pub(super) struct Instance {
 
     pub(super) stock_components_exact: bool,
 
-    pub(super) other_loader_components: Number,
+    pub(super) other_loader_components: u64,
 
-    pub(super) mod_jars: Number,
+    pub(super) mod_jars: u64,
 
-    pub(super) recognized_loader_mod_jars: Number,
+    pub(super) recognized_loader_mod_jars: u64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,9 +178,32 @@ pub(super) struct WorldRefusal {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct MatrixRewrite {
-    pub(super) transformation_failures: Number,
+    pub(super) transformation_failures: u64,
 
-    pub(super) classes_rewritten: Number,
+    pub(super) classes_rewritten: u64,
 
-    pub(super) native_invocations: Number,
+    pub(super) native_invocations: u64,
+    #[serde(default)]
+    pub(super) classes_in_inventory: Option<usize>,
+    #[serde(default)]
+    pub(super) callable_targets_in_inventory: Option<usize>,
+    #[serde(default)]
+    pub(super) target_inventory: Option<Vec<Target>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PriorMatrix {
+    pub(super) prior_callable_targets: usize,
+}
+
+#[derive(Deserialize)]
+pub(super) struct SurfaceCampaign {
+    pub(super) launches: usize,
+}
+
+#[derive(Deserialize)]
+pub(super) struct Target {
+    pub(super) class: String,
+    pub(super) methods: Vec<String>,
 }

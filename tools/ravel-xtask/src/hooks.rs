@@ -1,12 +1,8 @@
 //! Typed generator-owned hook inventory facts and repository-derived counts.
 
-use std::path::Path;
-
 pub(crate) use ravel_minecraft_generate::HookInventory;
-
-pub(crate) fn hook_inventory(root: &Path, version: &str) -> Result<HookInventory, String> {
-    ravel_minecraft_generate::hook_inventory(root, version).map_err(|error| error.to_string())
-}
+#[cfg(test)]
+pub(crate) use ravel_minecraft_generate::hook_inventory;
 
 pub(crate) struct HookCounts {
     pub(crate) entries: usize,

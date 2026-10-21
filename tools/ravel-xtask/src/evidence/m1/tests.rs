@@ -159,9 +159,8 @@ fn a_missing_spike_directory_reports_its_read_error() {
     let paths = spike_result_paths(&root, "adg-3", "ADG-3", &mut violations);
     verify_m1_manifest_repeated(&root, &paths, &mut violations);
     assert!(
-        violations
-            .iter()
-            .any(|message| message.starts_with("cannot read spike gate ADG-3:")),
+        violations.iter().any(|message| message
+            .starts_with("spike gate ADG-3: cannot read evidence/m1/spikes/adg-3:")),
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -173,7 +172,7 @@ fn missing_spike_directories_are_enumerated_once_per_milestone_check() {
     let mut violations = Vec::new();
     verify_m1_manifest(&root, &json!({}), &mut violations);
     for gate in ["ADG-3", "ADG-5"] {
-        let prefix = format!("cannot read spike gate {gate}:");
+        let prefix = format!("spike gate {gate}: cannot read evidence/m1/spikes/");
         assert_eq!(
             violations
                 .iter()

@@ -1,7 +1,7 @@
 use std::fs;
 
-use crate::evidence::closure::verify_milestone_figures;
 use crate::evidence::m5::M5_FIGURES;
+use crate::evidence::m5::verify_m5_figures;
 use crate::test_support::{balanced_summary, summary_root};
 
 #[test]
@@ -20,7 +20,7 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
     let mut violations = Vec::new();
 
     let manifest = crate::json::read_json(&root, &manifest).expect("manifest should parse");
-    verify_milestone_figures(
+    verify_m5_figures(
         crate::evidence::rules::Milestone::M5,
         &crate::json::read_json(&root, &root.join("evidence/m5").join(M5_FIGURES.record))
             .expect("summary should parse"),
@@ -157,7 +157,7 @@ fn carried_figures_lookup_uses_the_loaded_record_name() {
     assert!(!records.already_reported(M5_FIGURES.record));
     assert!(violations.is_empty(), "{violations:?}");
     assert_eq!(
-        records.carried(&M5_FIGURES),
+        records.get(M5_FIGURES.record),
         records.get("inventory-summary.json")
     );
     fs::remove_dir_all(root).expect("temporary root should remove");
@@ -174,4 +174,54 @@ fn manifest_closure_reports_failed_rules_in_table_order() {
     let mut violations = Vec::new();
     super::verify_manifest_closure(&serde_json::json!({}), rules, &mut violations);
     assert_eq!(violations, ["first failing rule", "second failing rule"]);
+}
+
+#[test]
+fn cached_validation_preserves_admission_closure_and_identity_boundaries() {
+    use super::{RecordDefinition, read_records, verify_closure_records};
+    use crate::evidence::rules::Milestone;
+    const RECORDS: &[RecordDefinition] = &[RecordDefinition {
+        name: "inventory-summary.json",
+        rule: |_| panic!("cached validation must not readmit the record"),
+        description: "a valid summary",
+        required: true,
+    }];
+    let cases = [
+        (
+            "admission",
+            "M5",
+            Err("invalid summary".to_owned()),
+            vec!["evidence/m5/inventory-summary.json: invalid summary"],
+        ),
+        (
+            "closure",
+            "M5",
+            Ok(Err("/result must be pass".to_owned())),
+            vec![
+                "M5 closure requires a valid summary: evidence/m5/inventory-summary.json: failed /result must be pass",
+            ],
+        ),
+        (
+            "identity",
+            "M4",
+            Ok(Ok(())),
+            vec![
+                "M5 closure requires a valid summary: evidence/m5/inventory-summary.json: failed /milestone must be M5",
+            ],
+        ),
+    ];
+    for (label, milestone, result, expected) in cases {
+        let root = summary_root(label, &format!(r#"{{"milestone":"{milestone}"}}"#));
+        let mut violations = Vec::new();
+        let mut records = read_records(&root, Milestone::M5, RECORDS, &mut violations);
+        records.checked(Milestone::M5, &RECORDS[0], result, &mut violations);
+        if label == "admission" {
+            assert_eq!(violations, expected);
+        } else {
+            assert!(violations.is_empty(), "{violations:?}");
+        }
+        verify_closure_records(Milestone::M5, &records, RECORDS, &mut violations);
+        assert_eq!(violations, expected);
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 }

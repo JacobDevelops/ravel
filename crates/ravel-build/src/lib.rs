@@ -29,9 +29,11 @@ use sha2::{Digest, Sha256};
 mod compile;
 mod error;
 mod generate;
+mod host;
 
 pub use compile::build;
 pub use error::{BuildRefused, Wanted};
+pub use host::{BuiltHost, HostBuildRefused, build_host};
 
 use generate::{host_manifest, host_source, workspace_manifest};
 
@@ -216,6 +218,7 @@ fn resolve_compiler(root: &Path, toolchain: &str) -> Result<ResolvedCompiler, Bu
         .ok_or_else(|| invalid("no toolchain.channel is declared".to_owned()))?;
     let rustc = resolve_rustc(root, channel)?;
     let identity = compiler_output(
+        root,
         std::process::Command::new(&rustc)
             .arg("-vV")
             .current_dir(root),
@@ -268,18 +271,14 @@ fn compiler_path(bytes: Vec<u8>) -> Result<PathBuf, BuildRefused> {
     Ok(PathBuf::from(path.trim()))
 }
 
-fn compiler_output(command: &mut std::process::Command) -> Result<Vec<u8>, BuildRefused> {
+fn compiler_output(
+    root: &Path,
+    command: &mut std::process::Command,
+) -> Result<Vec<u8>, BuildRefused> {
     let output = command
         .output()
         .map_err(|source| BuildRefused::Toolchain { source })?;
-    if output.status.success() {
-        return compiler_identity(output, Path::new(""));
-    }
-    let root = match command.get_current_dir() {
-        Some(root) => root.to_path_buf(),
-        None => std::env::current_dir().map_err(|source| BuildRefused::Toolchain { source })?,
-    };
-    compiler_identity(output, &root)
+    compiler_identity(output, root)
 }
 
 fn compiler_status(output: &std::process::Output, root: &Path) -> Result<(), BuildRefused> {

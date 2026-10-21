@@ -1,6 +1,5 @@
 //! Workspace layout and crate fences.
 
-use std::fs;
 use std::path::Path;
 
 mod inventory;
@@ -12,7 +11,7 @@ use crate::json::read_json;
 use crate::text::{read_text, redacted_path};
 use crate::tracked::{collect_files, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
-    verify_version_boundary, verify_version_directories, verify_version_readmes,
+    load_version_inputs, verify_version_boundary, verify_version_readmes,
 };
 use inventory::{
     verify_game_type_claims, verify_guide_enumerations, verify_hook_inventory_document,
@@ -106,7 +105,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     verify_ignored_boundaries(root, &mut violations);
-    let (adapters, inventories) = verify_version_directories(root, &mut violations);
+    let (adapters, inventories) = load_version_inputs(root, &mut violations);
     verify_hook_inventory_document(root, &inventories, &mut violations);
     verify_accounting(root, None, &mut violations);
     verify_persistence_reflection(root, &adapters, &mut violations);
@@ -241,23 +240,19 @@ fn maintained_rust_roots(
 fn maintained_members(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
     let mut members = Vec::new();
     for directory in ["crates", "registry/mods", "test-mods", "examples"] {
-        let entries = match fs::read_dir(root.join(directory)) {
+        let entries = match crate::text::entries(root, &root.join(directory)) {
             Ok(entries) => entries,
             Err(error) => {
-                violations.push(format!("cannot read {directory}: {error}"));
+                violations.push(error);
                 continue;
             }
         };
         for entry in entries {
-            match entry {
-                Ok(entry) if entry.path().join("Cargo.toml").is_file() => {
-                    members.push(format!(
-                        "{directory}/{}",
-                        entry.file_name().to_string_lossy()
-                    ));
-                }
-                Ok(_) => {}
-                Err(error) => violations.push(format!("cannot read {directory} entry: {error}")),
+            if entry.path().join("Cargo.toml").is_file() {
+                members.push(format!(
+                    "{directory}/{}",
+                    entry.file_name().to_string_lossy()
+                ));
             }
         }
     }
@@ -276,22 +271,17 @@ fn crate_example_roots(
         .filter(|member| member.starts_with("crates/"))
     {
         let directory = root.join(member).join("examples");
-        let entries = match fs::read_dir(&directory) {
+        if matches!(directory.try_exists(), Ok(false)) {
+            continue;
+        }
+        let entries = match crate::text::entries(root, &directory) {
             Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
-                violations.push(format!("cannot read {member}/examples: {error}"));
+                violations.push(error);
                 continue;
             }
         };
         for entry in entries {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(error) => {
-                    violations.push(format!("cannot read {member}/examples entry: {error}"));
-                    continue;
-                }
-            };
             let path = entry.path();
             if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
                 let file = entry.file_name().to_string_lossy().into_owned();

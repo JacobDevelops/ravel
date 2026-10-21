@@ -281,7 +281,7 @@ fn typed_identity_admission_names_the_exact_numeric_field() {
         .find(|definition| definition.name == "class-loader-identity.json")
         .expect("identity record must have an admission rule")
         .rule;
-    let reason = <serde_json::Number as serde::Deserialize>::deserialize(&Value::Null)
+    let reason = <u64 as serde::Deserialize>::deserialize(&Value::Null)
         .expect_err("null must not deserialize as a number");
     assert_eq!(
         rule(&record),

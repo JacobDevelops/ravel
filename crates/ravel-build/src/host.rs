@@ -3,7 +3,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use ravel_build::{BuildRefused, plan};
+use crate::{BuildRefused, plan};
 use ravel_core::{ModId, Sha256Digest};
 use ravel_loader::{DiscoveryRefused, discover};
 
@@ -33,7 +33,7 @@ pub fn build_host(
 ) -> Result<BuiltHost, HostBuildRefused> {
     let discovered = discover(game_directory).map_err(HostBuildRefused::Discovery)?;
     let planned = plan(&discovered, ravel_root).map_err(HostBuildRefused::Build)?;
-    let library = ravel_build::build(&planned, game_directory, cache, minecraft)
+    let library = crate::build(&planned, game_directory, cache, minecraft)
         .map_err(HostBuildRefused::Build)?;
 
     Ok(BuiltHost {
@@ -59,8 +59,8 @@ pub enum HostBuildRefused {
 impl fmt::Display for HostBuildRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Discovery(_) => formatter.write_str("host package discovery failed"),
-            Self::Build(_) => formatter.write_str("host build failed"),
+            Self::Discovery(error) => write!(formatter, "host package discovery failed: {error}"),
+            Self::Build(error) => write!(formatter, "host build failed: {error}"),
         }
     }
 }
@@ -88,7 +88,10 @@ mod tests {
             source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
         });
         let discovery = error.source().expect("discovery refusal is retained");
-        assert_eq!(error.to_string(), "host package discovery failed");
+        assert_eq!(
+            error.to_string(),
+            format!("host package discovery failed: {discovery}")
+        );
         assert!(discovery.is::<ravel_loader::DiscoveryRefused>());
         let io = discovery.source().expect("I/O refusal is retained");
         assert_eq!(
@@ -101,7 +104,7 @@ mod tests {
 
     #[test]
     fn a_refused_compile_carries_no_instance_path() {
-        let root = std::env::temp_dir().join(format!("ravel-xtask-host-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("ravel-build-host-{}", std::process::id()));
         match fs::remove_dir_all(&root) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -111,7 +114,7 @@ mod tests {
         let installation = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
-            .expect("xtask must remain under tools/ravel-xtask");
+            .expect("ravel-build must remain under crates/ravel-build");
         for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
             fs::copy(installation.join(file), root.join(file))
                 .expect("installation input should be copied");
@@ -125,10 +128,10 @@ mod tests {
             matches!(error, HostBuildRefused::Build(_)),
             "a compile that fails refuses as a build error, got {error}"
         );
-        assert_eq!(error.to_string(), "host build failed");
+        assert!(error.to_string().starts_with("host build failed: "));
         let cause = error.source().expect("build refusal is retained");
-        assert!(cause.is::<ravel_build::BuildRefused>());
-        let reported = format!("{error}: {cause}");
+        assert!(cause.is::<crate::BuildRefused>());
+        let reported = error.to_string();
         assert!(
             !reported.contains(&root.display().to_string()),
             "the refusal names the instance directory: {reported}"

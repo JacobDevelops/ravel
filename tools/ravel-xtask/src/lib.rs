@@ -6,7 +6,6 @@ mod evidence;
 pub mod fixture;
 mod gate_versions;
 mod hooks;
-pub mod host;
 mod instance_scan;
 mod json;
 mod package_digests;

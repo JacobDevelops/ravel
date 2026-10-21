@@ -332,9 +332,9 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-save` | Ownership, schema versioning, migrations and compatibility checks |
 | `ravel-network` | Ravel packet/channel abstractions and side rules |
 | `ravel-observability` | Structured reports, metric schemas and profiling coordinator |
-| `ravel-pack` | Pack pinning, declarative composition and closure validation |
+| `ravel-pack` | Pack pins, declarative composition and closure validation for library callers; written pins are not enforced by runtime launch |
 | `ravel-acceptance` | Declarative game acceptance scenarios, assertions and transcripts |
-| `ravel-testkit` | Deterministic fake hosts, fixture builders and process harness contracts |
+| `ravel-testkit` | Deterministic library lifecycle pipeline and JVM harness protocol parsing and validation |
 
 Dependency direction is inward toward contracts:
 
@@ -430,7 +430,7 @@ the code-policy graph locally and in `.github/workflows/ci.yml`.
 Individual task names keep the `ravel:` prefix. Formatting covers Rust,
 shell, TOML, and Markdown; lint covers clippy, shell, and workflow checks.
 
-Host composition and fixture operations run through `ravel-xtask`:
+Host composition is owned by `ravel-build`; its command-line adapter and fixture operations run through `ravel-xtask`:
 `cargo make ravel:host-build <instance> <cache> <minecraft>`,
 `cargo make ravel:fixture-reconstruct`, and `cargo make ravel:fixture-verify`.
 Registry validation uses `cargo make ravel:registry-verify`.

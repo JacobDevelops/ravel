@@ -1,6 +1,6 @@
 //! Validates hook descriptors and derives the shared Java/JNI hook shape.
 
-use crate::classfile::method_types;
+use crate::classfile::{DescriptorType, method_types};
 use crate::error::GenerateError;
 use crate::inputs::Inventory;
 use crate::java_type::JavaType;
@@ -84,27 +84,10 @@ pub(crate) fn shapes(
 /// Reads the parameter types out of a JVM method descriptor.
 pub(super) fn parameters(descriptor: &str) -> Result<Vec<JavaType>, String> {
     let (parameters, _) = method_types(descriptor)?;
-    Ok(parameters
+    parameters
         .into_iter()
-        .map(|kind| {
-            if kind.dimensions != 0 {
-                return if kind.descriptor == "[B" {
-                    JavaType::Bytes
-                } else {
-                    JavaType::Handle(kind.descriptor.to_owned())
-                };
-            }
-            if kind.descriptor.starts_with('L') {
-                return if kind.name == "java/lang/String" {
-                    JavaType::Text
-                } else {
-                    JavaType::Handle(kind.name.to_owned())
-                };
-            }
-            JavaType::primitive_from_descriptor(kind.descriptor)
-                .expect("a validated non-reference parameter is a primitive")
-        })
-        .collect())
+        .map(DescriptorType::argument_type)
+        .collect()
 }
 
 /// Turns a hook identifier into a Rust constant name.

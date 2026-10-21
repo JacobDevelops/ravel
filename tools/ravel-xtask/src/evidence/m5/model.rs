@@ -4,18 +4,15 @@ use serde::{Deserialize, de::IgnoredAny};
 use ravel_core::Sha256Digest;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Inventory<'a> {
-    #[serde(rename = "workPackage")]
     #[serde(borrow)]
     pub(super) work_package: NonemptyString<'a>,
-    #[serde(rename = "protocol")]
     #[serde(borrow)]
     pub(super) protocol: NonemptyString<'a>,
     pub(super) result: Verdict,
-    #[serde(rename = "boundArtifacts")]
     #[serde(borrow)]
     pub(super) bound_artifacts: NonemptyRows<Artifact<'a>>,
-    #[serde(rename = "machineryAmendments")]
     #[serde(borrow)]
     pub(super) machinery_amendments: Vec<Amendment<'a>>,
     #[serde(rename = "disclosure")]
@@ -23,20 +20,15 @@ pub(super) struct Inventory<'a> {
     _disclosure: Disclosure<'a>,
     #[serde(rename = "primitiveScan")]
     _primitive_scan: PrimitiveScan,
-    #[serde(rename = "artifacts")]
     pub(super) artifacts: ArtifactTotals,
-    #[serde(rename = "graph")]
     pub(super) graph: Graph,
-    #[serde(rename = "rights")]
     pub(super) rights: Rights,
-    #[serde(rename = "surfaces")]
     pub(super) surfaces: Surfaces,
-    #[serde(rename = "plans")]
     pub(super) plans: Plans,
-    #[serde(rename = "reads")]
     pub(super) reads: AccessCounts,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Disclosure<'a> {
     #[serde(rename = "readObservation")]
     #[serde(borrow)]
@@ -46,12 +38,14 @@ pub(super) struct Disclosure<'a> {
     _judged_claims: NonemptyRows<Judgment<'a>>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Observation<'a> {
     #[serde(rename = "bound")]
     #[serde(borrow)]
     _bound: NonemptyString<'a>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Judgment<'a> {
     #[serde(rename = "claim")]
     #[serde(borrow)]
@@ -63,8 +57,8 @@ pub(super) struct Judgment<'a> {
     _basis: Judged,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Artifact<'a> {
-    #[serde(rename = "name")]
     #[serde(borrow)]
     pub(super) name: NonemptyString<'a>,
     #[serde(rename = "holds")]
@@ -72,10 +66,10 @@ pub(super) struct Artifact<'a> {
     _holds: NonemptyString<'a>,
     #[serde(rename = "sha256")]
     _sha256: Sha256Digest,
-    #[serde(rename = "class")]
     pub(super) class: ArtifactClass,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Amendment<'a> {
     #[serde(rename = "milestone")]
     #[serde(borrow)]
@@ -85,16 +79,17 @@ pub(super) struct Amendment<'a> {
     _reason: NonemptyString<'a>,
     #[serde(rename = "figures")]
     _figures: Vec<IgnoredAny>,
-    #[serde(rename = "entries")]
     #[serde(borrow)]
     pub(super) entries: NonemptyRows<NonemptyString<'a>>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct PrimitiveScan {
     #[serde(rename = "class")]
     _class: Machinery,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ArtifactTotals {
     pub(super) total: u64,
     pub(super) catalogued: u64,
@@ -123,6 +118,7 @@ pub(super) struct Rights {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct SourceUse {
     pub(super) permitted: u64,
     pub(super) conditional: u64,

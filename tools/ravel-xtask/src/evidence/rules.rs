@@ -1,7 +1,6 @@
 //! Shared predicates for milestone evidence records.
 
 use std::fmt;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -86,11 +85,8 @@ impl FromStr for Milestone {
 
 /// Discovers milestone directories; identity inside each document is checked separately.
 pub(crate) fn milestone_manifests(root: &Path) -> Result<Vec<(PathBuf, Milestone)>, String> {
-    let entries = fs::read_dir(root.join("evidence"))
-        .map_err(|error| format!("cannot read evidence directory: {error}"))?;
     let mut manifests = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("cannot read evidence entry: {error}"))?;
+    for entry in crate::text::entries(root, &root.join("evidence"))? {
         let kind = entry
             .file_type()
             .map_err(|error| format!("cannot inspect evidence entry: {error}"))?;
@@ -127,7 +123,6 @@ pub(crate) fn require(condition: bool, requirement: &str) -> Result<(), String> 
 }
 
 pub(crate) type Rule<T = Value> = fn(&T) -> bool;
-pub(crate) type Figure<T = Value> = fn(&T) -> Option<Value>;
 
 pub(crate) fn has_exact_work_packages(value: &Value, expected: &[&str]) -> bool {
     let mut packages = array(value, "/workPackages")

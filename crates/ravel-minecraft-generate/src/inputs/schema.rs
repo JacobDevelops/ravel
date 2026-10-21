@@ -15,6 +15,16 @@ pub enum Eligibility {
     GenerationOnly,
 }
 
+impl Eligibility {
+    /// The stable spelling written in version manifests and matrix reports.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::GenerationOnly => "generation-only",
+        }
+    }
+}
+
 /// Where the names the generator resolves against come from.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]

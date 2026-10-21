@@ -52,6 +52,60 @@ pub struct AdapterFacts {
     pub mapping_inputs: Vec<String>,
 }
 
+/// Adapter facts and declared documents admitted from one version directory.
+#[derive(Debug)]
+pub struct VersionFacts {
+    /// Validated generation and runtime admission policy.
+    pub adapter: AdapterFacts,
+    /// Reviewed inventory owned by the adapter.
+    pub inventory: Result<HookInventory, GenerateError>,
+    /// Relocated mapping lock, stub lock, seeds, and reflection document paths.
+    pub toml_inputs: [PathBuf; 4],
+}
+
+/// Loads the declared facts for one tracked version directory.
+///
+/// # Errors
+/// Returns an error for malformed adapters, identity drift, or invalid admission.
+pub fn version_facts(root: &Path, version: &str) -> Result<VersionFacts, GenerateError> {
+    version_facts_at(root, &root.join(VERSIONS).join(version))
+}
+
+/// Loads one version's adapter and all its declared tooling input locations.
+///
+/// # Errors
+///
+/// Returns an error for malformed inputs, identity drift, or invalid admission.
+pub fn version_facts_at(root: &Path, directory: &Path) -> Result<VersionFacts, GenerateError> {
+    let version = directory_version(directory)?;
+    let label = directory.join("adapter.toml");
+    let adapter = read_adapter_at(directory, version)
+        .and_then(|adapter| {
+            verify_pinned_sources(&adapter)?;
+            Ok(adapter)
+        })
+        .map_err(|error| {
+            in_context(
+                error,
+                &label.strip_prefix(root).unwrap_or(&label).to_string_lossy(),
+            )
+        })?;
+    let toml_inputs = [
+        &adapter.inputs.mappings_lock,
+        &adapter.inputs.stubs_lock,
+        &adapter.inputs.stub_seeds,
+        &adapter.inputs.reflective_surface,
+    ]
+    .map(|input| relocated(root, directory, &adapter, &input.path));
+    let facts = facts_from_adapter(&adapter);
+    let inventory = inventory_from_adapter(root, directory, adapter);
+    Ok(VersionFacts {
+        adapter: facts,
+        inventory,
+        toml_inputs,
+    })
+}
+
 /// The reviewed hook facts consumed by repository tooling.
 #[derive(Clone, Debug)]
 pub struct HookInventory {
@@ -84,32 +138,21 @@ pub struct HookFact {
 /// Returns an error for unreadable inventories, strict-schema violations,
 /// or declarations inconsistent with the adapter. Byte pins are checked at generation.
 pub fn hook_inventory(root: &Path, version: &str) -> Result<HookInventory, GenerateError> {
-    hook_inventory_at(root, &root.join(VERSIONS).join(version))
+    version_facts(root, version)?.inventory
 }
 
-/// Reads the adapter-owned inventory from a tracked or public-fixture directory.
-///
-/// Paths under `minecraft/versions/<this version>` follow the supplied adapter
-/// directory, so a public fixture remains a drop-in version directory. Other
-/// declared inventory paths remain relative to `root`.
-///
-/// # Errors
-///
-/// Returns an error for invalid directory names, malformed declarations, or identity drift.
-pub fn hook_inventory_at(root: &Path, directory: &Path) -> Result<HookInventory, GenerateError> {
-    let version = directory
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| {
-            GenerateError::Input("the version directory has no UTF-8 name".to_owned())
-        })?;
-    let adapter_label = directory
-        .strip_prefix(root)
-        .unwrap_or_else(|_| Path::new(version))
-        .join("adapter.toml");
-    let adapter = read_adapter_at(directory, version)
-        .map_err(|error| in_context(error, &adapter_label.to_string_lossy()))?;
-    let path = inventory_path(root, directory, &adapter);
+fn inventory_from_adapter(
+    root: &Path,
+    directory: &Path,
+    adapter: Adapter,
+) -> Result<HookInventory, GenerateError> {
+    let version = &adapter.minecraft;
+    let path = relocated(
+        root,
+        directory,
+        &adapter,
+        &adapter.inputs.hook_inventory.path,
+    );
     let label = path
         .strip_prefix(root)
         .unwrap_or_else(|_| {
@@ -136,49 +179,22 @@ pub fn hook_inventory_at(root: &Path, directory: &Path) -> Result<HookInventory,
     })
 }
 
-/// Relocates only an inventory declared inside this adapter's own version tree.
-fn inventory_path(root: &Path, directory: &Path, adapter: &Adapter) -> PathBuf {
-    let declared = Path::new(&adapter.inputs.hook_inventory.path);
+fn directory_version(directory: &Path) -> Result<&str, GenerateError> {
+    directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| GenerateError::Input("the version directory has no UTF-8 name".to_owned()))
+}
+
+fn relocated(root: &Path, directory: &Path, adapter: &Adapter, input: &str) -> PathBuf {
+    let declared = Path::new(input);
     let canonical = Path::new(VERSIONS).join(&adapter.minecraft);
     declared
         .strip_prefix(canonical)
         .map_or_else(|_| root.join(declared), |suffix| directory.join(suffix))
 }
 
-/// Resolves declared lock inputs, relocating version-local pins for fixture adapters.
-///
-/// # Errors
-///
-/// Returns an error for malformed adapters or directory/version identity drift.
-pub fn lock_paths_at(root: &Path, directory: &Path) -> Result<[PathBuf; 2], GenerateError> {
-    let version = directory
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| GenerateError::Input("version directory has no UTF-8 name".to_owned()))?;
-    let adapter = read_adapter_at(directory, version)?;
-    let canonical = Path::new(VERSIONS).join(&adapter.minecraft);
-    Ok(
-        [&adapter.inputs.mappings_lock, &adapter.inputs.stubs_lock].map(|input| {
-            let declared = Path::new(&input.path);
-            declared
-                .strip_prefix(&canonical)
-                .map_or_else(|_| root.join(declared), |suffix| directory.join(suffix))
-        }),
-    )
-}
-
-/// Reads the typed adapter and applies the generator's admission policy.
-///
-/// # Errors
-///
-/// Returns an error for malformed adapters, identity drift, or invalid admission.
-pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, GenerateError> {
-    let adapter = read_adapter(root, version)
-        .and_then(|adapter| {
-            verify_pinned_sources(&adapter)?;
-            Ok(adapter)
-        })
-        .map_err(|error| in_context(error, &format!("{VERSIONS}/{version}/adapter.toml")))?;
+fn facts_from_adapter(adapter: &Adapter) -> AdapterFacts {
     let mapping_inputs = adapter
         .inputs
         .client_mappings
@@ -186,11 +202,11 @@ pub fn adapter_facts(root: &Path, version: &str) -> Result<AdapterFacts, Generat
         .chain(adapter.inputs.mapping_io_jar.iter())
         .map(|input| input.path.clone())
         .collect();
-    Ok(AdapterFacts {
+    AdapterFacts {
         eligibility: adapter.eligibility,
         legacy_adapter: adapter.is_legacy(),
         mapping_inputs,
-    })
+    }
 }
 
 /// Adds a tracked source label without inventing a location for declared inputs.
@@ -752,13 +768,15 @@ class = \"net/minecraft/Unreferenced\"
 
 #[cfg(test)]
 mod adapter_fact_tests {
-    use super::{adapter_facts, fixtures};
+    use super::{fixtures, version_facts};
 
     #[test]
-    fn facts_read_tracked_adapters_without_loading_generation_inputs() {
+    fn facts_read_tracked_adapters_and_hook_inventory() {
         let root = fixtures::repository_root();
         for version in super::tracked_versions(root) {
-            let facts = adapter_facts(root, &version).expect("tracked typed adapter");
+            let facts = version_facts(root, &version)
+                .expect("tracked typed adapter")
+                .adapter;
             let adapter = super::read_adapter(root, &version).expect("tracked adapter");
             assert_eq!(facts.eligibility, adapter.eligibility);
             let mut expected = Vec::new();
@@ -796,7 +814,7 @@ mod adapter_fact_tests {
         );
         let path = directory.join("adapter.toml");
         std::fs::write(&path, text).expect("generation-only adapter");
-        let error = adapter_facts(&root, "0.0.0-test").expect_err("admission rejects shortcut");
+        let error = version_facts(&root, "0.0.0-test").expect_err("admission rejects shortcut");
         let super::GenerateError::Input(detail) = error else {
             panic!("admission failure must be an input error: {error}");
         };
@@ -813,7 +831,7 @@ mod adapter_fact_tests {
 mod hook_inventory_tests {
     use std::fs;
 
-    use super::{Kind, fixtures, hook_inventory, hook_inventory_at, sha256};
+    use super::{Kind, fixtures, hook_inventory, sha256, version_facts_at};
 
     const INVENTORY: &str = "\
 schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
@@ -860,7 +878,9 @@ descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
         .expect("relocated adapter");
         let inventory = fixture.join("reviewed/hooks.toml");
         fs::rename(root.join("reviewed.toml"), &inventory).expect("relocated inventory");
-        let facts = hook_inventory_at(&root, &fixture).expect("relocated hook facts");
+        let facts = version_facts_at(&root, &fixture)
+            .and_then(|facts| facts.inventory)
+            .expect("relocated hook facts");
         let actual = "tests/fixtures/public/versions/0.0.0-test/reviewed/hooks.toml";
         assert_eq!(facts.path, actual);
         assert_eq!(facts.hooks[0].class, "example.Game");
@@ -869,7 +889,9 @@ descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
             INVENTORY.replace("instance-method", "unknown-kind"),
         )
         .expect("invalid relocated inventory");
-        let error = hook_inventory_at(&root, &fixture).expect_err("invalid fixture");
+        let error = version_facts_at(&root, &fixture)
+            .and_then(|facts| facts.inventory)
+            .expect_err("invalid fixture");
         let detail = error.to_string();
         assert!(
             detail.contains(&format!("version 0.0.0-test, {actual}:")),
@@ -923,7 +945,9 @@ descriptor = \"()V\"\nkind = \"instance-method\"\ncapability = \"tick\"\n\
             fixture.join("adapter.toml"),
         )
         .expect("relocated adapter");
-        let fixture_facts = hook_inventory_at(&root, &fixture).expect("fixture inventory");
+        let fixture_facts = version_facts_at(&root, &fixture)
+            .and_then(|facts| facts.inventory)
+            .expect("fixture inventory");
         assert_eq!(fixture_facts.path, "reviewed.toml");
         assert_eq!(fixture_facts.hooks[0].class, "example.Game");
         fs::remove_dir_all(root).expect("cleanup");

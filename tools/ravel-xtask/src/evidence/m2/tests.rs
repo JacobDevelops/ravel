@@ -90,7 +90,7 @@ fn typed_budget_admission_names_the_exact_row_and_field() {
         limit("startup", json!(10), json!(20)),
         limit("tick", Value::Null, json!(1)),
     ]);
-    let reason = <serde_json::Number as serde::Deserialize>::deserialize(&Value::Null)
+    let reason = <f64 as serde::Deserialize>::deserialize(&Value::Null)
         .expect_err("null must not deserialize as a number");
     assert_eq!(
         verify_m2_budget_limits(&record),

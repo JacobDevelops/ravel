@@ -182,7 +182,7 @@ audio has both ends and no launched game has run them:
 Declaring against `render_stages`, and against the two interception points no
 hook resolves, is designing against a specification that is tested now and — for
 drawing — is not connected later. `world_shaping` produces a validated
-`GenerationRecord` for library callers, but no host path reads or persists it:
+`ShapingRecord` for library callers, but no host path reads or persists it:
 declaring it does not change a launched world. `server_data` declarations from
 mods admitted on the world's side become entries in its data pack through
 `ContentDeclaration`, where datapack-capable adapters let Minecraft read them.

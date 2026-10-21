@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use ravel_minecraft_generate::{Eligibility, adapter_facts};
+use ravel_minecraft_generate::{Eligibility, version_facts};
 
 use crate::version_boundary::{VersionAdapters, tracked_versions};
 
@@ -78,8 +78,8 @@ pub fn verify_gate_versions(root: &Path) -> GateVersionsReport {
     let mut eligibility = VersionAdapters::new();
     let mut unavailable = BTreeSet::new();
     for version in &versions {
-        let facts = match adapter_facts(root, version) {
-            Ok(facts) => facts,
+        let facts = match version_facts(root, version) {
+            Ok(facts) => facts.adapter,
             Err(error) => {
                 report.violations.push(error.to_string());
                 continue;

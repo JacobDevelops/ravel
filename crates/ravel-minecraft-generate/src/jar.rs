@@ -17,8 +17,11 @@ use serde::Deserialize;
 use super::GenerateError;
 use super::inputs::{Adapter, Spelling};
 
-/// Legacy manifests omit Java metadata; the pinned bytecode must prove Java 8.
-pub(crate) fn verify_legacy_class_release(archive: &Archive) -> Result<(), GenerateError> {
+/// Checks the maximum bytecode release against the adapter's declared source release.
+pub(crate) fn verify_legacy_class_release(
+    archive: &Archive,
+    adapter: &Adapter,
+) -> Result<(), GenerateError> {
     let mut maximum = None;
     for name in archive.names().filter(|name| {
         Path::new(name)
@@ -34,9 +37,15 @@ pub(crate) fn verify_legacy_class_release(archive: &Archive) -> Result<(), Gener
         let major = u16::from_be_bytes([bytes[6], bytes[7]]);
         maximum = Some(maximum.map_or(major, |previous: u16| previous.max(major)));
     }
-    if maximum != Some(52) {
+    let release = adapter.effective_source_java_release();
+    let expected = release.checked_add(44).ok_or_else(|| {
+        GenerateError::Input(format!(
+            "sourceJavaRelease {release} has no class-file major"
+        ))
+    })?;
+    if maximum != Some(expected) {
         return Err(GenerateError::Drift(format!(
-            "legacy-1-12 sourceJavaRelease 8 requires maximum class-file major 52; \
+            "sourceJavaRelease {release} requires maximum class-file major {expected}; \
              pinned client jar states {maximum:?}"
         )));
     }
@@ -683,23 +692,25 @@ mod metadata_tests {
     }
 
     #[test]
-    fn legacy_bytecode_must_have_java_eight_as_its_maximum_release() {
-        let path = std::env::temp_dir().join(format!(
-            "ravel-legacy-class-release-{}.jar",
-            std::process::id()
-        ));
-        for (major, accepted) in [(51_u16, false), (52, true), (53, false)] {
-            let mut header = vec![0xca, 0xfe, 0xba, 0xbe, 0, 0];
-            header.extend(major.to_be_bytes());
-            std::fs::write(&path, jar::fixture::stored("Game.class", &header))
-                .expect("class version fixture");
-            let archive = jar::Archive::open(&path).expect("class-version fixture");
-            assert_eq!(
-                super::verify_legacy_class_release(&archive).is_ok(),
-                accepted
-            );
+    fn legacy_bytecode_maximum_follows_the_declared_source_release() {
+        for release in [8_u16, 17] {
+            let mut adapter = legacy_adapter();
+            adapter.source_java_release = Some(release);
+            for (major, accepted) in [
+                (release + 43, false),
+                (release + 44, true),
+                (release + 45, false),
+            ] {
+                let mut header = vec![0xca, 0xfe, 0xba, 0xbe, 0, 0];
+                header.extend(major.to_be_bytes());
+                let archive = jar::fixture::parse(jar::fixture::stored("Game.class", &header))
+                    .expect("class-version fixture");
+                assert_eq!(
+                    super::verify_legacy_class_release(&archive, &adapter).is_ok(),
+                    accepted
+                );
+            }
         }
-        std::fs::remove_file(path).expect("remove class-version fixture");
     }
 
     #[test]

@@ -2,7 +2,6 @@
 
 use crate::evidence::closure::{LoadedRecords, RecordDefinition, read_records};
 use crate::evidence::rules::Milestone;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -15,7 +14,7 @@ use crate::evidence::rules::{
 };
 use crate::json::array;
 use crate::text::read_text;
-use crate::text::{NumberAt, numbers_before, stated_counts, verify_stated_counts};
+use crate::text::{numbers_after, numbers_before, verify_stated_counts};
 
 use crate::evidence::model::admit;
 
@@ -30,9 +29,16 @@ pub(crate) fn verify_m3_integrity(
     _: &Value,
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
-    let records = read_records(root, Milestone::M3, M3_RECORDS, violations);
+    let mut records = read_records(root, Milestone::M3, M3_RECORDS, violations);
     if let Some(record) = records.get("linux-process-matrix.json") {
-        verify_campaign_inventory(root, record, violations);
+        let result = match admit::<model::ProcessMatrix<'_>>(record) {
+            Ok(record) => {
+                verify_typed_campaign_inventory(root, &record, violations);
+                Ok(verify_m3_process_matrix_typed(&record))
+            }
+            Err(error) => Err(error),
+        };
+        records.checked(Milestone::M3, &M3_RECORDS[3], result, violations);
     }
     verify_harness_lifecycles(root, &records, violations);
     records
@@ -112,7 +118,7 @@ const M3_RECORDS: &[RecordDefinition] = &[
                     "/rewrite/nativeInvocations",
                 ),
             ] {
-                require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+                require(*count > 0, requirement)?;
             }
             require(
                 record.rewrite.reached_native_code,
@@ -133,19 +139,19 @@ const M3_RECORDS: &[RecordDefinition] = &[
                 "m3-pack-compile-v1",
                 "/protocol",
             )?;
+            require(record.compile.repeats > 0, "/compile/repeats")?;
+            require(record.disk.toolchain_bytes > 0, "/disk/toolchainBytes")?;
             for (count, requirement) in [
-                (&record.compile.repeats, "/compile/repeats"),
                 (
-                    &record.compile.baseline_milliseconds,
+                    record.compile.baseline_milliseconds,
                     "/compile/baselineMilliseconds",
                 ),
                 (
-                    &record.compile.marginal_cold_milliseconds_per_mod,
+                    record.compile.marginal_cold_milliseconds_per_mod,
                     "/compile/marginalColdMillisecondsPerMod",
                 ),
-                (&record.disk.toolchain_bytes, "/disk/toolchainBytes"),
             ] {
-                require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+                require(count.is_finite() && count > 0.0, requirement)?;
             }
             Ok(())
         },
@@ -172,7 +178,7 @@ const M3_RECORDS: &[RecordDefinition] = &[
                 "linux-reference-v1",
                 "/budget/hardwareProfile",
             )?;
-            verify_profiling_off_tick_limit(value)?;
+            verify_profiling_off_tick_limit(&record)?;
             Ok(())
         },
         description: "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
@@ -190,13 +196,16 @@ const M3_RECORDS: &[RecordDefinition] = &[
 ];
 
 fn verify_m3_process_matrix(value: &Value) -> Result<(), String> {
-    let record: model::ProcessMatrix<'_> = admit(value)?;
+    verify_m3_process_matrix_typed(&admit::<model::ProcessMatrix<'_>>(value)?)
+}
+
+fn verify_m3_process_matrix_typed(record: &model::ProcessMatrix<'_>) -> Result<(), String> {
     crate::evidence::model::require_identity(record.work_package.0, "M3-W7", "/workPackage")?;
     require(
         record.result == crate::evidence::model::Verdict::Pass,
         "/result must be pass",
     )?;
-    verify_m3_process_flags(&record)?;
+    verify_m3_process_flags(record)?;
     for (count, requirement) in [
         (
             &record.instance.other_loader_components,
@@ -212,7 +221,7 @@ fn verify_m3_process_matrix(value: &Value) -> Result<(), String> {
             "/rewrite/transformationFailures",
         ),
     ] {
-        require(count.as_f64() == Some(0.0), requirement)?;
+        require(*count == 0, requirement)?;
     }
     for (count, requirement) in [
         (
@@ -224,7 +233,7 @@ fn verify_m3_process_matrix(value: &Value) -> Result<(), String> {
             "/rewrite/nativeInvocations",
         ),
     ] {
-        require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+        require(*count > 0, requirement)?;
     }
     Ok(())
 }
@@ -283,28 +292,23 @@ fn verify_m3_process_flags(record: &model::ProcessMatrix<'_>) -> Result<(), Stri
     }
     Ok(())
 }
-fn verify_profiling_off_tick_limit(value: &Value) -> Result<(), String> {
+fn verify_profiling_off_tick_limit(record: &model::Profiling<'_>) -> Result<(), String> {
     let mut failure = Err("/budget/limits must contain metric profiling.off.perTick".to_owned());
-    for (index, limit) in array(value, "/budget/limits")
+    for (index, limit) in record
+        .budget
+        .limits
+        .0
         .iter()
         .enumerate()
-        .filter(|(_, limit)| limit["metric"] == "profiling.off.perTick")
+        .filter(|(_, limit)| limit.metric.0 == "profiling.off.perTick")
     {
         let checked = (|| {
-            let limit: model::ProfilingLimit = admit(limit)?;
             require(
-                limit
-                    .measured
-                    .as_f64()
-                    .is_some_and(|measured| measured > 0.0),
+                limit.measured.is_finite() && limit.measured > 0.0,
                 "/measured must be positive",
             )?;
             require(
-                limit
-                    .measured
-                    .as_f64()
-                    .zip(limit.limit.as_f64())
-                    .is_some_and(|(measured, bound)| measured <= bound),
+                limit.limit.is_finite() && limit.measured <= limit.limit,
                 "/limit must not be below measured",
             )
         })();
@@ -323,29 +327,49 @@ struct CampaignInventory {
     launches: usize,
 }
 
+#[cfg(test)]
 pub(crate) fn verify_campaign_inventory(root: &Path, matrix: &Value, violations: &mut Vec<String>) {
+    let matrix: model::ProcessMatrix<'_> = match admit(matrix) {
+        Ok(matrix) => matrix,
+        Err(error) => {
+            violations.push(format!("{CAMPAIGN_MATRIX}: {error}"));
+            return;
+        }
+    };
+    verify_typed_campaign_inventory(root, &matrix, violations);
+}
+
+fn verify_typed_campaign_inventory(
+    root: &Path,
+    matrix: &model::ProcessMatrix<'_>,
+    violations: &mut Vec<String>,
+) {
     let Some(derived) = campaign_inventory(matrix, violations) else {
         return;
     };
 
-    for (field, expected, subject) in [
+    for (field, recorded, expected, subject) in [
         (
             "classesInInventory",
+            matrix.rewrite.classes_in_inventory,
             derived.classes,
             "classes its own target inventory enumerates",
         ),
         (
             "callableTargetsInInventory",
+            matrix.rewrite.callable_targets_in_inventory,
             derived.targets,
             "callable targets its own target inventory enumerates",
         ),
     ] {
-        match matrix_count(matrix, &format!("/rewrite/{field}")) {
-            Ok(recorded) if recorded == expected => {}
-            Ok(recorded) => violations.push(format!(
+        match recorded {
+            Some(recorded) if recorded == expected => {}
+            Some(recorded) => violations.push(format!(
                 "{CAMPAIGN_MATRIX} records {field} {recorded} against the {expected} {subject}"
             )),
-            Err(error) => violations.push(error),
+            None => violations.push(format!(
+                "{CAMPAIGN_MATRIX} does not record a whole number at `/rewrite/{field}`"
+            )),
         }
     }
 
@@ -355,11 +379,11 @@ pub(crate) fn verify_campaign_inventory(root: &Path, matrix: &Value, violations:
     }
 }
 
-fn campaign_inventory(matrix: &Value, violations: &mut Vec<String>) -> Option<CampaignInventory> {
-    let Some(targets) = matrix
-        .pointer("/rewrite/targetInventory")
-        .and_then(Value::as_array)
-    else {
+fn campaign_inventory(
+    matrix: &model::ProcessMatrix<'_>,
+    violations: &mut Vec<String>,
+) -> Option<CampaignInventory> {
+    let Some(targets) = &matrix.rewrite.target_inventory else {
         violations.push(format!(
             "{CAMPAIGN_MATRIX} does not record a target inventory array"
         ));
@@ -368,31 +392,13 @@ fn campaign_inventory(matrix: &Value, violations: &mut Vec<String>) -> Option<Ca
     let mut classes = BTreeSet::new();
     let mut methods = BTreeSet::new();
     for target in targets {
-        let Some(class) = target["class"].as_str() else {
-            violations.push(format!(
-                "{CAMPAIGN_MATRIX} records a target without a class string"
-            ));
-            return None;
-        };
-        if !classes.insert(class) {
+        if !classes.insert(&target.class) {
             violations.push(format!(
                 "{CAMPAIGN_MATRIX}'s target inventory lists a class more than once"
             ));
             return None;
         }
-        let Some(entries) = target["methods"].as_array() else {
-            violations.push(format!(
-                "{CAMPAIGN_MATRIX} records a target without a methods array"
-            ));
-            return None;
-        };
-        for method in entries {
-            let Some(method) = method.as_str() else {
-                violations.push(format!(
-                    "{CAMPAIGN_MATRIX} records a non-string callable target"
-                ));
-                return None;
-            };
+        for method in &target.methods {
             if !methods.insert(method) {
                 violations.push(format!(
                     "{CAMPAIGN_MATRIX}'s target inventory lists a callable target more than once"
@@ -401,88 +407,66 @@ fn campaign_inventory(matrix: &Value, violations: &mut Vec<String>) -> Option<Ca
             }
         }
     }
-    match (
-        matrix_count(matrix, "/matrixNotCarriedForward/priorCallableTargets"),
-        matrix_count(matrix, "/surfaceCampaign/launches"),
-    ) {
-        (Ok(prior), Ok(launches)) => Some(CampaignInventory {
-            classes: classes.len(),
-            targets: methods.len(),
-            prior,
-            launches,
-        }),
-        (Err(error), _) | (_, Err(error)) => {
-            violations.push(error);
-            None
-        }
-    }
-}
-
-fn matrix_count(matrix: &Value, pointer: &str) -> Result<usize, String> {
-    matrix
-        .pointer(pointer)
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or_else(|| format!("{CAMPAIGN_MATRIX} does not record a whole number at `{pointer}`"))
-}
-
-#[derive(Clone, Copy)]
-enum CampaignCountMatcher {
-    Phrase(&'static str, NumberAt),
-    Words(&'static [&'static str]),
-}
-
-impl CampaignCountMatcher {
-    fn label(self) -> Cow<'static, str> {
-        match self {
-            Self::Phrase(phrase, _) => Cow::Borrowed(phrase),
-            Self::Words(words) => Cow::Owned(words.join(" ")),
-        }
-    }
+    let Some(prior) = &matrix.matrix_not_carried_forward else {
+        violations.push(format!("{CAMPAIGN_MATRIX} does not record a whole number at `/matrixNotCarriedForward/priorCallableTargets`"));
+        return None;
+    };
+    let Some(campaign) = &matrix.surface_campaign else {
+        violations.push(format!(
+            "{CAMPAIGN_MATRIX} does not record a whole number at `/surfaceCampaign/launches`"
+        ));
+        return None;
+    };
+    Some(CampaignInventory {
+        classes: classes.len(),
+        targets: methods.len(),
+        prior: prior.prior_callable_targets,
+        launches: campaign.launches,
+    })
 }
 
 fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> Vec<String> {
     let mut violations = Vec::new();
-    let document = document.split_whitespace().collect::<Vec<_>>().join(" ");
-    let document = document.as_str();
-    for (matcher, expected, subject, absent_subject) in [
+    for (words, after, expected, subject, absent_subject) in [
         (
-            CampaignCountMatcher::Phrase(" callable targets", NumberAt::BeforePhrase),
+            &["callable", "targets"][..],
+            false,
             derived.targets,
             "callable targets",
             None,
         ),
         (
-            CampaignCountMatcher::Phrase(
-                " classes in the reviewed inventory",
-                NumberAt::BeforePhrase,
-            ),
+            &["classes", "in", "the", "reviewed", "inventory"][..],
+            false,
             derived.classes,
             "classes in the reviewed inventory",
             None,
         ),
         (
-            CampaignCountMatcher::Phrase("moved from ", NumberAt::AfterPhrase),
+            &["moved", "from"][..],
+            true,
             derived.prior,
             "callable targets before the count moved",
             None,
         ),
         (
-            CampaignCountMatcher::Words(&["surface", "launches"]),
+            &["surface", "launches"][..],
+            false,
             derived.launches,
             "surface launches",
             Some("launches in the surface campaign"),
         ),
     ] {
-        let stated = match matcher {
-            CampaignCountMatcher::Phrase(phrase, side) => stated_counts(document, phrase, side),
-            CampaignCountMatcher::Words(words) => numbers_before(document, words),
+        let stated = if after {
+            numbers_after(document, words)
+        } else {
+            numbers_before(document, words)
         };
         verify_stated_counts(
             &stated,
             expected,
             || {
-                let phrase = matcher.label();
+                let phrase = words.join(" ");
                 let absent_subject = absent_subject.unwrap_or(subject);
                 format!(
                     "{CAMPAIGN_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it \

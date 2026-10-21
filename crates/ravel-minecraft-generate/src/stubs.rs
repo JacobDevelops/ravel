@@ -139,10 +139,10 @@ pub(super) fn from_jar(
             for (read, member) in matched {
                 let mut member = member.clone();
                 member.returns = element_of(&seed.class, read, &member.descriptor, mapping)?;
-                referenced.extend(names_in(&member.descriptor));
+                referenced.extend(names_in(&member.descriptor)?);
 
                 if let Some((_, element)) = member.returns.as_deref().and_then(argument) {
-                    referenced.extend(names_in(&format!("L{element};")));
+                    referenced.extend(names_in(&format!("L{element};"))?);
                 }
                 selected.push(member);
             }
@@ -199,7 +199,7 @@ fn from_jar_declared<'a>(
                 member,
                 Member {
                     name: mapping
-                        .mojang_member(class, &member.name, &member.descriptor)
+                        .mojang_member_or_self(class, &member.name, &member.descriptor)
                         .to_owned(),
                     descriptor: mapping.mojang_descriptor(&member.descriptor)?,
                     flags: member.flags,
@@ -264,7 +264,7 @@ fn element_of(
     Ok(Some(format!(
         "{}L{};",
         bound.recorded(),
-        mapping.mojang_class(element)
+        mapping.mojang_class_or_self(element)
     )))
 }
 
@@ -465,11 +465,11 @@ fn read_hierarchy(
         flags: read.flags,
         super_class: read
             .super_class
-            .map(|name| mapping.mojang_class(&name).to_owned()),
+            .map(|name| mapping.mojang_class_or_self(&name).to_owned()),
         interfaces: read
             .interfaces
             .iter()
-            .map(|name| mapping.mojang_class(name).to_owned())
+            .map(|name| mapping.mojang_class_or_self(name).to_owned())
             .collect(),
     })
 }
@@ -533,24 +533,13 @@ fn hierarchy_of(
     )
 }
 
-/// Collects non-provided descriptor classes, preserving nested types' binary `$` names.
-pub(super) fn names_in(descriptor: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut rest = descriptor;
-    while let Some(start) = rest.find('L') {
-        let after = &rest[start + 1..];
-        let Some(end) = after.find(';') else {
-            break;
-        };
-        let name = &after[..end];
-        // `L` also opens a class name inside an array descriptor, and both write
-        // the name the same way, so one scan finds every one of them.
-        if !name.is_empty() && !PROVIDED.iter().any(|package| name.starts_with(package)) {
-            names.push(name.to_owned());
-        }
-        rest = &after[end + 1..];
-    }
-    names
+/// Collects validated non-provided classes, preserving nested binary names.
+fn names_in(descriptor: &str) -> Result<Vec<String>, GenerateError> {
+    Ok(classfile::descriptor_classes(descriptor)?
+        .into_iter()
+        .filter(|name| !PROVIDED.iter().any(|package| name.starts_with(package)))
+        .map(str::to_owned)
+        .collect())
 }
 
 #[cfg(test)]
@@ -946,21 +935,30 @@ mod tests {
     #[test]
     fn a_descriptor_names_the_classes_a_stub_has_to_carry_and_no_others() {
         assert_eq!(
-            names_in("(Lnet/minecraft/network/chat/Component;)V"),
+            names_in("(Lnet/minecraft/network/chat/Component;)V").expect("valid descriptor"),
             ["net/minecraft/network/chat/Component"]
         );
         assert_eq!(
-            names_in("(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/A;"),
+            names_in("(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/A;")
+                .expect("valid descriptor"),
             ["net/minecraft/A"],
             "a provided package is on every class path already, array or not"
         );
-        assert_eq!(names_in("(II)V"), Vec::<String>::new());
-        assert_eq!(names_in("([[Lnet/minecraft/B;)V"), ["net/minecraft/B"]);
+        assert_eq!(
+            names_in("(II)V").expect("valid descriptor"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            names_in("([[Lnet/minecraft/B;)V").expect("valid descriptor"),
+            ["net/minecraft/B"]
+        );
+        assert!(names_in("(Lbroken)V").is_err());
+        assert!(names_in("Linvalid.name;").is_err());
     }
 
     #[test]
     fn a_nested_class_is_carried_under_the_binary_name_that_names_it() {
-        let named = names_in("()Lcom/example/core/Holder$Reference;");
+        let named = names_in("()Lcom/example/core/Holder$Reference;").expect("valid descriptor");
 
         assert_eq!(named, ["com/example/core/Holder$Reference"]);
     }

@@ -23,7 +23,9 @@ pub(crate) fn hook_inventories(
 ) -> Result<Vec<ravel_minecraft_generate::HookInventory>, String> {
     versions
         .iter()
-        .map(|version| crate::hooks::hook_inventory(root, version))
+        .map(|version| {
+            crate::hooks::hook_inventory(root, version).map_err(|error| error.to_string())
+        })
         .collect()
 }
 

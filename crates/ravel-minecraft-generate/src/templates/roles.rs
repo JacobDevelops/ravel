@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use super::inputs::{Inventory, Lookup, Reflection, SeedMember, Seeds};
-use super::{GenerateError, classfile};
+use crate::inputs::{Inventory, Lookup, Reflection, SeedMember, Seeds};
+use crate::{GenerateError, classfile};
 
 /// Where one binding of a role was read, and what it bound the role to.
 struct Binding {

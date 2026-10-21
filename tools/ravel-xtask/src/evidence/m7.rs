@@ -12,9 +12,7 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, read_json};
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_manifest_closure};
 
 mod model;
 use model::{LibrarySummary, Protocol};
@@ -254,25 +252,35 @@ pub(crate) fn verify_m7_manifest(
     }
 }
 
+#[cfg(test)]
 fn verify_m7_verified_fixture_total(root: &Path, record: &Value, violations: &mut Vec<String>) {
     match LibrarySummary::read(record).and_then(|summary| {
         summary.verify()?;
         Ok(summary)
     }) {
-        Ok(summary) => match &summary.protocol {
-            Protocol::Historical { correction } => {
-                verify_m7_historical_total(
-                    root,
-                    summary.entry_total(),
-                    correction.as_ref(),
-                    violations,
-                );
-            }
-            Protocol::Workload { fixture } => {
-                verify_m7_workload_total(root, record, fixture, summary.entry_total(), violations);
-            }
-        },
+        Ok(summary) => verify_fixture_total(root, record, &summary, violations),
         Err(error) => violations.push(format!("evidence/m7/library-summary.json: {error}")),
+    }
+}
+
+fn verify_fixture_total(
+    root: &Path,
+    record: &Value,
+    summary: &LibrarySummary<'_>,
+    violations: &mut Vec<String>,
+) {
+    match &summary.protocol {
+        Protocol::Historical { correction } => {
+            verify_m7_historical_total(
+                root,
+                summary.entry_total(),
+                correction.as_ref(),
+                violations,
+            );
+        }
+        Protocol::Workload { fixture } => {
+            verify_m7_workload_total(root, record, fixture, summary.entry_total(), violations);
+        }
     }
 }
 
@@ -310,17 +318,12 @@ fn verify_m7_historical_total(
             return;
         }
     };
-    let Some(verified) = inventory
-        .pointer("/artifacts/total")
-        .and_then(Value::as_u64)
-    else {
-        violations.push(
-            "evidence/m7/library-summary.json `.entries.total` and \
-             evidence/m5/inventory-summary.json `.artifacts.total` cannot both be read, so \
-             nothing holds M7's denominator to the inventory that measured it"
-                .to_owned(),
-        );
-        return;
+    let verified = match super::m5::inventory_total(&inventory) {
+        Ok(total) => total,
+        Err(error) => {
+            violations.push(format!("evidence/m5/inventory-summary.json: {error}"));
+            return;
+        }
     };
     if audited == verified {
         return;
@@ -398,7 +401,17 @@ fn verify_m7_workload_total(
 const M7_FIGURES: CarriedFigures = CarriedFigures {
     record: "library-summary.json",
     subject: "library",
-    verify: |milestone, record, manifest, carried, violations| match LibrarySummary::read(record) {
+};
+
+#[cfg(test)]
+pub(crate) fn verify_m7_figures(
+    milestone: Milestone,
+    record: &Value,
+    manifest: &Value,
+    carried: &CarriedFigures,
+    violations: &mut Vec<String>,
+) {
+    match LibrarySummary::read(record) {
         Ok(record) => crate::evidence::closure::verify_typed_figures(
             milestone,
             &record,
@@ -413,20 +426,36 @@ const M7_FIGURES: CarriedFigures = CarriedFigures {
             milestone.directory(),
             carried.record
         )),
-    },
-};
+    }
+}
 
 pub(crate) fn verify_m7_integrity(
     root: &Path,
     manifest: &Value,
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
-    let records = read_records(root, Milestone::M7, M7_RECORDS, violations);
-    if let Some(record) = records.carried(&M7_FIGURES) {
-        verify_m7_verified_fixture_total(root, record, violations);
-        if verify_library_record(record).is_ok() {
-            verify_milestone_figures(Milestone::M7, record, manifest, &M7_FIGURES, violations);
-        }
+    let mut records = read_records(root, Milestone::M7, M7_RECORDS, violations);
+    if let Some(record) = records.get(M7_FIGURES.record) {
+        let result = match LibrarySummary::read(record).and_then(|summary| {
+            summary.verify()?;
+            Ok(summary)
+        }) {
+            Ok(summary) => {
+                verify_fixture_total(root, record, &summary, violations);
+                crate::evidence::closure::verify_typed_figures(
+                    Milestone::M7,
+                    &summary,
+                    manifest,
+                    &M7_FIGURES,
+                    M7_CARRIED_FIGURES,
+                    M7_ARITHMETIC,
+                    violations,
+                );
+                Ok(Ok(()))
+            }
+            Err(error) => Err(error),
+        };
+        records.checked(Milestone::M7, &M7_RECORDS[0], result, violations);
     }
     records
 }

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::json::read_json;
 
-use crate::evidence::closure::verify_milestone_figures;
+use crate::evidence::m7::verify_m7_figures;
 use crate::evidence::m7::{
     M7_ARITHMETIC, M7_CARRIED_FIGURES, M7_FIGURES, verify_m7_manifest,
     verify_m7_verified_fixture_total,
@@ -57,6 +57,17 @@ fn balanced_m7_manifest() -> String {
         .to_owned()
 }
 
+fn inventory_summary(total: u64) -> String {
+    let repository = crate::test_support::repository_root();
+    let mut record = read_json(
+        &repository,
+        &repository.join("evidence/m5/inventory-summary.json"),
+    )
+    .expect("tracked inventory should parse");
+    record["artifacts"]["total"] = total.into();
+    record.to_string()
+}
+
 fn m7_root(label: &str, summary: &str, manifest: &str) -> PathBuf {
     let root = temporary_root(label);
     fs::create_dir_all(root.join("evidence/m7")).expect("evidence should be creatable");
@@ -70,7 +81,7 @@ fn m7_root(label: &str, summary: &str, manifest: &str) -> PathBuf {
     .expect("historical descriptor should be writable");
     fs::write(
         root.join("evidence/m5/inventory-summary.json"),
-        r#"{"artifacts":{"total":324}}"#,
+        inventory_summary(324),
     )
     .expect("inventory should be writable");
     fs::write(root.join("evidence/m7/library-summary.json"), summary)
@@ -338,7 +349,7 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     );
     fs::write(
         root.join("evidence/m5/inventory-summary.json"),
-        r#"{"artifacts":{"total":235}}"#,
+        inventory_summary(235),
     )
     .expect("inventory should be writable");
     let mut violations = Vec::new();
@@ -761,7 +772,7 @@ fn every_figure_m7_carries_is_recomputed_from_the_record() {
         misstate_figure(&root, &manifest, claimed_at);
         let mut violations = Vec::new();
 
-        verify_milestone_figures(
+        verify_m7_figures(
             crate::evidence::rules::Milestone::M7,
             &read_json(&root, &root.join("evidence/m7").join(M7_FIGURES.record))
                 .expect("summary should parse"),
@@ -798,7 +809,10 @@ fn absent_fixture_totals_are_unreadable_not_matching_nulls() {
         &mut violations,
     );
     assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("cannot both be read"));
+    assert_eq!(
+        violations[0],
+        "evidence/m5/inventory-summary.json: /: missing field `workPackage`"
+    );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 

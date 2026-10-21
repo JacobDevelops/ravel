@@ -1065,7 +1065,7 @@ fn the_installation_channel_resolves_to_the_reported_compiler() {
     assert!(compiler.identity.starts_with(b"rustc "));
     assert_eq!(
         compiler.identity,
-        super::compiler_output(Command::new(&compiler.rustc).arg("-vV"))
+        super::compiler_output(&root, Command::new(&compiler.rustc).arg("-vV"))
             .expect("resolved executable identity")
     );
 }
@@ -1119,7 +1119,7 @@ fn compiler_spawn_failure_is_a_toolchain_refusal() {
     let root = instance("missing-compiler-executable");
     let absent = root.join("no-such-rustc");
     assert!(matches!(
-        super::compiler_output(&mut Command::new(absent)),
+        super::compiler_output(&root, &mut Command::new(absent)),
         Err(BuildRefused::Toolchain { .. })
     ));
     fs::remove_dir_all(root).expect("cleanup");

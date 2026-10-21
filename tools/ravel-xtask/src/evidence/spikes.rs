@@ -1,6 +1,5 @@
 //! Saved architecture spike result validation.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::evidence::rules::Rule;
@@ -41,21 +40,18 @@ pub(crate) fn spike_result_paths(
     gate: &str,
     violations: &mut Vec<String>,
 ) -> Vec<PathBuf> {
-    let entries = match fs::read_dir(root.join("evidence/m1/spikes").join(directory)) {
+    let entries = match crate::text::entries(root, &root.join("evidence/m1/spikes").join(directory))
+    {
         Ok(entries) => entries,
         Err(error) => {
-            violations.push(format!("cannot read spike gate {gate}: {error}"));
+            violations.push(format!("spike gate {gate}: {error}"));
             return Vec::new();
         }
     };
     let mut results = Vec::new();
     for entry in entries {
-        match entry {
-            Ok(entry) if entry.path().extension().is_some_and(|kind| kind == "json") => {
-                results.push(entry.path());
-            }
-            Ok(_) => {}
-            Err(error) => violations.push(format!("cannot read spike gate {gate} entry: {error}")),
+        if entry.path().extension().is_some_and(|kind| kind == "json") {
+            results.push(entry.path());
         }
     }
     results.sort();

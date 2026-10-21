@@ -3,8 +3,8 @@
 //! Generates bindings and Java sources from pinned version data.
 //!
 //! Available jars must reproduce the tracked locks; jar-less builds verify their hashes.
-//! [`adapter_facts`] exposes the same typed admission policy to repository tooling,
-//! without loading generation documents or jars. Explicit generation renders once;
+//! [`version_facts`] exposes the same typed admission policy to repository tooling,
+//! without loading jars or mapping locks. Explicit generation renders once;
 //! repeatability of full composed outputs is covered by public-fixture tests.
 
 mod classfile;
@@ -15,7 +15,6 @@ mod java_type;
 mod mapping;
 mod render;
 mod resolve;
-mod roles;
 mod stubs;
 mod templates;
 
@@ -24,7 +23,6 @@ mod test_fixtures;
 
 use ravel_core::Sha256Digest;
 use ravel_core::paths::HOST_LIBRARY;
-use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,8 +30,8 @@ use std::path::{Path, PathBuf};
 pub use classfile::{descriptor_classes, descriptor_handle_count, descriptor_parameters};
 pub use error::GenerateError;
 pub use inputs::{
-    AdapterFacts, Eligibility, HookFact, HookInventory, Kind, adapter_facts, hook_inventory,
-    hook_inventory_at, lock_paths_at,
+    AdapterFacts, Eligibility, HookFact, HookInventory, Kind, VersionFacts, hook_inventory,
+    version_facts, version_facts_at,
 };
 
 /// The reading of the jar this generator performs, as recorded in the lock.
@@ -183,31 +181,11 @@ const JAVA_OUTPUT: &str = "target/ravel-jvm/generated/dev/ravel/jvm";
 /// Separate stub output prevents packaging classes that would shadow the game.
 const STUB_OUTPUT: &str = "target/ravel-jvm/generated-stubs";
 
-/// Where the tracked screen templates live, relative to the repository root.
-const SCREEN_TEMPLATES: &str = "jvm/screen/template";
-
 /// Where the generated screen sources land, relative to the repository root.
 const SCREEN_OUTPUT: &str = "target/ravel-jvm/generated-screen";
 
-/// Where the harness's stand-in game classes are templated, relative to the root.
-const HARNESS_STAND_IN_TEMPLATES: &str = "jvm/harness/template/game";
-
-/// Where the harness's own driver classes are templated, relative to the root.
-const HARNESS_DRIVER_TEMPLATES: &str = "jvm/harness/template/driver";
-
-/// Where the harness's stand-in halves of the sibling artifact are templated.
-const HARNESS_SIBLING_TEMPLATES: &str = "jvm/harness/template/sibling";
-
-/// Where a version keeps the harness templates it cannot share, inside its own
-/// version directory: a source only one version renders is that version's data.
-const HARNESS_OVERRIDES: &str = "harness";
-
 /// Where the generated harness sources land, relative to the repository root.
 const HARNESS_OUTPUT: &str = "target/ravel-jvm/generated-harness";
-
-/// The package Ravel's own screens are drawn in, wherever the game leaves room
-/// for one.
-const SCREEN_PACKAGE: &str = "dev.ravel.jvm.screen";
 
 /// Everything one generation renders.
 #[derive(Debug, Eq, PartialEq)]
@@ -412,7 +390,7 @@ fn resolve_jars(
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
     let archive = jar::Archive::open(&root.join(&pinned.adapter.inputs.client_jar.path))?;
     if pinned.adapter.is_legacy() {
-        jar::verify_legacy_class_release(&archive)?;
+        jar::verify_legacy_class_release(&archive, &pinned.adapter)?;
     }
     let resolved = resolve::from_jar(&archive, &pinned.inventory, mapping)?;
     if let Some(input) = &pinned.adapter.inputs.server_jar {
@@ -452,11 +430,10 @@ fn compose_render(
         .iter()
         .map(|stub| render::stubs::stub_java(&pinned.adapter, stub, mapping))
         .collect::<Result<Vec<_>, _>>()?;
-    let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
-    templates::verify_seeded_members_resolve(&roles, stubbed, mapping)?;
-    let TemplateSources { screens, harness } = sources(root, pinned, &roles, stubbed, mapping)?;
-    let harness_origins = harness_origins(&harness);
-    let harness_aliases = harness_aliases(&harness);
+    let templates::TemplateSources { screens, harness } =
+        templates::sources(root, pinned, stubbed, mapping)?;
+    let harness_origins = templates::harness_origins(&harness);
+    let harness_aliases = templates::harness_aliases(&harness);
     let mut templates = screens.templates;
     let mut harness_java = Vec::new();
     for (tree, sources) in harness {
@@ -487,105 +464,6 @@ fn compose_render(
         harness_origins,
         harness_aliases,
         templates,
-    })
-}
-
-/// Records each harness source's origin so consumers need not infer it from generated text.
-fn harness_origins(trees: &[(&str, templates::Sources)]) -> String {
-    let mut lines = BTreeSet::new();
-    for (tree, sources) in trees {
-        for (name, overridden) in &sources.origins {
-            let origin = if *overridden { "override" } else { "shared" };
-            lines.insert(format!("{tree}/{name}={origin}\n"));
-        }
-    }
-    lines.into_iter().collect()
-}
-
-/// Records aliases, including an empty file when no names need restoring.
-fn harness_aliases(trees: &[(&str, templates::Sources)]) -> String {
-    let mut lines = BTreeSet::new();
-    for (_, sources) in trees {
-        for (written, linked) in &sources.aliases {
-            lines.insert(format!("{written}={linked}\n"));
-        }
-    }
-    lines.into_iter().collect()
-}
-
-/// Rendered trees retain the labels used to select their overrides.
-struct TemplateSources {
-    screens: templates::Sources,
-    harness: Vec<(&'static str, templates::Sources)>,
-}
-
-/// Renders screens, game stand-ins, drivers, and sibling stand-ins against one role table.
-fn sources(
-    root: &Path,
-    pinned: &inputs::PinnedVersion,
-    roles: &roles::Roles,
-    stubs: &[stubs::Stub],
-    mapping: &mapping::Mapping,
-) -> Result<TemplateSources, GenerateError> {
-    let render = |tree: &templates::Tree<'_>, name_space| {
-        templates::render(tree, &pinned.adapter, roles, stubs, mapping, name_space)
-    };
-    let legacy = pinned.adapter.is_legacy();
-    let screens = if legacy {
-        pinned.directory.join("templates/screen")
-    } else {
-        root.join(SCREEN_TEMPLATES)
-    };
-    let screen_tree = templates::Tree {
-        root,
-        shared: &screens,
-        overrides: screens.join(&pinned.adapter.minecraft),
-        purpose: templates::Purpose::Screen,
-        stand_ins: false,
-    };
-    if legacy {
-        let name_space = templates::name_space(&screen_tree, roles, mapping)?;
-        let screens = render(&screen_tree, name_space)?;
-        return Ok(TemplateSources {
-            screens,
-            harness: Vec::new(),
-        });
-    }
-    let harness = pinned.directory.join(HARNESS_OVERRIDES);
-    let game = root.join(HARNESS_STAND_IN_TEMPLATES);
-    let driver = root.join(HARNESS_DRIVER_TEMPLATES);
-    let sibling = root.join(HARNESS_SIBLING_TEMPLATES);
-    let stand_ins = templates::Tree {
-        root,
-        shared: &game,
-        overrides: harness.join("game"),
-        purpose: templates::Purpose::StandIn,
-        stand_ins: true,
-    };
-    let name_space = templates::name_space(&stand_ins, roles, mapping)?;
-    let screens = render(&screen_tree, name_space)?;
-    let mut rendered = Vec::with_capacity(3);
-    rendered.push(("game", render(&stand_ins, name_space)?));
-    for (name, shared, purpose) in [
-        ("driver", &driver, templates::Purpose::Driver),
-        ("sibling", &sibling, templates::Purpose::Screen),
-    ] {
-        let tree = templates::Tree {
-            root,
-            shared,
-            overrides: harness.join(name),
-            purpose,
-            stand_ins: true,
-        };
-        rendered.push((name, render(&tree, name_space)?));
-    }
-    let reached = std::iter::once(&screens)
-        .chain(rendered.iter().map(|(_, sources)| sources))
-        .collect::<Vec<_>>();
-    templates::verify_added_templates_reached(root, &reached)?;
-    Ok(TemplateSources {
-        screens,
-        harness: rendered,
     })
 }
 
@@ -896,12 +774,12 @@ mod tests {
                  }}\n"
             )
         };
-        std::fs::create_dir_all(root.join(super::HARNESS_STAND_IN_TEMPLATES))
+        std::fs::create_dir_all(root.join(super::templates::HARNESS_STAND_IN_TEMPLATES))
             .expect("the staged template directory should be made");
         for (tree, name) in [
-            (super::SCREEN_TEMPLATES, "Drawn"),
-            (super::HARNESS_DRIVER_TEMPLATES, "Driven"),
-            (super::HARNESS_SIBLING_TEMPLATES, "Sided"),
+            (super::templates::SCREEN_TEMPLATES, "Drawn"),
+            (super::templates::HARNESS_DRIVER_TEMPLATES, "Driven"),
+            (super::templates::HARNESS_SIBLING_TEMPLATES, "Sided"),
         ] {
             let directory = root.join(tree);
             std::fs::create_dir_all(&directory)
@@ -931,7 +809,7 @@ mod tests {
                 .expect("a staged seed list binds a role");
             let overrides = root.join(format!(
                 "minecraft/versions/{version}/{}",
-                super::HARNESS_OVERRIDES
+                super::templates::HARNESS_OVERRIDES
             ));
             std::fs::create_dir_all(overrides.join("game"))
                 .expect("the staged template directory should be made");
@@ -970,8 +848,12 @@ mod tests {
     fn legacy_sources_render_the_local_screen_without_inheriting_a_modern_harness() {
         let (root, directory) = staged("legacy-template-selection");
         let mut pinned = inputs::pinned(&root, None).expect("the staged inputs are pinned");
+        let lock = std::fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
+            .expect("staged stub lock should be readable");
+        let stubs = super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
+            .expect("staged seeds should resolve");
         pinned.adapter.capabilities = vec![inputs::Capability::Legacy112];
-        std::fs::remove_dir_all(directory.join(super::HARNESS_OVERRIDES))
+        std::fs::remove_dir_all(directory.join(super::templates::HARNESS_OVERRIDES))
             .expect("remove the staged modern harness overrides");
         let screen = directory.join("templates/screen");
         std::fs::create_dir_all(&screen).expect("create the legacy screen tree");
@@ -981,17 +863,16 @@ mod tests {
             "{{package}}\npublic final class LegacySupport {}\n",
         )
         .expect("write the version-local support source");
-        let roles = super::roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
         let mapping = super::mapping::Mapping::Identity;
-        let super::TemplateSources { screens, harness } =
-            super::sources(&root, &pinned, &roles, &[], &mapping)
+        let super::templates::TemplateSources { screens, harness } =
+            super::templates::sources(&root, &pinned, &stubs, &mapping)
                 .expect("local support renders without a harness");
         assert_eq!(screens.templates, [template]);
         assert_eq!(screens.java.len(), 1);
         assert_eq!(screens.java[0].0, "dev/ravel/jvm/screen/LegacySupport.java");
         assert!(harness.is_empty(), "legacy versions have no harness trees");
         std::fs::remove_dir_all(&screen).expect("remove the required screen tree");
-        assert!(super::sources(&root, &pinned, &roles, &[], &mapping).is_err());
+        assert!(super::templates::sources(&root, &pinned, &stubs, &mapping).is_err());
         cleanup(&root);
     }
 
@@ -1075,7 +956,7 @@ mod tests {
         .expect("write the staged surface string");
         std::fs::write(&reflection, &surface).expect("the staged surface should be writable");
         repin(&directory, "[inputs.reflectiveSurface]", surface.as_bytes());
-        let overrides = directory.join(super::HARNESS_OVERRIDES);
+        let overrides = directory.join(super::templates::HARNESS_OVERRIDES);
         std::fs::write(
             overrides.join("game").join(format!("{bare}.java.in")),
             format!("{{{{package}}}}\npublic final class {{{{{bare}}}}} {{\n}}\n"),
@@ -1400,17 +1281,26 @@ mod tests {
     fn tracked_templates(root: &Path, version: &str) -> usize {
         let overrides = root.join(format!(
             "minecraft/versions/{version}/{}",
-            super::HARNESS_OVERRIDES
+            super::templates::HARNESS_OVERRIDES
         ));
         let mut templates = 0;
         for (tree, held_by_the_version) in [
             (
-                super::SCREEN_TEMPLATES,
-                root.join(super::SCREEN_TEMPLATES).join(version),
+                super::templates::SCREEN_TEMPLATES,
+                root.join(super::templates::SCREEN_TEMPLATES).join(version),
             ),
-            (super::HARNESS_STAND_IN_TEMPLATES, overrides.join("game")),
-            (super::HARNESS_DRIVER_TEMPLATES, overrides.join("driver")),
-            (super::HARNESS_SIBLING_TEMPLATES, overrides.join("sibling")),
+            (
+                super::templates::HARNESS_STAND_IN_TEMPLATES,
+                overrides.join("game"),
+            ),
+            (
+                super::templates::HARNESS_DRIVER_TEMPLATES,
+                overrides.join("driver"),
+            ),
+            (
+                super::templates::HARNESS_SIBLING_TEMPLATES,
+                overrides.join("sibling"),
+            ),
         ] {
             let held: BTreeSet<OsString> = [root.join(tree), held_by_the_version]
                 .iter()

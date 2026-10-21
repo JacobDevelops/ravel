@@ -1,12 +1,11 @@
 //! Version data and common-source boundary checks.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_minecraft_generate::{AdapterFacts, Eligibility, adapter_facts};
+use ravel_minecraft_generate::{AdapterFacts, Eligibility, version_facts};
 
-use crate::hooks::{HookInventory, hook_counts, hook_inventory};
+use crate::hooks::{HookInventory, hook_counts};
 use crate::text::{read_text, redacted_path};
 use crate::tracked::collect_files;
 
@@ -20,10 +19,7 @@ const FIXTURE_VERSIONS: &str = "tests/fixtures/public/versions";
 fn version_directories(root: &Path, directories: &[&str]) -> Result<Vec<PathBuf>, String> {
     let mut versions = Vec::new();
     for directory in directories {
-        let entries = fs::read_dir(root.join(directory))
-            .map_err(|error| format!("cannot read {directory}: {error}"))?;
-        for entry in entries {
-            let entry = entry.map_err(|error| format!("cannot read {directory} entry: {error}"))?;
+        for entry in crate::text::entries(root, &root.join(directory))? {
             if entry.path().is_dir() {
                 versions.push(entry.path());
             }
@@ -49,10 +45,8 @@ pub(crate) type VersionAdapters = BTreeMap<String, AdapterFacts>;
 /// Whether a version can run in the matrix, or which input prevents generation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MatrixEligibility {
-    /// The adapter is eligible for live testing.
-    Live,
-    /// The adapter is only eligible for generation.
-    GenerationOnly,
+    /// Admission policy declared by the version adapter.
+    Eligible(Eligibility),
     /// A declared mapping input is absent.
     Unavailable {
         /// The missing repository-relative input path.
@@ -63,8 +57,7 @@ pub enum MatrixEligibility {
 impl std::fmt::Display for MatrixEligibility {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Live => formatter.write_str("live"),
-            Self::GenerationOnly => formatter.write_str("generation-only"),
+            Self::Eligible(eligibility) => formatter.write_str(eligibility.as_str()),
             Self::Unavailable { missing } => write!(formatter, "unavailable: {missing} is absent"),
         }
     }
@@ -80,7 +73,9 @@ pub fn matrix_eligibility(root: &Path, version: &str) -> Result<MatrixEligibilit
             "Minecraft {version} has no tracked version directory"
         ));
     }
-    let facts = adapter_facts(root, version).map_err(|error| error.to_string())?;
+    let facts = version_facts(root, version)
+        .map_err(|error| error.to_string())?
+        .adapter;
     if let Some(path) = facts
         .mapping_inputs
         .iter()
@@ -90,23 +85,20 @@ pub fn matrix_eligibility(root: &Path, version: &str) -> Result<MatrixEligibilit
             missing: path.clone(),
         });
     }
-    Ok(match facts.eligibility {
-        Eligibility::Live => MatrixEligibility::Live,
-        Eligibility::GenerationOnly => MatrixEligibility::GenerationOnly,
-    })
+    Ok(MatrixEligibility::Eligible(facts.eligibility))
 }
 
 /// Validates version inputs once and retains every admitted hook inventory.
-pub(crate) fn verify_version_directories(
+pub(crate) fn load_version_inputs(
     root: &Path,
     violations: &mut Vec<String>,
 ) -> (VersionAdapters, Vec<HookInventory>) {
-    let mut eligibility = BTreeMap::new();
+    let mut adapters = BTreeMap::new();
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
         Err(error) => {
             violations.push(error);
-            return (eligibility, Vec::new());
+            return (adapters, Vec::new());
         }
     };
     if versions.is_empty() {
@@ -114,7 +106,7 @@ pub(crate) fn verify_version_directories(
             "{VERSION_DATA} holds no version directory, so every check derived from version data \
              sweeps nothing and passes by having nothing to say"
         ));
-        return (eligibility, Vec::new());
+        return (adapters, Vec::new());
     }
 
     let mut inventories = Vec::with_capacity(versions.len());
@@ -124,62 +116,58 @@ pub(crate) fn verify_version_directories(
             violations.push(error);
         }
         let adapter = format!("{VERSION_DATA}/{version}/adapter.toml");
-        let facts = crate::text::require_file(root, &adapter)
-            .and_then(|_| adapter_facts(root, version).map_err(|error| error.to_string()));
-        for file in TOML_VERSION_FILES {
-            verify_version_toml(
-                root,
-                version,
-                &format!("{VERSION_DATA}/{version}/{file}"),
-                violations,
-            );
-        }
+        let facts = crate::text::require_file(root, &adapter).and_then(|_| {
+            ravel_minecraft_generate::version_facts_at(root, &root.join(VERSION_DATA).join(version))
+                .map_err(|error| error.to_string())
+        });
         match facts {
             Ok(facts) => {
-                match ravel_minecraft_generate::lock_paths_at(
-                    root,
-                    &root.join(VERSION_DATA).join(version),
-                ) {
-                    Ok(paths) => {
-                        for path in paths {
-                            verify_version_toml(
-                                root,
-                                version,
-                                &redacted_path(root, &path),
-                                violations,
-                            );
+                for path in facts.toml_inputs {
+                    verify_version_toml(root, version, &redacted_path(root, &path), violations);
+                }
+                adapters.insert(version.to_owned(), facts.adapter);
+                match facts.inventory {
+                    Ok(inventory) => match hook_counts(&inventory) {
+                        Ok(_) => inventories.push(inventory),
+                        Err(error) => {
+                            violations.push(format!("cannot count {}: {error}", inventory.path));
                         }
-                    }
+                    },
                     Err(error) => violations.push(error.to_string()),
                 }
-                eligibility.insert(version.to_owned(), facts);
-                if let Some(inventory) = verified_hook_inventory(root, version, violations) {
-                    inventories.push(inventory);
-                }
             }
-            Err(error) => violations.push(error),
+            Err(error) => {
+                violations.push(error);
+                verify_local_version_toml(root, version, violations);
+            }
         }
     }
-    (eligibility, inventories)
+    (adapters, inventories)
 }
 
-fn verified_hook_inventory(
-    root: &Path,
-    version: &str,
-    violations: &mut Vec<String>,
-) -> Option<HookInventory> {
-    let inventory = match hook_inventory(root, version) {
-        Ok(inventory) => inventory,
+fn verify_local_version_toml(root: &Path, version: &str, violations: &mut Vec<String>) {
+    let directory = root.join(VERSION_DATA).join(version);
+    let mut paths = match crate::text::entries(root, &directory) {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "toml")
+                    && path.file_name().is_some_and(|name| name != "adapter.toml")
+            })
+            .collect::<Vec<_>>(),
         Err(error) => {
             violations.push(error);
-            return None;
+            return;
         }
     };
-    if let Err(error) = hook_counts(&inventory) {
-        violations.push(format!("cannot count {}: {error}", inventory.path));
-        return None;
+    paths.extend(TOML_VERSION_FILES.iter().map(|name| directory.join(name)));
+    paths.sort();
+    paths.dedup();
+    for path in paths {
+        verify_version_toml(root, version, &redacted_path(root, &path), violations);
     }
-    Some(inventory)
 }
 
 fn verify_version_toml(root: &Path, version: &str, relative: &str, violations: &mut Vec<String>) {
@@ -426,22 +414,30 @@ fn version_class_names(
     }
     let fixture_versions = root.join(FIXTURE_VERSIONS);
     for directory in directories {
+        let facts = match ravel_minecraft_generate::version_facts_at(root, directory) {
+            Ok(facts) => facts,
+            Err(error) => {
+                let error = error.to_string();
+                if !violations.contains(&error) {
+                    violations.push(error);
+                }
+                continue;
+            }
+        };
         if directory.starts_with(&fixture_versions) {
-            match ravel_minecraft_generate::hook_inventory_at(root, directory) {
+            match facts.inventory {
                 Ok(inventory) => {
                     collect_hook_classes(&inventory, &mut classes, &mut references, violations);
                 }
                 Err(error) => violations.push(error.to_string()),
             }
         }
-        let mut paths = vec![
-            directory.join("stubs.toml"),
-            directory.join("reflection.toml"),
-        ];
-        if let Ok([mapping, _]) = ravel_minecraft_generate::lock_paths_at(root, directory) {
-            paths.push(mapping);
-        }
-        for path in paths {
+        for path in facts
+            .toml_inputs
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, path)| (index != 1).then_some(path))
+        {
             let text = match read_text(root, &path) {
                 Ok(text) => text,
                 Err(error) => {
@@ -527,21 +523,14 @@ fn collect_version_classes(
 
 fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>) {
     let crates = root.join("crates");
-    let entries = match fs::read_dir(&crates) {
+    let entries = match crate::text::entries(root, &crates) {
         Ok(entries) => entries,
         Err(error) => {
-            violations.push(format!("cannot read crates: {error}"));
+            violations.push(error);
             return;
         }
     };
     for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(error) => {
-                violations.push(format!("cannot read crates entry: {error}"));
-                continue;
-            }
-        };
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if let Some(suffix) = name.strip_prefix("ravel-minecraft-")

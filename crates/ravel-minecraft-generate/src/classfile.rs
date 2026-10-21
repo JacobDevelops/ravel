@@ -12,25 +12,64 @@ use noak::reader::{Attribute, Class};
 
 use crate::error::GenerateError;
 use crate::java_type::JavaType;
-use crate::mapping;
+
+/// Validates an internal class name without treating a descriptor as a name.
+pub(crate) fn verify_internal_class_name(name: &str) -> Result<(), String> {
+    if name.split('/').any(str::is_empty)
+        || name.chars().any(|character| {
+            character.is_whitespace()
+                || character.is_control()
+                || matches!(character, '.' | ';' | '[' | '(' | ')')
+        })
+    {
+        return Err(format!("{name:?} is not an internal class name"));
+    }
+    Ok(())
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DescriptorBase {
+    Primitive(JavaType),
+    Void,
+    Class,
+}
 
 /// One validated JVM type, retaining its exact spelling for opaque handles.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DescriptorType<'a> {
     pub(super) name: &'a str,
     pub(super) dimensions: usize,
     pub(super) descriptor: &'a str,
+    base: DescriptorBase,
 }
 
 impl<'a> DescriptorType<'a> {
-    pub(super) fn class_name(self) -> Option<&'a str> {
-        self.descriptor
-            .trim_start_matches('[')
-            .starts_with('L')
-            .then_some(self.name)
+    pub(super) fn class_name(&self) -> Option<&'a str> {
+        (self.base == DescriptorBase::Class).then_some(self.name)
     }
 
-    fn source(self) -> String {
+    pub(super) fn argument_type(self) -> Result<JavaType, String> {
+        if self.dimensions != 0 {
+            return Ok(
+                if self.dimensions == 1 && self.base == DescriptorBase::Primitive(JavaType::Byte) {
+                    JavaType::Bytes
+                } else {
+                    JavaType::Handle(self.descriptor.to_owned())
+                },
+            );
+        }
+        match self.base {
+            DescriptorBase::Primitive(kind) => Ok(kind),
+            DescriptorBase::Class if self.name == "java/lang/String" => Ok(JavaType::Text),
+            DescriptorBase::Class => Ok(JavaType::Handle(self.name.to_owned())),
+            DescriptorBase::Void => Err("void cannot be a hook argument".to_owned()),
+        }
+    }
+
+    pub(super) fn is_void(&self) -> bool {
+        self.base == DescriptorBase::Void
+    }
+
+    pub(super) fn source(self) -> String {
         let mut name = source_name(self.name);
         for _ in 0..self.dimensions {
             name.push_str("[]");
@@ -50,10 +89,10 @@ pub(super) fn descriptor_type(
         .chars()
         .next()
         .ok_or_else(|| format!("{descriptor} ends before a type does"))?;
-    let (name, after) = match first {
-        'V' if returns && dimensions == 0 => ("void", &rest[1..]),
+    let (name, after, base) = match first {
+        'V' if returns && dimensions == 0 => ("void", &rest[1..], DescriptorBase::Void),
         _ if let Some(kind) = rest.get(..1).and_then(JavaType::primitive_from_descriptor) => {
-            (kind.java(), &rest[1..])
+            (kind.java(), &rest[1..], DescriptorBase::Primitive(kind))
         }
         'L' => {
             let end = rest
@@ -63,13 +102,14 @@ pub(super) fn descriptor_type(
             if name.is_empty() {
                 return Err(format!("{descriptor} names no class between L and ;"));
             }
-            (name, &rest[end + 1..])
+            (name, &rest[end + 1..], DescriptorBase::Class)
         }
         other => return Err(format!("{other} is not a type descriptor")),
     };
     Ok((
         DescriptorType {
             name,
+            base,
             dimensions,
             descriptor: &descriptor[..descriptor.len() - after.len()],
         },
@@ -128,12 +168,12 @@ pub fn descriptor_classes(descriptor: &str) -> Result<Vec<&str>, GenerateError> 
         Ok(parameters
             .into_iter()
             .chain(std::iter::once(returns))
-            .filter_map(DescriptorType::class_name)
+            .filter_map(|kind| kind.class_name())
             .collect())
     } else {
         let kind = field_type(descriptor).map_err(GenerateError::Unsupported)?;
         if let Some(name) = kind.class_name() {
-            mapping::verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
+            verify_internal_class_name(name).map_err(GenerateError::Unsupported)?;
         }
         Ok(kind.class_name().into_iter().collect())
     }
@@ -150,9 +190,11 @@ pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError>
         .into_iter()
         .filter(|kind| {
             if kind.dimensions != 0 {
-                return kind.descriptor != "[B";
+                return kind.dimensions != 1
+                    || kind.base != DescriptorBase::Primitive(JavaType::Byte);
             }
-            kind.descriptor.starts_with('L') && kind.name != "java/lang/String"
+            kind.class_name()
+                .is_some_and(|name| name != "java/lang/String")
         })
         .count())
 }
@@ -162,9 +204,9 @@ pub(super) fn verified_method_types(
     descriptor: &str,
 ) -> Result<(Vec<DescriptorType<'_>>, DescriptorType<'_>), String> {
     let (parameters, returns) = method_types(descriptor)?;
-    for kind in parameters.iter().copied().chain(std::iter::once(returns)) {
+    for kind in parameters.iter().chain(std::iter::once(&returns)) {
         if let Some(name) = kind.class_name() {
-            mapping::verify_internal_class_name(name)?;
+            verify_internal_class_name(name)?;
         }
     }
     Ok((parameters, returns))

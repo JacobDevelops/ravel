@@ -11,16 +11,17 @@ use crate::evidence::rules::{
 };
 use crate::json::{array, number};
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_manifest_closure};
 use crate::evidence::model::{Verdict, admit, count_sum};
 use crate::evidence::rules::require;
 
 mod model;
 
 fn verify_counterpart_record(value: &Value) -> Result<(), String> {
-    let summary: model::CounterpartRecord<'_> = admit(value)?;
+    verify_counterpart_record_typed(&admit::<model::CounterpartRecord<'_>>(value)?)
+}
+
+fn verify_counterpart_record_typed(summary: &model::CounterpartRecord<'_>) -> Result<(), String> {
     crate::evidence::model::require_identity(summary.work_package.0, "M6-W6", "/workPackage")?;
     crate::evidence::model::require_identity(summary.protocol.0, "m6-counterpart-v1", "/protocol")?;
     require(summary.result == Verdict::Pass, "/result must be pass")?;
@@ -331,10 +332,17 @@ pub(crate) fn verify_m6_manifest(
 const M6_FIGURES: CarriedFigures = CarriedFigures {
     record: "counterpart-summary.json",
     subject: "counterpart set",
-    verify: |milestone, raw, manifest, carried, violations| match admit::<
-        model::CounterpartRecord<'_>,
-    >(raw)
-    {
+};
+
+#[cfg(test)]
+pub(crate) fn verify_m6_figures(
+    milestone: Milestone,
+    raw: &Value,
+    manifest: &Value,
+    carried: &CarriedFigures,
+    violations: &mut Vec<String>,
+) {
+    match admit::<model::CounterpartRecord<'_>>(raw) {
         Ok(record) => crate::evidence::closure::verify_typed_figures(
             milestone,
             &record,
@@ -349,17 +357,32 @@ const M6_FIGURES: CarriedFigures = CarriedFigures {
             milestone.directory(),
             carried.record
         )),
-    },
-};
+    }
+}
 
 pub(crate) fn verify_m6_integrity(
     root: &Path,
     manifest: &Value,
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
-    let records = read_records(root, Milestone::M6, M6_RECORDS, violations);
-    if let Some(record) = records.carried(&M6_FIGURES) {
-        verify_milestone_figures(Milestone::M6, record, manifest, &M6_FIGURES, violations);
+    let mut records = read_records(root, Milestone::M6, M6_RECORDS, violations);
+    if let Some(record) = records.get(M6_FIGURES.record) {
+        let result = match admit::<model::CounterpartRecord<'_>>(record) {
+            Ok(record) => {
+                crate::evidence::closure::verify_typed_figures(
+                    Milestone::M6,
+                    &record,
+                    manifest,
+                    &M6_FIGURES,
+                    M6_CARRIED_FIGURES,
+                    M6_ARITHMETIC,
+                    violations,
+                );
+                Ok(verify_counterpart_record_typed(&record))
+            }
+            Err(error) => Err(error),
+        };
+        records.checked(Milestone::M6, &M6_RECORDS[0], result, violations);
     }
     records
 }

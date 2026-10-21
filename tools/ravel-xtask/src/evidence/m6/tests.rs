@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::json::read_json;
 
-use crate::evidence::closure::verify_milestone_figures;
+use crate::evidence::m6::verify_m6_figures;
 use crate::evidence::m6::{M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_FIGURES, verify_m6_manifest};
 use crate::test_support::{ClosureCase, misstate_figure, mutate, temporary_root};
 
@@ -530,7 +530,7 @@ fn every_figure_m6_carries_is_recomputed_from_the_record() {
         misstate_figure(&root, &manifest, claimed_at);
         let mut violations = Vec::new();
 
-        verify_milestone_figures(
+        verify_m6_figures(
             crate::evidence::rules::Milestone::M6,
             &read_json(&root, &root.join("evidence/m6").join(M6_FIGURES.record))
                 .expect("summary should parse"),

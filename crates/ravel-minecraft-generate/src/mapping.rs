@@ -82,10 +82,10 @@ impl Mapping {
     }
 
     /// The reviewed internal name a linked internal name came from.
-    pub(super) fn mojang_class<'a>(&'a self, runtime: &'a str) -> &'a str {
+    pub(super) fn mojang_class_or_self<'a>(&'a self, runtime: &'a str) -> &'a str {
         match self {
             Self::Identity => runtime,
-            Self::NameMap(names) => names.mojang_class(runtime),
+            Self::NameMap(names) => names.mojang_class_or_self(runtime),
         }
     }
 
@@ -117,11 +117,11 @@ impl Mapping {
     /// that pair is what names one member.
     ///
     /// A pair the mapping does not carry reads as itself, for the reason
-    /// [`Self::mojang_class`] does: the pinned library jar beside the game is
+    /// [`Self::mojang_class_or_self`] does: the pinned library jar beside the game is
     /// described by no published mapping, and a mapped class still declares
     /// members — bridges, and anything the mapping had no reason to name — that
     /// the file lists none of.
-    pub(super) fn mojang_member<'a>(
+    pub(super) fn mojang_member_or_self<'a>(
         &'a self,
         mojang_class: &str,
         member: &'a str,
@@ -129,13 +129,13 @@ impl Mapping {
     ) -> &'a str {
         match self {
             Self::Identity => member,
-            Self::NameMap(names) => names.mojang_member(mojang_class, member, descriptor),
+            Self::NameMap(names) => names.mojang_member_or_self(mojang_class, member, descriptor),
         }
     }
 
     /// The linked pair one reviewed member is emitted as.
     ///
-    /// This is the inverse of [`Self::mojang_member`] and shares its
+    /// This is the inverse of [`Self::mojang_member_or_self`] and shares its
     /// pass-through: a member the mapping never named is emitted under the name
     /// it already carries, which is what a constructor and a library class's
     /// members need. [`Self::require_runtime_member`] refuses that case instead, because
@@ -501,7 +501,7 @@ impl NameMap {
             if runtime != own
                 && let Some(pair) = self
                     .members
-                    .get(self.mojang_class(&runtime))
+                    .get(self.mojang_class_or_self(&runtime))
                     .and_then(|members| members.get(&key))
             {
                 let declared = classfile::members(&bytes)
@@ -541,8 +541,10 @@ impl NameMap {
             );
             match record {
                 (Some("C"), Some(from), Some(to), None, None, None) => {
-                    verify_internal_class_name(from).map_err(|detail| unusable(number, &detail))?;
-                    verify_internal_class_name(to).map_err(|detail| unusable(number, &detail))?;
+                    classfile::verify_internal_class_name(from)
+                        .map_err(|detail| unusable(number, &detail))?;
+                    classfile::verify_internal_class_name(to)
+                        .map_err(|detail| unusable(number, &detail))?;
                     admit_class(&mut classes, &mut mojang, from, to, number)?;
                     declared.entry(from.to_owned()).or_default();
                 }
@@ -554,7 +556,7 @@ impl NameMap {
                     Some(runtime),
                     None,
                 ) => {
-                    verify_internal_class_name(owner)
+                    classfile::verify_internal_class_name(owner)
                         .map_err(|detail| unusable(number, &detail))?;
                     verify_member_name(name).map_err(|detail| unusable(number, &detail))?;
                     verify_member_name(runtime).map_err(|detail| unusable(number, &detail))?;
@@ -711,7 +713,7 @@ impl NameMap {
         self.classes.get(mojang).map_or(mojang, String::as_str)
     }
 
-    fn mojang_class<'a>(&'a self, runtime: &'a str) -> &'a str {
+    fn mojang_class_or_self<'a>(&'a self, runtime: &'a str) -> &'a str {
         self.mojang.get(runtime).map_or(runtime, String::as_str)
     }
 
@@ -724,7 +726,7 @@ impl NameMap {
         })
     }
 
-    fn mojang_member<'a>(
+    fn mojang_member_or_self<'a>(
         &'a self,
         mojang_class: &str,
         member: &'a str,
@@ -865,20 +867,6 @@ fn unusable(number: usize, detail: &str) -> GenerateError {
     ))
 }
 
-/// Validates an internal class name without treating a descriptor as a name.
-pub(crate) fn verify_internal_class_name(name: &str) -> Result<(), String> {
-    if name.split('/').any(str::is_empty)
-        || name.chars().any(|character| {
-            character.is_whitespace()
-                || character.is_control()
-                || matches!(character, '.' | ';' | '[' | '(' | ')')
-        })
-    {
-        return Err(format!("{name:?} is not an internal class name"));
-    }
-    Ok(())
-}
-
 /// Validates one member name, retaining JVM constructor spellings.
 fn verify_member_name(name: &str) -> Result<(), String> {
     if name.is_empty()
@@ -900,7 +888,7 @@ fn verify_descriptor(descriptor: &str, method: bool) -> Result<(), String> {
     } else {
         let kind = classfile::field_type(descriptor)?;
         if let Some(name) = kind.class_name() {
-            verify_internal_class_name(name)?;
+            classfile::verify_internal_class_name(name)?;
         }
     }
     Ok(())
@@ -937,13 +925,13 @@ fn map_descriptor(
             classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
         mapped.push('(');
         for kind in parameters {
-            map_type(&mut mapped, classes, kind);
+            map_type(&mut mapped, classes, &kind);
         }
         mapped.push(')');
-        map_type(&mut mapped, classes, returns);
+        map_type(&mut mapped, classes, &returns);
     } else {
         let kind = classfile::field_type(descriptor).map_err(GenerateError::Unsupported)?;
-        map_type(&mut mapped, classes, kind);
+        map_type(&mut mapped, classes, &kind);
     }
     Ok(mapped)
 }
@@ -951,7 +939,7 @@ fn map_descriptor(
 fn map_type(
     mapped: &mut String,
     classes: &BTreeMap<String, String>,
-    kind: classfile::DescriptorType<'_>,
+    kind: &classfile::DescriptorType<'_>,
 ) {
     if let Some(class) = kind.class_name() {
         for _ in 0..kind.dimensions {
@@ -997,9 +985,9 @@ com.example.Plain -> com.example.Plain:
         let mapping = parsed();
 
         assert_eq!(mapping.runtime_class_or_self("com/example/Alpha"), "a");
-        assert_eq!(mapping.mojang_class("a"), "com/example/Alpha");
+        assert_eq!(mapping.mojang_class_or_self("a"), "com/example/Alpha");
         assert_eq!(mapping.runtime_class_or_self("com/example/Beta"), "b$c");
-        assert_eq!(mapping.mojang_class("b$c"), "com/example/Beta");
+        assert_eq!(mapping.mojang_class_or_self("b$c"), "com/example/Beta");
         assert_eq!(
             mapping.runtime_class_or_self("com/example/Plain"),
             "com/example/Plain"
@@ -1008,7 +996,10 @@ com.example.Plain -> com.example.Plain:
             mapping.runtime_class_or_self("java/lang/String"),
             "java/lang/String"
         );
-        assert_eq!(mapping.mojang_class("java/lang/String"), "java/lang/String");
+        assert_eq!(
+            mapping.mojang_class_or_self("java/lang/String"),
+            "java/lang/String"
+        );
     }
 
     #[test]
@@ -1046,19 +1037,19 @@ com.example.Plain -> com.example.Plain:
         let mapping = Mapping::NameMap(parsed());
 
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "a", "(C)Z"),
+            mapping.mojang_member_or_self("com/example/Alpha", "a", "(C)Z"),
             "allowed"
         );
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "b", "(Lb$c;[I)Lb$c;"),
+            mapping.mojang_member_or_self("com/example/Alpha", "b", "(Lb$c;[I)Lb$c;"),
             "widen"
         );
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "f", "Ljava/util/regex/Pattern;"),
+            mapping.mojang_member_or_self("com/example/Alpha", "f", "Ljava/util/regex/Pattern;"),
             "PATTERN"
         );
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "g", "[[I"),
+            mapping.mojang_member_or_self("com/example/Alpha", "g", "[[I"),
             "grid"
         );
     }
@@ -1076,28 +1067,31 @@ com.example.Plain -> com.example.Plain:
         );
 
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "a", "()Ljava/lang/String;"),
+            mapping.mojang_member_or_self("com/example/Alpha", "a", "()Ljava/lang/String;"),
             "getValue"
         );
         assert_eq!(
-            mapping.mojang_member("com/example/Alpha", "a", "(Ljava/lang/String;)V"),
+            mapping.mojang_member_or_self("com/example/Alpha", "a", "(Ljava/lang/String;)V"),
             "setValue"
         );
     }
 
-    /// The leniency [`Mapping::mojang_class`] has, for the same reason: a mapped
+    /// The leniency [`Mapping::mojang_class_or_self`] has, for the same reason: a mapped
     /// class still declares members the published file names none of.
     #[test]
     fn a_linked_pair_no_mapping_carries_reads_as_itself() {
         let mapping = Mapping::NameMap(parsed());
 
-        assert_eq!(mapping.mojang_member("com/example/Alpha", "a", "(I)Z"), "a");
         assert_eq!(
-            mapping.mojang_member("com/example/Absent", "a", "(C)Z"),
+            mapping.mojang_member_or_self("com/example/Alpha", "a", "(I)Z"),
             "a"
         );
         assert_eq!(
-            Mapping::Identity.mojang_member("com/example/Alpha", "a", "(C)Z"),
+            mapping.mojang_member_or_self("com/example/Absent", "a", "(C)Z"),
+            "a"
+        );
+        assert_eq!(
+            Mapping::Identity.mojang_member_or_self("com/example/Alpha", "a", "(C)Z"),
             "a",
             "an identity mapping translates nothing, which is what hid this"
         );
@@ -1266,7 +1260,10 @@ com.example.Plain -> com.example.Plain:
                 .expect("only the outer method declares the linked pair"),
             ("a".to_owned(), "()V".to_owned())
         );
-        assert_eq!(mapping.mojang_member("com/example/A", "a", "()V"), "run");
+        assert_eq!(
+            mapping.mojang_member_or_self("com/example/A", "a", "()V"),
+            "run"
+        );
         for name in ["tick", "com.example.B.tick"] {
             assert!(
                 mapping
@@ -1304,7 +1301,7 @@ com.example.Plain -> com.example.Plain:
             "com/example/Alpha"
         );
         assert_eq!(
-            mapping.mojang_class("com/example/Alpha"),
+            mapping.mojang_class_or_self("com/example/Alpha"),
             "com/example/Alpha"
         );
         assert_eq!(
@@ -1978,7 +1975,7 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
     fn tiny_descriptors_and_overloads_resolve_in_both_directions() {
         let mapping = Mapping::tiny(NORMALIZED).expect("normalized mappings");
         assert_eq!(mapping.runtime_class_or_self("reviewed/Alpha"), "a");
-        assert_eq!(mapping.mojang_class("b"), "reviewed/Beta");
+        assert_eq!(mapping.mojang_class_or_self("b"), "reviewed/Beta");
         assert_eq!(
             mapping
                 .require_runtime_member("reviewed/Alpha", "read", "(I)Lreviewed/Beta;")
@@ -1986,7 +1983,7 @@ M\treviewed/Alpha\tread\t(I)Lreviewed/Beta;\tn
             ("n".to_owned(), "(I)Lb;".to_owned())
         );
         assert_eq!(
-            mapping.mojang_member("reviewed/Alpha", "m", "(Lb;)Lb;"),
+            mapping.mojang_member_or_self("reviewed/Alpha", "m", "(Lb;)Lb;"),
             "read"
         );
         assert_eq!(

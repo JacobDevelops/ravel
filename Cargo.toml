@@ -82,7 +82,7 @@ rvl-210-counterpart = { path = "registry/mods/rvl-210-counterpart", version = "0
 rvl-287-counterpart = { path = "registry/mods/rvl-287-counterpart", version = "0.1.0" }
 rvl-321-counterpart = { path = "registry/mods/rvl-321-counterpart", version = "0.1.0" }
 semver = { version = "1.0.28", features = ["serde"] }
-serde = { version = "=1.0.228", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.151"
 serde_path_to_error = "0.1.20"
 sha2 = "0.11.0"

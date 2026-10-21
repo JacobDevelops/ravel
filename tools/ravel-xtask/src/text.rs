@@ -41,6 +41,14 @@ pub(crate) fn redacted_path(root: &Path, path: &Path) -> String {
     };
     label.replace('\\', "/")
 }
+
+pub(crate) fn entries(root: &Path, directory: &Path) -> Result<Vec<fs::DirEntry>, String> {
+    let label = redacted_path(root, directory);
+    fs::read_dir(directory)
+        .map_err(|error| format!("cannot read {label}: {error}"))?
+        .map(|entry| entry.map_err(|error| format!("cannot read {label} entry: {error}")))
+        .collect()
+}
 const CARDINALS: [&str; 21] = [
     "zero",
     "one",
@@ -120,9 +128,10 @@ pub(crate) fn numbers_after(document: &str, noun: &[&str]) -> Vec<usize> {
         if !window_is_noun(noun, window) {
             continue;
         }
-        if words[at.saturating_sub(COUNT_LOOKBACK)..at]
-            .iter()
-            .any(|word| numeral(word).is_some())
+        if !matches!(noun.last(), Some(&"to" | &"from"))
+            && words[at.saturating_sub(COUNT_LOOKBACK)..at]
+                .iter()
+                .any(|word| numeral(word).is_some())
         {
             continue;
         }
@@ -163,38 +172,6 @@ pub(crate) fn verify_stated_counts(
             violations.push(differs(count));
         }
     }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum NumberAt {
-    BeforePhrase,
-    AfterPhrase,
-}
-
-pub(crate) fn stated_counts(document: &str, phrase: &str, number_at: NumberAt) -> Vec<usize> {
-    let mut counts = Vec::new();
-    let mut offset = 0;
-    while let Some(found) = document[offset..].find(phrase) {
-        let at = offset + found;
-        offset = at + phrase.len();
-        let digits = match number_at {
-            NumberAt::BeforePhrase => {
-                let head = document[..at].trim_end();
-                let start =
-                    head.len() - head.chars().rev().take_while(char::is_ascii_digit).count();
-                &head[start..]
-            }
-            NumberAt::AfterPhrase => {
-                let tail = document[offset..].trim_start();
-                let end = tail.chars().take_while(char::is_ascii_digit).count();
-                &tail[..end]
-            }
-        };
-        if let Ok(count) = digits.parse() {
-            counts.push(count);
-        }
-    }
-    counts
 }
 
 #[cfg(test)]

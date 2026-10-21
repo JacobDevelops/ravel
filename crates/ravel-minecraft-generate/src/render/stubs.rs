@@ -122,7 +122,13 @@ fn stub_method(
     simple: &str,
     mapping: &Mapping,
 ) -> Result<String, String> {
-    let (parameters, erased) = signature(descriptor)?;
+    let (parameters, returns) = crate::classfile::method_types(descriptor)?;
+    let is_void = returns.is_void();
+    let parameters: Vec<_> = parameters
+        .into_iter()
+        .map(crate::classfile::DescriptorType::source)
+        .collect();
+    let erased = returns.source();
     // Preserve the recorded element type as well as the erased JVM return.
     let returns = match &member.returns {
         Some(recorded) => format!("{erased}<{}>", argument(recorded, mapping)?),
@@ -140,7 +146,7 @@ fn stub_method(
             "\n    {modifiers}{simple}({declared}) {{\n{chained}    }}"
         ));
     }
-    if returns == "void" {
+    if is_void {
         return Ok(format!(
             "\n    {modifiers}void {name}({declared}) {{\n    }}"
         ));

@@ -206,9 +206,15 @@ pub fn verify_fixture_archive(
             ))
         })?;
 
-    let mut verified = verify_manifest(&descriptor.manifest, &manifest)?;
-    verified.override_jar_count = count_override_jars(archive, descriptor.manifest.entry.as_str())?;
-    Ok(verified)
+    verify_manifest(&descriptor.manifest, &manifest)?;
+    let override_jar_count = count_override_jars(archive, descriptor.manifest.entry.as_str())?;
+    Ok(FixtureVerification {
+        minecraft: manifest.minecraft.version,
+        mod_loader: descriptor.manifest.mod_loader.clone(),
+        pack_version: manifest.version,
+        reference_count: manifest.files.len(),
+        override_jar_count,
+    })
 }
 
 fn count_override_jars(archive: ZipArchive<File>, manifest: &str) -> Result<usize, FixtureError> {
@@ -384,7 +390,7 @@ fn fixture_source_root(
 fn verify_manifest(
     expected: &ExpectedManifest,
     actual: &CurseForgeManifest,
-) -> Result<FixtureVerification, FixtureError> {
+) -> Result<(), FixtureError> {
     require_metadata(
         "manifestType",
         &expected.manifest_type,
@@ -438,13 +444,7 @@ fn verify_manifest(
         }
     }
 
-    Ok(FixtureVerification {
-        minecraft: actual.minecraft.version.clone(),
-        mod_loader: actual_loader.clone(),
-        pack_version: actual.version.clone(),
-        reference_count: actual.files.len(),
-        override_jar_count: 0,
-    })
+    Ok(())
 }
 
 fn require_hash(

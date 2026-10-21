@@ -1,6 +1,5 @@
 //! Shared screen templates and version-specific API overrides.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::reflection::GAME_PACKAGES;
@@ -54,21 +53,14 @@ pub(crate) fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>)
             return;
         }
     };
-    let entries = match fs::read_dir(&directory) {
+    let entries = match crate::text::entries(root, &directory) {
         Ok(entries) => entries,
         Err(error) => {
-            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}: {error}"));
+            violations.push(error);
             return;
         }
     };
     for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(error) => {
-                violations.push(format!("cannot read {SCREEN_JAR_SOURCES} entry: {error}"));
-                continue;
-            }
-        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -92,23 +84,14 @@ fn verify_version_overrides(
     name: &str,
     violations: &mut Vec<String>,
 ) {
-    let overrides = match fs::read_dir(path) {
+    let overrides = match crate::text::entries(root, path) {
         Ok(overrides) => overrides,
         Err(error) => {
-            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}: {error}"));
+            violations.push(error);
             return;
         }
     };
     for over in overrides {
-        let over = match over {
-            Ok(over) => over,
-            Err(error) => {
-                violations.push(format!(
-                    "cannot read {SCREEN_JAR_SOURCES}/{name} entry: {error}"
-                ));
-                continue;
-            }
-        };
         let file = over.file_name().to_string_lossy().into_owned();
         if over.path().is_dir() {
             violations.push(format!(

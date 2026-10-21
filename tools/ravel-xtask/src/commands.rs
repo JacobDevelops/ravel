@@ -123,23 +123,9 @@ fn report_outcome(result: Result<(), Box<dyn Error>>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("operation failed: {}", FailureReport(error.as_ref()));
+            eprintln!("operation failed: {error}");
             ExitCode::FAILURE
         }
-    }
-}
-
-struct FailureReport<'a>(&'a dyn Error);
-
-impl std::fmt::Display for FailureReport<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.0)?;
-        let mut source = self.0.source();
-        while let Some(cause) = source {
-            write!(formatter, ": {cause}")?;
-            source = cause.source();
-        }
-        Ok(())
     }
 }
 
@@ -149,7 +135,7 @@ fn build_host(
     cache: &Path,
     minecraft: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let built = ravel_xtask::host::build_host(instance, root, cache, minecraft)?;
+    let built = ravel_build::build_host(instance, root, cache, minecraft)?;
     println!(
         "Built a host for {} package(s) at fingerprint {}: {}",
         built.members.len(),
@@ -269,12 +255,11 @@ mod tests {
 
     #[test]
     fn operation_failures_render_the_outer_context_and_original_refusal_once() {
-        let error = ravel_xtask::host::HostBuildRefused::Discovery(
-            ravel_loader::DiscoveryRefused::NotAPackage {
+        let error =
+            ravel_build::HostBuildRefused::Discovery(ravel_loader::DiscoveryRefused::NotAPackage {
                 directory: "packages".to_owned(),
-            },
-        );
-        let rendered = super::FailureReport(&error).to_string();
+            });
+        let rendered = error.to_string();
         assert_eq!(
             rendered,
             "host package discovery failed: `packages` is installed beside the packages and is not one"

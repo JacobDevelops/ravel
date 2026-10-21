@@ -97,12 +97,10 @@ fn stated_verdict(line: &str) -> Option<Verdict> {
         .strip_prefix("Result:")
         .or_else(|| line.strip_prefix("Result**:"))?;
     let value = value.trim().trim_matches(['*', ' ']).to_ascii_lowercase();
-    match value.as_str() {
-        "pass" => Some(Verdict::Pass),
-        "fail" => Some(Verdict::Fail),
-        "not-required" => Some(Verdict::NotRequired),
-        _ => None,
-    }
+    serde::Deserialize::deserialize(
+        serde::de::value::StrDeserializer::<serde::de::value::Error>::new(&value),
+    )
+    .ok()
 }
 
 pub(super) fn names_a_path(name: &str) -> bool {
@@ -163,4 +161,29 @@ fn file_digest(path: &Path) -> Result<Sha256Digest, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("cannot read the recorded file: {error}"))?;
     Ok(Sha256Digest::from_bytes(Sha256::digest(&bytes).into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Verdict, stated_verdict};
+
+    #[test]
+    fn review_prose_accepts_the_complete_typed_verdict_vocabulary() {
+        for verdict in [
+            Verdict::Pass,
+            Verdict::Fail,
+            Verdict::Provisional,
+            Verdict::NotRequired,
+        ] {
+            assert_eq!(
+                stated_verdict(&format!("**Result**: **{verdict}**")),
+                Some(verdict)
+            );
+            assert_eq!(
+                stated_verdict(&format!("Result: {}", verdict.to_string().to_uppercase())),
+                Some(verdict)
+            );
+        }
+        assert_eq!(stated_verdict("Result: unknown"), None);
+    }
 }

@@ -146,16 +146,14 @@ fn verify_m2_budget_limits(value: &Value) -> Result<(), String> {
         "/budget/limits unique metric",
     )?;
     for (index, limit) in limits.iter().enumerate() {
-        let measured = limit.measured.as_f64();
+        let measured = limit.measured;
         require(
-            measured.is_some_and(|measured| measured > 0.0),
+            measured.is_finite() && measured > 0.0,
             "/measured must be positive",
         )
         .map_err(|error| format!("/budget/limits/{index}{error}"))?;
         require(
-            measured
-                .zip(limit.limit.as_f64())
-                .is_some_and(|(measured, upper)| upper > measured),
+            limit.limit.is_finite() && limit.limit > measured,
             "/limit must exceed measured",
         )
         .map_err(|error| format!("/budget/limits/{index}{error}"))?;
@@ -194,7 +192,7 @@ fn verify_m2_prism_launch(value: &Value) -> Result<(), String> {
             "/ravel/rewrite/nativeInvocations",
         ),
     ] {
-        require(count.as_f64().is_some_and(|count| count > 0.0), requirement)?;
+        require(*count > 0, requirement)?;
     }
     require(
         record.instance.without_another_loader,

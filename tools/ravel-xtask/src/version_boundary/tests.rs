@@ -5,14 +5,22 @@ use crate::scaffold::java_shape::REFLECTION_FILE;
 use crate::test_support::{adapter_document, temporary_root, version_directory};
 use crate::version_boundary::{
     SWEPT_SCOPE, TOML_VERSION_FILES, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_PROSE_FILE,
-    verify_version_boundary, verify_version_directories, version_class_names, version_directories,
+    load_version_inputs, verify_version_boundary, version_class_names, version_directories,
 };
 
 #[test]
 fn matrix_eligibility_preserves_cli_spellings() {
     for (eligibility, text) in [
-        (super::MatrixEligibility::Live, "live"),
-        (super::MatrixEligibility::GenerationOnly, "generation-only"),
+        (
+            super::MatrixEligibility::Eligible(ravel_minecraft_generate::Eligibility::Live),
+            "live",
+        ),
+        (
+            super::MatrixEligibility::Eligible(
+                ravel_minecraft_generate::Eligibility::GenerationOnly,
+            ),
+            "generation-only",
+        ),
         (
             super::MatrixEligibility::Unavailable {
                 missing: "mapping.tiny".to_owned(),
@@ -57,7 +65,7 @@ fn matrix_eligibility_uses_the_declared_mapping_instead_of_its_extension() {
         .expect("normalizer should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "1.12.2").expect("valid eligibility"),
-        super::MatrixEligibility::GenerationOnly
+        super::MatrixEligibility::Eligible(ravel_minecraft_generate::Eligibility::GenerationOnly)
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -80,7 +88,7 @@ fn modern_versions_cannot_downgrade_or_misspell_eligibility() {
         .expect("adapter should be writable");
     assert_eq!(
         super::matrix_eligibility(&root, "26.1.2").expect("default eligibility"),
-        super::MatrixEligibility::Live
+        super::MatrixEligibility::Eligible(ravel_minecraft_generate::Eligibility::Live)
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -96,7 +104,7 @@ fn a_scaffolded_modern_manifest_cannot_opt_out_of_live_coverage() {
     .expect("adapter should be writable");
     assert!(super::matrix_eligibility(&root, "26.1.2").is_err());
     let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
     assert!(
         violations
             .iter()
@@ -112,7 +120,7 @@ fn version_specific_crates_and_production_literals_are_rejected() {
     version_specific_crates_fixture(&root);
     let mut violations = Vec::new();
 
-    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let (_, inventories) = load_version_inputs(&root, &mut violations);
     verify_version_boundary(&root, &inventories, &mut violations);
 
     assert!(
@@ -174,7 +182,7 @@ fn a_version_directory_missing_a_required_file_is_reported() {
     version_directory(&root, "99.0.0-synthetic", &["stubs.lock"]);
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(
         violations,
@@ -190,7 +198,7 @@ fn prose_and_adapter_files_have_distinct_validation() {
     version_directory(&root, version, &[VERSION_PROSE_FILE]);
     let directory = root.join(VERSION_DATA).join(version);
     let mut violations = Vec::new();
-    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    let (adapters, inventories) = load_version_inputs(&root, &mut violations);
     assert_eq!(adapters.len(), 1);
     assert_eq!(inventories.len(), 1);
     assert_eq!(
@@ -203,7 +211,7 @@ fn prose_and_adapter_files_have_distinct_validation() {
         .expect("prose should be writable");
     fs::remove_file(directory.join("adapter.toml")).expect("adapter should be removable");
     violations.clear();
-    let (adapters, inventories) = verify_version_directories(&root, &mut violations);
+    let (adapters, inventories) = load_version_inputs(&root, &mut violations);
     assert!(adapters.is_empty());
     assert!(inventories.is_empty());
     assert_eq!(
@@ -228,7 +236,7 @@ fn a_version_whose_inventory_cannot_be_counted_is_reported() {
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -250,7 +258,7 @@ fn a_version_whose_inventory_declares_no_hook_is_reported() {
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(
         violations,
@@ -258,6 +266,26 @@ fn a_version_whose_inventory_declares_no_hook_is_reported() {
             "cannot count minecraft/versions/26.1.2/hooks.toml: the inventory declares no \
              `[[hook]]` entry"
         ]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn rejected_adapter_keeps_missing_local_toml_diagnostics() {
+    let root = temporary_root("invalid-adapter-missing-local");
+    version_directory(&root, "26.1.2", &[]);
+    let directory = root.join(format!("{VERSION_DATA}/26.1.2"));
+    fs::write(directory.join("adapter.toml"), "not TOML").expect("adapter should write");
+    fs::remove_file(directory.join("stubs.toml")).expect("stub input should be removable");
+    let mut violations = Vec::new();
+
+    load_version_inputs(&root, &mut violations);
+
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(violations[0].contains("minecraft/versions/26.1.2/adapter.toml"));
+    assert_eq!(
+        violations[1],
+        "missing required file: minecraft/versions/26.1.2/stubs.toml"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -275,19 +303,19 @@ fn a_version_directory_declaring_another_versions_data_is_reported() {
     }
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(
-        violations.len(),
-        TOML_VERSION_FILES.len() + 1,
-        "{violations:?}"
+        violations,
+        [
+            "an input drifted: minecraft/versions/1.21.1/adapter.toml: the version directory \
+             is named 1.21.1 but its adapter inputs pin 26.1.2",
+            "minecraft/versions/1.21.1/reflection.toml declares Minecraft 26.1.2 while its \
+             directory is named 1.21.1",
+            "minecraft/versions/1.21.1/stubs.toml declares Minecraft 26.1.2 while its \
+             directory is named 1.21.1"
+        ]
     );
-    for violation in &violations {
-        assert!(
-            violation.contains("26.1.2") && violation.contains("1.21.1"),
-            "{violations:?}"
-        );
-    }
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -324,14 +352,14 @@ fn a_version_declaring_no_pack_format_is_reported() {
         )
         .expect("version data should be writable");
         let mut violations = Vec::new();
-        verify_version_directories(&root, &mut violations);
+        load_version_inputs(&root, &mut violations);
         assert_eq!(violations.len(), 1, "{key}: {violations:?}");
         assert!(violations[0].contains(key), "{key}: {violations:?}");
     }
     fs::write(&adapter, adapter_document("26.1.2", "live", None))
         .expect("version data should be writable");
     let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -347,7 +375,7 @@ fn a_version_file_declaring_no_version_is_reported() {
     .expect("version data should be writable");
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(
         violations,
@@ -365,7 +393,7 @@ fn a_version_tree_holding_no_version_is_not_read_as_agreement() {
     fs::create_dir_all(root.join(VERSION_DATA)).expect("version tree should be creatable");
     let mut violations = Vec::new();
 
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
@@ -385,7 +413,7 @@ fn unreadable_version_roots_are_reported() {
         .expect_err("a version root must be readable as a directory");
     assert!(error.contains("cannot read minecraft/versions"), "{error}");
     let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(violations[0].contains("cannot read minecraft/versions"));
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -401,7 +429,7 @@ fn malformed_non_adapter_version_files_are_reported() {
     )
     .expect("version data should be writable");
     let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
         violations[0].contains("cannot parse minecraft/versions/26.1.2/stubs.toml as TOML"),
@@ -418,7 +446,7 @@ fn unreadable_and_malformed_class_inventory_files_are_reported() {
     fs::remove_file(directory.join("hooks.toml")).expect("hook file should be removable");
     fs::create_dir(directory.join("hooks.toml")).expect("unreadable hook path should be creatable");
     let mut violations = Vec::new();
-    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let (_, inventories) = load_version_inputs(&root, &mut violations);
     fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
     version_class_names(&root, &[directory], &inventories, &mut violations);
     assert_eq!(violations.len(), 2, "{violations:?}");
@@ -446,7 +474,7 @@ fn a_reflected_class_name_is_version_data_the_boundary_sweep_reads() {
     let directories = version_directories(&root, &[VERSION_DATA])
         .expect("version directories should be readable");
     let mut violations = Vec::new();
-    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let (_, inventories) = load_version_inputs(&root, &mut violations);
     let classes = version_class_names(&root, &directories, &inventories, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
 
@@ -481,7 +509,7 @@ fn a_retired_declaration_is_a_violation_in_every_spelling() {
         retired_declaration_root(&root, declaration);
 
         let mut violations = Vec::new();
-        verify_version_directories(&root, &mut violations);
+        load_version_inputs(&root, &mut violations);
 
         assert!(
             violations
@@ -500,7 +528,7 @@ fn an_unparseable_adapter_is_a_violation_rather_than_a_pass() {
     retired_declaration_root(&root, "[harness\nthis is not toml\n");
 
     let mut violations = Vec::new();
-    verify_version_directories(&root, &mut violations);
+    load_version_inputs(&root, &mut violations);
 
     assert!(
         violations
@@ -525,7 +553,7 @@ fn an_adapter_without_the_retired_table_is_accepted() {
         retired_declaration_root(&root, declaration);
 
         let mut violations = Vec::new();
-        verify_version_directories(&root, &mut violations);
+        load_version_inputs(&root, &mut violations);
 
         if declaration.is_empty() {
             assert!(violations.is_empty(), "{label}: {violations:?}");
@@ -601,7 +629,7 @@ fn version_readmes_follow_the_adapter_inventory_and_its_reviewed_counts() {
     .expect("README should be writable");
     fs::remove_file(directory.join("hooks.toml")).expect("stray hooks should be removable");
     let mut violations = Vec::new();
-    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let (_, inventories) = load_version_inputs(&root, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
     assert_eq!(inventories.len(), 1);
     super::verify_version_readmes(&root, &inventories, &mut violations);
@@ -630,7 +658,7 @@ fn version_readmes_follow_the_adapter_inventory_and_its_reviewed_counts() {
 fn version_admission_reports_unreadable_version_directories() {
     let root = temporary_root("version-readme-missing-directory");
     let mut violations = Vec::new();
-    let (eligibility, inventories) = verify_version_directories(&root, &mut violations);
+    let (eligibility, inventories) = load_version_inputs(&root, &mut violations);
     assert!(eligibility.is_empty());
     assert!(inventories.is_empty());
     assert_eq!(violations.len(), 1, "{violations:?}");
@@ -668,7 +696,7 @@ fn boundary_classes_follow_the_admitted_inventory_not_stray_default_hooks() {
     )
     .expect("production source should be writable");
     let mut violations = Vec::new();
-    let (_, inventories) = verify_version_directories(&root, &mut violations);
+    let (_, inventories) = load_version_inputs(&root, &mut violations);
     assert!(violations.is_empty(), "{violations:?}");
     for stray in [false, true] {
         if stray {
@@ -882,7 +910,7 @@ fn incomplete_version_metadata_keeps_findings_without_stale_excuses() {
         fs::write(source.join("lib.rs"), "26.1.2 net.minecraft.client.One")
             .expect("source should be writable");
         let mut violations = Vec::new();
-        let (_, inventories) = verify_version_directories(&root, &mut violations);
+        let (_, inventories) = load_version_inputs(&root, &mut violations);
         verify_version_boundary(&root, &inventories, &mut violations);
         assert!(
             violations.iter().any(|message| message.contains(file)),

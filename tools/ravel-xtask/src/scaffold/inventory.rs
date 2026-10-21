@@ -4,7 +4,7 @@ use std::path::Path;
 use std::{collections::BTreeSet, fs};
 
 use crate::hooks::{HookCounts, HookInventory, hook_counts};
-use crate::text::{NumberAt, read_text, stated_counts, verify_stated_counts};
+use crate::text::{numbers_after, numbers_before, read_text, verify_stated_counts};
 use crate::tracked::collect_files;
 use crate::version_boundary::VERSION_DATA;
 
@@ -83,33 +83,28 @@ fn documented_versions(document: &str) -> BTreeSet<String> {
 
 fn hook_document_violations(document: &str, inventory: &str, counts: &HookCounts) -> Vec<String> {
     let mut violations = Vec::new();
-    for (phrase, side, expected, subject) in [
+    for (words, after, expected, subject) in [
+        (&["entries", "to"][..], true, counts.entries, "hook entries"),
         (
-            " entries to ",
-            NumberAt::AfterPhrase,
-            counts.entries,
-            "hook entries",
-        ),
-        (
-            " methods and ",
-            NumberAt::BeforePhrase,
+            &["methods", "and"][..],
+            false,
             counts.methods,
             "method entries",
         ),
+        (&["fields"][..], false, counts.fields, "field entries"),
         (
-            " fields",
-            NumberAt::BeforePhrase,
-            counts.fields,
-            "field entries",
-        ),
-        (
-            " handle parameters",
-            NumberAt::BeforePhrase,
+            &["handle", "parameters"][..],
+            false,
             counts.handles,
             "handle parameters",
         ),
     ] {
-        let stated = stated_counts(document, phrase, side);
+        let phrase = words.join(" ");
+        let stated = if after {
+            numbers_after(document, words)
+        } else {
+            numbers_before(document, words)
+        };
         verify_stated_counts(
             &stated,
             expected,

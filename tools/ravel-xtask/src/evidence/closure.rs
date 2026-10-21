@@ -60,19 +60,48 @@ fn same_figure(claimed: &Value, measured: &Value) -> bool {
 #[derive(Default)]
 pub(crate) struct LoadedRecords {
     values: BTreeMap<&'static str, Value>,
+    provisional: BTreeSet<&'static str>,
+    checked: BTreeMap<&'static str, Result<(), String>>,
     reported: BTreeSet<&'static str>,
 }
 
 impl LoadedRecords {
+    pub(crate) fn mark_provisional(&mut self, name: &'static str) {
+        self.provisional.insert(name);
+    }
+
+    pub(crate) fn has_checked(&self, name: &str) -> bool {
+        self.checked.contains_key(name)
+    }
+
+    pub(crate) fn is_provisional(&self, name: &str) -> bool {
+        self.provisional.contains(name)
+    }
+
+    pub(crate) fn checked(
+        &mut self,
+        milestone: Milestone,
+        definition: &RecordDefinition,
+        result: Result<Result<(), String>, String>,
+        violations: &mut Vec<String>,
+    ) {
+        let result = result.unwrap_or_else(|error| {
+            violations.push(format!(
+                "{}/{}: {error}",
+                milestone.directory(),
+                definition.name
+            ));
+            self.reported.insert(definition.name);
+            Err(error)
+        });
+        self.checked.insert(definition.name, result);
+    }
+
     pub(crate) fn get(&self, name: &str) -> Option<&Value> {
         self.values.get(name)
     }
 
-    pub(crate) fn carried(&self, figures: &CarriedFigures) -> Option<&Value> {
-        self.get(figures.record)
-    }
-
-    /// Whether loading already reported a failure for this record.
+    /// Whether loading or typed admission already reported a failure for this record.
     pub(crate) fn already_reported(&self, name: &str) -> bool {
         self.reported.contains(name)
     }
@@ -141,11 +170,18 @@ pub(crate) fn verify_closure_records(
             continue;
         };
         let result = if record["milestone"].as_str() == Some(milestone.as_str()) {
-            rule(record)
+            records
+                .checked
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| rule(record))
         } else {
             Err(format!("/milestone must be {milestone}"))
         };
-        if let Err(requirement) = result {
+        if let Err(requirement) = result
+            && (record["milestone"].as_str() != Some(milestone.as_str())
+                || !records.already_reported(name))
+        {
             violations.push(format!(
                 "{milestone} closure requires {description}: {relative}: failed {requirement}"
             ));
@@ -167,17 +203,6 @@ pub(crate) fn verify_manifest_closure(
 pub(crate) struct CarriedFigures {
     pub(crate) record: &'static str,
     pub(crate) subject: &'static str,
-    pub(crate) verify: fn(Milestone, &Value, &Value, &Self, &mut Vec<String>),
-}
-
-pub(crate) fn verify_milestone_figures(
-    milestone: Milestone,
-    record: &Value,
-    manifest: &Value,
-    carried: &CarriedFigures,
-    violations: &mut Vec<String>,
-) {
-    (carried.verify)(milestone, record, manifest, carried, violations);
 }
 
 pub(crate) fn verify_typed_figures<T, F: Fn(&T) -> Option<Value>, R: Fn(&T) -> bool>(

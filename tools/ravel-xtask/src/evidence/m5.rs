@@ -12,16 +12,17 @@ use crate::evidence::rules::{
 };
 use crate::json::array;
 
-use crate::evidence::closure::{
-    CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
-};
+use crate::evidence::closure::{CarriedFigures, verify_closure_records, verify_manifest_closure};
 use crate::evidence::model::{Verdict, admit, count_sum};
 use crate::evidence::rules::require;
 
 mod model;
 
 fn verify_inventory_record(value: &Value) -> Result<(), String> {
-    let inventory: model::Inventory<'_> = admit(value)?;
+    verify_inventory_record_typed(&admit::<model::Inventory<'_>>(value)?)
+}
+
+fn verify_inventory_record_typed(inventory: &model::Inventory<'_>) -> Result<(), String> {
     crate::evidence::model::require_identity(inventory.work_package.0, "M5-W8", "/workPackage")?;
     crate::evidence::model::require_identity(inventory.protocol.0, "m5-inventory-v1", "/protocol")?;
     require(
@@ -104,9 +105,13 @@ pub(crate) fn verify_m5_manifest(
 
     verify_closure_records(Milestone::M5, records, M5_RECORDS, violations);
 
-    if records.get("inventory-summary.json").is_some_and(|value| {
-        admit::<model::Inventory<'_>>(value).is_ok_and(|r| r.result == Verdict::Provisional)
-    }) {
+    let provisional = records.is_provisional("inventory-summary.json")
+        || (!records.has_checked("inventory-summary.json")
+            && records.get("inventory-summary.json").is_some_and(|value| {
+                admit::<model::Inventory<'_>>(value)
+                    .is_ok_and(|record| record.result == Verdict::Provisional)
+            }));
+    if provisional {
         violations.push(
             "M5 closure requires final figures: evidence/m5/inventory-summary.json records itself \
              as provisional, which is a true statement about an inventory under repair and not \
@@ -237,11 +242,24 @@ const M5_CARRIED_FIGURES: &[(&str, InventoryFigure)] = &[
     }),
 ];
 
+pub(super) fn inventory_total(raw: &Value) -> Result<u64, String> {
+    Ok(admit::<model::Inventory<'_>>(raw)?.artifacts.total)
+}
+
 pub(crate) const M5_FIGURES: CarriedFigures = CarriedFigures {
     record: "inventory-summary.json",
     subject: "inventory",
-    verify: |milestone, raw, manifest, carried, violations| match admit::<model::Inventory<'_>>(raw)
-    {
+};
+
+#[cfg(test)]
+pub(crate) fn verify_m5_figures(
+    milestone: Milestone,
+    raw: &Value,
+    manifest: &Value,
+    carried: &CarriedFigures,
+    violations: &mut Vec<String>,
+) {
+    match admit::<model::Inventory<'_>>(raw) {
         Ok(record) => crate::evidence::closure::verify_typed_figures(
             milestone,
             &record,
@@ -256,17 +274,38 @@ pub(crate) const M5_FIGURES: CarriedFigures = CarriedFigures {
             milestone.directory(),
             carried.record
         )),
-    },
-};
+    }
+}
 
 pub(crate) fn verify_m5_integrity(
     root: &Path,
     manifest: &Value,
     violations: &mut Vec<String>,
 ) -> LoadedRecords {
-    let records = read_records(root, Milestone::M5, M5_RECORDS, violations);
-    if let Some(record) = records.carried(&M5_FIGURES) {
-        verify_milestone_figures(Milestone::M5, record, manifest, &M5_FIGURES, violations);
+    let mut records = read_records(root, Milestone::M5, M5_RECORDS, violations);
+    if let Some(record) = records.get(M5_FIGURES.record) {
+        let (result, provisional) = match admit::<model::Inventory<'_>>(record) {
+            Ok(record) => {
+                crate::evidence::closure::verify_typed_figures(
+                    Milestone::M5,
+                    &record,
+                    manifest,
+                    &M5_FIGURES,
+                    M5_CARRIED_FIGURES,
+                    M5_ARITHMETIC,
+                    violations,
+                );
+                (
+                    Ok(verify_inventory_record_typed(&record)),
+                    record.result == Verdict::Provisional,
+                )
+            }
+            Err(error) => (Err(error), false),
+        };
+        if provisional {
+            records.mark_provisional(M5_FIGURES.record);
+        }
+        records.checked(Milestone::M5, &M5_RECORDS[0], result, violations);
     }
     records
 }

@@ -1,6 +1,5 @@
 use crate::evidence::model::{NonemptyRows, NonemptyString, UpperBoundOperator};
 use serde::Deserialize;
-use serde_json::Number;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,9 +24,9 @@ pub(super) struct BudgetMetric<'a> {
     #[serde(rename = "operator")]
     _operator: UpperBoundOperator,
 
-    pub(super) measured: Number,
+    pub(super) measured: f64,
 
-    pub(super) limit: Number,
+    pub(super) limit: f64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,11 +87,11 @@ pub(super) struct Rewrite {
 
     pub(super) reached_ravel: bool,
 
-    pub(super) classes_rewritten: Number,
+    pub(super) classes_rewritten: u64,
 
-    pub(super) methods_rewritten: Number,
+    pub(super) methods_rewritten: u64,
 
-    pub(super) native_invocations: Number,
+    pub(super) native_invocations: u64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

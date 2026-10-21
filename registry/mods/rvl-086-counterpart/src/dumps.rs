@@ -51,7 +51,7 @@ pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
 pub fn census() -> Result<String, ModError> {
     let claimed: Vec<JsonValue> = census::claims()
         .into_iter()
-        .map(|(kind, name)| json!({"kind": format!("{kind:?}"), "name": name}))
+        .map(|(kind, name)| json!({"kind": kind.as_str(), "name": name}))
         .collect();
     let grouping = census::grouping(crate::FLAG_NAMESPACE).map_err(ModError::from_display)?;
     let listed: Vec<JsonValue> = grouping
@@ -74,7 +74,7 @@ pub fn census() -> Result<String, ModError> {
         .map(|(name, shape)| {
             json!({
                 "item": name,
-                "shape": shape.map(|shape| format!("{shape:?}")),
+                "shape": shape.map(Shape::as_str),
             })
         })
         .collect();
@@ -126,7 +126,7 @@ pub fn settings() -> Result<String, ModError> {
         } else {
             bound.join(",")
         };
-        let side = format!("{:?}", setting.side);
+        let side = setting.side.as_str();
         writeln!(
             rendered,
             "{key}\t{side}\t{group}\t{}\t{}\t{bound}",
@@ -147,11 +147,11 @@ pub fn settings() -> Result<String, ModError> {
 pub fn refusal() -> String {
     let mut rendered = String::from("surface");
     for shape in Shape::ALL {
-        write!(rendered, "\t{shape:?}").expect("writing into a String cannot fail");
+        write!(rendered, "\t{}", shape.as_str()).expect("writing into a String cannot fail");
     }
     rendered.push('\n');
     for surface in Surface::ALL {
-        write!(rendered, "{surface:?}").expect("writing into a String cannot fail");
+        write!(rendered, "{}", surface.as_str()).expect("writing into a String cannot fail");
         for shape in Shape::ALL {
             rendered.push('\t');
             rendered.push_str(if surface.watches(shape) {
@@ -168,27 +168,32 @@ pub fn refusal() -> String {
 #[cfg(test)]
 mod tests {
     use super::documents;
-    use std::path::Path;
+
+    fn render_documents() -> Vec<(&'static str, String)> {
+        documents().expect("the packaged declarations render")
+    }
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rebuilt = documents().expect("the packaged constants render");
-        assert!(!rebuilt.is_empty(), "the package renders documents");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
+        assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-        for (relative, document) in rebuilt {
+        for (relative, document) in rendered {
             assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
-                let parent = path.parent().expect("a generated path has a directory");
+                let parent = path.parent().expect("a document sits in a directory");
                 std::fs::create_dir_all(parent).expect("the generated directory is writable");
-                std::fs::write(&path, document.as_bytes())
-                    .expect("the generated document is writable");
+                std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
             let on_disk = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("{relative} is readable: {error}"));
-            assert_eq!(on_disk, document, "{relative} has drifted from the crate");
+                .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
+            assert_eq!(
+                on_disk, document,
+                "{relative} has drifted from the functions that render it"
+            );
         }
     }
 }

@@ -34,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "a743071f34145f6de4b78b0223095cf63a0c3dbbbdd65b6d54210a5b88fc560c"
+        "sha256": "d2ebddfb197467e9cd11d6d4a0cda2fb29e1e9a0e354fd831e9ea0dceb51b437"
       },
       {
         "path": "aliases.json",
@@ -58,7 +58,7 @@
       },
       {
         "path": "src/arithmetic.rs",
-        "sha256": "33ee3e79f74610c3aa7e234669ee2deeefc1d63e5a880a63e6921199d6427d7d"
+        "sha256": "aba204f5f84335c88c6f6aeb645f2df0b96d67d540b6362e22eff17d6660f402"
       },
       {
         "path": "src/census.rs",
@@ -70,11 +70,11 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "2d5647b7941311e9779062b2a6acb27c541fb3e7097a9d1dd84dfa149a68d208"
+        "sha256": "743fdd9aa2dc9c060f3e8a1b3955bc81fdddd67dffc4730802e85f5b1e438759"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "0a2bde2882558e8feb188e27b6ad2f7f9dcdc4b29b4d64adf9b0eaf234171e15"
+        "sha256": "efd11e6b738aa23b6e08bea9d610f2382b9a00696560f9a4d06fa0f525e9e11b"
       },
       {
         "path": "src/grouping.rs",
@@ -82,7 +82,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "6666357af9c6096096262f88d97c0c33fc1b87fb7c0b75a61106c9b2d82a057d"
+        "sha256": "715f1c26749cc1894aa403fbc124268a58fc3823ff4cbda144fd56a4b7ffc157"
       },
       {
         "path": "src/network.rs",
@@ -90,11 +90,11 @@
       },
       {
         "path": "src/preferences.rs",
-        "sha256": "f50e8035780ef5712a0d4da3625b031dcf529ffeabcd29fb0fd63190f7bf3b32"
+        "sha256": "efc3a362d908b15fa7ece5c2add286d853177ec8f5b15621805253a634ec37ee"
       },
       {
         "path": "src/primitives.rs",
-        "sha256": "9028548d854e40e1cf80a21e35ce06dba8205365f1fd184a72f1e7b7bc518577"
+        "sha256": "88e566290b3fa3b1fd7a3ebd3532f172c1b944ff8109512ccddc23688afc710b"
       },
       {
         "path": "src/recipes.rs",
@@ -106,7 +106,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "09845ad725871aef6ed9320174b1b093c5040eec2578d9e5485e48d5d30e7af8"
+        "sha256": "fe0f10e60e9999ba6f648ceb84b8910a696638d0e3cb5adb1be5db85816b8cce"
       },
       {
         "path": "src/settings/colour.rs",
@@ -114,7 +114,7 @@
       },
       {
         "path": "src/values.rs",
-        "sha256": "30197b1b7aa5019ec159896b9b9483b56d1e7972f0563ff831f78028476c1746"
+        "sha256": "45d267fb835e7ff0ea54bc646b4fd8b4fbf80410986f7aff72442227dedcacaf"
       }
     ]
   },

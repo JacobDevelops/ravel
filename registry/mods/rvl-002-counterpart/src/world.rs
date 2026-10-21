@@ -225,28 +225,36 @@ mod tests {
 
     #[test]
     fn each_switch_gates_exactly_its_own_deposit() {
-        for deposit in &DEPOSITS {
-            let mut settings = Settings::shipped().expect("the shipped settings are valid");
-            assert!(deposit.generates(&settings));
-            settings.world_lower.shard = false;
-            settings.world_lower.essence = false;
-            settings.world_outer.shard = false;
-            settings.world_outer.essence = false;
-            assert!(!deposit.generates(&settings));
-        }
+        use ravel_sdk::config::{LayeredConfiguration, ValueDocument};
+        use ravel_sdk::json;
 
-        let settings = Settings {
-            world_outer: settings::Deposits {
-                shard: true,
-                essence: false,
-            },
-            ..Settings::shipped().expect("the shipped settings are valid")
-        };
-        let generating = DEPOSITS
-            .iter()
-            .filter(|deposit| deposit.generates(&settings))
-            .count();
-        assert_eq!(generating, 3);
+        for changed in &DEPOSITS {
+            let document = ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1,
+                    "owner": crate::MOD_ID,
+                    "values": {(changed.switch): false}
+                })
+                .to_string(),
+            )
+            .expect("valid override");
+            let resolved = LayeredConfiguration::resolve(
+                settings::declaration().expect("valid declaration"),
+                Some(&document),
+                None,
+            )
+            .expect("valid settings");
+            let settings = Settings::read(&resolved).expect("typed settings");
+            for deposit in &DEPOSITS {
+                assert_eq!(
+                    deposit.generates(&settings),
+                    deposit.switch != changed.switch,
+                    "{} must affect only its own deposit, not {}",
+                    changed.switch,
+                    deposit.switch
+                );
+            }
+        }
     }
 
     #[test]

@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "1451a73a027f3765800ad1aa28f4650ff9645094ec1f3b1fc538906dc3c2cab5"
+        "sha256": "ebf1a4ae05159e7be4ad421e33dc0e0b6b97ccba0bed81ec92bb4d50b56e9d4b"
       },
       {
         "path": "aliases.json",
@@ -59,7 +59,7 @@
       },
       {
         "path": "src/colour.rs",
-        "sha256": "b602f684b9c909bc2cb13d1fa87ed9a4aac99e7d0ef04cd1abf59335051ea39d"
+        "sha256": "cb133358444faac003809711b3157e826af23603d65b6fd3ba1ca1c6fc5b3550"
       },
       {
         "path": "src/data.rs",
@@ -71,7 +71,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "070b364a2e62467ad22443bf352ffcfd955ab54314bdc5d25e01faf15114938b"
+        "sha256": "b483d83cd40e58a02ee651d77c40e00c21b6535ffd2f56377af739d7974e4bc3"
       },
       {
         "path": "src/fluids.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "139bc11dbeec62065abc55c2c07ce08c0a53cc00ffae50d3478d08dcaf42bc77"
+        "sha256": "3ffaf4c27fa4d9dc479e21f7da7d0b773fd362ecac7cdab6a29edc326f0d3148"
       },
       {
         "path": "src/matching.rs",
@@ -98,11 +98,11 @@
         "sha256": "94afbbef6430b9b498eea03000eb75587b194d5c930cb1b0654a006e2ba40cc8"
       },
       {
-        "path": "src/shapes.rs",
+        "path": "src/recipes.rs",
         "sha256": "bbc836067044f41e950849ca893f1e2d6a6f99eb85567277d4fa7bcc412d797e"
       },
       {
-        "path": "src/storage.rs",
+        "path": "src/persistence.rs",
         "sha256": "060e82a6a5bd743b61384f435e2414a7d373eab4d1c6fc6267b195d1e4613575"
       },
       {

@@ -208,8 +208,7 @@ pub fn write(map: &ValueMap) -> Result<Vec<u8>, ValueRefused> {
                 if body.len() > Value::MAX_TEXT {
                     return Err(ValueRefused::TextTooLong { length: body.len() });
                 }
-                bytes
-                    .extend_from_slice(&crate::arithmetic::bounded_count(body.len()).to_be_bytes());
+                bytes.extend_from_slice(&crate::arithmetic::signed_len(body.len()).to_be_bytes());
                 bytes.extend_from_slice(body);
             }
             Value::Enumeration { index, .. } => bytes.push(*index),

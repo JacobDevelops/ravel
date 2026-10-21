@@ -59,7 +59,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "d7405d9ae89c514e1e4a8a280e1ba4d76b69351e32fbb7c03f331ed1e1c75f35"
+        "sha256": "4b49c93bf10628ae19a18410bfc8e1101df9da033cfb32b1f3556bf56b5a484d"
       },
       {
         "path": "src/geometry.rs",
@@ -67,11 +67,11 @@
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "7c3d495e4c1896e27d6033b20740854f8cd794113686d40341ef484e72246f4e"
+        "sha256": "9a8a96c40f4faa91350fb608e50a05205083d27ebff9b197e694ffba430121f8"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "6651f25413c2770c4b2190493003353eb113447ce872a245d8892a144bd7289b"
+        "sha256": "b49e130e29f0a979c8ceb231c6cc27263e2737e257166893afee3e38bf501e5b"
       },
       {
         "path": "src/lookup.rs",

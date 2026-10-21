@@ -28,6 +28,18 @@ pub enum Role {
     Crafted,
 }
 
+impl Role {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TierMaterial => "TierMaterial",
+            Self::BaseSeed => "BaseSeed",
+            Self::Crafted => "Crafted",
+        }
+    }
+}
+
 /// What an ingredient kind needs to resolve itself.
 pub trait Catalogue {
     /// Whether an entry belongs to a tag.

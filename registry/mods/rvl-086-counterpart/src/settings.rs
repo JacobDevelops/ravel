@@ -990,7 +990,7 @@ mod tests {
                     REPAIR_COST: COST_RANGE.1,
                     REPAIR_ENCHANTMENT_COST: ENCHANTMENT_COST_RANGE.0,
                     REPAIR_STRIP_ENCHANTMENTS: true,
-                    REPAIR_CHEAPER_DIGGING: true,
+                    REPAIR_CHEAPER_DIGGING: false,
                     TOOLTIP_EXCLUDED: "example:pick",
                 },
             })
@@ -1008,7 +1008,8 @@ mod tests {
         assert_eq!(settings.repair_cost, COST_RANGE.1);
         assert_eq!(settings.repair_enchantment_cost, ENCHANTMENT_COST_RANGE.0);
         assert!(settings.repair_materials.strip_enchantments);
-        assert!(settings.repair_discounts.digging);
+        assert!(!settings.repair_discounts.digging);
+        assert!(settings.repair_discounts.shearing);
         assert_eq!(settings.tooltip_excluded, Matcher::parse("example:pick"));
     }
 
@@ -1153,6 +1154,10 @@ mod tests {
         let mut settings = Settings {
             repair_cost: 7,
             repair_enchantment_cost: 4,
+            repair_discounts: RepairDiscounts {
+                digging: false,
+                shearing: true,
+            },
             repair_materials: RepairMaterials {
                 strip_enchantments: true,
                 ..RepairMaterials::default()

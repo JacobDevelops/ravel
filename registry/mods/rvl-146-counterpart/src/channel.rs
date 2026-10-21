@@ -14,7 +14,7 @@
 //! - **A radius send with no running server answers rather than faulting.** The
 //!   original reaches the running server through a process-wide slot which the
 //!   accessor beside it would have reported absent for, so an unset slot faults
-//!   at the send instead of yielding absent. [`Sends::deliver`] returns
+//!   at the send instead of yielding absent. [`Sends::resolve`] returns
 //!   [`SendRefused::NoServer`], which is the same "nothing happened" the original
 //!   intends and a caller can see.
 //! - **A radius that is not a number is refused.** The original hands whatever it
@@ -32,7 +32,7 @@
 //! a mod's packet yet. [`Channel::contract`] produces a real Ravel contract whose
 //! name is this channel's derived identifier, so what Ravel would route on and
 //! what a dependent declared are one string rather than two that can disagree.
-//! [`Sends::deliver`] resolves a target into a [`Delivery`] and the carrying is
+//! [`Sends::resolve`] resolves a target into a [`Delivery`] and the carrying is
 //! the host's.
 
 use std::fmt;
@@ -302,7 +302,7 @@ impl Sends {
     /// for a radius send [`SendRefused::NoServer`] with no server running,
     /// [`SendRefused::NoLevel`] for an unnamed level and
     /// [`SendRefused::RadiusNotANumber`] for a radius that is not a number.
-    pub fn deliver(
+    pub fn resolve(
         &self,
         declaration: &Declaration,
         target: Target,
@@ -458,7 +458,7 @@ mod tests {
         let sends = Sends::idle();
         assert_eq!(sends.server(), None);
         assert_eq!(
-            sends.deliver(
+            sends.resolve(
                 report,
                 Target::Within {
                     level: "overworld".to_owned(),
@@ -495,13 +495,13 @@ mod tests {
                 except: None,
             },
         ] {
-            let delivery = sends.deliver(report, target.clone()).expect("a live send");
+            let delivery = sends.resolve(report, target.clone()).expect("a live send");
             assert_eq!(delivery.id, *report.id());
             assert_eq!(delivery.target, target);
         }
         assert_eq!(
             sends
-                .deliver(edit, Target::Server)
+                .resolve(edit, Target::Server)
                 .expect("a serverbound send")
                 .target,
             Target::Server
@@ -517,13 +517,13 @@ mod tests {
         let edit = channel.declaration("edit").expect("declared");
         let sends = Sends::idle();
         assert_eq!(
-            sends.deliver(report, Target::Server),
+            sends.resolve(report, Target::Server),
             Err(SendRefused::WrongDirection {
                 declared: Direction::ToClient
             })
         );
         assert_eq!(
-            sends.deliver(edit, Target::Everyone),
+            sends.resolve(edit, Target::Everyone),
             Err(SendRefused::WrongDirection {
                 declared: Direction::ToServer
             })
@@ -537,7 +537,7 @@ mod tests {
         let mut sends = Sends::idle();
         sends.server_started("the running server");
         assert_eq!(
-            sends.deliver(
+            sends.resolve(
                 report,
                 Target::Within {
                     level: "overworld".to_owned(),
@@ -550,7 +550,7 @@ mod tests {
         );
         assert!(
             sends
-                .deliver(
+                .resolve(
                     report,
                     Target::Within {
                         level: "overworld".to_owned(),
@@ -571,7 +571,7 @@ mod tests {
         let mut sends = Sends::idle();
         sends.server_started("the running server");
         assert_eq!(
-            sends.deliver(
+            sends.resolve(
                 report,
                 Target::Within {
                     level: String::new(),
@@ -583,11 +583,11 @@ mod tests {
             Err(SendRefused::NoLevel)
         );
         assert_eq!(
-            sends.deliver(report, Target::Player(String::new())),
+            sends.resolve(report, Target::Player(String::new())),
             Err(SendRefused::NoPlayer)
         );
         assert_eq!(
-            sends.deliver(
+            sends.resolve(
                 report,
                 Target::Within {
                     level: "overworld".to_owned(),

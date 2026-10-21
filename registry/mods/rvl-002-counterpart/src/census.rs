@@ -115,6 +115,20 @@ pub enum Listed {
     Buckets,
 }
 
+impl Listed {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocks => "Blocks",
+            Self::Anchors => "Anchors",
+            Self::Items => "Items",
+            Self::Tools => "Tools",
+            Self::Buckets => "Buckets",
+        }
+    }
+}
+
 /// The listing's fixed order.
 pub const LISTING: [Listed; 5] = [
     Listed::Blocks,

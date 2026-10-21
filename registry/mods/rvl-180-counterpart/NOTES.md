@@ -110,7 +110,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
   stopped being drained has a stale backlog, so `transport::Outbox` keeps the oldest and counts what
   it dropped; a display shows only the newest reading, so `ClientState` keeps a short window and drops
   the oldest. `commands::Console` follows the outbox's rule for the notes it retains: a note past the
-  bound is dropped and the drop is counted in `Console::dropped`, because a bound that discards
+  bound is dropped and the drop is counted in `Console::notes_dropped`, because a bound that discards
   without a count is a bound nobody can see was reached.
 - **A population saturates and is capped (§5).** `population::Population` takes counts from outside this
   package, so a kind beyond `MAX_KINDS` is refused, a count saturates at `MAX_PER_KIND` rather than

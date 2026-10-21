@@ -87,10 +87,7 @@ impl Settings {
     /// # Errors
     /// Returns a packaging failure if the declaration or defaults are invalid.
     pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
-        let declaration = declaration().map_err(ravel_sdk::ModError::from_display)?;
-        let resolved = LayeredConfiguration::resolve(declaration, None, None)
-            .map_err(ravel_sdk::ModError::from_display)?;
-        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+        ravel_sdk::config::read_shipped(DOCUMENT, Self::read)
     }
 
     /// Reads the values in force, refusing a missing key or a value of the wrong kind.
@@ -149,6 +146,29 @@ pub struct Declared {
     value: Value,
 }
 
+/// The closed vocabulary of setting value kinds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Kind {
+    /// A truth value.
+    Truth,
+    /// A whole number.
+    Number,
+    /// Text.
+    Text,
+}
+
+impl Kind {
+    /// The canonical spelling used in diagnostics and generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Truth => "truth",
+            Self::Number => "number",
+            Self::Text => "text",
+        }
+    }
+}
+
 /// A declared setting's value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
@@ -163,11 +183,11 @@ pub enum Value {
 impl Value {
     /// Which kind of value this is, so a write of another kind can be refused.
     #[must_use]
-    pub const fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> Kind {
         match self {
-            Self::Truth(_) => "truth",
-            Self::Number(_) => "number",
-            Self::Text(_) => "text",
+            Self::Truth(_) => Kind::Truth,
+            Self::Number(_) => Kind::Number,
+            Self::Text(_) => Kind::Text,
         }
     }
 }
@@ -272,9 +292,9 @@ pub enum ChangeRefused {
     /// The value written is not of the declared kind.
     WrongKind {
         /// What was declared.
-        declared: &'static str,
+        declared: Kind,
         /// What was written.
-        written: &'static str,
+        written: Kind,
     },
 }
 
@@ -303,7 +323,12 @@ impl fmt::Display for ChangeRefused {
                 )
             }
             Self::WrongKind { declared, written } => {
-                write!(formatter, "{declared} was written as {written}")
+                write!(
+                    formatter,
+                    "{} was written as {}",
+                    declared.as_str(),
+                    written.as_str()
+                )
             }
         }
     }
@@ -625,8 +650,8 @@ mod tests {
         assert_eq!(
             framework.write(DEVELOPMENT_SHORTCUT, Value::Number(1), Side::Client),
             Err(ChangeRefused::WrongKind {
-                declared: "truth",
-                written: "number",
+                declared: Kind::Truth,
+                written: Kind::Number,
             })
         );
         assert_eq!(

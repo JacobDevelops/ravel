@@ -149,7 +149,7 @@ pub fn frame_runs(coded: Option<&[u8]>) -> Vec<u8> {
         None => framed.push(0),
         Some(bytes) => {
             framed.push(1);
-            framed.extend_from_slice(&crate::arithmetic::bounded_count(bytes.len()).to_be_bytes());
+            framed.extend_from_slice(&crate::arithmetic::signed_len(bytes.len()).to_be_bytes());
             framed.extend_from_slice(bytes);
         }
     }

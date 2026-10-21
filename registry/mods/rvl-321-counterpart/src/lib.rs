@@ -280,16 +280,26 @@ impl Entry {
             .map_err(ModError::from_display)
     }
 
-    fn answer_flag(&self, arguments: &JsonValue) -> Result<ServiceResponse, ModError> {
-        let flag = arguments
-            .get("flag")
-            .and_then(JsonValue::as_str)
-            .ok_or_else(|| ModError::refused("a flag request names no flag"))?;
-        let flag = flag.parse().map_err(ModError::from_display)?;
+    fn answer_flag(&self, arguments: &JsonValue) -> ServiceResponse {
+        let Some(flag) = arguments.get("flag").and_then(JsonValue::as_str) else {
+            return ServiceResponse::new(json!({
+                "answered": false, "refused": "a flag request names no flag"
+            }));
+        };
+        let flag = match flag.parse() {
+            Ok(flag) => flag,
+            Err(error) => {
+                return ServiceResponse::new(json!({
+                    "answered": false, "refused": format!("{error}")
+                }));
+            }
+        };
         if !self.flags.is_published(&flag) {
-            return Err(ModError::refused("this entry has not published that flag"));
+            return ServiceResponse::new(json!({
+                "answered": false, "refused": "this entry has not published that flag"
+            }));
         }
-        Ok(ServiceResponse::new(json!(self.flags.enabled(&flag))))
+        ServiceResponse::new(json!({"answered": true, "enabled": self.flags.enabled(&flag)}))
     }
 
     fn contribute(&mut self, arguments: &JsonValue) -> JsonValue {
@@ -437,7 +447,7 @@ impl Mod for Entry {
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         if request.id == Self::flags_service()? {
-            return self.answer_flag(&request.arguments);
+            return Ok(self.answer_flag(&request.arguments));
         }
         let service = Self::contribution_service()?;
         if request.id != service {
@@ -528,17 +538,17 @@ mod tests {
                 json!({"flag": disabled.to_string()}),
             ))
             .expect("a published false flag is answered");
-        assert_eq!(answer.value(), &json!(false));
+        assert_eq!(answer.value(), &json!({"answered": true, "enabled": false}));
         for arguments in [
             json!({}),
             json!({"flag": "not legal"}),
             json!({"flag": "test:absent"}),
         ] {
-            assert!(
-                entry
-                    .answer_service(&ServiceRequest::new(service.clone(), arguments))
-                    .is_err()
-            );
+            let answer = entry
+                .answer_service(&ServiceRequest::new(service.clone(), arguments))
+                .expect("bad caller input does not fail the provider");
+            assert_eq!(answer.value()["answered"], false);
+            assert!(answer.value()["refused"].as_str().is_some());
         }
     }
 
@@ -563,7 +573,7 @@ mod tests {
         assert_eq!(entry.registries().tiers().len(), 6);
         assert_eq!(entry.registries().kinds().len(), 2);
         assert_eq!(entry.registries().crops().len(), 0);
-        assert!(!entry.registries().is_open());
+        assert!(!entry.registries().is_crop_window_open());
         assert!(entry.cache().is_empty());
         assert!(entry.colours().is_empty());
         assert_eq!(

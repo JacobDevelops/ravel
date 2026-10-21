@@ -26,6 +26,17 @@ pub enum TargetClass {
 }
 
 impl TargetClass {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "Block",
+            Self::BlockEntity => "BlockEntity",
+            Self::Entity => "Entity",
+            Self::Item => "Item",
+        }
+    }
+
     /// The name the listener for this class is installed under.
     #[must_use]
     pub const fn listener(self) -> &'static str {

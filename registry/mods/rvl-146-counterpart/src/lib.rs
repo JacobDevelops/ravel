@@ -21,7 +21,7 @@
 //! - [`quantity`] — the ingredient with an amount and its arithmetic;
 //! - [`colour`] — the four channels, the three packings and the equality;
 //! - [`highlights`] — the block highlights, their lifetimes and what clears them;
-//! - [`shapes`] — the codec helpers a dependent composes with;
+//! - [`data`] — the codec helpers a dependent composes with;
 //! - [`tools`] — the four small utilities;
 //! - [`dumps`] — the generated documents, rendered from the modules above.
 //!
@@ -63,6 +63,7 @@
 
 pub mod channel;
 pub mod colour;
+pub mod data;
 pub mod dumps;
 pub mod highlights;
 pub mod menus;
@@ -70,7 +71,6 @@ pub mod persistence;
 pub mod quantity;
 pub mod recipes;
 pub mod registration;
-pub mod shapes;
 pub mod tools;
 pub mod transport;
 

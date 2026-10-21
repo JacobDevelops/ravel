@@ -73,11 +73,11 @@ test-only public kind-mapping and stage-side helpers.
 | §9 expiry running only while drawing, and never on leaving | fixed, expiry on a tick, cleared on leaving | `src/highlights.rs`, `src/lib.rs` |
 | §9 lifetimes against the wall clock | fixed, a monotonic reading and a duration | `src/highlights.rs` |
 | §9 drawing a wireframe box in world space | host-blocked; the stage is declared | `src/highlights.rs` |
-| §10 the pair and its two spellings | implemented, spellings from a build input | `src/shapes.rs` |
-| §10 the map's unstable encode order | fixed, sorted on encode | `src/shapes.rs` |
-| §10 the list wire form's unbounded declared size | fixed, bounded at both ends | `src/shapes.rs` |
-| §10 the optional and compound wire forms | implemented | `src/shapes.rs` |
-| §10 the data-component type builder | declarable only; declarable, the two forms named and paired | `src/shapes.rs` |
+| §10 the pair and its two spellings | implemented, spellings from a build input | `src/data.rs` |
+| §10 the map's unstable encode order | fixed, sorted on encode | `src/data.rs` |
+| §10 the list wire form's unbounded declared size | fixed, bounded at both ends | `src/data.rs` |
+| §10 the optional and compound wire forms | implemented | `src/data.rs` |
+| §10 the data-component type builder | declarable only; declarable, the two forms named and paired | `src/data.rs` |
 | §11 the reflection kit and the memory helper | declined outright, nothing stubbed | `src/lib.rs` |
 | §12 the clamp and the rotation | implemented | `src/tools.rs` |
 | §12 the predicate named for the inverse of its result | fixed, named for what it returns | `src/tools.rs` |
@@ -105,7 +105,7 @@ cannot fall back to a placeholder and still claim to agree.
 - **The saved compound key and its two entry keys (§6.1).** `persistence::Spellings::declared` reads
   `RVL_146_COUNTERPART_MEMORY_KEY`, `RVL_146_COUNTERPART_CURRENT_KEY` and
   `RVL_146_COUNTERPART_REMEMBERED_KEY`, and refuses two entry keys that are one word.
-- **The two field spellings of the pair shape (§10).** `shapes::PairSpellings::declared` reads
+- **The two field spellings of the pair shape (§10).** `data::PairSpellings::declared` reads
   `RVL_146_COUNTERPART_PAIR_FIRST_KEY` and `RVL_146_COUNTERPART_PAIR_SECOND_KEY`.
 - **The two field spellings of the ingredient shape (§7).** `quantity::PortionSpellings::declared`
   reads `RVL_146_COUNTERPART_INGREDIENT_MATCHER_KEY` and `RVL_146_COUNTERPART_INGREDIENT_COUNT_KEY`,
@@ -137,7 +137,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
   the immutable evidence is not rewritten.
 - **A radius send with no running server answers (§2, §5).** The original reaches the server through
   the process-wide slot rather than through the accessor beside it, so an unset slot faults at the
-  send while the accessor next to it would have answered absent. `Sends::deliver` answers
+  send while the accessor next to it would have answered absent. `Sends::resolve` answers
   `SendRefused::NoServer`.
 - **A radius that is not a number is refused (§5).** `NaN` makes every distance comparison false, so
   the send reaches nobody and looks like a delivery that happened. A negative radius is kept as a

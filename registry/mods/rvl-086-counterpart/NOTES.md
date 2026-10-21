@@ -25,6 +25,9 @@ payloads and loose attractor targets derive grouped Debug diagnostics without ch
 keys or wire layout. Repair refusals are named `RepairRefused` and implement `Error`; material
 worth reads the existing repair `Context` rather than separate callbacks. Tag declaration failures
 retain their typed sources through `Error::source` instead of flattening them into text.
+Generated census kinds and setting sides use the SDK's canonical string spellings,
+not Debug variant names. Repair-discount tests independently turn each shipped-on
+switch off and carry distinct digging/shearing values through configuration and wire reads.
 
 ## What each section became
 

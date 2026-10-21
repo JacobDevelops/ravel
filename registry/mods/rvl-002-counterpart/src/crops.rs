@@ -10,8 +10,8 @@
 //! for all six including the unobtainable ones.
 
 use ravel_sdk::content::ContentId;
+use rvl_321_counterpart::Availability;
 use rvl_321_counterpart::model::{Crafted, Crop, Derived};
-use rvl_321_counterpart::{Availability, availability};
 
 use crate::data::OWN_TAG;
 use crate::{CONVENTION_NAMESPACE, HOST_NAMESPACE};
@@ -186,14 +186,14 @@ pub fn optional_tag_members() -> Vec<String> {
         .collect()
 }
 
-/// Which state a declared crop is in.
+/// Returns the declared crop's availability.
 ///
 /// `loaded` answers whether a named mod is present. A development environment
 /// enables every crop regardless of that answer, which is the escape hatch the
 /// dependency records and the reason a development run and a production run of
 /// the same build have different content.
 #[must_use]
-pub fn state(
+pub fn availability(
     declared: &Declared,
     crop: &Crop,
     development: bool,
@@ -204,7 +204,7 @@ pub fn state(
         .companion
         .filter(|name| loaded(name))
         .map_or(0, |_| 1);
-    availability(
+    rvl_321_counterpart::availability(
         crop,
         companions,
         declared.declares_companion(),
@@ -219,8 +219,8 @@ pub fn state(
 /// the listing is built. An unobtainable crop's anchor drops out; everything
 /// else in the listing is unconditional.
 #[must_use]
-pub const fn listed(state: Availability) -> bool {
-    !matches!(state, Availability::Unobtainable)
+pub const fn listed(availability: Availability) -> bool {
+    !matches!(availability, Availability::Unobtainable)
 }
 
 #[cfg(test)]
@@ -299,7 +299,7 @@ mod tests {
             .expect("a companion-entry crop");
         let crop = crop_of(&declared);
         assert_eq!(
-            state(&declared, &crop, false, &|_| false, &|_| 1),
+            availability(&declared, &crop, false, &|_| false, &|_| 1),
             Availability::Unobtainable
         );
         assert!(!listed(Availability::Unobtainable));
@@ -315,11 +315,11 @@ mod tests {
         for declared in DECLARED.iter().filter(|held| held.declares_companion()) {
             let crop = crop_of(declared);
             assert_eq!(
-                state(declared, &crop, false, &|_| false, &|_| 1),
+                availability(declared, &crop, false, &|_| false, &|_| 1),
                 Availability::Unobtainable
             );
             assert_eq!(
-                state(declared, &crop, true, &|_| false, &|_| 1),
+                availability(declared, &crop, true, &|_| false, &|_| 1),
                 Availability::Whole
             );
         }
@@ -331,13 +331,13 @@ mod tests {
         assert_eq!(own_tag.material, Material::OwnTag);
         let crop = crop_of(&own_tag);
         assert_eq!(
-            state(&own_tag, &crop, false, &|_| true, &|_| 0),
+            availability(&own_tag, &crop, false, &|_| true, &|_| 0),
             Availability::WithoutSeedRecipes,
             "an enabled crop whose tag resolves empty keeps its identifiers"
         );
         assert!(listed(Availability::WithoutSeedRecipes));
         assert_eq!(
-            state(&own_tag, &crop, false, &|_| true, &|_| OPTIONAL_TAG_MEMBERS),
+            availability(&own_tag, &crop, false, &|_| true, &|_| OPTIONAL_TAG_MEMBERS),
             Availability::Whole
         );
 
@@ -349,7 +349,7 @@ mod tests {
         }) {
             let crop = crop_of(declared);
             assert_eq!(
-                state(declared, &crop, false, &|_| true, &|_| 0),
+                availability(declared, &crop, false, &|_| true, &|_| 0),
                 Availability::Whole,
                 "a single entry resolves whatever a tag lookup answers"
             );
@@ -360,8 +360,8 @@ mod tests {
     fn unobtainable_and_unsatisfiable_are_two_states_and_not_one() {
         let own_tag = own_tag_crop();
         let crop = crop_of(&own_tag);
-        let absent = state(&own_tag, &crop, false, &|_| false, &|_| 0);
-        let empty = state(&own_tag, &crop, false, &|_| true, &|_| 0);
+        let absent = availability(&own_tag, &crop, false, &|_| false, &|_| 0);
+        let empty = availability(&own_tag, &crop, false, &|_| true, &|_| 0);
         assert_ne!(absent, empty);
         assert_eq!(absent, Availability::Unobtainable);
         assert_eq!(empty, Availability::WithoutSeedRecipes);
@@ -443,7 +443,7 @@ mod tests {
                     .parse()
                     .expect("the declared anchor is an identifier"),
             );
-            let held = state(declared, &crop, false, &|_| false, &|_| 0);
+            let held = availability(declared, &crop, false, &|_| false, &|_| 0);
             assert!(
                 crop.foundation.is_some(),
                 "the pointing is unconditional and this crop is {held:?}"

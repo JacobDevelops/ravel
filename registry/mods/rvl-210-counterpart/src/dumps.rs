@@ -242,7 +242,7 @@ pub fn settings_document() -> String {
                 "comment": declared.comment(),
                 "document": declared.document(),
                 "changeable": declared.changeable(),
-                "valueKind": declared.value().kind(),
+                "valueKind": declared.value().kind().as_str(),
                 "value": declared.value().to_string(),
                 "resolvedBy": sides,
             })
@@ -277,6 +277,7 @@ pub fn settings_document() -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::documents as render_documents;
     use super::*;
 
     #[test]
@@ -332,7 +333,7 @@ mod tests {
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents();
+        let rendered = render_documents();
         assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {

@@ -36,6 +36,20 @@ pub enum Surface {
 }
 
 impl Surface {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BreakSpeed => "BreakSpeed",
+            Self::BreakBlock => "BreakBlock",
+            Self::AttackEntity => "AttackEntity",
+            Self::UseInAir => "UseInAir",
+            Self::UseOnBlock => "UseOnBlock",
+            Self::InteractEntity => "InteractEntity",
+            Self::CropHarvest => "CropHarvest",
+        }
+    }
+
     /// Every surface, in the order the specification lists them.
     pub const ALL: [Self; 7] = [
         Self::BreakSpeed,

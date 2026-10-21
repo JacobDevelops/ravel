@@ -39,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "4b37ce51b25c8f81af05e66082f5d3eb36af640347015db453ac9adb6da7c2f8"
+        "sha256": "cb710ab35917145bb6192988f3af4aa504ddc91bac3ec508799278933b89d4f4"
       },
       {
         "path": "aliases.json",
@@ -63,7 +63,7 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "03f1d91cdbbf7eb75e66e7d8bf635b908828330358d0b18551ce58ef6503a6b2"
+        "sha256": "7d26efc176eec9aca8aabb97891a04a77e3c71ff4772fb6e954b5586f9146989"
       },
       {
         "path": "src/capabilities.rs",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "747595e30f65b88d6b111d4909a28ee61ec3b9930a8841790309552aea7e53af"
+        "sha256": "b2f506c5cac96f699a12055a64c0a91c39f36848d0f82c2fcae23eb7a761efc7"
       },
       {
         "path": "src/forms.rs",
@@ -95,7 +95,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "c2cbc03ee33c8b9e21e228d3fa89118a45269061f5a1ac948edc7fe7e935775a"
+        "sha256": "219236e888c1d8f6d6ea81be8a259ca6ec037a3d51f15feca936e5010a717726"
       },
       {
         "path": "src/readings.rs",
@@ -110,16 +110,12 @@
         "sha256": "bfe89dd38cc32d214f5f1be6281f127ec79a43f7974bb95b55863946d44ccb78"
       },
       {
-        "path": "src/conditions.rs",
-        "sha256": "ae9fa96f478fe4c0ed5c0a273cf0cce22f0686011ebf13b379374630d16cf2af"
-      },
-      {
         "path": "src/settings.rs",
         "sha256": "d63092e5bd6454315006dc5aab22013afad59b1c6c1475a35b68c4eb295a8aa8"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "b9a4afe9f39dff0ad25708b3abdeab491757bc9e7958117934874544355c589e"
+        "sha256": "cf76f4c8dcf04e3af4116c06b0d612f26c4e75f69c973c568b45f8b21c3e1f97"
       }
     ]
   },

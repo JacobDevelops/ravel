@@ -122,14 +122,12 @@ pub fn documents() -> Vec<(&'static str, String)> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use super::documents;
+    use super::documents as render_documents;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
         assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
@@ -142,8 +140,11 @@ mod tests {
                 continue;
             }
             let on_disk = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("{relative} could not be read: {error}"));
-            assert_eq!(on_disk, document, "{relative} has drifted from the crate");
+                .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
+            assert_eq!(
+                on_disk, document,
+                "{relative} has drifted from the functions that render it"
+            );
         }
     }
 }

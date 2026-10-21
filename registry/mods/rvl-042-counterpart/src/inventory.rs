@@ -327,7 +327,7 @@ impl Store {
         if access == Access::Owner {
             return true;
         }
-        if self.has_outputs() && self.outputs[slot] {
+        if self.outputs[slot] {
             return false;
         }
         self.insert

@@ -24,7 +24,7 @@
 use std::fmt;
 
 use crate::data::Stack;
-use crate::shapes::{Pattern, ShapedRecipe};
+use crate::forms::{Pattern, ShapedRecipe};
 use crate::storage::{Carrier, Hand, Step};
 
 /// The namespace both commands are filed under.
@@ -125,14 +125,13 @@ pub struct Registration {
     pub name: &'static str,
     /// Whether it is a command or a reply encoding.
     pub files: Files,
-    /// Whether the authoritative side runs it.
-    pub on_server: bool,
 }
 
 /// Everything this entry files with the transport, in the order it files it.
 ///
 /// Both commands run on the server, which is what "server-directed" means here:
-/// a client sends the call and the authoritative side answers it. The third
+/// a client sends the call and the authoritative side answers it. The loader
+/// supplies that world-server side for every command invocation. The third
 /// entry is the one place §13 says this entry extends the shared transport
 /// rather than merely using it.
 pub const REGISTRATIONS: [Registration; 3] = [
@@ -140,13 +139,11 @@ pub const REGISTRATIONS: [Registration; 3] = [
         namespace: NAMESPACE,
         name: EVALUATE,
         files: Files::Command,
-        on_server: true,
     },
     Registration {
         namespace: NAMESPACE,
         name: CYCLE,
         files: Files::Command,
-        on_server: true,
     },
     Registration {
         namespace: NAMESPACE,
@@ -154,7 +151,6 @@ pub const REGISTRATIONS: [Registration; 3] = [
         files: Files::ReplyEncoding {
             element: Element::Text,
         },
-        on_server: true,
     },
 ];
 
@@ -355,8 +351,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn two_commands_and_one_reply_encoding_are_filed_and_all_three_on_the_server() {
-        assert!(REGISTRATIONS.iter().all(|filed| filed.on_server));
+    fn two_commands_and_one_reply_encoding_are_filed() {
         assert!(
             REGISTRATIONS
                 .iter()

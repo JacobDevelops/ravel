@@ -204,7 +204,7 @@ impl Preferences {
         bytes.extend_from_slice(&self.horizontal.to_be_bytes());
         bytes.extend_from_slice(&self.vertical.to_be_bytes());
         let style = self.style.as_bytes();
-        bytes.extend_from_slice(&crate::arithmetic::bounded_count(style.len()).to_be_bytes());
+        bytes.extend_from_slice(&crate::arithmetic::signed_len(style.len()).to_be_bytes());
         bytes.extend_from_slice(style);
         bytes
     }

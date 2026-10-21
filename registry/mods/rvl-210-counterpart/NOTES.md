@@ -188,9 +188,10 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
   is built at all. The demonstration menu is declared and the subcommand that opens it is in the tree;
   nothing paginates.
 - **Five of the seven subcommands' own effects (§15).** Two act on state this entry holds and
-  `Entry::run_command` dispatches them: the settings one reads and writes through
-  `settings::Framework`, and the reload one empties the value channel. The other five do not act
-  here. What `version`, `diagnostic` and `manual` answer is Ravel's chat surface and there is none
+  `Entry::run_command` dispatches them: the settings one reads through `settings::Framework`
+  (writes are refused until invocations carry a permission level), and the reload one empties the value
+  channel. The other five do not act here. What `version`, `diagnostic` and `manual` answer is Ravel's
+  chat surface and there is none
   published. `dump` writes registry documents to a destination Ravel does not publish, and this
   entry holds no registry of its own to serialise, so `dumps::Producers::write_all` is the piece that
   exists and the writing is not. `ignite` acts on a level entity through a seam Ravel does not
@@ -272,11 +273,11 @@ open, a stored set larger than the limit refused rather than read short, a world
 opening on no counters rather than the last one's, a counter at the end of its range, seven
 producers each named once, a producer collected twice, a producer writing nothing
 named with nothing rather than an empty registry, seven subcommands with five own and two inherited,
-the arity of each, the settings subcommand writing the setting it names and refusing an undeclared
-name and a value of another kind, the reload subcommand emptying the channel, a listener installed
-on first registration of each of the four classes, the registry raising after baking and holding
-nothing, specific against broad addressing,
-every platform codec naming a kind the codec table really has, an insertion that would overflow a
+the arity of each, the settings subcommand reading the setting it names, refusing an undeclared
+name, and withholding writes on every side, the reload subcommand emptying the channel, a listener
+installed on first registration of each of the four classes, the registry raising after baking and
+holding nothing, specific against broad addressing,
+the platform codecs reaching the table at common setup, an insertion that would overflow a
 slot refused rather than losing the overflow and the next slot taking it instead, the crafting
 helpers on a client only, the load-complete latch, the producer service and a repeated contribution,
 the counters through a save and reopen, and a resource reload emptying the channel while a tick does

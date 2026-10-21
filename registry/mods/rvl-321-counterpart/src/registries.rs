@@ -122,7 +122,7 @@ pub struct Registries {
     modifiers: Vec<Modifier>,
     charges: Vec<ChargeType>,
     claimed: BTreeMap<ravel_sdk::content::ContentId, ravel_sdk::content::ContentId>,
-    open: bool,
+    crop_window_open: bool,
     refused: Vec<Refusal>,
 }
 
@@ -138,19 +138,19 @@ impl Registries {
     /// Opened immediately before extensions are asked for their crops and
     /// closed immediately after, and enforced for crops alone: a modifier and a
     /// charge type have no such window.
-    pub const fn open(&mut self) {
-        self.open = true;
+    pub const fn open_crop_window(&mut self) {
+        self.crop_window_open = true;
     }
 
     /// Closes the window.
-    pub const fn close(&mut self) {
-        self.open = false;
+    pub const fn close_crop_window(&mut self) {
+        self.crop_window_open = false;
     }
 
     /// Whether the crop window is open.
     #[must_use]
-    pub const fn is_open(&self) -> bool {
-        self.open
+    pub const fn is_crop_window_open(&self) -> bool {
+        self.crop_window_open
     }
 
     /// Registers a crop, narrowing its derived switches by its extension's.
@@ -158,7 +158,7 @@ impl Registries {
     /// The conjunction happens here rather than at derivation time, which is
     /// what makes an extension's opt-out final.
     pub fn register_crop(&mut self, mut crop: Crop, extension: Derived) -> bool {
-        if !self.open {
+        if !self.crop_window_open {
             self.refused.push(Refusal::Closed(crop.id.to_string()));
             return false;
         }
@@ -403,7 +403,7 @@ pub fn register_blocks(
     extensions: &mut [&mut dyn Extension],
 ) -> Vec<Step> {
     let mut taken = vec![Step::Open];
-    registries.open();
+    registries.open_crop_window();
     for extension in extensions.iter_mut() {
         let name = extension.namespace().to_owned();
         extension.register_crops(registries);
@@ -421,7 +421,7 @@ pub fn register_blocks(
     taken.push(Step::DefaultBlocks);
     registries.sort_crops();
     taken.push(Step::Sort);
-    registries.close();
+    registries.close_crop_window();
     taken.push(Step::Close);
     taken
 }
@@ -524,16 +524,16 @@ mod tests {
             [Refusal::Closed("a:one".to_owned())].as_slice()
         );
 
-        registries.open();
+        registries.open_crop_window();
         assert!(registries.register_crop(crop("a:one", "t:1"), Derived::default()));
-        registries.close();
+        registries.close_crop_window();
         assert!(!registries.register_crop(crop("a:two", "t:1"), Derived::default()));
     }
 
     #[test]
     fn a_crop_path_collides_across_namespaces_and_a_tier_does_not() {
         let mut registries = Registries::new();
-        registries.open();
+        registries.open_crop_window();
         assert!(registries.register_crop(crop("a:same", "t:1"), Derived::default()));
         assert!(
             !registries.register_crop(crop("b:same", "t:1"), Derived::default()),
@@ -638,7 +638,7 @@ mod tests {
             ("t:low").parse().expect("a legal tier identity"),
             1,
         ));
-        registries.open();
+        registries.open_crop_window();
         for (id, tier) in [
             ("a:first_high", "t:high"),
             ("a:first_low", "t:low"),
@@ -672,10 +672,10 @@ mod tests {
             ("t:1").parse().expect("a legal tier identity"),
             1,
         ));
-        registries.open();
+        registries.open_crop_window();
         registries.register_crop(crop("other:alpha", "t:1"), Derived::default());
         registries.register_crop(crop("other:beta", "t:1"), Derived::default());
-        registries.close();
+        registries.close_crop_window();
 
         let ids = registered_order(&registries);
         assert_eq!(ids.len(), 6);
@@ -747,7 +747,7 @@ mod tests {
                 Step::Close,
             ]
         );
-        assert!(!registries.is_open());
+        assert!(!registries.is_crop_window_open());
         assert_eq!(
             registries.crops()[0].block,
             Some(
@@ -783,7 +783,7 @@ mod tests {
     #[test]
     fn an_extension_opt_out_is_applied_at_the_moment_the_crop_is_registered() {
         let mut registries = Registries::new();
-        registries.open();
+        registries.open_crop_window();
         let mut wants_all = crop("a:one", "t:1");
         wants_all.derived = Derived::default();
         registries.register_crop(

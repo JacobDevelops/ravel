@@ -60,7 +60,7 @@ pub fn census_document() -> String {
         .iter()
         .map(|section| {
             json!({
-                "section": format!("{section:?}"),
+                "section": section.as_str(),
                 "guarded": census::guarded(*section),
             })
         })
@@ -93,9 +93,9 @@ pub fn foods_document() -> String {
     let rows: Vec<JsonValue> = foods::DECLARED
         .iter()
         .map(|food| {
-            let effects: Vec<String> = foods::effects(food.tier)
+            let effects: Vec<&str> = foods::effects(food.tier)
                 .iter()
-                .map(|effect| format!("{effect:?}"))
+                .map(|effect| effect.as_str())
                 .collect();
             json!({
                 "tier": food.tier,
@@ -111,8 +111,8 @@ pub fn foods_document() -> String {
         "ticksPerSecond": foods::TICKS_PER_SECOND,
         "order": foods::ORDER
             .iter()
-            .map(|effect| format!("{effect:?}"))
-            .collect::<Vec<String>>(),
+            .map(|effect| effect.as_str())
+            .collect::<Vec<&str>>(),
         "rows": rows,
     });
     format!("{document}\n")
@@ -135,14 +135,12 @@ pub fn fuel_table() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use super::documents;
+    use super::documents as render_documents;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
         assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {

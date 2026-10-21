@@ -59,7 +59,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "a8b557afca379cd932dd90cbe232eb0ddab3aecf4250151f6f0504540e358bfa"
+        "sha256": "41c8310bc0a3a8cf5d1c7cd59b7ec52e2442683dc470a06cf7fbdc3e7db568b7"
       },
       {
         "path": "src/flags.rs",
@@ -67,7 +67,7 @@
       },
       {
         "path": "src/inventory.rs",
-        "sha256": "c833fe5cf6d3260f8e5cf4475f3433ed8bc40f2cbb4bc990f10477f29d8b103d"
+        "sha256": "1903a61c516b0943315e4e167aaf5153b7739bbf4c3ec4616ca5371e74cdf859"
       },
       {
         "path": "src/lib.rs",

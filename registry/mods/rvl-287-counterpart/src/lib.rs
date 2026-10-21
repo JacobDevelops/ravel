@@ -153,7 +153,7 @@ impl ClientState {
 
     /// Returns how many supplied documents were refused for the queue cap.
     #[must_use]
-    pub const fn refused(&self) -> usize {
+    pub const fn refused_documents(&self) -> usize {
         self.refused
     }
 
@@ -334,7 +334,7 @@ impl Entry {
     /// every tick, so a list of them is the one accumulator in this package
     /// that nothing drains and nothing bounds.
     #[must_use]
-    pub const fn observed(&self) -> usize {
+    pub const fn events_observed(&self) -> usize {
         self.observed
     }
 
@@ -432,7 +432,7 @@ mod tests {
                 .observe(GameEvent::ResourcesReloaded)
                 .expect("a reload on a server does nothing rather than failing");
             assert_eq!(library.entered(), LifecycleState::ALL, "{side:?}");
-            assert_eq!(library.observed(), 1, "{side:?}");
+            assert_eq!(library.events_observed(), 1, "{side:?}");
             assert_eq!(
                 library.last_observed(),
                 Some(GameEvent::ResourcesReloaded),
@@ -515,7 +515,11 @@ mod tests {
         assert_eq!(accepted, MAX_PENDING);
         let client = library.client().expect("client");
         assert_eq!(client.pending(), MAX_PENDING);
-        assert_eq!(client.refused(), 64, "and the refusals are counted");
+        assert_eq!(
+            client.refused_documents(),
+            64,
+            "and the refusals are counted"
+        );
 
         library
             .observe(GameEvent::ResourcesReloaded)
@@ -577,7 +581,11 @@ mod tests {
         }
         assert_eq!(library.client().expect("client").reloads(), 0);
         assert_eq!(library.client().expect("client").pending(), 1);
-        assert_eq!(library.observed(), 2, "both signals were still observed");
+        assert_eq!(
+            library.events_observed(),
+            2,
+            "both signals were still observed"
+        );
         assert_eq!(library.last_observed(), Some(GameEvent::ServerTick));
     }
 

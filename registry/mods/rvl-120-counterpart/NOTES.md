@@ -74,7 +74,7 @@ disabled multi-part block are the four areas §17 excludes and none of them is h
 | §14 the modal input interception | not carried, by the specification's own exclusion | — |
 | §15 the four optional integrations | host-blocked, recorded as pending | `src/lib.rs` |
 | §15 the manual latch, and absence not being an error | implemented, re-readable | `src/lib.rs` |
-| §16 what dependents need, as crate-root public functions | implemented | `src/lib.rs` |
+| §16 what dependents need, as crate-root re-exports of the module functions | implemented | `src/lib.rs` |
 | §17 the four excluded areas | not carried, by the specification's own exclusion | — |
 
 The colour-role records in `settings::COLOURS` expose their current fields for inspection.
@@ -180,7 +180,7 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   which is the same startup-time fault said plainly.
 - **The key binding is a press (§14).** The original polls the binding with a direct device query and
   no edge detection, so holding the key re-opens the manual on every client tick.
-  `Entry::manual_key` edge-detects, so holding it opens the manual once.
+  `Entry::poll_manual_key` edge-detects, so holding it opens the manual once.
 - **The run-length reader has an explicit end (§12.4).** The original answers zero forever past the
   end, so a caller has to already know how many values it expects. `Runs::next_value` answers
   nothing, and `Runs::next_or_zero` keeps the original rule for a dependent that relies on it.
@@ -188,6 +188,10 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   argument counts, text fields, record names, walk sizes and coded-buffer totals are all checked
   against a stated ceiling before anything allocates or indexes. The specification adds this
   requirement for the network surface and the same reasoning covers saved data.
+- **Written lengths must fit their signed prefix.** `arithmetic::signed_len` refuses a field length
+  above `i32::MAX` instead of saturating the prefix while writing the entire body. The same checked
+  conversion supplies count-first checksums; its boundary regression uses one past the signed maximum
+  without allocating a multi-gigabyte field.
 - **The login-finalised payload is not shipped (§9).** It is registered, sent and inert in the
   original. `network::PAYLOADS` names the thirteen contracts carrying the other twelve kinds, and a
   test written from §9's own census holds it to naming no login payload.

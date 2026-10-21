@@ -13,14 +13,14 @@
 //! - [`declaration`] — declaring content, its nesting and its one refusal;
 //! - [`channel`] — the channel and packet identifier derivations, and who a send
 //!   reaches;
-//! - [`storage`] — the durable per-package directory and the two saved-data
+//! - [`persistence`] — the durable per-package directory and the two saved-data
 //!   envelopes;
 //! - [`transport`] — the full signed range through a sixteen-bit channel;
 //! - [`matching`] — block state matching and the three composite predicates;
 //! - [`data`] — the stored-data model and the comparison a pack author writes
 //!   against;
 //! - [`validators`] — the eleven tag validator kinds in four families;
-//! - [`shapes`] — the recipe, ingredient and menu payload shapes;
+//! - [`recipes`] — the recipe, ingredient and menu payload shapes;
 //! - [`fluids`] — the fluid property vocabulary and the lazy client lookup;
 //! - [`presentation`] — the scissor stack, the cursors, the screen memory and
 //!   the system facts;
@@ -70,9 +70,9 @@ pub mod dumps;
 pub mod fluids;
 pub mod highlights;
 pub mod matching;
+pub mod persistence;
 pub mod presentation;
-pub mod shapes;
-pub mod storage;
+pub mod recipes;
 pub mod transport;
 pub mod validators;
 
@@ -87,9 +87,9 @@ pub use crate::data::{DataPredicate, Tag};
 pub use crate::declaration::{Handle, Registry, Special};
 pub use crate::highlights::{Outlines, PackKind, Spellings};
 pub use crate::matching::{BlockPredicate, EntityPredicate, ItemPredicate, StatePredicate};
+pub use crate::persistence::{DurableStorage, RawEnvelope, Record};
 pub use crate::presentation::{Cursors, ScissorStack, ScreenMemory, SystemFacts};
-pub use crate::shapes::{Ingredient, MenuProvider, RecipeShape};
-pub use crate::storage::{DurableStorage, RawEnvelope, Record};
+pub use crate::recipes::{Ingredient, MenuProvider, RecipeShape};
 pub use crate::transport::WideValues;
 pub use crate::validators::{Validator, Vocabulary};
 
@@ -468,8 +468,8 @@ const SOURCES: [(&str, &str); 16] = [
     ),
     ("matching.rs", include_str!("matching.rs")),
     ("presentation.rs", include_str!("presentation.rs")),
-    ("shapes.rs", include_str!("shapes.rs")),
-    ("storage.rs", include_str!("storage.rs")),
+    ("recipes.rs", include_str!("recipes.rs")),
+    ("persistence.rs", include_str!("persistence.rs")),
     ("transport.rs", include_str!("transport.rs")),
     ("validators.rs", include_str!("validators.rs")),
     (

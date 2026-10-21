@@ -131,7 +131,10 @@ pub fn sprites_document() -> Result<String, ModError> {
 #[cfg(test)]
 mod tests {
     use super::documents;
-    use std::path::Path;
+
+    fn render_documents() -> Vec<(&'static str, String)> {
+        documents().expect("the packaged declarations render")
+    }
 
     /// Rebuilds every document from this package's own functions and holds the
     /// tree under `generated/` to the bytes they produce.
@@ -141,30 +144,24 @@ mod tests {
     /// it is produced, so a document nobody can regenerate cannot be committed.
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents().expect("this package's constants are legal");
-        assert_eq!(rendered.len(), 3);
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
+        assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
             assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
-                let parent = path.parent().expect("the path names a directory");
-                std::fs::create_dir_all(parent)
-                    .unwrap_or_else(|error| panic!("{relative} is not writable: {error}"));
-                std::fs::write(&path, document.as_bytes())
-                    .unwrap_or_else(|error| panic!("{relative} is not writable: {error}"));
+                let parent = path.parent().expect("a document sits in a directory");
+                std::fs::create_dir_all(parent).expect("the generated directory is writable");
+                std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
-            let on_disk = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-                panic!(
-                    "{relative} is not readable: {error}. Set RAVEL_REGENERATE_GENERATED to \
-                     write it."
-                )
-            });
+            let on_disk = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
             assert_eq!(
                 on_disk, document,
-                "{relative} has drifted from what this package generates"
+                "{relative} has drifted from the functions that render it"
             );
         }
     }

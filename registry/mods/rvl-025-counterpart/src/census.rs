@@ -63,7 +63,7 @@ pub const NO_RECIPE_BLOCKS: [&str; 3] = ["surface_ore", "sweltering_ore", "outer
 pub const RECIPES: usize = 12;
 
 /// How many unlock advancements ship, one per recipe.
-pub const ADVANCEMENTS: usize = 12;
+pub const ADVANCEMENTS: usize = RECIPES;
 
 /// How many block loot tables ship.
 pub const LOOT_TABLES: usize = 5;
@@ -133,6 +133,18 @@ pub enum Defect {
 }
 
 impl Defect {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SurplusLabels => "SurplusLabels",
+            Self::UnregisteredBlockStates => "UnregisteredBlockStates",
+            Self::DeadBindingLabels => "DeadBindingLabels",
+            Self::EmptyLootModifier => "EmptyLootModifier",
+            Self::UnreferencedOreShape => "UnreferencedOreShape",
+        }
+    }
+
     /// All five, in the order §5 lists them.
     pub const ALL: [Self; 5] = [
         Self::SurplusLabels,
@@ -266,11 +278,6 @@ mod tests {
             2,
             "a command name nothing claims is one the loader routes to nobody"
         );
-    }
-
-    #[test]
-    fn every_recipe_has_one_unlock_advancement() {
-        assert_eq!(RECIPES, ADVANCEMENTS);
     }
 
     #[test]

@@ -47,12 +47,14 @@ use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope};
 
-pub use crate::arithmetic::{Check32, Check64, Table64, clamp_energy, reported_energy};
+pub use crate::arithmetic::{
+    Check32, Check64, Table64, check32_over, check64_over, clamp_energy, reported_energy,
+};
 pub use crate::commands::{Argument, CommandKey, Commands, Declaration, ElementType, Shape};
 pub use crate::data::{BlockData, Identity, RedstoneMode, Spellings};
 pub use crate::grouping::{Grouping, Placement, Position};
 pub use crate::preferences::{Corner, Preferences};
-pub use crate::primitives::{Face, Interner, Orientation, Runs};
+pub use crate::primitives::{Face, Interner, Orientation, Runs, code_runs, read_runs};
 pub use crate::save::GlobalData;
 pub use crate::settings::{Colours, Document, Settings};
 pub use crate::values::{Subscription, Value, ValueMap};
@@ -234,41 +236,11 @@ impl Entry {
     ///
     /// A binding that is not held while one of this package's screens is open
     /// does nothing, which is the original's own gating.
-    pub const fn manual_key(&mut self, down: bool, screen_open: bool) -> bool {
+    pub const fn poll_manual_key(&mut self, down: bool, screen_open: bool) -> bool {
         let pressed = down && !self.manual_held && screen_open;
         self.manual_held = down;
         pressed
     }
-}
-
-/// The change check dependents summarise a block of data with.
-///
-/// The signed accumulator and the arithmetic shift are the behaviour: a value
-/// computed from the textbook rule disagrees with every dependent's expectation.
-#[must_use]
-pub fn change_check(words: &[i32]) -> i32 {
-    arithmetic::check32_over(words)
-}
-
-/// The wider change check, folded through a table the build supplies.
-#[must_use]
-pub fn wide_change_check(table: &Table64, words: &[u32]) -> u64 {
-    arithmetic::check64_over(table, words)
-}
-
-/// Codes a run of small values for a dependent shipping bulk region data.
-#[must_use]
-pub fn code_region(values: &[u8]) -> Vec<u8> {
-    primitives::code_runs(values)
-}
-
-/// Reads a coded region back, with an explicit end.
-///
-/// # Errors
-///
-/// Returns whatever [`primitives::read_runs`] refuses.
-pub fn read_region(coded: &[u8]) -> Result<Vec<u8>, primitives::RunError> {
-    primitives::read_runs(coded)
 }
 
 #[declare_mod(id = "rvl_120_counterpart")]
@@ -578,14 +550,17 @@ mod tests {
     #[test]
     fn the_key_binding_is_a_press_rather_than_a_poll_of_a_held_key() {
         let mut shared = Entry::new(Side::Client);
-        assert!(shared.manual_key(true, true), "the press opens the manual");
         assert!(
-            !shared.manual_key(true, true),
+            shared.poll_manual_key(true, true),
+            "the press opens the manual"
+        );
+        assert!(
+            !shared.poll_manual_key(true, true),
             "holding the key does not re-open it on every tick"
         );
-        shared.manual_key(false, true);
+        shared.poll_manual_key(false, true);
         assert!(
-            shared.manual_key(true, true),
+            shared.poll_manual_key(true, true),
             "releasing arms the next press"
         );
     }
@@ -593,9 +568,9 @@ mod tests {
     #[test]
     fn the_binding_does_nothing_while_no_screen_of_this_package_is_open() {
         let mut shared = Entry::new(Side::Client);
-        assert!(!shared.manual_key(true, false));
+        assert!(!shared.poll_manual_key(true, false));
         assert!(
-            !shared.manual_key(true, true),
+            !shared.poll_manual_key(true, true),
             "a key already down when a screen opens is not a fresh press"
         );
     }
@@ -610,16 +585,10 @@ mod tests {
 
     #[test]
     fn what_dependents_need_is_reachable_from_the_crate_root() {
-        assert_eq!(change_check(&[1, 2, 3]), 169_269_418);
-
-        let table = Table64::placeholder();
-        assert_eq!(wide_change_check(&table, &[1, 2, 3]), 0xA044_210D_A3F7_4689);
-
-        let coded = code_region(&[4, 4, 4]);
-        assert_eq!(
-            read_region(&coded).expect("a well-formed buffer"),
-            [4, 4, 4]
-        );
+        let _: fn(&[i32]) -> i32 = check32_over;
+        let _: fn(&Table64, &[u32]) -> u64 = check64_over;
+        let _: fn(&[u8]) -> Vec<u8> = code_runs;
+        let _: fn(&[u8]) -> Result<Vec<u8>, primitives::RunError> = read_runs;
 
         assert_eq!(clamp_energy(i64::MAX), i32::MAX);
         assert_eq!(reported_energy(5, 0), 5);

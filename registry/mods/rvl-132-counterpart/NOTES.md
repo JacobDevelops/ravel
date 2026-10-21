@@ -22,6 +22,9 @@ work and this package is that: the three ingredient kinds and their matching, or
 registration barrier, configuration declaration and resolution, the lifecycle, the side model — is
 expressed through Ravel rather than rebuilt.
 
+The entry, its `export_mod!` invocation and its inline `tests` module live together in `src/lib.rs`,
+matching the counterpart template without adding a filename outside the frozen registry lexicon.
+
 Station grids and brewing simulations share the ingredient-kind check in `src/recipes.rs`.
 Both reject mixed kinds before applying their distinct empty-input and count policies.
 

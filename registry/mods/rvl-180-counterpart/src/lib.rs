@@ -58,6 +58,8 @@ pub use crate::transport::Outbox;
 /// The identity this package is declared and validated under.
 pub const MOD_ID: &str = "rvl_180_counterpart";
 
+const OPERATOR_ONLY: &str = "operator-only until invocations carry a permission level";
+
 /// How many readouts a client holds before it stops holding more.
 ///
 /// A readout arrives per tick from whatever is showing one, and a display only
@@ -313,9 +315,7 @@ impl Mod for Entry {
             ModError::refused(format!("`{root}` is not a command this package claimed"))
         })?;
         if matches!(command, Command::Reclaim | Command::Sweep) {
-            return Err(ModError::refused(
-                "operator-only until invocations carry a permission level",
-            ));
+            return Err(ModError::refused(OPERATOR_ONLY));
         }
         let report = self
             .console
@@ -341,7 +341,7 @@ export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
-    use super::{__ravel_entry, ClientState, Entry, MAX_HELD_READOUTS, MOD_ID};
+    use super::{__ravel_entry, ClientState, Entry, MAX_HELD_READOUTS, MOD_ID, OPERATOR_ONLY};
     use crate::colour::Dye;
     use crate::commands::{Command, Report};
     use crate::grouping::{self, TAG_COUNT};
@@ -446,12 +446,10 @@ mod tests {
             .expect("a legal kind");
         assert_eq!(
             shared.run_command(&invocation("entity_sweep", Side::DedicatedServer, &["cow"])),
-            Err(ModError::refused(
-                "operator-only until invocations carry a permission level"
-            ))
+            Err(ModError::refused(OPERATOR_ONLY))
         );
         assert_eq!(shared.console().population().count_of("cow"), 4);
-        assert_eq!(shared.console().retained(), 0);
+        assert_eq!(shared.console().notes_held(), 0);
     }
 
     #[test]
@@ -482,11 +480,9 @@ mod tests {
         assert!(shared.console_mut().retain("held".to_owned()));
         assert_eq!(
             shared.run_command(&invocation("reclaim_held", Side::IntegratedServer, &[])),
-            Err(ModError::refused(
-                "operator-only until invocations carry a permission level"
-            ))
+            Err(ModError::refused(OPERATOR_ONLY))
         );
-        assert_eq!(shared.console().retained(), 1);
+        assert_eq!(shared.console().notes_held(), 1);
         assert_eq!(
             shared
                 .console_mut()
@@ -507,7 +503,7 @@ mod tests {
             .run_command(&invocation("entity_tally", Side::DedicatedServer, &[]))
             .expect("a server runs the count");
         assert_eq!(
-            shared.console().retained(),
+            shared.console().notes_held(),
             1,
             "only the reclamation is exempt from retaining its report"
         );

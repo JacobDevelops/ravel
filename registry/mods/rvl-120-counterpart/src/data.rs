@@ -456,7 +456,7 @@ impl fmt::Display for DataRefused {
 impl std::error::Error for DataRefused {}
 
 fn write_text(bytes: &mut Vec<u8>, text: &str) {
-    bytes.extend_from_slice(&crate::arithmetic::bounded_count(text.len()).to_be_bytes());
+    bytes.extend_from_slice(&crate::arithmetic::signed_len(text.len()).to_be_bytes());
     bytes.extend_from_slice(text.as_bytes());
 }
 

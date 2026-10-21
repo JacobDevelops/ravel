@@ -214,6 +214,32 @@ impl fmt::Display for ShapeError {
 
 impl std::error::Error for ShapeError {}
 
+/// The closed vocabulary of wire codec kinds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Kind {
+    /// A truth value.
+    Truth,
+    /// A whole number.
+    Number,
+    /// Text.
+    Text,
+    /// Opaque bytes.
+    Bytes,
+}
+
+impl Kind {
+    /// The canonical portable codec name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Truth => TRUTH,
+            Self::Number => NUMBER,
+            Self::Text => TEXT,
+            Self::Bytes => BYTES,
+        }
+    }
+}
+
 /// One value on the wire, in the four kinds the portable table writes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
@@ -230,12 +256,12 @@ pub enum Value {
 impl Value {
     /// Which codec kind this value belongs to.
     #[must_use]
-    pub const fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> Kind {
         match self {
-            Self::Truth(_) => TRUTH,
-            Self::Number(_) => NUMBER,
-            Self::Text(_) => TEXT,
-            Self::Bytes(_) => BYTES,
+            Self::Truth(_) => Kind::Truth,
+            Self::Number(_) => Kind::Number,
+            Self::Text(_) => Kind::Text,
+            Self::Bytes(_) => Kind::Bytes,
         }
     }
 }
@@ -250,12 +276,12 @@ pub const TEXT: &str = "text";
 pub const BYTES: &str = "bytes";
 
 /// The four codecs the table holds without being loaded.
-pub const PORTABLE_CODECS: [&str; 4] = [TRUTH, NUMBER, TEXT, BYTES];
+pub const PORTABLE_CODECS: [Kind; 4] = [Kind::Truth, Kind::Number, Kind::Text, Kind::Bytes];
 
 /// One entry in the type-to-encoder table.
 #[derive(Clone, Copy, Debug)]
 pub struct Codec {
-    kind: &'static str,
+    kind: Kind,
 }
 
 impl Codec {
@@ -277,15 +303,10 @@ impl Codec {
 
     fn read(self, reader: &mut PacketReader<'_>) -> Result<Value, TransportError> {
         let value = match self.kind {
-            TRUTH => Value::Truth(reader.bool()?),
-            NUMBER => Value::Number(reader.u32()?),
-            TEXT => Value::Text(reader.text()?.to_owned()),
-            BYTES => Value::Bytes(reader.bytes_field()?.to_vec()),
-            other => {
-                return Err(TransportError::NoCodec {
-                    codec: other.to_owned(),
-                });
-            }
+            Kind::Truth => Value::Truth(reader.bool()?),
+            Kind::Number => Value::Number(reader.u32()?),
+            Kind::Text => Value::Text(reader.text()?.to_owned()),
+            Kind::Bytes => Value::Bytes(reader.bytes_field()?.to_vec()),
         };
         Ok(value)
     }
@@ -317,7 +338,7 @@ impl Codecs {
     pub fn new() -> Self {
         let mut entries = BTreeMap::new();
         for kind in PORTABLE_CODECS {
-            entries.insert(kind.to_owned(), Codec { kind });
+            entries.insert(kind.as_str().to_owned(), Codec { kind });
         }
         Self {
             entries,
@@ -329,12 +350,12 @@ impl Codecs {
     ///
     /// Answers whether anything was added, so a second call is visible rather
     /// than silent.
-    pub fn load_platform(&mut self, additions: &[(&str, &'static str)]) -> bool {
+    pub fn load_platform(&mut self, additions: &[(&str, Kind)]) -> bool {
         if self.platform_loaded {
             return false;
         }
-        for (name, kind) in additions {
-            self.entries.insert((*name).to_owned(), Codec { kind });
+        for &(name, kind) in additions {
+            self.entries.insert(name.to_owned(), Codec { kind });
         }
         self.platform_loaded = true;
         true
@@ -347,7 +368,7 @@ impl Codecs {
     }
 
     /// Adds one entry for a dependent's own declared field type.
-    pub fn add(&mut self, name: &str, kind: &'static str) {
+    pub fn add(&mut self, name: &str, kind: Kind) {
         self.entries.insert(name.to_owned(), Codec { kind });
     }
 
@@ -386,9 +407,9 @@ pub enum TransportError {
     /// The value is not of the kind the codec writes.
     WrongKind {
         /// What the codec writes.
-        codec: &'static str,
+        codec: Kind,
         /// What it was handed.
-        value: &'static str,
+        value: Kind,
     },
     /// The bytes do not spell what the shape says they do.
     Wire(WireError),
@@ -406,7 +427,12 @@ impl fmt::Display for TransportError {
             Self::NoValue { field } => write!(formatter, "no value for the marked field {field}"),
             Self::NoCodec { codec } => write!(formatter, "the table holds no codec named {codec}"),
             Self::WrongKind { codec, value } => {
-                write!(formatter, "a {codec} codec was handed a {value}")
+                write!(
+                    formatter,
+                    "a {} codec was handed a {}",
+                    codec.as_str(),
+                    value.as_str()
+                )
             }
             Self::Wire(error) => write!(formatter, "the bytes do not spell the message: {error}"),
         }
@@ -660,8 +686,8 @@ mod tests {
         assert_eq!(
             shape.write(&table, &values, &mut writer),
             Err(TransportError::WrongKind {
-                codec: NUMBER,
-                value: TEXT,
+                codec: Kind::Number,
+                value: Kind::Text,
             })
         );
     }
@@ -688,14 +714,14 @@ mod tests {
         let mut table = Codecs::new();
         assert_eq!(table.len(), PORTABLE_CODECS.len());
         assert!(!table.platform_loaded());
-        for name in PORTABLE_CODECS {
-            assert!(table.get(name).is_some());
+        for kind in PORTABLE_CODECS {
+            assert!(table.get(kind.as_str()).is_some());
         }
         assert!(table.get("position").is_none());
-        assert!(table.load_platform(&[("position", NUMBER)]));
+        assert!(table.load_platform(&[("position", Kind::Number)]));
         assert!(table.get("position").is_some());
         assert!(
-            !table.load_platform(&[("position", NUMBER)]),
+            !table.load_platform(&[("position", Kind::Number)]),
             "common setup runs once and a second load says so"
         );
     }
@@ -703,7 +729,7 @@ mod tests {
     #[test]
     fn a_dependent_adds_its_own_declared_field_type() {
         let mut table = Codecs::new();
-        table.add("mine", TEXT);
+        table.add("mine", Kind::Text);
         assert_eq!(table.len(), PORTABLE_CODECS.len() + 1);
         assert!(table.get("mine").is_some());
     }

@@ -77,6 +77,20 @@ pub enum Behaviour {
 }
 
 impl Behaviour {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ConnectedBlock => "ConnectedBlock",
+            Self::ConnectedSheet => "ConnectedSheet",
+            Self::ConnectedPane => "ConnectedPane",
+            Self::LargeTiled => "LargeTiled",
+            Self::RotatingColumn => "RotatingColumn",
+            Self::UprightColumn => "UprightColumn",
+            Self::PaneColumn => "PaneColumn",
+        }
+    }
+
     /// Every behaviour, in the order this enum declares them.
     pub const ALL: [Self; 7] = [
         Self::ConnectedBlock,

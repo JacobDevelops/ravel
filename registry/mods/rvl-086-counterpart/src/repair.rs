@@ -10,6 +10,8 @@
 //! Every number here is integer arithmetic and both truncations are the
 //! observable behaviour, so both are reproduced rather than rounded.
 
+use std::fmt::Write as _;
+
 use ravel_sdk::{JsonValue, content::ContentId, json};
 use rvl_042_counterpart::inventory::Stack;
 
@@ -38,6 +40,19 @@ pub enum Shape {
 }
 
 impl Shape {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Digging => "Digging",
+            Self::Sword => "Sword",
+            Self::Shearing => "Shearing",
+            Self::Ranged => "Ranged",
+            Self::Armour => "Armour",
+            Self::Other => "Other",
+        }
+    }
+
     /// Every shape, in a fixed order.
     pub const ALL: [Self; 6] = [
         Self::Digging,
@@ -316,12 +331,7 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
 
     let mut units = 0.0_f64;
     let mut full = false;
-    let capacity = materials
-        .iter()
-        .map(|held| held.stack.entry.namespace().as_str().len() + 1 + held.stack.entry.path().len())
-        .max()
-        .unwrap_or(0);
-    let mut material_entry = String::with_capacity(capacity);
+    let mut material_entry = String::new();
     for material in materials {
         if full {
             return Err(RepairRefused::SurplusAfterFull);
@@ -330,9 +340,8 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
             return Err(RepairRefused::MaterialReturns);
         }
         material_entry.clear();
-        material_entry.push_str(material.stack.entry.namespace().as_str());
-        material_entry.push(':');
-        material_entry.push_str(material.stack.entry.path());
+        write!(material_entry, "{}", material.stack.entry)
+            .expect("writing into a String cannot fail");
         let value = worth(context, &tool_entry, &material_entry);
         if value == 0.0 {
             return Err(RepairRefused::WorthlessMaterial);
@@ -738,12 +747,29 @@ mod tests {
     }
 
     #[test]
-    fn the_halving_is_the_ordinary_case_for_the_two_shapes_that_default_to_it() {
-        let fixture = Fixture::new();
-        assert!(fixture.settings.repair_discounts.digging);
-        assert!(fixture.settings.repair_discounts.shearing);
-        assert_eq!(Cost::of(&fixture.settings, Some(Shape::Digging)).units, 1);
-        assert_eq!(Cost::of(&fixture.settings, Some(Shape::Sword)).units, 3);
+    fn each_repair_discount_can_be_disabled_without_disabling_the_other() {
+        for (disabled, other) in [
+            (Shape::Digging, Shape::Shearing),
+            (Shape::Shearing, Shape::Digging),
+        ] {
+            let mut fixture = Fixture::new();
+            assert!(fixture.settings.repair_discounts.digging);
+            assert!(fixture.settings.repair_discounts.shearing);
+            if disabled == Shape::Digging {
+                fixture.settings.repair_discounts.digging = false;
+            } else {
+                fixture.settings.repair_discounts.shearing = false;
+            }
+            let cost = Cost::of(&fixture.settings, Some(disabled));
+            assert_eq!(cost.units, fixture.settings.repair_cost, "{disabled:?}");
+            assert_eq!(
+                cost.enchantment, fixture.settings.repair_enchantment_cost,
+                "{disabled:?}"
+            );
+            let discounted = Cost::of(&fixture.settings, Some(other));
+            assert_eq!(discounted.units, 1, "{other:?}");
+            assert_eq!(discounted.enchantment, 0, "{other:?}");
+        }
     }
 
     #[test]

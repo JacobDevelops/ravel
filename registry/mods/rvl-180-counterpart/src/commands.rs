@@ -208,7 +208,7 @@ impl Console {
 
     /// Returns how many notes are held.
     #[must_use]
-    pub fn retained(&self) -> usize {
+    pub fn notes_held(&self) -> usize {
         self.retained.len()
     }
 
@@ -218,7 +218,7 @@ impl Console {
     /// follows for the same reason: a bound that discards without a count is a
     /// bound nobody can see was reached.
     #[must_use]
-    pub const fn dropped(&self) -> usize {
+    pub const fn notes_dropped(&self) -> usize {
         self.dropped
     }
 
@@ -226,7 +226,7 @@ impl Console {
     ///
     /// Returns whether it was held. A note beyond [`MAX_RETAINED`] is dropped
     /// rather than held, so a command run in a loop cannot grow this without
-    /// end, and the drop is counted in [`Console::dropped`].
+    /// end, and the drop is counted in [`Console::notes_dropped`].
     pub fn retain(&mut self, note: String) -> bool {
         if self.retained.len() >= MAX_RETAINED {
             self.dropped += 1;
@@ -516,7 +516,7 @@ mod tests {
         for index in 0..8 {
             assert!(console.retain(format!("note {index}")));
         }
-        assert_eq!(console.retained(), 8);
+        assert_eq!(console.notes_held(), 8);
 
         let report = console
             .run(Command::Reclaim, Side::DedicatedServer, &[])
@@ -529,7 +529,7 @@ mod tests {
                 released: 8,
             }
         );
-        assert_eq!(console.retained(), 0);
+        assert_eq!(console.notes_held(), 0);
     }
 
     #[test]
@@ -539,10 +539,10 @@ mod tests {
             let held = console.retain(format!("note {index}"));
             assert_eq!(held, index < MAX_RETAINED);
         }
-        assert_eq!(console.retained(), MAX_RETAINED);
+        assert_eq!(console.notes_held(), MAX_RETAINED);
 
         console.reclaim();
-        assert_eq!(console.retained(), 0);
+        assert_eq!(console.notes_held(), 0);
         assert!(console.retain("room again".to_owned()));
     }
 
@@ -558,9 +558,9 @@ mod tests {
                 .run(Command::Sweep, Side::DedicatedServer, &words("cow"))
                 .unwrap_or_else(|refusal| panic!("round {round} refused: {refusal}"));
         }
-        assert_eq!(console.retained(), MAX_RETAINED);
+        assert_eq!(console.notes_held(), MAX_RETAINED);
         assert_eq!(
-            console.dropped(),
+            console.notes_dropped(),
             MAX_RETAINED,
             "a note the bound discarded is counted rather than disappearing"
         );
@@ -591,6 +591,6 @@ mod tests {
             }
         );
         assert_eq!(console.population().count_of("cow"), 0);
-        assert_eq!(console.dropped(), 1);
+        assert_eq!(console.notes_dropped(), 1);
     }
 }

@@ -309,7 +309,6 @@ pub struct TopGearSettings {
 
 /// Which ore deposits generate.
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
 pub struct DepositSettings {
     /// Chance the third deposit substitutes the rarer ore.
     pub rare_substitution_chance: f64,
@@ -613,9 +612,19 @@ mod tests {
 
     #[test]
     fn sixteen_settings_are_general_and_four_are_world() {
-        let world = KEYS.iter().filter(|key| key.starts_with("world.")).count();
+        let declared = declaration().expect("the packaged document parses");
+        let world = declared
+            .settings()
+            .iter()
+            .filter(|setting| setting.key.as_str().starts_with("world."))
+            .count();
+        let general = declared
+            .settings()
+            .iter()
+            .filter(|setting| !setting.key.as_str().starts_with("world."))
+            .count();
         assert_eq!(world, 4);
-        assert_eq!(KEYS.len() - world, 16);
+        assert_eq!(general, 16);
     }
 
     #[test]

@@ -251,8 +251,8 @@ pub fn consumed_flags() -> Result<[FlagId; 2], ContentIdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::config::{SettingSide, ValueError};
-    use ravel_sdk::{JsonValue, Side};
+    use ravel_sdk::config::{SettingSide, ValueDocument, ValueError};
+    use ravel_sdk::{JsonValue, Side, json};
     fn travels_to_clients() -> bool {
         declaration().is_ok_and(|declared| {
             declared.settings().iter().any(|setting| {
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn typed_reads_apply_numbers_integers_and_boolean_overrides() {
-        let document = ravel_sdk::config::ValueDocument::parse(
+        let document = ValueDocument::parse(
             &ravel_sdk::json!({
                 "schemaVersion": 1,
                 "owner": crate::MOD_ID,
@@ -420,24 +420,40 @@ mod tests {
 
     #[test]
     fn a_published_flag_carries_the_value_the_setting_held() {
-        let mut table = FlagTable::new();
-        let settings = Settings {
-            crops_fertilisable: true,
-            world_outer: Deposits {
-                shard: false,
-                essence: true,
-            },
-            ..Settings::shipped().expect("the shipped settings are valid")
-        };
-        publish(&mut table, &settings).expect("legal flag bindings");
-        let fertilisable =
-            setting_flag(crate::MOD_ID, CROPS_FERTILISABLE).expect("a legal flag name");
-        let deposit =
-            setting_flag(crate::MOD_ID, WORLD_OUTER_SHARD_DEPOSIT).expect("a legal flag name");
-        assert!(table.is_published(&fertilisable));
-        assert!(table.is_published(&deposit), "both are published");
-        assert!(table.enabled(&fertilisable));
-        assert!(!table.enabled(&deposit), "and one of them is off");
+        let defaults = Settings::shipped().expect("valid defaults");
+        for (changed, value) in PUBLISHED {
+            let document = ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1,
+                    "owner": crate::MOD_ID,
+                    "values": {(changed): !value(&defaults)}
+                })
+                .to_string(),
+            )
+            .expect("valid override");
+            let resolved = LayeredConfiguration::resolve(
+                declaration().expect("valid declaration"),
+                Some(&document),
+                None,
+            )
+            .expect("valid settings");
+            let settings = Settings::read(&resolved).expect("typed settings");
+            let mut table = FlagTable::new();
+            publish(&mut table, &settings).expect("legal flag bindings");
+            for (key, enabled) in PUBLISHED {
+                let flag = setting_flag(crate::MOD_ID, key).expect("legal flag");
+                assert!(table.is_published(&flag));
+                assert_eq!(
+                    table.enabled(&flag),
+                    if key == changed {
+                        !enabled(&defaults)
+                    } else {
+                        enabled(&defaults)
+                    },
+                    "{changed} must affect only its own flag, not {key}"
+                );
+            }
+        }
     }
 
     #[test]

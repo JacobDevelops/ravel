@@ -108,7 +108,7 @@ impl Colour {
         let hue = if span <= f32::EPSILON {
             0.0
         } else if (high - red).abs() <= f32::EPSILON {
-            60.0 * (((green - blue) / span) % 6.0)
+            60.0 * ((green - blue) / span)
         } else if (high - green).abs() <= f32::EPSILON {
             60.0 * (((blue - red) / span) + 2.0)
         } else {
@@ -492,11 +492,8 @@ impl Value {
         let explicit = digits.is_some();
         let body = digits.unwrap_or(trimmed);
         if (body.len() == 6 || body.len() == 8) && body.bytes().all(|b| b.is_ascii_hexdigit()) {
-            let value = u32::from_str_radix(body, 16).map_err(|_| {
-                // Six or eight hexadecimal digits always fit; this arm cannot be
-                // reached and is a refusal rather than an assumption.
-                ColourError::Unspellable(text.to_owned())
-            })?;
+            let value =
+                u32::from_str_radix(body, 16).expect("six or eight hexadecimal digits fit u32");
             let colour = if body.len() == 6 {
                 Colour::from_packed(value | 0xFF00_0000)
             } else {

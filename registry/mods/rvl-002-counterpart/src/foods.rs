@@ -37,6 +37,21 @@ pub enum Effect {
     DigSpeed,
 }
 
+impl Effect {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Absorption => "Absorption",
+            Self::MovementSpeed => "MovementSpeed",
+            Self::DamageResistance => "DamageResistance",
+            Self::Regeneration => "Regeneration",
+            Self::DamageBoost => "DamageBoost",
+            Self::DigSpeed => "DigSpeed",
+        }
+    }
+}
+
 /// The fixed order the effects accumulate in.
 pub const ORDER: [Effect; COUNT] = [
     Effect::Absorption,

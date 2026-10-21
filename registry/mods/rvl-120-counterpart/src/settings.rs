@@ -184,10 +184,7 @@ impl Settings {
     /// # Errors
     /// Returns a packaging failure if the declaration or defaults are invalid.
     pub fn shipped() -> Result<Self, ravel_sdk::ModError> {
-        let declaration = declaration().map_err(ravel_sdk::ModError::from_display)?;
-        let resolved = LayeredConfiguration::resolve(declaration, None, None)
-            .map_err(ravel_sdk::ModError::from_display)?;
-        Self::read(&resolved).map_err(ravel_sdk::ModError::from_display)
+        ravel_sdk::config::read_shipped(&document().to_string(), Self::read)
     }
 
     /// The validated positive ceiling for one upgrade material.

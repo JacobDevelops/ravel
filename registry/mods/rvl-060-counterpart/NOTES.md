@@ -39,13 +39,13 @@ Tests retain behavioral and uniqueness checks without restating fixed-array leng
 | §5 the optional channel's silent refusal, at channel level | implemented | `src/channel.rs` |
 | §5 the six send targets | implemented | `src/channel.rs` |
 | §5 the distance send comparing a square to an unsquared argument | fixed, declared | `src/channel.rs` |
-| §6.1 the two directories outside the game directory | declined; a durable per-package directory instead | `src/storage.rs` |
-| §6.2 the codec-described record and its defaults | implemented | `src/storage.rs` |
-| §6.2 the parse-failure fallback | implemented, and made loud | `src/storage.rs` |
-| §6.2 the merging write that leaves stale keys | implemented; clearing by default, declared | `src/storage.rs` |
-| §6.2 the always-dirty and world-wide modes | implemented | `src/storage.rs` |
-| §6.2 a non-compound codec output dropped at write time | refused at declaration time, declared | `src/storage.rs` |
-| §6.2 the older envelope and its client stand-in | implemented, a copy per request, declared | `src/storage.rs` |
+| §6.1 the two directories outside the game directory | declined; a durable per-package directory instead | `src/persistence.rs` |
+| §6.2 the codec-described record and its defaults | implemented | `src/persistence.rs` |
+| §6.2 the parse-failure fallback | implemented, and made loud | `src/persistence.rs` |
+| §6.2 the merging write that leaves stale keys | implemented; clearing by default, declared | `src/persistence.rs` |
+| §6.2 the always-dirty and world-wide modes | implemented | `src/persistence.rs` |
+| §6.2 a non-compound codec output dropped at write time | refused at declaration time, declared | `src/persistence.rs` |
+| §6.2 the older envelope and its client stand-in | implemented, a copy per request, declared | `src/persistence.rs` |
 | §6.2 the inert data-fixer argument | not carried, deliberately | — |
 | §6.3 the split integer arithmetic and the doubled backing | implemented | `src/transport.rs` |
 | §6.3 the compatibility-only narrow pair | implemented, both kept | `src/transport.rs` |
@@ -63,11 +63,11 @@ Tests retain behavioral and uniqueness checks without restating fixed-array leng
 | §7.4 decoding by first-parse order | implemented; family required, declared | `src/validators.rs` |
 | §7.4 the regular-expression kind | implemented over a stated subset, declared | `src/validators.rs`, `src/validators/conditions.rs` |
 | §7 hanging any of this on a data-pack document | host-blocked | — |
-| §8 the base recipe's four deliberate answers | implemented | `src/shapes.rs` |
-| §8 the ingredient complexity flag and its inversion | implemented | `src/shapes.rs` |
-| §8 the item test and the example stacks | implemented as two things | `src/shapes.rs` |
-| §8 the namespace-scoped lazy registration | implemented, bounded | `src/shapes.rs` |
-| §8 the optional menu payload and the pointer reset | implemented | `src/shapes.rs` |
+| §8 the base recipe's four deliberate answers | implemented | `src/recipes.rs` |
+| §8 the ingredient complexity flag and its inversion | implemented | `src/recipes.rs` |
+| §8 the item test and the example stacks | implemented as two things | `src/recipes.rs` |
+| §8 the namespace-scoped lazy registration | implemented, bounded | `src/recipes.rs` |
+| §8 the optional menu payload and the pointer reset | implemented | `src/recipes.rs` |
 | §8 registering a recipe kind, an ingredient kind or a screen payload | host-blocked | — |
 | §9 the fluid property vocabulary | declared as a shape | `src/fluids.rs` |
 | §9 the lazy client lookup and its cache | implemented | `src/fluids.rs` |
@@ -168,7 +168,7 @@ Nine of these are §13's own table. The rest are this package's, and each says w
 - **A group with no declaration is empty rather than absent (§4).** The original's grouped-by-value
   accessor answers null for a value nothing was declared under, with no empty-collection fallback.
 - **A parse failure is reported rather than only logged (§6.2).** The fallback to the default is kept
-  — refusing would cost a world its state — and `storage::Loaded::recovery` makes the failure
+  — refusing would cost a world its state — and `persistence::Loaded::recovery` makes the failure
   something a caller has to look at.
 - **A codec whose output is not a compound is refused at declaration time (§6.2).** The original logs
   and silently drops the write. A codec's output shape is knowable before any world exists.
@@ -222,7 +222,7 @@ Nine of these are §13's own table. The rest are this package's, and each says w
 
 §6.1's two directories are a fourth decline, and the specification calls it that rather than
 host-blocked: a package writing into the user's home on its own initiative is outside what Ravel's
-sandbox should permit. `storage::DurableStorage` joins a host-supplied root to a validated
+sandbox should permit. `persistence::DurableStorage` joins a host-supplied root to a validated
 single-segment package name, touches no file, reads no environment variable, and knows nothing about
 the operating system. It writes no explanatory file either. Any dependent that had recorded an
 absolute path would break; none is known to, and none was read.
@@ -272,7 +272,7 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
 ## A gap found in the published surface
 
 - **`ravel_sdk::save::SavedDataError` has no arm for a version that is not there.**
-  `SavedDataVersion::new` answers an `Option`, so `storage::Record::declaration` has to name
+  `SavedDataVersion::new` answers an `Option`, so `persistence::Record::declaration` has to name
   `NoVersionsDeclared` for a constant that cannot be zero. It is the nearest true statement rather
   than the right one. A checked constructor returning the module's own error type, or a
   `ZeroVersion` arm, would close it. The same gap is recorded by the RVL-120 counterpart, which is
@@ -344,7 +344,7 @@ reaching sixteen blocks, a negative distance reaching nobody, all six targets, c
 position, four send refusals, a body past the ceiling refused before it reaches a peer, and the kind
 ceiling.
 
-The storage: the durable path, a trailing separator, seven hostile package names refused, a
+The persistence: the durable path, a trailing separator, seven hostile package names refused, a
 non-compound default refused before any world exists, record names bounded at both ends, absence
 reading the default without being a failure, a parse failure reported as well as recovered, a stored
 record read whole, clearing leaving no stale key, merging keeping the original rule, two write
@@ -352,7 +352,7 @@ refusals, always-dirty, world-wide scope, one declared version, a server side re
 record, a client world reading the stand-in, two client worlds getting two copies, and an envelope
 with no stand-in handing a client nothing.
 
-The shapes, fluids, presentation and highlights: the base recipe's four answers and a dependent
+The recipes, fluids, presentation and highlights: the base recipe's four answers and a dependent
 overriding all four, complexity defaulting to true with the loader told the inverse, the example
 stacks, lazy namespace creation, two namespaces keeping their own, an empty namespace, one
 registration per identifier, the namespace ceiling, a provider with and without a serialiser, the

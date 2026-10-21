@@ -107,7 +107,7 @@ pub fn slots_document() -> String {
         .map(|(name, behaviour)| {
             json!({
                 "kind": name,
-                "behaviour": format!("{behaviour:?}"),
+                "behaviour": behaviour.as_str(),
                 "readsCondition": behaviour.reads_condition(),
                 "slots": behaviour
                     .slots()
@@ -146,14 +146,12 @@ fn slot_name(slot: Slot) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use super::documents;
+    use super::documents as render_documents;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
         assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
@@ -169,7 +167,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
             assert_eq!(
                 on_disk, document,
-                "{relative} has drifted from the functions it is rendered from"
+                "{relative} has drifted from the functions that render it"
             );
         }
     }

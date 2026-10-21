@@ -24,13 +24,19 @@ envelopes reuse the entry's already-declared identity, so neither operation repa
 constant or reports an impossible identity failure.
 
 The mod-owned flag table is exposed by the required-service SDK seam: `flags` accepts
-`{"flag": "namespace:name"}` and answers a boolean only for a published identity. Missing or malformed
-flags refuse the request, and dependents resolve values after configuration rather than reading their
-own unrelated tables. Construction publishes the shipped settings too, so lifecycle-only admission
+`{"flag": "namespace:name"}` and answers `{"answered": true, "enabled": bool}` only for a
+published identity. Missing, malformed or unpublished flags receive an in-band
+`{"answered": false, "refused": "reason"}` reply rather than failing the provider. Dependents
+resolve values after configuration rather than reading their own unrelated tables.
+Construction publishes the shipped settings too, so lifecycle-only admission
 without a configuration pass still exposes the actual default flags; a configuration pass replaces
 them with the resolved launch values before service wiring. Packaged settings or flag-publication
 errors remain fallible through construction and are refused at Constructed; configuration declarations
 are parsed on demand rather than cached separately.
+
+The registry methods `open_crop_window`, `close_crop_window` and `is_crop_window_open`
+name the crop-only boundary; tiers, kinds, modifiers and charges do not share it.
+`DepositSettings` permits the same struct-literal construction as every other settings group.
 
 ## What each section became
 

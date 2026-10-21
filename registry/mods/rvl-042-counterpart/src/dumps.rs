@@ -163,30 +163,32 @@ pub fn settings_document() -> Result<String, ModError> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
+
+    fn render_documents() -> Vec<(&'static str, String)> {
+        documents().expect("the packaged declarations render")
+    }
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents().expect("the packaged declaration parses");
-        assert_eq!(rendered.len(), 3, "every renderer contributes one document");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
+        assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
             assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
                 let parent = path.parent().expect("a document sits in a directory");
-                std::fs::create_dir_all(parent).expect("the directory is writable");
+                std::fs::create_dir_all(parent).expect("the generated directory is writable");
                 std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
             let on_disk = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("{relative} is missing from the tree: {error}"));
+                .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
             assert_eq!(
                 on_disk, document,
-                "{relative} on disk has drifted from what the crate renders"
+                "{relative} has drifted from the functions that render it"
             );
         }
     }

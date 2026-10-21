@@ -74,6 +74,17 @@ pub enum Shape {
 }
 
 impl Shape {
+    /// The stable spelling used by generated documents.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Charge => "Charge",
+            Self::SlottedItem => "SlottedItem",
+            Self::SlotlessItem => "SlotlessItem",
+            Self::Fluid => "Fluid",
+        }
+    }
+
     /// All four, in the order section eight names them.
     pub const ALL: [Self; 4] = [
         Self::Charge,

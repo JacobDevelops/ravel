@@ -137,7 +137,10 @@ impl Caches {
         if self.brewing.is_none() {
             self.brewing = Some(derive()?);
         }
-        Ok(self.brewing.as_deref().unwrap_or_default())
+        Ok(self
+            .brewing
+            .as_deref()
+            .expect("the brewing closure was held or just derived"))
     }
 
     /// How many station keys are filed.

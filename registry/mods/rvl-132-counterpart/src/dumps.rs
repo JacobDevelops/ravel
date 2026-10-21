@@ -56,9 +56,9 @@ pub fn capabilities() -> String {
         };
         writeln!(
             rendered,
-            "{}\t{:?}\t{form}\t{}",
+            "{}\t{}\t{form}\t{}",
             attachment.capability,
-            attachment.class,
+            attachment.class.as_str(),
             attachment.address.written()
         )
         .expect("writing into a String cannot fail");
@@ -77,8 +77,8 @@ pub fn storage() -> String {
     for adapter in table() {
         writeln!(
             rendered,
-            "{:?}\t{}\t{}\t{}",
-            adapter.shape,
+            "{}\t{}\t{}\t{}",
+            adapter.shape.as_str(),
             adapter.class.as_str(),
             adapter.shape.kind(),
             adapter.shape.slotted()
@@ -140,30 +140,28 @@ pub fn census() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use super::*;
+    use super::documents as render_documents;
 
     #[test]
     fn the_generated_documents_regenerate_byte_for_byte() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let rendered = documents();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let rendered = render_documents();
         assert!(!rendered.is_empty(), "the package renders documents");
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
         for (relative, document) in rendered {
             assert!(document.ends_with('\n'), "{relative} must end in a newline");
             let path = root.join(relative);
             if regenerating {
-                std::fs::create_dir_all(path.parent().expect("a package-relative path"))
-                    .expect("the generated directory");
-                std::fs::write(&path, document.as_bytes()).expect("the document");
+                let parent = path.parent().expect("a document sits in a directory");
+                std::fs::create_dir_all(parent).expect("the generated directory is writable");
+                std::fs::write(&path, document.as_bytes()).expect("the document is writable");
                 continue;
             }
             let on_disk = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("{relative} is not in the package: {error}"));
+                .unwrap_or_else(|error| panic!("{relative} is not on disk: {error}"));
             assert_eq!(
                 on_disk, document,
-                "{relative} has drifted from what the crate derives"
+                "{relative} has drifted from the functions that render it"
             );
         }
     }

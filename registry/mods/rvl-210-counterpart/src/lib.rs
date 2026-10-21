@@ -87,13 +87,15 @@ pub const PRODUCER_SERVICE: &str = "dump_producers";
 /// The version the version subcommand reports.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+const OPERATOR_ONLY: &str = "operator-only until invocations carry a permission level";
+
 /// The one saved-data version this build writes and reads.
 pub const DATA_VERSION: SavedDataVersion = SavedDataVersion::MIN;
 
 /// This platform's additions to the wire codec table, loaded at common setup.
-pub const PLATFORM_CODECS: [(&str, &str); 2] = [
-    ("position", transport::NUMBER),
-    ("identifier", transport::TEXT),
+pub const PLATFORM_CODECS: [(&str, transport::Kind); 2] = [
+    ("position", transport::Kind::Number),
+    ("identifier", transport::Kind::Text),
 ];
 
 /// This platform's additions to the persistable field-type table.
@@ -313,9 +315,7 @@ impl Entry {
             return Ok(());
         };
         if arguments.len() > 1 {
-            return Err(ModError::refused(
-                "operator-only until invocations carry a permission level",
-            ));
+            return Err(ModError::refused(OPERATOR_ONLY));
         }
         self.framework
             .read(property)
@@ -652,8 +652,8 @@ mod tests {
     #[test]
     fn the_portable_table_entries_are_there_before_common_setup_runs() {
         let entry = Entry::new();
-        for name in transport::PORTABLE_CODECS {
-            assert!(entry.codecs().get(name).is_some());
+        for kind in transport::PORTABLE_CODECS {
+            assert!(entry.codecs().get(kind.as_str()).is_some());
         }
         for name in persistence::PORTABLE_FIELD_TYPES {
             assert!(entry.field_types().holds(name));
@@ -769,7 +769,11 @@ mod tests {
             ContentId::new(Entry::declared_id().clone(), name).expect("a legal path"),
         );
         let arguments = arguments.iter().map(|held| (*held).to_owned()).collect();
-        entry.run_command(&CommandInvocation::new(key, Side::Client, arguments))
+        entry.run_command(&CommandInvocation::new(
+            key,
+            Side::IntegratedServer,
+            arguments,
+        ))
     }
 
     #[test]
@@ -785,10 +789,7 @@ mod tests {
             &[settings::DEVELOPMENT_SHORTCUT, "true"],
         )
         .expect_err("writes require reviewed permissions");
-        assert_eq!(
-            refusal,
-            ModError::refused("operator-only until invocations carry a permission level")
-        );
+        assert_eq!(refusal, ModError::refused(OPERATOR_ONLY));
         assert_eq!(
             entry.framework().read(settings::DEVELOPMENT_SHORTCUT),
             Ok(&settings::Value::Truth(false)),
@@ -803,6 +804,8 @@ mod tests {
             ContentId::new(Entry::declared_id().clone(), commands::SETTINGS)
                 .expect("a legal command path"),
         );
+        // Loader-dispatched commands run server-side. Direct calls on every side
+        // additionally pin the unconditional permission refusal at this boundary.
         for side in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
             for property in [settings::DEVELOPMENT_SHORTCUT, "dependent.server"] {
                 let mut entry = Entry::new();
@@ -821,9 +824,7 @@ mod tests {
                 );
                 assert_eq!(
                     entry.run_command(&write),
-                    Err(ModError::refused(
-                        "operator-only until invocations carry a permission level"
-                    ))
+                    Err(ModError::refused(OPERATOR_ONLY))
                 );
                 assert_eq!(
                     entry.framework().read(property),
@@ -909,17 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn every_platform_codec_names_a_kind_the_table_really_has() {
-        // The names used to be remapped through a match that sent anything it
-        // did not recognise to the text codec, so a kind that does not exist
-        // loaded as text rather than being caught. The constants are the table
-        // now, and this is what catches a bad one.
-        for (name, kind) in PLATFORM_CODECS {
-            assert!(
-                transport::PORTABLE_CODECS.contains(&kind),
-                "{name} names {kind}, which is not a codec"
-            );
-        }
+    fn platform_codecs_reach_the_table_at_common_setup() {
         let mut entry = Entry::new();
         entry.common_setup(Side::DedicatedServer);
         assert!(

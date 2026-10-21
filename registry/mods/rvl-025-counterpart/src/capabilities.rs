@@ -22,7 +22,7 @@ use ravel_sdk::ModId;
 use ravel_sdk::content::ContentId;
 
 use crate::data::{Placement, Stack};
-use crate::shapes::{Pattern, PatternRefused, small_grid_positions};
+use crate::forms::{Pattern, PatternRefused, small_grid_positions};
 
 mod primitives;
 

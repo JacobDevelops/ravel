@@ -42,7 +42,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "fe31e9511b55b27195243cd1a4b41e07e268920e89d1cd65f6b7d48a73fbf2d5"
+        "sha256": "8f63d4d8620b0c197342d492756eb6ec90093783b9c3970ddf31c63bf1ba7279"
       },
       {
         "path": "aliases.json",
@@ -66,7 +66,7 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "3eac51eb29c80d262817171182f7c128de7ffb01f869d48cd3d84039db0c5645"
+        "sha256": "97bfe11985f64bd2ef8db00f47ceaac6db5d7d9eaddcc6533d72b9f6dace63da"
       },
       {
         "path": "src/capabilities/primitives.rs",
@@ -74,11 +74,11 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "395d5df0c897cfc9af142706e136bf918785dbc21a9db2deabe51eb652ca8943"
+        "sha256": "064a52a56f5cc3695cdf160490e0f1a55adc11ea09d24e18d6f9eb22a885b150"
       },
       {
         "path": "src/commands.rs",
-        "sha256": "b61a87f9da168e92e8ddf86cdd5eb92122009c8b05542faa65e95984af8200ca"
+        "sha256": "bed6597a7bd317e085df88213c7f276a4e819374bef167e4cd239ef1b84e4171"
       },
       {
         "path": "src/data.rs",
@@ -86,11 +86,11 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "b7cc50b12bd86bedac3f6e436eb70ace68241ee2ab32dd613f43be1ee6e44c47"
+        "sha256": "ff9909fadb9224ed8b3fb90bba4033c27796286f7c0a667c324846494f011a3a"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "eb021602b34820985bff629dfad38ce4d568dadea9f2a2e2e32cc1f0cd4cf631"
+        "sha256": "9c5b58071c4bbbe46dae51ba6ccffd69eb8f7d4f1a5d2aa43103efd6e9aa2a22"
       },
       {
         "path": "src/machines.rs",
@@ -102,7 +102,7 @@
       },
       {
         "path": "src/network.rs",
-        "sha256": "30bf0737bef5136bb9dcb29c9ad5fad02bbbeb906c19766dcb7332354ca53b06"
+        "sha256": "cd854df067bb198c7d29a89963bce873dd5e9e3500ae99e0ca16179a8d827b33"
       },
       {
         "path": "src/ordering.rs",
@@ -117,7 +117,7 @@
         "sha256": "df42d8f0f3f7be4655db5310f79b0d3060d3ff2d00d4394cff5d5e947405e508"
       },
       {
-        "path": "src/shapes.rs",
+        "path": "src/forms.rs",
         "sha256": "178e3adf2033e8441dd5966e5bfd4c3c654b7b57c1a74b665756da19b654d030"
       },
       {

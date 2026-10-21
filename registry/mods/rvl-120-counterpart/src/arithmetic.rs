@@ -85,7 +85,7 @@ impl Check32 {
 #[must_use]
 pub fn check32_over(words: &[i32]) -> i32 {
     let mut check = Check32::new();
-    check.fold(bounded_count(words.len()));
+    check.fold(signed_len(words.len()));
     for &word in words {
         check.fold(word);
     }
@@ -259,7 +259,7 @@ impl<'table> Check64<'table> {
 #[must_use]
 pub fn check64_over(table: &Table64, words: &[u32]) -> u64 {
     let mut check = Check64::new(table);
-    check.fold_word(bounded_count(words.len()).cast_unsigned());
+    check.fold_word(signed_len(words.len()).cast_unsigned());
     for &word in words {
         check.fold_word(word);
     }
@@ -295,9 +295,9 @@ pub const fn reported_energy(amount: i64, capacity: i64) -> i32 {
     clamp_energy(amount)
 }
 
-/// Narrows a length to a signed count, saturating rather than wrapping.
-pub(crate) fn bounded_count(length: usize) -> i32 {
-    i32::try_from(length).unwrap_or(i32::MAX)
+/// Narrows a field length to its signed wire count, refusing overflow.
+pub(crate) fn signed_len(length: usize) -> i32 {
+    i32::try_from(length).expect("a field shorter than 2 GiB")
 }
 
 #[cfg(test)]
@@ -513,9 +513,19 @@ mod tests {
     }
 
     #[test]
-    fn a_count_beyond_the_signed_width_saturates_rather_than_wrapping() {
-        assert_eq!(bounded_count(0), 0);
-        assert_eq!(bounded_count(7), 7);
-        assert_eq!(bounded_count(usize::MAX), i32::MAX);
+    fn signed_lengths_preserve_the_full_supported_range() {
+        assert_eq!(signed_len(0), 0);
+        assert_eq!(signed_len(7), 7);
+        assert_eq!(
+            signed_len(usize::try_from(i32::MAX).expect("the signed maximum fits usize")),
+            i32::MAX
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "a field shorter than 2 GiB")]
+    fn a_length_one_past_the_signed_width_is_refused_instead_of_misframed() {
+        let maximum = usize::try_from(i32::MAX).expect("the signed maximum fits usize");
+        signed_len(maximum + 1);
     }
 }

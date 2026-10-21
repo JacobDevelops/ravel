@@ -31,8 +31,8 @@ use ravel_sdk::network::{
 };
 
 use crate::data::{MAX_COMPONENTS, MAX_NAME, Placement, Record, Stack};
+use crate::forms::Pattern;
 use crate::matching::MatchRule;
-use crate::shapes::Pattern;
 use crate::storage::Carrier;
 use crate::values::{Reading, Readings, shared_from_tag};
 
@@ -86,7 +86,7 @@ fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
         .map_err(|_| WireError::ContentId { text: identity })?;
     let count = reader.u32()?;
     let count = u8::try_from(count).map_err(|_| WireError::TooLarge {
-        needed: usize::try_from(count).unwrap_or(usize::MAX),
+        needed: usize::try_from(count).expect("packet lengths fit the address space"),
         limit: usize::from(u8::MAX),
     })?;
     let damage = reader.u32()?.cast_signed();

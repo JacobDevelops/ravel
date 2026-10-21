@@ -27,9 +27,9 @@ substituting shipped defaults, including integer values outside the reader's ran
 Saved stack scalar fields and match-rule flags default only when absent and refuse
 present malformed values; saved and wire stack counts refuse overflow instead of
 clamping. Saved carrier selections must name a valid slot, rather than being clamped.
-Both declared server commands reject client-side invocations before reading or
-mutating held state. Surface, matching, pattern, and carrier errors preserve wrapped
-refusals through `Error::source`.
+The loader boundary filters wrong-side command invocations; this entry handles
+commands on the supplied world-server side. Surface, matching, pattern, and carrier
+errors preserve wrapped refusals through `Error::source`.
 Surface registration owners are validated but self-asserted `ModId`s: `ServiceRequest`
 does not authenticate the caller. Factory kinds, channel identifiers, and dimension
 identifiers are validated `ContentId`s whose namespace must match the supplied owner.
@@ -77,11 +77,11 @@ Unsupported, so neither fails the receiving mod.
 | §8.1 the third filling route | declarable only | `src/matching.rs` |
 | §8.1 the removal defect | corrected, declared | `src/matching.rs` |
 | §8.1 the tooltip expansion | implemented, bounded | `src/matching.rs` |
-| §9 the five-by-four grid and the output position | implemented | `src/shapes.rs` |
-| §9 evaluation and the linear recipe scan | implemented, with the ceiling disclosed | `src/shapes.rs` |
-| §9 the three readbacks | implemented | `src/shapes.rs` |
-| §9 the disabled sub-grid predicate | corrected, declared | `src/shapes.rs` |
-| §9 the menu quirk | implemented | `src/shapes.rs` |
+| §9 the five-by-four grid and the output position | implemented | `src/forms.rs` |
+| §9 evaluation and the linear recipe scan | implemented, with the ceiling disclosed | `src/forms.rs` |
+| §9 the three readbacks | implemented | `src/forms.rs` |
+| §9 the disabled sub-grid predicate | corrected, declared | `src/forms.rs` |
+| §9 the menu quirk | implemented | `src/forms.rs` |
 | §10 the six slots, the two extractions and the cycle | implemented | `src/storage.rs` |
 | §10 the item swap | implemented, written to the interacting hand, declared | `src/storage.rs` |
 | §10 the latent failure in the replacement path | closed, declared | `src/storage.rs` |

@@ -17,7 +17,7 @@
 //! - [`ordering`] — the cross-block ordering service and its five ranks;
 //! - [`machines`] — the upgrading machine, its cycle and its energy discount;
 //! - [`world`] — the ore, its drops and the four placements;
-//! - [`shapes`] — the pattern card, its grid and its evaluation;
+//! - [`forms`] — the pattern card, its grid and its evaluation;
 //! - [`matching`] — the stack-match decision and its store;
 //! - [`storage`] — the handheld carrier and its item swap;
 //! - [`tools`] — the two-mode configuration tool;
@@ -37,13 +37,13 @@ pub mod census;
 pub mod commands;
 pub mod data;
 pub mod dumps;
+pub mod forms;
 pub mod machines;
 pub mod matching;
 pub mod network;
 pub mod ordering;
 mod services;
 pub mod settings;
-pub mod shapes;
 pub mod storage;
 pub mod tools;
 pub mod values;
@@ -61,11 +61,11 @@ use ravel_sdk::sides::ClientOnly;
 
 pub use crate::capabilities::{Group, Surface, SurfaceRefused};
 pub use crate::data::{Placement, Record, RecordRefused, Stack, Store};
+pub use crate::forms::{Pattern, ShapedRecipe};
 pub use crate::machines::{Machine, Ticked};
 pub use crate::matching::{MatchRule, Modes, VerdictMode};
 pub use crate::ordering::{Ordering, OrderingEntry, OrderingRefused};
 pub use crate::settings::Settings;
-pub use crate::shapes::{Pattern, ShapedRecipe};
 pub use crate::storage::{Carrier, Hand, Step};
 pub use crate::tools::{Mode, Tool};
 pub use crate::values::{Readings, Readout, Screen};
@@ -537,9 +537,6 @@ impl Mod for Entry {
         let name = invocation.key.id().path();
         let filed = commands::resolve(name)
             .ok_or_else(|| ModError::refused("this entry files no command under that name"))?;
-        if filed.on_server && !invocation.side.is_server() {
-            return Err(ModError::refused("this command runs only on a server"));
-        }
         match filed.name {
             commands::EVALUATE => {
                 let held = self.card_menu_open().then_some(&mut self.card);
@@ -1131,8 +1128,8 @@ mod tests {
     }
 
     #[test]
-    fn a_client_cycle_command_is_refused_before_mutating_the_carrier() {
-        let mut entry = Entry::new(Side::DedicatedServer);
+    fn an_integrated_server_cycle_command_mutates_the_carrier() {
+        let mut entry = Entry::new(Side::IntegratedServer);
         entry.holding_mut().kind = network::Held::Carrier;
         entry.holding_mut().hand = Some(Hand::Main);
         let mut device = Stack::of("counterpart:device").expect("a legal identity");
@@ -1141,24 +1138,21 @@ mod tests {
             .carrier_mut()
             .insert(1, device)
             .expect("supported device");
-        let before = entry.carrier().clone();
         let key = census::claimed(MOD_ID.parse().expect("a legal identity"))
             .expect("legal names")
             .into_iter()
             .find(|key| key.id().path() == commands::CYCLE)
             .expect("the cycle command is claimed");
 
-        assert!(
-            entry
-                .run_command(&CommandInvocation::new(
-                    key,
-                    Side::Client,
-                    vec!["true".to_owned()],
-                ))
-                .is_err()
-        );
-        assert_eq!(entry.carrier(), &before);
-        assert_eq!(entry.cycled, None);
+        entry
+            .run_command(&CommandInvocation::new(
+                key,
+                Side::IntegratedServer,
+                vec!["true".to_owned()],
+            ))
+            .expect("the integrated server runs the command");
+        assert_eq!(entry.carrier().selected(), 1);
+        assert!(entry.cycled.is_some());
     }
 
     #[test]

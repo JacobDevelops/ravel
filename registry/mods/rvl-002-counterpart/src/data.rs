@@ -366,7 +366,7 @@ pub fn declare_tags(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registration::Entry;
+    use crate::Entry;
     use ravel_sdk::Declared;
 
     fn declared() -> (ContentDeclaration, usize) {
@@ -679,8 +679,11 @@ mod tests {
                     .parse()
                     .expect("a legal material identity"),
             );
-            let state = crops::state(declared, &crop, false, &|_| false, &|_| 1);
-            assert_eq!(state, rvl_321_counterpart::Availability::Unobtainable);
+            let availability = crops::availability(declared, &crop, false, &|_| false, &|_| 1);
+            assert_eq!(
+                availability,
+                rvl_321_counterpart::Availability::Unobtainable
+            );
             assert_ne!(
                 crop.path().len(),
                 0,

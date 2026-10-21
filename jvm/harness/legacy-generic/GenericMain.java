@@ -91,7 +91,8 @@ public final class GenericMain {
                     "legacyResourceReload", "legacyAtlasReload", "legacyRecipeRegister", "legacyWorldOpen",
                     "legacyWorldOpenIntegrated", "legacyScreenOpen", "legacyTitleInit",
                     "legacyRendererCompile", "legacyRendererWorkerComplete",
-                    "legacyRendererTaskCreate").contains(hook.hookMethod());
+                    "legacyRendererTaskCreate", "legacyBakedQuad", "legacyBakedAo",
+                    "legacyBakedTint").contains(hook.hookMethod());
             require(calls(method, "dev/ravel/jvm/Hook", "legacyEnter") == (entry ? 1 : 0),
                     "wrong reviewed entry adapter " + hook);
             require(calls(method, "dev/ravel/jvm/Hook", "legacyExit") == (exit ? 1 : 0),

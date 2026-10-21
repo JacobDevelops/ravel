@@ -10,7 +10,7 @@ fn completion(state: i32) -> Completion {
         .unwrap_or_else(|error| panic!("snapshot: {error:?}"));
     Completion {
         generation: 7,
-        key: 0x0102_0304_0506_0708,
+        job_id: 0x0102_0304_0506_0708,
         result: mesh(&snapshot, 0x0102_0304_0506_0708, || false),
         queue_wait_nanos: 0,
         mesh_nanos: 0,

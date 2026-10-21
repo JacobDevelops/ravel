@@ -222,6 +222,73 @@ runtimeClass = "cdp"
 runtimeMember = "b"
 runtimeDescriptor = "(Lcep;)V"
 
+[target."legacy.baked-model"]
+class = "net/minecraft/client/render/block/BlockModelRenderer"
+member = "render"
+descriptor = "(Lnet/minecraft/world/WorldView;Lnet/minecraft/client/resource/model/BakedModel;Lnet/minecraft/block/state/BlockState;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/client/render/vertex/BufferBuilder;ZJ)Z"
+static = false
+runtimeClass = "bvo"
+runtimeMember = "a"
+runtimeDescriptor = "(Lamy;Lcfy;Lawt;Let;Lbuk;ZJ)Z"
+
+[target."legacy.baked-quad"]
+class = "net/minecraft/client/resource/model/BakedQuad"
+member = "getVertices"
+descriptor = "()[I"
+static = false
+runtimeClass = "bvp"
+runtimeMember = "b"
+
+[target."legacy.baked-ao"]
+class = "net/minecraft/client/render/block/BlockModelRenderer$AmbientOcclusionFace"
+member = "compute"
+descriptor = "(Lnet/minecraft/world/WorldView;Lnet/minecraft/block/state/BlockState;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;[FLjava/util/BitSet;)V"
+static = false
+runtimeClass = "bvo$b"
+runtimeMember = "a"
+runtimeDescriptor = "(Lamy;Lawt;Let;Lfa;[FLjava/util/BitSet;)V"
+
+[target."legacy.baked-tint"]
+class = "net/minecraft/client/world/color/BlockColors"
+member = "get"
+descriptor = "(Lnet/minecraft/block/state/BlockState;Lnet/minecraft/world/WorldView;Lnet/minecraft/util/math/BlockPos;I)I"
+static = false
+runtimeClass = "bik"
+runtimeMember = "a"
+runtimeDescriptor = "(Lawt;Lamy;Let;I)I"
+
+[target."legacy.baked-vertices"]
+class = "net/minecraft/client/render/vertex/BufferBuilder"
+member = "vertices"
+descriptor = "([I)V"
+static = false
+runtimeClass = "buk"
+runtimeMember = "a"
+
+[target."legacy.baked-light"]
+class = "net/minecraft/client/render/vertex/BufferBuilder"
+member = "lightColor"
+descriptor = "(IIII)V"
+static = false
+runtimeClass = "buk"
+runtimeMember = "a"
+
+[target."legacy.baked-color"]
+class = "net/minecraft/client/render/vertex/BufferBuilder"
+member = "multiplyColor"
+descriptor = "(FFFI)V"
+static = false
+runtimeClass = "buk"
+runtimeMember = "a"
+
+[target."legacy.baked-position"]
+class = "net/minecraft/client/render/vertex/BufferBuilder"
+member = "postPosition"
+descriptor = "(DDD)V"
+static = false
+runtimeClass = "buk"
+runtimeMember = "a"
+
 [target."legacy.recipe-register"]
 class = "net/minecraft/crafting/CraftingManager"
 member = "register"

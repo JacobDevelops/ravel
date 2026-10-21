@@ -29,15 +29,22 @@ pub const MAX_MESH_STACK_SCRATCH_BYTES: usize = CORE_CELLS * 3;
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum Face {
+    /// Negative X boundary.
     West,
+    /// Positive X boundary.
     East,
+    /// Negative Y boundary.
     Down,
+    /// Positive Y boundary.
     Up,
+    /// Negative Z boundary.
     North,
+    /// Positive Z boundary.
     South,
 }
 
 impl Face {
+    /// Stable wire/visibility index, in declaration order.
     #[must_use]
     pub fn code(self) -> u8 {
         match self {
@@ -76,10 +83,12 @@ pub struct Vertex {
     packed_light: u8,
 }
 impl Vertex {
+    /// Section-local integer position, including corners on coordinate 16.
     #[must_use]
     pub fn position(self) -> [u8; 3] {
         self.position
     }
+    /// Outward face normal and winding identity.
     #[must_use]
     pub fn face(self) -> Face {
         self.face
@@ -98,10 +107,12 @@ pub struct MaterialRange {
     indices: Range<u32>,
 }
 impl MaterialRange {
+    /// Opaque adapter state identity for this material range.
     #[must_use]
     pub fn state_key(&self) -> u32 {
         self.state_key
     }
+    /// Half-open range in the layer's index buffer.
     #[must_use]
     pub fn indices(&self) -> Range<u32> {
         self.indices.clone()
@@ -117,14 +128,17 @@ pub struct FaceRange {
     first_index: u32,
 }
 impl FaceRange {
+    /// Opaque adapter state identity for this quad.
     #[must_use]
     pub fn state_key(&self) -> u32 {
         self.state_key
     }
+    /// Outward normal for this quad.
     #[must_use]
     pub fn face(&self) -> Face {
         self.face
     }
+    /// Six contiguous triangle indices for this quad.
     #[must_use]
     pub fn indices(&self) -> Range<u32> {
         self.first_index..self.first_index + 6
@@ -140,12 +154,17 @@ impl FaceRange {
 /// Vanilla layer order. Only solid is populated by the full-opaque geometric contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenderLayer {
+    /// Depth-writing opaque layer.
     Solid,
+    /// Alpha-tested layer using atlas mipmaps.
     CutoutMipped,
+    /// Alpha-tested layer without atlas mipmaps.
     Cutout,
+    /// Blended layer requiring camera-dependent ordering.
     Translucent,
 }
 
+/// Owned full-opaque geometric buffers; not a textured baked-model representation.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct LayerBuffers {
     vertices: Vec<Vertex>,
@@ -154,18 +173,22 @@ pub struct LayerBuffers {
     faces: Vec<FaceRange>,
 }
 impl LayerBuffers {
+    /// Cube corners in emission order.
     #[must_use]
     pub fn vertices(&self) -> &[Vertex] {
         &self.vertices
     }
+    /// Triangle indices into `vertices`.
     #[must_use]
     pub fn indices(&self) -> &[u32] {
         &self.indices
     }
+    /// Contiguous material ranges covering the index buffer.
     #[must_use]
     pub fn materials(&self) -> &[MaterialRange] {
         &self.materials
     }
+    /// Quad boundaries retained for face-level comparisons.
     #[must_use]
     pub fn faces(&self) -> &[FaceRange] {
         &self.faces
@@ -193,10 +216,12 @@ impl LayerBuffers {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Visibility(u64);
 impl Visibility {
+    /// Raw row-major 6-by-6 visibility matrix.
     #[must_use]
     pub fn bits(self) -> u64 {
         self.0
     }
+    /// Whether open space connects the supplied section boundaries.
     #[must_use]
     pub fn connected(self, from: Face, to: Face) -> bool {
         self.0 & (1 << (u32::from(from.code()) * 6 + u32::from(to.code()))) != 0
@@ -216,36 +241,43 @@ impl Visibility {
 #[derive(Debug, Eq, PartialEq)]
 pub struct MeshResult {
     generation: u64,
-    key: u64,
+    job_id: u64,
     layers: [LayerBuffers; 4],
     unsupported: Vec<u32>,
     visibility: Visibility,
 }
 impl MeshResult {
+    /// Resource/world generation captured by this mesh's snapshot.
     #[must_use]
     pub fn generation(&self) -> u64 {
         self.generation
     }
+    /// Caller-supplied job identity, not an adapter state identity.
     #[must_use]
-    pub fn key(&self) -> u64 {
-        self.key
+    pub fn job_id(&self) -> u64 {
+        self.job_id
     }
+    /// Layer buffers in vanilla declaration order.
     #[must_use]
     pub fn layers(&self) -> &[LayerBuffers; 4] {
         &self.layers
     }
+    /// Distinct nonzero states whose captured geometry is unsupported.
     #[must_use]
     pub fn unsupported_keys(&self) -> &[u32] {
         &self.unsupported
     }
+    /// Whether every captured state fits the full-opaque geometric contract.
     #[must_use]
     pub fn is_complete(&self) -> bool {
         self.unsupported.is_empty()
     }
+    /// Open-space connectivity derived from the captured opaque predicates.
     #[must_use]
     pub fn visibility(&self) -> Visibility {
         self.visibility
     }
+    /// Retained vector payload bytes, excluding this result's object.
     pub fn heap_bytes(&self) -> usize {
         self.layers
             .iter()
@@ -253,10 +285,12 @@ impl MeshResult {
             .sum::<usize>()
             + size_of_val(self.unsupported.as_slice())
     }
+    /// Result object and retained vector payload bytes.
     #[must_use]
     pub fn total_bytes(&self) -> usize {
         size_of::<Self>() + self.heap_bytes()
     }
+    /// Number of nonempty retained vector allocations.
     pub fn allocations(&self) -> usize {
         self.layers
             .iter()
@@ -266,13 +300,31 @@ impl MeshResult {
     }
 }
 
+/// Explicit failures; no failed mesh may be drawn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MeshError {
+    /// Generation invalidation or caller cancellation.
     Cancelled,
+    /// A bounded allocation could not be reserved.
     Allocation,
+    /// Geometry exceeds the fixed output representation.
     OutputLimit,
+    /// A requested cell lies outside the captured border.
     InvalidCoordinates,
 }
+
+impl std::fmt::Display for MeshError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Cancelled => "mesh generation was cancelled",
+            Self::Allocation => "mesh buffer allocation failed",
+            Self::OutputLimit => "mesh output budget exceeded",
+            Self::InvalidCoordinates => "mesh coordinates are outside the captured border",
+        })
+    }
+}
+
+impl std::error::Error for MeshError {}
 
 /// Counts before allocating. Cell loops check cancellation every 64 visits.
 /// Bounded sorts, material counting and each allocation have checks on both sides.
@@ -284,7 +336,7 @@ pub enum MeshError {
 /// or `InvalidCoordinates` if an internal position is outside the captured border.
 pub fn mesh(
     snapshot: &SectionSnapshot,
-    key: u64,
+    job_id: u64,
     cancel: impl Fn() -> bool,
 ) -> Result<MeshResult, MeshError> {
     let (face_count, unsupported) = count(snapshot, &cancel)?;
@@ -325,7 +377,7 @@ pub fn mesh(
     check_cancel(&cancel)?;
     Ok(MeshResult {
         generation: snapshot.generation(),
-        key,
+        job_id,
         layers: [
             solid,
             LayerBuffers::default(),

@@ -13,7 +13,7 @@ fn index(x: usize, y: usize, z: usize) -> usize {
 #[test]
 fn air_has_all_visibility_pairs_and_no_allocations() {
     let result = mesh(&snapshot(&vec![0; CELL_COUNT]), 42, || false).expect("mesh");
-    assert_eq!((result.generation(), result.key()), (7, 42));
+    assert_eq!((result.generation(), result.job_id()), (7, 42));
     assert_eq!(result.visibility().bits(), (1_u64 << 36) - 1);
     assert_eq!(result.allocations(), 0);
     assert!(result.is_complete());

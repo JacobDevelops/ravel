@@ -318,7 +318,7 @@ fn completion_record_has_bounded_fixed_width_and_preserves_identity() {
     let mut values = Vec::new();
     work::append_completion(&mut values, &completion);
     assert_eq!(values.len(), 11);
-    assert_eq!(&values[..3], [1, 9, 1]);
+    assert_eq!(&values[..3], [1, 9, 0]);
     assert_eq!(values[7], 0);
     assert_eq!(values[8], 0);
     assert_eq!(values[9], 0);
@@ -370,7 +370,7 @@ fn unsupported_and_error_records_are_explicit_without_geometry_publication() {
     assert_eq!(mesh.unsupported_keys(), [35]);
     let completion = ravel_renderer::workers::Completion {
         generation: 1,
-        key: 12,
+        job_id: 12,
         queue_wait_nanos: 7,
         mesh_nanos: 11,
         output_bytes: mesh.total_bytes(),
@@ -380,12 +380,12 @@ fn unsupported_and_error_records_are_explicit_without_geometry_publication() {
     let mut values = Vec::with_capacity(11);
     work::append_completion(&mut values, &completion);
     assert_eq!(values.len(), 11);
-    assert_eq!(&values[..5], [1, 12, 2, 7, 11]);
+    assert_eq!(&values[..5], [1, 12, 1, 7, 11]);
     assert_eq!(&values[7..10], [0, 0, 1]);
     values.clear();
     let completion = ravel_renderer::workers::Completion {
         generation: 1,
-        key: 13,
+        job_id: 13,
         queue_wait_nanos: 0,
         mesh_nanos: 0,
         output_bytes: 0,
@@ -393,7 +393,7 @@ fn unsupported_and_error_records_are_explicit_without_geometry_publication() {
         result: Err(ravel_renderer::mesh::MeshError::Cancelled),
     };
     work::append_completion(&mut values, &completion);
-    assert_eq!(values, [1, 13, 3, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(values, [1, 13, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
 #[test]

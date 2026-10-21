@@ -38,7 +38,7 @@ fn retained_reads_retry_and_ack_only_the_exact_owner() {
     assert!(failed_ack.is_err());
     for _ in 0..2 {
         pool.with_completion(1, 7, |completion| {
-            assert_eq!(completion.map(|value| value.key), Some(7));
+            assert_eq!(completion.map(|value| value.job_id), Some(7));
         });
     }
     assert_eq!(pool.stats(), before);
@@ -138,15 +138,15 @@ fn stale_and_duplicate_submissions_never_enter_the_pool() {
     pool.try_submit(snapshot(1), 1).expect("first owner");
     assert_eq!(
         pool.try_submit(snapshot(1), 1),
-        Err(SubmitError::DuplicateKey)
+        Err(SubmitError::DuplicateJobId)
     );
     let (slot, job) = take_job(&pool.shared).expect("job");
     finish_job(&pool.shared, slot, execute(&pool.shared, slot, job));
     assert_eq!(
         pool.try_submit(snapshot(1), 1),
-        Err(SubmitError::DuplicateKey)
+        Err(SubmitError::DuplicateJobId)
     );
-    assert_eq!(pool.poll().expect("single completion").key, 1);
+    assert_eq!(pool.poll().expect("single completion").job_id, 1);
     assert!(pool.poll().is_none());
     pool.try_submit(snapshot(1), 1)
         .expect("key can be reused after drain");
@@ -270,7 +270,7 @@ fn publication_after_invalidations(generations: &[u64]) {
     }
     assert_eq!(
         pool.try_submit(snapshot(1), 17),
-        Err(SubmitError::DuplicateKey)
+        Err(SubmitError::DuplicateJobId)
     );
     barrier.wait();
     handle.join().expect("late publication");
@@ -301,7 +301,7 @@ fn real_worker_wakes_and_publishes_owned_completion() {
         assert!(Instant::now() < deadline, "worker failed to publish");
         thread::yield_now();
     };
-    assert_eq!(completion.key, 41);
+    assert_eq!(completion.job_id, 41);
     assert_eq!(completion.result.expect("mesh").generation(), 1);
     assert_eq!(pool.stats().reserved_bytes, 0);
     pool.shutdown().expect("worker cleanup");
@@ -358,7 +358,7 @@ fn transactional_completion_failure_retains_owners_until_success() {
             let keys: Vec<_> = ready
                 .iter()
                 .flatten()
-                .map(|completion| completion.key)
+                .map(|completion| completion.job_id)
                 .collect();
             Ok::<_, ()>(keys)
         })

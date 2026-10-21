@@ -45,6 +45,7 @@ public final class LegacyRenderer {
     private static void lifecycle(int event) {
         long retiring = currentGeneration();
         ownerEvent(event);
+        LegacyBakedCapture.clear();
         try {
             LegacyGeometryProof.retire(retiring);
         } finally {
@@ -76,11 +77,13 @@ public final class LegacyRenderer {
             retainProof = LegacyRuntime.PROOF && proofArmed;
         }
         normalReturn(7, task, false);
+        LegacyBakedCapture.finish(task);
         if (generation != null && chunk != null)
             LegacySectionSnapshot.capture(chunk, task, generation, retainProof);
     }
 
     public static long[] snapshotMetrics() { return LegacySectionSnapshot.metrics(); }
+    public static long[] bakedMetrics() { return LegacyBakedCapture.metrics(); }
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }
@@ -143,6 +146,10 @@ public final class LegacyRenderer {
         if (owning && LegacyRuntime.PROOF) COUNTS[event]++;
     }
 
+    static synchronized long taskGeneration(Object task) {
+        Long captured = TASKS.get(task);
+        return captured == null ? 0 : captured;
+    }
     private static synchronized void capture(Object task) {
         if (task == null || TASKS.containsKey(task)) return;
         // Missing or overflow-refused tasks are never relabelled at later worker/compile entry.

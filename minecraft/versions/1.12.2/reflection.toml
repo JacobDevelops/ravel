@@ -703,6 +703,67 @@ descriptor = "()Lnet/minecraft/client/render/world/CompiledChunk;"
 [[reflected.member]]
 name = "getLock"
 descriptor = "()Ljava/util/concurrent/locks/ReentrantLock;"
+[[reflected.member]]
+name = "getBuffers"
+descriptor = "()Lnet/minecraft/client/render/world/ChunkBufferBuilders;"
+
+[[reflected]]
+name = "LEGACY_CHUNK_BUFFERS"
+class = "net.minecraft.client.render.world.ChunkBufferBuilders"
+runtime = "bum"
+[[reflected.member]]
+name = "get"
+descriptor = "(I)Lnet/minecraft/client/render/vertex/BufferBuilder;"
+
+[[reflected]]
+name = "LEGACY_BUFFER_BUILDER"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+runtime = "buk"
+[[reflected.member]]
+name = "getBuffer"
+descriptor = "()Ljava/nio/ByteBuffer;"
+[[reflected.member]]
+name = "getVertexCount"
+descriptor = "()I"
+[[reflected.member]]
+name = "offsetX"
+descriptor = "D"
+[[reflected.member]]
+name = "offsetY"
+descriptor = "D"
+[[reflected.member]]
+name = "offsetZ"
+descriptor = "D"
+[[reflected.member]]
+name = "uncolored"
+descriptor = "Z"
+
+[[reflected]]
+name = "LEGACY_BAKED_QUAD"
+class = "net.minecraft.client.resource.model.BakedQuad"
+runtime = "bvp"
+[[reflected.member]]
+name = "getSprite"
+descriptor = "()Lnet/minecraft/client/render/texture/TextureAtlasSprite;"
+
+[[reflected]]
+name = "LEGACY_BAKED_AO"
+class = "net.minecraft.client.render.block.BlockModelRenderer$AmbientOcclusionFace"
+runtime = "bvo$b"
+[[reflected.member]]
+name = "brightness"
+descriptor = "[F"
+[[reflected.member]]
+name = "lightMap"
+descriptor = "[I"
+
+[[reflected]]
+name = "LEGACY_ATLAS_SPRITE"
+class = "net.minecraft.client.render.texture.TextureAtlasSprite"
+runtime = "cdq"
+[[reflected.member]]
+name = "isAnimated"
+descriptor = "()Z"
 
 [[reflected]]
 name = "LEGACY_WORLD_REGION"

@@ -222,6 +222,78 @@ kind = "instance-method"
 capability = "Observe atlas loading and stitching within the legacy resource generation."
 
 [[hook]]
+id = "legacy.baked-model"
+side = "client-only"
+class = "net.minecraft.client.render.block.BlockModelRenderer"
+member = "render"
+descriptor = "(Lnet/minecraft/world/WorldView;Lnet/minecraft/client/resource/model/BakedModel;Lnet/minecraft/block/state/BlockState;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/client/render/vertex/BufferBuilder;ZJ)Z"
+kind = "instance-method"
+capability = "Capture the owning compile thread's actual model state and destination builder, without substituting cube geometry."
+
+[[hook]]
+id = "legacy.baked-quad"
+side = "client-only"
+class = "net.minecraft.client.resource.model.BakedQuad"
+member = "getVertices"
+descriptor = "()[I"
+kind = "instance-method"
+capability = "Capture exact vanilla baked model vertex words and independently resolved atlas sprite provenance."
+
+[[hook]]
+id = "legacy.baked-ao"
+side = "client-only"
+class = "net.minecraft.client.render.block.BlockModelRenderer$AmbientOcclusionFace"
+member = "compute"
+descriptor = "(Lnet/minecraft/world/WorldView;Lnet/minecraft/block/state/BlockState;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;[FLjava/util/BitSet;)V"
+kind = "instance-method"
+capability = "Capture vanilla AO corner brightness after its owning-thread computation."
+
+[[hook]]
+id = "legacy.baked-tint"
+side = "client-only"
+class = "net.minecraft.client.world.color.BlockColors"
+member = "get"
+descriptor = "(Lnet/minecraft/block/state/BlockState;Lnet/minecraft/world/WorldView;Lnet/minecraft/util/math/BlockPos;I)I"
+kind = "instance-method"
+capability = "Capture the exact vanilla block-color provider result independently of final buffer color words."
+
+[[hook]]
+id = "legacy.baked-vertices"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+member = "vertices"
+descriptor = "([I)V"
+kind = "instance-method"
+capability = "Capture source model words before vanilla applies position, tint, AO and packed light."
+
+[[hook]]
+id = "legacy.baked-light"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+member = "lightColor"
+descriptor = "(IIII)V"
+kind = "instance-method"
+capability = "Capture the four actual packed lightmap coordinates supplied to a model quad."
+
+[[hook]]
+id = "legacy.baked-color"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+member = "multiplyColor"
+descriptor = "(FFFI)V"
+kind = "instance-method"
+capability = "Capture per-vertex vanilla RGB multipliers before integer color arithmetic."
+
+[[hook]]
+id = "legacy.baked-position"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+member = "postPosition"
+descriptor = "(DDD)V"
+kind = "instance-method"
+capability = "Finish one source quad after its vanilla position operation; finalized buffers remain a separate oracle."
+
+[[hook]]
 id = "legacy.recipe-register"
 class = "net.minecraft.crafting.CraftingManager"
 member = "register"

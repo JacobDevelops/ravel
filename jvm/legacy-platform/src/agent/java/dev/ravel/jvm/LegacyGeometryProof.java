@@ -24,7 +24,7 @@ final class LegacyGeometryProof {
         }
         @Override public boolean accepts(long generation) { return LegacyRenderer.accepts(generation); }
         @Override public long[] acknowledge(long generation, long key) {
-            return Hook.ravelRendererWork(5, generation, key);
+            return Hook.ravelRendererWork(LegacyMeshWork.Operation.ACKNOWLEDGE.code, generation, key);
         }
     };
 

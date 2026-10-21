@@ -2,7 +2,7 @@
 //! Metrics count payload bytes, not allocator metadata or JVM array headers.
 //! Scratch counts fixed heap and stack arrays, excluding scalar locals and frame overhead.
 
-use std::sync::{Mutex, PoisonError, TryLockError};
+use std::sync::{PoisonError, TryLockError};
 
 use jni::Env;
 use jni::objects::{JByteArray, JIntArray};
@@ -11,8 +11,6 @@ use ravel_renderer::{CELL_COUNT, MAX_CAPTURE_SCRATCH_BYTES, SectionSnapshot, Sna
 
 use super::Lifecycle;
 use super::work::BoundaryError;
-
-static CAPTURE: Mutex<()> = Mutex::new(());
 
 type Receipt = [jlong; 8];
 
@@ -30,7 +28,7 @@ pub(super) fn admit(
     key: jlong,
     capture: impl FnOnce() -> jni::errors::Result<Option<Captured>>,
 ) -> Result<Option<Receipt>, BoundaryError> {
-    let _permit = match CAPTURE.try_lock() {
+    let _permit = match renderer.capture.try_lock() {
         Ok(permit) => permit,
         Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
         Err(TryLockError::WouldBlock) => return Ok(None),
@@ -132,21 +130,17 @@ fn capture_error(error: SnapshotError) -> Captured {
             geometry,
         } => failure(
             2,
-            [size_wire(states), size_wire(light), size_wire(geometry)],
+            [super::metric_long(states), super::metric_long(light), super::metric_long(geometry)],
         ),
         SnapshotError::InvalidState { index, state } => {
-            failure(3, [size_wire(index), jlong::from(state), 0])
+            failure(3, [super::metric_long(index), jlong::from(state), 0])
         }
         SnapshotError::InvalidGeometry { index, flag } => {
-            failure(4, [size_wire(index), jlong::from(flag), 0])
+            failure(4, [super::metric_long(index), jlong::from(flag), 0])
         }
         SnapshotError::InconsistentGeometry { state } => failure(5, [jlong::from(state), 0, 0]),
         SnapshotError::PaletteLimit => failure(6, [0; 3]),
     }
-}
-
-fn size_wire(value: usize) -> jlong {
-    jlong::try_from(value).unwrap_or(jlong::MAX)
 }
 
 fn failure(code: jlong, details: [jlong; 3]) -> Captured {
@@ -203,12 +197,10 @@ pub(super) fn publish<T, E>(
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use std::sync::{Mutex, PoisonError};
+    use std::sync::PoisonError;
 
     use super::{CELL_COUNT, SectionSnapshot, admit, compare, mismatched_cells, valid_lengths};
     use crate::renderer::{FRAME, Lifecycle, RELOAD, Renderer, UNLOAD};
-
-    static CAPTURE_TESTS: Mutex<()> = Mutex::new(());
 
     fn captured() -> super::Captured {
         compare(
@@ -335,7 +327,6 @@ mod tests {
 
     #[test]
     fn admission_rejects_stale_before_capture_and_invalidation_during_capture() {
-        let _serial = CAPTURE_TESTS.lock().expect("capture test serialization");
         let renderer = Lifecycle::new(Renderer::new());
         let called = Cell::new(false);
         for generation in [-1, 0, 2] {
@@ -379,8 +370,20 @@ mod tests {
     }
 
     #[test]
+    fn independent_lifecycles_have_independent_capture_permits() {
+        let first = Lifecycle::new(Renderer::new());
+        let second = Lifecycle::new(Renderer::new());
+        let receipt = admit(&first, 1, 1, || {
+            let nested = admit(&second, 1, 1, || Ok(Some(captured())))
+                .expect("independent admission");
+            assert!(nested.is_some());
+            Ok(Some(captured()))
+        }).expect("outer admission");
+        assert!(receipt.is_some());
+    }
+
+    #[test]
     fn admission_reports_receipts_and_closes_after_shutdown() {
-        let _serial = CAPTURE_TESTS.lock().expect("capture test serialization");
         let renderer = Lifecycle::new(Renderer::new());
         renderer
             .lock()

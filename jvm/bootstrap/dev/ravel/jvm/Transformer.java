@@ -574,6 +574,7 @@ public final class Transformer implements ClassFileTransformer {
                 if ((legacyEntry() || legacyExit()) && !target.hookMethod().equals("legacyRendererTaskCreate")) {
                     enterLegacy(builder);
                 }
+                bakedEntry(builder);
                 if (isWorldOpen(target)) {
                     // Close the storage access and stem on refusal before persistent mutation.
                     builder.aload(slot(0));
@@ -601,6 +602,13 @@ public final class Transformer implements ClassFileTransformer {
                     && element instanceof ReturnInstruction instruction
                     && instruction.typeKind() == returnKind) {
                 addMenuButton(builder);
+            }
+            if (target.hookMethod().equals("legacyBakedPosition")
+                    && element instanceof ReturnInstruction) {
+                builder.aload(0);
+                for (int i = 0; i < 3; i++) builder.dload(slot(i));
+                builder.invokestatic(HOOK, "legacyCapturePosition",
+                        MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;DDD)V"));
             }
             if (legacyExit()
                     && element instanceof ReturnInstruction instruction
@@ -635,9 +643,50 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyItemMetadata", "legacyResourceReload", "legacyAtlasReload",
                         "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated",
                         "legacyScreenOpen", "legacyTitleInit", "legacyRendererCompile",
-                        "legacyRendererWorkerComplete", "legacyRendererTaskCreate" -> true;
+                        "legacyRendererWorkerComplete", "legacyRendererTaskCreate",
+                        "legacyBakedQuad", "legacyBakedAo", "legacyBakedTint" -> true;
                 default -> false;
             };
+        }
+
+        private void bakedEntry(CodeBuilder builder) {
+            String method = target.hookMethod();
+            String descriptor;
+            switch (method) {
+                case "legacyRendererCompile" -> {
+                    builder.aload(slot(3));
+                    for (int i = 0; i < 3; i++) builder.fload(slot(i));
+                    descriptor = "(Ljava/lang/Object;FFF)V";
+                    method = "legacyCaptureBegin";
+                }
+                case "legacyBakedModel" -> {
+                    builder.aload(slot(2));
+                    builder.aload(slot(4));
+                    descriptor = "(Ljava/lang/Object;Ljava/lang/Object;)V";
+                    method = "legacyCaptureModel";
+                }
+                case "legacyBakedVertices" -> {
+                    builder.aload(0);
+                    builder.aload(slot(0));
+                    descriptor = "(Ljava/lang/Object;[I)V";
+                    method = "legacyCaptureVertices";
+                }
+                case "legacyBakedLight" -> {
+                    builder.aload(0);
+                    for (int i = 0; i < 4; i++) builder.iload(slot(i));
+                    descriptor = "(Ljava/lang/Object;IIII)V";
+                    method = "legacyCaptureLight";
+                }
+                case "legacyBakedColor" -> {
+                    builder.aload(0);
+                    for (int i = 0; i < 3; i++) builder.fload(slot(i));
+                    builder.iload(slot(3));
+                    descriptor = "(Ljava/lang/Object;FFFI)V";
+                    method = "legacyCaptureColor";
+                }
+                default -> { return; }
+            }
+            builder.invokestatic(HOOK, method, MethodTypeDesc.ofDescriptor(descriptor));
         }
 
         /** Retains only semantically consumed arguments, without arrays or boxing. */

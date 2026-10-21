@@ -333,10 +333,15 @@ nonempty actual readbacks can become captured evidence.
 
 The offscreen solid-geometry comparison is narrower than vanilla appearance:
 atlas UVs and sprites, model/biome tint, per-vertex AO and combined lighting are
-not in this CPU contract. Native-versus-CPU reference images alone are not a
-vanilla oracle. Actual vanilla-section comparison and matched selection-on/off
-measurements must disclose their scope, refusals and mismatch counts; they do
-not authorize a default renderer or a speedup claim.
+not submitted by that GL proof. The separate selected-only baked CPU contract
+captures exact model/shading inputs and compares independently emitted BLOCK
+words with final vanilla buffers; it does not authorize textured drawing.
+See the [slice-6 status](../../registry/notes/sevtech/baked-models.md) for field
+provenance, bounds and the unsupported golden-scene matrix. Native-versus-CPU
+reference images alone are not a vanilla oracle. Actual vanilla-section
+comparison and matched selection-on/off measurements must disclose their scope,
+refusals and mismatch counts; they do not authorize a default renderer or a
+speedup claim.
 
 ## JVM permissions
 

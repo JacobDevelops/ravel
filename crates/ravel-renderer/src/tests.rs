@@ -1,12 +1,11 @@
 use super::{
-    CELL_COUNT, MAX_BLOCK_ID, MAX_CAPTURE_ALLOCATIONS, MAX_CAPTURE_CELL_VISITS,
-    MAX_CAPTURE_HEAP_SCRATCH_BYTES, MAX_CAPTURE_PALETTE_PROBES, MAX_CAPTURE_SCRATCH_BYTES,
+    CELL_COUNT, MAX_CAPTURE_HEAP_SCRATCH_BYTES, MAX_CAPTURE_SCRATCH_BYTES,
     MAX_CAPTURE_STACK_SCRATCH_BYTES, MAX_GENERATION, MAX_HEAP_BYTES, MAX_PALETTE_ENTRIES,
     MAX_STATE_KEY, MAX_TOTAL_BYTES, SNAPSHOT_EDGE, SectionSnapshot, SnapshotError,
 };
 
 #[test]
-fn air_deduplicates_state_and_model_identity() {
+fn air_deduplicates_opaque_state_identity() {
     let states = vec![0; CELL_COUNT];
     let snapshot = SectionSnapshot::capture(1, &states, &[0; CELL_COUNT], &[0; CELL_COUNT])
         .expect("air snapshot");
@@ -16,7 +15,6 @@ fn air_deduplicates_state_and_model_identity() {
     for index in 0..CELL_COUNT {
         let cell = snapshot.cell(index).expect("air cell");
         assert_eq!(cell.state_key(), 0);
-        assert_eq!(cell.model_key(), 0);
         assert_eq!(cell.packed_light(), 0);
     }
 }
@@ -40,11 +38,11 @@ fn sparse_states_are_owned_and_first_occurrence_deduplicated() {
 }
 
 #[test]
-fn high_block_ids_preserve_every_metadata_value() {
+fn maximum_adapter_identity_preserves_every_low_bit_pattern() {
     let mut states = vec![0; CELL_COUNT];
     for (metadata, state) in states[..16].iter_mut().enumerate() {
-        *state = i32::try_from((MAX_BLOCK_ID << 4) | u32::try_from(metadata).expect("metadata"))
-            .expect("packed state");
+        *state = i32::try_from((MAX_STATE_KEY & !15) | u32::try_from(metadata).expect("low bits"))
+            .expect("state identity");
     }
     let snapshot =
         SectionSnapshot::capture(MAX_GENERATION, &states, &[0; CELL_COUNT], &[0; CELL_COUNT])
@@ -52,10 +50,7 @@ fn high_block_ids_preserve_every_metadata_value() {
     assert_eq!(snapshot.generation(), MAX_GENERATION);
     for (metadata, &state) in states[..16].iter().enumerate() {
         let cell = snapshot.cell(metadata).expect("high id cell");
-        assert_eq!(cell.block_id(), MAX_BLOCK_ID);
-        assert_eq!(cell.metadata(), u8::try_from(metadata).expect("metadata"));
         assert_eq!(cell.state_key(), u32::try_from(state).expect("state"));
-        assert_eq!(cell.model_key(), cell.state_key());
     }
 }
 
@@ -107,9 +102,6 @@ fn all_distinct_palette_reaches_exact_storage_bound() {
     assert_eq!(snapshot.heap_bytes(), MAX_HEAP_BYTES);
     assert_eq!(snapshot.total_bytes(), MAX_TOTAL_BYTES);
     assert_eq!(MAX_HEAP_BYTES, 46_656);
-    assert_eq!(MAX_CAPTURE_ALLOCATIONS, 5);
-    assert_eq!(MAX_CAPTURE_CELL_VISITS, CELL_COUNT);
-    assert_eq!(MAX_CAPTURE_PALETTE_PROBES, CELL_COUNT * CELL_COUNT);
     assert_eq!(MAX_CAPTURE_HEAP_SCRATCH_BYTES, 23_328);
     assert_eq!(MAX_CAPTURE_STACK_SCRATCH_BYTES, 22_216);
     assert_eq!(MAX_CAPTURE_SCRATCH_BYTES, 45_544);

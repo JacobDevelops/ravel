@@ -136,17 +136,19 @@ stable contracts toward concrete host internals.
   `RuntimeUnavailable`, `Refused`, `Unchanged`, or `Written`. Persistence owns world
   admission and checkpoints, not pack publication.
 
-- `ravel-renderer` owns bounded immutable section values, deduplicated state/model
-  keys, CPU cube meshes and conservative face-to-face visibility. It has no JVM,
-  adapter, loader or SDK dependency. Bootstrap runtime copies bounded primitive
-  arrays into this value layer and owns worker generation admission, cancellation
-  and drain. Worker count, outstanding work and reserved snapshot/output/scratch
-  bytes have explicit ceilings; completed results retain their reservation until
-  consumed. Java captures full/opaque state properties rather than inferring
-  geometry from numeric IDs, and retains authoritative game state, task/thread
-  ownership, model access and all GL calls. Unsupported keys are explicit.
-  Observational worker output is not uploaded and does not retain a world mirror
-  or replace vanilla rendering.
+- `ravel-renderer` owns bounded immutable section values with opaque adapter state
+  keys, CPU cube meshes, baked-model input/emission values, conservative visibility
+  and its bounded worker pool: reservations, cancellation, completion retention
+  and drain. It has no JVM, adapter, loader or SDK dependency. Bootstrap runtime
+  owns the process lifecycle and generation admission around that pool and copies
+  bounded primitive batches into the value layer. Java retains game/task/thread
+  ownership, version-specific state encoding, exact model and shading capture,
+  atlas objects and every GL call. Unsupported geometry is explicit. The default
+  never uploads observational worker output; the off-by-default selection permits
+  only the bounded position-only proof, not a replacement terrain renderer.
+  Baked-word oracle comparison independently computes Rust positions, colors,
+  packed light and translucent ordering from captured model/shading inputs; it
+  never treats a copied final vanilla buffer as a Rust-produced mesh.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

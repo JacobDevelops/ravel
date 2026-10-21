@@ -161,6 +161,7 @@ fn adapter_callbacks(legacy: bool) -> String {
     let exit = if legacy {
         "if (id.equals(\"legacyScreenOpen\")) LegacyScreens.onOpened(first);\n\
          \x20       if (id.equals(\"legacyTitleInit\")) LegacyScreens.onOpened(receiver);\n\
+         \x20       if (id.startsWith(\"legacyBaked\")) LegacyBakedCapture.observe(id, receiver, result, resultNumber);\n\
          \x20       LegacyRuntime.exit(id, receiver, first, second, number, result, resultNumber);\n\
          \x20       if (id.equals(\"legacyWorldOpen\") || id.equals(\"legacyWorldOpenIntegrated\")) LegacyPersistence.loaded(receiver);"
     } else {
@@ -183,6 +184,7 @@ fn adapter_callbacks(legacy: bool) -> String {
         ""
     };
     let palette = palette_callbacks(legacy);
+    let baked = baked_callbacks(legacy);
     format!(
         "    /** Whether the reviewed inventory uses the legacy adapter. */\n\
          \x20   public static final boolean LEGACY_ADAPTER = {legacy};\n\n\
@@ -205,8 +207,26 @@ fn adapter_callbacks(legacy: bool) -> String {
          \x20   /** Optional proof accounting, separate from native observations and semantics. */\n\
          \x20   public static void legacyObserve(String id) {{\n\
          \x20       {observe}\n\
-         \x20   }}\n{palette}{natives}"
+         \x20   }}\n{palette}{baked}{natives}"
     )
+}
+
+fn baked_callbacks(legacy: bool) -> String {
+    let calls = [
+        ("legacyCaptureBegin", "Object task, float x, float y, float z", "begin(task, x, y, z)"),
+        ("legacyCaptureModel", "Object state, Object builder", "model(state, builder)"),
+        ("legacyCaptureVertices", "Object builder, int[] words", "vertices(builder, words)"),
+        ("legacyCaptureLight", "Object builder, int a, int b, int c, int d", "light(builder, a, b, c, d)"),
+        ("legacyCaptureColor", "Object builder, float r, float g, float b, int index", "color(builder, r, g, b, index)"),
+        ("legacyCapturePosition", "Object builder, double x, double y, double z", "position(builder, x, y, z)"),
+    ];
+    let mut text = String::new();
+    for (name, parameters, call) in calls {
+        let body = if legacy { format!("LegacyBakedCapture.{call};") } else { String::new() };
+        writeln!(text, "    public static void {name}({parameters}) {{ {body} }}")
+            .expect("writing to a String cannot fail");
+    }
+    text
 }
 
 /// Matches only the reviewed global state registry in the reviewed palette resize body.
@@ -281,6 +301,8 @@ fn written_declarations() -> &'static str {
          \x20   public static native long[] ravelRendererWork(int operation, long generation, long key);\n\n\
          \x20   /** Non-consuming Java-owned solid mesh copy; empty for absent/stale/closed/invalid. LE v1: magic 0x354d5652,u32 version,i64 generation/key,u32 status/vertexCount/indexCount/materialCount,u64 visibility (48 bytes); vertices XYZ/face/light (5 bytes), u32 indices, material u32 stateKey/firstIndex/indexCount (12 bytes). Status 0 complete,1 incomplete,2 error; only 0 drawable. At most 1,376,304 bytes. */\n\
          \x20   public static native byte[] ravelRendererMesh(long generation, long key);\n\n\
+     \x20   /** Independent CPU baked emission comparison; never authorizes drawing. Empty stale/busy, negative first value unsupported; otherwise [quads, mismatchedWords, firstMismatch, cpuNanos, inputBytes, outputBytes]. */\n\
+     \x20   public static native long[] ravelRendererBaked(long generation, byte[] source, byte[] oracle);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

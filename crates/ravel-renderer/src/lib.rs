@@ -4,12 +4,13 @@
 //!
 //! The 16-cube core includes a full one-cell border. Coordinates `0..18` denote
 //! section origin minus one through origin plus sixteen, in `((y * 18) + z) * 18 + x`
-//! order. State keys are numeric block ids shifted left four bits, plus metadata.
-//! Geometry captures only the full-opaque-cube predicate, not baked models or textures.
-//! Callers must check the live generation before and after copying game data.
+//! order. State keys are opaque numeric identities supplied by the adapter.
+//! The geometric primitive captures only the full-opaque-cube predicate; baked
+//! model inputs have a separate owned contract. Callers gate copies by generation.
 
 use std::mem::{size_of, size_of_val};
 
+pub mod baked;
 pub mod mesh;
 pub mod wire;
 pub mod workers;
@@ -20,24 +21,16 @@ pub const SECTION_EDGE: usize = 16;
 pub const SNAPSHOT_EDGE: usize = SECTION_EDGE + 2;
 /// Exact required length of each capture input.
 pub const CELL_COUNT: usize = SNAPSHOT_EDGE * SNAPSHOT_EDGE * SNAPSHOT_EDGE;
-/// Largest accepted numeric block id.
-pub const MAX_BLOCK_ID: u32 = 0x000f_ffff;
-/// Largest accepted packed block id and metadata.
-pub const MAX_STATE_KEY: u32 = (MAX_BLOCK_ID << 4) | 15;
+/// Largest accepted opaque adapter state identity.
+pub const MAX_STATE_KEY: u32 = 0x00ff_ffff;
 /// Generation must fit a positive Java long.
 pub const MAX_GENERATION: u64 = 0x7fff_ffff_ffff_ffff;
 /// Every cell may have its own palette entry.
 pub const MAX_PALETTE_ENTRIES: usize = CELL_COUNT;
-/// Successful capture makes at most five heap allocations, including palette scratch.
-pub const MAX_CAPTURE_ALLOCATIONS: usize = 5;
 /// Worst-case retained heap payload; allocator metadata is excluded.
 pub const MAX_HEAP_BYTES: usize = CELL_COUNT * (size_of::<u32>() + size_of::<u16>() + 2);
 /// Retained object plus its maximum heap payload, excluding allocator metadata.
 pub const MAX_TOTAL_BYTES: usize = size_of::<SectionSnapshot>() + MAX_HEAP_BYTES;
-/// Maximum input cells visited; there are no retries or world-size-dependent work.
-pub const MAX_CAPTURE_CELL_VISITS: usize = CELL_COUNT;
-/// Hard upper bound on open-addressing comparisons across a capture.
-pub const MAX_CAPTURE_PALETTE_PROBES: usize = CELL_COUNT * CELL_COUNT;
 
 const LOOKUP_SLOTS: usize = 8192;
 const EMPTY_SLOT: u16 = u16::MAX;
@@ -61,7 +54,7 @@ pub const MAX_CAPTURE_SCRATCH_BYTES: usize =
 pub enum SnapshotError {
     /// Generation is zero or cannot be represented as a positive Java long.
     InvalidGeneration,
-    /// Both inputs must describe the complete core and border.
+    /// All three inputs must describe the complete core and border.
     InvalidLengths {
         /// Supplied state count.
         states: usize,
@@ -70,11 +63,11 @@ pub enum SnapshotError {
         /// Supplied geometry-flag count.
         geometry: usize,
     },
-    /// A state is negative or exceeds the numeric id/metadata contract.
+    /// A state is negative or exceeds the adapter identity budget.
     InvalidState {
         /// Index in capture order.
         index: usize,
-        /// Rejected packed state.
+        /// Rejected state identity.
         state: i32,
     },
     /// Geometry must be zero (unknown) or one (captured full opaque cube).
@@ -93,6 +86,23 @@ pub enum SnapshotError {
     PaletteLimit,
 }
 
+impl std::fmt::Display for SnapshotError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidGeneration => formatter.write_str("invalid snapshot generation"),
+            Self::InvalidLengths { states, light, geometry } => write!(
+                formatter, "snapshot lengths must be {CELL_COUNT}: states={states}, light={light}, geometry={geometry}"
+            ),
+            Self::InvalidState { index, state } => write!(formatter, "invalid state identity {state} at cell {index}"),
+            Self::InvalidGeometry { index, flag } => write!(formatter, "invalid geometry flag {flag} at cell {index}"),
+            Self::InconsistentGeometry { state } => write!(formatter, "inconsistent geometry for state {state}"),
+            Self::PaletteLimit => formatter.write_str("snapshot palette limit exceeded"),
+        }
+    }
+}
+
+impl std::error::Error for SnapshotError {}
+
 /// Decoded value copied from a snapshot; it cannot mutate the snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Cell {
@@ -102,29 +112,12 @@ pub struct Cell {
 }
 
 impl Cell {
-    /// Packed numeric block id and four-bit metadata, without truncation.
+    /// Opaque adapter state identity, without truncation or model interpretation.
     #[must_use]
     pub fn state_key(self) -> u32 {
         self.state
     }
 
-    /// Numeric block id, preserving ids above the historical twelve-bit range.
-    #[must_use]
-    pub fn block_id(self) -> u32 {
-        self.state >> 4
-    }
-
-    /// Four-bit block metadata.
-    #[must_use]
-    pub fn metadata(self) -> u8 {
-        self.state.to_le_bytes()[0] & 15
-    }
-
-    /// Render-state identity, not a baked model or geometry handle.
-    #[must_use]
-    pub fn model_key(self) -> u32 {
-        self.state
-    }
 
     /// Captured full-opaque predicate, with air key zero unconditionally empty.
     #[must_use]

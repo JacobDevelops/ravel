@@ -121,7 +121,7 @@ public final class LegacyRetainedMeshMain {
     }
 
     private static long[] metadata(long key, int status, int vertices, int indices) {
-        return new long[]{1, 7, 1, 11, 7, key, status + 1L, 0, 0, 104, 1, vertices, indices, status == 1 ? 1 : 0, 0};
+        return new long[]{1, 7, 1, 11, 7, key, status, 0, 0, 104, 1, vertices, indices, status == 1 ? 1 : 0, 0};
     }
 
     private static byte[] wire(int status, int vertices, int indices) {

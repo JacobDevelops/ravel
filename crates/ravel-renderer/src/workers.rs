@@ -46,7 +46,14 @@ impl fmt::Display for WorkerError {
     }
 }
 
-impl std::error::Error for WorkerError {}
+impl std::error::Error for WorkerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Spawn(error) => Some(error),
+            Self::InvalidGeneration | Self::ThreadPanicked => None,
+        }
+    }
+}
 
 /// Admission rejection; the transferred snapshot is immediately dropped.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,7 +65,32 @@ pub enum SubmitError {
     /// Combined work count or byte reservation ceiling was reached.
     Full,
     /// Another queued, running or completed job already owns this key.
-    DuplicateKey,
+    DuplicateJobId,
+}
+
+impl fmt::Display for SubmitError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Stopped => "mesh worker pool is stopped",
+            Self::Stale => "snapshot generation is stale",
+            Self::Full => "mesh worker reservation is full",
+            Self::DuplicateJobId => "mesh job identity is already outstanding",
+        })
+    }
+}
+
+impl std::error::Error for SubmitError {}
+
+/// Shared metadata and geometry-wire outcome; only `Complete` is drawable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Outcome {
+    /// Every captured state is supported.
+    Complete = 0,
+    /// Explicitly unsupported captured content.
+    Incomplete = 1,
+    /// Meshing failed.
+    Failed = 2,
 }
 
 /// Sole owned publication for one admitted key.
@@ -67,7 +99,7 @@ pub struct Completion {
     /// Captured generation, checked again while polling under the pool lock.
     pub generation: u64,
     /// Caller-supplied identity, unique among outstanding jobs.
-    pub key: u64,
+    pub job_id: u64,
     /// Owned mesh or explicit meshing failure.
     pub result: Result<MeshResult, MeshError>,
     /// Admission-to-execution delay, saturating nanoseconds.
@@ -79,6 +111,18 @@ pub struct Completion {
     /// Successful mesh allocation count; failures report zero.
     pub allocations: usize,
 }
+impl Completion {
+    /// Returns the same outcome encoding for metadata and geometry transfer.
+    #[must_use]
+    pub fn outcome(&self) -> Outcome {
+        match &self.result {
+            Ok(mesh) if mesh.is_complete() => Outcome::Complete,
+            Ok(_) => Outcome::Incomplete,
+            Err(_) => Outcome::Failed,
+        }
+    }
+}
+
 
 /// Bounded scalar counters; duration/output totals saturate rather than grow storage.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -113,7 +157,7 @@ pub struct WorkerStats {
 
 struct Job {
     snapshot: SectionSnapshot,
-    key: u64,
+    job_id: u64,
     admitted: Instant,
 }
 
@@ -125,11 +169,11 @@ enum Slot {
 }
 
 impl Slot {
-    fn key(&self) -> Option<u64> {
+    fn job_id(&self) -> Option<u64> {
         match self {
             Self::Vacant => None,
-            Self::Queued(job) => Some(job.key),
-            Self::Running(key) | Self::Completed(key) => Some(*key),
+            Self::Queued(job) => Some(job.job_id),
+            Self::Running(job_id) | Self::Completed(job_id) => Some(*job_id),
         }
     }
 }
@@ -207,9 +251,9 @@ impl WorkerPool {
     ///
     /// # Errors
     ///
-    /// Returns `Stopped`, `Stale`, `DuplicateKey` or `Full` without admitting the
+    /// Returns `Stopped`, `Stale`, `DuplicateJobId` or `Full` without admitting the
     /// snapshot when shutdown, generation, ownership or resource checks fail.
-    pub fn try_submit(&self, snapshot: SectionSnapshot, key: u64) -> Result<(), SubmitError> {
+    pub fn try_submit(&self, snapshot: SectionSnapshot, job_id: u64) -> Result<(), SubmitError> {
         let mut state = self.shared.lock();
         if state.stats.stopped {
             return Err(SubmitError::Stopped);
@@ -217,8 +261,8 @@ impl WorkerPool {
         if snapshot.generation() != state.stats.generation {
             return Err(SubmitError::Stale);
         }
-        if state.slots.iter().any(|slot| slot.key() == Some(key)) {
-            return Err(SubmitError::DuplicateKey);
+        if state.slots.iter().any(|slot| slot.job_id() == Some(job_id)) {
+            return Err(SubmitError::DuplicateJobId);
         }
         if state.stats.outstanding >= MAX_OUTSTANDING_JOBS
             || state.stats.reserved_bytes > MAX_RESERVED_BYTES - JOB_RESERVED_BYTES
@@ -240,7 +284,7 @@ impl WorkerPool {
             .max(state.stats.reserved_bytes);
         state.slots[index] = Slot::Queued(Job {
             snapshot,
-            key,
+            job_id,
             admitted: Instant::now(),
         });
         drop(state);
@@ -285,13 +329,13 @@ impl WorkerPool {
     pub fn with_completion<T>(
         &self,
         generation: u64,
-        key: u64,
+        job_id: u64,
         publish: impl FnOnce(Option<&Completion>) -> T,
     ) -> T {
         self.peek_ready(|ready| {
             publish(
                 ready.iter().flatten().copied().find(|completion| {
-                    completion.generation == generation && completion.key == key
+                    completion.generation == generation && completion.job_id == job_id
                 }),
             )
         })
@@ -299,8 +343,8 @@ impl WorkerPool {
 
     /// Releases only a completed exact-current-generation owner; queued/running keys remain.
     #[cfg(test)]
-    pub fn acknowledge(&self, generation: u64, key: u64) -> bool {
-        self.publish_acknowledgement(generation, key, Ok::<bool, std::convert::Infallible>)
+    pub fn acknowledge(&self, generation: u64, job_id: u64) -> bool {
+        self.publish_acknowledgement(generation, job_id, Ok::<bool, std::convert::Infallible>)
             .unwrap_or(false)
     }
 
@@ -313,7 +357,7 @@ impl WorkerPool {
     pub fn publish_acknowledgement<T, E>(
         &self,
         generation: u64,
-        key: u64,
+        job_id: u64,
         publish: impl FnOnce(bool) -> Result<T, E>,
     ) -> Result<T, E> {
         let mut state = self.shared.lock();
@@ -322,7 +366,7 @@ impl WorkerPool {
         }
         let index = state.completions.iter().position(|completion| {
             completion.as_ref().is_some_and(|completion| {
-                completion.generation == generation && completion.key == key
+                completion.generation == generation && completion.job_id == job_id
             })
         });
         let value = publish(index.is_some())?;
@@ -531,7 +575,7 @@ fn take_job(shared: &Shared) -> Option<(usize, Job)> {
         if let Some(index) = index {
             let slot = std::mem::replace(&mut state.slots[index], Slot::Vacant);
             if let Slot::Queued(job) = slot {
-                state.slots[index] = Slot::Running(job.key);
+                state.slots[index] = Slot::Running(job.job_id);
                 return Some((index, job));
             }
         }
@@ -545,7 +589,7 @@ fn take_job(shared: &Shared) -> Option<(usize, Job)> {
 fn execute(shared: &Shared, index: usize, job: Job) -> Completion {
     let queue_wait_nanos = nanos(job.admitted.elapsed().as_nanos());
     let started = Instant::now();
-    let result = mesh(&job.snapshot, job.key, || {
+    let result = mesh(&job.snapshot, job.job_id, || {
         shared.generation.load(Ordering::Acquire) != job.snapshot.generation()
             || shared.cancelled[index].load(Ordering::Acquire)
     });
@@ -556,7 +600,7 @@ fn execute(shared: &Shared, index: usize, job: Job) -> Completion {
     drop(job.snapshot);
     Completion {
         generation,
-        key: job.key,
+        job_id: job.job_id,
         result,
         queue_wait_nanos,
         mesh_nanos,
@@ -587,7 +631,7 @@ fn finish_job(shared: &Shared, index: usize, completion: Completion) {
         state.slots[index] = Slot::Vacant;
         release(&mut state);
     } else {
-        state.slots[index] = Slot::Completed(completion.key);
+        state.slots[index] = Slot::Completed(completion.job_id);
         state.completions[index] = Some(completion);
     }
 }

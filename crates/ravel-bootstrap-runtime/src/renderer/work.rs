@@ -22,12 +22,20 @@ impl std::fmt::Display for BoundaryError {
         match self {
             Self::Jni(error) => std::fmt::Display::fmt(error, formatter),
             Self::Worker(error) => std::fmt::Display::fmt(error, formatter),
-            Self::Mesh(error) => write!(formatter, "mesh transfer failed: {error:?}"),
+            Self::Mesh(error) => write!(formatter, "mesh transfer failed: {error}"),
         }
     }
 }
 
-impl std::error::Error for BoundaryError {}
+impl std::error::Error for BoundaryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Jni(error) => Some(error),
+            Self::Worker(error) => Some(error),
+            Self::Mesh(error) => Some(error),
+        }
+    }
+}
 
 impl From<jni::errors::Error> for BoundaryError {
     fn from(error: jni::errors::Error) -> Self {
@@ -77,7 +85,7 @@ impl Renderer {
         snapshot: SectionSnapshot,
         key: jlong,
     ) -> Result<bool, WorkerError> {
-        if !self.can_capture(wire(snapshot.generation())) || key <= 0 {
+        if !self.can_capture(super::metric_long(snapshot.generation())) || key <= 0 {
             return Ok(false);
         }
         if self.workers.is_none() {
@@ -95,7 +103,7 @@ pub(super) fn observe(
     event: jint,
     generation: jlong,
     thread: jlong,
-    owner: bool,
+    on_renderer_thread: bool,
 ) -> jlong {
     let retired = {
         let mut locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
@@ -103,7 +111,7 @@ pub(super) fn observe(
             locked = renderer.wait(locked);
         }
         let previous = locked.generation;
-        let current = locked.observe(event, generation, thread, owner);
+        let current = locked.observe(event, generation, thread, on_renderer_thread);
         let retired = if previous == current {
             None
         } else {
@@ -183,6 +191,32 @@ pub(super) fn stop(renderer: &super::Lifecycle, generation: jlong) {
     finish_retirement(renderer, retired);
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Operation {
+    Consume,
+    Statistics,
+    Close,
+    RetiredStatistics,
+    Peek,
+    Acknowledge,
+}
+
+impl TryFrom<jint> for Operation {
+    type Error = ();
+
+    fn try_from(value: jint) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Consume),
+            1 => Ok(Self::Statistics),
+            2 => Ok(Self::Close),
+            3 => Ok(Self::RetiredStatistics),
+            4 => Ok(Self::Peek),
+            5 => Ok(Self::Acknowledge),
+            _ => Err(()),
+        }
+    }
+}
+
 pub(super) fn publish<T, E>(
     renderer: &super::Lifecycle,
     operation: jint,
@@ -190,14 +224,17 @@ pub(super) fn publish<T, E>(
     key: jlong,
     publish: impl FnOnce(&[jlong]) -> Result<T, E>,
 ) -> Result<T, E> {
-    if operation == 2 && key == 0 {
+    let Ok(operation) = Operation::try_from(operation) else {
+        return publish(&[]);
+    };
+    if operation == Operation::Close && key == 0 {
         stop(renderer, generation);
     }
     let locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
-    if !locked.accepts(generation) || !matches!(operation, 0..=5) || (operation != 5 && key != 0) {
+    if !locked.accepts(generation) || (operation != Operation::Acknowledge && key != 0) {
         return publish(&[]);
     }
-    if operation == 5 {
+    if operation == Operation::Acknowledge {
         if !locked.can_capture(generation) || key <= 0 {
             return publish(&[]);
         }
@@ -210,20 +247,20 @@ pub(super) fn publish<T, E>(
             |acknowledged| publish(&[jlong::from(acknowledged)]),
         );
     }
-    if operation == 4 && !locked.can_capture(generation) {
+    if operation == Operation::Peek && !locked.can_capture(generation) {
         return publish(&[]);
     }
-    if operation == 3 {
+    if operation == Operation::RetiredStatistics {
         return match locked.retired_stats.as_ref() {
             Some(stats) => publish(&statistics_values(
                 &locked,
-                wire(stats.generation),
+                super::metric_long(stats.generation),
                 Some(stats),
             )),
             None => publish(&[]),
         };
     }
-    if !matches!(operation, 0 | 4) {
+    if !matches!(operation, Operation::Consume | Operation::Peek) {
         return publish(&statistics(&locked));
     }
     let Some(workers) = &locked.workers else {
@@ -232,7 +269,7 @@ pub(super) fn publish<T, E>(
     let metadata = |ready: &[Option<&Completion>; MAX_OUTSTANDING_JOBS]| {
         publish_metadata(&locked, ready, publish)
     };
-    let result = if operation == 4 {
+    let result = if operation == Operation::Peek {
         workers.peek_ready(metadata)
     } else {
         workers.consume_ready(metadata)
@@ -250,7 +287,7 @@ fn publish_metadata<T, E>(
     values[..4].copy_from_slice(&[1, renderer.generation, 0, 11]);
     let mut length = 4;
     for completion in ready.iter().flatten() {
-        if renderer.accepts(wire(completion.generation)) {
+        if renderer.accepts(super::metric_long(completion.generation)) {
             values[length..length + 11].copy_from_slice(&completion_values(completion));
             values[2] += 1;
             length += 11;
@@ -260,10 +297,9 @@ fn publish_metadata<T, E>(
 }
 
 fn completion_values(completion: &Completion) -> [jlong; 11] {
-    let (status, vertices, indices, unsupported, visibility) =
-        completion.result.as_ref().map_or((3, 0, 0, 0, 0), |mesh| {
+    let (vertices, indices, unsupported, visibility) =
+        completion.result.as_ref().map_or((0, 0, 0, 0), |mesh| {
             (
-                if mesh.is_complete() { 1 } else { 2 },
                 mesh.layers()
                     .iter()
                     .map(|layer| layer.vertices().len())
@@ -277,17 +313,17 @@ fn completion_values(completion: &Completion) -> [jlong; 11] {
             )
         });
     [
-        wire(completion.generation),
-        wire(completion.key),
-        status,
-        wire(completion.queue_wait_nanos),
-        wire(completion.mesh_nanos),
-        wire_usize(completion.output_bytes),
-        wire_usize(completion.allocations),
-        wire_usize(vertices),
-        wire_usize(indices),
-        wire_usize(unsupported),
-        wire(visibility),
+        super::metric_long(completion.generation),
+        super::metric_long(completion.job_id),
+        jlong::from(completion.outcome() as u32),
+        super::metric_long(completion.queue_wait_nanos),
+        super::metric_long(completion.mesh_nanos),
+        super::metric_long(completion.output_bytes),
+        super::metric_long(completion.allocations),
+        super::metric_long(vertices),
+        super::metric_long(indices),
+        super::metric_long(unsupported),
+        super::metric_long(visibility),
     ]
 }
 
@@ -295,7 +331,7 @@ fn statistics(renderer: &Renderer) -> [jlong; 18] {
     let stats = renderer.workers.as_ref().map(WorkerPool::stats);
     let stats = stats.as_ref().or(renderer.retired_stats.as_ref());
     let stats =
-        stats.filter(|stats| renderer.draining || wire(stats.generation) == renderer.generation);
+        stats.filter(|stats| renderer.draining || super::metric_long(stats.generation) == renderer.generation);
     statistics_values(renderer, renderer.generation, stats)
 }
 
@@ -321,8 +357,8 @@ fn statistics_values(
             0,
             0,
             jlong::from(renderer.draining),
-            wire_usize(MAX_OUTSTANDING_JOBS),
-            wire_usize(MAX_RESERVED_BYTES),
+            super::metric_long(MAX_OUTSTANDING_JOBS),
+            super::metric_long(MAX_RESERVED_BYTES),
             jlong::from(renderer.worker_failure),
         ];
     };
@@ -330,30 +366,22 @@ fn statistics_values(
         1,
         generation,
         jlong::from(stats.stopped),
-        wire_usize(stats.outstanding),
-        wire_usize(stats.queued),
-        wire_usize(stats.running),
-        wire_usize(stats.completed),
-        wire_usize(stats.reserved_bytes),
-        wire_usize(stats.max_outstanding),
-        wire_usize(stats.max_reserved_bytes),
-        wire(stats.queue_wait_nanos),
-        wire(stats.mesh_nanos),
-        wire_usize(stats.output_bytes),
-        wire_usize(stats.allocations),
+        super::metric_long(stats.outstanding),
+        super::metric_long(stats.queued),
+        super::metric_long(stats.running),
+        super::metric_long(stats.completed),
+        super::metric_long(stats.reserved_bytes),
+        super::metric_long(stats.max_outstanding),
+        super::metric_long(stats.max_reserved_bytes),
+        super::metric_long(stats.queue_wait_nanos),
+        super::metric_long(stats.mesh_nanos),
+        super::metric_long(stats.output_bytes),
+        super::metric_long(stats.allocations),
         jlong::from(renderer.draining),
-        wire_usize(MAX_OUTSTANDING_JOBS),
-        wire_usize(MAX_RESERVED_BYTES),
+        super::metric_long(MAX_OUTSTANDING_JOBS),
+        super::metric_long(MAX_RESERVED_BYTES),
         jlong::from(renderer.worker_failure),
     ]
-}
-
-fn wire(value: u64) -> jlong {
-    jlong::try_from(value).unwrap_or(jlong::MAX)
-}
-
-fn wire_usize(value: usize) -> jlong {
-    jlong::try_from(value).unwrap_or(jlong::MAX)
 }
 
 #[cfg(test)]

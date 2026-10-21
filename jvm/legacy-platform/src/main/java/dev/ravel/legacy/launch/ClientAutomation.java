@@ -478,7 +478,22 @@ final class ClientAutomation implements Runnable {
         require(geometryLiveProof != null, "Geometry proof was not captured before unload");
         String finalMetrics = onGame(this::geometryMetrics);
         Files.writeString(evidence.resolve("geometry-upload.json"),
-                geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + "}\n");
+                geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof() + "}\n");
+    }
+
+    private String bakedProof() throws Exception {
+        long[] values = (long[]) rendererType().getMethod("bakedMetrics").invoke(null);
+        String[] names = {"comparedSections", "busySections", "unsupportedSections", "staleSections",
+                "quads", "mismatchedWords", "cpuNanos", "maxInputBytes", "maxOutputBytes",
+                "animatedSpriteObservations"};
+        require(values.length == names.length, "Baked metric schema mismatch");
+        require(values[0] > 0 && values[4] > 0 && values[5] == 0,
+                "Baked CPU comparison missing or differs from vanilla");
+        StringBuilder json = new StringBuilder("{\"comparison\":\"Rust-emission-vs-final-vanilla-BLOCK-words\","
+                + "\"drawable\":false,\"maxQuadsPerSection\":8192");
+        for (int i = 0; i < names.length; i++)
+            json.append(",\"").append(names[i]).append("\":").append(values[i]);
+        return json.append('}').toString();
     }
 
     private String snapshotProof() throws Exception {

@@ -8,10 +8,12 @@ import java.util.Arrays;
  * Every table and sample buffer is fixed-size, independent of world size or session length.
  */
 final class LegacyMeshWork {
-    static final int POLL = 0;
-    static final int STATS = 1;
-    static final int SHUTDOWN = 2;
-    static final int RETIRED = 3;
+    enum Operation {
+        CONSUME(0), STATISTICS(1), CLOSE(2), RETIRED_STATISTICS(3), PEEK(4), ACKNOWLEDGE(5);
+
+        final int code;
+        Operation(int code) { this.code = code; }
+    }
     static final int HEADER = 4;
     static final int RECORD = 11;
     static final int MAX_RECORDS = 8;
@@ -145,12 +147,12 @@ final class LegacyMeshWork {
         if (Thread.currentThread().threadId() != LegacyRenderer.ownerThread()) return;
         long generation = LegacyRenderer.currentGeneration();
         boolean retained = LegacyGeometryProof.selected();
-        long[] response = Hook.ravelRendererWork(retained ? 4 : POLL, generation, 0);
+        long[] response = Hook.ravelRendererWork((retained ? Operation.PEEK : Operation.CONSUME).code, generation, 0);
         if (retained && response.length != 0) {
             retainedPoll(response, generation);
             response = new long[0];
         }
-        long[] stats = LegacyRuntime.PROOF ? Hook.ravelRendererWork(STATS, generation, 0) : null;
+        long[] stats = LegacyRuntime.PROOF ? Hook.ravelRendererWork(Operation.STATISTICS.code, generation, 0) : null;
         synchronized (LegacyMeshWork.class) {
             retireLocked(generation);
             if (response.length == 0) {
@@ -170,7 +172,7 @@ final class LegacyMeshWork {
      */
     static void retire(long expected) {
         long current = LegacyRenderer.currentGeneration();
-        long[] retired = current != expected ? Hook.ravelRendererWork(RETIRED, current, 0) : new long[0];
+        long[] retired = current != expected ? Hook.ravelRendererWork(Operation.RETIRED_STATISTICS.code, current, 0) : new long[0];
         synchronized (LegacyMeshWork.class) {
             retireLocked(current);
             if (current == expected) return;
@@ -251,9 +253,9 @@ final class LegacyMeshWork {
                 && indices == vertices / 4 * 6 && r[at + 10] >= 0 && r[at + 10] <= ALL_VISIBLE;
         boolean costs = r[at + 3] >= 0 && r[at + 4] >= 0 && r[at + 5] >= 0 && r[at + 6] >= 0;
         boolean outcome = switch ((int) status) {
-            case 1 -> unsupported == 0 && r[at + 5] > 0;
-            case 2 -> unsupported > 0 && unsupported <= 18 * 18 * 18 && r[at + 5] > 0;
-            case 3 -> vertices == 0 && unsupported == 0 && r[at + 10] == 0;
+            case 0 -> unsupported == 0 && r[at + 5] > 0;
+            case 1 -> unsupported > 0 && unsupported <= 18 * 18 * 18 && r[at + 5] > 0;
+            case 2 -> vertices == 0 && unsupported == 0 && r[at + 10] == 0;
             default -> false;
         };
         if (status != (int) status || !shape || !costs || !outcome)
@@ -264,7 +266,7 @@ final class LegacyMeshWork {
     private static void tally(long[] r, int at, long drainNanos) {
         long status = r[at + 2];
         METRICS[3]++;
-        METRICS[(int) status + 3]++;
+        METRICS[(int) status + 4]++;
         METRICS[7] += r[at + 9];
         METRICS[8] = Math.max(METRICS[8], r[at + 9]);
         METRICS[9] += r[at + 7];
@@ -274,7 +276,7 @@ final class LegacyMeshWork {
         METRICS[13] += r[at + 6];
         METRICS[14] = Math.max(METRICS[14], r[at + 6]);
         if (r[at + 7] > 0) METRICS[15]++;
-        if (status != 3 && r[at + 10] != ALL_VISIBLE) METRICS[16]++;
+        if (status != 2 && r[at + 10] != ALL_VISIBLE) METRICS[16]++;
         if (stressStarted != 0) METRICS[40]++;
         if (METRICS[3] == 1) {
             METRICS[22] = r[at + 3];
@@ -365,9 +367,9 @@ final class LegacyMeshWork {
     static boolean injectStaleProof(long retired) {
         long current = LegacyRenderer.currentGeneration();
         if (retired <= 0 || retired >= current) return false;
-        if (Hook.ravelRendererWork(POLL, retired, 0).length != 0
-                || Hook.ravelRendererWork(STATS, retired, 0).length != 0
-                || Hook.ravelRendererWork(RETIRED, retired, 0).length != 0)
+        if (Hook.ravelRendererWork(Operation.CONSUME.code, retired, 0).length != 0
+                || Hook.ravelRendererWork(Operation.STATISTICS.code, retired, 0).length != 0
+                || Hook.ravelRendererWork(Operation.RETIRED_STATISTICS.code, retired, 0).length != 0)
             throw new IllegalStateException("Native served a retired generation: " + retired);
         synchronized (LegacyMeshWork.class) {
             long key = reserve(current);
@@ -395,7 +397,7 @@ final class LegacyMeshWork {
         synchronized (LegacyMeshWork.class) {
             closedGeneration = Math.max(closedGeneration, generation);
         }
-        long[] stats = Hook.ravelRendererWork(SHUTDOWN, generation, 0);
+        long[] stats = Hook.ravelRendererWork(Operation.CLOSE.code, generation, 0);
         synchronized (LegacyMeshWork.class) {
             for (int slot = 0; slot < SLOTS; slot++) if (KEYS[slot] != 0) retireSlot(slot);
             awaitSettlement(System.nanoTime() + SETTLE_NANOS);

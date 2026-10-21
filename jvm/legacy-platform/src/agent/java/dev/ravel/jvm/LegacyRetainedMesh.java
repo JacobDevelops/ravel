@@ -30,7 +30,7 @@ final class LegacyRetainedMesh {
         if (header.getInt(0) != 0x354d5652 || header.getInt(4) != 1
                 || header.getLong(8) != generation || header.getLong(16) != key
                 || header.getInt(24) < 0 || header.getInt(24) > 2
-                || header.getInt(24) + 1L != metadata[at + 2]
+                || header.getInt(24) != metadata[at + 2]
                 || Integer.toUnsignedLong(header.getInt(28)) != metadata[at + 7]
                 || Integer.toUnsignedLong(header.getInt(32)) != metadata[at + 8]
                 || header.getLong(40) != metadata[at + 10])

@@ -50,8 +50,8 @@ pub mod exports {
     };
     pub use crate::profiling::ravel_profiling_report;
     pub use crate::renderer::{
-        ravel_renderer_accept, ravel_renderer_event, ravel_renderer_mesh, ravel_renderer_snapshot,
-        ravel_renderer_work,
+        ravel_renderer_accept, ravel_renderer_baked, ravel_renderer_event, ravel_renderer_mesh,
+        ravel_renderer_snapshot, ravel_renderer_work,
     };
     pub use crate::settings::{
         ravel_save_settings, ravel_settings_crossings, ravel_settings_document,

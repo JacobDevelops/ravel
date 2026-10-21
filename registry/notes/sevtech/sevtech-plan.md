@@ -306,6 +306,10 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   Stress p95/p99 trial-median changes were +3.19%/+0.32%, not a like-for-like vanilla speedup.
   Slices 6–7 retain model/texture/AO/layer/reload fidelity and default cutover.
   This is not full visual parity or demonstrated resource savings.
+  Slice 6 currently adds [owned baked inputs and independent CPU emission](baked-models.md);
+  this is not slice-6 acceptance. Its live integration, textured golden-scene matrix,
+  fresh selection-on/off trials and final gates remain unproven. Historical slice-5
+  measurements must not be carried forward as current slice-6 results.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

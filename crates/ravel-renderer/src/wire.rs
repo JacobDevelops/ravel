@@ -48,8 +48,8 @@ pub fn encode(completion: &Completion) -> Result<Vec<u8>, MeshError> {
     bytes.extend_from_slice(&MAGIC.to_le_bytes());
     bytes.extend_from_slice(&VERSION.to_le_bytes());
     bytes.extend_from_slice(&completion.generation.to_le_bytes());
-    bytes.extend_from_slice(&completion.key.to_le_bytes());
-    let status = mesh.map_or(2_u32, |mesh| u32::from(!mesh.is_complete()));
+    bytes.extend_from_slice(&completion.job_id.to_le_bytes());
+    let status = completion.outcome() as u32;
     for value in [status, count(vertices)?, count(indices)?, count(materials)?] {
         bytes.extend_from_slice(&value.to_le_bytes());
     }

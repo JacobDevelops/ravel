@@ -21,8 +21,10 @@ use jni::objects::{JByteArray, JClass, JIntArray, JLongArray};
 use jni::sys::{JNI_FALSE, jboolean, jint, jlong};
 use jni::{Env, EnvUnowned};
 
+mod baked;
 mod snapshot;
 mod work;
+pub use baked::ravel_renderer_baked;
 
 // Shared wire values with the Java renderer observer (not raw hook IDs).
 const CURRENT: jint = 0;
@@ -38,9 +40,14 @@ const UPLOAD: jint = 9;
 
 static RENDERER: Lifecycle = Lifecycle::new(Renderer::new());
 
+fn metric_long(value: impl TryInto<jlong>) -> jlong {
+    value.try_into().unwrap_or(jlong::MAX)
+}
+
 struct Lifecycle {
     state: Mutex<Renderer>,
     drained: Condvar,
+    capture: Mutex<()>,
 }
 
 impl Lifecycle {
@@ -48,6 +55,7 @@ impl Lifecycle {
         Self {
             state: Mutex::new(renderer),
             drained: Condvar::new(),
+            capture: Mutex::new(()),
         }
     }
 
@@ -89,7 +97,7 @@ impl Renderer {
         generation > 0 && generation == self.generation
     }
 
-    fn admits(&self, event: jint, generation: jlong, thread_id: jlong, owner_thread: bool) -> bool {
+    fn admits(&self, event: jint, generation: jlong, thread_id: jlong, on_renderer_thread: bool) -> bool {
         if !matches!(
             event,
             RELOAD | UNLOAD | FRAME | TERRAIN | LAYER | UPDATE | COMPILE | TASK | UPLOAD
@@ -98,7 +106,7 @@ impl Renderer {
         {
             return false;
         }
-        if owner_thread {
+        if on_renderer_thread {
             if self.owner_thread == 0 {
                 matches!(event, RELOAD | FRAME)
             } else {
@@ -114,15 +122,15 @@ impl Renderer {
         event: jint,
         generation: jlong,
         thread_id: jlong,
-        owner_thread: bool,
+        on_renderer_thread: bool,
     ) -> jlong {
         if event == CURRENT {
             return self.generation;
         }
-        if !self.admits(event, generation, thread_id, owner_thread) {
+        if !self.admits(event, generation, thread_id, on_renderer_thread) {
             return self.generation;
         }
-        if owner_thread {
+        if on_renderer_thread {
             self.owner_thread = thread_id;
         }
         if matches!(event, RELOAD | UNLOAD) {
@@ -143,7 +151,7 @@ pub fn ravel_renderer_event<'local>(
     event: jint,
     generation: jlong,
     thread_id: jlong,
-    owner_thread: jboolean,
+    on_renderer_thread: jboolean,
 ) -> jlong {
     env.with_env(
         |_env: &mut Env<'local>| -> Result<jlong, work::BoundaryError> {
@@ -152,7 +160,7 @@ pub fn ravel_renderer_event<'local>(
                 event,
                 generation,
                 thread_id,
-                owner_thread != JNI_FALSE,
+                on_renderer_thread != JNI_FALSE,
             ))
         },
     )

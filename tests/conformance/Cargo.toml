@@ -45,6 +45,7 @@ ravel-test-mod-server-only.workspace = true
 ravel-test-mod-world-shaping.workspace = true
 ravel-composed-host.workspace = true
 ravel-testkit.workspace = true
+ravel-build.workspace = true
 rvl-002-counterpart.workspace = true
 rvl-025-counterpart.workspace = true
 rvl-042-counterpart.workspace = true

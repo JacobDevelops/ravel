@@ -178,27 +178,39 @@ impl SavedDataEnvelope {
     /// Builds an envelope without package requirements or a payload schema.
     #[must_use]
     pub fn current(owner: ModId, data_version: SavedDataVersion, payload: Value) -> Self {
-        Self::new(owner, data_version, Vec::new(), None, payload)
+        Self {
+            schema_version: ENVELOPE_SCHEMA_VERSION,
+            owner,
+            data_version,
+            required_packages: Vec::new(),
+            payload_schema: None,
+            payload,
+        }
     }
 
     /// Builds an envelope in the only schema this release writes.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SavedDataError::InvalidAggregate`] for an empty payload-schema identifier.
     pub fn new(
         owner: ModId,
         data_version: SavedDataVersion,
         mut required_packages: Vec<RequiredPackage>,
         payload_schema: Option<String>,
         payload: Value,
-    ) -> Self {
+    ) -> Result<Self, SavedDataError> {
         required_packages.sort();
-        Self {
+        let envelope = Self {
             schema_version: ENVELOPE_SCHEMA_VERSION,
             owner,
             data_version,
             required_packages,
             payload_schema,
             payload,
-        }
+        };
+        envelope.validate_payload_schema()?;
+        Ok(envelope)
     }
     /// Returns the mod that owns this envelope's payload.
     #[must_use]
@@ -214,6 +226,28 @@ impl SavedDataEnvelope {
     #[must_use]
     pub const fn payload(&self) -> &Value {
         &self.payload
+    }
+
+    /// Returns the exact package versions required to read the payload.
+    #[must_use]
+    pub fn required_packages(&self) -> &[RequiredPackage] {
+        &self.required_packages
+    }
+
+    /// Returns the owner's optional opaque payload-schema identifier.
+    #[must_use]
+    pub fn payload_schema(&self) -> Option<&str> {
+        self.payload_schema.as_deref()
+    }
+
+    fn validate_payload_schema(&self) -> Result<(), SavedDataError> {
+        if self.payload_schema() == Some("") {
+            return Err(SavedDataError::InvalidAggregate(format!(
+                "`{}` declares an empty payload schema",
+                self.owner,
+            )));
+        }
+        Ok(())
     }
 
     /// Returns a migrated copy, preserving ownership, requirements, and schema.
@@ -311,6 +345,7 @@ impl SavedDataAggregate {
             }
         }
         for envelope in &self.owners {
+            envelope.validate_payload_schema()?;
             if envelope.schema_version != ENVELOPE_SCHEMA_VERSION {
                 return Err(SavedDataError::UnsupportedEnvelopeVersion {
                     owner: envelope.owner.clone(),
@@ -380,6 +415,9 @@ impl SavedDataAggregate {
     ///
     /// Returns [`SavedDataError::AggregateTooLarge`] above the byte limit or [`SavedDataError::InvalidAggregate`] on serialization failure.
     pub fn to_bytes(&self) -> Result<Vec<u8>, SavedDataError> {
+        for envelope in &self.owners {
+            envelope.validate_payload_schema()?;
+        }
         let bytes = serde_json::to_vec(self)
             .map_err(|error| SavedDataError::InvalidAggregate(error.to_string()))?;
         if bytes.len() > MAX_AGGREGATE_BYTES {
@@ -448,18 +486,14 @@ mod tests {
     #[test]
     fn canonical_output_is_owner_sorted_and_round_trips() {
         let mut aggregate = SavedDataAggregate::fresh();
-        aggregate.replace(SavedDataEnvelope::new(
+        aggregate.replace(SavedDataEnvelope::current(
             id("zeta"),
             version(1),
-            Vec::new(),
-            None,
             json!({"b": 2, "a": 1}),
         ));
-        aggregate.replace(SavedDataEnvelope::new(
+        aggregate.replace(SavedDataEnvelope::current(
             id("alpha"),
             version(1),
-            Vec::new(),
-            None,
             json!([1, 2]),
         ));
         let declarations = [
@@ -476,20 +510,67 @@ mod tests {
     #[test]
     fn required_packages_are_checked_exactly() {
         let mut aggregate = SavedDataAggregate::fresh();
-        aggregate.replace(SavedDataEnvelope::new(
-            id("saved_data"),
-            version(1),
-            vec![RequiredPackage {
-                id: id("base"),
-                version: Version::new(2, 0, 0),
-            }],
-            None,
-            json!(null),
-        ));
+        aggregate.replace(
+            SavedDataEnvelope::new(
+                id("saved_data"),
+                version(1),
+                vec![RequiredPackage {
+                    id: id("base"),
+                    version: Version::new(2, 0, 0),
+                }],
+                None,
+                json!(null),
+            )
+            .expect("valid envelope metadata"),
+        );
         let bytes = aggregate.to_bytes().expect("bytes");
         assert!(matches!(
             SavedDataAggregate::open(Some(&bytes), &[declaration()], &BTreeMap::new()),
             Err(SavedDataError::MissingPackage { .. })
+        ));
+    }
+
+    #[test]
+    fn envelope_metadata_can_be_read_without_serializing_it() {
+        let required = RequiredPackage {
+            id: id("base"),
+            version: Version::new(2, 0, 0),
+        };
+        let envelope = SavedDataEnvelope::new(
+            id("saved_data"),
+            version(1),
+            vec![required.clone()],
+            Some("example:inventory".to_owned()),
+            json!(null),
+        )
+        .expect("valid envelope metadata");
+        assert_eq!(envelope.required_packages(), &[required]);
+        assert_eq!(envelope.payload_schema(), Some("example:inventory"));
+        assert_eq!(
+            envelope.migrated(version(2), json!({})).payload_schema(),
+            Some("example:inventory")
+        );
+    }
+
+    #[test]
+    fn an_empty_payload_schema_is_rejected_before_an_envelope_can_be_produced() {
+        assert!(matches!(
+            SavedDataEnvelope::new(
+                id("saved_data"),
+                version(1),
+                Vec::new(),
+                Some(String::new()),
+                json!(null),
+            ),
+            Err(SavedDataError::InvalidAggregate(_)),
+        ));
+        let mut invalid: serde_json::Value =
+            serde_json::from_slice(&stored_under(1, 1)).expect("the stored fixture is valid JSON");
+        invalid["owners"][0]["payloadSchema"] = json!("");
+        let invalid = serde_json::to_vec(&invalid).expect("the modified fixture serializes");
+        assert!(matches!(
+            SavedDataAggregate::open(Some(&invalid), &[declaration()], &BTreeMap::new()),
+            Err(SavedDataError::InvalidAggregate(_)),
         ));
     }
     // Build stored bytes directly to exercise unsupported schema versions.
@@ -547,16 +628,19 @@ mod tests {
     #[test]
     fn a_required_package_installed_at_another_version_fails_closed() {
         let mut aggregate = SavedDataAggregate::fresh();
-        aggregate.replace(SavedDataEnvelope::new(
-            id("saved_data"),
-            version(1),
-            vec![RequiredPackage {
-                id: id("base"),
-                version: Version::new(2, 0, 0),
-            }],
-            None,
-            json!(null),
-        ));
+        aggregate.replace(
+            SavedDataEnvelope::new(
+                id("saved_data"),
+                version(1),
+                vec![RequiredPackage {
+                    id: id("base"),
+                    version: Version::new(2, 0, 0),
+                }],
+                None,
+                json!(null),
+            )
+            .expect("valid envelope metadata"),
+        );
         let bytes = aggregate.to_bytes().expect("bytes");
 
         let installed = BTreeMap::from([(id("base"), Version::new(1, 0, 0))]);
@@ -579,16 +663,19 @@ mod tests {
     #[test]
     fn preserved_owners_remain_opaque_without_declarations_or_installed_packages() {
         let mut prior = SavedDataAggregate::fresh();
-        prior.replace(SavedDataEnvelope::new(
-            id("failed_owner"),
-            version(99),
-            vec![RequiredPackage {
-                id: id("absent"),
-                version: Version::new(8, 0, 0),
-            }],
-            None,
-            json!({"opaque": ["unchanged", 42]}),
-        ));
+        prior.replace(
+            SavedDataEnvelope::new(
+                id("failed_owner"),
+                version(99),
+                vec![RequiredPackage {
+                    id: id("absent"),
+                    version: Version::new(8, 0, 0),
+                }],
+                None,
+                json!({"opaque": ["unchanged", 42]}),
+            )
+            .expect("valid envelope metadata"),
+        );
         let bytes = prior.to_bytes().expect("prior aggregate");
         let admitted =
             SavedDataAggregate::open_preserving(Some(&bytes), &[], &BTreeMap::new(), |owner| {

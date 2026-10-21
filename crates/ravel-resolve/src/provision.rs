@@ -41,18 +41,18 @@ pub struct Provision {
 
 impl Provision {
     /// Declares a provider, deduplicating identical claims; conflicting claims fail resolution.
-    pub fn provides(&mut self, owner: &ModId, library: String, version: Version) {
+    pub fn provides(&mut self, owner: &ModId, library: impl Into<String>, version: Version) {
         let claim = (owner.clone(), version);
-        let claims = self.provided.entry(library).or_default();
+        let claims = self.provided.entry(library.into()).or_default();
         if !claims.contains(&claim) {
             claims.push(claim);
         }
     }
 
     /// Declares a required version range, deduplicating identical requirements.
-    pub fn requires(&mut self, owner: &ModId, library: &str, wanted: VersionRange) {
+    pub fn requires(&mut self, owner: &ModId, library: impl Into<String>, wanted: VersionRange) {
         let requirement = (owner.clone(), wanted);
-        let requirements = self.required.entry(library.to_owned()).or_default();
+        let requirements = self.required.entry(library.into()).or_default();
         if !requirements.contains(&requirement) {
             requirements.push(requirement);
         }

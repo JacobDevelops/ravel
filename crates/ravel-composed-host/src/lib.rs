@@ -658,7 +658,7 @@ mod tests {
         std::fs::create_dir_all(pack_path.parent().expect("the path has a parent"))
             .expect("the pack directory should be writable");
         std::fs::write(&pack_path, pack.to_json()).expect("the pack file should be writable");
-        file::write(&game, &player).expect("the player file should be writable");
+        file::write_player(&game, &player).expect("the player file should be writable");
 
         let Composition { configurations, .. } =
             compose(&game, Side::Client).expect("the selected pack values should resolve");
@@ -697,7 +697,7 @@ mod tests {
             .to_string(),
         )
         .expect("a valid player document");
-        file::write(&game, &player).expect("the player file should be writable");
+        file::write_player(&game, &player).expect("the player file should be writable");
 
         let Composition { configurations, .. } =
             compose(&game, Side::Client).expect("the player values should resolve");

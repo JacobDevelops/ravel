@@ -196,13 +196,16 @@ fn admit(bytes: Option<&[u8]>) -> Result<SavedDataAggregate, SavedDataError> {
 // One envelope this mod owns, at `version`, outside any fixture world.
 fn world_holding(version: SavedDataVersion, payload: Value) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
-        MOD_ID.parse().expect("a legal mod id"),
-        version,
-        Vec::new(),
-        Some("urn:ravel:test:saved-state:1".to_owned()),
-        payload,
-    ));
+    aggregate.replace(
+        SavedDataEnvelope::new(
+            MOD_ID.parse().expect("a legal mod id"),
+            version,
+            Vec::new(),
+            Some("urn:ravel:test:saved-state:1".to_owned()),
+            payload,
+        )
+        .expect("valid envelope metadata"),
+    );
     aggregate.to_bytes().expect("one small envelope is bounded")
 }
 
@@ -581,7 +584,8 @@ fn an_envelope_schema_this_build_cannot_read_blames_its_owner() {
         Vec::new(),
         Some("urn:ravel:test:saved-state:1".to_owned()),
         serde_json::to_value(&state).expect("the fixture state serializes"),
-    );
+    )
+    .expect("valid envelope metadata");
     opened
         .open_saved_data(Some(&envelope))
         .expect("the data version this envelope carries opens on its own");

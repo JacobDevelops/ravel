@@ -147,12 +147,10 @@ audio has both ends and no launched game has run them:
   client tick exists there to drain it. The
   side rule is real and enforced:
   asking to play on a server is refused rather than skipped, so a mod that would
-  have worked only in single-player finds out in its own tests. The bytes you
-  hand `AudioDeclaration::entry` stay in the declaration: `ravel-pack` never
-  reads an `AudioDeclaration`, so no pack file carries a sound because you
-  declared one. Getting the file into a pack is a separate
-  `ContentDeclaration::resource` call with the same bytes, and nothing checks
-  that the two agree.
+  have worked only in single-player finds out in its own tests.
+  `AudioDeclaration::entry` names a sound; it does not supply audio bytes.
+  Supply the sound file separately through `ContentDeclaration::resource`
+  and reference that resource from the generated sound event.
 - `render_stages` — you declare which published stages your mod contributes to
   and which mods it follows at them, and Ravel decides the order, refusing a cycle
   and a stage nothing publishes. **This is not a way to draw, and it is not going
@@ -184,9 +182,11 @@ Declaring against `render_stages`, and against the two interception points no
 hook resolves, is designing against a specification that is tested now and — for
 drawing — is not connected later. `world_shaping` produces a validated
 `GenerationRecord` for library callers, but no host path reads or persists it:
-declaring it does not change a launched world. `server_data` declarations become
-entries in the installed world's data pack through `ContentDeclaration`, where
-datapack-capable adapters let Minecraft read them. The legacy adapter has no datapack output.
+declaring it does not change a launched world. `server_data` declarations from
+mods admitted on the world's side become entries in its data pack through
+`ContentDeclaration`, where datapack-capable adapters let Minecraft read them.
+Client-only mods contribute assets but no data to an integrated world.
+The legacy adapter has no datapack output.
 
 **A shared library your mod provides is declared and nothing reads the
 declaration.** `provision` is the fourth surface in that state, and it is

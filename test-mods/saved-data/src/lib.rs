@@ -270,13 +270,16 @@ impl Mod for SavedDataMod {
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         let (version, state) = self.save();
         let payload = serde_json::to_value(state).map_err(ModError::from_display)?;
-        Ok(Some(SavedDataEnvelope::new(
-            Self::declared_id().clone(),
-            version,
-            Vec::new(),
-            Some("urn:ravel:test:saved-state:1".to_owned()),
-            payload,
-        )))
+        Ok(Some(
+            SavedDataEnvelope::new(
+                Self::declared_id().clone(),
+                version,
+                Vec::new(),
+                Some("urn:ravel:test:saved-state:1".to_owned()),
+                payload,
+            )
+            .map_err(ModError::from_display)?,
+        ))
     }
 }
 
@@ -303,6 +306,7 @@ mod tests {
             Some("urn:ravel:test:saved-state:1".to_owned()),
             payload,
         )
+        .expect("valid envelope metadata")
     }
 
     /// The plan a world at `at` resolves to for this mod.

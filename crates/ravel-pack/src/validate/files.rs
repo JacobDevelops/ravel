@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ravel_core::paths::INSTANCE_DIRECTORY;
 use ravel_core::{ModId, RelativePath};
@@ -21,19 +21,17 @@ pub(super) fn written_files(
     let mut files: BTreeMap<RelativePath, Vec<u8>> = BTreeMap::new();
     let tags = member_files(declarations, order, &mut writer, &mut files)?;
     let mut overrides = tags.replacements().to_vec();
-    pack_files(pack, &tags, &mut writer, &mut files, &mut overrides)?;
+    pack_files(pack, &tags, &writer, &mut files, &mut overrides)?;
 
     // Manifest resources answer references without becoming pack output.
-    let mut supplied_elsewhere: BTreeMap<&str, &ModId> = BTreeMap::new();
-    for (owner, manifest) in installed {
-        for path in &manifest.resources {
-            supplied_elsewhere.insert(path.as_str(), owner);
-        }
-    }
+    let supplied_elsewhere: BTreeSet<&str> = installed
+        .values()
+        .flat_map(|manifest| manifest.resources.iter().map(RelativePath::as_str))
+        .collect();
 
     for reference in pack.references() {
-        let answered = writer.contains_key(&reference.path)
-            || supplied_elsewhere.contains_key(reference.path.as_str());
+        let answered = files.contains_key(&reference.path)
+            || supplied_elsewhere.contains(reference.path.as_str());
         if !answered {
             return Err(ClosureError::ResourceMissing {
                 path: reference.path.clone(),
@@ -101,7 +99,7 @@ fn member_files(
 fn pack_files(
     pack: &PackDeclaration,
     tags: &TagResources,
-    writer: &mut BTreeMap<RelativePath, Writer>,
+    writer: &BTreeMap<RelativePath, Writer>,
     files: &mut BTreeMap<RelativePath, Vec<u8>>,
     overrides: &mut Vec<Override>,
 ) -> Result<(), ClosureError> {
@@ -121,9 +119,8 @@ fn pack_files(
                     shadowed: contributors,
                 });
             }
-            None | Some(Writer::Pack) => {}
+            None => {}
         }
-        writer.insert(supplied.path.clone(), Writer::Pack);
         files.insert(supplied.path.clone(), supplied.bytes.clone());
     }
     Ok(())
@@ -136,18 +133,11 @@ enum Writer {
     Members,
     /// One member's own generated or supplied file.
     Member(ModId),
-    /// The pack itself.
-    Pack,
 }
 
 /// Refuses a path in the directory Ravel's own files live in.
 fn reserved(path: &RelativePath) -> Result<(), ClosureError> {
-    if path
-        .as_str()
-        .split('/')
-        .find(|part| !part.is_empty() && *part != ".")
-        == Some(INSTANCE_DIRECTORY)
-    {
+    if path.first_segment() == INSTANCE_DIRECTORY {
         return Err(ClosureError::ReservedPath { path: path.clone() });
     }
     Ok(())

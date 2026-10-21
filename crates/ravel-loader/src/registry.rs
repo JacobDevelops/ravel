@@ -5,7 +5,7 @@ use ravel_host_api::{Registrar, RegistrationRefused};
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
 
 /// A mod's registration window, borrowing the lifecycle machine for the call.
-pub struct Registration<'a> {
+pub(crate) struct Registration<'a> {
     machine: &'a mut LifecycleMachine,
     mod_id: ModId,
     claimed: Vec<RegistryKey>,
@@ -24,7 +24,7 @@ impl<'a> Registration<'a> {
 
     /// Returns the detailed loader refusal behind the mod-facing closed-window response.
     #[must_use]
-    pub const fn unexpected(&self) -> Option<&LifecycleError> {
+    pub(crate) const fn unexpected(&self) -> Option<&LifecycleError> {
         self.unexpected.as_ref()
     }
 }
@@ -93,7 +93,7 @@ impl LifecycleMachine {
     /// # Errors
     ///
     /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan.
-    pub fn registration_window(
+    pub(crate) fn registration_window(
         &mut self,
         mod_id: &ModId,
     ) -> Result<Registration<'_>, LifecycleError> {

@@ -272,11 +272,9 @@
 //! use ravel_sdk::{JsonValue, ModId};
 //!
 //! let owner: ModId = "example".parse().expect("a legal mod id");
-//! let envelope = SavedDataEnvelope::new(
+//! let envelope = SavedDataEnvelope::current(
 //!     owner,
 //!     SavedDataVersion::new(1).expect("1 is not zero"),
-//!     Vec::new(),
-//!     None,
 //!     JsonValue::Null,
 //! );
 //! assert_eq!(envelope.payload(), &JsonValue::Null);
@@ -288,11 +286,9 @@
 //!
 //! fn main() {
 //!     let owner: ModId = "example".parse().expect("a legal mod id");
-//!     let envelope = SavedDataEnvelope::new(
+//!     let envelope = SavedDataEnvelope::current(
 //!         owner,
 //!         SavedDataVersion::new(1).expect("1 is not zero"),
-//!         Vec::new(),
-//!         None,
 //!         JsonValue::Null,
 //!     );
 //!     let _ = envelope.payload;

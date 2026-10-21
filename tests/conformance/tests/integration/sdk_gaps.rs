@@ -6,8 +6,8 @@
 use std::collections::BTreeSet;
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::{Mod, Points, Round};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_host_api::Mod;
+use ravel_loader::{LifecycleEntry, LifecycleMachine, Points, Requirement, Round};
 use ravel_resolve::Provision;
 use ravel_sdk::audio::AudioError;
 use ravel_sdk::content::ContentDeclaration;
@@ -85,6 +85,33 @@ fn every_mod_written_against_a_new_module_is_an_ordinary_mod_to_the_loader() {
     );
     assert_eq!(interception.entered().len(), 4);
     assert_eq!(provision.entered().len(), 4);
+}
+
+#[test]
+fn client_only_audio_resources_do_not_supply_integrated_world_data() {
+    let mut audio = AudioMod::new();
+    let mut audio_entry = entry(AudioMod::declared_id());
+    audio_entry.sides = SideSet::new([Side::Client]).expect("client side");
+    let mut machine =
+        LifecycleMachine::new(Side::Client, vec![audio_entry]).expect("client lifecycle");
+    let mut mods: [&mut dyn Mod; 1] = [&mut audio];
+    let mut loaded = ravel_loader::LoadedMods::new(&mut machine, &mut mods)
+        .expect("audio is the admitted client mod");
+    let environment = ravel_minecraft_adapter::environment();
+    ravel_loader::start_all(&mut loaded, &environment).expect("audio starts");
+    let supplied = ravel_loader::open_resources(&mut loaded, &environment).expect("resources open");
+    let assets = "assets/audio/sounds.json".parse().expect("asset path");
+    let recipe = "data/audio/recipe/paper_echo.json"
+        .parse()
+        .expect("recipe path");
+    assert!(supplied.bytes(&assets).is_some());
+    assert!(supplied.bytes(&recipe).is_none());
+    assert!(
+        supplied
+            .generated()
+            .iter()
+            .all(|(_, files)| files.file(&recipe).is_none())
+    );
 }
 
 #[test]

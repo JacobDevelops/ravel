@@ -4,7 +4,7 @@ mod routing;
 
 pub use play::{PlayRequests, take_play_requests};
 pub use refusal::DispatchRefused;
-pub use routing::{accepts_owner, deliver_command, deliver_packet};
+pub use routing::{admit_owner, deliver_command, deliver_packet};
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side};
 use ravel_host_api::{GameEvent, HostError, Mod};
@@ -63,11 +63,8 @@ impl LifecycleMachine {
         &self,
         side: Side,
     ) -> impl Iterator<Item = (&crate::LifecycleEntry, LifecycleState)> {
-        self.tracked_entries().filter(move |(entry, state)| {
-            entry.sides.loads_on(side)
-                && entry.sides.loads_on(self.side())
-                && *state != LifecycleState::Failed
-        })
+        self.eligible()
+            .filter(move |(entry, _)| entry.sides.loads_on(side))
     }
 }
 

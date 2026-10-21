@@ -1,10 +1,8 @@
 use std::fmt;
 
+use crate::{AdmittedPoints, Points, PointsRefused, Round};
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure};
-use ravel_host_api::{
-    AdmittedPoints, HostError, InterceptionDeclaration, Mod, Occasion, Point, Points,
-    PointsRefused, Round,
-};
+use ravel_host_api::{HostError, InterceptionDeclaration, Mod, Occasion, Point};
 
 use crate::loaded::LoadedMods;
 
@@ -56,10 +54,8 @@ fn collect_declarations<H: std::ops::DerefMut<Target: Mod>>(
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
     let eligible: Vec<_> = machine
-        .eligible()
-        .filter(|(entry, state)| {
-            entry.sides.loads_on(machine.side().world_side()) && crate::executes_mod_code(*state)
-        })
+        .world_eligible()
+        .filter(|(_, state)| crate::executes_mod_code(*state))
         .map(|(entry, state)| (entry.mod_id.clone(), state))
         .collect();
     let mut declarations = Vec::with_capacity(eligible.len());
@@ -111,8 +107,8 @@ pub fn intercept<H: std::ops::DerefMut<Target: Mod>>(
     ensure_active(machine)?;
     let side = machine.side().world_side();
     let states: std::collections::BTreeMap<_, _> = machine
-        .tracked_entries()
-        .filter(|(entry, state)| entry.sides.loads_on(side) && crate::executes_mod_code(*state))
+        .world_eligible()
+        .filter(|(_, state)| crate::executes_mod_code(*state))
         .map(|(entry, state)| (entry.mod_id.clone(), state))
         .collect();
     let mut asked = |owner: &ModId, occasion: Occasion| {
@@ -250,15 +246,16 @@ impl StructuredFailure for InterceptRefused {
 mod tests {
     use ravel_core::{LifecycleState, ModId, Side, StructuredFailure};
     use ravel_host_api::{
-        HostError, InterceptionDeclaration, Mod, ModError, Occasion, Outcome, Point, PointsRefused,
+        HostError, InterceptionDeclaration, Mod, ModError, Occasion, Outcome, Point,
     };
 
     use super::InterceptRefused;
+    use crate::PointsRefused;
 
     fn intercept<H: std::ops::DerefMut<Target: Mod>>(
         loaded: &mut LoadedMods<'_, H>,
         point: Point,
-    ) -> Result<ravel_host_api::Round, InterceptRefused> {
+    ) -> Result<crate::Round, InterceptRefused> {
         let points = super::open_interceptions(loaded, &crate::tests::environment())?;
         super::intercept(loaded, &points, point, &crate::tests::environment())
     }
@@ -593,7 +590,7 @@ mod tests {
         assert_eq!(refusal, InterceptRefused::Halted { by: id(LEDGER) });
         assert_eq!(refusal.lifecycle_state(), LifecycleState::Failed);
         assert!(!refusal.quotes_untrusted_text());
-        let mut points = ravel_host_api::Points::default();
+        let mut points = crate::Points::default();
         points.answer_at(&id(GUARD), Point::WorldIsSaved);
         let points = points.admit().expect("cached legal declaration");
         assert_eq!(

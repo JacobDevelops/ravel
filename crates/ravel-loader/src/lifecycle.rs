@@ -269,6 +269,11 @@ impl LifecycleMachine {
             .filter(|(entry, state)| Self::is_eligible(self.side, entry, *state))
     }
 
+    pub(crate) fn world_eligible(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
+        self.eligible()
+            .filter(|(entry, _)| entry.sides.loads_on(self.side.world_side()))
+    }
+
     pub(crate) fn tracked_entries_with_failures(
         &self,
     ) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState, Option<&FailureAttribution>)> {
@@ -447,26 +452,21 @@ impl LifecycleMachine {
         mod_id: &ModId,
         attribution: FailureAttribution,
     ) -> Result<(), LifecycleError> {
-        let tracked = self.tracked_mut(mod_id)?;
-        let from = tracked.state;
-        if !from.can_transition_to(LifecycleState::Failed) {
-            return Err(LifecycleError::IllegalTransition {
-                mod_id: tracked.entry.mod_id.clone(),
-                from,
-                to: LifecycleState::Failed,
-            });
-        }
-
-        tracked.state = LifecycleState::Failed;
+        let Self {
+            entries,
+            transcript,
+            world_mutated,
+            halted,
+            ..
+        } = self;
+        let tracked = entries
+            .iter_mut()
+            .find(|tracked| tracked.entry.mod_id == *mod_id)
+            .ok_or_else(|| LifecycleError::UnknownMod {
+                mod_id: mod_id.clone(),
+            })?;
+        enter_failed(tracked, transcript, *world_mutated, halted)?;
         tracked.failure = Some(attribution);
-        let mod_id = tracked.entry.mod_id.clone();
-        self.transcript.push(LifecycleEvent {
-            mod_id: mod_id.clone(),
-            state: LifecycleState::Failed,
-        });
-        if self.world_mutated && self.halted.is_none() {
-            self.halted = Some(mod_id);
-        }
         Ok(())
     }
 
@@ -517,22 +517,7 @@ impl LifecycleMachine {
                 mod_id: mod_id.clone(),
             })?;
         if tracked.state != LifecycleState::Failed {
-            let from = tracked.state;
-            if !from.can_transition_to(LifecycleState::Failed) {
-                return Err(LifecycleError::IllegalTransition {
-                    mod_id: mod_id.clone(),
-                    from,
-                    to: LifecycleState::Failed,
-                });
-            }
-            tracked.state = LifecycleState::Failed;
-            transcript.push(LifecycleEvent {
-                mod_id: mod_id.clone(),
-                state: LifecycleState::Failed,
-            });
-            if *world_mutated && halted.is_none() {
-                *halted = Some(mod_id.clone());
-            }
+            enter_failed(tracked, transcript, *world_mutated, halted)?;
         }
         let attribution = tracked.failure.get_or_insert_with(|| FailureAttribution {
             mod_id: Some(mod_id.clone()),
@@ -754,6 +739,32 @@ impl LifecycleMachine {
                 mod_id: mod_id.clone(),
             })
     }
+}
+
+fn enter_failed(
+    tracked: &mut Tracked,
+    transcript: &mut Vec<LifecycleEvent>,
+    world_mutated: bool,
+    halted: &mut Option<ModId>,
+) -> Result<(), LifecycleError> {
+    let from = tracked.state;
+    if !from.can_transition_to(LifecycleState::Failed) {
+        return Err(LifecycleError::IllegalTransition {
+            mod_id: tracked.entry.mod_id.clone(),
+            from,
+            to: LifecycleState::Failed,
+        });
+    }
+    tracked.state = LifecycleState::Failed;
+    let mod_id = tracked.entry.mod_id.clone();
+    transcript.push(LifecycleEvent {
+        mod_id: mod_id.clone(),
+        state: LifecycleState::Failed,
+    });
+    if world_mutated && halted.is_none() {
+        *halted = Some(mod_id);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

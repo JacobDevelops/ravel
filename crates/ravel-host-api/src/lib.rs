@@ -6,9 +6,7 @@ mod interception;
 mod provision;
 mod services;
 
-pub use interception::{
-    AdmittedPoints, InterceptionDeclaration, Occasion, Outcome, Point, Points, PointsRefused, Round,
-};
+pub use interception::{InterceptionDeclaration, Occasion, Outcome, Point};
 pub use provision::Provided;
 pub use services::{
     ServiceCallFailed, ServiceDeclaration, ServiceDeclarationError, ServiceDirectory, ServiceId,
@@ -263,7 +261,8 @@ impl HostError {
     }
 
     /// Reattributes a forwarded callback failure without changing its kind or phase.
-    pub(crate) fn with_owner(mut self, owner: ModId) -> Self {
+    #[must_use]
+    pub fn with_owner(mut self, owner: ModId) -> Self {
         match &mut self {
             Self::PreviouslyFailed {
                 mod_id,

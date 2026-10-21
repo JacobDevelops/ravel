@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +102,15 @@ impl TryFrom<String> for RelativePath {
     }
 }
 
+impl FromStr for RelativePath {
+    type Err = RelativePathError;
+
+    fn from_str(candidate: &str) -> Result<Self, Self::Err> {
+        Self::check(candidate)?;
+        Ok(Self(candidate.to_owned()))
+    }
+}
+
 impl From<RelativePath> for String {
     fn from(path: RelativePath) -> Self {
         path.0
@@ -113,7 +123,7 @@ impl fmt::Display for RelativePath {
     }
 }
 
-/// Why a package-relative path was rejected, without disclosing the path.
+/// Why a relative path was rejected, without disclosing the path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelativePathError {
     /// The candidate is empty.
@@ -133,18 +143,14 @@ pub enum RelativePathError {
 impl fmt::Display for RelativePathError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => formatter.write_str("a package path cannot be empty"),
-            Self::Absolute => formatter.write_str(
-                "a package path is relative to the package, so it cannot start with `/`",
-            ),
+            Self::Empty => formatter.write_str("a relative path cannot be empty"),
+            Self::Absolute => formatter.write_str("a relative path cannot start with `/`"),
             Self::Backslash => formatter
-                .write_str("a package path is `/`-separated, so it cannot hold a backslash"),
-            Self::LineBreak => formatter.write_str("a package path cannot hold a line terminator"),
-            Self::Traversal => formatter.write_str(
-                "a package path cannot leave the package, so it cannot hold a `..` component",
-            ),
+                .write_str("a relative path is `/`-separated, so it cannot hold a backslash"),
+            Self::LineBreak => formatter.write_str("a relative path cannot hold a line terminator"),
+            Self::Traversal => formatter.write_str("a relative path cannot hold a `..` component"),
             Self::NonCanonical => {
-                formatter.write_str("a package path cannot hold an empty or `.` component")
+                formatter.write_str("a relative path cannot hold an empty or `.` component")
             }
         }
     }
@@ -172,6 +178,7 @@ mod tests {
             assert_eq!(path.as_str(), candidate);
             assert_eq!(path.to_string(), candidate);
             assert_eq!(path.file_name(), file_name);
+            assert_eq!(candidate.parse::<RelativePath>(), Ok(path.clone()));
             assert_eq!(String::from(path.clone()), candidate);
 
             let encoded = serde_json::to_string(&path).expect("should serialize");
@@ -235,26 +242,26 @@ mod tests {
     #[test]
     fn a_refusal_says_which_rule_the_path_broke_and_quotes_no_path() {
         for (error, expected) in [
-            (RelativePathError::Empty, "a package path cannot be empty"),
+            (RelativePathError::Empty, "a relative path cannot be empty"),
             (
                 RelativePathError::Absolute,
-                "a package path is relative to the package, so it cannot start with `/`",
+                "a relative path cannot start with `/`",
             ),
             (
                 RelativePathError::Backslash,
-                "a package path is `/`-separated, so it cannot hold a backslash",
+                "a relative path is `/`-separated, so it cannot hold a backslash",
             ),
             (
                 RelativePathError::LineBreak,
-                "a package path cannot hold a line terminator",
+                "a relative path cannot hold a line terminator",
             ),
             (
                 RelativePathError::Traversal,
-                "a package path cannot leave the package, so it cannot hold a `..` component",
+                "a relative path cannot hold a `..` component",
             ),
             (
                 RelativePathError::NonCanonical,
-                "a package path cannot hold an empty or `.` component",
+                "a relative path cannot hold an empty or `.` component",
             ),
         ] {
             assert_eq!(error.to_string(), expected);

@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
 use ravel_example_content_mod::ContentMod;
-use ravel_host_api::{HostError, Mod, Registrar};
-use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
+use ravel_host_api::{Mod, Registrar};
+use ravel_loader::{LifecycleEntry, LifecycleMachine, LoadedMods, Requirement};
 use ravel_sdk::Declared;
 
 use super::id;
@@ -14,7 +14,11 @@ fn entry(name: &str) -> LifecycleEntry {
     LifecycleEntry {
         mod_id: id(name),
         sides: SideSet::new([Side::Client, Side::DedicatedServer]).expect("a non-empty side set"),
-        requirement: Requirement::Required,
+        requirement: if name == "rival" {
+            Requirement::Optional
+        } else {
+            Requirement::Required
+        },
         saved_data_versions: BTreeSet::new(),
     }
 }
@@ -43,47 +47,34 @@ impl Mod for Rival {
     }
 }
 
-type Outcome = (ModId, Result<(), HostError>);
+type Outcome = (ModId, Result<(), ravel_core::FailureAttribution>);
 
 fn register_all(
     entries: Vec<LifecycleEntry>,
     mods: &mut [&mut dyn Mod],
 ) -> (LifecycleMachine, Vec<Outcome>) {
     let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-
-    let order: Vec<ModId> = machine.order().cloned().collect();
-    let mut outcomes = Vec::new();
-    for mod_id in order {
-        let mut window = machine
-            .registration_window(&mod_id)
-            .expect("the plan names it");
-        if let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) {
-            outcomes.push((
-                mod_id.clone(),
-                host.register(&mut window).map_err(|error| {
-                    HostError::from_operation_refusal(
-                        mod_id.clone(),
-                        LifecycleState::Constructed,
-                        error,
-                    )
-                }),
-            ));
-        }
-        assert!(window.unexpected().is_none(), "the window was open");
-    }
+    ravel_loader::start_all(
+        &mut LoadedMods::new(&mut machine, mods).expect("complete fixture"),
+        &ravel_minecraft_adapter::environment(),
+    )
+    .expect("optional refusal does not halt the set");
+    let outcomes = machine
+        .order()
+        .map(|owner| {
+            let outcome = machine
+                .failure(owner)
+                .expect("tracked fixture")
+                .cloned()
+                .map_or(Ok(()), Err);
+            (owner.clone(), outcome)
+        })
+        .collect();
     (machine, outcomes)
 }
 
 #[test]
-fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes() {
+fn every_entry_the_example_declares_is_owned_by_it_after_production_registration() {
     let mut content = ContentMod::new();
     let declared = content
         .declaration()
@@ -95,9 +86,9 @@ fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes
         "an example that declares nothing would make every check below vacuous"
     );
 
-    let (mut machine, outcomes) = register_all(vec![entry("content")], &mut [&mut content]);
+    let (machine, outcomes) = register_all(vec![entry("content")], &mut [&mut content]);
     for (mod_id, outcome) in outcomes {
-        outcome.unwrap_or_else(|error| panic!("`{mod_id}` was refused: {error}"));
+        outcome.unwrap_or_else(|error| panic!("`{mod_id}` was refused: {}", error.message.text()));
     }
 
     for key in &declared {
@@ -110,18 +101,6 @@ fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes
     assert_eq!(
         machine.registry_claim_count(ContentMod::declared_id()),
         declared.len()
-    );
-
-    machine
-        .advance_all(LifecycleState::Registered)
-        .expect("a legal step");
-    let late: RegistryKey = "block:content:late".parse().expect("valid key");
-    assert_eq!(
-        machine
-            .registration_window(ContentMod::declared_id())
-            .expect("tracked owner")
-            .claim(late.clone()),
-        Err(ravel_host_api::RegistrationRefused::Closed { key: late })
     );
 }
 
@@ -163,10 +142,10 @@ fn a_second_mod_claiming_the_examples_block_is_refused_and_told_who_owns_it() {
         .find(|(mod_id, _)| mod_id == &id("rival"))
         .and_then(|(_, outcome)| outcome.as_ref().err())
         .expect("the rival's claim was refused");
-    let detail = refusal.to_string();
+    let detail = refusal.message.text();
     assert!(detail.contains("content"), "{detail}");
     assert!(detail.contains(&contested.to_string()), "{detail}");
-    assert_eq!(refusal.state(), LifecycleState::Constructed);
+    assert_eq!(refusal.state, LifecycleState::Constructed);
 
     assert_eq!(
         machine.registry_owner(&contested),
@@ -200,9 +179,9 @@ fn a_foreign_claim_cannot_reserve_the_examples_namespace_before_its_owner() {
         .find(|(mod_id, _)| mod_id == &id("rival"))
         .and_then(|(_, outcome)| outcome.as_ref().err())
         .expect("the foreign claim was refused before acquiring ownership");
-    assert_eq!(refusal.mod_id(), &id("rival"));
-    assert_eq!(refusal.state(), LifecycleState::Constructed);
-    let detail = refusal.to_string();
+    assert_eq!(refusal.mod_id.as_ref(), Some(&id("rival")));
+    assert_eq!(refusal.state, LifecycleState::Constructed);
+    let detail = refusal.message.text();
     assert!(detail.contains("rival"), "{detail}");
     assert!(detail.contains(&contested.to_string()), "{detail}");
 
@@ -238,7 +217,7 @@ fn a_second_mod_claiming_a_name_the_example_did_not_declare_is_accepted() {
         &mut [&mut content, &mut rival],
     );
     for (mod_id, outcome) in outcomes {
-        outcome.unwrap_or_else(|error| panic!("`{mod_id}` was refused: {error}"));
+        outcome.unwrap_or_else(|error| panic!("`{mod_id}` was refused: {}", error.message.text()));
     }
     assert_eq!(machine.registry_owner(&mine), Some(&id("rival")));
 }

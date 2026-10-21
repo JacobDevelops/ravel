@@ -229,13 +229,11 @@ mod tests {
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::ContentDeclaration;
-    use ravel_host_api::{HostError, Mod, ModError, Registrar};
+    use ravel_host_api::{HostError, Mod, ModError};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, LoadedMods, Requirement};
 
     use super::{command_answer, commands, resource_paths};
-    use crate::runtime::{
-        DocumentFixture, LoaderRuntime, Undelivered, advance_through, test_launch,
-    };
+    use crate::runtime::{DocumentFixture, LoaderRuntime, Undelivered, test_launch};
     use crate::wire::fields;
 
     #[test]
@@ -256,17 +254,13 @@ mod tests {
     {
         let owner: ModId = "example_mod".parse()?;
         let entry = LifecycleEntry {
-            mod_id: owner.clone(),
+            mod_id: owner,
             sides: SideSet::new([Side::DedicatedServer])?,
             requirement: Requirement::Required,
             saved_data_versions: BTreeSet::new(),
         };
         let mut fixture = DocumentFixture::new(Side::DedicatedServer, vec![entry]);
-        advance_through(&mut fixture.machine, LifecycleState::Constructed);
-        fixture
-            .machine
-            .registration_window(&owner)?
-            .claim("command:example_mod:warp".parse()?)?;
+        fixture.start_with_claims(&[("command:example_mod:warp".parse()?, None)]);
         let runtime = LoaderRuntime::new(fixture.machine, fixture.mods, test_launch());
         assert_eq!(
             fields(&commands(&runtime)),

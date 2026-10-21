@@ -402,27 +402,18 @@ fn two_mods_cannot_claim_the_same_command_root() {
         ],
     )
     .expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-
-    {
-        let mut window = machine
-            .registration_window(&id("commands"))
-            .expect("in the plan");
-        commands.register(&mut window).expect("it claims first");
-    }
-    let mut window = machine
-        .registration_window(&id("squatter"))
-        .expect("in the plan");
-    let error = squatter
-        .register(&mut window)
-        .expect_err("the root is taken");
+    let mut mods: Vec<&mut dyn Mod> = vec![&mut commands, &mut squatter];
+    let error = ravel_loader::start_all(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("complete fixture"),
+        &ravel_minecraft_adapter::environment(),
+    )
+    .expect_err("the root is taken");
+    assert!(matches!(
+        &error,
+        ravel_loader::DriveError::Host { attribution, .. }
+            if attribution.mod_id.as_ref() == Some(&id("squatter"))
+                && attribution.state == LifecycleState::Constructed
+    ));
 
     let text = error.to_string();
     assert!(text.contains("commands"), "{text}");

@@ -197,8 +197,7 @@ fn collect_declarations<H: std::ops::DerefMut<Target: Mod>>(
     let mut declarations = Vec::with_capacity(mods.len());
     let mut chains = Vec::with_capacity(mods.len());
     let order: Vec<_> = machine
-        .eligible()
-        .filter(|(entry, _)| entry.sides.loads_on(machine.side().world_side()))
+        .world_eligible()
         .map(|(entry, _)| entry.mod_id.clone())
         .collect();
     for mod_id in &order {
@@ -1096,11 +1095,9 @@ mod tests {
         crate::tests::advance_through(&mut machine, LifecycleState::Running);
         machine.record_world_mutation().expect("world opened");
         let mut prior = SavedDataAggregate::fresh();
-        prior.replace(SavedDataEnvelope::new(
+        prior.replace(SavedDataEnvelope::current(
             id("stored"),
             version(3),
-            Vec::new(),
-            None,
             json!({"durable": true}),
         ));
         let refusal = super::produce_saved_data(
@@ -1242,11 +1239,9 @@ mod tests {
     fn world(owners: &[(&str, u32, Value)]) -> Vec<u8> {
         let mut aggregate = SavedDataAggregate::fresh();
         for (owner, at, payload) in owners {
-            aggregate.replace(SavedDataEnvelope::new(
+            aggregate.replace(SavedDataEnvelope::current(
                 id(owner),
                 version(*at),
-                Vec::new(),
-                None,
                 payload.clone(),
             ));
         }
@@ -1319,13 +1314,16 @@ mod tests {
                 version: "1.0.0".parse().expect("valid version"),
             }]
         };
-        aggregate.replace(SavedDataEnvelope::new(
-            id("stored"),
-            version(if future { 4 } else { 3 }),
-            required,
-            None,
-            json!({}),
-        ));
+        aggregate.replace(
+            SavedDataEnvelope::new(
+                id("stored"),
+                version(if future { 4 } else { 3 }),
+                required,
+                None,
+                json!({}),
+            )
+            .expect("valid envelope metadata"),
+        );
         aggregate.to_bytes().expect("valid world input")
     }
 

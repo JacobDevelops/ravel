@@ -85,13 +85,12 @@ pub fn ravel_admitted_content<'local>(
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId, Side, SideSet};
+    use ravel_core::{ModId, Side, SideSet};
     use ravel_data::{BlockBehaviour, ContentBehaviour};
-    use ravel_host_api::Registrar;
     use ravel_loader::{LifecycleEntry, Requirement};
 
     use super::document_of;
-    use crate::runtime::{DocumentFixture, LoaderRuntime, advance_through};
+    use crate::runtime::{DocumentFixture, LoaderRuntime};
     use crate::wire::fields;
 
     fn id(name: &str) -> ModId {
@@ -108,9 +107,7 @@ mod tests {
                 saved_data_versions: std::collections::BTreeSet::new(),
             })
             .collect();
-        let mut fixture = DocumentFixture::new(Side::Client, entries);
-        advance_through(&mut fixture.machine, LifecycleState::Constructed);
-        fixture
+        DocumentFixture::new(Side::Client, entries)
     }
 
     #[test]
@@ -120,7 +117,8 @@ mod tests {
 
     #[test]
     fn an_installed_set_that_claimed_nothing_answers_with_an_empty_table() {
-        let fixture = fixture(&["example_mod"]);
+        let mut fixture = fixture(&["example_mod"]);
+        fixture.start_with_claims(&[]);
         let runtime =
             LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
@@ -132,18 +130,10 @@ mod tests {
     #[test]
     fn every_admitted_block_and_item_crosses_with_its_namespace_and_owner() {
         let mut fixture = fixture(&["first_mod", "second_mod"]);
-        fixture
-            .machine
-            .registration_window(&id("second_mod"))
-            .expect("tracked owner")
-            .claim("item:second_mod:ingot".parse().expect("valid key"))
-            .expect("accepted");
-        fixture
-            .machine
-            .registration_window(&id("first_mod"))
-            .expect("tracked owner")
-            .claim("block:first_mod:copper".parse().expect("valid key"))
-            .expect("accepted");
+        fixture.start_with_claims(&[
+            ("item:second_mod:ingot".parse().expect("valid key"), None),
+            ("block:first_mod:copper".parse().expect("valid key"), None),
+        ]);
         let runtime =
             LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
@@ -177,20 +167,15 @@ mod tests {
     #[test]
     fn a_described_claim_crosses_with_the_values_the_mod_chose() {
         let mut fixture = fixture(&["example_mod"]);
-        fixture
-            .machine
-            .registration_window(&id("example_mod"))
-            .expect("tracked owner")
-            .claim_describing(
-                "block:example_mod:obsidian".parse().expect("valid key"),
-                ContentBehaviour::Block(BlockBehaviour {
-                    hardness: 50.0,
-                    explosion_resistance: 1200.0,
-                    requires_correct_tool: true,
-                    random_ticks: false,
-                }),
-            )
-            .expect("accepted");
+        fixture.start_with_claims(&[(
+            "block:example_mod:obsidian".parse().expect("valid key"),
+            Some(ContentBehaviour::Block(BlockBehaviour {
+                hardness: 50.0,
+                explosion_resistance: 1200.0,
+                requires_correct_tool: true,
+                random_ticks: false,
+            })),
+        )]);
         let runtime =
             LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 
@@ -217,24 +202,11 @@ mod tests {
     #[test]
     fn a_claim_naming_a_registry_this_seam_cannot_commit_to_does_not_cross() {
         let mut fixture = fixture(&["example_mod"]);
-        fixture
-            .machine
-            .registration_window(&id("example_mod"))
-            .expect("tracked owner")
-            .claim("command:example_mod:home".parse().expect("valid key"))
-            .expect("accepted");
-        fixture
-            .machine
-            .registration_window(&id("example_mod"))
-            .expect("tracked owner")
-            .claim("recipe:example_mod:alloy".parse().expect("valid key"))
-            .expect("accepted");
-        fixture
-            .machine
-            .registration_window(&id("example_mod"))
-            .expect("tracked owner")
-            .claim("block:example_mod:copper".parse().expect("valid key"))
-            .expect("accepted");
+        fixture.start_with_claims(&[
+            ("command:example_mod:home".parse().expect("valid key"), None),
+            ("recipe:example_mod:alloy".parse().expect("valid key"), None),
+            ("block:example_mod:copper".parse().expect("valid key"), None),
+        ]);
         let runtime =
             LoaderRuntime::new(fixture.machine, fixture.mods, crate::runtime::test_launch());
 

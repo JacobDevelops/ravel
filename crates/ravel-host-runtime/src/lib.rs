@@ -64,7 +64,7 @@ pub fn compose(
     let configurations = open_configuration(
         &mut loaded,
         packs,
-        |owner| file::read(game_directory, owner),
+        |owner| file::read_player(game_directory, owner),
         &environment(),
     )
     .map_err(LaunchError::Config)?
@@ -83,7 +83,7 @@ pub fn compose(
 
 fn open_declarations(
     loaded: &mut LoadedMods<'_, Box<dyn Mod>>,
-) -> Result<(ravel_host_api::AdmittedPoints, ravel_loader::Supplied), LaunchError> {
+) -> Result<(ravel_loader::AdmittedPoints, ravel_loader::Supplied), LaunchError> {
     // Refused optional interceptors must fail before any of their files are layered.
     let interceptions = ravel_loader::open_interceptions(loaded, &environment())
         .map_err(LaunchError::Interceptions)?;
@@ -617,7 +617,7 @@ mod tests {
                 .expect("complete empty set"),
                 configurations: vec![],
                 resources: ravel_loader::Supplied::default(),
-                interceptions: ravel_host_api::Points::default()
+                interceptions: ravel_loader::Points::default()
                     .admit()
                     .expect("empty interceptions"),
                 installed_packages: std::collections::BTreeMap::new(),
@@ -1047,7 +1047,7 @@ mod tests {
             let configured = ravel_loader::open_configuration(
                 &mut loaded,
                 ravel_config::file::read_pack(&game).expect("owner errors remain attributable"),
-                |owner| ravel_config::file::read(&game, owner),
+                |owner| ravel_config::file::read_player(&game, owner),
                 &environment(),
             )
             .expect("optional owner's refusal leaves healthy settings available");

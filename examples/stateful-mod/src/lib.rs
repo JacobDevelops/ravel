@@ -206,11 +206,9 @@ impl Mod for Journal {
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
-        Ok(Some(SavedDataEnvelope::new(
+        Ok(Some(SavedDataEnvelope::current(
             Self::declared_id().clone(),
             self.declaration()?.current(),
-            Vec::new(),
-            None,
             json!({ "entries": self.entries }),
         )))
     }
@@ -262,13 +260,7 @@ mod tests {
             .apply(&plan, payload)
             .map_err(ModError::from_display)?;
         let current = journal.declaration()?.current();
-        let envelope = SavedDataEnvelope::new(
-            Journal::declared_id().clone(),
-            current,
-            Vec::new(),
-            None,
-            payload,
-        );
+        let envelope = SavedDataEnvelope::current(Journal::declared_id().clone(), current, payload);
         journal.open_saved_data(Some(&envelope))?;
         Ok(journal)
     }

@@ -383,6 +383,7 @@ name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
  "ravel-bootstrap-runtime",
+ "ravel-build",
  "ravel-composed-host",
  "ravel-config",
  "ravel-core",

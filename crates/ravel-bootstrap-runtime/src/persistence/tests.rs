@@ -218,7 +218,7 @@ impl Mod for Owning {
         if self.held.refuses_production.load(Ordering::SeqCst) {
             return Err(ModError::refused("this mod cannot produce an envelope"));
         }
-        Ok(Some(SavedDataEnvelope::new(
+        Ok(Some(SavedDataEnvelope::current(
             self.held
                 .envelope_owner
                 .lock()
@@ -226,8 +226,6 @@ impl Mod for Owning {
                 .clone()
                 .unwrap_or_else(|| self.id.clone()),
             version(2),
-            Vec::new(),
-            None,
             json!({ "visits": self.held.visits.load(Ordering::SeqCst) }),
         )))
     }
@@ -545,11 +543,9 @@ fn an_already_failed_owner_keeps_its_original_version_without_migration() {
 #[test]
 fn failed_checkpoint_serialization_retains_dirty_state_for_every_retry() {
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
+    aggregate.replace(SavedDataEnvelope::current(
         id(OWNER),
         version(2),
-        Vec::new(),
-        None,
         json!({ "oversized": "x".repeat(MAX_AGGREGATE_BYTES) }),
     ));
     let mut checkpoint = super::Checkpoint {
@@ -586,11 +582,9 @@ fn failed_checkpoint_serialization_retains_dirty_state_for_every_retry() {
 fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
     let (runtime, held) = running();
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
+    aggregate.replace(SavedDataEnvelope::current(
         id(OWNER),
         version(1),
-        Vec::new(),
-        None,
         json!({"not_visits": true}),
     ));
     let bytes = aggregate.to_bytes().expect("bounded fixture");
@@ -621,11 +615,9 @@ fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
 fn an_optional_failed_migration_is_isolated_without_delivering_its_payload() {
     let (runtime, held) = optional_running();
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
+    aggregate.replace(SavedDataEnvelope::current(
         id(OWNER),
         version(1),
-        Vec::new(),
-        None,
         json!({"not_visits": true}),
     ));
     let bytes = aggregate.to_bytes().expect("bounded fixture");
@@ -1101,11 +1093,9 @@ fn stored_at(at: SavedDataVersion, count: u32) -> Vec<u8> {
 fn stored_owning(entries: &[(&str, SavedDataVersion, u32)]) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
     for (owner, at, count) in entries {
-        aggregate.replace(SavedDataEnvelope::new(
+        aggregate.replace(SavedDataEnvelope::current(
             id(owner),
             *at,
-            Vec::new(),
-            None,
             json!({ "visits": count }),
         ));
     }
@@ -1533,19 +1523,15 @@ fn an_oversized_aggregate_is_refused_before_it_is_parsed() {
 #[test]
 fn a_world_this_build_cannot_read_refuses_rather_than_staging() {
     let mut future = SavedDataAggregate::fresh();
-    future.replace(SavedDataEnvelope::new(
+    future.replace(SavedDataEnvelope::current(
         id(OWNER),
         version(9),
-        Vec::new(),
-        None,
         json!({ "visits": 1 }),
     ));
     let mut foreign = SavedDataAggregate::fresh();
-    foreign.replace(SavedDataEnvelope::new(
+    foreign.replace(SavedDataEnvelope::current(
         id("uninstalled"),
         version(1),
-        Vec::new(),
-        None,
         json!(null),
     ));
 
@@ -1682,13 +1668,16 @@ fn a_world_requiring_a_package_is_refused_and_the_same_world_without_one_is_not(
 
 fn stored_requiring(required: Vec<ravel_save::RequiredPackage>) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
-        id(OWNER),
-        version(1),
-        required,
-        None,
-        json!({ "visits": 1 }),
-    ));
+    aggregate.replace(
+        SavedDataEnvelope::new(
+            id(OWNER),
+            version(1),
+            required,
+            None,
+            json!({ "visits": 1 }),
+        )
+        .expect("valid envelope metadata"),
+    );
     aggregate.to_bytes().expect("bounded")
 }
 

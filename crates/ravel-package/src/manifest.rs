@@ -776,17 +776,17 @@ mod tests {
                 let mut document = minimal();
                 document[pointer] = json!([candidate]);
                 let rendered = rejection(&document);
-                assert!(rendered.contains("a package path"), "{rendered}");
+                assert!(rendered.contains("a relative path"), "{rendered}");
                 assert!(!rendered.contains("passwd"), "{rendered}");
             }
 
             let mut document = minimal();
             document["source"]["files"][0]["path"] = json!(candidate);
-            assert!(rejection(&document).contains("a package path"));
+            assert!(rejection(&document).contains("a relative path"));
 
             let mut document = minimal();
             document["provenance"]["record"] = json!(candidate);
-            assert!(rejection(&document).contains("a package path"));
+            assert!(rejection(&document).contains("a relative path"));
         }
     }
 

@@ -26,11 +26,17 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
     }
     let eligible: Vec<_> = machine
         .eligible()
-        .map(|(entry, state)| (entry.mod_id.clone(), state))
+        .map(|(entry, state)| {
+            (
+                entry.mod_id.clone(),
+                state,
+                entry.sides.loads_on(machine.side().world_side()),
+            )
+        })
         .collect();
     let mut generated = Vec::with_capacity(eligible.len());
     let mut tags = TagResources::default();
-    for (mod_id, state) in eligible {
+    for (mod_id, state, world_eligible) in eligible {
         let instance = crate::loaded::instance(mods, &mod_id);
         let declaration = match crate::callback(&mod_id, state, || instance.content_declaration()) {
             Ok(Some(declaration)) => declaration,
@@ -46,7 +52,7 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
                 continue;
             }
         };
-        match generate(&mod_id, &declaration) {
+        match generate(&mod_id, &declaration, world_eligible) {
             Ok((files, contributions)) => {
                 tags.append(contributions);
                 generated.push((mod_id, files));
@@ -67,6 +73,7 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
 fn generate(
     mod_id: &ModId,
     declaration: &ravel_data::ContentDeclaration,
+    world_eligible: bool,
 ) -> Result<(GeneratedData, TagResources), ResourceRefused> {
     if declaration.owner() != mod_id {
         return Err(ResourceRefused::ForeignDeclaration {
@@ -74,7 +81,10 @@ fn generate(
             owner: declaration.owner().clone(),
         });
     }
-    let files = declaration.generate();
+    let mut files = declaration.generate();
+    if !world_eligible {
+        files.retain(|path| path.first_segment() != "data");
+    }
     let tags = TagResources::from_generated(mod_id, &files).map_err(ResourceRefused::Tag)?;
     Ok((files, tags))
 }
@@ -135,7 +145,7 @@ impl Supplied {
         &self.tag_replacements
     }
 
-    /// Returns each mod's original generated pack, before launch-wide tag merging.
+    /// Returns each mod's side-admitted generated files, before launch-wide tag merging.
     #[must_use]
     pub fn generated(&self) -> &[(ModId, GeneratedData)] {
         &self.generated
@@ -609,6 +619,58 @@ mod tests {
                 .collect(),
         );
         open_resources(&mut crate::LoadedMods::new(&mut machine, mods).expect("paired hosts"))
+    }
+
+    #[test]
+    fn client_only_data_is_excluded_before_tag_validation_and_layering() {
+        let tag = "data/c/tags/item/shared.json";
+        let recipe = "data/world_mod/recipe/shared.json";
+        for client_tag in ["{", r#"{"values":["client_mod:thing"]}"#] {
+            let mut world = Supplying::new(
+                "world_mod",
+                &[
+                    (tag, r#"{"values":["world_mod:thing"]}"#),
+                    (recipe, "world recipe"),
+                ],
+            );
+            let mut client = Supplying::new(
+                "client_mod",
+                &[
+                    (tag, client_tag),
+                    (recipe, "client recipe"),
+                    ("assets/client_mod/sound.ogg", "audio"),
+                ],
+            );
+            let mut machine = LifecycleMachine::new(
+                Side::Client,
+                vec![
+                    entry("world_mod", &[Side::Client, Side::IntegratedServer]),
+                    entry("client_mod", &[Side::Client]),
+                ],
+            )
+            .expect("integrated world plan");
+            let mut mods: Vec<&mut dyn Mod> = vec![&mut world, &mut client];
+            let supplied = open_resources(
+                &mut crate::LoadedMods::new(&mut machine, &mut mods).expect("paired hosts"),
+            )
+            .expect("client data does not participate");
+            let document: serde_json::Value =
+                serde_json::from_slice(supplied.bytes(&path(tag)).expect("world tag"))
+                    .expect("tag JSON");
+            assert_eq!(document["values"], serde_json::json!(["world_mod:thing"]));
+            assert_eq!(
+                supplied.bytes(&path(recipe)),
+                Some(b"world recipe".as_slice())
+            );
+            assert_eq!(
+                supplied.set().supplier(&path(recipe)),
+                Some(&id("world_mod"))
+            );
+            assert_eq!(
+                supplied.bytes(&path("assets/client_mod/sound.ogg")),
+                Some(b"audio".as_slice()),
+            );
+        }
     }
 
     #[test]

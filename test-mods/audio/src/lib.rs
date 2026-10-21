@@ -19,9 +19,6 @@ pub const MOD_ID: &str = "audio";
 /// The entry this mod owns.
 pub const ENTRY: &str = "door_opens";
 
-// Opaque fixture bytes, not a playable sound file.
-const BYTES: &[u8] = b"the supplied bytes";
-
 const SOUND_ALIAS: &[u8] = include_bytes!("../assets/audio/sounds.json");
 
 static CONTENT: LazyLock<Result<ContentDeclaration, ModError>> = LazyLock::new(|| {
@@ -94,7 +91,7 @@ impl AudioMod {
     /// mean [`ENTRY`] is not a legal name.
     pub fn declaration() -> Result<AudioDeclaration, AudioError> {
         let mut declared = AudioDeclaration::new(Self::declared_id().clone());
-        declared.entry(ENTRY, BYTES.to_vec())?;
+        declared.entry(ENTRY)?;
         declared.event(ENTRY)?;
         Ok(declared)
     }

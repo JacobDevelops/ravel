@@ -421,7 +421,7 @@ fn persist(
     let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
     admit_client_directory(directory)?;
     if let Some(mut latest) =
-        file::read(directory, &document.owner).map_err(|error| error.to_string())?
+        file::read_player(directory, &document.owner).map_err(|error| error.to_string())?
     {
         document
             .values
@@ -437,7 +437,7 @@ fn persist(
         latest.values.extend(document.values);
         document.values = latest.values;
     }
-    file::write(directory, &document).map_err(|error| error.to_string())
+    file::write_player(directory, &document).map_err(|error| error.to_string())
 }
 
 const CLIENT_MARKER: &str = "options.txt";

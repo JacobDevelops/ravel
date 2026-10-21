@@ -54,11 +54,9 @@ fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
 
 fn world(owner: &ModId, at: u32, payload: JsonValue) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
-    aggregate.replace(SavedDataEnvelope::new(
+    aggregate.replace(SavedDataEnvelope::current(
         owner.clone(),
         version(at),
-        Vec::new(),
-        None,
         payload,
     ));
     aggregate.to_bytes().expect("a bounded aggregate")

@@ -237,11 +237,9 @@ impl Mod for StockMod {
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
-        Ok(Some(SavedDataEnvelope::new(
+        Ok(Some(SavedDataEnvelope::current(
             Self::declared_id().clone(),
             self.declaration()?.current(),
-            Vec::new(),
-            None,
             json!({
                 "stock": self.stock.stock,
                 "currency": self.stock.currency,
@@ -348,13 +346,7 @@ mod tests {
     };
 
     fn envelope(at: u32, payload: JsonValue) -> SavedDataEnvelope {
-        SavedDataEnvelope::new(
-            StockMod::declared_id().clone(),
-            version(at),
-            Vec::new(),
-            None,
-            payload,
-        )
+        SavedDataEnvelope::current(StockMod::declared_id().clone(), version(at), payload)
     }
 
     fn opened(at: u32, payload: &JsonValue) -> Result<StockMod, ModError> {

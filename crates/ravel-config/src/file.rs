@@ -19,7 +19,7 @@ const STAGING_SUFFIX: &str = ".pending";
 
 /// The file one owner's player values live in.
 #[must_use]
-pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
+pub fn player_path(game_directory: &Path, owner: &ModId) -> PathBuf {
     game_directory.join(DIRECTORY).join(format!("{owner}.json"))
 }
 
@@ -107,8 +107,11 @@ pub fn read_pack(game_directory: &Path) -> Result<PackDocuments, FileError> {
 /// Returns [`FileError::Io`] when a file that exists cannot be read,
 /// [`FileError::Document`] when it is not a document this crate accepts, and
 /// [`FileError::Owner`] when it is a valid document belonging to somebody else.
-pub fn read(game_directory: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileError> {
-    read_path(&path(game_directory, owner), owner)
+pub fn read_player(
+    game_directory: &Path,
+    owner: &ModId,
+) -> Result<Option<ValueDocument>, FileError> {
+    read_path(&player_path(game_directory, owner), owner)
 }
 
 // Both layers select conventional owner-named paths before parsing.
@@ -145,8 +148,8 @@ fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileEr
 ///
 /// Returns [`FileError::Io`] when the directory cannot be created or the file
 /// cannot be written or put in place.
-pub fn write(game_directory: &Path, document: &ValueDocument) -> Result<(), FileError> {
-    let file = path(game_directory, &document.owner);
+pub fn write_player(game_directory: &Path, document: &ValueDocument) -> Result<(), FileError> {
+    let file = player_path(game_directory, &document.owner);
     let directory = game_directory.join(DIRECTORY);
     fs::create_dir_all(&directory).map_err(|source| FileError::Io {
         path: directory,
@@ -243,7 +246,7 @@ impl std::error::Error for FileError {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{FileError, path, read, write};
+    use super::{FileError, player_path, read_player, write_player};
     use crate::document::ValueDocument;
 
     fn owner() -> ravel_core::ModId {
@@ -283,10 +286,10 @@ mod tests {
         let game = directory("round-trip");
         let written = document(serde_json::json!(12));
 
-        write(&game, &written).expect("the document should be writable");
+        write_player(&game, &written).expect("the document should be writable");
 
         assert_eq!(
-            read(&game, &owner()).expect("the file should be readable"),
+            read_player(&game, &owner()).expect("the file should be readable"),
             Some(written)
         );
     }
@@ -296,7 +299,7 @@ mod tests {
         let game = directory("absent");
 
         assert!(
-            read(&game, &owner())
+            read_player(&game, &owner())
                 .expect("a missing file is not an error")
                 .is_none()
         );
@@ -306,11 +309,12 @@ mod tests {
     fn a_second_write_replaces_the_first_and_leaves_no_staging_file() {
         let game = directory("replace");
 
-        write(&game, &document(serde_json::json!(4))).expect("the first write should land");
-        write(&game, &document(serde_json::json!(16))).expect("the second write should land");
+        write_player(&game, &document(serde_json::json!(4))).expect("the first write should land");
+        write_player(&game, &document(serde_json::json!(16)))
+            .expect("the second write should land");
 
         assert_eq!(
-            read(&game, &owner())
+            read_player(&game, &owner())
                 .expect("readable")
                 .expect("present")
                 .values
@@ -334,13 +338,13 @@ mod tests {
         let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
         std::fs::create_dir_all(game.join("config")).expect("a writable config directory");
         std::fs::write(
-            path(&game, &owner()),
+            player_path(&game, &owner()),
             ValueDocument::empty(other.clone()).to_json(),
         )
         .expect("the file should be writable");
 
         assert!(matches!(
-            read(&game, &owner()),
+            read_player(&game, &owner()),
             Err(FileError::Owner { named, found })
                 if named == owner() && found == other
         ));
@@ -349,10 +353,10 @@ mod tests {
     #[test]
     fn configuration_parse_error_retains_path_and_source() {
         let game = directory("parse-context");
-        let file = path(&game, &owner());
+        let file = player_path(&game, &owner());
         std::fs::create_dir_all(game.join("config")).expect("a writable config directory");
         std::fs::write(&file, "{ not json").expect("the file should be writable");
-        let error = read(&game, &owner()).expect_err("malformed configuration must fail");
+        let error = read_player(&game, &owner()).expect_err("malformed configuration must fail");
         let source = ValueDocument::parse("{ not json").expect_err("malformed document");
         assert!(matches!(
             &error,
@@ -464,7 +468,7 @@ mod tests {
         let game = std::path::Path::new("/game");
 
         assert_eq!(
-            path(game, &owner()),
+            player_path(game, &owner()),
             std::path::Path::new("/game/config/example_mod.json")
         );
         assert_eq!(
@@ -483,9 +487,9 @@ mod tests {
     #[test]
     fn filesystem_errors_keep_the_path_kind_and_source() {
         let game = directory("io-context");
-        let file = path(&game, &owner());
+        let file = player_path(&game, &owner());
         std::fs::create_dir_all(&file).expect("a directory in place of a file");
-        let error = read(&game, &owner()).expect_err("a directory cannot be read as text");
+        let error = read_player(&game, &owner()).expect_err("a directory cannot be read as text");
         assert!(matches!(
             &error,
             FileError::Io { path, source }

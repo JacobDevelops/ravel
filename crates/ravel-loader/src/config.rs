@@ -28,6 +28,9 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Configured, ConfigRefused> {
     let (machine, mods) = loaded.parts();
+    if let Some(by) = crate::events::active_blocker(machine) {
+        return Err(ConfigRefused::Halted { by: by.clone() });
+    }
     let mut configured = Configured::default();
 
     let eligible: Vec<_> = machine
@@ -167,6 +170,11 @@ impl Configured {
 pub enum ConfigRefused {
     /// The lifecycle refused failure attribution.
     Lifecycle(crate::LifecycleError),
+    /// A required failure or halted set blocks configuration callbacks.
+    Halted {
+        /// The owner blocking the set.
+        by: ModId,
+    },
     /// A pack's settings document for one owner could not be read.
     PackFile {
         /// The owner named in the document's file path.
@@ -210,6 +218,7 @@ impl ConfigRefused {
     pub fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::Lifecycle(error) => error.mod_id(),
+            Self::Halted { by } => Some(by),
             Self::PlayerFile { mod_id, .. }
             | Self::PackFile { mod_id, .. }
             | Self::ForeignDeclaration { mod_id, .. }
@@ -223,6 +232,7 @@ impl fmt::Display for ConfigRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::Halted { by } => write!(formatter, "configuration is blocked by `{by}`"),
             Self::PackFile { mod_id, source } => {
                 write!(
                     formatter,
@@ -255,7 +265,7 @@ impl std::error::Error for ConfigRefused {
         match self {
             Self::Lifecycle(error) => Some(error),
             Self::PlayerFile { source, .. } | Self::PackFile { source, .. } => Some(source),
-            Self::ForeignDeclaration { .. } => None,
+            Self::ForeignDeclaration { .. } | Self::Halted { .. } => None,
             Self::Layer { source, .. } => Some(source),
             Self::Mod { source, .. } => Some(source),
         }
@@ -267,7 +277,8 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Mod { source, .. } => source.failure_kind(),
-            Self::PlayerFile { .. }
+            Self::Halted { .. }
+            | Self::PlayerFile { .. }
             | Self::PackFile { .. }
             | Self::ForeignDeclaration { .. }
             | Self::Layer { .. } => None,
@@ -278,6 +289,7 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
             Self::Mod { source, .. } => source.lifecycle_state(),
+            Self::Halted { .. } => LifecycleState::Failed,
             Self::PlayerFile { .. }
             | Self::PackFile { .. }
             | Self::ForeignDeclaration { .. }
@@ -289,7 +301,8 @@ impl StructuredFailure for ConfigRefused {
         match self {
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Mod { source, .. } => source.quotes_untrusted_text(),
-            Self::PlayerFile { .. }
+            Self::Halted { .. }
+            | Self::PlayerFile { .. }
             | Self::PackFile { .. }
             | Self::ForeignDeclaration { .. }
             | Self::Layer { .. } => false,

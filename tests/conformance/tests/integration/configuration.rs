@@ -108,8 +108,9 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
     assert_eq!(resolved.value("common.profile"), Ok(&json!("quiet")));
     assert!(resolved.restart_pending());
 
-    file::write(&game, &resolved.player_document()).expect("the player document is persisted");
-    let reread = file::read(&game, resolved.owner())
+    file::write_player(&game, &resolved.player_document())
+        .expect("the player document is persisted");
+    let reread = file::read_player(&game, resolved.owner())
         .expect("the player document is readable")
         .expect("the player document exists");
     let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&reread))
@@ -132,7 +133,7 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
     std::fs::create_dir_all(pack_path.parent().expect("the pack path has a parent"))
         .expect("the pack directory is writable");
     std::fs::write(&pack_path, pack.to_json()).expect("the launch pack file is writable");
-    file::write(
+    file::write_player(
         &game,
         &document(&json!({
             "client.enabled": false,

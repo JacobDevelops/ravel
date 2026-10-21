@@ -412,7 +412,7 @@ fn an_edit_the_player_makes_is_on_disk_and_in_force_after_a_relaunch() {
     );
 
     let owner: ModId = "example_mod".parse().expect("a valid mod id");
-    let written = file::read(&screen.game, &owner)
+    let written = file::read_player(&screen.game, &owner)
         .expect("the file should be readable")
         .expect("a saved edit leaves a file");
     let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&written))
@@ -455,7 +455,7 @@ fn a_save_without_the_client_marker_refuses_the_stored_launch_directory() {
     assert!(refused[0].1.contains("options.txt"), "{answer}");
     let owner: ModId = "example_mod".parse().expect("a valid owner");
     assert!(
-        file::read(&screen.game, &owner)
+        file::read_player(&screen.game, &owner)
             .expect("read settings")
             .is_none()
     );
@@ -683,7 +683,7 @@ fn saving_without_a_disk_document_preserves_unedited_valid_player_values() {
         refusals(&screen.save(&edits("example_mod", &[("render.fancy", "false")]))),
         Vec::<(String, String)>::new(),
     );
-    let written = file::read(&screen.game, &player.owner)
+    let written = file::read_player(&screen.game, &player.owner)
         .expect("read the new player file")
         .expect("a persisted document");
     assert_eq!(
@@ -797,7 +797,7 @@ fn saving_either_side_preserves_the_other_sides_player_values() {
             Vec::<(String, String)>::new(),
         );
     }
-    let written = file::read(
+    let written = file::read_player(
         &client.game_directory,
         &"example_mod".parse().expect("mod id"),
     )
@@ -824,7 +824,7 @@ fn side_only_edits_preserve_newer_common_values_from_either_store() {
     for common_side in [Side::Client, Side::IntegratedServer] {
         let directory = game();
         let initial = document_for("example_mod", &json!({"common.flag": false}));
-        file::write(&directory, &initial).expect("write the initial common value");
+        file::write_player(&directory, &initial).expect("write the initial common value");
         let client = side_launch_with_player(Side::Client, directory.clone(), Some(&initial));
         let server =
             side_launch_with_player(Side::IntegratedServer, directory.clone(), Some(&initial));
@@ -860,7 +860,7 @@ fn side_only_edits_preserve_newer_common_values_from_either_store() {
             )),
             Vec::<(String, String)>::new(),
         );
-        let written = file::read(&directory, &initial.owner)
+        let written = file::read_player(&directory, &initial.owner)
             .expect("read the shared file")
             .expect("a persisted document");
         assert_eq!(
@@ -886,7 +886,7 @@ fn saving_cleans_rejected_values_but_keeps_another_sides_valid_replacement() {
                 "unknown.flag": true,
             }),
         );
-        file::write(&directory, &initial).expect("write rejected player values");
+        file::write_player(&directory, &initial).expect("write rejected player values");
         let client = side_launch_with_player(Side::Client, directory.clone(), Some(&initial));
         let server =
             side_launch_with_player(Side::IntegratedServer, directory.clone(), Some(&initial));
@@ -906,7 +906,7 @@ fn saving_cleans_rejected_values_but_keeps_another_sides_valid_replacement() {
             )),
             Vec::<(String, String)>::new(),
         );
-        let written = file::read(&directory, &initial.owner)
+        let written = file::read_player(&directory, &initial.owner)
             .expect("read the cleaned file")
             .expect("a persisted document");
         assert_eq!(

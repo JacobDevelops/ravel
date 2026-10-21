@@ -212,11 +212,9 @@ fn failed_owners_keep_prior_envelopes_and_parked_and_extra_hosts_are_not_called(
     );
     fail(&mut machine, "failed");
     let mut prior = SavedDataAggregate::fresh();
-    prior.replace(SavedDataEnvelope::new(
+    prior.replace(SavedDataEnvelope::current(
         id("failed"),
         std::num::NonZeroU32::MIN,
-        Vec::new(),
-        None,
         json!({"opaque": [1, 2, 3]}),
     ));
     let snapshot = produce_saved_data(
@@ -239,11 +237,9 @@ fn healthy_snapshots_replace_only_the_producers_own_envelope() {
     for foreign in [false, true] {
         let calls = Calls::default();
         let envelope = |owner: &str, count: u32| {
-            SavedDataEnvelope::new(
+            SavedDataEnvelope::current(
                 id(owner),
                 std::num::NonZeroU32::MIN,
-                Vec::new(),
-                None,
                 json!({"count": count}),
             )
         };

@@ -50,6 +50,11 @@ impl GeneratedData {
         &self.files
     }
 
+    /// Keeps only files whose paths satisfy the predicate.
+    pub fn retain(&mut self, mut keep: impl FnMut(&RelativePath) -> bool) {
+        self.files.retain(|file| keep(file.path()));
+    }
+
     /// Returns the paths of every generated file, in path order.
     pub fn paths(&self) -> impl Iterator<Item = &str> + '_ {
         self.files.iter().map(|file| file.path.as_str())
@@ -190,6 +195,29 @@ pub(crate) fn translation_document(entries: &BTreeMap<String, String>) -> Vec<u8
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retained_files_keep_their_order_and_exact_bytes() {
+        let mut generated = GeneratedData::default();
+        for path in [
+            "assets/demo/a.json",
+            "data/demo/recipe/a.json",
+            "assets/demo/b.json",
+        ] {
+            generated.insert(path.parse().expect("valid path"), path.as_bytes().to_vec());
+        }
+        generated.retain(|path| path.first_segment() != "data");
+        assert_eq!(
+            generated.paths().collect::<Vec<_>>(),
+            ["assets/demo/a.json", "assets/demo/b.json"],
+        );
+        assert!(
+            generated
+                .files()
+                .iter()
+                .all(|file| file.bytes() == file.path().as_str().as_bytes())
+        );
+    }
+
     use std::collections::BTreeMap;
 
     use ravel_core::RelativePath;

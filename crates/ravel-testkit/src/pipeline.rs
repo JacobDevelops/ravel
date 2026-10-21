@@ -6,7 +6,7 @@ use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFail
 use ravel_host_api::Mod;
 use ravel_loader::{
     DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
-    MissingMod, admitted, executes_mod_code, start_all, stop_all,
+    MANIFEST_FILE, MissingMod, admitted, executes_mod_code, start_all, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -44,25 +44,21 @@ impl TestPackage {
         }
     }
 
-    /// Reads a package whose root contains [`Self::MANIFEST_FILE`].
+    /// Reads a package whose root contains [`MANIFEST_FILE`].
     ///
     /// # Errors
     ///
     /// Returns [`PipelineError::Unreadable`] when the manifest cannot be read.
     pub fn read(root: impl Into<PathBuf>) -> Result<Self, PipelineError> {
         let root = root.into();
-        let document =
-            std::fs::read_to_string(root.join(Self::MANIFEST_FILE)).map_err(|error| {
-                PipelineError::Unreadable {
-                    file: Self::MANIFEST_FILE.to_owned(),
-                    source: error,
-                }
-            })?;
+        let document = std::fs::read_to_string(root.join(MANIFEST_FILE)).map_err(|error| {
+            PipelineError::Unreadable {
+                file: MANIFEST_FILE.to_owned(),
+                source: error,
+            }
+        })?;
         Ok(Self { root, document })
     }
-
-    /// The harness's manifest filename convention, not part of the package contract.
-    pub const MANIFEST_FILE: &'static str = "package.json";
 }
 
 /// Explicit host versions used to check package compatibility.

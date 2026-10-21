@@ -65,14 +65,6 @@ pub const COMMAND: &str = "rvl_042_counterpart";
 /// once at the end of a sweep that harvested anything.
 pub const SOUND: &str = "tool_in_use";
 
-/// The bytes the declaration carries for that sound.
-///
-/// Not a sound. What a sound file holds is a format's decision, nothing in this
-/// package reads one, and the specification says nothing about the recording, so
-/// the package supplies bytes it can name and the declaration carries them
-/// unread.
-const SOUND_BYTES: &[u8] = b"the supplied bytes";
-
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
@@ -165,7 +157,7 @@ impl Entry {
     /// for a constant would be a packaging failure.
     pub fn audio_declaration() -> Result<AudioDeclaration, AudioError> {
         let mut declared = AudioDeclaration::new(Self::declared_id().clone());
-        declared.entry(SOUND, SOUND_BYTES.to_vec())?;
+        declared.entry(SOUND)?;
         declared.event(SOUND)?;
         Ok(declared)
     }

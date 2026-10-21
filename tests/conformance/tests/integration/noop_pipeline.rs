@@ -177,7 +177,7 @@ fn the_no_op_package_is_one_the_published_schemas_validate() {
     assert!(
         validates(
             "schemas/package.schema.json",
-            &root.join(TestPackage::MANIFEST_FILE)
+            &root.join(ravel_loader::MANIFEST_FILE)
         ),
         "the no-op manifest is not one `schemas/package.schema.json` accepts"
     );

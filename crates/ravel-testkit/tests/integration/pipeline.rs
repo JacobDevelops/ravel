@@ -119,7 +119,7 @@ fn write_package(parent: &Path, name: &str, dependencies: &Value) -> TestPackage
         "provenance": { "record": "provenance.json", "sha256": digest_of(&record) }
     })
     .to_string();
-    fs::write(root.join(TestPackage::MANIFEST_FILE), &document).expect("manifest written");
+    fs::write(root.join(ravel_loader::MANIFEST_FILE), &document).expect("manifest written");
 
     TestPackage::new(root, document)
 }

@@ -43,6 +43,9 @@ pub fn open_services<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<ServiceOrder, ServiceRefused> {
     let (machine, mods) = loaded.parts();
+    if let Some(by) = crate::events::active_blocker(machine) {
+        return Err(ServiceRefused::Halted { by: by.clone() });
+    }
     let result = open_with_context(
         &mut ServiceContext {
             machine,
@@ -153,9 +156,10 @@ fn open_with_context<H: std::ops::DerefMut<Target: Mod>>(
             continue;
         };
         let mod_id = consumer.id().clone();
-        let Ok(state) = context.machine().state(&mod_id) else {
-            continue;
-        };
+        let state = context
+            .machine()
+            .state(&mod_id)
+            .expect("a declared consumer is tracked");
         if state == LifecycleState::Failed || context.fail_if_provider_broken(declaration)? {
             continue;
         }
@@ -350,6 +354,11 @@ fn unavailable(declaration: &ServiceDeclaration, request: &ServiceRequest) -> Se
 pub enum ServiceRefused {
     /// The lifecycle refused failure attribution.
     Lifecycle(LifecycleError),
+    /// A required failure or halted set blocks service callbacks.
+    Halted {
+        /// The owner blocking the set.
+        by: ModId,
+    },
     /// Nothing running in this set answers a service a mod requires.
     NoProvider {
         /// The mod that requires it.
@@ -392,6 +401,7 @@ impl ServiceRefused {
     #[must_use]
     pub fn mod_id(&self) -> Option<&ModId> {
         match self {
+            Self::Halted { by } => Some(by),
             Self::NoProvider { consumer, .. } | Self::BrokenProvider { consumer, .. } => {
                 Some(consumer)
             }
@@ -406,6 +416,7 @@ impl fmt::Display for ServiceRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::Halted { by } => write!(formatter, "services are blocked by `{by}`"),
             Self::NoProvider { consumer, service } => write!(
                 formatter,
                 "`{consumer}` requires `{service}` and nothing running answers it"
@@ -444,7 +455,10 @@ impl std::error::Error for ServiceRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Lifecycle(error) => Some(error),
-            Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => None,
+            Self::Halted { .. }
+            | Self::NoProvider { .. }
+            | Self::Cycle { .. }
+            | Self::ForeignDeclaration { .. } => None,
             Self::Mod { source, .. } => Some(source),
             Self::BrokenProvider { source, .. } => Some(source.as_ref()),
         }
@@ -461,13 +475,14 @@ impl StructuredFailure for ServiceRefused {
             }
             Self::Cycle { .. } => Some(FailureKind::DependencyCycle),
             Self::Mod { source, .. } => source.failure_kind(),
-            Self::ForeignDeclaration { .. } => None,
+            Self::Halted { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
+            Self::Halted { .. } => LifecycleState::Failed,
             Self::NoProvider { .. }
             | Self::BrokenProvider { .. }
             | Self::Cycle { .. }
@@ -482,7 +497,10 @@ impl StructuredFailure for ServiceRefused {
             Self::Mod { source, .. } => source.quotes_untrusted_text(),
             Self::BrokenProvider { source, .. } => source.quotes_untrusted_text(),
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
-            Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => false,
+            Self::Halted { .. }
+            | Self::NoProvider { .. }
+            | Self::Cycle { .. }
+            | Self::ForeignDeclaration { .. } => false,
         }
     }
 }

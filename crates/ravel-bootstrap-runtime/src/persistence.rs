@@ -208,7 +208,7 @@ impl LoaderRuntime {
     // A veto withholds only Ravel data and preserves dirty state for the next save.
     fn save_veto(
         loaded: &mut LoadedMods<'_, Box<dyn ravel_host_api::Mod>>,
-        interceptions: &ravel_host_api::AdmittedPoints,
+        interceptions: &ravel_loader::AdmittedPoints,
         environment: &ravel_core::FailureEnvironment,
     ) -> Result<Option<ModId>, PersistenceError> {
         let round =

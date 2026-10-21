@@ -145,7 +145,7 @@ fn parts(
     behaviour: Behaviour,
 ) -> (LifecycleMachine, Vec<Box<dyn Mod>>, Arc<Mutex<Log>>) {
     let log = Arc::new(Mutex::new(Log::default()));
-    let mut host = Recording {
+    let host = Recording {
         id: id(MOD),
         log: Arc::clone(&log),
         behaviour,
@@ -159,18 +159,13 @@ fn parts(
         saved_data_versions: BTreeSet::new(),
     };
     let mut machine = LifecycleMachine::new(side, vec![entry]).expect("a legal plan");
-    advance_through(&mut machine, LifecycleState::Constructed);
-    {
-        let mut window = machine
-            .registration_window(&id(MOD))
-            .expect("the mod is in the plan");
-        host.register(&mut window).expect("nothing conflicts");
-    }
-    for state in [LifecycleState::Registered, LifecycleState::Running] {
-        machine.advance_all(state).expect("a legal step");
-    }
-
-    (machine, vec![Box::new(host)], log)
+    let mut mods: Vec<Box<dyn Mod>> = vec![Box::new(host)];
+    ravel_loader::start_all(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired fixture"),
+        &environment(),
+    )
+    .expect("fixture starts");
+    (machine, mods, log)
 }
 
 fn playing(side: Side) -> LoaderRuntime {
@@ -348,14 +343,11 @@ fn driven_pair(
             })
         })
         .collect();
-    advance_through(&mut machine, LifecycleState::Constructed);
-    for host in &mut mods {
-        let mut window = machine.registration_window(host.id()).expect("window");
-        host.register(&mut window).expect("register");
-    }
-    for state in [LifecycleState::Registered, LifecycleState::Running] {
-        machine.advance_all(state).expect("step");
-    }
+    ravel_loader::start_all(
+        &mut ravel_loader::LoadedMods::new(&mut machine, &mut mods).expect("paired fixture"),
+        &environment(),
+    )
+    .expect("fixture starts");
     (machine, mods)
 }
 
@@ -566,7 +558,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
             loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
             configurations: Vec::new(),
             resources: Supplied::default(),
-            interceptions: ravel_host_api::Points::default()
+            interceptions: ravel_loader::Points::default()
                 .admit()
                 .expect("empty interceptions"),
             installed_packages: BTreeMap::new(),
@@ -591,7 +583,7 @@ fn an_installed_set_receives_what_the_single_runtime_dispatch_delivers() {
                 loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
                 configurations: Vec::new(),
                 resources: Supplied::default(),
-                interceptions: ravel_host_api::Points::default()
+                interceptions: ravel_loader::Points::default()
                     .admit()
                     .expect("empty interceptions"),
                 installed_packages: BTreeMap::new(),
@@ -1108,7 +1100,7 @@ fn integrated_composition() -> (super::Composition, Arc<Mutex<Log>>) {
             loaded: ravel_loader::Loaded::new(machine, mods).expect("complete set"),
             configurations: Vec::new(),
             resources: Supplied::default(),
-            interceptions: ravel_host_api::Points::default()
+            interceptions: ravel_loader::Points::default()
                 .admit()
                 .expect("empty interceptions"),
             installed_packages: BTreeMap::default(),

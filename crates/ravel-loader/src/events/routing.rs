@@ -64,7 +64,7 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
 /// # Errors
 ///
 /// Returns a refusal for a halted set, absent owner, incompatible side, or inactive owner.
-pub fn accepts_owner(
+pub fn admit_owner(
     machine: &crate::LifecycleMachine,
     owner: &ModId,
     side: Side,
@@ -100,7 +100,7 @@ fn to_owner<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Delivery, DispatchRefused> {
     let (machine, mods) = loaded.parts();
-    let state = accepts_owner(machine, &owner, side)?;
+    let state = admit_owner(machine, &owner, side)?;
     let instance = crate::loaded::instance_mut(mods, &owner);
     match call(&owner, state, instance) {
         Ok(()) => Ok(Delivery {

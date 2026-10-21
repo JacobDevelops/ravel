@@ -448,6 +448,21 @@ fn failed_required_mod_blocks_healthy_broadcasts() {
             by: id("required_mod"),
         })
     );
+    let mut loaded = LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut mods)
+        .expect("healthy host remains supplied");
+    assert!(matches!(
+        crate::open_configuration(
+            &mut loaded,
+            ravel_config::file::PackDocuments::default(),
+            |_| panic!("a halted set must not read player configuration"),
+            &crate::tests::environment(),
+        ),
+        Err(crate::ConfigRefused::Halted { by }) if by == id("required_mod")
+    ));
+    assert!(matches!(
+        crate::open_services(&mut loaded, &crate::tests::environment()),
+        Err(crate::ServiceRefused::Halted { by }) if by == id("required_mod")
+    ));
     assert_eq!(healthy.seen, Vec::<GameEvent>::new());
 }
 
@@ -1467,7 +1482,7 @@ struct Outward {
 impl Outward {
     fn new(owner: &str, request_owner: &str) -> Self {
         let mut audio = ravel_data::AudioDeclaration::new(id(request_owner));
-        audio.entry("tone", b"audio".to_vec()).expect("valid entry");
+        audio.entry("tone").expect("valid entry");
         let event = audio.event("tone").expect("declared entry");
         Self {
             id: id(owner),

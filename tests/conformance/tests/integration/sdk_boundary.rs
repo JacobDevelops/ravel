@@ -411,7 +411,7 @@ fn mod_dependency_allowed(package: &str, counterparts: &BTreeSet<String>) -> boo
     } else if package.starts_with("rvl-") && package.ends_with("-counterpart") {
         counterparts.contains(package)
     } else {
-        true
+        ravel_build::AUTHOR_DEPENDENCIES.contains(&package)
     }
 }
 
@@ -447,6 +447,7 @@ version = "0.0.0"
     }
     assert!(mod_dependency_allowed("ravel-sdk", &counterparts));
     assert!(mod_dependency_allowed("serde", &counterparts));
+    assert!(!mod_dependency_allowed("reqwest", &counterparts));
     assert!(mod_dependency_allowed(
         "rvl-real-counterpart",
         &counterparts

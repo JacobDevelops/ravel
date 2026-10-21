@@ -180,7 +180,7 @@ fn a_value_built_for_the_client_is_still_refused_to_the_server_half_of_one_proce
     assert_eq!(built_for_the_client.get(Side::Client), Ok(&"the overlay"));
 }
 
-const CLIENT_ONLY_PACKAGE: &str = "tests/fixtures/public/packages/client-only";
+const CLIENT_ONLY_PACKAGE: &str = "test-mods/client-only";
 const NOOP_PACKAGE: &str = "tests/fixtures/public/packages/noop";
 
 use super::repository_root;
@@ -192,12 +192,15 @@ fn discovered(directory: &str) -> TestPackage {
 fn host() -> Host {
     let manifest = PackageManifest::parse(&discovered(CLIENT_ONLY_PACKAGE).document)
         .expect("the fixture manifest parses");
-    let minecraft = manifest
+    let noop = PackageManifest::parse(&discovered(NOOP_PACKAGE).document)
+        .expect("the companion fixture manifest parses");
+    let minecraft = noop
         .compatibility
         .minecraft
-        .first()
-        .expect("the schema requires at least one Minecraft version")
-        .to_string();
+        .iter()
+        .map(ToString::to_string)
+        .find(|version| manifest.compatibility.check_minecraft(version).is_ok())
+        .expect("the real package admits the companion fixture's Minecraft version");
     assert!(
         repository_root()
             .join("minecraft/versions")

@@ -42,7 +42,7 @@ pub struct Composition {
     pub loaded: Loaded,
     pub configurations: Vec<LayeredConfiguration>,
     pub resources: Supplied,
-    pub interceptions: ravel_host_api::AdmittedPoints,
+    pub interceptions: ravel_loader::AdmittedPoints,
     pub installed_packages: BTreeMap<ravel_core::ModId, Version>,
 }
 
@@ -115,6 +115,66 @@ impl DocumentFixture {
             mods,
         }
     }
+
+    pub(crate) fn start_with_claims(
+        &mut self,
+        claims: &[(RegistryKey, Option<ravel_data::ContentBehaviour>)],
+    ) {
+        struct Claiming {
+            owner: ravel_core::ModId,
+            claims: Vec<(RegistryKey, Option<ravel_data::ContentBehaviour>)>,
+        }
+        impl Mod for Claiming {
+            fn id(&self) -> &ravel_core::ModId {
+                &self.owner
+            }
+
+            fn enter(
+                &mut self,
+                _state: ravel_core::LifecycleState,
+            ) -> Result<(), ravel_host_api::ModError> {
+                Ok(())
+            }
+
+            fn register(
+                &mut self,
+                registrar: &mut dyn ravel_host_api::Registrar,
+            ) -> Result<(), ravel_host_api::ModError> {
+                for (key, behaviour) in &self.claims {
+                    let outcome = match behaviour {
+                        None => registrar.claim(key.clone()),
+                        Some(behaviour) => registrar.claim_describing(key.clone(), *behaviour),
+                    };
+                    outcome.map_err(ravel_host_api::ModError::from_display)?;
+                }
+                Ok(())
+            }
+        }
+        assert!(
+            claims.iter().all(|(key, _)| self
+                .machine
+                .entries()
+                .any(|entry| &entry.mod_id == key.id().namespace())),
+            "every fixture claim must be routed to a registered owner"
+        );
+        self.mods = self
+            .machine
+            .entries()
+            .map(|entry| -> Box<dyn Mod> {
+                let owner = entry.mod_id.clone();
+                let claims = claims
+                    .iter()
+                    .filter(|(key, _)| key.id().namespace() == &owner)
+                    .cloned()
+                    .collect();
+                Box::new(Claiming { owner, claims })
+            })
+            .collect();
+        let mut loaded = ravel_loader::LoadedMods::new(&mut self.machine, &mut self.mods)
+            .expect("paired fixtures");
+        ravel_loader::start_all(&mut loaded, &environment())
+            .expect("fixture registration succeeds");
+    }
 }
 
 #[cfg(test)]
@@ -178,7 +238,7 @@ pub fn install_panic_hook() {
 
 pub(crate) struct Inner {
     pub(crate) loaded: Loaded,
-    pub(crate) interceptions: ravel_host_api::AdmittedPoints,
+    pub(crate) interceptions: ravel_loader::AdmittedPoints,
     profiler: Profiler,
     command_thread: Option<std::thread::ThreadId>,
     pub(crate) installed_packages: BTreeMap<ravel_core::ModId, Version>,
@@ -251,7 +311,7 @@ impl LoaderRuntime {
                 Ok(interceptions) => interceptions,
                 Err(ravel_loader::InterceptRefused::Halted { .. }) => {
                     // Blocked fixtures cannot execute declarations or later interceptions.
-                    ravel_host_api::Points::default()
+                    ravel_loader::Points::default()
                         .admit()
                         .expect("empty interceptions")
                 }
@@ -275,7 +335,7 @@ impl LoaderRuntime {
         report: PreWorldReport,
         launch: LaunchContext,
         installed_packages: BTreeMap<ravel_core::ModId, Version>,
-        interceptions: ravel_host_api::AdmittedPoints,
+        interceptions: ravel_loader::AdmittedPoints,
     ) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -308,7 +368,7 @@ impl LoaderRuntime {
     pub(crate) fn accepts_packet_owner(&self, owner: &ravel_core::ModId) -> bool {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let machine = inner.loaded.machine();
-        let accepted = ravel_loader::accepts_owner(machine, owner, machine.side()).is_ok();
+        let accepted = ravel_loader::admit_owner(machine, owner, machine.side()).is_ok();
         drop(inner);
         accepted
     }

@@ -1,10 +1,10 @@
 # Ravel handoff
 
-Context for the next session, written when work stopped after WP5 slice 4. It records where things
-are, what comes next and what bit the last session. It is not a contract: `AGENTS.md` holds the
-repository rules, `SPEC.md` the required behaviour, `ROADMAP.md` the work-package status and evidence
-gates, and `registry/notes/sevtech/sevtech-plan.md` the SevTech design. Trust a fresh gate run over any
-number written here.
+Context for the next session, written when work paused after WP5 slice 7 and refinement round 16.
+It records where things are, what comes next and what bit the last session. It is not a contract:
+`AGENTS.md` holds the repository rules, `SPEC.md` the required behaviour, `ROADMAP.md` the
+work-package status and evidence gates, and `registry/notes/sevtech/sevtech-plan.md` the SevTech
+design. Trust a fresh gate run over any number written here.
 
 ## Standing goals
 
@@ -23,15 +23,15 @@ number written here.
 | --- | --- |
 | WP0–WP3 | As recorded in `ROADMAP.md`; WP0 still owes a replayable legacy graph producer. |
 | WP4 | Live: official integrated and connected-dedicated acceptance pass with all 29 hooks, and 1.12.2 is in the workspace test matrix. |
-| WP5 | Slices 1–4 done; slices 5–7 open. Vanilla still renders and no speedup or memory saving is claimed. |
+| WP5 | Slices 1–7 done; WP5 acceptance open. Vanilla still renders by default and no speedup or memory saving is claimed. |
 | WP6, WP8, WP9 | Not started beyond what `ROADMAP.md` records. |
 | WP7 | Cutover work landed; integrated acceptance evidence pending. |
-| Code quality | `numen refine` strict 88.5, overall 89.0; round-11 review left 109 findings open. |
+| Code quality | `numen refine` strict 88.5, overall 89.0; round-15 review mean 86.1; 18 open mechanical findings from the post-round-16 scan. |
 | Rights ledger | 31 permitted, 38 conditional, 18 prohibited, 172 unresolved. |
 
 WP5 slice results live beside the plan: `vanilla-baseline.md` (matched JDK 27 and Java 8 vanilla
 trials on the RTX 5090), the renderer lifecycle observations in `docs/runbooks/legacy-launch.md`,
-`section-snapshots.md` and `mesh-workers.md`. In short:
+`section-snapshots.md`, `mesh-workers.md`, `batched-upload.md` and `baked-models.md`. In short:
 
 1. Slice 1 measures the vanilla renderer under Ravel and under Java 8 with the same seed, scenes and
    settings. In the loaded-chunk scene Ravel frames were about 16% faster at p50 and 8–10% at p95
@@ -42,62 +42,47 @@ trials on the RTX 5090), the renderer lifecycle observations in `docs/runbooks/l
 3. Slice 3 adds `ravel-renderer` with bounded immutable 18³ section snapshots (one-cell border,
    deduplicated state keys, packed light, generation stamp) captured at the compile seam.
 4. Slice 4 meshes full opaque cubes and computes face visibility on two Rust workers behind an
-   eight-job, byte-reserved queue with generation cancellation and drain. Meshes are checked and
-   measured, then discarded.
+   eight-job, byte-reserved queue with generation cancellation and drain.
+5. Slice 5 transfers bounded meshes to Java-owned GL behind the off-by-default `geometry-proof`
+   selection; its overhead measured within trial noise.
+6. Slice 6 compares Ravel-emitted shaded baked quads against captured vanilla buffers. Opaque,
+   cutout (mipped and unmipped), translucent, animated, staged-reload and unload goldens match with
+   zero colour, depth and silhouette mismatches; fluids are unsupported because their tessellation
+   has no baked-quad provenance.
+7. Slice 7 keeps shaded meshes resident, keyed by generation, resource, atlas and section, with
+   transactional replacement and retirement on reload, unload and shutdown. One frozen candidate
+   passed three off and three on locked RTX 5090 trials plus an Xvfb functional run with zero
+   mismatches and residency drained to zero. Selected frame quantiles were higher than off.
 
 ## Next steps
 
-### WP5 slice 5: Java-owned GL upload
+### WP5 acceptance
 
-Hand the generation-qualified CPU meshes to Java and draw them.
+Isolated section-layer comparisons do not prove composited world fidelity, so the default cutover is
+not authorised yet. The precise remaining steps live in `baked-models.md` and the WP5 row of
+`ROADMAP.md`:
 
-- Add bounded, batched buffer transfer across JNI with explicit ownership and acknowledgement,
-  without weakening transactional completion or generation cancellation. Java alone owns the GL
-  context, buffers and draw calls.
-- Refuse incomplete or unsupported results rather than drawing missing geometry. Keep vanilla draw
-  order and state, select GL by the verified LWJGL3 context's capability rather than assuming the
-  development GPU, and clean up on reload, unload and close.
-- Slice 4's state classification is geometry-only. Settle model, texture and ambient-occlusion
-  fidelity for whatever slice 5 draws; until a pixel comparison against vanilla passes on the solid
-  scene, keep Ravel drawing behind an explicit, off-by-default selection.
-- Measure copy, upload and buffer residency and frame percentiles against slice 1 with three locked
-  trials on the physical GPU plus one Xvfb functional run.
+- Establish true-source provenance for fluid and other refused tessellation.
+- Add full-world composited resident-draw goldens across the opaque, cutout, translucent, animated,
+  staged-resource, reload and unload lifecycles, recounted independently from raw readbacks.
+- Add moving-camera evidence for translucent ordering.
+- Rerun the frozen physical and functional acceptance after any runtime change, and keep the
+  vanilla fallback.
 
-Slice 6 covers translucency, animated and connected models and reload correctness; slice 7 is the
-default cutover with locked acceptance trials and ablations. WP6, WP8 and WP9 follow per `ROADMAP.md`.
+Only after a fidelity-proved WP5 baseline does WP6 begin: measured optimisation on a representative
+workload with cold and warm startup, tick and frame tails, memory, GC and like-for-like ablations.
+WP8 and WP9 follow per `ROADMAP.md`.
 
-### Refinement round 12
+### Refinement round 17
 
 The open findings sit in the local `.numen-refine/state.json`, which is not tracked. Regenerate them
-with a fresh scan and holistic review if that state is gone. These open findings are real defects
-rather than style, and come first:
+with a fresh scan and holistic review if that state is gone. Round 16 cleared all 99 round-15
+findings; the post-round-16 scan raised 18 mechanical ones (a large generator template file, an m5
+evidence near-duplicate, a Java signature variance, renderer test `expect` calls and one
+`must_use` candidate). Clear those, then run the round-17 holistic review.
 
-- Tags from different mods are not merged at launch. `ravel_loader::open_resources` treats each tag
-  file as an ordinary resource where the later mod wins, although the SDK and the content guide
-  promise merging; `TagSet::merged` is reached only from `ravel-pack` validation.
-- The player build fingerprint hashes the literal toolchain channel, so a nightly update does not
-  invalidate cached player builds. Hash the resolved `rustc -vV` output instead.
-- rvl-120's `bounded_count` caps a length prefix at `i32::MAX`, so an oversized field produces a
-  frame whose length disagrees with its body.
-- rvl-002 and rvl-321 answer malformed service requests with errors, which fails the providing mod
-  instead of refusing the request inside a normal reply.
-- The xtask fixture descriptor admits lowercase-only SHA-256 text, discards the parsed digest and
-  compares case-insensitively.
-- Optional mods: a dependency's `order` defaults to "after" while the manifest docs say unordered,
-  an optional dependency installed outside its range blocks resolution, and a broken settings layer
-  stops every mod without naming one.
-- `docs/guide/limits.md` says world shaping produces output, but no host path reads it.
-- Doc drift: the `broadcast` comment still promises silent wrong-side completion, the first-mod guide
-  teaches a path `ravel-sdk` dependency that player builds cannot install, and its
-  `ModError::Refused` prose predates the sentence-only error.
-
-The rest are design and consistency findings. Recurring themes:
-
-- Rvl-120 and rvl-210 copy `read_shipped`.
-- The twelve per-counterpart regenerate tests have drifted apart.
-- Five loader subsystems copy the declaration-collection loop.
-- Integrated-server settings are routed by a display-label suffix.
-- Typed values are turned back into strings at crate edges.
+The round-15 review showed that fixes touching only the file a finding names leave the same pattern
+elsewhere. Brief each lane to search the whole repository for every instance of a finding's pattern.
 
 ## Working method
 
@@ -107,10 +92,17 @@ lanes linearly, resolving conflicts in the change where they first appear, regen
 running the gate. The parallel-workspace rules in `AGENTS.md` came from failures in that process.
 Lane ownership that kept conflicts small:
 
-- **Host:** bootstrap runtime, host runtime, composed host, Minecraft adapter, `jvm/`.
+- **Host:** bootstrap runtime except renderer modules, host runtime, composed host, Minecraft
+  adapter, `jvm/` except renderer files.
 - **Loader:** the loader, SDK and support crates, examples, test mods and conformance tests.
 - **Registry:** `registry/mods/`.
 - **Tooling:** xtask, the generator, `ravel-build`, docs, root manifests and version data.
+- **Renderer:** `ravel-renderer`, the bootstrap renderer modules, renderer Java and hooks, and the
+  renderer benchmark files.
+
+Lane agents must edit only through absolute paths in their own workspace: edit tools resolve relative
+paths against the main checkout, and sub-agents that edited on a lane's behalf wrote into main
+several times. Keep the main checkout clean while lanes run.
 
 The refine loop:
 
@@ -134,11 +126,13 @@ resolves; rewrite it through a JSON parser before the next command.
   legacy adapter".
 - `ravel:verify-stack` rejects an undescribed non-empty working copy, so describe the change before
   the final gate.
-- Coverage totals are unreliable across checkouts. Cargo runs through a host-wide compile cache that
-  is shared between workspaces, and coverage reports include files from other checkouts even after
-  `target/llvm-cov-target` is removed; one tip measured 87.7% in the main checkout and 93% in a
-  lane. Make the coverage build checkout-local before trusting a total; the `AGENTS.md` sentence
-  advising removal of `target/llvm-cov-target` does not fix it.
+- Coverage builds are checkout-local: `ravel:coverage` disables the host-wide compile cache, which
+  had mixed other checkouts' files into the totals.
+- Live launches must stay silent; launch scripts default to `ALSOFT_DRIVERS=null`.
+- Error values that carry a source include their context and cause in `Display`; the xtask CLI
+  prints only the top-level message and does not walk the source chain.
+- `numen refine` keys findings by line number, so unrelated edits that shift lines can reopen
+  resolved findings, and it flags renderer-only lints that sibling crates do not trigger.
 - The toolchain tracks the moving `nightly` channel by request, so a new nightly can turn the gate red
   without a code change; fix new lints at the cause rather than re-pinning a date.
 - Registry wording must stay inside the frozen lexicon: a `src/tests/` directory and one renderer runbook

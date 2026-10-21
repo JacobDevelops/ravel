@@ -122,7 +122,7 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     )
     .expect("writing to a String cannot fail");
 
-    text.push_str(&adapter_callbacks(shapes));
+    text.push_str(&adapter_callbacks(adapter.is_legacy()));
 
     for shape in shapes {
         let declared = shape
@@ -150,10 +150,7 @@ pub(crate) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
 }
 
 /// Keeps adapter policy in Java while preserving the generated native observations.
-fn adapter_callbacks(shapes: &[Shape]) -> String {
-    let legacy = shapes
-        .iter()
-        .any(|shape| shape.java_method.starts_with("legacy"));
+fn adapter_callbacks(legacy: bool) -> String {
     let enter = if legacy {
         "LegacyRuntime.enter(id, receiver, first, second, number);\n\
          \x20       if (id.equals(\"legacyWorldOpen\") || id.equals(\"legacyWorldOpenIntegrated\")) LegacyPersistence.open(receiver, (String) first);\n\

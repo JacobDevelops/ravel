@@ -53,29 +53,6 @@ fn unreadable_json_reports_a_redacted_file_name() {
 }
 
 #[test]
-fn sums_require_every_operand_and_a_real_row_array() {
-    use super::{column_sum, number, sum};
-    let value = serde_json::json!({
-        "a": 2, "b": 3, "total": 5,
-        "rows": [{"count": 2}, {"count": 3}],
-        "incomplete": [{"count": 2}, {}],
-        "empty": []
-    });
-    assert_eq!(sum(&value, &["/a", "/b"]), Some(5.0));
-    assert_eq!(column_sum(&value, "/rows", "/count"), Some(5.0));
-    assert_eq!(sum(&value, &["/a", "/missing"]), None);
-    assert_eq!(column_sum(&value, "/incomplete", "/count"), None);
-    assert_eq!(column_sum(&value, "/missing", "/count"), None);
-    assert_eq!(column_sum(&value, "/a", "/count"), None);
-    assert_eq!(column_sum(&value, "/empty", "/count"), Some(0.0));
-    assert!(
-        !sum(&value, &["/missing"])
-            .zip(number(&value, "/missing-total"))
-            .is_some_and(|(sum, total)| sum.total_cmp(&total).is_eq())
-    );
-}
-
-#[test]
 fn nested_json_diagnostics_use_the_supplied_repository_root() {
     let root = temporary_root("json-rooted-diagnostic");
     fs::create_dir_all(root.join("evidence/m7")).expect("record directory should exist");
@@ -97,10 +74,10 @@ fn nested_json_diagnostics_use_the_supplied_repository_root() {
 
 #[test]
 fn figures_require_both_values_and_use_one_total_order() {
-    use super::same;
-    assert!(same(Some(42.0), Some(42.0)));
-    assert!(!same(None, None));
-    assert!(!same(Some(42.0), None));
-    assert!(!same(None, Some(42.0)));
-    assert!(!same(Some(-0.0), Some(0.0)));
+    use super::both_equal;
+    assert!(both_equal(Some(42.0), Some(42.0)));
+    assert!(!both_equal(None, None));
+    assert!(!both_equal(Some(42.0), None));
+    assert!(!both_equal(None, Some(42.0)));
+    assert!(!both_equal(Some(-0.0), Some(0.0)));
 }

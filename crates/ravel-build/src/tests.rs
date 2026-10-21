@@ -1078,21 +1078,34 @@ fn compiler_output_rejects_process_failures_empty_identity_and_invalid_paths() {
         stdout: stdout.to_vec(),
         stderr: stderr.to_vec(),
     };
-    let failed = super::compiler_identity(output(1, b"ignored", b"selected compiler unavailable"))
-        .expect_err("nonzero subprocess exit");
-    assert!(matches!(&failed, BuildRefused::Toolchain { .. }));
-    assert!(failed.to_string().contains("selected compiler unavailable"));
+    let failed = super::compiler_identity(
+        output(
+            1,
+            b"ignored",
+            b"/installation selected compiler unavailable",
+        ),
+        Path::new("/installation"),
+    )
+    .expect_err("nonzero subprocess exit");
+    assert!(matches!(&failed, BuildRefused::ToolchainRefused { .. }));
+    assert!(
+        failed
+            .to_string()
+            .contains("<instance> selected compiler unavailable")
+    );
+    assert!(!failed.to_string().contains("/installation"));
+    assert!(std::error::Error::source(&failed).is_none());
     assert!(matches!(
-        super::compiler_identity(output(0, b"", b"")),
-        Err(BuildRefused::Toolchain { .. })
+        super::compiler_identity(output(0, b"", b""), Path::new("/installation")),
+        Err(BuildRefused::ToolchainRefused { .. })
     ));
     assert!(matches!(
         super::compiler_path(vec![0xff]),
-        Err(BuildRefused::Toolchain { .. })
+        Err(BuildRefused::ToolchainRefused { .. })
     ));
     assert!(matches!(
         super::compiler_path(b" \n".to_vec()),
-        Err(BuildRefused::Toolchain { .. })
+        Err(BuildRefused::ToolchainRefused { .. })
     ));
     assert_eq!(
         super::compiler_path(b"/installation/bin/rustc\n".to_vec()).expect("compiler path"),

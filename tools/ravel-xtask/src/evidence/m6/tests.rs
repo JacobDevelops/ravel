@@ -98,8 +98,11 @@ fn a_balanced_counterpart_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
-            .expect("summary should parse"),
+        &super::admit::<super::model::CounterpartRecord<'_>>(
+            &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m6/counterpart-summary.json",
         M6_ARITHMETIC,
         &mut violations,
@@ -335,8 +338,11 @@ fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
         let mut violations = Vec::new();
 
         verify_arithmetic(
-            &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
-                .expect("summary should parse"),
+            &super::admit::<super::model::CounterpartRecord<'_>>(
+                &read_json(&root, &root.join("evidence/m6/counterpart-summary.json"))
+                    .expect("summary should parse"),
+            )
+            .expect("summary should admit"),
             "evidence/m6/counterpart-summary.json",
             M6_ARITHMETIC,
             &mut violations,
@@ -583,7 +589,7 @@ fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["rewriteIntegrity"]["mutationProof"]["sourceInjection"] = serde_json::json!({});
     assert!(super::verify_counterpart_record(&record).is_err());
-    assert!(!M6_ARITHMETIC[20].0(&record));
+    assert!(super::admit::<super::model::CounterpartRecord<'_>>(&record).is_err());
 }
 
 #[test]
@@ -614,7 +620,7 @@ fn counterpart_admission_reports_the_typed_numeric_error() {
     let mut record: serde_json::Value =
         serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
     record["counterparts"][0]["observableAreas"] = serde_json::Value::Null;
-    let error = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+    let error = <u64 as serde::Deserialize>::deserialize(&serde_json::Value::Null)
         .expect_err("null must not deserialize as a number");
     assert_eq!(
         super::verify_counterpart_record(&record),

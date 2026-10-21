@@ -31,12 +31,12 @@ fn pinned_atm10_tts_descriptor_records_the_exact_reference_contract() {
     let descriptor =
         load_fixture_descriptor(&descriptor()).expect("the public descriptor should be valid");
 
-    assert_eq!(descriptor.source.project_id, 1_298_402);
-    assert_eq!(descriptor.source.file_id, 7_854_204);
+    assert_eq!(descriptor.source.project_id.get(), 1_298_402);
+    assert_eq!(descriptor.source.file_id.get(), 7_854_204);
     assert_eq!(descriptor.manifest.minecraft, "1.21.1");
     assert_eq!(descriptor.manifest.mod_loader, "neoforge-21.1.221");
     assert_eq!(descriptor.manifest.version, "2.0.2");
-    assert_eq!(descriptor.manifest.expected_reference_count, 324);
+    assert_eq!(descriptor.manifest.expected_reference_count.get(), 324);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn sevtech_archive_accounts_for_references_and_bundled_jars_separately() {
         descriptor.source.sha256.to_string(),
         "f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8"
     );
-    assert_eq!(descriptor.manifest.expected_reference_count, 254);
+    assert_eq!(descriptor.manifest.expected_reference_count.get(), 254);
     assert_eq!(descriptor.manifest.minecraft, "1.12.2");
     assert_eq!(descriptor.manifest.mod_loader, "forge-14.23.5.2860");
     let files: Vec<_> = (1..=254)

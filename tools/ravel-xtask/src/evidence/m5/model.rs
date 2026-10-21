@@ -1,6 +1,5 @@
-use crate::evidence::model::{NonemptyRows, NonemptyString};
+use crate::evidence::model::{NonemptyRows, NonemptyString, Verdict};
 use serde::{Deserialize, de::IgnoredAny};
-use serde_json::Number;
 
 use ravel_core::Sha256Digest;
 
@@ -12,9 +11,7 @@ pub(super) struct Inventory<'a> {
     #[serde(rename = "protocol")]
     #[serde(borrow)]
     pub(super) protocol: NonemptyString<'a>,
-    #[serde(rename = "result")]
-    #[serde(borrow)]
-    pub(super) result: NonemptyString<'a>,
+    pub(super) result: Verdict,
     #[serde(rename = "boundArtifacts")]
     #[serde(borrow)]
     pub(super) bound_artifacts: NonemptyRows<Artifact<'a>>,
@@ -27,17 +24,17 @@ pub(super) struct Inventory<'a> {
     #[serde(rename = "primitiveScan")]
     _primitive_scan: PrimitiveScan,
     #[serde(rename = "artifacts")]
-    _artifacts: ArtifactTotals,
+    pub(super) artifacts: ArtifactTotals,
     #[serde(rename = "graph")]
-    _graph: Graph,
+    pub(super) graph: Graph,
     #[serde(rename = "rights")]
-    _rights: Rights,
+    pub(super) rights: Rights,
     #[serde(rename = "surfaces")]
-    _surfaces: Surfaces,
+    pub(super) surfaces: Surfaces,
     #[serde(rename = "plans")]
-    _plans: Plans,
+    pub(super) plans: Plans,
     #[serde(rename = "reads")]
-    _reads: AccessCounts,
+    pub(super) reads: AccessCounts,
 }
 #[derive(Deserialize)]
 pub(super) struct Disclosure<'a> {
@@ -99,90 +96,73 @@ pub(super) struct PrimitiveScan {
 }
 #[derive(Deserialize)]
 pub(super) struct ArtifactTotals {
-    #[serde(rename = "total")]
-    _total: Number,
-    #[serde(rename = "catalogued")]
-    _catalogued: Number,
-    #[serde(rename = "uncatalogued")]
-    _uncatalogued: Number,
-    #[serde(rename = "planned")]
-    _planned: Number,
+    pub(super) total: u64,
+    pub(super) catalogued: u64,
+    pub(super) uncatalogued: u64,
+    pub(super) planned: u64,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Graph {
-    #[serde(rename = "nodes")]
-    _nodes: Number,
-    #[serde(rename = "resolvedNodes")]
-    _resolved_nodes: Number,
-    #[serde(rename = "blockedNodes")]
-    _blocked_nodes: Number,
-    #[serde(rename = "edges")]
-    _edges: Number,
-    #[serde(rename = "resolvedEdges")]
-    _resolved_edges: Number,
-    #[serde(rename = "blockedEdges")]
-    _blocked_edges: Number,
-    #[serde(rename = "clusters")]
-    _clusters: Number,
-    #[serde(rename = "largestCluster")]
-    _largest_cluster: Number,
+    pub(super) nodes: u64,
+    pub(super) resolved_nodes: u64,
+    pub(super) blocked_nodes: u64,
+    pub(super) edges: u64,
+    pub(super) resolved_edges: u64,
+    pub(super) blocked_edges: u64,
+    pub(super) clusters: u64,
+    pub(super) largest_cluster: u64,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Rights {
-    #[serde(rename = "sourceUse")]
-    _source_use: SourceUse,
-    #[serde(rename = "publishable")]
-    _publishable: Number,
+    pub(super) source_use: SourceUse,
+    pub(super) publishable: u64,
 }
+
 #[derive(Deserialize)]
 pub(super) struct SourceUse {
-    #[serde(rename = "permitted")]
-    _permitted: Number,
-    #[serde(rename = "conditional")]
-    _conditional: Number,
-    #[serde(rename = "prohibited")]
-    _prohibited: Number,
-    #[serde(rename = "unresolved")]
-    _unresolved: Number,
+    pub(super) permitted: u64,
+    pub(super) conditional: u64,
+    pub(super) prohibited: u64,
+    pub(super) unresolved: u64,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Surfaces {
     #[serde(rename = "classFiles")]
-    _class_files: Number,
+    _class_files: u64,
     #[serde(rename = "models")]
-    _models: Number,
+    _models: u64,
     #[serde(rename = "textures")]
-    _textures: Number,
+    _textures: u64,
     #[serde(rename = "recipes")]
-    _recipes: Number,
-    #[serde(rename = "catalogued")]
-    _catalogued: Number,
-    #[serde(rename = "unclassified")]
-    _unclassified: Number,
+    _recipes: u64,
+    pub(super) catalogued: u64,
+    pub(super) unclassified: u64,
     #[serde(rename = "nestedJars")]
-    _nested_jars: Number,
+    _nested_jars: u64,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Plans {
-    #[serde(rename = "planned")]
-    _planned: Number,
-    #[serde(rename = "readingSource")]
-    _reading_source: Number,
-    #[serde(rename = "notReadingSource")]
-    _not_reading_source: Number,
-    #[serde(rename = "dependencyEdges")]
-    _dependency_edges: Number,
-    #[serde(rename = "canonicalIds")]
-    _canonical_ids: Number,
+    pub(super) planned: u64,
+    pub(super) reading_source: u64,
+    pub(super) not_reading_source: u64,
+    pub(super) dependency_edges: u64,
+    pub(super) canonical_ids: u64,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct AccessCounts {
-    #[serde(rename = "producersWatched")]
-    _producers_watched: Number,
-    #[serde(rename = "archiveReads")]
-    _archive_reads: Number,
-    #[serde(rename = "entryBodyReads")]
-    _entry_body_reads: Number,
+    pub(super) producers_watched: u64,
+    pub(super) archive_reads: u64,
+    pub(super) entry_body_reads: u64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]

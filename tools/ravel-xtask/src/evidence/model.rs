@@ -1,4 +1,4 @@
-//! Typed admission shared by milestone records; arithmetic remains in milestone rules.
+//! Typed admission and closed vocabularies shared by milestone evidence records.
 
 use std::fmt;
 
@@ -8,6 +8,14 @@ use serde_json::Value;
 pub(super) fn admit<'a, T: Deserialize<'a>>(value: &'a Value) -> Result<T, String> {
     serde_path_to_error::deserialize(value)
         .map_err(|error| format!("{}: {}", JsonPointer(error.path()), error.inner()))
+}
+
+pub(super) fn require_identity(actual: &str, expected: &str, pointer: &str) -> Result<(), String> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!("{pointer} must be {expected}"))
+    }
 }
 
 struct JsonPointer<'a>(&'a serde_path_to_error::Path);
@@ -60,6 +68,30 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for NonemptyRows<T> {
             return Err(D::Error::custom("expected a nonempty array"));
         }
         Ok(Self(rows))
+    }
+}
+
+pub(super) fn count_sum(counts: impl IntoIterator<Item = u64>) -> Option<u64> {
+    counts.into_iter().try_fold(0_u64, u64::checked_add)
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum Verdict {
+    Pass,
+    Fail,
+    Provisional,
+    NotRequired,
+}
+
+impl fmt::Display for Verdict {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Provisional => "provisional",
+            Self::NotRequired => "not-required",
+        })
     }
 }
 

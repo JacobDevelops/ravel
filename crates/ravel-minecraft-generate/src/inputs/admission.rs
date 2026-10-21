@@ -1,7 +1,7 @@
 //! Admits adapter capabilities, mapping configuration, and declared upstreams.
 //! File bytes and runtime metadata are verified separately after admission.
 
-use super::{Adapter, Eligibility, GenerateError, MappingSource, PackFormat, Spelling, file_name};
+use super::{Adapter, Eligibility, GenerateError, MappingSource, file_name};
 
 pub(super) fn verify_pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
     verify_capabilities(adapter)?;
@@ -110,23 +110,12 @@ fn verify_capabilities(adapter: &Adapter) -> Result<(), GenerateError> {
         ));
     }
     if adapter.is_legacy() {
-        let expected = PackFormat {
-            resource: 3,
-            resource_minor: 0,
-            data: 0,
-            data_minor: 0,
-            spelling: Spelling::PackFormat,
-        };
         if adapter.capabilities.len() != 1
-            || adapter.java_release != 27
-            || adapter.source_java_release != Some(8)
-            || adapter.pack_format != expected
             || adapter.inputs.data_fixer_jar.is_some()
+            || adapter.source_java_release.is_none()
         {
             return Err(GenerateError::Input(
-                "legacy-1-12 requires sourceJavaRelease 8, javaRelease 27, resource format 3, \
-                 no data packs, pack-format spelling, and no data fixer jar; \
-                 declare the capability exactly once"
+                "legacy-1-12 requires an explicit sourceJavaRelease, no data fixer jar and exactly one capability declaration"
                     .to_owned(),
             ));
         }
@@ -202,18 +191,20 @@ mod tests {
         super::verify_pinned_sources(&base).expect("a complete ASCII SHA-256 fixture must pass");
     }
     #[test]
-    fn source_release_defaults_to_modern_target_and_legacy_requires_explicit_eight() {
+    fn source_release_defaults_to_modern_target_and_legacy_requires_an_explicit_release() {
         let modern: Adapter =
             toml::from_str(&document("unobfuscated-class-files", "")).expect("modern inputs");
         assert_eq!(modern.effective_source_java_release(), modern.java_release);
         let legacy = legacy_adapter();
         assert_eq!(legacy.effective_source_java_release(), 8);
         assert_eq!(legacy.java_release, 27);
-        for source in [None, Some(7), Some(27)] {
-            let mut wrong = legacy.clone();
-            wrong.source_java_release = source;
-            super::verify_pinned_sources(&wrong)
-                .expect_err("legacy source release must be explicit");
+        let mut missing = legacy.clone();
+        missing.source_java_release = None;
+        super::verify_pinned_sources(&missing).expect_err("legacy source release must be explicit");
+        for source in [7, 8, 27] {
+            let mut adapter = legacy.clone();
+            adapter.source_java_release = Some(source);
+            super::verify_pinned_sources(&adapter).expect("declared release is authoritative");
         }
     }
 
@@ -252,24 +243,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_capability_refuses_inconsistent_metadata_and_a_dfu_pin() {
+    fn legacy_capability_refuses_a_dfu_pin_and_duplicate_capabilities() {
         let legacy = legacy_adapter();
         let mut wrong = Vec::new();
-        let mut adapter = legacy.clone();
-        adapter.java_release = 21;
-        wrong.push(adapter);
-        let mut adapter = legacy.clone();
-        adapter.pack_format.data = 1;
-        wrong.push(adapter);
-        let mut adapter = legacy.clone();
-        adapter.pack_format.resource_minor = 1;
-        wrong.push(adapter);
-        let mut adapter = legacy.clone();
-        adapter.pack_format.resource = 4;
-        wrong.push(adapter);
-        let mut adapter = legacy.clone();
-        adapter.pack_format.spelling = super::Spelling::MinMaxFormat;
-        wrong.push(adapter);
         let mut adapter = legacy.clone();
         adapter.inputs.data_fixer_jar = Some(adapter.inputs.client_jar.clone());
         wrong.push(adapter);
@@ -277,8 +253,20 @@ mod tests {
         adapter.capabilities.push(Capability::Legacy112);
         wrong.push(adapter);
         for adapter in wrong {
-            super::verify_pinned_sources(&adapter).expect_err("legacy metadata is exact");
+            super::verify_pinned_sources(&adapter).expect_err("capability structure is invalid");
         }
+    }
+
+    #[test]
+    fn legacy_adapter_version_facts_are_not_redeclared_by_admission() {
+        let mut adapter = legacy_adapter();
+        adapter.java_release = 28;
+        adapter.source_java_release = Some(9);
+        adapter.pack_format.resource = 4;
+        adapter.pack_format.data = 1;
+        adapter.pack_format.resource_minor = 1;
+        adapter.pack_format.spelling = super::super::Spelling::MinMaxFormat;
+        super::verify_pinned_sources(&adapter).expect("adapter facts are authoritative");
     }
 
     #[test]

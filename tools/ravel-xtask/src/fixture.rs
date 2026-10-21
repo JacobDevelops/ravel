@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -41,11 +42,11 @@ pub struct FixtureDescriptor {
 #[serde(rename_all = "camelCase")]
 pub struct FixtureSource {
     /// Source service kind.
-    pub kind: String,
+    pub kind: FixtureSourceKind,
     /// `CurseForge` project identifier.
-    pub project_id: u64,
+    pub project_id: NonZeroU64,
     /// `CurseForge` file identifier.
-    pub file_id: u64,
+    pub file_id: NonZeroU64,
     /// Human-readable source page.
     pub page_url: String,
     /// Direct publisher download URL.
@@ -58,12 +59,36 @@ pub struct FixtureSource {
     pub sha256: Sha256Digest,
 }
 
+/// Publisher archive format accepted by fixture reconstruction.
+#[derive(Debug, Deserialize, Serialize)]
+pub enum FixtureSourceKind {
+    /// A `CurseForge` client-pack archive.
+    #[serde(rename = "curseforge-client-pack")]
+    CurseforgeClientPack,
+}
+
+/// The fixed archive member carrying a client-pack manifest.
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ManifestEntry {
+    /// The archive-root manifest.
+    #[serde(rename = "manifest.json")]
+    ManifestJson,
+}
+
+impl ManifestEntry {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::ManifestJson => "manifest.json",
+        }
+    }
+}
+
 /// Expected fields in a `CurseForge` client-pack manifest.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpectedManifest {
     /// Archive member containing the manifest.
-    pub entry: String,
+    pub entry: ManifestEntry,
     /// Expected manifest SHA-256.
     pub sha256: Sha256Digest,
     /// `CurseForge` manifest type.
@@ -81,7 +106,7 @@ pub struct ExpectedManifest {
     /// Primary mod-loader identifier.
     pub mod_loader: String,
     /// Number of referenced `CurseForge` files.
-    pub expected_reference_count: usize,
+    pub expected_reference_count: NonZeroUsize,
 }
 
 /// Admitted identity fields from a verified fixture archive.
@@ -161,7 +186,7 @@ pub fn verify_fixture_archive(
         .map_err(|error| FixtureError::Archive(format!("cannot read archive: {error}")))?;
     let mut manifest_bytes = Vec::new();
     archive
-        .by_name(&descriptor.manifest.entry)
+        .by_name(descriptor.manifest.entry.as_str())
         .map_err(|error| FixtureError::Archive(format!("cannot open manifest: {error}")))?
         .read_to_end(&mut manifest_bytes)
         .map_err(|error| FixtureError::Archive(format!("cannot read manifest: {error}")))?;
@@ -176,13 +201,13 @@ pub fn verify_fixture_archive(
         serde_json::from_slice(&manifest_bytes).map_err(|error| {
             FixtureError::Json(format!(
                 "cannot parse {} from {}: {error}",
-                descriptor.manifest.entry,
+                descriptor.manifest.entry.as_str(),
                 archive_path.display()
             ))
         })?;
 
     let mut verified = verify_manifest(&descriptor.manifest, &manifest)?;
-    verified.override_jar_count = count_override_jars(archive, &descriptor.manifest.entry)?;
+    verified.override_jar_count = count_override_jars(archive, descriptor.manifest.entry.as_str())?;
     Ok(verified)
 }
 
@@ -397,9 +422,9 @@ fn verify_manifest(
     };
     require_metadata("minecraft.modLoaders", &expected.mod_loader, actual_loader)?;
 
-    if actual.files.len() != expected.expected_reference_count {
+    if actual.files.len() != expected.expected_reference_count.get() {
         return Err(FixtureError::ReferenceCountMismatch {
-            expected: expected.expected_reference_count,
+            expected: expected.expected_reference_count.get(),
             actual: actual.files.len(),
         });
     }
@@ -539,10 +564,6 @@ mod tests {
         assert_invalid(&descriptor, "safe path component");
 
         let mut descriptor = valid_descriptor();
-        descriptor.source.project_id = 0;
-        assert_invalid(&descriptor, "CurseForge client-pack");
-
-        let mut descriptor = valid_descriptor();
         descriptor.source.download_url = "https://example.invalid/fixture.zip".to_owned();
         assert_invalid(&descriptor, "allowed CurseForge CDN");
 
@@ -553,10 +574,25 @@ mod tests {
         let mut descriptor = valid_descriptor();
         descriptor.source.file_name = "fixture.jar".to_owned();
         assert_invalid(&descriptor, "local .zip");
+    }
 
-        let mut descriptor = valid_descriptor();
-        descriptor.manifest.expected_reference_count = 0;
-        assert_invalid(&descriptor, "non-empty");
+    #[test]
+    fn descriptor_constants_and_nonzero_counts_are_admitted_during_deserialization() {
+        for (pointer, invalid) in [
+            ("/source/kind", serde_json::json!("other")),
+            ("/source/projectId", serde_json::json!(0)),
+            ("/source/fileId", serde_json::json!(0)),
+            ("/manifest/entry", serde_json::json!("other.json")),
+            ("/manifest/expectedReferenceCount", serde_json::json!(0)),
+        ] {
+            let mut value =
+                serde_json::to_value(valid_descriptor()).expect("serializable descriptor");
+            *value.pointer_mut(pointer).expect("descriptor field exists") = invalid;
+            assert!(
+                serde_json::from_value::<FixtureDescriptor>(value).is_err(),
+                "{pointer}"
+            );
+        }
     }
 
     #[test]
@@ -606,7 +642,7 @@ mod tests {
             file_id: 2,
         });
         let mut expected = expected;
-        expected.expected_reference_count = 2;
+        expected.expected_reference_count = std::num::NonZeroUsize::new(2).expect("nonzero count");
         assert_eq!(
             verify_manifest(&expected, &manifest),
             Err(FixtureError::DuplicateReference {

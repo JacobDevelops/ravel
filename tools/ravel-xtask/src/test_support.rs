@@ -30,11 +30,13 @@ pub(crate) fn hook_inventories(
 pub(crate) fn version_directory(root: &Path, version: &str, without: &[&str]) {
     let directory = root.join(format!("{VERSION_DATA}/{version}"));
     fs::create_dir_all(&directory).expect("version directory should be creatable");
-    for file in
-        TOML_VERSION_FILES
-            .into_iter()
-            .chain([VERSION_PROSE_FILE, "adapter.toml", "hooks.toml"])
-    {
+    for file in TOML_VERSION_FILES.into_iter().chain([
+        VERSION_PROSE_FILE,
+        "adapter.toml",
+        "hooks.toml",
+        "mappings.lock",
+        "stubs.lock",
+    ]) {
         if without.contains(&file) {
             continue;
         }
@@ -99,16 +101,20 @@ pub(crate) fn adapter_document(version: &str, eligibility: &str, mapping: Option
 }
 
 pub(crate) fn balanced_summary() -> String {
-    r#"{"artifacts":{"total":10,"catalogued":10,"uncatalogued":0,"planned":10},
+    r#"{"milestone":"M5","workPackage":"M5-W8","protocol":"m5-inventory-v1","result":"pass",
+        "machineryAmendments":[],"primitiveScan":{"class":"machinery"},
+        "disclosure":{"readObservation":{"bound":"Metadata observations only"},
+            "judgedClaims":[{"claim":"Source-use verdict","basis":"judged","decidedBy":"reviewer"}]},
+        "artifacts":{"total":10,"catalogued":10,"uncatalogued":0,"planned":10},
         "graph":{"nodes":12,"resolvedNodes":11,"blockedNodes":1,"edges":20,
             "resolvedEdges":20,"blockedEdges":0,"clusters":3,"largestCluster":5},
         "rights":{"sourceUse":{"permitted":4,"conditional":3,"prohibited":2,
             "unresolved":1},"publishable":0},
-        "surfaces":{"catalogued":10,"unclassified":0},
+        "surfaces":{"catalogued":10,"unclassified":0,"classFiles":4,"models":2,"textures":2,"recipes":2,"nestedJars":0},
         "plans":{"planned":10,"readingSource":4,"notReadingSource":6,
             "canonicalIds":10,"dependencyEdges":7},
         "reads":{"producersWatched":2,"archiveReads":99,"entryBodyReads":0},
-        "boundArtifacts":[{"name":"a.json","sha256":"0","holds":"x"}]}"#
+        "boundArtifacts":[{"name":"a.json","sha256":"0000000000000000000000000000000000000000000000000000000000000000","holds":"x","class":"material"}]}"#
         .to_owned()
 }
 

@@ -10,8 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::evidence::closure::LoadedRecords;
-use crate::evidence::rules::Rule;
-use crate::json::{array, number, read_json};
+use crate::json::{array, read_json};
 use crate::text::redacted_path;
 
 mod binding;
@@ -51,7 +50,7 @@ struct Platform<'a> {
 
 #[derive(Default, Deserialize)]
 struct Review<'a> {
-    result: Option<&'a str>,
+    result: Option<crate::evidence::model::Verdict>,
     #[serde(borrow)]
     record: Option<Artifact<'a>>,
 }
@@ -125,52 +124,7 @@ fn verify_recorded_run(root: &Path, path: &Path, manifest: &Value, violations: &
     if records_run && !records_tests {
         violations.push(format!("{label} records a gate run but no test result"));
     }
-    if records_run
-        && !array(manifest, "/commands")
-            .iter()
-            .all(|command| command["exitStatus"] == 0)
-    {
-        violations.push(format!("{label} records a gate run that did not succeed"));
-    }
-    if records_tests {
-        for (rule, violation) in RUN_RULES {
-            if !rule(manifest) {
-                violations.push(format!("{label} {violation}"));
-            }
-        }
-    }
 }
-
-const RUN_RULES: &[(Rule, &str)] = &[
-    (
-        |value| {
-            let tests = &value["tests"];
-            let counts = (
-                tests["total"].as_u64(),
-                tests["passed"].as_u64(),
-                tests["failed"].as_u64(),
-                tests["skipped"].as_u64(),
-            );
-            matches!(counts, (Some(total), Some(passed), Some(failed), Some(skipped))
-                if passed.checked_add(failed).and_then(|sum| sum.checked_add(skipped)) == Some(total))
-        },
-        "records test counts that do not sum to its total",
-    ),
-    (
-        |value| {
-            number(value, "/tests/total").is_some_and(|total| total > 0.0)
-                && value["tests"]["failed"] == 0
-                && value["tests"]["skipped"] == 0
-        },
-        "records no passing test run",
-    ),
-    (
-        |value| {
-            number(value, "/tests/lineCoveragePercent").is_some_and(|coverage| coverage >= 80.0)
-        },
-        "records line coverage below the floor the gate enforces",
-    ),
-];
 
 fn verify_admitted_inventory(
     root: &Path,

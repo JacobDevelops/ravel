@@ -3,9 +3,10 @@ use std::{
     process::Command,
 };
 
-use super::{GenerateError, inputs, mapping::Mapping};
+use super::{GenerateError, Mapping};
+use crate::inputs;
 
-pub(super) const NORMALIZER_SOURCE: &str =
+pub(crate) const NORMALIZER_SOURCE: &str =
     "crates/ravel-minecraft-generate/java/NormalizeMappings.java";
 
 pub(super) fn read(root: &Path, adapter: &inputs::Adapter) -> Result<Mapping, GenerateError> {

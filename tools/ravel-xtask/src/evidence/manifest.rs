@@ -282,7 +282,11 @@ const MANIFEST_VERDICTS: &[(Rule, &str)] = &[
         "milestone must have no blocking deviations or risks",
     ),
     (
-        |value| value["review"]["independent"] == true && value["review"]["result"] == "pass",
+        |value| {
+            value["review"]["independent"] == true
+                && super::model::admit::<super::model::Verdict>(&value["review"]["result"])
+                    .is_ok_and(|verdict| verdict == super::model::Verdict::Pass)
+        },
         "milestone review must be independent and pass",
     ),
 ];

@@ -17,14 +17,6 @@ pub(super) fn verify_descriptor(descriptor: &FixtureDescriptor) -> Result<(), Fi
             "fixture descriptor id is not a safe path component".to_owned(),
         ));
     }
-    if descriptor.source.kind != "curseforge-client-pack"
-        || descriptor.source.project_id == 0
-        || descriptor.source.file_id == 0
-    {
-        return Err(FixtureError::InvalidDescriptor(
-            "fixture source must identify a CurseForge client-pack file".to_owned(),
-        ));
-    }
     if !descriptor
         .source
         .download_url
@@ -51,13 +43,6 @@ pub(super) fn verify_descriptor(descriptor: &FixtureDescriptor) -> Result<(), Fi
     {
         return Err(FixtureError::InvalidDescriptor(
             "fixture filename must be a local .zip path component".to_owned(),
-        ));
-    }
-    if descriptor.manifest.entry != "manifest.json"
-        || descriptor.manifest.expected_reference_count == 0
-    {
-        return Err(FixtureError::InvalidDescriptor(
-            "fixture must pin a non-empty CurseForge manifest.json".to_owned(),
         ));
     }
     Ok(())

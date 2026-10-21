@@ -13,6 +13,23 @@ fn recorded_run_root(label: &str, run: &str) -> PathBuf {
     root
 }
 
+fn assert_manifest_refuses(root: &std::path::Path, requirement: &str) {
+    let path = root.join("evidence/m9/manifest.json");
+    let manifest = crate::json::read_json(root, &path).expect("manifest should parse");
+    let mut violations = Vec::new();
+    crate::evidence::closure::verify_manifest_closure(
+        &manifest,
+        crate::evidence::manifest::MANIFEST_INVARIANTS,
+        &mut violations,
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains(requirement)),
+        "{violations:?}"
+    );
+}
+
 #[test]
 fn a_recorded_run_whose_numbers_agree_is_accepted() {
     let root = recorded_run_root(
@@ -35,10 +52,7 @@ fn a_recorded_run_whose_counts_do_not_sum_is_reported() {
                 "lineCoveragePercent":85.97}}"#,
     );
 
-    assert_eq!(
-        verify_record_bindings(&root),
-        ["evidence/m9/manifest.json records test counts that do not sum to its total"]
-    );
+    assert_manifest_refuses(&root, "test counts must equal passed + failed + skipped");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -48,11 +62,9 @@ fn a_recorded_run_with_no_test_result_and_no_coverage_is_reported() {
 
     assert_eq!(
         verify_record_bindings(&root),
-        [
-            "evidence/m9/manifest.json records a gate run but no test result",
-            "evidence/m9/manifest.json records a gate run that did not succeed",
-        ]
+        ["evidence/m9/manifest.json records a gate run but no test result"]
     );
+    assert_manifest_refuses(&root, "commands");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -64,10 +76,7 @@ fn a_recorded_run_below_the_coverage_floor_is_reported() {
             "lineCoveragePercent":79.9}}"#,
     );
 
-    assert_eq!(
-        verify_record_bindings(&root),
-        ["evidence/m9/manifest.json records line coverage below the floor the gate enforces"]
-    );
+    assert_manifest_refuses(&root, "coverage");
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 

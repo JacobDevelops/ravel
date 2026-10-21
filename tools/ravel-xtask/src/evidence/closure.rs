@@ -6,13 +6,13 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::evidence::rules::verify_redaction_value;
-use crate::evidence::rules::{Figure, Milestone, RecordRule, Rule};
+use crate::evidence::rules::{Milestone, RecordRule, Rule};
 use crate::json::read_json;
 
-pub(crate) fn verify_arithmetic(
-    record: &Value,
+pub(crate) fn verify_arithmetic<T, R: Fn(&T) -> bool>(
+    record: &T,
     label: &str,
-    rules: &[(Rule, &str)],
+    rules: &[(R, &str)],
     violations: &mut Vec<String>,
 ) {
     for (rule, description) in rules {
@@ -22,18 +22,19 @@ pub(crate) fn verify_arithmetic(
     }
 }
 
-fn verify_carried_figures(
+fn verify_carried_figures<T, F: Fn(&T) -> Option<Value>>(
     milestone: Milestone,
     manifest: &Value,
-    record: &Value,
+    record: &T,
     carried: &CarriedFigures,
+    figures: &[(&str, F)],
     violations: &mut Vec<String>,
 ) {
     let directory = milestone.directory();
     let manifest_label = format!("{directory}/manifest.json");
     let record_label = format!("{directory}/{}", carried.record);
     let subject = carried.subject;
-    for (pointer, derive) in carried.figures {
+    for (pointer, derive) in figures {
         let claimed = manifest.pointer(pointer).filter(|value| !value.is_null());
         let measured = derive(record).filter(|value| !value.is_null());
         let (Some(claimed), Some(measured)) = (claimed, measured) else {
@@ -53,7 +54,7 @@ fn verify_carried_figures(
 }
 
 fn same_figure(claimed: &Value, measured: &Value) -> bool {
-    claimed == measured || crate::json::same(claimed.as_f64(), measured.as_f64())
+    claimed == measured || crate::json::both_equal(claimed.as_f64(), measured.as_f64())
 }
 
 #[derive(Default)]
@@ -166,8 +167,7 @@ pub(crate) fn verify_manifest_closure(
 pub(crate) struct CarriedFigures {
     pub(crate) record: &'static str,
     pub(crate) subject: &'static str,
-    pub(crate) figures: &'static [(&'static str, Figure)],
-    pub(crate) arithmetic: &'static [(Rule, &'static str)],
+    pub(crate) verify: fn(Milestone, &Value, &Value, &Self, &mut Vec<String>),
 }
 
 pub(crate) fn verify_milestone_figures(
@@ -177,9 +177,21 @@ pub(crate) fn verify_milestone_figures(
     carried: &CarriedFigures,
     violations: &mut Vec<String>,
 ) {
+    (carried.verify)(milestone, record, manifest, carried, violations);
+}
+
+pub(crate) fn verify_typed_figures<T, F: Fn(&T) -> Option<Value>, R: Fn(&T) -> bool>(
+    milestone: Milestone,
+    record: &T,
+    manifest: &Value,
+    carried: &CarriedFigures,
+    figures: &[(&str, F)],
+    arithmetic: &[(R, &str)],
+    violations: &mut Vec<String>,
+) {
     let label = format!("{}/{}", milestone.directory(), carried.record);
-    verify_arithmetic(record, &label, carried.arithmetic, violations);
-    verify_carried_figures(milestone, manifest, record, carried, violations);
+    verify_arithmetic(record, &label, arithmetic, violations);
+    verify_carried_figures(milestone, manifest, record, carried, figures, violations);
 }
 
 #[cfg(test)]

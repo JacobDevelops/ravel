@@ -7,29 +7,23 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::evidence::rules::{
-    Figure, Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
+    Rule, all_gates_closed, has_exact_work_packages, has_native_attestation,
 };
-use crate::json::{array, column_sum, number, same, sum};
+use crate::json::{array, number};
 
 use crate::evidence::closure::{
     CarriedFigures, verify_closure_records, verify_manifest_closure, verify_milestone_figures,
 };
-use crate::evidence::model::admit;
+use crate::evidence::model::{Verdict, admit, count_sum};
 use crate::evidence::rules::require;
 
 mod model;
 
 fn verify_counterpart_record(value: &Value) -> Result<(), String> {
     let summary: model::CounterpartRecord<'_> = admit(value)?;
-    require(
-        summary.work_package.0 == "M6-W6",
-        "/workPackage must be M6-W6",
-    )?;
-    require(
-        summary.protocol.0 == "m6-counterpart-v1",
-        "/protocol must be m6-counterpart-v1",
-    )?;
-    require(summary.result.0 == "pass", "/result must be pass")?;
+    crate::evidence::model::require_identity(summary.work_package.0, "M6-W6", "/workPackage")?;
+    crate::evidence::model::require_identity(summary.protocol.0, "m6-counterpart-v1", "/protocol")?;
+    require(summary.result == Verdict::Pass, "/result must be pass")?;
     require(summary.wave.frozen, "/wave/frozen")?;
     let counterparts = &summary.counterparts.0;
     require(
@@ -42,15 +36,15 @@ fn verify_counterpart_record(value: &Value) -> Result<(), String> {
     )
 }
 
-fn same_wave_entries(value: &Value) -> bool {
-    let counterparts = array(value, "/counterparts");
-    let entries = array(value, "/wave/entries");
+fn same_wave_entries(summary: &model::CounterpartRecord<'_>) -> bool {
+    let counterparts = &summary.counterparts.0;
+    let entries = &summary.wave.entries.0;
     counterparts
         .iter()
-        .all(|row| entries.iter().any(|entry| row["entry"] == entry["id"]))
+        .all(|row| entries.iter().any(|entry| row.entry.0 == entry.id.0))
         && entries
             .iter()
-            .all(|entry| counterparts.iter().any(|row| row["entry"] == entry["id"]))
+            .all(|entry| counterparts.iter().any(|row| row.entry.0 == entry.id.0))
 }
 
 const M6_RECORDS: &[RecordDefinition] = &[RecordDefinition {
@@ -63,266 +57,213 @@ const M6_RECORDS: &[RecordDefinition] = &[RecordDefinition {
     required: false,
 }];
 
-const M6_ARITHMETIC: &[(Rule, &str)] = &[
+type CounterpartRule = for<'a> fn(&model::CounterpartRecord<'a>) -> bool;
+type CounterpartFigure = for<'a> fn(&model::CounterpartRecord<'a>) -> Option<Value>;
+
+const M6_ARITHMETIC: &[(CounterpartRule, &str)] = &[
     (
-        |value| {
-            number(value, "/totals/counterparts")
-                == Value::from(array(value, "/counterparts").len()).as_f64()
-        },
+        |r| usize::try_from(r.totals.counterparts) == Ok(r.counterparts.0.len()),
         "the total counts the rows the record itself lists",
     ),
     (
-        |value| {
-            same(
-                column_sum(value, "/counterparts", "/observableAreas"),
-                number(value, "/totals/observableAreas"),
-            )
+        |r| {
+            count_sum(r.counterparts.0.iter().map(|c| c.observable_areas))
+                == Some(r.totals.observable_areas)
         },
         "the observable-area total is the sum of the counterparts' own",
     ),
     (
-        |value| {
-            same(
-                column_sum(value, "/counterparts", "/declarableOnly"),
-                number(value, "/totals/declarableOnly"),
-            )
+        |r| {
+            count_sum(r.counterparts.0.iter().map(|c| c.declarable_only))
+                == Some(r.totals.declarable_only)
         },
         "the declarable-only total is the sum of the counterparts' own",
     ),
     (
-        |value| {
-            same(
-                column_sum(value, "/counterparts", "/exercised"),
-                number(value, "/totals/exercised"),
-            )
-        },
+        |r| count_sum(r.counterparts.0.iter().map(|c| c.exercised)) == Some(r.totals.exercised),
         "the exercised total is the sum of the counterparts' own",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|value| {
-                same(
-                    sum(value, &["/declarableOnly", "/exercised"]),
-                    number(value, "/observableAreas"),
-                )
-            })
+        |r| {
+            r.counterparts
+                .0
+                .iter()
+                .all(|c| c.declarable_only.checked_add(c.exercised) == Some(c.observable_areas))
         },
         "an observable area is either exercised by a running process or declarable-only",
     ),
     (
-        |value| {
-            same(
-                sum(value, &["/totals/declarableOnly", "/totals/exercised"]),
-                number(value, "/totals/observableAreas"),
-            )
+        |r| {
+            r.totals.declarable_only.checked_add(r.totals.exercised)
+                == Some(r.totals.observable_areas)
         },
         "the denominator M6's green sits over is the sum of its two halves",
     ),
     (
-        |value| {
-            array(value, "/counterparts")
-                .iter()
-                .all(|value| number(value, "/observableAreas").is_some_and(|n| n > 0.0))
-        },
+        |r| r.counterparts.0.iter().all(|c| c.observable_areas > 0),
         "a counterpart with no observable area declared nothing to be green about",
     ),
     (
-        |value| same_wave_entries(value),
+        same_wave_entries,
         "M6-W3 asks for one accepted behaviour specification per frozen wave entry, so a \
          counterpart outside the wave and a wave entry with no counterpart are both refused",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|row| {
-                row.pointer("/specification/accepted")
-                    .and_then(Value::as_bool)
-                    == Some(true)
-            })
-        },
+        |r| r.counterparts.0.iter().all(|c| c.specification.accepted),
         "M6-W3 asks that every entry's behaviour specification be accepted",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|row| {
-                row.pointer("/specification/carriesUpstreamIdentifier")
-                    .and_then(Value::as_bool)
-                    == Some(false)
-            })
+        |r| {
+            r.counterparts
+                .0
+                .iter()
+                .all(|c| !c.specification.carries_upstream_identifier)
         },
         "M6-W3 asks that no specification carry an upstream identifier",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|row| {
-                row.pointer("/specification/structureReviewed")
-                    .and_then(Value::as_bool)
-                    == Some(true)
-            })
+        |r| {
+            r.counterparts
+                .0
+                .iter()
+                .all(|c| c.specification.structure_reviewed)
         },
         "M6-W5 reviews a specification for structure before an implementer sees it, which is \
          what caught the defect the sampling did not",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|row| {
-                row.pointer("/provenance/complete").and_then(Value::as_bool) == Some(true)
-            })
-        },
+        |r| r.counterparts.0.iter().all(|c| c.provenance.complete),
         "M6-W6's gate row asks for complete provenance",
     ),
     (
-        |value| {
-            array(value, "/counterparts").iter().all(|value| {
-                (number(value, "/suites/total").is_some_and(|n| n > 0.0))
-                    && (number(value, "/suites/failed") == Some(0.0))
-            })
+        |r| {
+            r.counterparts
+                .0
+                .iter()
+                .all(|c| c.suites.total > 0 && c.suites.failed == 0)
         },
         "M6-W3 asks that each package's suites pass, and a package running none passed none",
     ),
     (
-        |value| array(value, "/counterparts").len() >= 2,
+        |r| r.counterparts.0.len() >= 2,
         "M6-W5 validates the authoring process against a second independent counterpart, which \
          needs two",
     ),
     (
-        |value| {
-            value
-                .pointer("/processValidation/secondCounterpart")
-                .is_some_and(|second| {
-                    array(value, "/counterparts")
-                        .iter()
-                        .any(|row| row.get("id") == Some(second))
-                })
+        |r| {
+            r.counterparts
+                .0
+                .iter()
+                .any(|c| c.id.0 == r.process_validation.second_counterpart.0)
         },
         "M6-W5's second counterpart has to be one the record carries a row for",
     ),
     (
-        |value| {
-            ["fresh-play", "save", "exit", "reload"].iter().all(|name| {
-                array(value, "/cluster/steps")
-                    .iter()
-                    .any(|row| row["name"] == *name)
-            }) && array(value, "/cluster/steps")
+        |r| {
+            ["fresh-play", "save", "exit", "reload"]
                 .iter()
-                .all(|row| row["result"] == "pass")
+                .all(|name| r.cluster.steps.0.iter().any(|step| step.name.0 == *name))
+                && r.cluster
+                    .steps
+                    .0
+                    .iter()
+                    .all(|step| step.result == Verdict::Pass)
         },
         "M6-W4's verification is a fresh play, save, exit and reload scenario that passes",
     ),
     (
-        |value| {
-            value
-                .pointer("/rewriteIntegrity/enforcing")
-                .and_then(Value::as_bool)
-                == Some(true)
-        },
+        |r| r.rewrite_integrity.enforcing,
         "M6-W6's gate row asks that the rewrite-integrity check be enforcing rather than advisory",
     ),
     (
-        |value| number(value, "/rewriteIntegrity/violations") == Some(0.0),
+        |r| r.rewrite_integrity.violations == 0,
         "a counterpart carrying an upstream identifier fails the check, so closure cannot record \
          one that it carried",
     ),
     (
-        |value| number(value, "/rewriteIntegrity/specificationViolations") == Some(0.0),
+        |r| r.rewrite_integrity.specification_violations == 0,
         "M6-W3 asks that no specification carry an upstream identifier, and the check reads the \
          specifications too",
     ),
     (
-        |value| {
-            (number(value, "/rewriteIntegrity/filesScanned").is_some_and(|n| n > 0.0))
-                && (number(value, "/rewriteIntegrity/artifactsScanned").is_some_and(|n| n > 0.0))
-        },
+        |r| r.rewrite_integrity.files_scanned > 0 && r.rewrite_integrity.artifacts_scanned > 0,
         "the check reads every counterpart source file and every generated artefact, and one \
          enforcing the rule over source files only has not satisfied the obligation",
     ),
     (
-        |value| {
-            number(
-                value,
-                "/rewriteIntegrity/mutationProof/sourceInjection/exitStatus",
-            )
-            .is_some_and(|n| n.abs() > 0.0)
+        |r| {
+            r.rewrite_integrity
+                .mutation_proof
+                .source_injection
+                .exit_status
+                != 0
         },
         "the check is proved by mutation: an upstream identifier injected into a counterpart \
          source file must produce a nonzero exit",
     ),
     (
-        |value| {
-            number(
-                value,
-                "/rewriteIntegrity/mutationProof/artifactInjection/exitStatus",
-            )
-            .is_some_and(|n| n.abs() > 0.0)
+        |r| {
+            r.rewrite_integrity
+                .mutation_proof
+                .artifact_injection
+                .exit_status
+                != 0
         },
         "the check is proved by mutation: an upstream identifier injected into a generated \
          artefact must produce a nonzero exit",
     ),
     (
-        |value| number(value, "/rewriteIntegrity/mutationProof/cleanRun/exitStatus") == Some(0.0),
+        |r| r.rewrite_integrity.mutation_proof.clean_run.exit_status == 0,
         "a check that fails the unmutated tree proves nothing about the mutations it also failed",
     ),
 ];
 
-const M6_CARRIED_FIGURES: &[(&str, Figure)] = &[
-    ("/environment/settings/counterparts/counterparts", |value| {
-        value
-            .pointer("/counterparts")
-            .and_then(Value::as_array)
-            .map(|rows| Value::from(rows.len()))
+const M6_CARRIED_FIGURES: &[(&str, CounterpartFigure)] = &[
+    ("/environment/settings/counterparts/counterparts", |r| {
+        Some(Value::from(r.counterparts.0.len()))
     }),
-    ("/environment/settings/counterparts/waveEntries", |value| {
-        value
-            .pointer("/wave/entries")
-            .and_then(Value::as_array)
-            .map(|rows| Value::from(rows.len()))
+    ("/environment/settings/counterparts/waveEntries", |r| {
+        Some(Value::from(r.wave.entries.0.len()))
     }),
-    (
-        "/environment/settings/counterparts/observableAreas",
-        |value| {
-            column_sum(value, "/counterparts", "/observableAreas")
-                .and_then(serde_json::Number::from_f64)
-                .map(Value::Number)
-        },
-    ),
-    (
-        "/environment/settings/counterparts/declarableOnly",
-        |value| {
-            column_sum(value, "/counterparts", "/declarableOnly")
-                .and_then(serde_json::Number::from_f64)
-                .map(Value::Number)
-        },
-    ),
-    ("/environment/settings/counterparts/exercised", |value| {
-        column_sum(value, "/counterparts", "/exercised")
-            .and_then(serde_json::Number::from_f64)
-            .map(Value::Number)
+    ("/environment/settings/counterparts/observableAreas", |r| {
+        count_sum(r.counterparts.0.iter().map(|c| c.observable_areas)).map(Value::from)
     }),
-    (
-        "/environment/settings/rewriteIntegrity/filesScanned",
-        |value| value.pointer("/rewriteIntegrity/filesScanned").cloned(),
-    ),
+    ("/environment/settings/counterparts/declarableOnly", |r| {
+        count_sum(r.counterparts.0.iter().map(|c| c.declarable_only)).map(Value::from)
+    }),
+    ("/environment/settings/counterparts/exercised", |r| {
+        count_sum(r.counterparts.0.iter().map(|c| c.exercised)).map(Value::from)
+    }),
+    ("/environment/settings/rewriteIntegrity/filesScanned", |r| {
+        Some(Value::from(r.rewrite_integrity.files_scanned))
+    }),
     (
         "/environment/settings/rewriteIntegrity/artifactsScanned",
-        |value| value.pointer("/rewriteIntegrity/artifactsScanned").cloned(),
+        |r| Some(Value::from(r.rewrite_integrity.artifacts_scanned)),
     ),
-    (
-        "/environment/settings/rewriteIntegrity/violations",
-        |value| value.pointer("/rewriteIntegrity/violations").cloned(),
-    ),
+    ("/environment/settings/rewriteIntegrity/violations", |r| {
+        Some(Value::from(r.rewrite_integrity.violations))
+    }),
     (
         "/environment/settings/rewriteIntegrity/sourceInjectionExitStatus",
-        |value| {
-            value
-                .pointer("/rewriteIntegrity/mutationProof/sourceInjection/exitStatus")
-                .cloned()
+        |r| {
+            Some(Value::from(
+                r.rewrite_integrity
+                    .mutation_proof
+                    .source_injection
+                    .exit_status,
+            ))
         },
     ),
     (
         "/environment/settings/rewriteIntegrity/artifactInjectionExitStatus",
-        |value| {
-            value
-                .pointer("/rewriteIntegrity/mutationProof/artifactInjection/exitStatus")
-                .cloned()
+        |r| {
+            Some(Value::from(
+                r.rewrite_integrity
+                    .mutation_proof
+                    .artifact_injection
+                    .exit_status,
+            ))
         },
     ),
 ];
@@ -390,8 +331,25 @@ pub(crate) fn verify_m6_manifest(
 const M6_FIGURES: CarriedFigures = CarriedFigures {
     record: "counterpart-summary.json",
     subject: "counterpart set",
-    figures: M6_CARRIED_FIGURES,
-    arithmetic: M6_ARITHMETIC,
+    verify: |milestone, raw, manifest, carried, violations| match admit::<
+        model::CounterpartRecord<'_>,
+    >(raw)
+    {
+        Ok(record) => crate::evidence::closure::verify_typed_figures(
+            milestone,
+            &record,
+            manifest,
+            carried,
+            M6_CARRIED_FIGURES,
+            M6_ARITHMETIC,
+            violations,
+        ),
+        Err(error) => violations.push(format!(
+            "{}/{}: {error}",
+            milestone.directory(),
+            carried.record
+        )),
+    },
 };
 
 pub(crate) fn verify_m6_integrity(

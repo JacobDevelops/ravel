@@ -81,11 +81,7 @@ fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Ve
             "{label} must record the gate of the directory it belongs to"
         ));
     }
-    for (rule, requirement) in RULES {
-        if !rule(&document) {
-            violations.push(format!("{label} {requirement}"));
-        }
-    }
+    super::closure::verify_arithmetic(&document, &label, RULES, violations);
     verify_redaction_value(&document, &label, violations);
 }
 

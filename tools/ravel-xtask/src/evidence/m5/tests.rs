@@ -12,8 +12,11 @@ fn a_balanced_inventory_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
-            .expect("summary should parse"),
+        &super::admit::<super::model::Inventory<'_>>(
+            &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,
@@ -29,18 +32,29 @@ fn a_balanced_inventory_summary_closes_its_own_arithmetic() {
 
 #[test]
 fn missing_sum_operands_cannot_match_a_missing_total() {
-    let (rule, _) = M5_ARITHMETIC[0];
-    for record in [
-        serde_json::json!({}),
-        serde_json::json!({"artifacts": {"catalogued": 2}}),
-        serde_json::json!({"artifacts": {"catalogued": 2, "total": 2}}),
-        serde_json::json!({"artifacts": {"catalogued": 2, "uncatalogued": 0}}),
+    for pointer in [
+        "/artifacts/total",
+        "/artifacts/catalogued",
+        "/artifacts/uncatalogued",
     ] {
-        assert!(!rule(&record), "{record}");
+        let mut record = complete_inventory_summary();
+        let (parent, field) = pointer.rsplit_once('/').expect("field pointer");
+        record
+            .pointer_mut(parent)
+            .expect("parent")
+            .as_object_mut()
+            .expect("object")
+            .remove(field);
+        let error = super::admit::<super::model::Inventory<'_>>(&record)
+            .err()
+            .expect("missing operand must refuse");
+        assert!(error.starts_with("/artifacts:"), "{error}");
     }
-    assert!(rule(&serde_json::json!({
-        "artifacts": {"catalogued": 2, "uncatalogued": 0, "total": 2}
-    })));
+    let record: serde_json::Value =
+        serde_json::from_str(&balanced_summary()).expect("summary should parse");
+    assert!(M5_ARITHMETIC[0].0(
+        &super::admit(&record).expect("summary should admit")
+    ));
 }
 
 #[test]
@@ -52,8 +66,11 @@ fn moving_one_part_of_an_inventory_total_stops_it_summing() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
-            .expect("summary should parse"),
+        &super::admit::<super::model::Inventory<'_>>(
+            &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,
@@ -78,8 +95,11 @@ fn an_entry_body_read_is_refused_however_the_record_reads() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
-            .expect("summary should parse"),
+        &super::admit::<super::model::Inventory<'_>>(
+            &read_json(&root, &root.join("evidence/m5/inventory-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m5/inventory-summary.json",
         M5_ARITHMETIC,
         &mut violations,
@@ -98,8 +118,7 @@ fn an_entry_body_read_is_refused_however_the_record_reads() {
 #[test]
 fn missing_inventory_numbers_do_not_balance_as_nulls() {
     let value = serde_json::json!({"artifacts": {"total": null}});
-    assert!(!M5_ARITHMETIC[0].0(&value));
-    assert!(!M5_ARITHMETIC[2].0(&value));
+    assert!(super::admit::<super::model::Inventory<'_>>(&value).is_err());
 }
 
 #[test]
@@ -159,7 +178,7 @@ fn inventory_admission_reports_the_typed_numeric_error() {
     let mut record = complete_inventory_summary();
     assert!(super::verify_inventory_record(&record).is_ok());
     record["reads"]["archiveReads"] = serde_json::Value::Null;
-    let error = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+    let error = <u64 as serde::Deserialize>::deserialize(&serde_json::Value::Null)
         .expect_err("null must not deserialize as a number");
     assert_eq!(
         super::verify_inventory_record(&record),

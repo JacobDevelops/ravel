@@ -90,8 +90,11 @@ fn a_balanced_library_summary_closes_its_own_arithmetic() {
     let mut violations = Vec::new();
 
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m7/library-summary.json"))
-            .expect("summary should parse"),
+        &super::LibrarySummary::read(
+            &read_json(&root, &root.join("evidence/m7/library-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
@@ -257,8 +260,11 @@ fn every_m7_arithmetic_clause_refuses_a_record_that_breaks_it() {
         let mut violations = Vec::new();
 
         verify_arithmetic(
-            &read_json(&root, &root.join("evidence/m7/library-summary.json"))
-                .expect("summary should parse"),
+            &super::LibrarySummary::read(
+                &read_json(&root, &root.join("evidence/m7/library-summary.json"))
+                    .expect("summary should parse"),
+            )
+            .expect("summary should admit"),
             "evidence/m7/library-summary.json",
             M7_ARITHMETIC,
             &mut violations,
@@ -323,6 +329,8 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     let mut decimal: serde_json::Value =
         serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
     decimal["entries"]["total"] = serde_json::json!(324.0);
+    assert!(super::LibrarySummary::read(&decimal).is_err());
+    decimal["entries"]["total"] = serde_json::json!(324);
     let root = m7_root(
         "m7-legacy-inventory",
         &library_summary(235, "null"),
@@ -335,8 +343,11 @@ fn historical_protocol_preserves_reference_arithmetic_and_missing_inventory_beha
     .expect("inventory should be writable");
     let mut violations = Vec::new();
     verify_arithmetic(
-        &read_json(&root, &root.join("evidence/m7/library-summary.json"))
-            .expect("summary should parse"),
+        &super::LibrarySummary::read(
+            &read_json(&root, &root.join("evidence/m7/library-summary.json"))
+                .expect("summary should parse"),
+        )
+        .expect("summary should admit"),
         "evidence/m7/library-summary.json",
         M7_ARITHMETIC,
         &mut violations,
@@ -512,7 +523,8 @@ fn selected_workload_requires_a_binding_and_matching_protocol() {
     let (root, record) = selected_workload_root("m7-sevtech-protocol");
     let path = root.join("evidence/m7/library-summary.json");
     assert!(super::verify_library_record(&record).is_ok());
-    assert!(M7_ARITHMETIC.iter().all(|(rule, _)| rule(&record)));
+    let admitted = super::LibrarySummary::read(&record).expect("summary should admit");
+    assert!(M7_ARITHMETIC.iter().all(|(rule, _)| rule(&admitted)));
     fs::write(
         &path,
         serde_json::to_vec(&record).expect("summary should serialize"),
@@ -866,10 +878,7 @@ fn v2_shape_failure_is_not_an_arithmetic_failure() {
         super::verify_library_record(&record),
         Err(format!("invalid library summary: /fixture: {error}"))
     );
-    assert!(
-        M7_ARITHMETIC.iter().all(|(rule, _)| rule(&record)),
-        "v2 protocol shape belongs to the record validator"
-    );
+    assert!(super::LibrarySummary::read(&record).is_err());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -932,7 +941,7 @@ fn v2_correction_is_rejected_during_integrity_not_only_closure() {
 fn typed_wave_admission_reports_the_typed_numeric_error() {
     let (root, mut record) = selected_workload_root("m7-wave-row-clause");
     record["waves"][0]["entries"] = serde_json::Value::Null;
-    let error = <serde_json::Number as serde::Deserialize>::deserialize(&serde_json::Value::Null)
+    let error = <u64 as serde::Deserialize>::deserialize(&serde_json::Value::Null)
         .expect_err("null must not deserialize as a number");
     assert_eq!(
         super::verify_library_record(&record),
@@ -1001,7 +1010,7 @@ fn historical_fixture_failures_name_the_runtime_descriptor_not_the_evidence_rule
     );
     let relative = "tests/fixtures/descriptors/atm10-tts-2.0.2.json";
     let path = root.join(relative);
-    assert_eq!(super::legacy_fixture_total(&root), Ok(324.0));
+    assert_eq!(super::legacy_fixture_total(&root), Ok(324));
     fs::write(&path, "{").expect("descriptor should be writable");
     let malformed =
         super::legacy_fixture_total(&root).expect_err("malformed runtime descriptor must refuse");
@@ -1013,13 +1022,13 @@ fn historical_fixture_failures_name_the_runtime_descriptor_not_the_evidence_rule
         assert_eq!(
             super::legacy_fixture_total(&root),
             Err(format!(
-                "{relative}: missing numeric /manifest/expectedReferenceCount"
+                "{relative}: missing whole-number /manifest/expectedReferenceCount"
             ))
         );
     }
     fs::write(&path, r#"{"manifest":{"expectedReferenceCount":259}}"#)
         .expect("descriptor should be writable");
-    assert_eq!(super::legacy_fixture_total(&root), Ok(259.0));
+    assert_eq!(super::legacy_fixture_total(&root), Ok(259));
     let record: serde_json::Value =
         serde_json::from_str(&library_summary(324, "null")).expect("summary should parse");
     let mut violations = Vec::new();

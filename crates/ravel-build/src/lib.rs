@@ -39,7 +39,7 @@ use generate::{host_manifest, host_source, workspace_manifest};
 pub const ENTRY_FUNCTION: &str = "__ravel_entry";
 
 /// Dependencies lent to authors and used alongside the SDK as lockfile closure seeds.
-const AUTHOR_DEPENDENCIES: &[&str] = &["serde", "serde_json", "num-traits"];
+pub const AUTHOR_DEPENDENCIES: &[&str] = &["serde", "serde_json", "num-traits"];
 
 /// What a host will be generated from, and the bytes that generate it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -250,22 +250,19 @@ fn resolve_rustc(root: &Path, channel: &str) -> Result<PathBuf, BuildRefused> {
             .current_dir(root)
             .output()
             .map_err(|source| BuildRefused::Toolchain { source })?;
-        compiler_status(&installed)?;
+        compiler_status(&installed, root)?;
         output = lookup()?;
     }
-    compiler_path(compiler_identity(output)?)
+    compiler_path(compiler_identity(output, root)?)
 }
 
 fn compiler_path(bytes: Vec<u8>) -> Result<PathBuf, BuildRefused> {
-    let path = String::from_utf8(bytes).map_err(|error| BuildRefused::Toolchain {
-        source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+    let path = String::from_utf8(bytes).map_err(|_| BuildRefused::ToolchainRefused {
+        detail: "rustup returned a compiler path that is not UTF-8".to_owned(),
     })?;
     if path.trim().is_empty() {
-        return Err(BuildRefused::Toolchain {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "rustup returned an empty compiler path",
-            ),
+        return Err(BuildRefused::ToolchainRefused {
+            detail: "rustup returned an empty compiler path".to_owned(),
         });
     }
     Ok(PathBuf::from(path.trim()))
@@ -275,26 +272,30 @@ fn compiler_output(command: &mut std::process::Command) -> Result<Vec<u8>, Build
     let output = command
         .output()
         .map_err(|source| BuildRefused::Toolchain { source })?;
-    compiler_identity(output)
+    if output.status.success() {
+        return compiler_identity(output, Path::new(""));
+    }
+    let root = match command.get_current_dir() {
+        Some(root) => root.to_path_buf(),
+        None => std::env::current_dir().map_err(|source| BuildRefused::Toolchain { source })?,
+    };
+    compiler_identity(output, &root)
 }
 
-fn compiler_status(output: &std::process::Output) -> Result<(), BuildRefused> {
+fn compiler_status(output: &std::process::Output, root: &Path) -> Result<(), BuildRefused> {
     if output.status.success() {
         return Ok(());
     }
-    Err(BuildRefused::Toolchain {
-        source: std::io::Error::other(String::from_utf8_lossy(&output.stderr).trim().to_owned()),
+    Err(BuildRefused::ToolchainRefused {
+        detail: compile::redact(String::from_utf8_lossy(&output.stderr).trim(), root),
     })
 }
 
-fn compiler_identity(output: std::process::Output) -> Result<Vec<u8>, BuildRefused> {
-    compiler_status(&output)?;
+fn compiler_identity(output: std::process::Output, root: &Path) -> Result<Vec<u8>, BuildRefused> {
+    compiler_status(&output, root)?;
     if output.stdout.is_empty() {
-        return Err(BuildRefused::Toolchain {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "compiler resolution returned no identity",
-            ),
+        return Err(BuildRefused::ToolchainRefused {
+            detail: "compiler resolution returned no identity".to_owned(),
         });
     }
     Ok(output.stdout)

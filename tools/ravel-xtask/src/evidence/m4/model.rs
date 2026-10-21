@@ -3,58 +3,58 @@ use serde::{Deserialize, de::IgnoredAny};
 use serde_json::Number;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ProcessMatrix<'a> {
-    #[serde(rename = "workPackage")]
     #[serde(borrow)]
     pub(super) work_package: NonemptyString<'a>,
-    #[serde(rename = "protocol")]
+
     #[serde(borrow)]
     pub(super) protocol: NonemptyString<'a>,
-    #[serde(rename = "result")]
-    #[serde(borrow)]
-    pub(super) result: NonemptyString<'a>,
-    #[serde(rename = "platform")]
+
+    pub(super) result: crate::evidence::model::Verdict,
+
     #[serde(borrow)]
     pub(super) platform: Platform<'a>,
-    #[serde(rename = "gameLaunch")]
+
     #[serde(borrow)]
     pub(super) game_launch: GameLaunch<'a>,
-    #[serde(rename = "gate")]
+
     pub(super) gate: Gate,
-    #[serde(rename = "processes")]
+
     #[serde(borrow)]
     pub(super) processes: NonemptyRows<Process<'a>>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Platform<'a> {
-    #[serde(rename = "os")]
     #[serde(borrow)]
     pub(super) os: NonemptyString<'a>,
-    #[serde(rename = "architecture")]
+
     #[serde(borrow)]
     pub(super) architecture: NonemptyString<'a>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct GameLaunch<'a> {
-    #[serde(rename = "occurred")]
     pub(super) occurred: bool,
     #[serde(rename = "whyItIsNotHere")]
     #[serde(borrow)]
     _why_it_is_not_here: NonemptyString<'a>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Gate {
-    #[serde(rename = "exitStatus")]
     pub(super) exit_status: Number,
-    #[serde(rename = "tests")]
+
     pub(super) tests: Tests,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Tests {
-    #[serde(rename = "run")]
     pub(super) run: Number,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Process<'a> {
     #[serde(rename = "surface")]
     #[serde(borrow)]
@@ -68,26 +68,26 @@ pub(super) struct Process<'a> {
     #[serde(rename = "doesNotProve")]
     #[serde(borrow)]
     _does_not_prove: NonemptyString<'a>,
-    #[serde(rename = "exitStatus")]
+
     pub(super) exit_status: Number,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Surface<'a> {
-    #[serde(rename = "workPackage")]
     #[serde(borrow)]
     pub(super) work_package: NonemptyString<'a>,
-    #[serde(rename = "protocol")]
+
     #[serde(borrow)]
     pub(super) protocol: NonemptyString<'a>,
-    #[serde(rename = "workPackages")]
+
     #[serde(borrow)]
     pub(super) work_packages: NonemptyRows<WorkPackage<'a>>,
     #[serde(rename = "inventory")]
     _inventory: Inventory,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct WorkPackage<'a> {
-    #[serde(rename = "id")]
     #[serde(borrow)]
     pub(super) id: NonemptyString<'a>,
     #[serde(rename = "shipped")]
@@ -100,6 +100,7 @@ pub(super) struct WorkPackage<'a> {
     _proven_by: NonemptyRows<IgnoredAny>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Inventory {
     #[serde(rename = "crates")]
     _crates: NonemptyRows<IgnoredAny>,

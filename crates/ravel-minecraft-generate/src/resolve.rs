@@ -348,8 +348,7 @@ mod tests {
 
     /// The mapping every reviewed name already agrees with.
     fn identity() -> Mapping {
-        Mapping::read(MappingSource::UnobfuscatedClassFiles, "")
-            .expect("the identity needs no text")
+        Mapping::Identity
     }
 
     fn tracked_lock(pinned: &PinnedVersion) -> String {
@@ -839,11 +838,9 @@ mod tests {
              capability = \"an invented capability\"\n",
         )
         .expect("the invented inventory should parse");
-        let mapping = Mapping::read(
-            MappingSource::OfficialProguardMappings,
-            "com.example.Alpha -> a:\n    17:26:boolean allowed(char) -> a\n",
-        )
-        .expect("the invented mapping should parse");
+        let mapping =
+            Mapping::proguard("com.example.Alpha -> a:\n    17:26:boolean allowed(char) -> a\n")
+                .expect("the invented mapping should parse");
 
         let mut class = Vec::new();
         class.extend(0xCAFE_BABE_u32.to_be_bytes());

@@ -25,8 +25,9 @@ mod tests {
     use super::hooks::hook_java;
     use super::locks::stub_lock;
     use super::names::game_names;
-    use super::shape::{JavaType, constant_name, java_name, parameters, rust_name, shapes};
+    use super::shape::{constant_name, java_name, parameters, rust_name, shapes};
     use super::stubs::stub_java;
+    use crate::java_type::JavaType;
     use crate::mapping::Mapping;
 
     #[test]
@@ -287,7 +288,7 @@ mod tests {
             ),
         ]);
         let shapes = shapes(&inventory, &resolved).expect("representable legacy hooks");
-        let java = hook_java(&adapter(), &shapes);
+        let java = hook_java(&crate::test_fixtures::legacy_adapter(), &shapes);
         assert!(java.contains("LEGACY_ADAPTER = true;"));
         assert!(java.contains("public static native void legacyBootstrap();"));
         assert!(java.contains("public static native void legacyItemMetadata();"));
@@ -308,6 +309,11 @@ mod tests {
         assert!(java.contains("native void ravelInitializeIntegratedServer();"));
         assert!(java.contains("native String ravelLegacyResourcePaths();"));
         assert!(java.contains("native byte[] ravelLegacyResource(String path);"));
+        let modern = hook_java(&adapter(), &shapes);
+        assert!(modern.contains("LEGACY_ADAPTER = false;"));
+        assert!(!modern.contains("LegacyRuntime."));
+        let legacy_without_hooks = hook_java(&crate::test_fixtures::legacy_adapter(), &[]);
+        assert!(legacy_without_hooks.contains("LEGACY_ADAPTER = true;"));
     }
 
     #[test]
@@ -347,7 +353,7 @@ mod tests {
             ),
         ]);
         let shapes = shapes(&inventory, &resolved).expect("renderer shapes");
-        let java = hook_java(&adapter(), &shapes);
+        let java = hook_java(&crate::test_fixtures::legacy_adapter(), &shapes);
         for declaration in [
             "native void legacyRendererFrame();",
             "native void legacyRendererCompile(float argument0, float argument1, float argument2, Object argument3);",
@@ -389,7 +395,7 @@ mod tests {
             "(I)V",
         )]);
         let shapes = shapes(&inventory, &resolved).expect("reviewed palette seam");
-        let java = hook_java(&adapter(), &shapes);
+        let java = hook_java(&crate::test_fixtures::legacy_adapter(), &shapes);
         assert!(java.contains("native void legacyGlobalPaletteSize(int argument0)"));
         assert!(java.contains("LegacyRuntime.paletteSize(count)"));
         assert!(java.contains("LegacyNames.className(\"LEGACY_STATE_IDS\")"));

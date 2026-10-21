@@ -8,6 +8,7 @@ use ravel_core::Sha256Digest;
 use sha2::{Digest, Sha256};
 
 use super::Review;
+use crate::evidence::model::Verdict;
 use crate::text::{read_text, redacted_path};
 
 pub(super) fn verify_review(
@@ -61,11 +62,11 @@ pub(super) fn verify_review(
 fn verify_recorded_verdict(
     root: &Path,
     label: &str,
-    claimed: Option<&str>,
+    claimed: Option<Verdict>,
     record: &Path,
     violations: &mut Vec<String>,
 ) {
-    let Some(claimed) = claimed.filter(|claimed| !claimed.is_empty()) else {
+    let Some(claimed) = claimed else {
         violations.push(format!(
             "{label} binds a review record but records no review.result for it to agree with"
         ));
@@ -90,15 +91,18 @@ fn verify_recorded_verdict(
     }
 }
 
-fn stated_verdict(line: &str) -> Option<String> {
+fn stated_verdict(line: &str) -> Option<Verdict> {
     let line = line.trim().trim_start_matches(['#', '*', ' ']);
     let value = line
         .strip_prefix("Result:")
         .or_else(|| line.strip_prefix("Result**:"))?;
     let value = value.trim().trim_matches(['*', ' ']).to_ascii_lowercase();
-    ["pass", "fail", "not-required"]
-        .contains(&value.as_str())
-        .then_some(value)
+    match value.as_str() {
+        "pass" => Some(Verdict::Pass),
+        "fail" => Some(Verdict::Fail),
+        "not-required" => Some(Verdict::NotRequired),
+        _ => None,
+    }
 }
 
 pub(super) fn names_a_path(name: &str) -> bool {

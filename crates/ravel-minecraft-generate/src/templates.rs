@@ -938,7 +938,7 @@ mod tests {
 
     use std::fmt::Write as _;
 
-    use super::super::inputs::{self, MappingSource, Seed, SeedMember, Seeds};
+    use super::super::inputs::{self, Seed, SeedMember, Seeds};
     use super::super::stubs::{Member, Stub};
     use super::*;
 
@@ -1007,8 +1007,7 @@ com.example.util.Held -> com.example.util.Held:
     }
 
     fn proguard() -> Mapping {
-        Mapping::read(MappingSource::OfficialProguardMappings, MAPPING)
-            .expect("the invented mapping should parse")
+        Mapping::proguard(MAPPING).expect("the invented mapping should parse")
     }
 
     #[test]
@@ -1019,8 +1018,7 @@ com.example.util.Held -> com.example.util.Held:
             "{{package}}\npublic class Observation { {{Ticker}} held; }\n",
         );
         let bound = roles_over(&seeds(), &[("Ticker", "Held")], &[]);
-        let mapping =
-            Mapping::read(MappingSource::UnobfuscatedClassFiles, "").expect("identity mapping");
+        let mapping = Mapping::Identity;
         let namespace = name_space(&tree(&root, "none", Purpose::Screen), &bound, &mapping)
             .expect("a standalone screen needs no stand-in game");
         assert!(namespace.unnamed);
@@ -1265,8 +1263,7 @@ com.example.util.Held -> com.example.util.Held:
                 }
             }
         }
-        Mapping::read(MappingSource::OfficialProguardMappings, &text)
-            .expect("a mapping derived from the stub set should parse")
+        Mapping::proguard(&text).expect("a mapping derived from the stub set should parse")
     }
 
     /// Digests every source path and byte plus deterministic, root-relative metadata.
@@ -1327,7 +1324,7 @@ com.example.util.Held -> com.example.util.Held:
             if pinned.adapter.is_legacy() {
                 continue;
             }
-            let lock = fs::read_to_string(pinned.directory.join("stubs.lock"))
+            let lock = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the modern stub lock is tracked");
             let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the modern stub lock resolves");
@@ -1379,7 +1376,7 @@ com.example.util.Held -> com.example.util.Held:
         for version in inputs::tracked_versions(&root) {
             let pinned = inputs::pinned(&root, Some(&version))
                 .expect("the tracked version data should parse");
-            let tracked = fs::read_to_string(pinned.directory.join("stubs.lock"))
+            let tracked = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the tracked stub lock should be readable");
             let stubs = super::super::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
@@ -1476,7 +1473,7 @@ com.example.util.Held -> com.example.util.Held:
                 // Its real screen templates are exercised by the namespace test above.
                 continue;
             }
-            let lock = fs::read_to_string(pinned.directory.join("stubs.lock"))
+            let lock = fs::read_to_string(root.join(&pinned.adapter.inputs.stubs_lock.path))
                 .expect("the tracked stub lock should be readable");
             let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");

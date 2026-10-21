@@ -81,14 +81,14 @@ pub fn build(
     Ok(delivered)
 }
 
-fn redact(text: &str, game_directory: &Path) -> String {
+pub(super) fn redact(text: &str, game_directory: &Path) -> String {
     let absolute = std::path::absolute(game_directory).ok();
     let mut redacted = absolute.map_or_else(
         || text.to_owned(),
         |path| text.replace(path.to_string_lossy().as_ref(), "<instance>"),
     );
     let instance = game_directory.to_string_lossy();
-    if !instance.is_empty() {
+    if game_directory.is_absolute() && !instance.is_empty() {
         redacted = redacted.replace(instance.as_ref(), "<instance>");
     }
     redacted

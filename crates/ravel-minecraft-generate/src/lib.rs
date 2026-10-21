@@ -11,13 +11,13 @@ mod classfile;
 mod error;
 mod inputs;
 mod jar;
+mod java_type;
 mod mapping;
 mod render;
 mod resolve;
 mod roles;
 mod stubs;
 mod templates;
-mod tiny;
 
 #[cfg(test)]
 mod test_fixtures;
@@ -33,7 +33,7 @@ pub use classfile::{descriptor_classes, descriptor_handle_count, descriptor_para
 pub use error::GenerateError;
 pub use inputs::{
     AdapterFacts, Eligibility, HookFact, HookInventory, Kind, adapter_facts, hook_inventory,
-    hook_inventory_at,
+    hook_inventory_at, lock_paths_at,
 };
 
 /// The reading of the jar this generator performs, as recorded in the lock.
@@ -256,16 +256,16 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
             )));
         }
     }
-    let mapping = load_mapping(root, &pinned.adapter)?;
+    let mapping = mapping::Mapping::load(root, &pinned.adapter)?;
     mapping::verify_reflection(&pinned.surface, &mapping)?;
     let (resolved, stubbed) = resolve_jars(root, &pinned, &mapping)?;
 
     write_atomically(
-        &pinned.directory.join("mappings.lock"),
+        &root.join(&pinned.adapter.inputs.mappings_lock.path),
         &render::locks::lock(&pinned.adapter, &resolved),
     )?;
     write_atomically(
-        &pinned.directory.join("stubs.lock"),
+        &root.join(&pinned.adapter.inputs.stubs_lock.path),
         &render::locks::stub_lock(&pinned.adapter, &stubbed),
     )?;
     // Update pins with their locks so the next build accepts the new contents.
@@ -274,6 +274,7 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
 
 /// Rust outputs owned by Cargo's build directory.
 pub struct RustGenerated {
+    /// Tracked inputs a build script should watch with `rerun-if-changed`.
     pub watched: Vec<PathBuf>,
     pub bindings: PathBuf,
     pub exports: PathBuf,
@@ -297,7 +298,7 @@ pub fn generate_rust(
     write_atomically(&bindings, &rendered.bindings)?;
     write_atomically(&exports, &rendered.exports)?;
     Ok(RustGenerated {
-        watched: write_watched(root, &pinned, &rendered),
+        watched: watched_inputs(root, &pinned, &rendered),
         bindings,
         exports,
     })
@@ -330,7 +331,7 @@ fn generate_java_and_inspect<T>(
 
 fn compose_checked(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, GenerateError> {
     // Lock-only builds must still validate their runtime names.
-    let mapping = load_mapping(root, &pinned.adapter)?;
+    let mapping = mapping::Mapping::load(root, &pinned.adapter)?;
     mapping::verify_reflection(&pinned.surface, &mapping)?;
     compose(root, pinned, &mapping)
 }
@@ -341,7 +342,7 @@ fn compose(
     pinned: &inputs::PinnedVersion,
     mapping: &mapping::Mapping,
 ) -> Result<Rendered, GenerateError> {
-    let lock_path = pinned.directory.join("mappings.lock");
+    let lock_path = root.join(&pinned.adapter.inputs.mappings_lock.path);
     let tracked = fs::read_to_string(&lock_path).map_err(|error| {
         GenerateError::io(
             format!("version {}, mappings.lock", pinned.adapter.minecraft),
@@ -349,7 +350,7 @@ fn compose(
         )
     })?;
 
-    let stub_path = pinned.directory.join("stubs.lock");
+    let stub_path = root.join(&pinned.adapter.inputs.stubs_lock.path);
     let tracked_stubs = fs::read_to_string(&stub_path).map_err(|error| {
         GenerateError::io(
             format!("version {}, stubs.lock", pinned.adapter.minecraft),
@@ -688,12 +689,16 @@ fn write_sources(
     Ok(())
 }
 
-fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendered) -> Vec<PathBuf> {
+fn watched_inputs(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    rendered: &Rendered,
+) -> Vec<PathBuf> {
     let pins = &pinned.adapter.inputs;
     let mut watched = vec![
         pinned.directory.join("adapter.toml"),
-        pinned.directory.join("mappings.lock"),
-        pinned.directory.join("stubs.lock"),
+        root.join(&pins.mappings_lock.path),
+        root.join(&pins.stubs_lock.path),
         root.join(&pins.hook_inventory.path),
         root.join(&pins.stub_seeds.path),
         root.join(&pins.reflective_surface.path),
@@ -707,7 +712,7 @@ fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendere
             .map(|input| root.join(&input.path)),
     );
     if pinned.adapter.mapping_source == inputs::MappingSource::FeatherTinyMappings {
-        watched.push(root.join(tiny::NORMALIZER_SOURCE));
+        watched.push(root.join(mapping::tiny::NORMALIZER_SOURCE));
     }
     watched.extend(rendered.templates.iter().cloned());
     watched
@@ -723,21 +728,6 @@ fn remove_output_trees(directories: &[&Path]) -> Result<(), GenerateError> {
         }
     }
     Ok(())
-}
-
-/// Checks the mapping hash before parsing names or opening archives.
-fn load_mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, GenerateError> {
-    if adapter.mapping_source == inputs::MappingSource::FeatherTinyMappings {
-        return tiny::read(root, adapter);
-    }
-    let Some(input) = &adapter.inputs.client_mappings else {
-        return mapping::Mapping::read(adapter.mapping_source, "");
-    };
-    inputs::verify_input(root, input)?;
-    let name = inputs::file_name(&input.path);
-    let text = fs::read_to_string(root.join(&input.path))
-        .map_err(|error| GenerateError::io(name, error))?;
-    mapping::Mapping::read(adapter.mapping_source, &text)
 }
 
 fn create_directory(directory: &Path) -> Result<(), GenerateError> {
@@ -995,9 +985,7 @@ mod tests {
         )
         .expect("write the version-local support source");
         let roles = super::roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
-        let mapping =
-            super::mapping::Mapping::read(inputs::MappingSource::UnobfuscatedClassFiles, "")
-                .expect("class-file names need no mapping text");
+        let mapping = super::mapping::Mapping::Identity;
         let super::TemplateSources { screens, harness } =
             super::sources(&root, &pinned, &roles, &[], &mapping)
                 .expect("local support renders without a harness");
@@ -1311,6 +1299,41 @@ mod tests {
     }
 
     #[test]
+    fn declared_lock_paths_drive_loading_and_watched_inputs() {
+        let (root, directory) = staged("relocated-locks");
+        let out = output("relocated-locks-out");
+        let adapter_path = directory.join("adapter.toml");
+        let mut document = std::fs::read_to_string(&adapter_path).expect("staged adapter");
+        let pinned = inputs::pinned(&root, None).expect("staged input paths");
+        for input in [
+            &pinned.adapter.inputs.mappings_lock,
+            &pinned.adapter.inputs.stubs_lock,
+        ] {
+            let relocated = format!("relocated/{}", inputs::file_name(&input.path));
+            let destination = root.join(&relocated);
+            std::fs::create_dir_all(destination.parent().expect("parent")).expect("lock directory");
+            std::fs::rename(root.join(&input.path), &destination).expect("move declared lock");
+            document = document.replace(&input.path, &relocated);
+        }
+        std::fs::write(adapter_path, document).expect("update declared paths");
+        let generated = run(&root, &out, None).expect("declared lock paths are authoritative");
+        assert!(
+            generated
+                .watched
+                .contains(&root.join("relocated/mappings.lock"))
+        );
+        assert!(
+            generated
+                .watched
+                .contains(&root.join("relocated/stubs.lock"))
+        );
+        assert!(!generated.watched.contains(&directory.join("mappings.lock")));
+        assert!(!generated.watched.contains(&directory.join("stubs.lock")));
+        cleanup(&root);
+        cleanup(&out);
+    }
+
+    #[test]
     fn partial_pinned_jar_sets_do_not_fall_back_to_the_locks() {
         let (root, _) = staged("partial-pinned-jars");
         let mut pinned = inputs::pinned(&root, None).expect("staged inputs");
@@ -1319,9 +1342,7 @@ mod tests {
         let mut server = pinned.adapter.inputs.client_jar.clone();
         server.path = "server.jar".to_owned();
         pinned.adapter.inputs.server_jar = Some(server);
-        let mapping =
-            super::mapping::Mapping::read(inputs::MappingSource::UnobfuscatedClassFiles, "")
-                .expect("identity mapping");
+        let mapping = super::mapping::Mapping::Identity;
         for (present, missing) in [("client.jar", "server.jar"), ("server.jar", "client.jar")] {
             let path = root.join(present);
             std::fs::write(&path, []).expect("present jar marker");
@@ -2544,8 +2565,8 @@ mod tests {
             upstream: None,
         });
 
-        let error =
-            super::load_mapping(root, &adapter).expect_err("a drifted mapping must be refused");
+        let error = super::mapping::Mapping::load(root, &adapter)
+            .expect_err("a drifted mapping must be refused");
 
         assert!(matches!(error, GenerateError::Drift(_)), "{error}");
         assert!(error.to_string().contains("hooks.toml"), "{error}");

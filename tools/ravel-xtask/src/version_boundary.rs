@@ -12,14 +12,10 @@ use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
 
-pub(crate) const TOML_VERSION_FILES: [&str; 4] = [
-    "mappings.lock",
-    "reflection.toml",
-    "stubs.lock",
-    "stubs.toml",
-];
+pub(crate) const TOML_VERSION_FILES: [&str; 2] = ["reflection.toml", "stubs.toml"];
 
 pub(crate) const VERSION_PROSE_FILE: &str = "README.md";
+const FIXTURE_VERSIONS: &str = "tests/fixtures/public/versions";
 
 fn version_directories(root: &Path, directories: &[&str]) -> Result<Vec<PathBuf>, String> {
     let mut versions = Vec::new();
@@ -38,13 +34,14 @@ fn version_directories(root: &Path, directories: &[&str]) -> Result<Vec<PathBuf>
 }
 
 pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
-    Ok(version_directories(root, &[VERSION_DATA])?
-        .into_iter()
-        .filter_map(|path| {
-            path.file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .collect())
+    Ok(directory_names(&version_directories(root, &[VERSION_DATA])?).collect())
+}
+
+fn directory_names(paths: &[PathBuf]) -> impl Iterator<Item = String> {
+    paths.iter().filter_map(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    })
 }
 
 pub(crate) type VersionAdapters = BTreeMap<String, AdapterFacts>;
@@ -130,10 +127,31 @@ pub(crate) fn verify_version_directories(
         let facts = crate::text::require_file(root, &adapter)
             .and_then(|_| adapter_facts(root, version).map_err(|error| error.to_string()));
         for file in TOML_VERSION_FILES {
-            verify_version_toml(root, version, file, violations);
+            verify_version_toml(
+                root,
+                version,
+                &format!("{VERSION_DATA}/{version}/{file}"),
+                violations,
+            );
         }
         match facts {
             Ok(facts) => {
+                match ravel_minecraft_generate::lock_paths_at(
+                    root,
+                    &root.join(VERSION_DATA).join(version),
+                ) {
+                    Ok(paths) => {
+                        for path in paths {
+                            verify_version_toml(
+                                root,
+                                version,
+                                &redacted_path(root, &path),
+                                violations,
+                            );
+                        }
+                    }
+                    Err(error) => violations.push(error.to_string()),
+                }
                 eligibility.insert(version.to_owned(), facts);
                 if let Some(inventory) = verified_hook_inventory(root, version, violations) {
                     inventories.push(inventory);
@@ -164,9 +182,8 @@ fn verified_hook_inventory(
     Some(inventory)
 }
 
-fn verify_version_toml(root: &Path, version: &str, file: &str, violations: &mut Vec<String>) {
-    let relative = format!("{VERSION_DATA}/{version}/{file}");
-    let path = match crate::text::require_file(root, &relative) {
+fn verify_version_toml(root: &Path, version: &str, relative: &str, violations: &mut Vec<String>) {
+    let path = match crate::text::require_file(root, relative) {
         Ok(path) => path,
         Err(error) => {
             violations.push(error);
@@ -385,20 +402,14 @@ fn swept_versions(
     root: &Path,
     violations: &mut Vec<String>,
 ) -> Option<(Vec<PathBuf>, BTreeSet<String>)> {
-    let directories = [VERSION_DATA, "tests/fixtures/public/versions"]
+    let directories = [VERSION_DATA, FIXTURE_VERSIONS]
         .into_iter()
         .filter(|directory| root.join(directory).is_dir())
         .collect::<Vec<_>>();
     let paths = version_directories(root, &directories)
         .map_err(|error| violations.push(error))
         .ok()?;
-    let versions = paths
-        .iter()
-        .filter_map(|path| {
-            path.file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .collect();
+    let versions = directory_names(&paths).collect();
     Some((paths, versions))
 }
 
@@ -413,7 +424,7 @@ fn version_class_names(
     for inventory in inventories {
         collect_hook_classes(inventory, &mut classes, &mut references, violations);
     }
-    let fixture_versions = root.join("tests/fixtures/public/versions");
+    let fixture_versions = root.join(FIXTURE_VERSIONS);
     for directory in directories {
         if directory.starts_with(&fixture_versions) {
             match ravel_minecraft_generate::hook_inventory_at(root, directory) {
@@ -423,8 +434,14 @@ fn version_class_names(
                 Err(error) => violations.push(error.to_string()),
             }
         }
-        for file in ["stubs.toml", "mappings.lock", "reflection.toml"] {
-            let path = directory.join(file);
+        let mut paths = vec![
+            directory.join("stubs.toml"),
+            directory.join("reflection.toml"),
+        ];
+        if let Ok([mapping, _]) = ravel_minecraft_generate::lock_paths_at(root, directory) {
+            paths.push(mapping);
+        }
+        for path in paths {
             let text = match read_text(root, &path) {
                 Ok(text) => text,
                 Err(error) => {
@@ -508,9 +525,6 @@ fn collect_version_classes(
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>) {
     let crates = root.join("crates");
     let entries = match fs::read_dir(&crates) {
@@ -537,6 +551,7 @@ fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>
         }
     }
 }
+
 pub(crate) fn verify_version_readmes(
     root: &Path,
     inventories: &[HookInventory],
@@ -550,7 +565,7 @@ pub(crate) fn verify_version_readmes(
             "carries {} reviewed hooks and records {non_goals} non-goals",
             inventory.hooks.len()
         );
-        let readme = format!("{VERSION_DATA}/{version}/README.md");
+        let readme = format!("{VERSION_DATA}/{version}/{VERSION_PROSE_FILE}");
         let prose = match read_text(root, &directory.join(VERSION_PROSE_FILE)) {
             Ok(text) => text,
             Err(error) => {
@@ -566,3 +581,5 @@ pub(crate) fn verify_version_readmes(
         }
     }
 }
+#[cfg(test)]
+mod tests;

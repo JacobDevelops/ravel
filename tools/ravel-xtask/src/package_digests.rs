@@ -10,8 +10,7 @@ use std::path::Path;
 use ravel_core::Sha256Digest;
 use ravel_package::{IntegrityError, PackageManifest, verify_provenance, verify_source_file};
 
-/// The file inside a package directory that declares it.
-const MANIFEST_FILE: &str = "package.json";
+use ravel_loader::MANIFEST_FILE;
 
 /// The manifest keys that name a file whose digest sits beside them.
 const OWNER_KEYS: [&str; 2] = ["path", "record"];

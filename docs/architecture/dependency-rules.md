@@ -121,7 +121,7 @@ stable contracts toward concrete host internals.
   into JVM-loadable host cdylibs. Production dependencies are restricted to host
   crates; `ravel-build` and conformance tests have test-only exceptions. SDK and
   mod dependency graphs must not reach it.
-  Bootstrap owns launch composition, installed runtime state, hook attribution,
+  Bootstrap defines the `Composition` it installs and owns installed runtime state, hook attribution,
   pack destinations, world persistence, and renderer lifecycle generations.
   Loader owns mod admission, lifecycle ordering, saved-data admission, and
   outward-request dispatch; it does not write Minecraft packs.

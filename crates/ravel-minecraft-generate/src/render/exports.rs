@@ -4,7 +4,8 @@ use std::fmt::Write as _;
 
 use crate::HOOK_CLASS;
 
-use super::shape::{JavaType, Shape};
+use super::shape::Shape;
+use crate::java_type::JavaType;
 
 /// Renders the JNI export stubs the bootstrap includes.
 pub(crate) fn exports(shapes: &[Shape]) -> String {

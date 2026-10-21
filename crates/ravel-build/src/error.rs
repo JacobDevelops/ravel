@@ -82,6 +82,11 @@ pub enum BuildRefused {
         /// What the operating system reported.
         source: std::io::Error,
     },
+    /// The toolchain ran but refused or returned an unusable compiler identity.
+    ToolchainRefused {
+        /// The refusal, with installation paths redacted.
+        detail: String,
+    },
     /// The toolchain ran and refused the installed source.
     Compile {
         /// What it said, with the instance's own path redacted.
@@ -153,6 +158,10 @@ impl fmt::Display for BuildRefused {
                 formatter,
                 "the Rust toolchain that compiles installed mods could not be run: {source}"
             ),
+            Self::ToolchainRefused { detail } => write!(
+                formatter,
+                "the Rust toolchain refused to resolve a compiler: {detail}"
+            ),
             Self::Compile { detail } => {
                 write!(formatter, "the installed mods did not compile:\n{detail}")
             }
@@ -207,6 +216,7 @@ impl std::error::Error for BuildRefused {
             | Self::Toolchain { source }
             | Self::ResolvedLockIo { source } => Some(source),
             Self::Installation { .. }
+            | Self::ToolchainRefused { .. }
             | Self::MissingCargoManifest { .. }
             | Self::CargoManifest { .. }
             | Self::DuplicateCrate { .. }
@@ -235,6 +245,7 @@ impl StructuredFailure for BuildRefused {
             | Self::CargoManifest { .. }
             | Self::Compile { .. }
             | Self::Toolchain { .. }
+            | Self::ToolchainRefused { .. }
             | Self::ResolvedLock { .. }
             | Self::ResolvedLockIo { .. }
             | Self::UnpinnedDependency { .. } => true,

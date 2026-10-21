@@ -11,6 +11,7 @@ use noak::reader::cpool::{ConstantPool, Index, Utf8};
 use noak::reader::{Attribute, Class};
 
 use crate::error::GenerateError;
+use crate::java_type::JavaType;
 use crate::mapping;
 
 /// One validated JVM type, retaining its exact spelling for opaque handles.
@@ -51,14 +52,9 @@ pub(super) fn descriptor_type(
         .ok_or_else(|| format!("{descriptor} ends before a type does"))?;
     let (name, after) = match first {
         'V' if returns && dimensions == 0 => ("void", &rest[1..]),
-        'Z' => ("boolean", &rest[1..]),
-        'B' => ("byte", &rest[1..]),
-        'C' => ("char", &rest[1..]),
-        'S' => ("short", &rest[1..]),
-        'I' => ("int", &rest[1..]),
-        'J' => ("long", &rest[1..]),
-        'F' => ("float", &rest[1..]),
-        'D' => ("double", &rest[1..]),
+        _ if let Some(kind) = rest.get(..1).and_then(JavaType::primitive_from_descriptor) => {
+            (kind.java(), &rest[1..])
+        }
         'L' => {
             let end = rest
                 .find(';')

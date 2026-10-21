@@ -320,10 +320,10 @@ their direction, and the conformance `sdk_boundary` test pins the SDK's transiti
 | `ravel-sdk-macros` | Compile-time SDK declaration generation |
 | `ravel-host-api` | Source-compiled package execution boundary composing the config/data/save/network contracts |
 | `ravel-bootstrap-runtime` | Safe JNI integration, installed-runtime hook dispatch, outward-action queue, game resource/data pack writing, persistence and settings crossings |
-| `ravel-host-runtime` | Shared instance composition and host lifecycle |
+| `ravel-host-runtime` | Package admission, configuration and resource composition (`compose`) and host lifecycle |
 | `ravel-composed-host` | JVM harness host composing the fixed test-mod set with the `ravel_bootstrap` library name |
 | `ravel-build` | Player-local host planning, source composition and compilation |
-| `ravel-minecraft` | Version-neutral handles, hooks and capability traits |
+| `ravel-minecraft` | Version-neutral handles, hooks and pack-format metadata |
 | `ravel-minecraft-adapter` | Generated per-version hook target table, lookup and admission environment identity |
 | `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data |
 | `ravel-config` | Schemas, validation, side/restart flags and layered overrides |

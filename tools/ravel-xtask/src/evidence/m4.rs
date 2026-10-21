@@ -73,22 +73,29 @@ const M4_RECORDS: &[RecordDefinition] = &[
         name: "linux-process-matrix.json",
         rule: |value| {
             let record: model::ProcessMatrix<'_> = admit(value)?;
-            require(
-                record.work_package.0 == "M4-W8",
-                "/workPackage must be M4-W8",
+            crate::evidence::model::require_identity(
+                record.work_package.0,
+                "M4-W8",
+                "/workPackage",
+            )?;
+            crate::evidence::model::require_identity(
+                record.protocol.0,
+                "m4-gate-matrix-v1",
+                "/protocol",
             )?;
             require(
-                record.protocol.0 == "m4-gate-matrix-v1",
-                "/protocol must be m4-gate-matrix-v1",
+                record.result == crate::evidence::model::Verdict::Pass,
+                "/result must be pass",
             )?;
-            require(record.result.0 == "pass", "/result must be pass")?;
-            require(
-                record.platform.os.0 == "linux",
-                "/platform/os must be linux",
+            crate::evidence::model::require_identity(
+                record.platform.os.0,
+                "linux",
+                "/platform/os",
             )?;
-            require(
-                record.platform.architecture.0 == "x86_64",
-                "/platform/architecture must be x86_64",
+            crate::evidence::model::require_identity(
+                record.platform.architecture.0,
+                "x86_64",
+                "/platform/architecture",
             )?;
             require(
                 !record.game_launch.occurred,
@@ -133,13 +140,15 @@ const M4_RECORDS: &[RecordDefinition] = &[
                 .collect::<Vec<_>>();
             packages.sort_unstable();
 
-            require(
-                record.work_package.0 == "M4-W8",
-                "/workPackage must be M4-W8",
+            crate::evidence::model::require_identity(
+                record.work_package.0,
+                "M4-W8",
+                "/workPackage",
             )?;
-            require(
-                record.protocol.0 == "m4-surface-v1",
-                "/protocol must be m4-surface-v1",
+            crate::evidence::model::require_identity(
+                record.protocol.0,
+                "m4-surface-v1",
+                "/protocol",
             )?;
             require(record.work_packages.0.len() == 7, "/workPackages")?;
             require(
@@ -258,7 +267,9 @@ fn recorded_tasks<'a>(
 }
 
 fn verify_recorded_exit_statuses(record: &Value, violations: &mut Vec<String>) {
-    if record["result"] != "pass" {
+    if !admit::<super::model::Verdict>(&record["result"])
+        .is_ok_and(|verdict| verdict == super::model::Verdict::Pass)
+    {
         return;
     }
     for field in ["processes", "checksOutsideTheGate"] {
@@ -299,25 +310,37 @@ pub(crate) fn verify_m4_integrity(
 const M4_FIGURES: CarriedFigures = CarriedFigures {
     record: "linux-process-matrix.json",
     subject: "gate run",
-    arithmetic: &[],
-    figures: &[
-        ("/tests/total", |value| {
-            value.pointer("/gate/tests/run").cloned()
-        }),
-        ("/tests/passed", |value| {
-            value.pointer("/gate/tests/passed").cloned()
-        }),
-        ("/tests/failed", |value| {
-            value.pointer("/gate/tests/failed").cloned()
-        }),
-        ("/tests/skipped", |value| {
-            value.pointer("/gate/tests/skipped").cloned()
-        }),
-        ("/tests/lineCoveragePercent", |value| {
-            value.pointer("/gate/coverage/linesPercent").cloned()
-        }),
-    ],
+    verify: |milestone, record, manifest, carried, violations| {
+        let arithmetic: &[(Rule, &str)] = &[];
+        crate::evidence::closure::verify_typed_figures(
+            milestone,
+            record,
+            manifest,
+            carried,
+            M4_CARRIED_FIGURES,
+            arithmetic,
+            violations,
+        );
+    },
 };
+
+const M4_CARRIED_FIGURES: &[(&str, crate::evidence::rules::Figure)] = &[
+    ("/tests/total", |value| {
+        value.pointer("/gate/tests/run").cloned()
+    }),
+    ("/tests/passed", |value| {
+        value.pointer("/gate/tests/passed").cloned()
+    }),
+    ("/tests/failed", |value| {
+        value.pointer("/gate/tests/failed").cloned()
+    }),
+    ("/tests/skipped", |value| {
+        value.pointer("/gate/tests/skipped").cloned()
+    }),
+    ("/tests/lineCoveragePercent", |value| {
+        value.pointer("/gate/coverage/linesPercent").cloned()
+    }),
+];
 
 #[cfg(test)]
 mod tests;

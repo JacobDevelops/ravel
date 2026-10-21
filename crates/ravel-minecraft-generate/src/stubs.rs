@@ -172,7 +172,8 @@ pub(super) fn from_jar(
 
     let mut stubs = Vec::with_capacity(set.len());
     for class in &set {
-        let (extends, implements) = above(archives, mapping, class, &set, &hierarchies)?;
+        let (extends, implements) =
+            stubbed_supertypes(archives, mapping, class, &set, &hierarchies)?;
         stubs.push(Stub {
             class: class.clone(),
             flags: hierarchies[class].flags,
@@ -414,7 +415,7 @@ pub(super) fn from_lock(
 }
 
 /// Whether any pinned jar carries the class file one reviewed name resolves to.
-fn held(archives: &[&jar::Archive], mapping: &Mapping, class: &str) -> bool {
+fn is_in_pinned_jars(archives: &[&jar::Archive], mapping: &Mapping, class: &str) -> bool {
     let entry = mapping.entry(class);
     archives.iter().any(|archive| archive.holds(&entry))
 }
@@ -474,7 +475,7 @@ fn read_hierarchy(
 }
 
 /// Finds the nearest stubbed superclass and all stubbed interfaces, stopping outside pinned jars.
-fn above(
+fn stubbed_supertypes(
     archives: &[&jar::Archive],
     mapping: &Mapping,
     class: &str,
@@ -492,7 +493,7 @@ fn above(
             extends = Some(parent);
             break;
         }
-        walk = held(archives, mapping, &parent).then_some(parent);
+        walk = is_in_pinned_jars(archives, mapping, &parent).then_some(parent);
     }
 
     let mut implements = BTreeSet::new();
@@ -511,7 +512,7 @@ fn above(
                 .cloned(),
         );
         for supertype in hierarchy.supertypes() {
-            if held(archives, mapping, supertype) {
+            if is_in_pinned_jars(archives, mapping, supertype) {
                 pending.push(supertype.to_owned());
             }
         }
@@ -557,7 +558,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::super::classfile::{self, ACC_PUBLIC};
-    use super::super::inputs::{MappingSource, PinnedVersion, SeedMember, Seeds};
+    use super::super::inputs::{PinnedVersion, SeedMember, Seeds};
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
     use super::{
@@ -633,11 +634,8 @@ mod tests {
     /// the name space a stub never writes.
     #[test]
     fn an_element_class_is_translated_out_of_the_linked_name_space() {
-        let mapping = Mapping::read(
-            MappingSource::OfficialProguardMappings,
-            "com.example.Line -> c:\n",
-        )
-        .expect("the invented mapping should parse");
+        let mapping = Mapping::proguard("com.example.Line -> c:\n")
+            .expect("the invented mapping should parse");
         let linked = declared("()Ljava/util/List;", Some("()Ljava/util/List<Lc;>;"));
 
         assert_eq!(
@@ -1115,12 +1113,11 @@ mod tests {
              members = [\"init\"]\n",
         )
         .expect("the invented seed list should parse");
-        let mapping = Mapping::read(
-            MappingSource::OfficialProguardMappings,
+        let mapping = Mapping::proguard(
             "com.example.Screen -> a:\n    \
-             5:5:void init() -> aT_\n    \
-             6:6:void init(com.example.Widget) -> b\n\
-             com.example.Widget -> b:\n",
+         5:5:void init() -> aT_\n    \
+         6:6:void init(com.example.Widget) -> b\n\
+         com.example.Widget -> b:\n",
         )
         .expect("the invented mapping should parse");
 

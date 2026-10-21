@@ -145,6 +145,28 @@ fn inventory_path(root: &Path, directory: &Path, adapter: &Adapter) -> PathBuf {
         .map_or_else(|_| root.join(declared), |suffix| directory.join(suffix))
 }
 
+/// Resolves declared lock inputs, relocating version-local pins for fixture adapters.
+///
+/// # Errors
+///
+/// Returns an error for malformed adapters or directory/version identity drift.
+pub fn lock_paths_at(root: &Path, directory: &Path) -> Result<[PathBuf; 2], GenerateError> {
+    let version = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| GenerateError::Input("version directory has no UTF-8 name".to_owned()))?;
+    let adapter = read_adapter_at(directory, version)?;
+    let canonical = Path::new(VERSIONS).join(&adapter.minecraft);
+    Ok(
+        [&adapter.inputs.mappings_lock, &adapter.inputs.stubs_lock].map(|input| {
+            let declared = Path::new(&input.path);
+            declared
+                .strip_prefix(&canonical)
+                .map_or_else(|_| root.join(declared), |suffix| directory.join(suffix))
+        }),
+    )
+}
+
 /// Reads the typed adapter and applies the generator's admission policy.
 ///
 /// # Errors

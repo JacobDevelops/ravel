@@ -39,9 +39,8 @@ The first build needs network access for the cargo registry.
 cargo make ravel:verify
 ```
 
-That gate runs formatting, typecheck, lint, tests, coverage, dependency audit, the scaffold contract,
-and the offline registry checks. The individual tasks are `ravel:fmt`, `ravel:typecheck`, `ravel:lint`,
-`ravel:test`, `ravel:coverage`, `ravel:audit`, `ravel:verify-scaffold`, and `ravel:registry-verify`.
+That gate's sub-tasks are the `dependencies` of `[tasks."ravel:verify"]` in `Makefile.toml`;
+run any of them individually by name.
 Registry checks requiring acquired local fixtures run separately with `ravel:registry-verify-fixture`.
 
 Formatting and lint cover shell, TOML, and Markdown as well as Rust, so a docs-only change still has to

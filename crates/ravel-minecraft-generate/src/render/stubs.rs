@@ -207,14 +207,11 @@ fn chained_super(stub: &Stub, mapping: &Mapping) -> Result<String, String> {
 fn placeholders(parameters: &[String]) -> String {
     parameters
         .iter()
-        .map(|parameter| match parameter.as_str() {
-            "boolean" => "false".to_owned(),
-            "char" => "'\\0'".to_owned(),
-            "byte" | "short" | "int" => "0".to_owned(),
-            "long" => "0L".to_owned(),
-            "float" => "0.0f".to_owned(),
-            "double" => "0.0".to_owned(),
-            reference => format!("({reference}) null"),
+        .map(|parameter| {
+            crate::java_type::JavaType::primitive_from_keyword(parameter).map_or_else(
+                || format!("({parameter}) null"),
+                |kind| kind.zero_literal().to_owned(),
+            )
         })
         .collect::<Vec<_>>()
         .join(", ")

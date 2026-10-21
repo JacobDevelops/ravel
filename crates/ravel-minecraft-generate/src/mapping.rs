@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use proguard::ProguardRecord;
+use std::path::Path;
 
 use super::inputs::{Lookup, MappingSource, Reflected, ReflectedMember, Reflection};
 use super::{GenerateError, classfile, jar};
+pub(super) mod tiny;
 
 /// How a Mojang name becomes the name the JVM links.
 #[derive(Clone, Debug)]
@@ -18,32 +20,41 @@ pub(super) enum Mapping {
 }
 
 impl Mapping {
-    /// Builds the mapping one source calls for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when translating records do not parse or collide.
-    /// Feather text must already be normalized by the mapping-io helper.
-    pub(super) fn read(source: MappingSource, text: &str) -> Result<Self, GenerateError> {
-        match source {
+    /// Loads and verifies the mapping artifact selected by the adapter.
+    pub(super) fn load(
+        root: &Path,
+        adapter: &super::inputs::Adapter,
+    ) -> Result<Self, GenerateError> {
+        match adapter.mapping_source {
             MappingSource::UnobfuscatedClassFiles => Ok(Self::Identity),
-            MappingSource::OfficialProguardMappings => NameMap::parse(text).map(Self::NameMap),
-            MappingSource::FeatherTinyMappings => Self::tiny(text),
+            MappingSource::FeatherTinyMappings => tiny::read(root, adapter),
+            MappingSource::OfficialProguardMappings => {
+                let input = adapter.inputs.client_mappings.as_ref().ok_or_else(|| {
+                    GenerateError::Input("ProGuard mappings require a pinned artifact".to_owned())
+                })?;
+                super::inputs::verify_input(root, input)?;
+                let text = std::fs::read_to_string(root.join(&input.path)).map_err(|error| {
+                    GenerateError::io(super::inputs::file_name(&input.path), error)
+                })?;
+                Self::proguard(&text)
+            }
         }
+    }
+
+    pub(super) fn proguard(text: &str) -> Result<Self, GenerateError> {
+        NameMap::proguard(text).map(Self::NameMap)
     }
 
     /// Reads normalized mapping-io output, not the Tiny file grammar itself.
     pub(super) fn tiny(normalized: &str) -> Result<Self, GenerateError> {
-        let mut names = NameMap::normalized(normalized)?;
-        names.inherited_hooks = true;
-        Ok(Self::NameMap(names))
+        NameMap::normalized(normalized).map(Self::NameMap)
     }
 
     /// The internal name the JVM links for a reviewed internal name.
     pub(super) fn runtime_class_or_self<'a>(&'a self, mojang: &'a str) -> &'a str {
         match self {
             Self::Identity => mojang,
-            Self::NameMap(proguard) => proguard.runtime_class_or_self(mojang),
+            Self::NameMap(names) => names.runtime_class_or_self(mojang),
         }
     }
 
@@ -66,7 +77,7 @@ impl Mapping {
     ) -> Result<&'a str, GenerateError> {
         match self {
             Self::Identity => Ok(mojang),
-            Self::NameMap(proguard) => proguard.require_runtime_class(mojang),
+            Self::NameMap(names) => names.require_runtime_class(mojang),
         }
     }
 
@@ -74,7 +85,7 @@ impl Mapping {
     pub(super) fn mojang_class<'a>(&'a self, runtime: &'a str) -> &'a str {
         match self {
             Self::Identity => runtime,
-            Self::NameMap(proguard) => proguard.mojang_class(runtime),
+            Self::NameMap(names) => names.mojang_class(runtime),
         }
     }
 
@@ -91,7 +102,7 @@ impl Mapping {
     pub(super) fn mojang_descriptor(&self, descriptor: &str) -> Result<String, GenerateError> {
         match self {
             Self::Identity => Ok(descriptor.to_owned()),
-            Self::NameMap(proguard) => map_descriptor(&proguard.mojang, descriptor),
+            Self::NameMap(names) => map_descriptor(&names.mojang, descriptor),
         }
     }
 
@@ -118,7 +129,7 @@ impl Mapping {
     ) -> &'a str {
         match self {
             Self::Identity => member,
-            Self::NameMap(proguard) => proguard.mojang_member(mojang_class, member, descriptor),
+            Self::NameMap(names) => names.mojang_member(mojang_class, member, descriptor),
         }
     }
 
@@ -139,9 +150,7 @@ impl Mapping {
     ) -> Result<(String, String), GenerateError> {
         match self {
             Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
-            Self::NameMap(proguard) => {
-                proguard.runtime_member_or_self(mojang_class, member, descriptor)
-            }
+            Self::NameMap(names) => names.runtime_member_or_self(mojang_class, member, descriptor),
         }
     }
 
@@ -165,9 +174,7 @@ impl Mapping {
     ) -> Result<(String, String), GenerateError> {
         match self {
             Self::Identity => Ok((member.to_owned(), descriptor.to_owned())),
-            Self::NameMap(proguard) => {
-                proguard.require_runtime_member(mojang_class, member, descriptor)
-            }
+            Self::NameMap(names) => names.require_runtime_member(mojang_class, member, descriptor),
         }
     }
 
@@ -213,8 +220,7 @@ impl Mapping {
         {
             return self.require_runtime_member(class, member, descriptor);
         }
-        let candidates =
-            self.inherited_hook_candidates(archive, names, class, member, descriptor)?;
+        let candidates = names.inherited_hook_candidates(archive, class, member, descriptor)?;
         let mut candidates = candidates.into_iter();
         match (candidates.next(), candidates.next()) {
             (None, _) => Err(GenerateError::Unresolved(format!(
@@ -237,51 +243,6 @@ impl Mapping {
                 "{class}.{member}{descriptor} has conflicting inherited mappings"
             ))),
         }
-    }
-
-    fn inherited_hook_candidates(
-        &self,
-        archive: &jar::Archive,
-        names: &NameMap,
-        class: &str,
-        member: &str,
-        descriptor: &str,
-    ) -> Result<std::collections::BTreeSet<(String, String)>, GenerateError> {
-        let mut pending = vec![self.runtime_class_or_self(class).to_owned()];
-        let mut visited = std::collections::BTreeSet::new();
-        let mut candidates = std::collections::BTreeSet::new();
-        while let Some(runtime) = pending.pop() {
-            if !visited.insert(runtime.clone()) {
-                continue;
-            }
-            let entry = format!("{runtime}.class");
-            if !archive.holds(&entry) {
-                continue;
-            }
-            let bytes = archive.entry(&entry)?;
-            if runtime != self.runtime_class_or_self(class)
-                && let Some(pair) = names
-                    .members
-                    .get(self.mojang_class(&runtime))
-                    .and_then(|members| members.get(&(member.to_owned(), descriptor.to_owned())))
-            {
-                let declared = classfile::members(&bytes)
-                    .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
-                if declared.iter().any(|target| {
-                    target.method
-                        && target.name == pair.0
-                        && target.descriptor == pair.1
-                        && !target.is_static()
-                        && target.flags & classfile::ACC_PRIVATE == 0
-                }) {
-                    candidates.insert(pair.clone());
-                }
-            }
-            let hierarchy = classfile::hierarchy(&bytes)
-                .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
-            pending.extend(hierarchy.supertypes().map(str::to_owned));
-        }
-        Ok(candidates)
     }
 
     /// The pair the JVM links for a reviewed member named by its width.
@@ -309,7 +270,7 @@ impl Mapping {
                 name: member.to_owned(),
                 parameters,
             }),
-            Self::NameMap(proguard) => proguard.linked_by_arity(mojang_class, member, parameters),
+            Self::NameMap(names) => names.linked_by_arity(mojang_class, member, parameters),
         }
     }
 }
@@ -391,7 +352,9 @@ impl Linked {
             && held.method == self.is_method()
             && match self {
                 Self::Exact { descriptor, .. } => held.descriptor == *descriptor,
-                Self::Counted { parameters, .. } => takes(&held.descriptor, *parameters),
+                Self::Counted { parameters, .. } => {
+                    has_parameter_count(&held.descriptor, *parameters)
+                }
             }
     }
 
@@ -465,7 +428,7 @@ fn describe_declared(declared: &[classfile::Member], name: &str) -> String {
 }
 
 /// Whether a descriptor is a method descriptor of the given width.
-fn takes(descriptor: &str, parameters: usize) -> bool {
+fn has_parameter_count(descriptor: &str, parameters: usize) -> bool {
     classfile::signature(descriptor).is_ok_and(|(taken, _)| taken.len() == parameters)
 }
 
@@ -514,6 +477,52 @@ fn admit_class(
 }
 
 impl NameMap {
+    fn inherited_hook_candidates(
+        &self,
+        archive: &jar::Archive,
+        class: &str,
+        member: &str,
+        descriptor: &str,
+    ) -> Result<std::collections::BTreeSet<(String, String)>, GenerateError> {
+        let own = self.runtime_class_or_self(class);
+        let key = (member.to_owned(), descriptor.to_owned());
+        let mut pending = vec![own.to_owned()];
+        let mut visited = std::collections::BTreeSet::new();
+        let mut candidates = std::collections::BTreeSet::new();
+        while let Some(runtime) = pending.pop() {
+            if !visited.insert(runtime.clone()) {
+                continue;
+            }
+            let entry = format!("{runtime}.class");
+            if !archive.holds(&entry) {
+                continue;
+            }
+            let bytes = archive.entry(&entry)?;
+            if runtime != own
+                && let Some(pair) = self
+                    .members
+                    .get(self.mojang_class(&runtime))
+                    .and_then(|members| members.get(&key))
+            {
+                let declared = classfile::members(&bytes)
+                    .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
+                if declared.iter().any(|target| {
+                    target.method
+                        && target.name == pair.0
+                        && target.descriptor == pair.1
+                        && !target.is_static()
+                        && target.flags & classfile::ACC_PRIVATE == 0
+                }) {
+                    candidates.insert(pair.clone());
+                }
+            }
+            let hierarchy = classfile::hierarchy(&bytes)
+                .map_err(|error| GenerateError::Extraction(format!("{runtime}: {error}")))?;
+            pending.extend(hierarchy.supertypes().map(str::to_owned));
+        }
+        Ok(candidates)
+    }
+
     /// Admits normalized records through the common bidirectional checks.
     fn normalized(text: &str) -> Result<Self, GenerateError> {
         let mut classes = BTreeMap::new();
@@ -570,7 +579,7 @@ impl NameMap {
                 )));
             }
         }
-        Self::parse_members(classes, mojang, declared)
+        Self::parse_members(classes, mojang, declared, true)
     }
 
     /// Parses a published mapping file.
@@ -580,7 +589,7 @@ impl NameMap {
     /// mapping the parser silently drops half of resolves the other half against
     /// a jar and writes a binding, which is the failure this whole layer exists
     /// to make impossible.
-    fn parse(text: &str) -> Result<Self, GenerateError> {
+    fn proguard(text: &str) -> Result<Self, GenerateError> {
         let mut classes = BTreeMap::new();
         let mut mojang: BTreeMap<String, String> = BTreeMap::new();
         let mut declared: BTreeMap<String, Vec<Declared>> = BTreeMap::new();
@@ -631,13 +640,14 @@ impl NameMap {
             }
         }
 
-        Self::parse_members(classes, mojang, declared)
+        Self::parse_members(classes, mojang, declared, false)
     }
 
     fn parse_members(
         classes: BTreeMap<String, String>,
         mojang: BTreeMap<String, String>,
         declared: BTreeMap<String, Vec<Declared>>,
+        inherited_hooks: bool,
     ) -> Result<Self, GenerateError> {
         // Descriptors are rewritten once every class is known, because a
         // parameter can name a class the file has not reached yet.
@@ -689,7 +699,7 @@ impl NameMap {
         }
 
         Ok(Self {
-            inherited_hooks: false,
+            inherited_hooks,
             classes,
             mojang,
             members,
@@ -776,7 +786,9 @@ impl NameMap {
             .get(mojang_class)
             .into_iter()
             .flatten()
-            .filter(|((name, descriptor), _)| name == member && takes(descriptor, parameters))
+            .filter(|((name, descriptor), _)| {
+                name == member && has_parameter_count(descriptor, parameters)
+            })
             .map(|(_, linked)| linked.clone())
             .collect::<Vec<_>>();
         found.sort();
@@ -902,18 +914,14 @@ fn descriptor_of(source: &str) -> Result<String, String> {
         dimensions += 1;
         base = rest;
     }
-    let core = match base {
-        "void" => "V".to_owned(),
-        "boolean" => "Z".to_owned(),
-        "byte" => "B".to_owned(),
-        "char" => "C".to_owned(),
-        "short" => "S".to_owned(),
-        "int" => "I".to_owned(),
-        "long" => "J".to_owned(),
-        "float" => "F".to_owned(),
-        "double" => "D".to_owned(),
-        "" => return Err(format!("{source} names no type")),
-        other => format!("L{};", classfile::internal_name(other)),
+    let core = if let Some(kind) = crate::java_type::JavaType::primitive_from_keyword(base) {
+        kind.descriptor().to_owned()
+    } else {
+        match base {
+            "void" => "V".to_owned(),
+            "" => return Err(format!("{source} names no type")),
+            other => format!("L{};", classfile::internal_name(other)),
+        }
     };
     Ok("[".repeat(dimensions) + &core)
 }
@@ -962,7 +970,7 @@ mod tests {
     use super::super::classfile;
     use super::super::inputs::{Reflected, ReflectedMember, Reflection};
     use super::super::jar::{self, fixture};
-    use super::{Mapping, MappingSource, NameMap, verify_reflected_members, verify_reflection};
+    use super::{Mapping, NameMap, verify_reflected_members, verify_reflection};
 
     /// An invented mapping, in the shape the published files take.
     const MAPPING: &str = "\
@@ -981,7 +989,7 @@ com.example.Plain -> com.example.Plain:
 ";
 
     fn parsed() -> NameMap {
-        NameMap::parse(MAPPING).expect("the invented mapping should parse")
+        NameMap::proguard(MAPPING).expect("the invented mapping should parse")
     }
 
     #[test]
@@ -1059,10 +1067,10 @@ com.example.Plain -> com.example.Plain:
     #[test]
     fn a_linked_name_the_class_reuses_is_told_apart_by_its_descriptor() {
         let mapping = Mapping::NameMap(
-            NameMap::parse(
+            NameMap::proguard(
                 "com.example.Alpha -> a:\n    \
-                 5:5:java.lang.String getValue() -> a\n    \
-                 6:6:void setValue(java.lang.String) -> a\n",
+             5:5:java.lang.String getValue() -> a\n    \
+             6:6:void setValue(java.lang.String) -> a\n",
             )
             .expect("one linked name on two descriptors is one mapping, not a collision"),
         );
@@ -1147,7 +1155,7 @@ com.example.Plain -> com.example.Plain:
                 "onto a (I)V",
             ),
         ] {
-            let error = NameMap::parse(mapping).expect_err("a collision must be refused");
+            let error = NameMap::proguard(mapping).expect_err("a collision must be refused");
 
             assert!(error.to_string().contains(expected), "{error}");
         }
@@ -1188,7 +1196,7 @@ com.example.Plain -> com.example.Plain:
                 "names no type",
             ),
         ] {
-            let error = NameMap::parse(mapping).expect_err("an unreadable line must be refused");
+            let error = NameMap::proguard(mapping).expect_err("an unreadable line must be refused");
 
             assert!(error.to_string().contains(expected), "{error}");
             assert!(error.to_string().contains("at line"), "{error}");
@@ -1197,9 +1205,9 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn original_line_ranges_do_not_change_member_descriptors() {
-        let mapping = NameMap::parse(
+        let mapping = NameMap::proguard(
             "com.example.A -> x:\n    1:2:int[] read(java.lang.String,int[]):40:41 -> a\n\
-             \tvoid tick():50 -> b\n",
+         \tvoid tick():50 -> b\n",
         )
         .expect("both ProGuard original-line suffix forms are records");
 
@@ -1228,7 +1236,7 @@ com.example.Plain -> com.example.Plain:
             "com.example.A -> x:\n    void tick():x -> a",
             "com.example.A -> x:\n    void tick(int,,long) -> a",
         ] {
-            let error = NameMap::parse(line).expect_err("every record must be complete");
+            let error = NameMap::proguard(line).expect_err("every record must be complete");
 
             assert!(error.to_string().contains("at line"), "{error}");
         }
@@ -1237,7 +1245,7 @@ com.example.Plain -> com.example.Plain:
     #[test]
     fn two_lines_declaring_one_member_are_refused_rather_than_last_wins() {
         let error =
-            NameMap::parse("com.example.A -> x:\n    void tick() -> a\n    void tick() -> b\n")
+            NameMap::proguard("com.example.A -> x:\n    void tick() -> a\n    void tick() -> b\n")
                 .expect_err("one member may name one linked member");
 
         assert!(error.to_string().contains("tick()V"), "{error}");
@@ -1246,9 +1254,9 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn inline_frames_do_not_collide_with_the_outer_declaration() {
-        let mapping = NameMap::parse(
+        let mapping = NameMap::proguard(
             "com.example.A -> x:\n    1:1:void com.example.B.tick():5:5 -> a\n\
-             \t1:1:void run():10:10 -> a\n",
+         \t1:1:void run():10:10 -> a\n",
         )
         .expect("an inline frame and its outer declaration share a linked pair");
 
@@ -1271,7 +1279,7 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn a_comment_is_a_comment_wherever_it_is_indented() {
-        let mapping = NameMap::parse("com.example.A -> x:\n    # a member never follows\n")
+        let mapping = NameMap::proguard("com.example.A -> x:\n    # a member never follows\n")
             .expect("an indented comment is not a member");
 
         assert_eq!(mapping.runtime_class_or_self("com/example/A"), "x");
@@ -1280,7 +1288,8 @@ com.example.Plain -> com.example.Plain:
     #[test]
     fn a_mapping_that_names_no_class_is_refused_rather_than_read_as_the_identity() {
         for text in ["", "\n", "# nothing but a comment\n"] {
-            let error = NameMap::parse(text).expect_err("a source that translates must translate");
+            let error =
+                NameMap::proguard(text).expect_err("a source that translates must translate");
 
             assert!(error.to_string().contains("names no class"), "{error}");
         }
@@ -1288,11 +1297,7 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn the_unobfuscated_source_translates_nothing_and_reads_no_text() {
-        let mapping = Mapping::read(
-            MappingSource::UnobfuscatedClassFiles,
-            "not a mapping at all",
-        )
-        .expect("the identity needs no text");
+        let mapping = Mapping::Identity;
 
         assert_eq!(
             mapping.runtime_class_or_self("com/example/Alpha"),
@@ -1320,8 +1325,8 @@ com.example.Plain -> com.example.Plain:
             "com.example.Alpha -> a:\n",
             "com.example.Alpha -> a:\n    1:1:void com.example.Other.tick():2:2 -> b\n",
         ] {
-            let mapping = Mapping::read(MappingSource::OfficialProguardMappings, text)
-                .expect("a named class with no declared members is valid");
+            let mapping =
+                Mapping::proguard(text).expect("a named class with no declared members is valid");
             mapping
                 .require_runtime_member("com/example/Alpha", "tick", "()V")
                 .expect_err("a named class cannot pass an undeclared member through");
@@ -1336,8 +1341,7 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn the_proguard_source_asks_an_archive_for_the_linked_entry() {
-        let mapping =
-            Mapping::read(MappingSource::OfficialProguardMappings, MAPPING).expect("parses");
+        let mapping = Mapping::proguard(MAPPING).expect("parses");
 
         assert_eq!(mapping.entry("com/example/Alpha"), "a.class");
         assert_eq!(mapping.entry("com/example/Beta"), "b$c.class");
@@ -1363,8 +1367,7 @@ com.example.Plain -> com.example.Plain:
     /// thing, the name the JVM links is another, and only the mapping knows.
     #[test]
     fn a_proguard_surface_is_re_derived_from_the_mapping_rather_than_trusted() {
-        let mapping =
-            Mapping::read(MappingSource::OfficialProguardMappings, MAPPING).expect("parses");
+        let mapping = Mapping::proguard(MAPPING).expect("parses");
 
         verify_reflection(&surface("com.example.Alpha", "a"), &mapping)
             .expect("the mapping resolves it to exactly that");
@@ -1380,8 +1383,7 @@ com.example.Plain -> com.example.Plain:
     /// compare that name with itself and agree.
     #[test]
     fn a_class_a_proguard_mapping_never_names_is_refused_rather_than_matching_itself() {
-        let mapping =
-            Mapping::read(MappingSource::OfficialProguardMappings, MAPPING).expect("parses");
+        let mapping = Mapping::proguard(MAPPING).expect("parses");
 
         let error = verify_reflection(
             &surface("com.example.Absent", "com.example.Absent"),
@@ -1415,11 +1417,8 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn the_proguard_source_refuses_text_that_is_not_a_mapping() {
-        let error = Mapping::read(
-            MappingSource::OfficialProguardMappings,
-            "not a mapping at all\n",
-        )
-        .expect_err("the source requires a real mapping");
+        let error = Mapping::proguard("not a mapping at all\n")
+            .expect_err("the source requires a real mapping");
 
         assert!(
             error.to_string().contains("not a valid proguard record"),
@@ -1895,10 +1894,10 @@ com.example.Plain -> com.example.Plain:
     #[test]
     fn a_width_a_translating_mapping_cannot_separate_names_no_member() {
         let mapping = Mapping::NameMap(
-            NameMap::parse(
+            NameMap::proguard(
                 "com.example.Alpha -> a:\n    \
-                 5:5:void tick(int) -> a\n    \
-                 6:6:void tick(char) -> b\n",
+             5:5:void tick(int) -> a\n    \
+             6:6:void tick(char) -> b\n",
             )
             .expect("two overloads of one name is one mapping"),
         );

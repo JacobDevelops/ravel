@@ -1,178 +1,146 @@
-use crate::evidence::model::{NonemptyRows, NonemptyString};
+use crate::evidence::model::{NonemptyRows, NonemptyString, Verdict};
 use serde::{Deserialize, de::IgnoredAny};
-use serde_json::Number;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct CounterpartRecord<'a> {
-    #[serde(rename = "workPackage")]
     #[serde(borrow)]
     pub(super) work_package: NonemptyString<'a>,
-    #[serde(rename = "protocol")]
     #[serde(borrow)]
     pub(super) protocol: NonemptyString<'a>,
-    #[serde(rename = "result")]
-    #[serde(borrow)]
-    pub(super) result: NonemptyString<'a>,
-    #[serde(rename = "wave")]
+    pub(super) result: Verdict,
     #[serde(borrow)]
     pub(super) wave: Wave<'a>,
-    #[serde(rename = "counterparts")]
     #[serde(borrow)]
     pub(super) counterparts: NonemptyRows<Counterpart<'a>>,
-    #[serde(rename = "cluster")]
     #[serde(borrow)]
-    _cluster: Cluster<'a>,
-    #[serde(rename = "processValidation")]
+    pub(super) cluster: Cluster<'a>,
     #[serde(borrow)]
-    _process_validation: ProcessValidation<'a>,
-    #[serde(rename = "rewriteIntegrity")]
+    pub(super) process_validation: ProcessValidation<'a>,
     #[serde(borrow)]
-    _rewrite_integrity: RewriteIntegrity<'a>,
-    #[serde(rename = "totals")]
-    _totals: Totals,
+    pub(super) rewrite_integrity: RewriteIntegrity<'a>,
+    pub(super) totals: Totals,
 }
+
 #[derive(Deserialize)]
 pub(super) struct Wave<'a> {
-    #[serde(rename = "frozen")]
     pub(super) frozen: bool,
-    #[serde(rename = "entries")]
     #[serde(borrow)]
-    _entries: NonemptyRows<WaveEntry<'a>>,
+    pub(super) entries: NonemptyRows<WaveEntry<'a>>,
 }
+
 #[derive(Deserialize)]
 pub(super) struct WaveEntry<'a> {
-    #[serde(rename = "id")]
     #[serde(borrow)]
-    _id: NonemptyString<'a>,
-    #[serde(rename = "reason")]
-    #[serde(borrow)]
+    pub(super) id: NonemptyString<'a>,
+    #[serde(rename = "reason", borrow)]
     _reason: NonemptyString<'a>,
     #[serde(rename = "dependencies")]
     _dependencies: Vec<IgnoredAny>,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Counterpart<'a> {
-    #[serde(rename = "id")]
     #[serde(borrow)]
     pub(super) id: NonemptyString<'a>,
-    #[serde(rename = "entry")]
     #[serde(borrow)]
-    _entry: NonemptyString<'a>,
-    #[serde(rename = "specification")]
-    _specification: Specification,
-    #[serde(rename = "observableAreas")]
-    _observable_areas: Number,
-    #[serde(rename = "declarableOnly")]
-    _declarable_only: Number,
-    #[serde(rename = "exercised")]
-    _exercised: Number,
-    #[serde(rename = "provenance")]
-    _provenance: Provenance,
-    #[serde(rename = "suites")]
-    _suites: Suites,
+    pub(super) entry: NonemptyString<'a>,
+    pub(super) specification: Specification,
+    pub(super) observable_areas: u64,
+    pub(super) declarable_only: u64,
+    pub(super) exercised: u64,
+    pub(super) provenance: Provenance,
+    pub(super) suites: Suites,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Specification {
     #[serde(rename = "route")]
     _route: Route,
-    #[serde(rename = "accepted")]
-    _accepted: bool,
-    #[serde(rename = "structureReviewed")]
-    _structure_reviewed: bool,
-    #[serde(rename = "carriesUpstreamIdentifier")]
-    _carries_upstream_identifier: bool,
+    pub(super) accepted: bool,
+    pub(super) structure_reviewed: bool,
+    pub(super) carries_upstream_identifier: bool,
 }
+
 #[derive(Deserialize)]
 pub(super) struct Provenance {
-    #[serde(rename = "complete")]
-    _complete: bool,
+    pub(super) complete: bool,
 }
+
 #[derive(Deserialize)]
 pub(super) struct Suites {
-    #[serde(rename = "total")]
-    _total: Number,
-    #[serde(rename = "failed")]
-    _failed: Number,
+    pub(super) total: u64,
+    pub(super) failed: u64,
 }
+
 #[derive(Deserialize)]
 pub(super) struct Cluster<'a> {
-    #[serde(rename = "scenario")]
-    #[serde(borrow)]
+    #[serde(rename = "scenario", borrow)]
     _scenario: NonemptyString<'a>,
-    #[serde(rename = "steps")]
     #[serde(borrow)]
-    _steps: NonemptyRows<Step<'a>>,
+    pub(super) steps: NonemptyRows<Step<'a>>,
 }
+
 #[derive(Deserialize)]
 pub(super) struct Step<'a> {
-    #[serde(rename = "name")]
     #[serde(borrow)]
-    _name: NonemptyString<'a>,
-    #[serde(rename = "result")]
-    #[serde(borrow)]
-    _result: NonemptyString<'a>,
+    pub(super) name: NonemptyString<'a>,
+    pub(super) result: Verdict,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ProcessValidation<'a> {
-    #[serde(rename = "template")]
-    #[serde(borrow)]
+    #[serde(rename = "template", borrow)]
     _template: NonemptyString<'a>,
-    #[serde(rename = "checklist")]
-    #[serde(borrow)]
+    #[serde(rename = "checklist", borrow)]
     _checklist: NonemptyString<'a>,
-    #[serde(rename = "evidenceSchema")]
-    #[serde(borrow)]
+    #[serde(rename = "evidenceSchema", borrow)]
     _evidence_schema: NonemptyString<'a>,
-    #[serde(rename = "secondCounterpart")]
     #[serde(borrow)]
-    _second_counterpart: NonemptyString<'a>,
+    pub(super) second_counterpart: NonemptyString<'a>,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct RewriteIntegrity<'a> {
-    #[serde(rename = "enforcing")]
-    _enforcing: bool,
-    #[serde(rename = "lexicon")]
-    #[serde(borrow)]
+    pub(super) enforcing: bool,
+    #[serde(rename = "lexicon", borrow)]
     _lexicon: NonemptyString<'a>,
-    #[serde(rename = "identifierSet")]
-    #[serde(borrow)]
+    #[serde(rename = "identifierSet", borrow)]
     _identifier_set: NonemptyString<'a>,
-    #[serde(rename = "filesScanned")]
-    _files_scanned: Number,
-    #[serde(rename = "artifactsScanned")]
-    _artifacts_scanned: Number,
-    #[serde(rename = "violations")]
-    _violations: Number,
-    #[serde(rename = "specificationViolations")]
-    _specification_violations: Number,
-    #[serde(rename = "mutationProof")]
-    _mutation_proof: MutationProof,
+    pub(super) files_scanned: u64,
+    pub(super) artifacts_scanned: u64,
+    pub(super) violations: u64,
+    pub(super) specification_violations: u64,
+    pub(super) mutation_proof: MutationProof,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct MutationProof {
-    #[serde(rename = "sourceInjection")]
-    _source_injection: ExitStatus,
-    #[serde(rename = "artifactInjection")]
-    _artifact_injection: ExitStatus,
-    #[serde(rename = "cleanRun")]
-    _clean_run: ExitStatus,
+    pub(super) source_injection: ExitStatus,
+    pub(super) artifact_injection: ExitStatus,
+    pub(super) clean_run: ExitStatus,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ExitStatus {
-    #[serde(rename = "exitStatus")]
-    _exit_status: Number,
+    pub(super) exit_status: i32,
 }
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct Totals {
-    #[serde(rename = "counterparts")]
-    _counterparts: Number,
-    #[serde(rename = "observableAreas")]
-    _observable_areas: Number,
-    #[serde(rename = "declarableOnly")]
-    _declarable_only: Number,
-    #[serde(rename = "exercised")]
-    _exercised: Number,
+    pub(super) counterparts: u64,
+    pub(super) observable_areas: u64,
+    pub(super) declarable_only: u64,
+    pub(super) exercised: u64,
 }
+
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Route {

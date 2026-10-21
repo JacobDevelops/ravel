@@ -13,3 +13,10 @@
 7. Add only the sanitized manifest and small decision-relevant summaries.
 
 Any failed schema, redaction, integrity, or review check blocks admission.
+
+The verifier admits milestone summaries into typed records before applying their
+arithmetic and carried-figure rules. M5, M6, and M7 counts are whole, nonnegative
+integers; checked sums reject overflow. Summary and review verdicts use the closed
+vocabulary `pass`, `fail`, `provisional`, and `not-required`; each record's policy
+still determines which verdicts it accepts. Input-shape diagnostics retain JSON
+pointers, including array indices, while rule diagnostics name the failed contract.

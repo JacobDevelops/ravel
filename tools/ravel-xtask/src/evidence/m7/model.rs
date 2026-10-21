@@ -1,38 +1,33 @@
-//! Typed admission for library summaries. Underscored figures are consumed by shared JSON arithmetic.
+//! Typed library summaries and protocol-specific fixture bindings.
 
 use ravel_core::Sha256Digest;
 use serde::Deserialize;
-use serde_json::{Number, Value};
+use serde_json::Value;
 
 use crate::evidence::{
-    model::{NonemptyRows, admit},
+    model::{NonemptyRows, NonemptyString, Verdict, admit},
     rules::require,
 };
 
 pub(super) struct LibrarySummary<'a> {
-    record: Record<'a>,
+    pub(super) record: Record<'a>,
     pub(super) protocol: Protocol<'a>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Record<'a> {
-    work_package: &'a str,
-    result: &'a str,
+pub(super) struct Record<'a> {
+    #[serde(borrow)]
+    work_package: NonemptyString<'a>,
+    result: Verdict,
     protocol: ProtocolKind,
-    entries: Entries,
-    #[serde(rename = "waves")]
-    _waves: NonemptyRows<Wave>,
-    #[serde(rename = "dependencies")]
-    _dependencies: Resolution,
-    #[serde(rename = "registries")]
-    _registries: Resolution,
-    #[serde(rename = "provenance")]
-    _provenance: Provenance,
-    #[serde(rename = "routing")]
-    _routing: Routing,
-    #[serde(rename = "suites")]
-    _suites: Suites,
+    pub(super) entries: Entries,
+    pub(super) waves: NonemptyRows<Wave>,
+    pub(super) dependencies: Resolution,
+    pub(super) registries: Resolution,
+    pub(super) provenance: Provenance,
+    pub(super) routing: Routing,
+    pub(super) suites: Suites,
 }
 
 pub(super) enum Protocol<'a> {
@@ -67,7 +62,8 @@ struct WorkloadBinding<'a> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Fixture<'a> {
-    pub(super) id: &'a str,
+    #[serde(borrow)]
+    pub(super) id: NonemptyString<'a>,
     pub(super) artifact_set: ArtifactSet,
 }
 
@@ -79,73 +75,60 @@ pub(super) struct ArtifactSet {
 
 #[derive(Deserialize)]
 pub(super) struct Correction<'a> {
-    #[serde(rename = "from")]
-    pub(super) from: Number,
-    #[serde(rename = "total")]
-    pub(super) total: Number,
-    reason: &'a str,
+    pub(super) from: u64,
+    pub(super) total: u64,
+    #[serde(borrow, rename = "reason")]
+    _reason: NonemptyString<'a>,
 }
 
 #[derive(Deserialize)]
-struct Entries {
-    total: Number,
-    accepted: Number,
-    blocked: Number,
-    unstarted: Number,
+pub(super) struct Entries {
+    pub(super) total: u64,
+    pub(super) accepted: u64,
+    pub(super) blocked: u64,
+    pub(super) unstarted: u64,
 }
 
 #[derive(Deserialize)]
-struct Wave {
-    #[serde(rename = "index")]
-    _index: Number,
-    #[serde(rename = "entries")]
-    _entries: Number,
-    #[serde(rename = "dependsOn")]
-    _depends_on: Vec<Number>,
+#[serde(rename_all = "camelCase")]
+pub(super) struct Wave {
+    pub(super) index: u64,
+    pub(super) entries: u64,
+    pub(super) depends_on: Vec<u64>,
 }
 
 #[derive(Deserialize)]
-struct Resolution {
+pub(super) struct Resolution {
     #[serde(rename = "resolved")]
-    _resolved: Number,
-    #[serde(rename = "unresolved")]
-    _unresolved: Number,
+    _resolved: u64,
+    pub(super) unresolved: u64,
 }
 
 #[derive(Deserialize)]
-struct Provenance {
-    #[serde(rename = "present")]
-    _present: Number,
-    #[serde(rename = "missing")]
-    _missing: Number,
+pub(super) struct Provenance {
+    pub(super) present: u64,
+    pub(super) missing: u64,
 }
 
 #[derive(Deserialize)]
-struct Routing {
-    #[serde(rename = "absorbed")]
-    _absorbed: Number,
-    #[serde(rename = "remaining")]
-    _remaining: Number,
-    #[serde(rename = "runnableToday")]
-    _runnable_today: Number,
-    #[serde(rename = "blocked")]
-    _blocked: Number,
+#[serde(rename_all = "camelCase")]
+pub(super) struct Routing {
+    pub(super) absorbed: u64,
+    pub(super) remaining: u64,
+    pub(super) runnable_today: u64,
+    pub(super) blocked: u64,
 }
 
 #[derive(Deserialize)]
-struct Suites {
-    #[serde(rename = "packages")]
-    _packages: Suite,
-    #[serde(rename = "clusters")]
-    _clusters: Suite,
+pub(super) struct Suites {
+    pub(super) packages: Suite,
+    pub(super) clusters: Suite,
 }
 
 #[derive(Deserialize)]
-struct Suite {
-    #[serde(rename = "total")]
-    _total: Number,
-    #[serde(rename = "failed")]
-    _failed: Number,
+pub(super) struct Suite {
+    pub(super) total: u64,
+    pub(super) failed: u64,
 }
 
 impl<'a> LibrarySummary<'a> {
@@ -167,48 +150,19 @@ impl<'a> LibrarySummary<'a> {
         admitted.map_err(|error| format!("invalid library summary: {error}"))
     }
 
-    pub(super) fn entry_total(&self) -> &Number {
-        &self.record.entries.total
+    pub(super) fn entry_total(&self) -> u64 {
+        self.record.entries.total
     }
 
     pub(super) fn verify(&self) -> Result<(), String> {
-        require(
-            self.record.work_package == "M7-W5",
-            "/workPackage must be M7-W5",
+        crate::evidence::model::require_identity(
+            self.record.work_package.0,
+            "M7-W5",
+            "/workPackage",
         )?;
-        require(self.record.result == "pass", "/result must be pass")?;
-        match &self.protocol {
-            Protocol::Historical { correction } => {
-                if let Some(correction) = correction {
-                    require(
-                        !correction.reason.is_empty(),
-                        "/correction/reason must be nonempty",
-                    )?;
-                }
-            }
-            Protocol::Workload { fixture } => {
-                require(!fixture.id.is_empty(), "/fixture/id must be nonempty")?;
-                require(
-                    self.record.entries.total.as_u64().is_some_and(|n| n > 0),
-                    "/entries/total must be positive",
-                )?;
-                for (count, requirement) in [
-                    (
-                        &self.record.entries.accepted,
-                        "/entries/accepted must be a whole number",
-                    ),
-                    (
-                        &self.record.entries.blocked,
-                        "/entries/blocked must be a whole number",
-                    ),
-                    (
-                        &self.record.entries.unstarted,
-                        "/entries/unstarted must be a whole number",
-                    ),
-                ] {
-                    require(count.as_u64().is_some(), requirement)?;
-                }
-            }
+        require(self.record.result == Verdict::Pass, "/result must be pass")?;
+        if matches!(self.protocol, Protocol::Workload { .. }) {
+            require(self.entry_total() > 0, "/entries/total must be positive")?;
         }
         Ok(())
     }

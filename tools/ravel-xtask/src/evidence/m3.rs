@@ -127,10 +127,11 @@ const M3_RECORDS: &[RecordDefinition] = &[
         name: "pack-compile.json",
         rule: |value| {
             let record: model::PackCompile<'_> = admit(value)?;
-            require(record.gate.0 == "ADG-2", "/gate must be ADG-2")?;
-            require(
-                record.protocol.0 == "m3-pack-compile-v1",
-                "/protocol must be m3-pack-compile-v1",
+            crate::evidence::model::require_identity(record.gate.0, "ADG-2", "/gate")?;
+            crate::evidence::model::require_identity(
+                record.protocol.0,
+                "m3-pack-compile-v1",
+                "/protocol",
             )?;
             for (count, requirement) in [
                 (&record.compile.repeats, "/compile/repeats"),
@@ -156,17 +157,20 @@ const M3_RECORDS: &[RecordDefinition] = &[
         name: "profiling-overhead.json",
         rule: |value| {
             let record: model::Profiling<'_> = admit(value)?;
-            require(
-                record.work_package.0 == "M3-W6",
-                "/workPackage must be M3-W6",
+            crate::evidence::model::require_identity(
+                record.work_package.0,
+                "M3-W6",
+                "/workPackage",
             )?;
-            require(
-                record.budget.protocol.0 == "m2-loader-budget-v1",
-                "/budget/protocol must be m2-loader-budget-v1",
+            crate::evidence::model::require_identity(
+                record.budget.protocol.0,
+                "m2-loader-budget-v1",
+                "/budget/protocol",
             )?;
-            require(
-                record.budget.hardware_profile.0 == "linux-reference-v1",
-                "/budget/hardwareProfile must be linux-reference-v1",
+            crate::evidence::model::require_identity(
+                record.budget.hardware_profile.0,
+                "linux-reference-v1",
+                "/budget/hardwareProfile",
             )?;
             verify_profiling_off_tick_limit(value)?;
             Ok(())
@@ -187,11 +191,11 @@ const M3_RECORDS: &[RecordDefinition] = &[
 
 fn verify_m3_process_matrix(value: &Value) -> Result<(), String> {
     let record: model::ProcessMatrix<'_> = admit(value)?;
+    crate::evidence::model::require_identity(record.work_package.0, "M3-W7", "/workPackage")?;
     require(
-        record.work_package.0 == "M3-W7",
-        "/workPackage must be M3-W7",
+        record.result == crate::evidence::model::Verdict::Pass,
+        "/result must be pass",
     )?;
-    require(record.result.0 == "pass", "/result must be pass")?;
     verify_m3_process_flags(&record)?;
     for (count, requirement) in [
         (

@@ -126,14 +126,8 @@ pub(crate) fn require(condition: bool, requirement: &str) -> Result<(), String> 
     }
 }
 
-pub(crate) fn unique_by(rows: &[Value], same_key: impl Fn(&Value, &Value) -> bool) -> bool {
-    rows.iter()
-        .enumerate()
-        .all(|(index, row)| rows[..index].iter().all(|other| !same_key(other, row)))
-}
-
-pub(crate) type Rule = fn(&Value) -> bool;
-pub(crate) type Figure = fn(&Value) -> Option<Value>;
+pub(crate) type Rule<T = Value> = fn(&T) -> bool;
+pub(crate) type Figure<T = Value> = fn(&T) -> Option<Value>;
 
 pub(crate) fn has_exact_work_packages(value: &Value, expected: &[&str]) -> bool {
     let mut packages = array(value, "/workPackages")

@@ -72,12 +72,7 @@ fn compose_content(
         Some(composed.expect("the compatible shipped example should compose"))
     } else {
         let expected = ravel_package::CompatibilityError::Minecraft {
-            declared: manifest
-                .compatibility
-                .minecraft
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
+            declared: manifest.compatibility.minecraft,
             running,
         };
         assert!(
@@ -119,7 +114,7 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
         Ok(LifecycleState::Running)
     );
 
-    let model = ContentMod::model_path();
+    let model = ContentMod::model_path().expect("valid model path");
     assert_eq!(
         supplied.set().supplier(&model),
         Some(ContentMod::declared_id())

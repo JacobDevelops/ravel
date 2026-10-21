@@ -63,7 +63,7 @@ fn declared_in_another_order() -> ContentDeclaration {
 
     declaration
         .resource(
-            ContentMod::model_path(),
+            ContentMod::model_path().expect("valid model path"),
             b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n".to_vec(),
         )
         .expect("the model is supplied once");
@@ -91,14 +91,20 @@ fn declared_in_another_order() -> ContentDeclaration {
         .entry(ContentKind::Item, "copper_lantern")
         .expect("a legal, undeclared entry");
     declaration
-        .tag(&ContentMod::lanterns(ContentKind::Item), &item)
+        .tag(
+            &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
+            &item,
+        )
         .expect("an item joins an item tag");
 
     let block = declaration
         .entry(ContentKind::Block, "copper_lantern")
         .expect("a legal, undeclared entry");
     declaration
-        .tag(&ContentMod::lanterns(ContentKind::Block), &block)
+        .tag(
+            &ContentMod::lanterns(ContentKind::Block).expect("valid tag"),
+            &block,
+        )
         .expect("a block joins a block tag");
 
     declaration
@@ -155,7 +161,7 @@ fn the_same_content_declared_in_a_different_order_produces_identical_bytes() {
 
 #[test]
 fn a_tags_members_are_generated_in_the_same_order_whichever_order_they_joined_in() {
-    let lanterns = ContentMod::lanterns(ContentKind::Item);
+    let lanterns = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
 
     let build = |reversed: bool| {
         let mut declaration = ContentDeclaration::new(id("example_mod"));

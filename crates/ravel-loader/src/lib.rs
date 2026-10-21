@@ -18,7 +18,6 @@ mod events;
 mod interception;
 mod lifecycle;
 mod loaded;
-mod points;
 mod registry;
 mod resources;
 mod saves;
@@ -26,6 +25,8 @@ mod services;
 mod surface;
 mod world;
 
+#[cfg(test)]
+mod test_support;
 pub use admission::admitted;
 pub use config::{ConfigRefused, Configured, open_configuration};
 pub use discovery::{Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, discover};
@@ -34,13 +35,14 @@ pub use events::{
     Delivery, DispatchRefused, PlayRequests, admit_owner, broadcast, deliver_command,
     deliver_packet, take_play_requests,
 };
-pub use interception::{InterceptRefused, intercept, open_interceptions};
+pub use interception::{
+    AdmittedPoints, InterceptRefused, Points, PointsRefused, Round, intercept, open_interceptions,
+};
 pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,
 };
 pub use loaded::{Loaded, LoadedMods, MissingMod};
-pub use points::{AdmittedPoints, Points, PointsRefused, Round};
 pub use resources::{ResourceRefused, Supplied, open_resources};
 pub use saves::{SaveRefused, open_saved_data, produce_saved_data};
 pub use services::{ServiceOrder, ServiceRefused, open_services};
@@ -108,50 +110,8 @@ pub(crate) fn owner_refusal(
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
+    use ravel_core::{LifecycleState, ModId, StructuredFailure};
     use ravel_host_api::{HostError, ModError};
-
-    use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
-
-    pub(crate) fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
-        LifecycleEntry {
-            mod_id: name.parse().expect("a legal mod id"),
-            sides: SideSet::new(sides.iter().copied()).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: std::collections::BTreeSet::new(),
-        }
-    }
-
-    pub(crate) fn environment() -> ravel_core::FailureEnvironment {
-        ravel_core::FailureEnvironment {
-            ravel: "0.1.0".parse().expect("valid version"),
-            minecraft: "Synthetic26.1.5".to_owned(),
-            platform: "test-platform".to_owned(),
-            architecture: "test-architecture".to_owned(),
-        }
-    }
-
-    /// Advances every mod in `machine` along the success path, from `Validated` through `last`.
-    pub(crate) fn advance_through(machine: &mut LifecycleMachine, last: LifecycleState) {
-        const SUCCESS_PATH: [LifecycleState; 6] = [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
-            LifecycleState::Loaded,
-            LifecycleState::Constructed,
-            LifecycleState::Registered,
-            LifecycleState::Running,
-        ];
-        assert!(
-            SUCCESS_PATH.contains(&last),
-            "{last:?} is not on the success path"
-        );
-        for state in SUCCESS_PATH {
-            machine.advance_all(state).expect("a legal step");
-            if state == last {
-                break;
-            }
-        }
-    }
 
     #[test]
     fn phase_wrappers_preserve_callback_failure_classification() {

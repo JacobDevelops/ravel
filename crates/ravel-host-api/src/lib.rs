@@ -441,6 +441,7 @@ pub trait Mod: Send {
     /// # Errors
     ///
     /// Returns [`ModError::Unsupported`] by default, or an implementation's refusal.
+    /// Explicit refusals decline the invocation; unsupported commands and panics fail the owner.
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let _ = invocation;
         Err(ModError::Unsupported)
@@ -451,6 +452,7 @@ pub trait Mod: Send {
     /// # Errors
     ///
     /// Returns [`ModError::Unsupported`] by default, or an implementation's decoding or handling refusal.
+    /// Decoding, unsupported-contract, and explicit refusals decline delivery; panics fail the owner.
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let _ = delivery;
         Err(ModError::Unsupported)

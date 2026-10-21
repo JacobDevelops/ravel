@@ -746,10 +746,7 @@ fn place(path: &Path, content: &str, digest: &mut String) -> Result<(), Generate
 /// Writes through a temporary name, so a generator that dies half way leaves
 /// nothing behind that a build could pick up.
 fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
-    let pending = path.with_extension(format!("pending{}", std::process::id()));
-    fs::write(&pending, content)
-        .map_err(|error| GenerateError::io(inputs::file_name(&path.to_string_lossy()), error))?;
-    fs::rename(&pending, path)
+    ravel_core::replace_file(path, content.as_bytes())
         .map_err(|error| GenerateError::io(inputs::file_name(&path.to_string_lossy()), error))
 }
 

@@ -43,9 +43,7 @@ pub fn open_services<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<ServiceOrder, ServiceRefused> {
     let (machine, mods) = loaded.parts();
-    if let Some(by) = crate::events::active_blocker(machine) {
-        return Err(ServiceRefused::Halted { by: by.clone() });
-    }
+    crate::events::ensure_active_with(machine, |by| ServiceRefused::Halted { by })?;
     let result = open_with_context(
         &mut ServiceContext {
             machine,
@@ -99,9 +97,7 @@ impl ServiceContext<'_> {
             self.environment,
             source,
             ServiceRefused::Lifecycle,
-            |source| {
-                failures.insert(source.mod_id().clone(), source.clone());
-            },
+            record_failure(failures),
             refused,
         )
     }
@@ -114,9 +110,7 @@ impl ServiceContext<'_> {
             owner,
             refused,
             ServiceRefused::Lifecycle,
-            |source| {
-                failures.insert(source.mod_id().clone(), source.clone());
-            },
+            record_failure(failures),
         )
     }
 
@@ -137,6 +131,12 @@ impl ServiceContext<'_> {
             return Ok(true);
         }
         Ok(false)
+    }
+}
+
+fn record_failure(failures: &mut BTreeMap<ModId, HostError>) -> impl FnOnce(&HostError) {
+    move |source| {
+        failures.insert(source.mod_id().clone(), source.clone());
     }
 }
 
@@ -517,7 +517,7 @@ mod tests {
     use super::{ServiceRefused, open_services};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
-    use crate::tests::entry;
+    use crate::test_support::entry;
 
     #[test]
     fn lifecycle_refusals_preserve_the_owner_including_halted_worlds() {
@@ -874,7 +874,7 @@ mod tests {
             provider_entry,
             entry("consumer", &[Side::DedicatedServer]),
         ]);
-        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut machine, LifecycleState::Running);
         machine.record_world_mutation().expect("running world");
         let mut mods: [&mut dyn Mod; 2] = [&mut provider, &mut consumer];
         let refused = open_services(
@@ -895,7 +895,7 @@ mod tests {
         let mut consumer_entry = entry("consumer", &[Side::DedicatedServer]);
         consumer_entry.requirement = Requirement::Optional;
         let mut machine = machine(vec![consumer_entry]);
-        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut machine, LifecycleState::Running);
         machine.record_world_mutation().expect("running world");
         let refused = open_services(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut consumer])
@@ -1083,9 +1083,7 @@ mod tests {
         assert_eq!(context.machine.failure(&id("plain")), Ok(None));
     }
 
-    fn id(value: &str) -> ModId {
-        value.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn service(owner: &str, path: &str) -> ServiceId {
         ServiceId::new(ContentId::new(id(owner), path).expect("a legal content path"))

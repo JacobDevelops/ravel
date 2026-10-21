@@ -510,7 +510,12 @@ fn panicking_outward_drain_is_attributed_and_never_called_again() {
     assert_eq!(failure.mod_id, Some(id(MOD)));
     assert_eq!(failure.state, LifecycleState::Running);
     assert_eq!(failure.environment, environment());
-    assert_eq!(failure.surface, None);
+    assert_eq!(
+        failure.surface,
+        Some(ravel_core::FailureSurface::Hook(
+            "take_play_requests".to_owned()
+        ))
+    );
     assert!(!failure.message.text().contains("private drain"));
     drop(inner);
 }
@@ -1443,29 +1448,46 @@ fn unsupported_packet_is_invalid_input_not_an_owner_failure() -> Result<(), Stri
 }
 
 #[test]
-fn packet_callback_failure_is_attributed() -> Result<(), String> {
-    let (runtime, _) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
-    let packet = ravel_network::PacketId::new(
-        format!("{MOD}:packet")
-            .parse()
-            .map_err(|error: ravel_core::ContentIdError| error.to_string())?,
-    );
-    assert!(
-        runtime
-            .deliver_legacy_packet(packet, Vec::new(), true)
-            .is_err()
-    );
-    assert_eq!(
-        runtime
-            .inner
-            .lock()
-            .map_err(|error| error.to_string())?
+fn packet_callback_refusal_declines_and_panic_is_attributed() -> Result<(), String> {
+    for (behaviour, state) in [
+        (Behaviour::Fails, LifecycleState::Running),
+        (Behaviour::Panics, LifecycleState::Failed),
+    ] {
+        let (runtime, _) = running(Side::DedicatedServer, Vec::new(), behaviour);
+        let packet = ravel_network::PacketId::new(
+            format!("{MOD}:packet")
+                .parse()
+                .map_err(|error: ravel_core::ContentIdError| error.to_string())?,
+        );
+        let surface = ravel_core::FailureSurface::Packet(packet.id().clone());
+        let delivered = runtime.deliver_legacy_packet(packet, Vec::new(), true);
+        if behaviour == Behaviour::Panics {
+            assert!(matches!(delivered, Err(super::Undelivered::Failed(_))));
+        } else {
+            assert!(matches!(delivered, Err(super::Undelivered::Declined(_))));
+        }
+        let inner = runtime.inner.lock().map_err(|error| error.to_string())?;
+        assert_eq!(
+            inner
+                .loaded
+                .machine()
+                .state(&id(MOD))
+                .map_err(|error| error.to_string())?,
+            state
+        );
+        let failure = inner
             .loaded
             .machine()
-            .state(&id(MOD))
-            .map_err(|error| error.to_string())?,
-        LifecycleState::Failed
-    );
+            .failure(&id(MOD))
+            .map_err(|error| error.to_string())?;
+        if behaviour == Behaviour::Panics {
+            assert_eq!(failure.expect("panic attribution").surface, Some(surface));
+        } else {
+            assert!(failure.is_none());
+            assert!(inner.loaded.machine().save_access().is_ok());
+        }
+        drop(inner);
+    }
     Ok(())
 }
 

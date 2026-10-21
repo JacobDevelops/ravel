@@ -151,9 +151,14 @@ pub fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
 /// Returns [`DispatchRefused::Halted`] for a latched halt or a required, side-loaded
 /// mod that failed before the world was modified.
 pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
-    active_blocker(machine).map_or(Ok(()), |mod_id| {
-        Err(DispatchRefused::Halted { by: mod_id.clone() })
-    })
+    ensure_active_with(machine, |by| DispatchRefused::Halted { by })
+}
+
+pub(crate) fn ensure_active_with<E>(
+    machine: &LifecycleMachine,
+    refused: impl FnOnce(ModId) -> E,
+) -> Result<(), E> {
+    active_blocker(machine).map_or(Ok(()), |by| Err(refused(by.clone())))
 }
 
 pub(crate) fn active_blocker(machine: &LifecycleMachine) -> Option<&ModId> {

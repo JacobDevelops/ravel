@@ -166,10 +166,7 @@ fn write_record(record: &Path) -> Result<(), OptionsError> {
             source,
         })?;
     }
-    std::fs::write(record, recorded).map_err(|source| OptionsError {
-        path: record.to_path_buf(),
-        source,
-    })
+    replace(record, &recorded)
 }
 
 fn read(path: &Path) -> Result<String, OptionsError> {
@@ -181,12 +178,7 @@ fn read(path: &Path) -> Result<String, OptionsError> {
 
 // Stage beside the original so interruption cannot truncate the player's settings.
 fn replace(path: &Path, text: &str) -> Result<(), OptionsError> {
-    let staged = path.with_extension("ravel-pending");
-    std::fs::write(&staged, text).map_err(|source| OptionsError {
-        path: staged.clone(),
-        source,
-    })?;
-    std::fs::rename(&staged, path).map_err(|source| OptionsError {
+    ravel_core::replace_file(path, text.as_bytes()).map_err(|source| OptionsError {
         path: path.to_path_buf(),
         source,
     })

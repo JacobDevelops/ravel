@@ -16,7 +16,7 @@ fn broadcast<H: std::ops::DerefMut<Target: Mod>>(
         event,
         side,
         &mut ravel_observability::Profiler::off(),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
 }
 
@@ -28,7 +28,7 @@ fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
         loaded,
         packet,
         &mut ravel_observability::Profiler::off(),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
 }
 
@@ -40,16 +40,14 @@ fn deliver_command<H: std::ops::DerefMut<Target: Mod>>(
         loaded,
         invocation,
         &mut ravel_observability::Profiler::off(),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
 }
 use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 use crate::loaded::LoadedMods;
-use crate::tests::{advance_through, entry};
+use crate::test_support::{advance_through, entry};
 
-fn id(text: &str) -> ModId {
-    text.parse().expect("a legal mod id")
-}
+use crate::test_support::id;
 
 fn command(namespace: &str, path: &str) -> RegistryKey {
     RegistryKey::new(
@@ -229,7 +227,7 @@ fn panicking_commands_are_charged_to_the_owner() {
             .expect("all active hosts are supplied"),
         &invocation,
         &mut profiler,
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("the command is routable");
     assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
@@ -455,13 +453,22 @@ fn failed_required_mod_blocks_healthy_broadcasts() {
             &mut loaded,
             ravel_config::file::PackDocuments::default(),
             |_| panic!("a halted set must not read player configuration"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         ),
         Err(crate::ConfigRefused::Halted { by }) if by == id("required_mod")
     ));
     assert!(matches!(
-        crate::open_services(&mut loaded, &crate::tests::environment()),
+        crate::open_services(&mut loaded, &crate::test_support::environment()),
         Err(crate::ServiceRefused::Halted { by }) if by == id("required_mod")
+    ));
+    assert!(matches!(
+        crate::open_saved_data(
+            &mut loaded,
+            Some(b"unread invalid data"),
+            &std::collections::BTreeMap::new(),
+            &crate::test_support::environment(),
+        ),
+        Err(crate::SaveRefused::Blocked { by }) if by == id("required_mod")
     ));
     assert_eq!(healthy.seen, Vec::<GameEvent>::new());
 }
@@ -1119,7 +1126,7 @@ fn packet_profiling_charges_only_the_receiving_callback() {
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut host]).expect("active host"),
         &packet,
         &mut profiler,
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("routable packet");
     assert!(delivered.is_complete());
@@ -1130,7 +1137,7 @@ fn packet_profiling_charges_only_the_receiving_callback() {
                 .expect("active host"),
             &wrong_side,
             &mut profiler,
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         ),
         Err(DispatchRefused::PacketForeignSide { .. })
     ));
@@ -1386,7 +1393,7 @@ fn a_mod_that_refuses_a_packet_reports_the_refusal_and_reaches_nobody() {
 
     assert_eq!(delivered.received(), []);
     assert!(!delivered.is_complete());
-    let failure = delivered.failure().expect("the mod refused");
+    let failure = delivered.declined().expect("the mod refused");
     assert_eq!(failure.mod_id(), &id("example_mod"));
     assert!(
         failure.to_string().contains("example_mod:ping"),
@@ -1394,13 +1401,13 @@ fn a_mod_that_refuses_a_packet_reports_the_refusal_and_reaches_nobody() {
     );
     assert_eq!(
         machine.state(&id("example_mod")),
-        Ok(LifecycleState::Failed)
+        Ok(LifecycleState::Running)
     );
     assert!(
         machine
             .failure(&id("example_mod"))
             .expect("tracked")
-            .is_some()
+            .is_none()
     );
 }
 
@@ -1526,7 +1533,7 @@ fn server_outward_drains_discard_playback_but_retain_callback_failures() {
         let drained = super::take_play_requests(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut failed])
                 .expect("paired owners"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("active set");
         let empty: &[ravel_data::PlayRequest] = &[];
@@ -1554,7 +1561,7 @@ fn outward_drain_preserves_order_and_rejects_a_foreign_batch() {
     let drained = super::take_play_requests(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut first, &mut second])
             .expect("paired owners"),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("active set");
     assert_eq!(drained.requests().len(), 1);
@@ -1594,7 +1601,7 @@ fn outward_drain_catches_panics_and_skips_parked_owners() {
     let drained = super::take_play_requests(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut parked, &mut active])
             .expect("paired owners"),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("active set");
     let empty: &[ravel_data::PlayRequest] = &[];
@@ -1608,6 +1615,16 @@ fn outward_drain_catches_panics_and_skips_parked_owners() {
     );
     assert_eq!(parked.drains, 0);
     assert_eq!(active.drains, 1);
+    assert_eq!(
+        machine
+            .failure(&id("active_mod"))
+            .expect("tracked")
+            .expect("recorded")
+            .surface,
+        Some(ravel_core::FailureSurface::Hook(
+            "take_play_requests".to_owned()
+        ))
+    );
 }
 
 #[test]
@@ -1630,7 +1647,7 @@ fn outward_drain_skips_failed_optional_owners() {
     let drained = super::take_play_requests(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut active])
             .expect("paired owners"),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("optional failure does not halt the set");
     assert!(drained.failure().is_none());
@@ -1656,7 +1673,7 @@ fn optional_outward_failure_after_world_mutation_halts_without_exposing_requests
     let drained = super::take_play_requests(
         &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut later])
             .expect("paired owners"),
-        &crate::tests::environment(),
+        &crate::test_support::environment(),
     )
     .expect("failure is delivered with the completed requests");
     let empty: &[ravel_data::PlayRequest] = &[];
@@ -1669,7 +1686,7 @@ fn optional_outward_failure_after_world_mutation_halts_without_exposing_requests
         super::take_play_requests(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut failed, &mut later])
                 .expect("paired owners"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         ),
         Err(DispatchRefused::Halted {
             by: id("failed_mod")
@@ -1689,7 +1706,7 @@ fn broadcast_admits_only_the_runtime_side_or_its_integrated_server()
                 GameEvent::ResourcesReloaded,
                 claimed,
                 &mut ravel_observability::Profiler::off(),
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             );
             if claimed == running || claimed == running.world_side() {
                 assert!(result.is_ok(), "{running:?} must admit {claimed:?}");
@@ -1772,7 +1789,7 @@ fn broadcast_refuses_events_that_cannot_happen_on_the_executing_side() {
             event,
             side,
             &mut ravel_observability::Profiler::off(),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         );
         assert_eq!(result, Err(DispatchRefused::EventWrongSide { event, side }));
         assert_eq!(machine.halted_by(), None);

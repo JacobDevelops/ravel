@@ -11,7 +11,7 @@ use serde_json::json;
 use super::{SaveRefused, produce_saved_data};
 use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, Requirement};
 use crate::loaded::LoadedMods;
-use crate::tests::{advance_through, entry};
+use crate::test_support::{advance_through, entry};
 
 type Calls = Arc<Mutex<Vec<ModId>>>;
 
@@ -40,9 +40,7 @@ impl Mod for SnapshotHost {
     }
 }
 
-fn id(name: &str) -> ModId {
-    name.parse().expect("legal id")
-}
+use crate::test_support::id;
 
 fn host(name: &str, calls: &Calls) -> SnapshotHost {
     SnapshotHost {

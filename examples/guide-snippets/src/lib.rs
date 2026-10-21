@@ -46,6 +46,7 @@ pub mod first_mod {
 
 /// `docs/guide/content.md` — Declaring content.
 pub mod content {
+    use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind};
     use ravel_sdk::prelude::*;
     use ravel_sdk::tags::TagId;
 
@@ -58,17 +59,16 @@ pub mod content {
     /// The guide's block calls this; a mod author writes it once beside their
     /// declaration.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `c:lanterns` stops being a legal tag of `kind`.
-    #[must_use]
-    pub fn lanterns(kind: ContentKind) -> TagId {
-        let namespace: ModId = "c".parse().expect("`c` is a legal mod id");
+    /// Returns an error if the namespace, path, or registry kind is invalid.
+    pub fn lanterns(kind: ContentKind) -> Result<TagId, ModError> {
+        let namespace: ModId = "c".parse().map_err(ModError::from_display)?;
         TagId::new(
             kind,
-            ContentId::new(namespace, "lanterns").expect("`lanterns` is a legal content path"),
+            ContentId::new(namespace, "lanterns").map_err(ModError::from_display)?,
         )
-        .expect("a tag groups the registry its kind names")
+        .map_err(ModError::from_display)
     }
 
     impl CopperLanterns {
@@ -81,7 +81,7 @@ pub mod content {
                 .entry(ContentKind::Item, "copper_lantern")
                 .map_err(ModError::from_display)?;
             declaration
-                .tag(&lanterns(ContentKind::Block), &block)
+                .tag(&lanterns(ContentKind::Block)?, &block)
                 .map_err(ModError::from_display)?;
             Ok(declaration)
         }
@@ -174,7 +174,9 @@ pub mod state {
     use ravel_sdk::JsonValue;
     use ravel_sdk::json;
     use ravel_sdk::prelude::*;
-    use ravel_sdk::save::SavedDataEnvelope;
+    use ravel_sdk::save::{
+        MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion,
+    };
 
     /// A mod that owns one list of entries in every world.
     #[derive(Default)]
@@ -256,6 +258,7 @@ pub mod state {
 ///
 /// The document itself is JSON, beside this file; this is the code half.
 pub mod settings {
+    use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
     use ravel_sdk::prelude::*;
 
     /// A mod whose one setting is how many lanterns a stack holds.
@@ -299,6 +302,7 @@ pub mod settings {
 /// `docs/guide/package-manifest.md` — Registering content only when the mod it
 /// integrates with is running.
 pub mod optional_integration {
+    use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
     use ravel_sdk::prelude::*;
 
     /// What this mod registers when the lanterns mod is running, and nothing
@@ -347,7 +351,9 @@ pub mod optional_integration {
 
 /// `docs/guide/state.md` — Using a mod only if it is installed.
 pub mod optional_service {
+    use ravel_sdk::content::ContentId;
     use ravel_sdk::prelude::*;
+    use ravel_sdk::services::{ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest};
     use ravel_sdk::{JsonValue, json};
 
     /// The service the atlas answers, which this mod uses when one is installed.
@@ -419,9 +425,12 @@ pub mod optional_service {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::config::LayeredConfiguration;
+    use ravel_sdk::content::{Registrar, RegistrationRefused, RegistryKey};
     use ravel_sdk::prelude::*;
-    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
-    use ravel_sdk::services::{ServiceCallFailed, ServiceUnavailable};
+    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+    use ravel_sdk::services::{
+        ServiceCallFailed, ServiceDirectory, ServiceRequest, ServiceResponse, ServiceUnavailable,
+    };
     use ravel_sdk::{JsonValue, json};
 
     /// A registrar that accepts everything, as the guide tells an author to write.

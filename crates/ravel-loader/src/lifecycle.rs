@@ -270,8 +270,23 @@ impl LifecycleMachine {
     }
 
     pub(crate) fn world_eligible(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
-        self.eligible()
-            .filter(|(entry, _)| entry.sides.loads_on(self.side.world_side()))
+        self.world_entries()
+            .filter(|(_, state)| *state != LifecycleState::Failed)
+    }
+
+    pub(crate) fn world_entries(&self) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
+        self.tracked_entries()
+            .filter(|(entry, _)| self.participates_in_world(entry))
+    }
+
+    pub(crate) fn participates_in_world(&self, entry: &LifecycleEntry) -> bool {
+        entry.sides.loads_on(self.side) && entry.sides.loads_on(self.side.world_side())
+    }
+
+    pub(crate) fn world_callbacks(&self) -> impl Iterator<Item = (ModId, LifecycleState)> {
+        self.world_eligible()
+            .filter(|(_, state)| executes_mod_code(*state))
+            .map(|(entry, state)| (entry.mod_id.clone(), state))
     }
 
     pub(crate) fn tracked_entries_with_failures(
@@ -459,12 +474,7 @@ impl LifecycleMachine {
             halted,
             ..
         } = self;
-        let tracked = entries
-            .iter_mut()
-            .find(|tracked| tracked.entry.mod_id == *mod_id)
-            .ok_or_else(|| LifecycleError::UnknownMod {
-                mod_id: mod_id.clone(),
-            })?;
+        let tracked = tracked_mut(entries, mod_id)?;
         enter_failed(tracked, transcript, *world_mutated, halted)?;
         tracked.failure = Some(attribution);
         Ok(())
@@ -510,12 +520,7 @@ impl LifecycleMachine {
             halted,
             ..
         } = self;
-        let tracked = entries
-            .iter_mut()
-            .find(|tracked| tracked.entry.mod_id == *mod_id)
-            .ok_or_else(|| LifecycleError::UnknownMod {
-                mod_id: mod_id.clone(),
-            })?;
+        let tracked = tracked_mut(entries, mod_id)?;
         if tracked.state != LifecycleState::Failed {
             enter_failed(tracked, transcript, *world_mutated, halted)?;
         }
@@ -732,13 +737,20 @@ impl LifecycleMachine {
     }
 
     fn tracked_mut(&mut self, mod_id: &ModId) -> Result<&mut Tracked, LifecycleError> {
-        self.entries
-            .iter_mut()
-            .find(|tracked| tracked.entry.mod_id == *mod_id)
-            .ok_or_else(|| LifecycleError::UnknownMod {
-                mod_id: mod_id.clone(),
-            })
+        tracked_mut(&mut self.entries, mod_id)
     }
+}
+
+fn tracked_mut<'a>(
+    entries: &'a mut [Tracked],
+    mod_id: &ModId,
+) -> Result<&'a mut Tracked, LifecycleError> {
+    entries
+        .iter_mut()
+        .find(|tracked| tracked.entry.mod_id == *mod_id)
+        .ok_or_else(|| LifecycleError::UnknownMod {
+            mod_id: mod_id.clone(),
+        })
 }
 
 fn enter_failed(
@@ -783,7 +795,7 @@ mod tests {
 
     use super::{LifecycleError, LifecycleMachine, Requirement, executes_mod_code, has_registered};
     use crate::resources::ResourceRefused;
-    use crate::tests::entry;
+    use crate::test_support::entry;
 
     const SUCCESS_PATH: [LifecycleState; 8] = [
         LifecycleState::Validated,
@@ -796,9 +808,7 @@ mod tests {
         LifecycleState::Stopped,
     ];
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("valid mod id")
-    }
+    use crate::test_support::id;
 
     fn attribution(name: &str, state: LifecycleState) -> FailureAttribution {
         FailureAttribution {
@@ -899,7 +909,7 @@ mod tests {
                 mod_id: owner.clone(),
                 state: LifecycleState::Running,
             };
-            let environment = crate::tests::environment();
+            let environment = crate::test_support::environment();
             let result = super::isolate(
                 &mut machine,
                 &environment,
@@ -955,7 +965,7 @@ mod tests {
                 detail: refused.to_string(),
             }
             .to_string();
-            let environment = crate::tests::environment();
+            let environment = crate::test_support::environment();
             let result = super::isolate_loader_refusal(
                 &mut machine,
                 &environment,
@@ -979,7 +989,7 @@ mod tests {
     #[test]
     fn isolation_projects_recording_errors_before_subsystem_refusals() {
         let owner = id("outside_plan");
-        let environment = crate::tests::environment();
+        let environment = crate::test_support::environment();
         let mut machine = machine_at(LifecycleState::Running);
         let source = HostError::Unsupported {
             mod_id: owner.clone(),

@@ -299,17 +299,16 @@ impl WaystoneLedger {
 
     /// Returns the tag of `kind` called `waystones` in the shared namespace.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics for a kind nothing groups. Both callers pass a taggable kind.
-    #[must_use]
-    pub fn waystones_tag(kind: ContentKind) -> TagId {
-        let namespace: ModId = CONVENTION.parse().expect("`c` is a legal mod id");
+    /// Returns an error when the kind cannot be tagged or its identifier is invalid.
+    pub fn waystones_tag(kind: ContentKind) -> Result<TagId, ModError> {
+        let namespace: ModId = CONVENTION.parse().map_err(ModError::from_display)?;
         TagId::new(
             kind,
-            ContentId::new(namespace, "waystones").expect("`waystones` is a legal content path"),
+            ContentId::new(namespace, "waystones").map_err(ModError::from_display)?,
         )
-        .expect("blocks and items are taggable")
+        .map_err(ModError::from_display)
     }
 
     /// Returns the command this mod claims.
@@ -328,16 +327,15 @@ impl WaystoneLedger {
 
     /// Returns the path the block model is supplied at.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the derived path stops being a legal package path.
-    #[must_use]
-    pub fn model_path() -> RelativePath {
+    /// Returns an error if the derived package path is invalid.
+    pub fn model_path() -> Result<RelativePath, ModError> {
         RelativePath::try_from(format!(
             "assets/{}/models/block/{WAYSTONE}.json",
             Self::declared_id()
         ))
-        .expect("a mod id and a literal cannot spell an illegal path")
+        .map_err(ModError::from_display)
     }
 
     /// Declares everything this mod contributes.
@@ -362,10 +360,10 @@ impl WaystoneLedger {
             .map_err(ModError::from_display)?;
 
         declaration
-            .tag(&Self::waystones_tag(ContentKind::Block), &block)
+            .tag(&Self::waystones_tag(ContentKind::Block)?, &block)
             .map_err(ModError::from_display)?;
         declaration
-            .tag(&Self::waystones_tag(ContentKind::Item), &item)
+            .tag(&Self::waystones_tag(ContentKind::Item)?, &item)
             .map_err(ModError::from_display)?;
 
         for (locale, name) in [("en_us", "Waystone"), ("de_de", "Wegstein")] {
@@ -381,7 +379,7 @@ impl WaystoneLedger {
         }
 
         declaration
-            .resource(Self::model_path(), MODEL.to_vec())
+            .resource(Self::model_path()?, MODEL.to_vec())
             .map_err(ModError::from_display)?;
 
         Ok(declaration)
@@ -781,7 +779,7 @@ mod tests {
     fn the_block_and_the_item_join_the_shared_tag_for_their_own_registry() {
         let declaration = WaystoneLedger::declaration().expect("valid declaration");
         for kind in [ContentKind::Block, ContentKind::Item] {
-            let tag = WaystoneLedger::waystones_tag(kind);
+            let tag = WaystoneLedger::waystones_tag(kind).expect("valid tag");
             let members = declaration.tag_members(&tag);
             assert_eq!(members.len(), 1, "{tag}");
             assert_eq!(members[0].kind(), kind);
@@ -798,7 +796,10 @@ mod tests {
             .expect("a block is declared")
             .clone();
         let error = declaration
-            .tag(&WaystoneLedger::waystones_tag(ContentKind::Item), &block)
+            .tag(
+                &WaystoneLedger::waystones_tag(ContentKind::Item).expect("valid tag"),
+                &block,
+            )
             .expect_err("an item tag holds items");
         assert!(
             matches!(error, ContentDeclarationError::TagKind { .. }),
@@ -825,7 +826,7 @@ mod tests {
         );
         assert_eq!(
             generated
-                .file(&WaystoneLedger::model_path())
+                .file(&WaystoneLedger::model_path().expect("valid model path"))
                 .map(GeneratedFile::bytes),
             Some(super::MODEL)
         );

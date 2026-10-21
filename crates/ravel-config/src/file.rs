@@ -14,9 +14,6 @@ const DIRECTORY: &str = "config";
 
 use ravel_core::paths::{INSTANCE_DIRECTORY, PACK_CONFIG_DIRECTORY};
 
-/// The suffix a file is written under before it is put in place.
-const STAGING_SUFFIX: &str = ".pending";
-
 /// The file one owner's player values live in.
 #[must_use]
 pub fn player_path(game_directory: &Path, owner: &ModId) -> PathBuf {
@@ -77,22 +74,17 @@ pub fn read_pack(game_directory: &Path) -> Result<PackDocuments, FileError> {
         if file.extension().is_none_or(|extension| extension != "json") {
             continue;
         }
-        let name = file
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
         let owner = file
             .file_stem()
             .and_then(|stem| stem.to_str())
             .and_then(|stem| stem.parse::<ModId>().ok())
-            .ok_or(FileError::Name { file: name })?;
-        match read_path(&file, &owner) {
-            Ok(Some(document)) => {
-                documents.insert(owner, Ok(document));
-            }
-            Ok(None) => {}
-            Err(error) => {
-                documents.insert(owner, Err(error));
-            }
+            .ok_or_else(|| FileError::Name {
+                file: file
+                    .file_name()
+                    .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+            })?;
+        if let Some(document) = read_path(&file, &owner).transpose() {
+            documents.insert(owner, document);
         }
     }
     Ok(documents)
@@ -156,28 +148,10 @@ pub fn write_player(game_directory: &Path, document: &ValueDocument) -> Result<(
         source,
     })?;
 
-    let mut staging = file.clone().into_os_string();
-    staging.push(STAGING_SUFFIX);
-    let staging = PathBuf::from(staging);
-
     let mut text = document.to_json();
     text.push('\n');
-    stage(&staging, &file, &text).inspect_err(|_| {
-        // Cleanup is best-effort; preserve the original write failure.
-        drop(fs::remove_file(&staging));
-    })
-}
-
-/// Writes the staging file and renames it onto the target.
-fn stage(staging: &Path, file: &Path, text: &str) -> Result<(), FileError> {
-    fs::write(staging, text).map_err(|source| FileError::Io {
-        path: staging.to_owned(),
-        source,
-    })?;
-    fs::rename(staging, file).map_err(|source| FileError::Io {
-        path: file.to_owned(),
-        source,
-    })
+    ravel_core::replace_file(&file, text.as_bytes())
+        .map_err(|source| FileError::Io { path: file, source })
 }
 
 /// Why a player's configuration file could not be used.
@@ -324,7 +298,7 @@ mod tests {
         let left_behind: Vec<_> = std::fs::read_dir(game.join("config"))
             .expect("the config directory should exist")
             .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
-            .filter(|name| name.to_string_lossy().ends_with(super::STAGING_SUFFIX))
+            .filter(|name| name.to_string_lossy().ends_with(".pending"))
             .collect();
         assert!(
             left_behind.is_empty(),

@@ -74,7 +74,7 @@ mod tests {
     use std::fmt;
 
     use ravel_core::{
-        FailureEnvironment, FailureKind, LifecycleState, ModId, Side, SideSet, StructuredFailure,
+        FailureEnvironment, FailureKind, LifecycleState, Side, SideSet, StructuredFailure,
     };
     use ravel_observability::{PreWorldReport, Subject};
 
@@ -106,9 +106,7 @@ mod tests {
         }
     }
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("a valid mod id")
-    }
+    use crate::test_support::id;
 
     fn report() -> PreWorldReport {
         PreWorldReport::new(FailureEnvironment {
@@ -130,7 +128,7 @@ mod tests {
             }],
         )
         .expect("one mod is a valid plan");
-        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut machine, LifecycleState::Running);
         machine
     }
 

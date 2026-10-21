@@ -16,6 +16,22 @@ pub const HOST_LIBRARY: &str = "ravel_bootstrap";
 /// Seeded-pack record, relative to the instance-private root.
 pub const SEEDED_PACKS_FILE: &str = "seeded-packs";
 
+/// Replaces a file through a sibling staging file, removing failed staged output.
+///
+/// # Errors
+///
+/// Returns the original staging-write or rename error.
+pub fn replace_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    let mut pending = path.as_os_str().to_owned();
+    pending.push(".pending");
+    let pending = std::path::PathBuf::from(pending);
+    std::fs::write(&pending, contents)
+        .and_then(|()| std::fs::rename(&pending, path))
+        .inspect_err(|_| {
+            drop(std::fs::remove_file(&pending));
+        })
+}
+
 // ECMA `.` excludes these characters in the schema's `relativePath` pattern.
 const LINE_TERMINATORS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
@@ -161,6 +177,30 @@ impl std::error::Error for RelativePathError {}
 #[cfg(test)]
 mod tests {
     use super::{RelativePath, RelativePathError};
+
+    #[test]
+    fn replacement_preserves_originals_and_cleans_failed_staging() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time after epoch")
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("ravel-replace-file-{}-{stamp}", std::process::id()));
+        std::fs::create_dir(&root).expect("create isolated test directory");
+        let target = root.join("settings");
+        super::replace_file(&target, b"first").expect("initial write");
+        super::replace_file(&target, b"second").expect("replace existing file");
+        assert_eq!(std::fs::read(&target).expect("read replacement"), b"second");
+        assert!(!root.join("settings.pending").exists());
+        let directory = root.join("directory");
+        std::fs::create_dir(&directory).expect("create rename obstruction");
+        assert!(super::replace_file(&directory, b"cannot replace directory").is_err());
+        assert!(directory.is_dir());
+        assert!(!root.join("directory.pending").exists());
+        let missing = root.join("missing/settings");
+        assert!(super::replace_file(&missing, b"cannot stage").is_err());
+        std::fs::remove_dir_all(root).expect("remove isolated test directory");
+    }
 
     #[test]
     fn a_legal_relative_path_keeps_its_spelling_and_names_its_file() {

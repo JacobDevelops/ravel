@@ -24,9 +24,7 @@ const STARTUP: [LifecycleState; 6] = [
     LifecycleState::Running,
 ];
 
-fn id(name: &str) -> ModId {
-    name.parse().expect("valid mod id")
-}
+use crate::test_support::id;
 
 fn entry(name: &str, sides: &[Side], requirement: Requirement) -> LifecycleEntry {
     LifecycleEntry {

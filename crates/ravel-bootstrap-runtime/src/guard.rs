@@ -15,7 +15,7 @@ use crate::{invocations, runtime};
 pub(crate) fn report(context: &str, error: &impl fmt::Display) {
     eprintln!(
         "[ravel] {context}: {}",
-        ravel_core::DiagnosticMessage::redacted(&error.to_string()).text()
+        ravel_core::redact_text(&error.to_string())
     );
 }
 

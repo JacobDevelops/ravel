@@ -74,9 +74,7 @@ fn tagged(tag: u8, payload: &[u8]) -> Vec<u8> {
 }
 
 fn publishable(diagnostic: &str) -> String {
-    ravel_core::DiagnosticMessage::redacted(diagnostic)
-        .text()
-        .to_owned()
+    ravel_core::redact_text(diagnostic)
 }
 
 fn save_answer(outcome: SaveOutcome) -> Vec<u8> {

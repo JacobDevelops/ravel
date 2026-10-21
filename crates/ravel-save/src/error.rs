@@ -1,7 +1,6 @@
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
-use semver::Version;
+use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure, Version};
 
 use crate::SavedDataVersion;
 

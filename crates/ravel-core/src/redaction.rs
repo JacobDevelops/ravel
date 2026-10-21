@@ -21,7 +21,8 @@ const TOKEN_SEGMENT: usize = 8;
 const OPENING: [char; 5] = ['`', '\'', '"', '(', '['];
 const CLOSING: [char; 9] = ['`', '\'', '"', ')', ']', '.', ',', ';', '!'];
 
-pub(crate) fn redact_text(text: &str) -> String {
+/// Redacts credential values and local paths before publishing arbitrary text.
+pub fn redact_text(text: &str) -> String {
     let mut redacted = String::with_capacity(text.len());
     let mut rest = text;
     while let Some((start, end)) = credential_span(rest, false) {

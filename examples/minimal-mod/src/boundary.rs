@@ -8,6 +8,7 @@
 //!
 //! ```
 //! use ravel_sdk::prelude::*;
+//! use ravel_sdk::events::{CommandInvocation, GameEvent};
 //!
 //! struct Example;
 //!

@@ -52,8 +52,8 @@ pub mod storage;
 pub mod transport;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, Registrar, claim_all};
-use ravel_sdk::events::GameEvent;
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, Registrar, claim_all};
+use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion};
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};

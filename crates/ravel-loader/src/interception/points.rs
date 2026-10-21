@@ -15,16 +15,19 @@ struct Answer {
 ///
 /// ```
 /// use ravel_core::{ModId, Side};
-/// use ravel_host_api::{Outcome, Point};
+/// use ravel_host_api::{InterceptionDeclaration, Outcome, Point};
 /// use ravel_loader::Points;
 ///
 /// let guard: ModId = "guard_mod".parse()?;
 /// let ledger: ModId = "ledger_mod".parse()?;
 ///
 /// let mut points = Points::default();
-/// points.answer_at(&ledger, Point::BlockIsBroken);
-/// points.answer_at(&guard, Point::BlockIsBroken);
-/// points.after(&ledger, &guard);
+/// let mut ledger_points = InterceptionDeclaration::new(ledger);
+/// ledger_points.answer_at(Point::BlockIsBroken).after(&guard);
+/// points.declare(&ledger_points);
+/// let mut guard_points = InterceptionDeclaration::new(guard.clone());
+/// guard_points.answer_at(Point::BlockIsBroken);
+/// points.declare(&guard_points);
 ///
 /// let points = points.admit()?;
 /// let round = points.ask(Point::BlockIsBroken, Side::IntegratedServer, |_| true, &mut |owner, _| {
@@ -63,12 +66,14 @@ impl fmt::Debug for Points {
 
 impl Points {
     /// Declares an answer, validated at admission; the first refusal ends a round.
-    pub fn answer_at(&mut self, owner: &ModId, point: Point) {
+    #[cfg(test)]
+    fn answer_at(&mut self, owner: &ModId, point: Point) {
         self.record(owner, point, false);
     }
 
     /// Declares exclusive replacement; admission refuses multiple replacements at a point.
-    pub fn replace_at(&mut self, owner: &ModId, point: Point) {
+    #[cfg(test)]
+    fn replace_at(&mut self, owner: &ModId, point: Point) {
         self.record(owner, point, true);
     }
 
@@ -99,7 +104,7 @@ impl Points {
     }
 
     /// Declares that `later` is asked after `earlier`, at every point they share.
-    pub fn after(&mut self, later: &ModId, earlier: &ModId) {
+    fn after(&mut self, later: &ModId, earlier: &ModId) {
         self.after
             .entry(earlier.clone())
             .or_default()
@@ -287,11 +292,11 @@ pub enum PointsRefused {
         /// The owners declaring the invalid edges, in name order.
         claimants: Vec<ModId>,
     },
-    /// Two mods each replace the outcome at one point.
+    /// Multiple mods each replace the outcome at one point.
     ContestedPoint {
         /// The contested point.
         point: Point,
-        /// Both claimants, in declaration order.
+        /// Every claimant, in declaration order.
         claimants: Vec<ModId>,
     },
     /// The mods at one point each wait for another.
@@ -332,16 +337,12 @@ impl fmt::Display for PointsRefused {
                 "{} is ordered against but answers no interception point",
                 ModId::display_list(owners)
             ),
-            Self::ContestedPoint { point, claimants } => {
-                let names: Vec<&str> = claimants.iter().map(ModId::as_str).collect();
-                write!(
-                    formatter,
-                    "`{}` and `{}` each replace the outcome at `{point}`, and two replacements are \
-                     two different games rather than an order",
-                    names.first().copied().unwrap_or_default(),
-                    names.get(1).copied().unwrap_or_default()
-                )
-            }
+            Self::ContestedPoint { point, claimants } => write!(
+                formatter,
+                "{} each replace the outcome at `{point}`, and two replacements are \
+                 two different games rather than an order",
+                ModId::display_list(claimants)
+            ),
             Self::Circular { point, claimants } => {
                 write!(
                     formatter,
@@ -361,9 +362,7 @@ mod tests {
 
     use super::{Occasion, Outcome, Point, Points, PointsRefused, Round};
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     /// Checks dispatch order independently by comparing returned positions.
     fn asked_before(round: &Round, earlier: &ModId, later: &ModId) -> bool {
@@ -401,6 +400,23 @@ mod tests {
                     claimants: vec![later.clone()],
                 }
             );
+        }
+    }
+
+    #[test]
+    fn contested_point_displays_every_claimant() {
+        let mut points = Points::default();
+        for owner in ["first", "second", "third"] {
+            points.replace_at(&id(owner), Point::BlockIsBroken);
+        }
+        let refusal = points.admit().expect_err("three replacements conflict");
+        assert_eq!(
+            refusal.claimants(),
+            [id("first"), id("second"), id("third")]
+        );
+        let message = refusal.to_string();
+        for owner in ["first", "second", "third"] {
+            assert!(message.contains(owner), "{message}");
         }
     }
 

@@ -54,9 +54,9 @@ pub(crate) enum SaveOutcome {
     Withheld,
     /// The complete aggregate the adapter should persist.
     Replacement(Vec<u8>),
-    /// Unredacted failure diagnostic; publish only through `DiagnosticMessage::redacted`.
+    /// Unredacted failure diagnostic; publish only through `ravel_core::redact_text`.
     Failed(String),
-    /// Unredacted identity diagnostic; publish only through `DiagnosticMessage::redacted`.
+    /// Unredacted identity diagnostic; publish only through `ravel_core::redact_text`.
     IdentityMismatch(String),
 }
 

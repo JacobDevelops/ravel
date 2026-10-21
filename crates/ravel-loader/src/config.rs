@@ -28,9 +28,7 @@ pub fn open_configuration<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Configured, ConfigRefused> {
     let (machine, mods) = loaded.parts();
-    if let Some(by) = crate::events::active_blocker(machine) {
-        return Err(ConfigRefused::Halted { by: by.clone() });
-    }
+    crate::events::ensure_active_with(machine, |by| ConfigRefused::Halted { by })?;
     let mut configured = Configured::default();
 
     let eligible: Vec<_> = machine
@@ -320,7 +318,7 @@ mod tests {
 
     use super::ConfigRefused;
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine};
-    use crate::tests::entry;
+    use crate::test_support::entry;
 
     fn open_configuration(
         loaded: &mut crate::LoadedMods<'_, &mut dyn Mod>,
@@ -334,7 +332,7 @@ mod tests {
                 .map(|(owner, document)| (owner.clone(), Ok(document.clone())))
                 .collect(),
             |owner| Ok(players.get(owner).cloned()),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
     }
 
@@ -347,7 +345,7 @@ mod tests {
                 .expect("complete host set"),
             BTreeMap::new(),
             |_| panic!("foreign ownership must be refused before reading player files"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect_err("foreign declaration");
         assert!(matches!(refused, ConfigRefused::ForeignDeclaration { .. }));
@@ -370,7 +368,7 @@ mod tests {
                     ),
                 })
             },
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect_err("unreadable player document");
         assert_eq!(refused.mod_id(), Some(&id("first_mod")));
@@ -385,9 +383,7 @@ mod tests {
         assert_eq!(failure.mod_id.as_ref(), Some(&id("first_mod")));
     }
 
-    fn id(value: &str) -> ModId {
-        value.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn declaration(owner: &str) -> ConfigurationDeclaration {
         ConfigurationDeclaration::parse(&format!(
@@ -543,7 +539,7 @@ mod tests {
                 .expect("paired host"),
             BTreeMap::new(),
             |_| panic!("a failed owner must not read player settings"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("failed owners are skipped");
         assert_eq!(host.applied, None);
@@ -629,7 +625,7 @@ mod tests {
             .expect("tracked")
             .expect("recorded");
         assert_eq!(failure.mod_id.as_ref(), Some(&id("deaf_mod")));
-        assert_eq!(failure.environment, crate::tests::environment());
+        assert_eq!(failure.environment, crate::test_support::environment());
         assert!(machine.halted_by().is_none());
     }
 
@@ -670,7 +666,7 @@ mod tests {
                         Ok(None)
                     }
                 },
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             )
             .expect("optional owner faults leave healthy owners running");
             assert_eq!(configured.order(), [id("later_mod")], "{fault}");
@@ -682,7 +678,7 @@ mod tests {
                 .expect("tracked")
                 .expect("recorded");
             assert_eq!(failure.mod_id.as_ref(), Some(&id("broken_mod")));
-            assert_eq!(failure.environment, crate::tests::environment());
+            assert_eq!(failure.environment, crate::test_support::environment());
             assert!(machine.halted_by().is_none(), "{fault}");
         }
     }

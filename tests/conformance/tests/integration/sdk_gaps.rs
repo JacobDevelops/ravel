@@ -383,8 +383,11 @@ fn two_mods_replacing_one_outcome_are_refused_at_the_barrier_naming_both() {
     let second = id("second_probe");
 
     let mut points = Points::default();
-    points.replace_at(&first, Point::BlockIsBroken);
-    points.replace_at(&second, Point::BlockIsBroken);
+    for owner in [&first, &second] {
+        let mut declaration = ravel_sdk::interception::InterceptionDeclaration::new(owner.clone());
+        declaration.replace_at(Point::BlockIsBroken);
+        points.declare(&declaration);
+    }
 
     let refusal = points
         .admit()
@@ -565,7 +568,7 @@ fn the_examples_block_and_item_tags_keep_their_members_and_contributor() {
     let declaration = ContentMod::new().declaration().expect("valid declaration");
     let set = ravel_data::TagResources::merged([&declaration]).expect("valid tags");
     for kind in [ContentKind::Block, ContentKind::Item] {
-        let tag = ContentMod::lanterns(kind);
+        let tag = ContentMod::lanterns(kind).expect("valid tag");
         let members = set.values(&tag.generated_path());
         assert_eq!(members.len(), 1, "{tag}");
         assert_eq!(
@@ -584,7 +587,7 @@ fn another_mod_joins_the_examples_shared_tag_without_conflicting() {
     use ravel_core::ContentKind;
     use ravel_example_content_mod::ContentMod;
     let content = ContentMod::new().declaration().expect("valid declaration");
-    let tag = ContentMod::lanterns(ContentKind::Item);
+    let tag = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
     let mut other = ContentDeclaration::new(id("other"));
     let theirs = other
         .entry(ContentKind::Item, "tin_lantern")
@@ -620,7 +623,7 @@ fn waystone_tags_merge_the_block_and_item_in_their_own_registry() {
     let declaration = WaystoneLedger::declaration().expect("valid declaration");
     let set = ravel_data::TagResources::merged([&declaration]).expect("valid tags");
     for kind in [ContentKind::Block, ContentKind::Item] {
-        let tag = WaystoneLedger::waystones_tag(kind);
+        let tag = WaystoneLedger::waystones_tag(kind).expect("valid tag");
         let members = set.values(&tag.generated_path());
         assert_eq!(members.len(), 1, "{tag}");
         assert_eq!(

@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::points::{AdmittedPoints, Points, PointsRefused, Round};
+mod points;
+pub use points::{AdmittedPoints, Points, PointsRefused, Round};
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_host_api::{HostError, InterceptionDeclaration, Mod, Occasion, Point};
 
@@ -53,11 +54,7 @@ fn collect_declarations<H: std::ops::DerefMut<Target: Mod>>(
 ) -> Result<Vec<InterceptionDeclaration>, InterceptRefused> {
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
-    let eligible: Vec<_> = machine
-        .world_eligible()
-        .filter(|(_, state)| crate::executes_mod_code(*state))
-        .map(|(entry, state)| (entry.mod_id.clone(), state))
-        .collect();
+    let eligible: Vec<_> = machine.world_callbacks().collect();
     let mut declarations = Vec::with_capacity(eligible.len());
     for (mod_id, state) in eligible {
         let instance = crate::loaded::instance(mods, &mod_id);
@@ -106,11 +103,7 @@ pub fn intercept<H: std::ops::DerefMut<Target: Mod>>(
     let (machine, mods) = loaded.parts();
     ensure_active(machine)?;
     let side = machine.side().world_side();
-    let states: std::collections::BTreeMap<_, _> = machine
-        .world_eligible()
-        .filter(|(_, state)| crate::executes_mod_code(*state))
-        .map(|(entry, state)| (entry.mod_id.clone(), state))
-        .collect();
+    let states: std::collections::BTreeMap<_, _> = machine.world_callbacks().collect();
     let mut asked = |owner: &ModId, occasion: Occasion| {
         let instance = crate::loaded::instance_mut(mods, owner);
         crate::callback(owner, states[owner], || instance.intercept(occasion))
@@ -118,7 +111,13 @@ pub fn intercept<H: std::ops::DerefMut<Target: Mod>>(
     let round = points.ask(point, side, |owner| states.contains_key(owner), &mut asked);
     if let Some(error) = round.failure() {
         machine
-            .fail_callback(error, environment, None)
+            .fail_callback(
+                error,
+                environment,
+                Some(ravel_core::FailureSurface::Hook(
+                    round.point().as_str().to_owned(),
+                )),
+            )
             .map_err(InterceptRefused::Lifecycle)?;
     }
     Ok(round)
@@ -142,9 +141,7 @@ fn declaration_failure(
 }
 
 fn ensure_active(machine: &crate::LifecycleMachine) -> Result<(), InterceptRefused> {
-    crate::events::active_blocker(machine).map_or(Ok(()), |by| {
-        Err(InterceptRefused::Halted { by: by.clone() })
-    })
+    crate::events::ensure_active_with(machine, |by| InterceptRefused::Halted { by })
 }
 
 /// Why a point could not be asked at all.
@@ -250,26 +247,24 @@ mod tests {
     };
 
     use super::InterceptRefused;
-    use crate::points::PointsRefused;
+    use super::PointsRefused;
 
     fn intercept<H: std::ops::DerefMut<Target: Mod>>(
         loaded: &mut LoadedMods<'_, H>,
         point: Point,
     ) -> Result<super::Round, InterceptRefused> {
-        let points = super::open_interceptions(loaded, &crate::tests::environment())?;
-        super::intercept(loaded, &points, point, &crate::tests::environment())
+        let points = super::open_interceptions(loaded, &crate::test_support::environment())?;
+        super::intercept(loaded, &points, point, &crate::test_support::environment())
     }
     use crate::lifecycle::LifecycleMachine;
     use crate::loaded::LoadedMods;
-    use crate::tests::{advance_through, entry};
+    use crate::test_support::{advance_through, entry};
 
     // Reverse lexical order ensures ordering assertions depend on the declared edge.
     const GUARD: &str = "zephyr_guard";
     const LEDGER: &str = "alpha_ledger";
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     #[derive(Clone, Copy, Eq, PartialEq)]
     enum PanicAt {
@@ -378,7 +373,7 @@ mod tests {
         let points = super::open_interceptions(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut owner])
                 .expect("paired owner"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("admitted point");
         machine
@@ -387,7 +382,7 @@ mod tests {
                     mod_id: id(GUARD),
                     state: LifecycleState::Running,
                 },
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
                 None,
             )
             .expect("record failure");
@@ -395,7 +390,7 @@ mod tests {
         let mut mods: [&mut dyn Mod; 1] = [&mut owner];
         let mut loaded = LoadedMods::new(&mut machine, &mut mods).expect("failed owner paired");
         assert_eq!(
-            super::open_interceptions(&mut loaded, &crate::tests::environment()),
+            super::open_interceptions(&mut loaded, &crate::test_support::environment()),
             Err(InterceptRefused::Halted { by: id(GUARD) }),
         );
         assert_eq!(
@@ -403,7 +398,7 @@ mod tests {
                 &mut loaded,
                 &points,
                 Point::WorldIsSaved,
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             ),
             Err(InterceptRefused::Halted { by: id(GUARD) }),
         );
@@ -457,7 +452,7 @@ mod tests {
             let admitted = super::open_interceptions(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
                     .expect("paired owners"),
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             );
             assert_eq!(machine.state(&id(GUARD)), Ok(LifecycleState::Failed));
             assert!(machine.failure(&id(GUARD)).expect("tracked").is_some());
@@ -480,7 +475,7 @@ mod tests {
                     .expect("paired owners"),
                     &points,
                     Point::WorldIsSaved,
-                    &crate::tests::environment(),
+                    &crate::test_support::environment(),
                 )
                 .expect("surviving owner can answer");
                 assert_eq!(round.asked(), [id(LEDGER)]);
@@ -591,7 +586,9 @@ mod tests {
         assert_eq!(refusal.lifecycle_state(), LifecycleState::Failed);
         assert!(!refusal.quotes_untrusted_text());
         let mut points = crate::Points::default();
-        points.answer_at(&id(GUARD), Point::WorldIsSaved);
+        let mut declaration = InterceptionDeclaration::new(id(GUARD));
+        declaration.answer_at(Point::WorldIsSaved);
+        points.declare(&declaration);
         let points = points.admit().expect("cached legal declaration");
         assert_eq!(
             super::intercept(
@@ -599,7 +596,7 @@ mod tests {
                     .expect("paired owners"),
                 &points,
                 Point::WorldIsSaved,
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             ),
             Err(InterceptRefused::Halted { by: id(LEDGER) })
         );
@@ -907,7 +904,7 @@ mod tests {
                 .expect("tracked")
                 .expect("attributed");
             assert_eq!(failure.mod_id.as_ref(), Some(&owner));
-            assert_eq!(failure.environment, crate::tests::environment());
+            assert_eq!(failure.environment, crate::test_support::environment());
         }
     }
 
@@ -953,8 +950,14 @@ mod tests {
             .failure(&id(GUARD))
             .expect("tracked")
             .expect("recorded");
-        assert_eq!(attribution.environment, crate::tests::environment());
+        assert_eq!(attribution.environment, crate::test_support::environment());
         assert_eq!(attribution.mod_id.as_ref(), Some(&id(GUARD)));
+        assert_eq!(
+            attribution.surface,
+            Some(ravel_core::FailureSurface::Hook(
+                Point::WorldIsSaved.as_str().to_owned()
+            ))
+        );
     }
 
     #[test]
@@ -972,7 +975,7 @@ mod tests {
         let points = super::open_interceptions(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
                 .expect("paired owners"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("optional cycle owners leave the admitted set");
         for owner in [id(GUARD), id(LEDGER)] {
@@ -982,7 +985,7 @@ mod tests {
                 .expect("tracked")
                 .expect("attributed");
             assert_eq!(failure.mod_id.as_ref(), Some(&owner));
-            assert_eq!(failure.environment, crate::tests::environment());
+            assert_eq!(failure.environment, crate::test_support::environment());
             assert!(!machine.loads(&owner));
         }
         assert!(machine.halted_by().is_none());
@@ -991,7 +994,7 @@ mod tests {
                 .expect("paired owners"),
             &points,
             Point::WorldIsSaved,
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("empty admitted point is safe");
         assert_eq!(round.outcome(), Outcome::Proceed);
@@ -1020,7 +1023,7 @@ mod tests {
             let refused = super::open_interceptions(
                 &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
                     .expect("paired owners"),
-                &crate::tests::environment(),
+                &crate::test_support::environment(),
             )
             .expect_err("a required cycle owner prevents admission");
             let InterceptRefused::Refused(PointsRefused::Circular { point, claimants }) = refused
@@ -1038,7 +1041,7 @@ mod tests {
                     .expect("tracked")
                     .expect("attributed");
                 assert_eq!(failure.mod_id.as_ref(), Some(&owner));
-                assert_eq!(failure.environment, crate::tests::environment());
+                assert_eq!(failure.environment, crate::test_support::environment());
             }
             assert_eq!(guard.seen, Vec::<Occasion>::new());
             assert_eq!(ledger.seen, Vec::<Occasion>::new());
@@ -1060,7 +1063,7 @@ mod tests {
         let points = super::open_interceptions(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
                 .expect("paired owners"),
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("admitted declarations");
         let source = HostError::Unsupported {
@@ -1069,14 +1072,14 @@ mod tests {
         };
         // A provider callback can fail after point admission and before this round.
         machine
-            .fail_callback(&source, &crate::tests::environment(), None)
+            .fail_callback(&source, &crate::test_support::environment(), None)
             .expect("attributed");
         let round = super::intercept(
             &mut LoadedMods::<&mut dyn Mod>::new(&mut machine, &mut [&mut guard, &mut ledger])
                 .expect("paired owners"),
             &points,
             Point::WorldIsSaved,
-            &crate::tests::environment(),
+            &crate::test_support::environment(),
         )
         .expect("optional failure does not halt the cached round");
         assert_eq!(round.outcome(), Outcome::Proceed);

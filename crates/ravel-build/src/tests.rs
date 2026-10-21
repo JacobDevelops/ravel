@@ -18,7 +18,7 @@ const EXPORTING_SOURCE: &str = r#"#![forbid(unsafe_code)]
 
 //! A mod a player installed, built on the player's machine.
 
-use ravel_sdk::prelude::*;
+use ravel_sdk::content::Registrar;
 use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod, export_mod};
 
 /// The mod this package builds.

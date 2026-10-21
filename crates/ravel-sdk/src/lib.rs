@@ -207,6 +207,8 @@ pub trait Declared {
 
 /// The names a mod almost always wants.
 ///
+/// Import content, configuration, networking, and other topic APIs from their modules.
+///
 /// ```
 /// use ravel_sdk::prelude::*;
 ///
@@ -223,26 +225,6 @@ pub trait Declared {
 /// assert_eq!(Example::declared_id().as_str(), "example");
 /// ```
 pub mod prelude {
-    pub use crate::audio::AudioDeclaration;
-    pub use crate::config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
-    pub use crate::content::{
-        ContentDeclaration, ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey,
-        claim_all,
-    };
-    pub use crate::events::{CommandInvocation, GameEvent};
-    pub use crate::interception::{Outcome, Point};
-    pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
-    pub use crate::render_stages::{RenderStage, StageDeclaration};
-    pub use crate::save::{
-        MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataVersion,
-    };
-    pub use crate::server_data::ServerDataKind;
-    pub use crate::services::{
-        ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
-    };
-    pub use crate::sides::ClientOnly;
-    pub use crate::tags::TagId;
-    pub use crate::world_shaping::{ShapingRecord, WorldShaping};
     pub use crate::{
         Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod, export_mod,
     };

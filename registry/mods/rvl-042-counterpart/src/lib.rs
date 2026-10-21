@@ -32,7 +32,7 @@ pub mod settings;
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentKind};
-use ravel_sdk::events::GameEvent;
+use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::prelude::*;
 
 pub use crate::arithmetic::{Mature, Position, SweepReport};
@@ -253,6 +253,7 @@ export_mod!(Entry::new());
 mod tests {
     use super::*;
     use ravel_sdk::audio::AudioEvent;
+    use ravel_sdk::content::{ContentId, RegistryKey};
 
     #[test]
     fn shipped_settings_failure_is_refused_at_constructed() {

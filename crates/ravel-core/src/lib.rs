@@ -22,9 +22,9 @@ pub use diagnostics::{
 };
 pub use digest::{Sha256Digest, Sha256Error};
 pub use identity::{ModId, ModIdError, check_identifier};
-pub use paths::{RelativePath, RelativePathError};
+pub use paths::{RelativePath, RelativePathError, replace_file};
 pub use precedence::{Cycle, precedence};
-pub use redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS, contains_credential};
+pub use redaction::{CREDENTIAL_PREFIXES, CREDENTIAL_WORDS, contains_credential, redact_text};
 /// An exact semantic version of a mod or Ravel, not a Minecraft release.
 pub use semver::Version;
 /// A Cargo-style compatibility range over [`Version`]; bare versions mean `^`.

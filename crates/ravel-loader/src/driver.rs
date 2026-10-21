@@ -217,7 +217,7 @@ mod tests {
     use super::{DriveError, start_all, stop_all};
     use crate::lifecycle::{LifecycleMachine, Requirement};
     use crate::services::ServiceRefused;
-    use crate::tests::{entry, environment};
+    use crate::test_support::{entry, environment};
 
     struct Recording {
         id: ModId,
@@ -235,9 +235,7 @@ mod tests {
         }
     }
 
-    fn id(value: &str) -> ModId {
-        value.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     #[test]
     fn a_loaded_value_is_driven_with_its_running_machine() {

@@ -133,6 +133,17 @@ impl<'a, H: DerefMut<Target: Mod>> LoadedMods<'a, H> {
         self.machine
     }
 
+    /// Refuses the first supplied value absent from the admitted lifecycle set.
+    ///
+    /// # Errors
+    ///
+    /// Returns the unadmitted value's identity.
+    pub fn require_admitted(entries: &[crate::LifecycleEntry], mods: &[H]) -> Result<(), ModId> {
+        mods.iter()
+            .find(|instance| !entries.iter().any(|entry| &entry.mod_id == instance.id()))
+            .map_or(Ok(()), |instance| Err(instance.id().clone()))
+    }
+
     pub(crate) fn parts(&mut self) -> (&mut LifecycleMachine, &mut [H]) {
         (self.machine, self.mods)
     }
@@ -219,7 +230,7 @@ mod tests {
 
     use super::{Loaded, LoadedMods};
     use crate::lifecycle::LifecycleMachine;
-    use crate::tests::{advance_through, entry};
+    use crate::test_support::{advance_through, entry};
 
     struct Recording {
         id: ModId,

@@ -79,7 +79,7 @@ pub mod validators;
 use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, RegistryKey};
 use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::prelude::*;
-use ravel_sdk::sides::ClientOnlyError;
+use ravel_sdk::sides::{ClientOnly, ClientOnlyError};
 
 pub use crate::channel::{Body, Channel, Kind, Peer, Position, Suffixes, Target};
 pub use crate::colour::{Animated, Colour, Names};

@@ -51,9 +51,12 @@ pub mod tools;
 pub mod world;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::{ContentDeclaration, ContentKind, Registrar, claim_all};
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, Registrar, claim_all};
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
+use ravel_sdk::services::{
+    ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
+};
 use rvl_042_counterpart::flags::FlagTable;
 use rvl_321_counterpart::model::{Crop, Tier};
 
@@ -362,6 +365,7 @@ export_mod!(Entry::new());
 mod tests {
     use super::*;
     use ravel_sdk::content::{RegistrationRefused, RegistryKey};
+    use ravel_sdk::world_shaping::WorldShaping;
     use ravel_sdk::{JsonValue, json};
     use rvl_321_counterpart::model::Crafted;
 

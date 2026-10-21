@@ -8,7 +8,6 @@ use std::sync::{Mutex, PoisonError};
 
 use ravel_config::LayeredConfiguration;
 
-use ravel_core::DiagnosticMessage;
 #[cfg(test)]
 use ravel_host_api::Mod;
 #[cfg(test)]
@@ -19,8 +18,7 @@ use ravel_minecraft_adapter::environment;
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::outward;
-use ravel_core::RegistryKey;
-use ravel_core::Version;
+use ravel_core::{DiagnosticMessage, RegistryKey, Version};
 
 mod dispatch;
 pub(crate) mod installation;
@@ -81,8 +79,10 @@ pub fn install_panic_hook() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
-            let message = DiagnosticMessage::redacted(&panic.to_string());
-            eprintln!("Ravel host panic: {}", message.text());
+            eprintln!(
+                "Ravel host panic: {}",
+                ravel_core::redact_text(&panic.to_string())
+            );
         }));
     });
 }

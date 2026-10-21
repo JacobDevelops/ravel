@@ -117,12 +117,7 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     let entries = admitted(&plan, &manifests, &running.ravel, &running.minecraft)
         .map_err(LaunchError::Compatibility)?;
 
-    if let Some(unclaimed) = values
-        .iter()
-        .find(|value| !entries.iter().any(|entry| &entry.mod_id == value.id()))
-    {
-        return Err(LaunchError::Unadmitted(unclaimed.id().clone()));
-    }
+    LoadedMods::require_admitted(&entries, &values).map_err(LaunchError::Unadmitted)?;
     let installed_packages = manifests
         .into_iter()
         .map(|manifest| (manifest.id, manifest.version))
@@ -334,9 +329,7 @@ pub enum LaunchError {
 impl LaunchError {
     /// Redacts launch diagnostics before they cross into a thrown JVM exception.
     pub fn redacted(&self) -> String {
-        ravel_core::DiagnosticMessage::redacted(&self.to_string())
-            .text()
-            .to_owned()
+        ravel_core::redact_text(&self.to_string())
     }
 }
 

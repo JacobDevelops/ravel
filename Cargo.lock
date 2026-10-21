@@ -616,7 +616,6 @@ name = "ravel-save"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
- "semver",
  "serde",
  "serde_json",
 ]

@@ -94,7 +94,11 @@ fn the_pack_this_suite_is_written_against_is_one_whose_four_closures_hold() {
     let owner = ContentMod::declared_id();
     assert!(
         validated
-            .file(&ContentMod::lanterns(ContentKind::Item).generated_path())
+            .file(
+                &ContentMod::lanterns(ContentKind::Item)
+                    .expect("valid tag")
+                    .generated_path()
+            )
             .is_some(),
         "the member's tag reached the pack"
     );
@@ -232,7 +236,10 @@ fn a_pack_supplying_one_path_twice_is_refused() {
 #[test]
 fn a_resource_the_member_itself_declares_answers_a_reference_to_it() {
     let (mut pack, manifests, content) = one_member();
-    pack.refer_to(ContentMod::model_path(), named(PACK, "smelting"));
+    pack.refer_to(
+        ContentMod::model_path().expect("valid model path"),
+        named(PACK, "smelting"),
+    );
     validate(&pack, &manifests, &content, &[]).expect("a member's own resource answers it");
 }
 
@@ -252,14 +259,14 @@ fn a_tag_member_in_the_games_namespace_is_allowed_and_deliberately_unverified() 
     let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
         .tag(
-            &ContentMod::lanterns(ContentKind::Item),
+            &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
             &RegistryKey::new(ContentKind::Item, named(VANILLA_NAMESPACE, "lantern")),
         )
         .expect("a tag is not a claim on its members");
 
     let validated =
         validate(&pack, &manifests, &[declaration], &[]).expect("a vanilla member is allowed");
-    let tag = ContentMod::lanterns(ContentKind::Item);
+    let tag = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
     let written = validated.file(&tag.generated_path()).expect("the tag file");
     let text = String::from_utf8(written.bytes().to_vec()).expect("generated JSON is UTF-8");
     assert!(
@@ -274,7 +281,10 @@ fn a_tag_member_in_a_namespace_the_pack_pins_nothing_for_is_refused() {
     let absent = RegistryKey::new(ContentKind::Item, named("absent_mod", "lantern"));
     let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
-        .tag(&ContentMod::lanterns(ContentKind::Item), &absent)
+        .tag(
+            &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
+            &absent,
+        )
         .expect("a tag is not a claim on its members");
 
     let refused = validate(&pack, &manifests, &[declaration], &[])
@@ -283,7 +293,7 @@ fn a_tag_member_in_a_namespace_the_pack_pins_nothing_for_is_refused() {
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: ContentMod::lanterns(ContentKind::Item),
+            tag: ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
             member: absent,
             kind: UnprovidedEntry::NoSuchMember,
         }
@@ -301,7 +311,10 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
     let phantom = RegistryKey::new(ContentKind::Item, named(owner.as_str(), "phantom_lantern"));
     let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
-        .tag(&ContentMod::lanterns(ContentKind::Item), &phantom)
+        .tag(
+            &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
+            &phantom,
+        )
         .expect("a tag is not a claim on its members");
 
     let refused = validate(&pack, &manifests, &[declaration], &[])
@@ -310,7 +323,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
     assert_eq!(
         refused,
         ClosureError::TagMember {
-            tag: ContentMod::lanterns(ContentKind::Item),
+            tag: ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
             member: phantom,
             kind: UnprovidedEntry::MemberDoesNotDeclareIt,
         }
@@ -326,7 +339,10 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
         .expect("the example mod declares an item");
     let mut legal = ContentMod::new().declaration().expect("valid declaration");
     legal
-        .tag(&ContentMod::lanterns(ContentKind::Item), &real)
+        .tag(
+            &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
+            &real,
+        )
         .expect_err("the mod already put its own item in that tag");
     validate(
         &pack,
@@ -340,7 +356,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
 #[test]
 fn two_members_contributing_to_one_tag_are_written_as_one_file_holding_both() {
     let owner = ContentMod::declared_id();
-    let tag = ContentMod::lanterns(ContentKind::Item);
+    let tag = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
     let mut pack = PackDeclaration::new(id(PACK), Version::new(0, 2, 1));
     pack.pin(owner.clone(), Version::new(1, 4, 0))
         .expect("a legal pin");
@@ -723,7 +739,7 @@ fn a_tag_the_pack_writes_is_the_layout_and_the_field_this_repository_believes_in
     // Pin the generated layout without claiming the game jar accepts it.
     let (pack, manifests, content) = one_member();
     let validated = validate(&pack, &manifests, &content, &[]).expect("every closure holds");
-    let tag: TagId = ContentMod::lanterns(ContentKind::Item);
+    let tag: TagId = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
     let written = validated
         .file(&tag.generated_path())
         .expect("the member's tag reached the pack");

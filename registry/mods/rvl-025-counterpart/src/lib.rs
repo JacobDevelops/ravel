@@ -52,7 +52,7 @@ pub mod world;
 use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::{ContentDeclaration, ContentId};
-use ravel_sdk::events::GameEvent;
+use ravel_sdk::events::{CommandInvocation, GameEvent};
 use ravel_sdk::network::{Packet, PacketDelivery};
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataVersion};
@@ -651,7 +651,7 @@ export_mod!(|side| Entry::new(side));
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::content::{ContentKind, RegistrationRefused, RegistryKey};
+    use ravel_sdk::content::{ContentKind, Registrar, RegistrationRefused, RegistryKey};
     use ravel_sdk::events::CommandInvocation;
     use ravel_sdk::json;
 

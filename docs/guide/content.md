@@ -16,7 +16,7 @@ impl CopperLanterns {
             .entry(ContentKind::Item, "copper_lantern")
             .map_err(ModError::from_display)?;
         declaration
-            .tag(&lanterns(ContentKind::Block), &block)
+            .tag(&lanterns(ContentKind::Block)?, &block)
             .map_err(ModError::from_display)?;
         Ok(declaration)
     }

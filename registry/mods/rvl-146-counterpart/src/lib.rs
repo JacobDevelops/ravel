@@ -81,7 +81,7 @@ use ravel_sdk::content::ContentDeclaration;
 use ravel_sdk::events::GameEvent;
 use ravel_sdk::prelude::*;
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataEnvelope};
-use ravel_sdk::sides::ClientOnlyError;
+use ravel_sdk::sides::{ClientOnly, ClientOnlyError};
 
 pub use crate::channel::{Channel, Sends, Target};
 pub use crate::colour::Colour;
@@ -465,7 +465,7 @@ export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
-    use ravel_sdk::content::{Registrar, RegistrationRefused, RegistryKey};
+    use ravel_sdk::content::{ContentId, Registrar, RegistrationRefused, RegistryKey};
     use ravel_sdk::events::GameEvent;
     use ravel_sdk::prelude::*;
 

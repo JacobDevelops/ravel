@@ -343,7 +343,7 @@ mod tests {
     use crate::grouping::{self, TAG_COUNT};
     use crate::presentation::{self, Readout};
     use crate::sprites;
-    use ravel_sdk::content::{ContentKind, RegistryKey};
+    use ravel_sdk::content::{ContentId, ContentKind, RegistryKey};
     use ravel_sdk::events::{CommandInvocation, GameEvent};
     use ravel_sdk::network::PacketDelivery;
     use ravel_sdk::prelude::*;

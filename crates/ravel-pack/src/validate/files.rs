@@ -76,7 +76,7 @@ fn member_files(
                 // Shared generated and raw tags are emitted once after every member is merged.
                 continue;
             }
-            reserved(&path)?;
+            check_reserved_path(&path)?;
             if let Some(Writer::Member(first)) = writer.get(&path) {
                 return Err(ClosureError::PathContested {
                     path,
@@ -89,7 +89,7 @@ fn member_files(
         }
     }
     for file in tags.generate().files() {
-        reserved(file.path())?;
+        check_reserved_path(file.path())?;
         writer.insert(file.path().clone(), Writer::Members);
         files.insert(file.path().clone(), file.bytes().to_vec());
     }
@@ -104,7 +104,7 @@ fn pack_files(
     overrides: &mut Vec<Override>,
 ) -> Result<(), ClosureError> {
     for supplied in pack.supplied() {
-        reserved(&supplied.path)?;
+        check_reserved_path(&supplied.path)?;
         match writer.get(&supplied.path) {
             Some(Writer::Member(first)) => overrides.push(Override {
                 path: supplied.path.clone(),
@@ -136,7 +136,7 @@ enum Writer {
 }
 
 /// Refuses a path in the directory Ravel's own files live in.
-fn reserved(path: &RelativePath) -> Result<(), ClosureError> {
+fn check_reserved_path(path: &RelativePath) -> Result<(), ClosureError> {
     if path.first_segment() == INSTANCE_DIRECTORY {
         return Err(ClosureError::ReservedPath { path: path.clone() });
     }
@@ -186,7 +186,7 @@ fn pack_manifest(pack: &PackDeclaration) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClosureError, INSTANCE_DIRECTORY, RelativePath, reserved};
+    use super::{ClosureError, INSTANCE_DIRECTORY, RelativePath, check_reserved_path};
 
     #[test]
     fn the_reserved_directory_is_a_whole_path_segment() {
@@ -196,11 +196,14 @@ mod tests {
             format!("{INSTANCE_DIRECTORY}/config/member.json"),
         ] {
             let path = RelativePath::try_from(text).expect("a relative path");
-            assert_eq!(reserved(&path), Err(ClosureError::ReservedPath { path }));
+            assert_eq!(
+                check_reserved_path(&path),
+                Err(ClosureError::ReservedPath { path })
+            );
         }
         let sibling = RelativePath::try_from(format!("{INSTANCE_DIRECTORY}-mod/file.json"))
             .expect("a relative path");
-        assert_eq!(reserved(&sibling), Ok(()));
+        assert_eq!(check_reserved_path(&sibling), Ok(()));
     }
 
     #[test]

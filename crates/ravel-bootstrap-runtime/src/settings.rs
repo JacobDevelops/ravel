@@ -15,7 +15,7 @@ use ravel_config::{
     LayeredConfiguration, ResolvedSetting, SettingKey, ValueDocument, ValueKind, ValueSchema,
     ValueSource, file,
 };
-use ravel_core::{DiagnosticMessage, ModId, Side};
+use ravel_core::{ModId, Side};
 use serde_json::Value;
 
 use crate::guard::{hand_document, text};
@@ -394,11 +394,7 @@ fn persist_and_answer(applied: Result<Applied, String>, directory: &Path) -> Str
 
     if let Err(reason) = persist(directory, document, &edited, &rejected) {
         refusal_count += 1;
-        write_refusal(
-            &mut encoded_refusals,
-            "",
-            DiagnosticMessage::redacted(&reason).text(),
-        );
+        write_refusal(&mut encoded_refusals, "", &ravel_core::redact_text(&reason));
     }
 
     let mut out = String::with_capacity(encoded_refusals.len() + 8);

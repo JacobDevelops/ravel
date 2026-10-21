@@ -114,33 +114,29 @@ impl ContentMod {
 
     /// Returns the tag of `kind` called `lanterns` in the shared namespace.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics for a kind nothing groups. Both callers pass a taggable kind, and
-    /// a test covers both.
-    #[must_use]
-    pub fn lanterns(kind: ContentKind) -> TagId {
-        let namespace: ModId = CONVENTION.parse().expect("`c` is a legal mod id");
+    /// Returns an error if the namespace, path, or registry kind is invalid.
+    pub fn lanterns(kind: ContentKind) -> Result<TagId, ModError> {
+        let namespace: ModId = CONVENTION.parse().map_err(ModError::from_display)?;
         TagId::new(
             kind,
-            ContentId::new(namespace, "lanterns").expect("`lanterns` is a legal content path"),
+            ContentId::new(namespace, "lanterns").map_err(ModError::from_display)?,
         )
-        .expect("blocks and items are taggable")
+        .map_err(ModError::from_display)
     }
 
     /// Returns the path the block model is supplied at.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the derived path stops being a legal package path, which would
-    /// mean this mod's own identity can no longer name a file.
-    #[must_use]
-    pub fn model_path() -> RelativePath {
+    /// Returns an error if the derived package path is invalid.
+    pub fn model_path() -> Result<RelativePath, ModError> {
         RelativePath::try_from(format!(
             "assets/{}/models/block/{LANTERN}.json",
             Self::declared_id()
         ))
-        .expect("a mod id and a literal cannot spell an illegal path")
+        .map_err(ModError::from_display)
     }
 
     /// Declares the content used by registration and generated data.
@@ -164,10 +160,10 @@ impl ContentMod {
 
         // Block and item tags belong to distinct registries.
         declaration
-            .tag(&Self::lanterns(ContentKind::Block), &block)
+            .tag(&Self::lanterns(ContentKind::Block)?, &block)
             .map_err(ModError::from_display)?;
         declaration
-            .tag(&Self::lanterns(ContentKind::Item), &item)
+            .tag(&Self::lanterns(ContentKind::Item)?, &item)
             .map_err(ModError::from_display)?;
 
         for (locale, name) in [("en_us", "Copper Lantern"), ("fr_fr", "Lanterne de cuivre")] {
@@ -183,7 +179,7 @@ impl ContentMod {
         }
 
         declaration
-            .resource(Self::model_path(), MODEL.to_vec())
+            .resource(Self::model_path()?, MODEL.to_vec())
             .map_err(ModError::from_display)?;
         declaration
             .server_entry(ServerDataKind::Crafting, &recipe, RECIPE.to_vec())
@@ -411,7 +407,10 @@ mod tests {
             .clone();
 
         let error = declaration
-            .tag(&ContentMod::lanterns(ContentKind::Item), &block)
+            .tag(
+                &ContentMod::lanterns(ContentKind::Item).expect("valid tag"),
+                &block,
+            )
             .expect_err("an item tag holds items");
         assert!(
             matches!(error, ContentDeclarationError::TagKind { .. }),
@@ -424,7 +423,7 @@ mod tests {
         let generated = ContentMod::new().generated().expect("valid declaration");
         assert_eq!(
             generated
-                .file(&ContentMod::model_path())
+                .file(&ContentMod::model_path().expect("valid model path"))
                 .map(GeneratedFile::bytes),
             Some(MODEL)
         );
@@ -444,7 +443,7 @@ mod tests {
                 "{\n  \"replace\": false,\n  \"values\": [\n    \"content:copper_lantern\"\n  ]\n}\n",
             ),
         ] {
-            let tag = ContentMod::lanterns(kind);
+            let tag = ContentMod::lanterns(kind).expect("valid tag");
             let file = generated
                 .file(&tag.generated_path())
                 .expect("the tag is declared");

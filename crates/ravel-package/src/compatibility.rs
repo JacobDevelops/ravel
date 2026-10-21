@@ -126,7 +126,7 @@ impl Compatibility {
             }
         }
         Err(CompatibilityError::Minecraft {
-            declared: self.minecraft.iter().map(ToString::to_string).collect(),
+            declared: self.minecraft.clone(),
             running: running.to_owned(),
         })
     }
@@ -154,7 +154,7 @@ pub enum CompatibilityError {
     /// The running Minecraft version is not one the package declared.
     Minecraft {
         /// The exact release names and version ranges the package declared.
-        declared: Vec<String>,
+        declared: Vec<MinecraftSupport>,
         /// The Minecraft version that is running.
         running: String,
     },
@@ -170,7 +170,11 @@ impl fmt::Display for CompatibilityError {
             Self::Minecraft { declared, running } => write!(
                 formatter,
                 "the package supports Minecraft {}, but Minecraft {running} is running",
-                declared.join(", ")
+                declared
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         }
     }
@@ -305,7 +309,7 @@ mod tests {
             assert_eq!(
                 error,
                 CompatibilityError::Minecraft {
-                    declared: vec!["26.0.0".to_owned()],
+                    declared: manifest.compatibility.minecraft.clone(),
                     running: running.to_owned(),
                 }
             );

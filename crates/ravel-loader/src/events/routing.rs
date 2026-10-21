@@ -9,8 +9,8 @@ use crate::loaded::LoadedMods;
 /// Routes `delivery` to its owner after checking the claimed side and direction.
 ///
 /// Each receive callback is attributed as event cost to `profiler`.
-/// Malformed bytes and unsupported packet contracts remain typed delivery refusals,
-/// without failing the receiving mod. Actual callback failures are attributed normally.
+/// Malformed bytes, unsupported packet contracts, and explicit handling refusals remain
+/// typed delivery declines without failing the receiving mod. Panics are attributed normally.
 ///
 /// # Errors
 ///
@@ -51,7 +51,9 @@ pub fn deliver_packet<H: std::ops::DerefMut<Target: Mod>>(
         |error| {
             matches!(
                 error,
-                HostError::InvalidPacket { .. } | HostError::Unsupported { .. }
+                HostError::InvalidPacket { .. }
+                    | HostError::Unsupported { .. }
+                    | HostError::OperationRefused { .. }
             )
         },
         environment,

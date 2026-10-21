@@ -13,8 +13,7 @@ pub use shaping::{ShapingError, ShapingMismatch, ShapingRecord, WorldShaping};
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZero;
 
-use ravel_core::ModId;
-use semver::Version;
+use ravel_core::{ModId, Version};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -440,8 +439,7 @@ mod tests {
         MAX_AGGREGATE_BYTES, PackageConflict, RequiredPackage, SavedDataAggregate,
         SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
     };
-    use ravel_core::ModId;
-    use semver::Version;
+    use ravel_core::{ModId, Version};
     use serde_json::json;
     use std::collections::BTreeMap;
     use std::num::NonZero;

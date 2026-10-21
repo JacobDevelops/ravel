@@ -21,16 +21,14 @@ pub fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<Supplied, ResourceRefused> {
     let (machine, mods) = loaded.parts();
-    if let Some(by) = crate::events::active_blocker(machine) {
-        return Err(ResourceRefused::Halted { by: by.clone() });
-    }
+    crate::events::ensure_active_with(machine, |by| ResourceRefused::Halted { by })?;
     let eligible: Vec<_> = machine
         .eligible()
         .map(|(entry, state)| {
             (
                 entry.mod_id.clone(),
                 state,
-                entry.sides.loads_on(machine.side().world_side()),
+                machine.participates_in_world(entry),
             )
         })
         .collect();
@@ -277,14 +275,12 @@ mod tests {
     fn open_resources<H: std::ops::DerefMut<Target: Mod>>(
         loaded: &mut crate::LoadedMods<'_, H>,
     ) -> Result<super::Supplied, ResourceRefused> {
-        super::open_resources(loaded, &crate::tests::environment())
+        super::open_resources(loaded, &crate::test_support::environment())
     }
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine};
-    use crate::tests::entry;
+    use crate::test_support::entry;
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn path(text: &str) -> RelativePath {
         RelativePath::try_from(text.to_owned()).expect("a legal relative path")
@@ -396,7 +392,7 @@ mod tests {
                 failed_entry,
                 entry("healthy_mod", &[Side::DedicatedServer]),
             ]);
-            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            crate::test_support::advance_through(&mut machine, LifecycleState::Running);
             if mutated {
                 machine.record_world_mutation().expect("running world");
             }
@@ -406,7 +402,7 @@ mod tests {
                         mod_id: id("failed_mod"),
                         state: LifecycleState::Running,
                     },
-                    &crate::tests::environment(),
+                    &crate::test_support::environment(),
                     None,
                 )
                 .expect("record callback failure");
@@ -478,7 +474,7 @@ mod tests {
             .expect("tracked")
             .expect("recorded");
         assert_eq!(failure.mod_id.as_ref(), Some(&id("failed_mod")));
-        assert_eq!(failure.environment, crate::tests::environment());
+        assert_eq!(failure.environment, crate::test_support::environment());
         assert_eq!(failed.calls.get(), 1);
         assert_eq!(later.calls.get(), 1);
     }
@@ -784,7 +780,7 @@ mod tests {
                 .expect("tracked")
                 .expect("recorded");
             assert_eq!(failure.mod_id.as_ref(), Some(&id("bad_mod")));
-            assert_eq!(failure.environment, crate::tests::environment());
+            assert_eq!(failure.environment, crate::test_support::environment());
             assert_eq!(machine.state(&id("bad_mod")), Ok(LifecycleState::Failed));
         }
     }

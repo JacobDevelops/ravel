@@ -1,12 +1,11 @@
-use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
 use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure, Version};
 use ravel_host_api::Mod;
 use ravel_loader::{
-    DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods,
-    MANIFEST_FILE, MissingMod, admitted, executes_mod_code, start_all, stop_all,
+    DriveError, LifecycleError, LifecycleEvent, LifecycleMachine, LoadedMods, MANIFEST_FILE,
+    MissingMod, admitted, executes_mod_code, start_all, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -125,7 +124,8 @@ pub fn run_pipeline(
     // Exercise the production admission boundary even after validating compatibility.
     let entries = admitted(&plan, &manifests, &host.ravel, &host.minecraft)
         .map_err(PipelineError::Compatibility)?;
-    refuse_mods_outside_the_set(&entries, mods)?;
+    LoadedMods::require_admitted(&entries, mods)
+        .map_err(|mod_id| PipelineError::UnexpectedMod { mod_id })?;
 
     let environment = FailureEnvironment {
         ravel: host.ravel.clone(),
@@ -161,21 +161,6 @@ fn validate(packages: &[TestPackage], host: &Host) -> Result<Vec<PackageManifest
         manifests.push(manifest);
     }
     Ok(manifests)
-}
-
-fn refuse_mods_outside_the_set(
-    entries: &[LifecycleEntry],
-    mods: &[&mut dyn Mod],
-) -> Result<(), PipelineError> {
-    let admitted: BTreeSet<&ModId> = entries.iter().map(|entry| &entry.mod_id).collect();
-    for member in mods {
-        if !admitted.contains(member.id()) {
-            return Err(PipelineError::UnexpectedMod {
-                mod_id: member.id().clone(),
-            });
-        }
-    }
-    Ok(())
 }
 
 /// A pipeline failure, preserving errors from the responsible crate.

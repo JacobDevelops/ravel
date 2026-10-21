@@ -104,15 +104,13 @@ impl LifecycleMachine {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{ContentKind, LifecycleState, ModId, RegistryKey, Side};
+    use ravel_core::{ContentKind, LifecycleState, RegistryKey, Side};
     use ravel_host_api::{Registrar, RegistrationRefused};
 
     use crate::lifecycle::{LifecycleError, LifecycleMachine};
-    use crate::tests::{advance_through, entry};
+    use crate::test_support::{advance_through, entry};
 
-    fn id(text: &str) -> ModId {
-        text.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn key(kind: ContentKind, text: &str) -> RegistryKey {
         RegistryKey::new(kind, text.parse().expect("a legal content id"))

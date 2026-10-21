@@ -202,7 +202,7 @@ mod tests {
         let CompatibilityError::Minecraft { declared, running } = refused else {
             panic!("the refusal should be about the game: {refused:?}");
         };
-        assert_eq!(declared, [GAME.to_owned()]);
+        assert_eq!(declared, manifests[0].compatibility.minecraft);
         assert_eq!(running, "another-version");
     }
 

@@ -44,7 +44,7 @@ fn a_declaration_that_names_illegal_content_is_refused_before_any_barrier() {
 #[test]
 fn two_mods_contributing_to_one_tag_is_not_a_conflict_and_both_members_survive() {
     let content = ContentMod::new().declaration().expect("valid declaration");
-    let lanterns = ContentMod::lanterns(ContentKind::Item);
+    let lanterns = ContentMod::lanterns(ContentKind::Item).expect("valid tag");
 
     let mut rival = ContentDeclaration::new(id("rival"));
     let theirs = rival

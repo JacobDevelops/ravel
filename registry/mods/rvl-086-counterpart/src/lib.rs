@@ -40,11 +40,12 @@ pub mod settings;
 pub mod tooltip;
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_sdk::content::ContentDeclaration;
+use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind};
 use ravel_sdk::events::GameEvent;
-use ravel_sdk::interception::InterceptionDeclaration;
-use ravel_sdk::network::{Direction, PacketContract, PacketDelivery, PacketId};
+use ravel_sdk::interception::{InterceptionDeclaration, Point};
+use ravel_sdk::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
 use ravel_sdk::prelude::*;
+use ravel_sdk::save::SavedDataDeclaration;
 use rvl_042_counterpart::flags::FlagTable;
 
 pub use crate::attractor::Toggle;

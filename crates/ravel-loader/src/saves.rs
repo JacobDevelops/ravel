@@ -43,13 +43,8 @@ fn snapshot<H: std::ops::DerefMut<Target: Mod>>(
         .lifecycle_world_access()
         .map_err(SaveRefused::Lifecycle)?;
     let mut aggregate = SavedDataAggregate::fresh();
-    for (entry, state) in machine.tracked_entries() {
+    for (entry, state) in machine.world_entries() {
         let mod_id = &entry.mod_id;
-        if !entry.sides.loads_on(machine.side())
-            || !entry.sides.loads_on(machine.side().world_side())
-        {
-            continue;
-        }
         if state == LifecycleState::Failed {
             if let Some(envelope) = prior.and_then(|aggregate| aggregate.envelope(mod_id)) {
                 aggregate.replace(envelope.clone());
@@ -101,6 +96,7 @@ pub fn open_saved_data<H: std::ops::DerefMut<Target: Mod>>(
     environment: &FailureEnvironment,
 ) -> Result<SavedDataAggregate, SaveRefused> {
     let (machine, mods) = loaded.parts();
+    crate::events::ensure_active_with(machine, |by| SaveRefused::Blocked { by })?;
     let (declarations, chains) = collect_declarations(machine, environment, mods)?;
     let mut aggregate =
         SavedDataAggregate::open_preserving(bytes, &declarations, packages, |owner| {
@@ -305,7 +301,8 @@ fn attribute_snapshot_refusal<T>(
             }
             SaveRefused::Lifecycle(_)
             | SaveRefused::Data(_)
-            | SaveRefused::ForeignDeclaration { .. } => return result,
+            | SaveRefused::ForeignDeclaration { .. }
+            | SaveRefused::Blocked { .. } => return result,
         };
         machine
             .fail_callback(&source, environment, None)
@@ -319,6 +316,11 @@ fn attribute_snapshot_refusal<T>(
 pub enum SaveRefused {
     /// Lifecycle access was denied or a supplied host is not tracked.
     Lifecycle(LifecycleError),
+    /// A halted set or required failure prevents saved-data callbacks.
+    Blocked {
+        /// The owner whose failure blocks the set.
+        by: ModId,
+    },
     /// The aggregate, a version, or a migration was refused.
     Data(SavedDataError),
     /// A mod declared saved data owned by another identity.
@@ -350,6 +352,7 @@ impl SaveRefused {
     pub fn mod_id(&self) -> Option<&ModId> {
         match self {
             Self::Lifecycle(error) => error.mod_id(),
+            Self::Blocked { by } => Some(by),
             Self::Data(error) => error.owner(),
             Self::ForeignDeclaration { mod_id, .. }
             | Self::ForeignEnvelope { mod_id, .. }
@@ -362,6 +365,10 @@ impl fmt::Display for SaveRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lifecycle(error) => error.fmt(formatter),
+            Self::Blocked { by } => write!(
+                formatter,
+                "`{by}` failed, so the set cannot open saved data"
+            ),
             Self::Data(error) => error.fmt(formatter),
             Self::ForeignDeclaration { mod_id, owner } => write!(
                 formatter,
@@ -388,7 +395,9 @@ impl std::error::Error for SaveRefused {
         match self {
             Self::Lifecycle(error) => Some(error),
             Self::Data(error) => Some(error),
-            Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => None,
+            Self::Blocked { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::ForeignEnvelope { .. } => None,
             Self::Mod { source, .. } => Some(source),
         }
     }
@@ -399,13 +408,17 @@ impl StructuredFailure for SaveRefused {
         match self {
             Self::Lifecycle(error) => error.failure_kind(),
             Self::Mod { source, .. } => source.failure_kind(),
-            Self::Data(_) | Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => None,
+            Self::Blocked { .. }
+            | Self::Data(_)
+            | Self::ForeignDeclaration { .. }
+            | Self::ForeignEnvelope { .. } => None,
         }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
             Self::Lifecycle(error) => error.lifecycle_state(),
+            Self::Blocked { .. } => LifecycleState::Failed,
             Self::Mod { source, .. } => source.lifecycle_state(),
             Self::Data(_) | Self::ForeignDeclaration { .. } => LifecycleState::Registered,
             Self::ForeignEnvelope { .. } => LifecycleState::Running,
@@ -416,7 +429,9 @@ impl StructuredFailure for SaveRefused {
         match self {
             Self::Lifecycle(error) => error.quotes_untrusted_text(),
             Self::Data(error) => error.quotes_untrusted_text(),
-            Self::ForeignDeclaration { .. } | Self::ForeignEnvelope { .. } => false,
+            Self::Blocked { .. }
+            | Self::ForeignDeclaration { .. }
+            | Self::ForeignEnvelope { .. } => false,
             Self::Mod { source, .. } => source.quotes_untrusted_text(),
         }
     }
@@ -440,7 +455,7 @@ mod tests {
     use super::{SaveRefused, open_saved_data};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::loaded::LoadedMods;
-    use crate::tests::entry;
+    use crate::test_support::entry;
 
     #[test]
     fn lifecycle_refusals_preserve_the_owner_including_halted_worlds() {
@@ -505,7 +520,7 @@ mod tests {
             entry.requirement = requirement;
             let mut machine =
                 LifecycleMachine::new(Side::DedicatedServer, vec![entry]).expect("valid plan");
-            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            crate::test_support::advance_through(&mut machine, LifecycleState::Running);
             let declaration = SavedDataDeclaration::new(owner.clone(), [version(1), version(2)])
                 .expect("valid declaration");
             let original =
@@ -561,7 +576,7 @@ mod tests {
             ],
         )
         .expect("valid plan");
-        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut machine, LifecycleState::Running);
         let mut mods: [&mut dyn Mod; 2] = [&mut client, &mut shared];
         let mut loaded = LoadedMods::new(&mut machine, &mut mods).expect("started owners paired");
         let aggregate = open_saved_data(&mut loaded, None, &BTreeMap::new(), &environment())
@@ -760,7 +775,7 @@ mod tests {
             let mut owner = entry("stored", &[Side::DedicatedServer]);
             owner.requirement = Requirement::Optional;
             let mut machine = machine(vec![owner]);
-            crate::tests::advance_through(&mut machine, LifecycleState::Running);
+            crate::test_support::advance_through(&mut machine, LifecycleState::Running);
             machine.record_world_mutation().expect("running world");
             let bytes = world(&[("stored", 1, json!({"opaque": true}))]);
             let refused = open_saved_data(
@@ -977,9 +992,7 @@ mod tests {
         }
     }
 
-    fn id(value: &str) -> ModId {
-        value.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn version(raw: u32) -> SavedDataVersion {
         SavedDataVersion::new(raw).expect("a non-zero version")
@@ -1092,7 +1105,7 @@ mod tests {
     fn a_declared_owner_without_a_writer_refuses_and_halts_later_snapshots() {
         let mut host = Storing::new("stored");
         let mut machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
-        crate::tests::advance_through(&mut machine, LifecycleState::Running);
+        crate::test_support::advance_through(&mut machine, LifecycleState::Running);
         machine.record_world_mutation().expect("world opened");
         let mut prior = SavedDataAggregate::fresh();
         prior.replace(SavedDataEnvelope::current(

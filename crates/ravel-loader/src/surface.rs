@@ -80,15 +80,13 @@ mod tests {
 
     use ravel_core::{
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState,
-        ModId, Side, SideSet,
+        Side, SideSet,
     };
 
     use super::ModSurface;
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 
-    fn id(text: &str) -> ModId {
-        text.parse().expect("a legal mod id")
-    }
+    use crate::test_support::id;
 
     fn entry(name: &str, requirement: Requirement, sides: &[Side]) -> LifecycleEntry {
         LifecycleEntry {

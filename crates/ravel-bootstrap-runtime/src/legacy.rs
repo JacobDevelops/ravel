@@ -60,9 +60,7 @@ fn command_answer(result: Result<(), Undelivered>) -> String {
         Ok(()) => String::new(),
         Err(Undelivered::Declined(ravel_host_api::HostError::OperationRefused {
             detail, ..
-        })) => ravel_core::DiagnosticMessage::redacted(&detail)
-            .text()
-            .to_owned(),
+        })) => ravel_core::redact_text(&detail),
         Err(error) => {
             report("legacy command failed", &error);
             "command failed".to_owned()

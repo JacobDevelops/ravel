@@ -1,6 +1,6 @@
 [package]
 name = "ravel-pack"
-description = "Pack pinning, declarative composition, and closure validation"
+description = "Pack declarations, closure validation, and reproducible output; launch does not enforce written member pins"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true

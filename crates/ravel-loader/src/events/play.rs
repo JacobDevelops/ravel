@@ -95,7 +95,13 @@ fn request_failure(
     error: HostError,
 ) -> Result<PlayRequests, DispatchRefused> {
     machine
-        .fail_callback(&error, environment, None)
+        .fail_callback(
+            &error,
+            environment,
+            Some(ravel_core::FailureSurface::Hook(
+                "take_play_requests".to_owned(),
+            )),
+        )
         .map_err(DispatchRefused::Lifecycle)?;
     Ok(PlayRequests {
         requests,

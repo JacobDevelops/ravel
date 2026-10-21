@@ -56,7 +56,7 @@ pub(crate) fn exports(shapes: &[Shape]) -> String {
         writeln!(
             text,
             ") {{\n\
-         \x20   crate::guard::enter(\n\
+         \x20   crate::guard::observe_hook(\n\
          \x20       env,\n\
          \x20       &::ravel_minecraft_adapter::pinned::{},\n\
          \x20       |{}| ::std::result::Result::Ok({values}),\n\

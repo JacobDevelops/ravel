@@ -327,7 +327,6 @@ dependencies = [
  "ravel-test-mod-commands",
  "ravel-test-mod-networking",
  "ravel-test-mod-saved-data",
- "semver",
  "serde_json",
 ]
 
@@ -511,7 +510,6 @@ dependencies = [
  "ravel-observability",
  "ravel-package",
  "ravel-resolve",
- "semver",
  "serde_json",
 ]
 

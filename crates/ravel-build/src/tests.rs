@@ -1386,7 +1386,7 @@ fn generated_hosts_enter_integrated_composition_through_the_shared_runtime() {
     assert!(source.contains(
         "#[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitializeIntegratedServer\")]"
     ));
-    assert!(source.contains("ravel_host_runtime::enter_integrated(env, members);"));
+    assert!(source.contains("ravel_host_runtime::launch_integrated(env, members);"));
 }
 
 #[test]

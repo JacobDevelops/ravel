@@ -60,12 +60,16 @@ impl From<jni::errors::Error> for HookError {
     }
 }
 
+pub(crate) fn selected_runtime() -> Result<std::sync::Arc<runtime::LoaderRuntime>, HookError> {
+    runtime::selected().ok_or(HookError::Unavailable)
+}
+
 /// Delivers a hook, converting panics and errors to Java exceptions.
 ///
 /// Collection is skipped without a selected runtime. The split lifetimes permit
 /// frame-borrowed values; handle confinement follows `LoaderRuntime::observe`'s
 /// independent values lifetime.
-pub(crate) fn enter<'local, 'handle, Collect>(
+pub(crate) fn observe_hook<'local, 'handle, Collect>(
     mut env: EnvUnowned<'local>,
     target: &'static HookTarget,
     collect: Collect,
@@ -136,7 +140,7 @@ pub(crate) mod tests {
         argument1: ::jni::objects::JObject<'local>,
         argument2: ::jni::objects::JObject<'local>,
     ) {
-        crate::guard::enter(env, &GENERATED_SHAPE_TARGET, |_env| {
+        crate::guard::observe_hook(env, &GENERATED_SHAPE_TARGET, |_env| {
             Ok(::std::vec![
                 HookValue::Handle(JavaHandle::new(
                     "com/example/resources/ResourceKey",

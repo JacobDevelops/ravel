@@ -256,7 +256,7 @@ Generated observation hooks return void; they have no refusal verdict or early-r
 branch. World-open admission and supported legacy semantic refusals use separate
 adapter crossings.
 
-With no listener, `crate::guard::enter` performs a relaxed atomic increment and
+With no listener, `crate::guard::observe_hook` performs a relaxed atomic increment and
 load, without allocating or attaching an environment. Argument collection,
 string copies, and observers run inside the guarded closure. The guarded path's
 cost is unmeasured; the retired unguarded JVM-entry spike does not measure it.

@@ -271,7 +271,7 @@ fn save_in(
 
 fn save_with(launch: Option<&crate::runtime::LaunchContext>, request: EditRequest) -> String {
     let Some(launch) = launch else {
-        return refusal("", "the loader runtime is not installed");
+        return refusal("", &crate::guard::HookError::Unavailable.to_string());
     };
     // Release the store lock before disk I/O.
     let applied = launch

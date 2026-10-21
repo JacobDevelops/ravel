@@ -32,10 +32,9 @@ pub fn ravel_write_world_datapack<'local>(
         let world = text(env, &world)?;
         // This void JVM hook reports filesystem refusals through runtime notices.
         match super::write_world_datapack(std::path::Path::new(&world)) {
-            PackOutcome::RuntimeUnavailable => crate::guard::report(
-                "world data pack not written",
-                &"the loader runtime is not installed",
-            ),
+            PackOutcome::RuntimeUnavailable => {
+                crate::guard::report("world data pack not written", &HookError::Unavailable);
+            }
             PackOutcome::Refused | PackOutcome::Unchanged | PackOutcome::Written => {}
         }
         Ok(())

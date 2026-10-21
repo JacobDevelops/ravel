@@ -1055,6 +1055,7 @@ fn replacement(outcome: SaveOutcome) -> Vec<u8> {
     match outcome {
         SaveOutcome::Replacement(bytes) => bytes,
         other @ (SaveOutcome::Unchanged
+        | SaveOutcome::RuntimeUnavailable
         | SaveOutcome::Withheld
         | SaveOutcome::Failed(_)
         | SaveOutcome::IdentityMismatch(_)) => {
@@ -1279,7 +1280,7 @@ fn a_launch_with_no_declared_resources_still_stages_pack_metadata() {
     }
     std::fs::create_dir_all(&staging).expect("a writable temporary directory");
 
-    let staged = shipped_running().write_staged_pack(&staging);
+    let staged = shipped_running().put_pack(&staging, crate::packs::staged_pack_root);
 
     assert_eq!(staged, PackOutcome::Written);
     assert!(staging.join("ravel/pack.mcmeta").is_file());
@@ -1719,11 +1720,7 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
     let game = scratch("fresh-world-pack");
     let world = game.join("world");
     std::fs::create_dir_all(&world).expect("new world directory");
-    assert_eq!(
-        crate::packs::write_world_datapack(&world),
-        PackOutcome::RuntimeUnavailable,
-        "a missing runtime must not silently claim publication"
-    );
+    assert_runtime_unavailable(&world);
     assert!(!world.join(crate::packs::WORLD_DATA_PACKS).exists());
     let (runtime, _held) = running();
     let inner = runtime.inner.into_inner().expect("runtime state");
@@ -1742,6 +1739,7 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
     )
     .expect("install isolated runtime");
     assert_installed_process_context(&game);
+    assert_staged_pack_boundary(&game);
     assert_eq!(
         super::open_world_data(world.to_str().expect("absolute world path"), None, true),
         OpenOutcome::Staged
@@ -1763,6 +1761,36 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
     assert!(notices(&selected).is_empty(), "{:?}", notices(&selected));
     assert_malformed_world_refuses_at_the_public_crossing(&world);
     std::fs::remove_dir_all(&selected.launch.game_directory).expect("remove scratch game");
+}
+
+fn assert_runtime_unavailable(world: &std::path::Path) {
+    assert_eq!(
+        crate::packs::write_world_datapack(world),
+        PackOutcome::RuntimeUnavailable
+    );
+    assert_eq!(
+        crate::packs::write_staged_datapack(world),
+        PackOutcome::RuntimeUnavailable
+    );
+    assert_eq!(
+        super::open_world_data(&world.to_string_lossy(), None, true),
+        OpenOutcome::RuntimeUnavailable
+    );
+    assert_eq!(
+        super::save_world_data(&world.to_string_lossy()),
+        SaveOutcome::RuntimeUnavailable
+    );
+}
+
+fn assert_staged_pack_boundary(game: &std::path::Path) {
+    let staging = game.join("pack-staging");
+    std::fs::create_dir_all(&staging).expect("staging directory");
+    assert_eq!(
+        crate::packs::write_staged_datapack(&staging),
+        PackOutcome::Written
+    );
+    assert!(staging.join("ravel/pack.mcmeta").is_file());
+    assert!(!staging.join("datapacks").exists());
 }
 
 fn fresh_world_resources(environment: &ravel_core::FailureEnvironment) -> ravel_loader::Supplied {

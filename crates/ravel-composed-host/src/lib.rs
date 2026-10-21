@@ -109,13 +109,13 @@ pub fn ravel_initialize<'local>(
     side: jni::sys::jint,
     profiling_requested: jni::sys::jboolean,
 ) {
-    ravel_host_runtime::enter(env, side, profiling_requested, members);
+    ravel_host_runtime::launch(env, side, profiling_requested, members);
 }
 
 /// Starts a fresh composition for the integrated server's own thread and side.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitializeIntegratedServer")]
 pub fn ravel_initialize_integrated_server<'local>(env: EnvUnowned<'local>, _class: JClass<'local>) {
-    ravel_host_runtime::enter_integrated(env, members);
+    ravel_host_runtime::launch_integrated(env, members);
 }
 
 /// Exposes original fixture receipts only to the composed host's live packet test.

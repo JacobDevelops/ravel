@@ -1,7 +1,7 @@
 //! Identity-keyed world admission and saved-data checkpoints.
 
 use std::fmt;
-use std::sync::{Arc, PoisonError};
+use std::sync::PoisonError;
 
 use ravel_core::ModId;
 use ravel_host_api::Point;
@@ -35,6 +35,8 @@ pub(crate) struct PersistenceState {
 /// What the Java adapter should do after an open crossing.
 #[derive(Debug, Eq, PartialEq)]
 pub enum OpenOutcome {
+    /// No runtime is installed for the calling thread.
+    RuntimeUnavailable,
     /// Admission and delivery completed; no Java-side replacement is needed yet.
     Staged,
     /// World access is refused with the diagnostic text.
@@ -43,7 +45,9 @@ pub enum OpenOutcome {
 
 /// What the Java adapter should do at a save crossing.
 #[derive(Debug, Eq, PartialEq)]
-pub enum SaveOutcome {
+pub(crate) enum SaveOutcome {
+    /// No runtime is installed for the calling thread.
+    RuntimeUnavailable,
     /// Nothing changed since the last write; the adapter writes nothing.
     Unchanged,
     /// A mod vetoed this write; pending state is retained for the next save.
@@ -54,10 +58,6 @@ pub enum SaveOutcome {
     Failed(String),
     /// Unredacted identity diagnostic; publish only through `DiagnosticMessage::redacted`.
     IdentityMismatch(String),
-}
-
-fn runtime() -> Result<Arc<LoaderRuntime>, String> {
-    crate::runtime::selected().ok_or_else(|| "the loader runtime is not installed".to_owned())
 }
 
 /// Lexically normalized world identity shared by open and save crossings.
@@ -94,23 +94,19 @@ impl fmt::Display for WorldIdentity {
 /// Admits and delivers world data; `fresh_world` only controls missing-data notices.
 #[must_use]
 pub fn open_world_data(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
-    match runtime() {
-        Ok(runtime) => {
-            match runtime.stage_world(WorldIdentity::of(identity_raw), bytes, fresh_world) {
-                Ok(()) => OpenOutcome::Staged,
-                Err(error) => OpenOutcome::Refused(error.to_string()),
-            }
+    crate::runtime::selected().map_or(OpenOutcome::RuntimeUnavailable, |runtime| {
+        match runtime.stage_world(WorldIdentity::of(identity_raw), bytes, fresh_world) {
+            Ok(()) => OpenOutcome::Staged,
+            Err(error) => OpenOutcome::Refused(error.to_string()),
         }
-        Err(error) => OpenOutcome::Refused(error),
-    }
+    })
 }
 
 /// Produces the aggregate selected by the save receiver's identity.
 #[must_use]
 pub(crate) fn save_world_data(identity_raw: &str) -> SaveOutcome {
-    let runtime = match runtime() {
-        Ok(runtime) => runtime,
-        Err(error) => return SaveOutcome::Failed(error),
+    let Some(runtime) = crate::runtime::selected() else {
+        return SaveOutcome::RuntimeUnavailable;
     };
     runtime.save_world(&WorldIdentity::of(identity_raw))
 }

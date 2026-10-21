@@ -656,7 +656,7 @@ fn malformed_settings_and_unknown_owners_have_specific_refusals() {
     let missing = save_with(None, &edits("example_mod", &[]));
     assert_eq!(
         refusals(&missing)[0].1,
-        "the loader runtime is not installed"
+        crate::guard::HookError::Unavailable.to_string()
     );
 }
 

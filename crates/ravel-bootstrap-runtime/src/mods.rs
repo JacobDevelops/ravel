@@ -590,7 +590,7 @@ mod tests {
 
         assert!(
             runtime
-                .legacy_event(ravel_host_api::GameEvent::ClientTick)
+                .deliver_legacy_event(ravel_host_api::GameEvent::ClientTick)
                 .is_err()
         );
 

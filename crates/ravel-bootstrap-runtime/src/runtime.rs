@@ -20,7 +20,7 @@ use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::outward;
 use ravel_core::RegistryKey;
-use semver::Version;
+use ravel_core::Version;
 
 mod dispatch;
 pub(crate) mod installation;
@@ -52,6 +52,7 @@ pub(crate) struct LaunchContext {
     pub(crate) game_directory: PathBuf,
     pub(crate) supplied: Supplied,
     pub(crate) settings: Mutex<crate::settings::Store>,
+    pub(crate) profiling: bool,
 }
 
 impl LaunchContext {
@@ -68,6 +69,7 @@ impl LaunchContext {
             game_directory,
             supplied,
             settings: Mutex::new(settings),
+            profiling: false,
         }
     }
 }
@@ -182,10 +184,11 @@ impl LoaderRuntime {
         loaded: Loaded,
         profiler: Profiler,
         report: PreWorldReport,
-        launch: LaunchContext,
+        mut launch: LaunchContext,
         installed_packages: BTreeMap<ravel_core::ModId, Version>,
         interceptions: ravel_loader::AdmittedPoints,
     ) -> Self {
+        launch.profiling = profiler.is_on();
         Self {
             inner: Mutex::new(Inner {
                 installed_packages,

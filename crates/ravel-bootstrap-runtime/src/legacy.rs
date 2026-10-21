@@ -10,12 +10,13 @@ use jni::{Env, EnvUnowned};
 use ravel_core::ContentId;
 use ravel_network::PacketId;
 
-use crate::guard::{HookError, hand_document, report, text};
+use crate::guard::{HookError, hand_document, report, selected_runtime, text};
 use crate::runtime::{LoaderRuntime, Undelivered};
 use crate::wire::{VERSION, count, field};
 
 const MAX_PACKET_BYTES: usize = 32_767;
 const MAX_CHANNEL_BYTES: usize = 20;
+const MAX_RESOURCE_PATH_BYTES: usize = 4096;
 /// Vanilla operator permission imposed by the legacy adapter, not a mod declaration.
 const LEGACY_COMMAND_LEVEL: &str = "2";
 
@@ -24,10 +25,6 @@ fn refused(reason: String) -> HookError {
         hook: "legacy.semantic",
         reason,
     }
-}
-
-fn runtime() -> Result<std::sync::Arc<LoaderRuntime>, HookError> {
-    crate::runtime::selected().ok_or(HookError::Unavailable)
 }
 
 fn admitted_channel(channel: &str) -> Result<ContentId, &'static str> {
@@ -80,7 +77,7 @@ pub fn ravel_legacy_commands<'local>(
     _class: JClass<'local>,
 ) -> JString<'local> {
     hand_document(env, |_| {
-        let runtime = runtime()?;
+        let runtime = selected_runtime()?;
         runtime
             .claim_command_thread()
             .map_err(|error| refused(error.to_string()))?;
@@ -97,7 +94,9 @@ pub fn ravel_legacy_command<'local>(
 ) -> JString<'local> {
     hand_document(env, |env| {
         let typed = text(env, &typed)?;
-        Ok(Some(command_answer(runtime()?.legacy_command(&typed))))
+        Ok(Some(command_answer(
+            selected_runtime()?.deliver_legacy_command(&typed),
+        )))
     })
 }
 
@@ -112,9 +111,9 @@ pub fn ravel_legacy_event<'local>(
         let kind = text(env, &kind)?;
         let event = ravel_host_api::GameEvent::published(&kind)
             .ok_or_else(|| refused("unknown legacy semantic event".to_owned()))?;
-        match runtime() {
+        match selected_runtime() {
             Ok(runtime) => {
-                if let Err(error) = runtime.legacy_event(event) {
+                if let Err(error) = runtime.deliver_legacy_event(event) {
                     report(error.context(), &error);
                 }
             }
@@ -148,7 +147,7 @@ pub fn ravel_legacy_packet<'local>(
                 return Ok(());
             }
         };
-        let runtime = match runtime() {
+        let runtime = match selected_runtime() {
             Ok(runtime) => runtime,
             Err(error) => {
                 report("legacy packet dropped", &error);
@@ -159,7 +158,7 @@ pub fn ravel_legacy_packet<'local>(
         // Network input refusals must not unwind vanilla's dispatch loop. Trusted
         // callback failures have already been attributed to their owner by Rust.
         if let Err(reason) =
-            runtime.legacy_packet(PacketId::new(id), payload, to_server != JNI_FALSE)
+            runtime.deliver_legacy_packet(PacketId::new(id), payload, to_server != JNI_FALSE)
         {
             report("legacy packet dropped", &reason);
         }
@@ -178,7 +177,7 @@ pub fn ravel_legacy_packet_owner<'local>(
     env.with_env(|env: &mut Env<'local>| -> Result<jboolean, HookError> {
         let channel = text(env, &channel)?;
         let owned = admitted_channel(&channel).is_ok_and(|id| {
-            runtime().is_ok_and(|runtime| runtime.accepts_packet_owner(id.namespace()))
+            selected_runtime().is_ok_and(|runtime| runtime.accepts_packet_owner(id.namespace()))
         });
         Ok(if owned { jni::sys::JNI_TRUE } else { JNI_FALSE })
     })
@@ -209,7 +208,9 @@ pub fn ravel_legacy_resource_paths<'local>(
     env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
-    hand_document(env, |_| Ok(Some(resource_paths(runtime()?.as_ref()))))
+    hand_document(env, |_| {
+        Ok(Some(resource_paths(selected_runtime()?.as_ref())))
+    })
 }
 
 /// Reads a winning admitted resource; never opens a caller-supplied filesystem path.
@@ -221,9 +222,9 @@ pub fn ravel_legacy_resource<'local>(
 ) -> JByteArray<'local> {
     env.with_env(
         |env: &mut Env<'local>| -> Result<JByteArray<'local>, HookError> {
-            let runtime = runtime()?;
+            let runtime = selected_runtime()?;
             let path = text(env, &path)?;
-            if path.len() > 4096 {
+            if path.len() > MAX_RESOURCE_PATH_BYTES {
                 return Ok(JByteArray::null());
             }
             let Ok(path) = path.try_into() else {

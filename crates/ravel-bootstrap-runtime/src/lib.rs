@@ -23,7 +23,7 @@ mod test_support;
 pub use packs::{
     GamePackError, PackOutcome, Written, pack_id, write_resource_pack, write_world_datapack,
 };
-pub use persistence::{OpenOutcome, SaveOutcome, open_world_data};
+pub use persistence::{OpenOutcome, open_world_data};
 pub use runtime::{
     Composition, InstallError, install, install_integrated, install_panic_hook,
     integrated_installed, is_installed, process_game_directory,

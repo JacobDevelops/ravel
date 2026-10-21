@@ -15,6 +15,7 @@ use ravel_bootstrap_runtime::{
     Composition, GamePackError, InstallError, SideError, install, write_resource_pack,
 };
 use ravel_config::file;
+use ravel_core::Version;
 use ravel_core::{ModId, Side};
 use ravel_host_api::Mod;
 use ravel_loader::{
@@ -26,7 +27,6 @@ use ravel_minecraft_adapter::environment;
 use ravel_observability::{PreWorldReport, Profiler};
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
-use semver::Version;
 
 /// One member of a composed set: the package it ships as, and its value.
 pub struct Member {
@@ -134,8 +134,8 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     })
 }
 
-/// Enters the shared launch path and translates failures into redacted JVM exceptions.
-pub fn enter(
+/// Launches the shared composition and translates failures into redacted JVM exceptions.
+pub fn launch(
     mut env: jni::EnvUnowned<'_>,
     side_code: jni::sys::jint,
     profiling_requested: jni::sys::jboolean,
@@ -163,8 +163,8 @@ pub fn enter(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
-/// Enters an independent integrated-server composition on its owning game thread.
-pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
+/// Launches an independent integrated-server composition on its owning game thread.
+pub fn launch_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side) -> Vec<Member>) {
     ravel_bootstrap_runtime::install_panic_hook();
     env.with_env(|env| -> Result<(), LaunchError> {
         if let Err(error) = initialize_integrated(members) {
@@ -185,7 +185,9 @@ pub fn enter_integrated(mut env: jni::EnvUnowned<'_>, members: impl FnOnce(Side)
 /// Returns an error for modern adapters, a missing process runtime, or composition or installation failure.
 pub fn initialize_integrated(members: impl FnOnce(Side) -> Vec<Member>) -> Result<(), LaunchError> {
     if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
-        return Err(LaunchError::IndependentIntegratedUnsupported);
+        return Err(LaunchError::Install(
+            InstallError::IndependentIntegratedUnsupported,
+        ));
     }
     if ravel_bootstrap_runtime::integrated_installed() {
         return Ok(());
@@ -311,8 +313,6 @@ pub enum LaunchError {
     Unadmitted(ModId),
     /// An admitted entry has no composed value.
     Missing(ravel_loader::MissingMod),
-    /// Modern integrated play uses the process runtime rather than a second composition.
-    IndependentIntegratedUnsupported,
     /// The admitted plan could not be established as a lifecycle.
     Lifecycle(LifecycleError),
     /// The set's settings could not be resolved or consumed.
@@ -375,9 +375,6 @@ impl fmt::Display for LaunchError {
                 "`{mod_id}` holds a composed value nothing admitted"
             ),
             Self::Missing(error) => write!(formatter, "an admitted value is missing: {error}"),
-            Self::IndependentIntegratedUnsupported => {
-                formatter.write_str("this adapter serves integrated play from the process runtime")
-            }
             Self::Lifecycle(error) => {
                 write!(formatter, "the admitted set has no lifecycle: {error}")
             }
@@ -434,9 +431,7 @@ impl std::error::Error for LaunchError {
             Self::Interceptions(error) => Some(error),
             Self::Pack(error) => Some(error),
             Self::Options(error) => Some(error),
-            Self::Unadmitted(_) | Self::NotComposed(_) | Self::IndependentIntegratedUnsupported => {
-                None
-            }
+            Self::Unadmitted(_) | Self::NotComposed(_) => None,
             Self::Missing(error) => Some(error),
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),
@@ -491,7 +486,7 @@ mod tests {
         } else {
             assert!(matches!(
                 error,
-                super::LaunchError::IndependentIntegratedUnsupported
+                super::LaunchError::Install(super::InstallError::IndependentIntegratedUnsupported)
             ));
         }
         assert!(!constructed);
@@ -526,7 +521,9 @@ mod tests {
                 } else {
                     assert!(matches!(
                         result,
-                        Err(super::LaunchError::IndependentIntegratedUnsupported)
+                        Err(super::LaunchError::Install(
+                            super::InstallError::IndependentIntegratedUnsupported
+                        ))
                     ));
                     assert!(!constructed);
                     assert!(!ravel_bootstrap_runtime::integrated_installed());

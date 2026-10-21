@@ -144,7 +144,10 @@ fn world_pack_refusals_leave_files_untouched_and_publish_notices() {
     .expect("blocking file");
     let runtime = pack_runtime(game);
     for world in [&redirected_world, &blocked_world] {
-        assert_eq!(runtime.write_world_pack(world), PackOutcome::Refused);
+        assert_eq!(
+            runtime.put_pack(world, super::installed_pack_root),
+            PackOutcome::Refused
+        );
     }
     assert_eq!(
         std::fs::read_dir(&outside)

@@ -49,13 +49,13 @@ pub enum PackOutcome {
 /// refusals are also recorded as runtime notices; a missing runtime is explicit.
 pub fn write_world_datapack(world: &Path) -> PackOutcome {
     crate::runtime::selected().map_or(PackOutcome::RuntimeUnavailable, |runtime| {
-        runtime.write_world_pack(world)
+        runtime.put_pack(world, installed_pack_root)
     })
 }
 
-fn write_staged_datapack(directory: &Path) -> PackOutcome {
+pub(crate) fn write_staged_datapack(directory: &Path) -> PackOutcome {
     crate::runtime::selected().map_or(PackOutcome::RuntimeUnavailable, |runtime| {
-        runtime.write_staged_pack(directory)
+        runtime.put_pack(directory, staged_pack_root)
     })
 }
 
@@ -92,27 +92,6 @@ pub fn write_resource_pack(
         Half::Assets,
         &resource_pack_metadata(ASSET_DESCRIPTION),
     )
-}
-
-/// Writes the launch's supplied data into `world`.
-///
-/// # Errors
-///
-/// Returns an error if the pack cannot be written.
-fn write_world_pack(world: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
-    write_data_pack(&installed_pack_root(world), supplied)
-}
-
-/// Writes the launch's supplied data into a staging holder.
-///
-/// # Errors
-///
-/// Returns an error if the pack cannot be written.
-pub(crate) fn write_staged_pack(
-    holder: &Path,
-    supplied: &Supplied,
-) -> Result<Written, GamePackError> {
-    write_data_pack(&staged_pack_root(holder), supplied)
 }
 
 fn write_data_pack(root: &Path, supplied: &Supplied) -> Result<Written, GamePackError> {
@@ -191,19 +170,7 @@ fn pack_targets_are_real(world: &Path) -> Result<(), String> {
 }
 
 impl LoaderRuntime {
-    pub(crate) fn write_world_pack(&self, world: &Path) -> PackOutcome {
-        self.put_pack(world, write_world_pack)
-    }
-
-    pub(crate) fn write_staged_pack(&self, directory: &Path) -> PackOutcome {
-        self.put_pack(directory, write_staged_pack)
-    }
-
-    fn put_pack(
-        &self,
-        path: &Path,
-        write: fn(&Path, &Supplied) -> Result<Written, GamePackError>,
-    ) -> PackOutcome {
+    pub(crate) fn put_pack(&self, path: &Path, root: fn(&Path) -> PathBuf) -> PackOutcome {
         let directory = path.display();
         let launch = &self.launch;
         if let Err(refusal) = admissible_world(path, &launch.game_directory) {
@@ -217,7 +184,7 @@ impl LoaderRuntime {
                 ));
             return PackOutcome::Refused;
         }
-        match write(path, &launch.supplied) {
+        match write_data_pack(&root(path), &launch.supplied) {
             Ok(written) if written.changed() => PackOutcome::Written,
             Ok(_) => PackOutcome::Unchanged,
             Err(error) => {
@@ -242,7 +209,7 @@ mod admission_tests;
 mod tests {
     use std::path::PathBuf;
 
-    use super::{write_staged_pack, write_world_pack};
+    use super::{installed_pack_root, staged_pack_root, write_data_pack};
     use ravel_loader::Supplied;
 
     fn directory(name: &str) -> PathBuf {
@@ -257,31 +224,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn world_and_staged_writers_use_the_shared_roots() {
-        let world = directory("shared-roots");
-        let supplied = Supplied::default();
-        assert_eq!(
-            write_world_pack(&world, &supplied)
-                .expect("world pack")
-                .root(),
-            super::installed_pack_root(&world)
-        );
-        assert_eq!(
-            write_staged_pack(&world, &supplied)
-                .expect("staged pack")
-                .root(),
-            super::staged_pack_root(&world)
-        );
-        std::fs::remove_dir_all(world).expect("remove world");
-    }
-
     // A launch with no declared files still publishes the version's metadata.
     #[test]
     fn an_empty_launch_writes_world_pack_metadata() {
         let world = directory("absent");
 
-        write_world_pack(&world, &Supplied::default()).expect("the pack can be written");
+        write_data_pack(&installed_pack_root(&world), &Supplied::default())
+            .expect("the pack can be written");
 
         assert!(world.join("datapacks/ravel/pack.mcmeta").is_file());
         std::fs::remove_dir_all(world).expect("remove the test world");
@@ -291,7 +240,8 @@ mod tests {
     fn an_empty_launch_stages_pack_metadata() {
         let staging = directory("unstaged");
 
-        write_staged_pack(&staging, &Supplied::default()).expect("the pack can be written");
+        write_data_pack(&staged_pack_root(&staging), &Supplied::default())
+            .expect("the pack can be written");
 
         assert!(staging.join("ravel/pack.mcmeta").is_file());
         assert!(!staging.join("datapacks").exists());

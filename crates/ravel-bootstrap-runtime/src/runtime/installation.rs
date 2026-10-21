@@ -80,12 +80,15 @@ pub fn integrated_installed() -> bool {
 /// Installs a composition whose lifetime is the integrated server thread's lifetime.
 ///
 /// Its owning handle is dropped when that server thread exits. The game directory
-/// and current profiling switch are inherited directly from the process runtime.
+/// and launch profiling switch are inherited directly from the process runtime.
 /// # Errors
 ///
-/// Refuses a missing process runtime, an already installed server thread, or a
-/// non-integrated composition.
+/// Refuses an unsupported adapter, a missing process runtime, an already installed
+/// server thread, or a non-integrated composition.
 pub fn install_integrated(composition: Composition) -> Result<(), InstallError> {
+    if !ravel_minecraft_adapter::pinned::LEGACY_ADAPTER {
+        return Err(InstallError::IndependentIntegratedUnsupported);
+    }
     if composition.loaded.machine().side() != ravel_core::Side::IntegratedServer {
         return Err(InstallError::WrongSide);
     }
@@ -95,16 +98,10 @@ pub fn install_integrated(composition: Composition) -> Result<(), InstallError> 
             return Err(InstallError::AlreadyInstalled);
         }
         let process = installed().ok_or(InstallError::ProcessNotInstalled)?;
-        let profiling = process
-            .inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .profiler
-            .is_on();
         let runtime = Arc::new(LoaderRuntime::from_composition(
             composition,
             process.launch.game_directory.clone(),
-            Profiler::from_switch(profiling),
+            Profiler::from_switch(process.launch.profiling),
             PreWorldReport::new(ravel_minecraft_adapter::environment()),
         ));
         *INTEGRATED_VIEW
@@ -130,6 +127,8 @@ pub enum InstallError {
     WrongSide,
     /// A caller requested process launch context before the process was installed.
     ProcessNotInstalled,
+    /// Modern integrated play uses the process runtime rather than a second composition.
+    IndependentIntegratedUnsupported,
 }
 
 impl std::fmt::Display for InstallError {
@@ -138,6 +137,9 @@ impl std::fmt::Display for InstallError {
             Self::AlreadyInstalled => "the loader runtime is already installed",
             Self::WrongSide => "integrated installation requires the integrated-server side",
             Self::ProcessNotInstalled => "the process launch context is not installed",
+            Self::IndependentIntegratedUnsupported => {
+                "this adapter serves integrated play from the process runtime"
+            }
         })
     }
 }

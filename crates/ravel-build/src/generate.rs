@@ -195,7 +195,7 @@ fn entry_points() -> &'static str {
      \x20   side: jni::sys::jint,\n\
      \x20   profiling_requested: jni::sys::jboolean,\n\
      ) {\n\
-     \x20   ravel_host_runtime::enter(env, side, profiling_requested, members);\n\
+     \x20   ravel_host_runtime::launch(env, side, profiling_requested, members);\n\
      }\n\
      \n\
      /// Starts the integrated server's independent side-specific mod set.\n\
@@ -204,7 +204,7 @@ fn entry_points() -> &'static str {
      \x20   env: EnvUnowned<'local>,\n\
      \x20   _class: JClass<'local>,\n\
      ) {\n\
-     \x20   ravel_host_runtime::enter_integrated(env, members);\n\
+     \x20   ravel_host_runtime::launch_integrated(env, members);\n\
      }\n"
 }
 

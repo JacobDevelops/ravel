@@ -824,7 +824,10 @@ mod tests {
         ));
         assert!(java.contains("public static native void chatAllowedCharacter(int argument0);"));
         assert!(java.contains("\"(Ljava/lang/Object;)V\")"));
-        assert_eq!(rust.matches("crate::guard::enter(").count(), shapes.len());
+        assert_eq!(
+            rust.matches("crate::guard::observe_hook(").count(),
+            shapes.len()
+        );
         for shape in &shapes {
             let declaration = format!("pub fn {}<'local>(", shape.rust_function);
             let signature = rust

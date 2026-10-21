@@ -55,6 +55,7 @@ pub fn ravel_open_world_persistence<'local>(
         };
         Ok(Some(match outcome {
             OpenOutcome::Staged => String::new(),
+            OpenOutcome::RuntimeUnavailable => HookError::Unavailable.to_string(),
             OpenOutcome::Refused(diagnostic) => publishable(&diagnostic),
         }))
     })
@@ -80,6 +81,9 @@ fn publishable(diagnostic: &str) -> String {
 
 fn save_answer(outcome: SaveOutcome) -> Vec<u8> {
     match outcome {
+        SaveOutcome::RuntimeUnavailable => {
+            tagged(FAILED, HookError::Unavailable.to_string().as_bytes())
+        }
         // Java writes nothing for both vetoed and unchanged saves.
         SaveOutcome::Unchanged | SaveOutcome::Withheld => vec![UNCHANGED],
         SaveOutcome::Replacement(bytes) => tagged(REPLACEMENT, &bytes),
@@ -128,6 +132,17 @@ mod tests {
         assert_eq!(
             BTreeSet::from([UNCHANGED, REPLACEMENT, FAILED, IDENTITY_MISMATCH]).len(),
             4
+        );
+    }
+
+    #[test]
+    fn a_missing_runtime_preserves_the_failed_save_wire_tag() {
+        assert_eq!(
+            save_answer(SaveOutcome::RuntimeUnavailable),
+            tagged(
+                FAILED,
+                crate::guard::HookError::Unavailable.to_string().as_bytes()
+            )
         );
     }
 

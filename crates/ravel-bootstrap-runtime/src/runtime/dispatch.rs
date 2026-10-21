@@ -22,7 +22,7 @@ pub(super) const EVENTS: [(&str, GameEvent, EventSide); 5] = [
     (
         "resource.load-server-resources",
         GameEvent::ResourcesReloaded,
-        EventSide::Process,
+        EventSide::World,
     ),
     (
         "resource.reload-client-packs",
@@ -100,7 +100,7 @@ impl std::error::Error for Undelivered {
 
 impl LoaderRuntime {
     /// Delivers a semantic event only after the Java adapter's success/thread checks.
-    pub(crate) fn legacy_event(&self, event: GameEvent) -> Result<(), Undelivered> {
+    pub(crate) fn deliver_legacy_event(&self, event: GameEvent) -> Result<(), Undelivered> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let side = inner.loaded.machine().side();
         inner.deliver_checked(&Work::Event(event, side))
@@ -126,7 +126,7 @@ impl LoaderRuntime {
     }
 
     /// Routes only commands claimed by the admitted native set.
-    pub(crate) fn legacy_command(&self, typed: &str) -> Result<(), Undelivered> {
+    pub(crate) fn deliver_legacy_command(&self, typed: &str) -> Result<(), Undelivered> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if !inner.loaded.machine().side().is_server() {
             return Err(Undelivered::Precondition(NOT_SERVER));
@@ -141,7 +141,7 @@ impl LoaderRuntime {
     }
 
     /// Routes a bounded packet using the SDK's existing owned delivery contract.
-    pub(crate) fn legacy_packet(
+    pub(crate) fn deliver_legacy_packet(
         &self,
         id: ravel_network::PacketId,
         payload: Vec<u8>,
@@ -293,7 +293,9 @@ mod tests {
             for process in [Side::Client, Side::IntegratedServer, Side::DedicatedServer] {
                 let expected = match hook {
                     "server.tick" if process == Side::Client => None,
-                    "server.tick-integrated" => Some(process.world_side()),
+                    "server.tick-integrated" | "resource.load-server-resources" => {
+                        Some(process.world_side())
+                    }
                     _ => Some(process),
                 };
                 assert_eq!(rule.resolve(process), expected, "{hook} on {process:?}");

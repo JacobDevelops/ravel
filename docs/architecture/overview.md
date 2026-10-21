@@ -119,8 +119,12 @@ Ravel into a Java mod host.
   Rust does not call game methods, and `JavaHandle` exposes no such capability.
 - **Runtime ownership.** Bootstrap installation consumes a complete composition,
   launch directory, pre-world report and profiler; no installed runtime lacks
-  launch state. Host initialization owns panic-hook installation and the shared
-  JNI entry body. The loader applies one owner-attribution operation to callback
+  launch state. Host `launch` and `launch_integrated` own the JNI entry bodies
+  and panic-hook installation.
+  Bootstrap installation refuses independent integrated runtimes on modern adapters;
+  legacy integrated runtimes inherit the process directory and fixed launch profiling
+  switch without locking the mod-callback runtime. The loader applies one
+  owner-attribution operation to callback
   failures across lifecycle driving, saves and bootstrap dispatch. Service,
   resource and configuration entry points use the same owner-participation
   and lifecycle rules; a refusing service provider is an error, not an absent

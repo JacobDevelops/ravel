@@ -51,7 +51,7 @@ class PreflightLaunchTests(TestCase):
                 environment = preflight.launcher_environment()
             self.assertEqual(environment, {'ALSOFT_DRIVERS': 'pulse'})
 
-    def test_candidate_launch_uses_same_runtime_without_observer(self) -> None:
+    def test_candidate_launch_uses_pinned_runtime_and_bounded_harness_without_observer(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             baseline = root / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline'
@@ -67,6 +67,11 @@ class PreflightLaunchTests(TestCase):
             proof = {'admissions': 1, 'audioDriver': 'null',
                      'coveredScenes': ['opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated']}
 
+            def prepare_fixture(*args: object) -> None:
+                (root / '.minecraft').mkdir()
+                (root / '.minecraft/options.txt').write_text('renderDistance:12\n')
+                (out / 'settings.json').write_text(json.dumps({'options': {'renderDistance': '12'}}))
+
             def launch(argv: list[str], **kwargs: object) -> Mock:
                 self.assertIn('-javaagent:pinned-agent.jar', argv)
                 self.assertIn('-Dravel.legacy.preflight=true', argv)
@@ -74,6 +79,12 @@ class PreflightLaunchTests(TestCase):
                 self.assertIn('-Dravel.legacy.proof=true', argv)
                 self.assertNotIn('-Dravel.legacy.benchmark=true', argv)
                 self.assertFalse(any('observer.jar' in token for token in argv))
+                from harness_settings import client_options
+                expected = client_options()
+                self.assertEqual(expected['renderDistance'], '2')
+                self.assertEqual((root / '.minecraft/options.txt').read_text(),
+                                 ''.join(f'{key}:{value}\n' for key, value in expected.items()))
+                self.assertEqual(json.loads((out / 'settings.json').read_text())['options'], expected)
                 self.assertTrue(kwargs['start_new_session'])
                 proof_path = out / 'preflight.json'
                 proof_path.write_text(json.dumps(proof))
@@ -82,7 +93,8 @@ class PreflightLaunchTests(TestCase):
             with patch.object(preflight, 'ROOT', root), \
                  patch.object(preflight, 'launcher_environment', return_value={'ALSOFT_DRIVERS': 'null'}), \
                  patch('renderer_proof.validate_scene_settings'), \
-                 patch.object(vanilla, 'prepare_vanilla') as prepare, \
+                 patch.object(vanilla, 'prepare_vanilla', side_effect=prepare_fixture) as prepare, \
+                 patch.object(vanilla, 'instance_directory', return_value=root), \
                  patch.object(vanilla, 'prepare_command', return_value=(command, root)), \
                  patch.object(run, 'validate_geometry_export') as validate_metrics, \
                  patch.object(preflight.subprocess, 'Popen', side_effect=launch) as execute:

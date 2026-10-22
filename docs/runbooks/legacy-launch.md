@@ -86,8 +86,10 @@ live acceptance.
 live-harness client options and golden-scene chunk offsets. The harness launcher,
 scene placement and proof validators read it. Scene offsets outside the configured
 render distance fail before launch; measured scene rows prove loaded coverage.
-Benchmark preparation retains its separate recorded protocol: render distance 12,
-unlimited frames, and no harness-specific fancy-graphics or GUI-scale overrides.
+Timed benchmark preparation retains its separate recorded protocol: render distance
+12, unlimited frames, and no harness-specific fancy-graphics or GUI-scale overrides.
+Candidate functional preflight instead applies and records the shared harness
+options, including render distance 2; it must not inherit the timed scene's options.
 
 After building the legacy agent and platform, run the bounded preflight on the
 native display:
@@ -96,21 +98,36 @@ native display:
 DISPLAY=:0 numen run -- python3 registry/sevtech/bench/run.py --preflight
 ```
 
-It allows 60 seconds for a fresh selected-renderer launch, requires nonzero baked
-admissions, all five controlled scene arrangements measured, and the null audio
-driver. Failure stops the batch with a reason and private evidence under
-`tests/fixtures/local/legacy-platform/evidence-display-agent-preflight/`.
+It allows 60 seconds for a geometry-proof launch, or 180 seconds for resident-world,
+requires nonzero baked admissions, all five controlled scene arrangements measured,
+and the null audio driver. Failure stops the batch with a reason and private evidence
+under `tests/fixtures/local/legacy-platform/evidence-display-agent-preflight/`.
 This is a section-layer admission/coverage check, not full-world renderer fidelity.
 
-For `--instance ravel --workload vanilla --renderer geometry-proof --matrix PREFIX`,
-the runner preflights the same pinned candidate runtime once, then executes three
-deterministic off/on pairs (`vanilla`, `geometry-proof`), not two blocks of three.
-Candidate preflight evidence lives in `baseline/runs/PREFIX-preflight/`.
-The candidate must be rebuilt and repinned after automation changes.
+For `--instance ravel --workload vanilla --renderer resident-world --matrix PREFIX`
+(or `--renderer geometry-proof`), the runner preflights the same pinned candidate
+runtime once, then executes three deterministic off/on pairs (`vanilla`, selected
+renderer), not two blocks of three. Candidate preflight evidence lives in
+`baseline/runs/PREFIX-preflight/`. Use a fresh prefix: existing trials are retained,
+not overwritten. The candidate must be rebuilt and repinned after automation changes.
 The runner writes the exact trial order and preflight verdict to
-`baseline/runs/PREFIX/matrix.json` under the local
-SevTech fixture. Each arm retains its own result and summary cohort. Other matrices
-retain their single-arm schedule and have no baked-renderer preflight.
+`baseline/runs/PREFIX/matrix.json` under the local SevTech fixture. Each arm retains
+its own result and summary cohort. Other matrices retain their single-arm schedule.
+
+Timed resident-world arms require acceptance mode **off**. Their only selection
+override is `ravel.renderer.validation=true`, recorded in launch provenance alongside
+the selected renderer. Functional golden preflight is separate and uses acceptance
+instrumentation. The default remains vanilla.
+
+Each timed Ravel arm exports `production-renderer.json`: replacements and fallbacks
+for SOLID, CUTOUT_MIPPED, CUTOUT and TRANSLUCENT; global and currently owned section
+sort/upload counts; and native/GL residency, peaks and budgets. A resident-world arm
+fails if any layer has zero replacements, if production sort/upload activity is
+absent, or if a resident peak exceeds its budget. Report replacement ratios alongside
+timing: substantial vanilla fallback limits the conclusion. Pending and stale
+fallback draws are exact; the remainder means **not resident: fluid, unadmitted,
+evicted or over budget**. Admission refusal and eviction event counters have different
+units and cannot be substituted for a per-draw reason breakdown.
 
 ### Explicit premain/JNI launches
 

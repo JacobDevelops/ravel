@@ -337,7 +337,7 @@ class VanillaLaunchTests(unittest.TestCase):
         import json
         import vanilla
         for instance, renderer in (('vanilla', 'vanilla'), ('ravel', 'vanilla'),
-                                   ('ravel', 'geometry-proof')):
+                                   ('ravel', 'geometry-proof'), ('ravel', 'resident-world')):
             with self.subTest(instance=instance, renderer=renderer), tempfile.TemporaryDirectory() as raw:
                 root = Path(raw)
                 out = root / 'trial'
@@ -394,6 +394,9 @@ class VanillaLaunchTests(unittest.TestCase):
                     self.assertTrue(any(arg.startswith('-Dravel.host=') for arg in command))
                     selection = ['-Dravel.renderer=' + renderer,
                                  '-Dravel.renderer.metrics=' + str(out / 'geometry-upload.json')]
+                    if renderer == 'resident-world':
+                        selection.append('-Dravel.renderer.validation=true')
+                    self.assertNotIn('-Dravel.legacy.acceptance=true', command)
                     self.assertTrue(all(value in command for value in selection))
                     self.assertEqual(record['provenance']['rendererJvmArgs'], selection)
                     self.assertEqual(record['provenance']['renderer'], renderer)

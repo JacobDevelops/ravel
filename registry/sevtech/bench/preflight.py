@@ -42,26 +42,37 @@ def stop_preflight(process: subprocess.Popen) -> None:
         process.wait()
 
 
-def run_preflight(candidate: Path | None = None, trial: str = 'renderer-preflight') -> None:
+def run_preflight(candidate: Path | None = None, trial: str = 'renderer-preflight',
+                  renderer: str = 'geometry-proof') -> None:
     if not trial or '/' in trial or trial in {'.', '..'}:
         raise ValueError('preflight: trial must be a single directory name')
     sys.path.insert(0, str(ROOT / 'jvm/legacy-platform/tools'))
+    from harness_settings import client_options
     from renderer_proof import validate_scene_settings
     validate_scene_settings()
     environment = launcher_environment()
     if environment['ALSOFT_DRIVERS'] != 'null':
         raise ValueError('preflight: audio is not silent (ALSOFT_DRIVERS must be null)')
-    environment.update(RAVEL_LEGACY_PREFLIGHT='1', RAVEL_LEGACY_RENDERER='geometry-proof',
+    environment.update(RAVEL_LEGACY_PREFLIGHT='1', RAVEL_LEGACY_RENDERER=renderer,
+                       RAVEL_LEGACY_PRODUCTION_VALIDATION='1' if renderer == 'resident-world' else '0',
                        RAVEL_LEGACY_EVIDENCE_SUFFIX='-preflight')
     out = ROOT / 'tests/fixtures/local/legacy-platform/evidence-display-agent-preflight'
     command = ['bash', str(ROOT / 'jvm/legacy-platform/launch.sh'), 'client-agent', 'display']
     cwd = ROOT
     if candidate is not None:
-        from vanilla import prepare_vanilla, prepare_command
+        from vanilla import instance_directory, prepare_vanilla, prepare_command
         out = ROOT / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline/runs' / trial
         out.mkdir(parents=True, exist_ok=False)
         prepare_vanilla(out, 'ravel', candidate)
-        command, cwd = prepare_command(out, 'ravel', candidate, renderer='geometry-proof')
+        # Functional golden captures use the shared bounded harness, not timed slice-1 options.
+        options = client_options()
+        (instance_directory('ravel') / '.minecraft/options.txt').write_text(
+            ''.join(f'{key}:{value}\n' for key, value in options.items()))
+        settings_path = out / 'settings.json'
+        settings = json.loads(settings_path.read_text())
+        settings['options'] = options
+        settings_path.write_text(json.dumps(settings, indent=2) + '\n')
+        command, cwd = prepare_command(out, 'ravel', candidate, renderer=renderer)
         observer = '-javaagent:' + str((out.parents[1] / 'observer.jar').resolve()) + '='
         command = [value for value in command if value != '-Dravel.legacy.benchmark=true'
                    and not value.startswith(observer)]
@@ -72,13 +83,14 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
     proof = out / 'preflight.json'
     proof.unlink(missing_ok=True)
     started_ns = time.time_ns()
+    timeout = 180 if renderer == 'resident-world' else 60
     with (out / 'preflight-launcher.log').open('w') as log:
         process = subprocess.Popen(command, cwd=cwd, env=environment, start_new_session=True,
                                    stdout=log, stderr=subprocess.STDOUT)
     try:
-        code = process.wait(timeout=60)
+        code = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError('preflight: launch exceeded 60 seconds; inspect ' + str(out)) from error
+        raise RuntimeError(f'preflight: launch exceeded {timeout} seconds; inspect ' + str(out)) from error
     finally:
         stop_preflight(process)
     if code != 0 or not proof.is_file():
@@ -86,4 +98,4 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
     validate_preflight(json.loads(proof.read_text()))
     if candidate is not None:
         from run import validate_geometry_export
-        validate_geometry_export(out, 'geometry-proof', started_ns, preflight=True)
+        validate_geometry_export(out, renderer, started_ns, preflight=True)

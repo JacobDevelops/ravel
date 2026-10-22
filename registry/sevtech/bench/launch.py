@@ -420,9 +420,9 @@ def prepare_candidate(candidate: Path | str | None, instance: Path, output: Path
 
 
 def validate_renderer_selection(instance: str, workload: str, renderer: str) -> None:
-    require(renderer in ('vanilla', 'geometry-proof'), 'unknown renderer: ' + renderer)
-    require(renderer != 'geometry-proof' or (instance == 'ravel' and workload == 'vanilla'),
-            'geometry-proof requires --instance ravel --workload vanilla')
+    require(renderer in ('vanilla', 'geometry-proof', 'resident-world'), 'unknown renderer: ' + renderer)
+    require(renderer == 'vanilla' or (instance == 'ravel' and workload == 'vanilla'),
+            renderer + ' requires --instance ravel --workload vanilla')
 
 
 def prepare_command(instance: str, output: Path | str,
@@ -483,7 +483,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--instance', choices=('original', 'cleanroom', 'ravel', 'vanilla'), default='original')
     parser.add_argument('--workload', choices=('sevtech', 'vanilla'), default='sevtech')
-    parser.add_argument('--renderer', choices=('vanilla', 'geometry-proof'), default='vanilla')
+    parser.add_argument('--renderer', choices=('vanilla', 'geometry-proof', 'resident-world'), default='vanilla')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--candidate', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='explicit; this tool never launches')

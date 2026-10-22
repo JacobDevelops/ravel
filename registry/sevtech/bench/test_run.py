@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from typing import TypedDict
+from typing import Any, TypedDict
 from unittest import TestCase, main
 from unittest.mock import patch
 
@@ -27,6 +27,74 @@ class GeometryExport(TypedDict):
 
 
 class RunPolicyTests(TestCase):
+    def test_resident_production_requires_all_layers_and_bounded_peaks(self) -> None:
+        data: dict[str, Any] = {"selection": "resident-world", "acceptance": False, "validationOverride": True,
+                "draws": [1, 2, 3, 4, 5, 6, 7, 8, 10, 9, 4, 0, 0],
+                "globalSorts": [8, 7, 0], "ownedSorts": [2, 2, 0],
+                "native": [100, 0, 0, 0, 40, 80], "gl": [100, 40, 80, 1, 0]}
+        with tempfile.TemporaryDirectory() as raw:
+            out = Path(raw)
+            path = out / "production-renderer.json"
+            path.write_text(json.dumps(data))
+            run.validate_production_export(out, "resident-world", 0)
+            for layer in range(4):
+                bad = dict(data, draws=data["draws"].copy())
+                bad["draws"][layer] = 0
+                path.write_text(json.dumps(bad))
+                with self.subTest(layer=layer), self.assertRaisesRegex(ValueError, "zero production"):
+                    run.validate_production_export(out, "resident-world", 0)
+            for key, values in (("native", [100, 0, 0, 0, 40, 101]),
+                                ("gl", [100, 40, 101, 1, 0]), ("globalSorts", [0, 7, 0]),
+                                ("ownedSorts", [9, 2, 0]), ("ownedSorts", [0, 0, 0]), ("acceptance", True),
+                                ("validationOverride", False), ("draws", [0] * 11)):
+                path.write_text(json.dumps(dict(data, **{key: values})))
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    run.validate_production_export(out, "resident-world", 0)
+
+    def test_vanilla_production_counters_are_zero(self) -> None:
+        data: dict[str, Any] = {"selection": "vanilla", "acceptance": False, "validationOverride": False,
+                "draws": [0] * 13, "globalSorts": [0] * 3, "ownedSorts": [0] * 3,
+                "native": [0] * 6, "gl": [0] * 5}
+        with tempfile.TemporaryDirectory() as raw:
+            out = Path(raw)
+            path = out / "production-renderer.json"
+            path.write_text(json.dumps(data))
+            run.validate_production_export(out, "vanilla", 0)
+            data["draws"][4] = 1
+            path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "unselected arm"):
+                run.validate_production_export(out, "vanilla", 0)
+
+    def test_resident_preflight_rejects_production_schema_drift(self) -> None:
+        data = dict(self.geometry_export("geometry-proof"),
+                    selection="resident-world",
+                    fidelity="bounded-opaque-world-replacement-parity-unproven",
+                    shadedNativeBudget=[100, 0, 0, 0, 40, 80], productionWorldDraw=[0] * 13)
+        with tempfile.TemporaryDirectory() as raw:
+            out = Path(raw)
+            path = out / "geometry-upload.json"
+            path.write_text(json.dumps(data))
+            run.validate_geometry_export(out, "resident-world", 0, preflight=True)
+            for key, values in (("productionWorldDraw", [0] * 11),
+                                ("productionWorldDraw", [False] * 13),
+                                ("shadedNativeBudget", [0] * 5)):
+                path.write_text(json.dumps(dict(data, **{key: values})))
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "schema differs"):
+                    run.validate_geometry_export(out, "resident-world", 0, preflight=True)
+
+    def test_resident_matrix_alternates_production_selection(self) -> None:
+        args = argparse.Namespace(matrix="resident-test", instance="ravel",
+                                  candidate=Path("candidate.json"), workload="vanilla",
+                                  renderer="resident-world", functional_only=False, timeout=900)
+        with tempfile.TemporaryDirectory() as raw, patch.object(run, "LOCAL", Path(raw)), \
+             patch.object(run.subprocess, "run") as execute:
+            run.matrix(args)
+        self.assertEqual(execute.call_count, 7)
+        for index, call in enumerate(execute.call_args_list):
+            command = call.args[0]
+            self.assertEqual(command[command.index("--renderer") + 1],
+                             "resident-world" if index == 0 or index % 2 == 0 else "vanilla")
+
     def test_physical_display_is_required(self) -> None:
         with patch.dict(os.environ, {"DISPLAY": ":99"}):
             with self.assertRaisesRegex(ValueError, "DISPLAY=:0"):
@@ -224,6 +292,18 @@ class RunPolicyTests(TestCase):
             (out / "geometry-upload.json").write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, "baked"):
                 run.validate_geometry_export(out, "vanilla", 0)
+
+    def test_resident_timed_export_requires_drain_without_offscreen_proof_reservations(self) -> None:
+        data = self.geometry_export("vanilla")
+        run.validate_shaded_export(data, "resident-world")
+        for field, indices in (("shadedNativeResidency", [0, 1, *range(5, 12)]),
+                               ("shadedGlResidency", [0, *range(5, 14)])):
+            for index in indices:
+                bad = self.geometry_export("vanilla")
+                bad[field][index] = 1
+                with self.subTest(field=field, index=index), self.assertRaisesRegex(ValueError, "drain"):
+                    run.validate_shaded_export(bad, "resident-world")
+                run.validate_shaded_export(bad, "resident-world", preflight=True)
 
     def test_shaded_residency_requires_bounded_acknowledged_reuse_and_complete_drain(self) -> None:
         for field, index, value in (("shadedNativeResidency", 0, 1), ("shadedNativeResidency", 1, 1),

@@ -333,11 +333,45 @@ public final class BenchmarkAgent {
 
     private static void complete(Object minecraft, long now) throws ReflectiveOperationException, IOException {
         transition("complete", now);
+        exportProduction();
         marker("shutdown_requested", now, "client_hook=true;server_hook=" + serverObserved);
         access.shutdown.invoke(minecraft);
         finished = true;
         shutdownRequested = true;
         flushOutputs();
+    }
+
+    private static void exportProduction() throws ReflectiveOperationException, IOException {
+        String selection = System.getProperty("ravel.renderer", "vanilla");
+        if (System.getProperty("ravel.renderer") == null) return;
+        Class<?> renderer = Class.forName("dev.ravel.jvm.LegacyRenderer", true, ClassLoader.getSystemClassLoader());
+        Class<?> geometry = Class.forName("dev.ravel.legacy.opengl.GeometryProof", true, ClassLoader.getSystemClassLoader());
+        long[] totals = new long[3];
+        Method sorts = renderer.getMethod("productionSectionSorts", int.class, int.class, int.class);
+        int x = (int) Math.floor(originX / 16.0) * 16;
+        int z = (int) Math.floor(originZ / 16.0) * 16;
+        for (int dx = -32; dx <= 48; dx++) {
+            for (int dz = -32; dz <= 48; dz++) {
+                for (int y = 0; y < 256; y += 16) {
+                    long[] values = (long[]) sorts.invoke(null, x + dx * 16, y, z + dz * 16);
+                    for (int index = 0; index < totals.length; index++) totals[index] += values[index];
+                }
+            }
+        }
+        long[] draws = (long[]) renderer.getMethod("productionWorldDraw").invoke(null);
+        // An uninitialized vanilla renderer exposes the eleven base counters, all zero;
+        // the two selected-only refusal counters do not exist until its platform loads.
+        if (selection.equals("vanilla") && draws.length == 11)
+            draws = java.util.Arrays.copyOf(draws, 13);
+        String json = "{\"selection\":\"" + selection + "\",\"acceptance\":"
+            + Boolean.getBoolean("ravel.legacy.acceptance") + ",\"validationOverride\":"
+            + Boolean.getBoolean("ravel.renderer.validation") + ",\"draws\":"
+            + java.util.Arrays.toString(draws)
+            + ",\"globalSorts\":" + java.util.Arrays.toString((long[]) renderer.getMethod("productionSorts").invoke(null))
+            + ",\"ownedSorts\":" + java.util.Arrays.toString(totals)
+            + ",\"native\":" + java.util.Arrays.toString((long[]) renderer.getMethod("productionBudget").invoke(null))
+            + ",\"gl\":" + java.util.Arrays.toString((long[]) geometry.getMethod("worldResidency").invoke(null)) + "}\n";
+        Files.write(outputDirectory.resolve("production-renderer.json"), json.getBytes(StandardCharsets.UTF_8));
     }
 
     private static synchronized void onShutdown() {

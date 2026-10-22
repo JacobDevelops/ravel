@@ -716,5 +716,194 @@ requirement. No moving stop or static row differed in the completed run.
 That selected software-GL replay alone does not prove physical-GPU parity,
 default world cutover or renderer savings. Normal-world four-layer parity,
 including production translucent replacement and bounded visible-section
-residency, is reported separately above. Preflighted frozen RTX 5090 trials remain.
+residency, is reported separately above. The frozen RTX 5090 attempt and its
+coverage/budget findings are recorded below; a complete accepted matrix remains.
 No default cutover is admitted.
+
+## Frozen RTX 5090 production-path comparison
+
+The round-25 bench selects `resident-world` for on arms with acceptance **off**.
+It records the required `ravel.renderer.validation=true` selection override, never
+`ravel.legacy.acceptance=true`, in timed-arm provenance. Off arms select vanilla
+drawing in the same Ravel runtime cohort; each trial starts a separate JVM.
+The default remains vanilla. Scene settings are the existing slice-1 protocol:
+seed 8675309, distance 12, uncapped frames, silent audio and the physical display.
+
+The initial frozen functional preflight failed for a benchmark configuration
+reason, not a renderer atlas-generation failure. Candidate preparation had applied
+timed distance-12 options to the shared distance-2 golden scene. Diagnostic captures
+had a valid matched triplet, stable uploads/sorts and replacements `[3,1,0,1]`,
+matching the passing software-GL scene, but also 124 opaque and 16 translucent
+fallbacks. The controlled-scene majority guard correctly rejected that capture.
+The direct physical distance-2 harness passed. Candidate preflight now applies
+and records all shared harness client options; the timed trials remain distance
+12. No capture guard, production renderer or default was changed for this fix.
+The clean frozen candidate subsequently passed physical preflight (exit 0).
+
+### Frozen inputs
+
+Candidate `baseline/wp5s8-production-r25c.json`, measured against the integrated
+`lsonvklw` runtime with only the bench changes, has SHA-256
+`ab0e1d8b65a560a3c00a9144acd800f039483df24157740dfb118ddd23f82591`.
+Its component and benchmark SHA-256 values are:
+
+| Input | SHA-256 |
+| --- | --- |
+| Ravel premain agent | `a5b544aff42f967590e7b761bfdca712d56df1e6de644342c10ee660bc23921b` |
+| Native composed host, no fixture exports | `c34dd60e8f7f3e777d8453f5cb1949f877b23fe906c97c15ed6b06227633a18a` |
+| Legacy platform | `73cbc243bb1a7dd2a5bb8d8c1445ba1246661ae15a14fe651c9ba6acf0b111f7` |
+| Ravel screen | `ba1940fcfb4b0c57eb5bfb170bdefbbfebdad67b71a7bcb0ffd084ed937827be` |
+| LWJGL 3.3.6 | `b00e2781b74cc829db9d39fb68746b25bb7b94ce61d46293457dbccddabd999c` |
+| LWJGL Linux natives | `2f0e65d6985d602c0e5e5aab6576db113a9a378a36f8144ec93b77a4fde5876c` |
+| LWJGL GLFW | `b29c938ecc4997ce256a831aeca2033dab9829b5c21e72ebeb64aecd9e08450c` |
+| LWJGL GLFW Linux natives | `a1b60014597bc0e45bf39089f4d838c3aa87fd668f6fe4e7326aa314d2ec87c0` |
+| LWJGL OpenGL | `bb0430e0a5fd7b7b5770ae517960b2ea9887bb08d04f3a0cb1aae145332e1310` |
+| LWJGL OpenGL Linux natives | `8c0b5c081a7872a3cdb02b6448921da5ae5c23ab49656f299edc7a09b7e99b74` |
+| LWJGL OpenAL | `5d8669ee52325080f500cf0060785a13135a10c602286cefc8ba285805fa8468` |
+| LWJGL OpenAL Linux natives | `d30c407c1182f507c70ad12e21bac98189c767bf5c7a592dbfaa4f11d139545c` |
+| Benchmark observer JAR | `071e9237f90692451cd5e5971fac4f24659863a379d4892fb4f3194529bddcb4` |
+| Temurin 27.0.0+35 Java launcher | `306db8c7d74a1b2b8aadc0b82a52adfa564c4855d746a36b70c5304c45d23af6` |
+| `bench/BenchmarkAgent.java` | `f618bb298a0820a61fe0ebd5393aa8f93cd3d7806b5b87f42895d537c2abb256` |
+| `bench/run.py` | `629736e940e7abf58a3fb42bad595cd19336ae69efd19de96abc08e10a2547a6` |
+| `bench/preflight.py` | `3a8ba4e86e804f31f1f9862a74b5dee084f38564de27afc0b77fa5e8bd3ea30c` |
+| `bench/vanilla.py` | `cee2f2137d77b87d6fdec9aa8d2072b8801b0a49a37b8bbbfd19ed95cb4e5fcd` |
+| `bench/launch.py` | `5c9b77e4ba3abec024b0ab1ffaa25f430f78acd863c5a99cd024b5d7b4e1ba71` |
+| `bench/prepare.py` | `894d5bb0530d1bd2e94d0d334c8ffac830c7f12ce065efde906f6e34679633c6` |
+| `bench/summarize.py` | `1ad5a2dad1b236698af784b9a5ff99c385292879489d05c7d92214d063b82100` |
+| Shared functional harness settings | `e1652ce1e97a110173d53e3060207d1b3e2f5405d183938635a9e0d59e69f1d1` |
+
+Bench source paths in this table are relative to `registry/sevtech/`. The bench
+exports per-layer replacement and fallback draw counts, global and currently
+owned section sort/upload counts, and native/GL live usage, peaks and budgets.
+Selected arms with zero replacements in any non-fluid layer fail. The exact
+pending and stale fallback counts are separated from the remainder, labelled
+**not resident: fluid, unadmitted, evicted or over budget**. Admission refusals
+and evictions are section events, not draw-attribution counters.
+
+### Retained physical trials: stopped after the first pair
+
+The locked, alternating matrix `wp5s8-trials-r25c` passed its frozen physical
+functional preflight, completed the vanilla arm, then correctly failed its first
+resident-world arm: TRANSLUCENT replacements and native sort/upload activity
+were zero. The remaining four timed arms were **not run**, and the workload
+was not changed to manufacture coverage. The separate frozen Xvfb functional
+preflight `wp5s8-production-r25c-xvfb-functional` passed, exit 0.
+
+These are the retained first-pair observations, not an accepted performance
+comparison. Trial names below share prefix `wp5s8-trials-r25c-warm-filesystem-1-`.
+Quantiles are frame milliseconds, rounded to three decimals:
+
+| Trial suffix | Scene | p50 | p95 | p99 |
+| --- | --- | ---: | ---: | ---: |
+| `vanilla` | spawn_idle | 0.621 | 0.863 | 1.193 |
+| `vanilla` | square_exploration | 0.783 | 1.131 | 1.475 |
+| `vanilla` | loaded_chunk_stress | 0.824 | 1.107 | 1.471 |
+| `resident-world` — invalid coverage | spawn_idle | 0.906 | 1.291 | 1.597 |
+| `resident-world` — invalid coverage | square_exploration | 2.151 | 2.955 | 4.895 |
+| `resident-world` — invalid coverage | loaded_chunk_stress | 2.521 | 3.217 | 4.467 |
+
+| Trial suffix | Peak RSS MiB | Peak used heap MiB | Peak device VRAM MiB |
+| --- | ---: | ---: | ---: |
+| `vanilla` | 5433.695 | 2781.065 | 2329 |
+| `resident-world` — invalid coverage | 6082.098 | 2849.795 | 2518 |
+
+VRAM is sampled for the entire device, including the desktop and other allocations;
+it is not a per-process or resident-VBO measurement. Resource sampling ends at
+the measured shutdown marker, before the observer's final owned-section scan.
+
+All vanilla production replacement/fallback and global/owned sort/upload counters
+were zero. Its resident native/GL live and peak byte counts were zero against
+their unused 16,777,216-byte initial budgets. The selected arm exported:
+
+| Layer | Replacement draws | Vanilla fallback draws | Replaced / (replaced + fallback) |
+| --- | ---: | ---: | ---: |
+| SOLID | 30,618,519 | 32,561,652 | 48.4622% |
+| CUTOUT_MIPPED | 29,117,480 | 23,294,482 | 55.5550% |
+| CUTOUT | 18,882,975 | 16,728,246 | 53.0254% |
+| TRANSLUCENT | 0 | 19,158,147 | 0% |
+
+Of the selected arm's 91,742,527 fallback draws, 8,564,007 were stale and
+2,536,060 pending. The remaining 80,642,460 are **not resident: fluid,
+unadmitted, evicted or over budget**; existing telemetry does not split those
+causes per draw. Global sort/upload/refusal counts were `[0,0,0]`; the corresponding
+currently owned section counts were also `[0,0,0]`. Owned counts describe sections
+still retained since their latest compile, not lifetime cumulative work.
+
+| Selected residency | Live accounted bytes | Peak accounted bytes | Budget bytes | Resident sections | Evicted sections |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Native | 163,280,008 | 163,839,744 | 163,840,000 | 1,249 | 1,063 |
+| GL | 163,817,024 | 163,839,984 | 163,840,000 | 1,705 | 340 |
+
+These eviction columns count section events, not fallback draws. Native pending
+sections were zero at export. Baked capture separately recorded 21,642 successful
+publication events, 532 begin/admission refusals, 4,042 finish refusals and 828
+stale/resource skips. Every finish refusal used `UNACCOUNTED_VERTICES`; fluid
+capture shares that code with other accounting mismatches, so this is **not**
+a measured fluid-only refusal count.
+
+About half the opaque-layer draw calls and all translucent draw calls remained
+vanilla; this is not an all-resident world comparison. The retained selected
+run's frame quantiles are higher, but **no faster/slower/within-noise verdict is
+available**: the on arm is invalid and only one off arm exists, so off-versus-off
+spread cannot be measured. No speedup, regression significance or default cutover
+is claimed.
+
+### What the retained world and allocation accounting establish
+
+An offline census of the retained `RavelBenchmark` save decoded all four region
+files: 1,714 chunks and 8,790 stored sections. There were zero glass, glass panes,
+ice, frosted ice, stained glass, stained glass panes, slime, portal, beacon,
+packed-ice, end-portal or end-gateway blocks. The saved view therefore supplies
+no non-fluid translucent section to replace; this is a workload coverage gap,
+not evidence that resident-world refused a present non-fluid translucent model.
+The camera route spanned x = -172.5 to 83.5, z = 7.5 to 263.5 at y = 140.
+There were 2,642 fluid-bearing stored sections, with 271 flowing-water,
+416,811 water, 6,267 flowing-lava and 153,023 lava blocks. Those blocks remain
+on the vanilla path by design. The original workload was left unchanged.
+
+The residency budget is genuinely saturated, but **resident sections do not
+reserve the 8,192-quad worst case**. Native `BakedSnapshot::mesh` reserves exactly
+the observed quad count per layer; `BakedMesh::heap_bytes` accounts the resulting
+vector capacities and quad provenance. GL `BakedWorldTable.publish` reserves
+exactly `112 × emitted quads` bytes per section, plus a single shared 2,752,512-byte
+scratch allowance. The observed GL snapshot therefore contains 161,064,512 actual
+resident VBO bytes across 1,705 sections:
+
+| Size measurement | Mean bytes/section | p95 | Maximum |
+| --- | ---: | --- | --- |
+| Actual GL mesh payload | 94,465.99 | Unmeasured | Unmeasured |
+| Reserved resident GL VBO | 94,465.99 | Unmeasured | Unmeasured |
+| Native mesh payload/capacity | Unmeasured | Unmeasured | Unmeasured |
+| Native total accounted bytes, including shared table capacity, divided by resident count | 130,728.59 | Not a per-section distribution | Not a per-section distribution |
+
+The retained exports contain aggregate bytes/counts, not a per-section census;
+p95/max cannot be recovered from them. Native total accounting is not the native
+mesh-only mean. The worst-case 917,504-byte GL payload is a theoretical input
+bound, **not** an observed maximum or per-section reservation.
+
+Vanilla's own VBO bytes for the same scene are **unmeasured**. Production keeps
+Ravel resident VBOs in addition to vanilla's source VBOs; the device currently
+holds both copies. On the CPU, native acknowledgement moves the full `Retained`
+mesh from pending to resident without dropping opaque quad vectors. All four
+layers, including their provenance, remain until replacement, eviction or
+retirement, although subsequent native sorting uses only TRANSLUCENT.
+
+Before rerunning timed trials, add a per-section census of logical mesh bytes,
+native capacities, layer composition, Ravel VBO bytes and vanilla source-VBO bytes
+for matched generation/compiled identities. Then evaluate dropping acknowledged
+opaque CPU payloads while retaining valid lease metadata, and coordinate native
+and GL eviction/lifetimes so one table does not keep unusable duplicates. Decide
+whether a larger budget is justified only after measuring these duplicate copies;
+right-sizing resident mesh allocation is already implemented and is not the
+missing optimization. Exact per-draw fallback provenance remains a separate
+observability follow-up. A future representative workload must prove non-fluid
+translucent coverage without silently changing this slice-1 baseline.
+
+### Bench change checks
+
+The final bench suite passed 123 tests. `ravel:gate-lane`, explicitly scoped
+against `lsonvklw`, exited 0, including formatting, all package-digest checks,
+Python suites and registry checks. No Rust package changed, so the scoped gate
+selected no Rust clippy/tests and skipped legacy live launches. The frozen
+physical and separate Xvfb functional runs above supply the live evidence;
+the rejected timed selected arm remains rejected.

@@ -151,6 +151,8 @@ def ravel_command(candidate: Path | str | None, settings: dict[str, Any], direct
     logging_args = [value for value in settings['jvmArgs'] if value.startswith('-Dlog4j')]
     renderer_args = ['-Dravel.renderer=' + renderer,
                      '-Dravel.renderer.metrics=' + str(out.resolve() / 'geometry-upload.json')]
+    if renderer == 'resident-world':
+        renderer_args.append('-Dravel.renderer.validation=true')
     command = [data['javaPath'], '-Xms4096M', '-Xmx8192M', '-XX:+UseG1GC',
                '--module-path', os.pathsep.join(map(str, [agent, *modules])),
                '--add-modules', MODULES + ',dev.ravel.agent', '--illegal-native-access=deny',

@@ -58,6 +58,8 @@ def validate_shaded_export(data: dict[str, Any], renderer: str, preflight: bool 
         return
     require(not any(native[:2] + native[5:] + gl[:1] + gl[5:14]),
             'shaded residency did not drain at shutdown')
+    if renderer == 'resident-world':
+        return
     require(0 < native[2] <= 2 * BAKED_NATIVE_SLOT_BYTES and native[3] > 0 and native[4] >= native[3]
             and gl[1] == BAKED_GL_RESERVED_BYTES and gl[2] == 3 * gl[4] > 0
             and gl[3] == native[3] and gl[14] > 0 and gl[15] == 0,
@@ -92,6 +94,39 @@ def validate_baked_export(data: dict[str, Any], renderer: str, preflight: bool =
             'baked refusal reasons do not account for unsupported sections')
 
 
+def validate_production_shapes(data: dict[str, Any]) -> None:
+    from prepare import require
+    for name, length in (('draws', 13), ('globalSorts', 3), ('ownedSorts', 3),
+                         ('native', 6), ('gl', 5)):
+        values = data.get(name)
+        require(isinstance(values, list) and len(values) == length
+                and all(type(value) is int and value >= 0 for value in values),
+                'production counter schema differs: ' + name)
+
+def validate_production_export(out: Path, renderer: str, started_ns: int) -> None:
+    from prepare import require
+    path = out / 'production-renderer.json'
+    require(path.is_file() and path.stat().st_mtime_ns >= started_ns,
+            'production counters missing or stale')
+    data = json.loads(path.read_text())
+    require(data.get('selection') == renderer and data.get('acceptance') is False
+            and data.get('validationOverride') is (renderer == 'resident-world'),
+            'production selection or acceptance mode differs')
+    validate_production_shapes(data)
+    if renderer != 'resident-world':
+        require(not any(data['draws'] + data['globalSorts'] + data['ownedSorts']),
+                'unselected arm performed production work')
+        return
+    require(all(value > 0 for value in data['draws'][:4]),
+            'selected arm has zero production replacements in a non-fluid layer')
+    require(0 < data['draws'][9] <= data['draws'][8]
+            and all(value > 0 for value in data['globalSorts'][:2] + data['ownedSorts'][:2])
+            and all(value <= total for value, total in zip(data['ownedSorts'], data['globalSorts'])),
+            'production frame or sort/upload counters differ')
+    require(0 < data['native'][4] <= data['native'][5] <= data['native'][0]
+            and 0 < data['gl'][1] <= data['gl'][2] <= data['gl'][0],
+            'production resident peaks exceed budget')
+
 def validate_geometry_export(out: Path, renderer: str, started_ns: int, *,
                              preflight: bool = False) -> None:
     from prepare import require
@@ -102,7 +137,8 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int, *,
     require(isinstance(data, dict) and type(data.get('schemaVersion')) is int
             and data['schemaVersion'] == 1, 'geometry metrics schema differs')
     require(data.get('selection') == renderer, 'geometry metrics selection differs')
-    require(data.get('fidelity') == GEOMETRY_FIDELITY
+    require(data.get('fidelity') == ('bounded-opaque-world-replacement-parity-unproven'
+                                    if renderer == 'resident-world' else GEOMETRY_FIDELITY)
             and data.get('upload') == 'bounded-native-wire-java-owned-offscreen-gl',
             'geometry metrics fidelity/upload contract differs')
     metrics = data.get('metrics')
@@ -110,8 +146,20 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int, *,
             'geometry metrics fields differ')
     require(all(type(value) is int and value >= 0 for value in metrics.values()),
             'geometry metrics must be nonnegative integers')
-    validate_baked_export(data, renderer, preflight=preflight)
+    validate_baked_export(data, renderer, preflight=preflight or renderer == 'resident-world')
     validate_shaded_export(data, renderer, preflight=preflight)
+    if renderer == 'resident-world':
+        require(data.get('backend') in ('OpenGL15', 'ARB_vertex_buffer_object'),
+                'production geometry backend differs')
+        budget = data.get('shadedNativeBudget')
+        require(isinstance(budget, list) and len(budget) == 6
+                and all(type(value) is int and value >= 0 for value in budget),
+                'production native budget schema differs')
+        require(isinstance(data.get('productionWorldDraw'), list)
+                and len(data['productionWorldDraw']) == 13
+                and all(type(value) is int and value >= 0 for value in data['productionWorldDraw']),
+                'production draw schema differs')
+        return
     if preflight:
         require(data.get('backend') in ('selected-not-initialized', 'OpenGL15', 'ARB_vertex_buffer_object'),
                 'preflight geometry backend differs')
@@ -319,6 +367,8 @@ def run(args: argparse.Namespace) -> None:
     if args.instance == 'ravel' and args.workload == 'vanilla':
         validate_ravel_runtime(out)
         validate_geometry_export(out, args.renderer, started_ns)
+        if args.renderer in ('vanilla', 'resident-world'):
+            validate_production_export(out, args.renderer, started_ns)
 
 
 def monitor(process: subprocess.Popen, writer: Any, out: Path, timeout: float) -> None:
@@ -383,9 +433,9 @@ def matrix(args: argparse.Namespace) -> None:
     validate_renderer_selection(args.instance, args.workload, args.renderer)
     if '/' in args.matrix or args.matrix in ('.', '..'):
         raise ValueError('matrix prefix must be a simple identifier')
-    paired = args.renderer == 'geometry-proof'
+    paired = args.renderer != 'vanilla'
     caches = ('warm-filesystem',) if args.workload == 'vanilla' else ('cold-data-cache', 'warm-filesystem')
-    renderers = ('vanilla', 'geometry-proof') if paired else (args.renderer,)
+    renderers = ('vanilla', args.renderer) if paired else (args.renderer,)
     schedule = [{'trial': f'{args.matrix}-{cache}-{repetition}'
                  + (f'-{renderer}' if paired else ''), 'cache': cache, 'renderer': renderer}
                 for repetition in range(1, 4) for cache in caches for renderer in renderers]
@@ -398,7 +448,8 @@ def matrix(args: argparse.Namespace) -> None:
     base = ['mise', 'exec', '--', 'numen', 'run', '--', 'python3', str(Path(__file__))]
     if paired:
         subprocess.run(base + [args.matrix + '-preflight', '--preflight', '--instance', 'ravel',
-                               '--workload', 'vanilla', '--candidate', str(args.candidate.resolve())],
+                               '--workload', 'vanilla', '--renderer', args.renderer,
+                               '--candidate', str(args.candidate.resolve())],
                        check=True)
         record['preflight'] = 'passed'
         path.write_text(json.dumps(record, indent=2) + '\n')
@@ -416,12 +467,12 @@ def main() -> None:
     parser.add_argument('trial', nargs='?')
     parser.add_argument('--build', action='store_true')
     parser.add_argument('--preflight', action='store_true',
-                        help='run a bounded 60-second selected-renderer scene and silence check')
+                        help='run bounded selected-renderer scene and silence checks')
     parser.add_argument('--cache', choices=['cold-data-cache', 'warm-filesystem'], default='warm-filesystem')
     parser.add_argument('--instance', choices=['original', 'cleanroom', 'ravel', 'vanilla'], default='original')
     parser.add_argument('--workload', choices=['sevtech', 'vanilla'], default='sevtech')
-    parser.add_argument('--renderer', choices=['vanilla', 'geometry-proof'], default='vanilla',
-                        help='geometry-proof is opt-in for the Ravel vanilla workload only')
+    parser.add_argument('--renderer', choices=['vanilla', 'geometry-proof', 'resident-world'], default='vanilla',
+                        help='selected renderers are opt-in for the Ravel vanilla workload only')
     parser.add_argument('--functional-only', action='store_true',
                         help='allow a nonphysical display; never include in performance comparisons')
     parser.add_argument('--candidate', type=Path, help='private Ravel direct launch specification JSON')
@@ -441,7 +492,8 @@ def main() -> None:
     if (args.instance == 'ravel') != bool(args.candidate):
         parser.error('--candidate is required exactly for --instance ravel')
     if args.preflight:
-        run_preflight(args.candidate, args.trial or 'renderer-preflight')
+        run_preflight(args.candidate, args.trial or 'renderer-preflight',
+                      renderer='geometry-proof' if args.renderer == 'vanilla' else args.renderer)
     elif args.build:
         build()
     elif args.matrix:

@@ -96,6 +96,7 @@ pub struct ShadedQuad {
 pub struct BakedMesh {
     generation: u64,
     layers: [Vec<ShadedQuad>; 4],
+    released_bytes: usize,
 }
 
 impl BakedSnapshot {
@@ -170,11 +171,32 @@ impl BakedSnapshot {
         }
         sort_translucent(&mut layers[3], camera, &cancelled)?;
         check_cancel(&cancelled)?;
-        Ok(BakedMesh { generation, layers })
+        Ok(BakedMesh {
+            generation,
+            layers,
+            released_bytes: 0,
+        })
     }
 }
 
 impl BakedMesh {
+    /// Drops uploaded non-translucent geometry; vanilla remains the fallback owner.
+    pub fn release_uploaded_opaque(&mut self) {
+        self.released_bytes += self.layers[..3]
+            .iter()
+            .map(|layer| layer.capacity() * size_of::<ShadedQuad>())
+            .sum::<usize>();
+        for layer in &mut self.layers[..3] {
+            *layer = Vec::new();
+        }
+    }
+
+    /// Quad allocation bytes relinquished after successful GL acknowledgement.
+    #[must_use]
+    pub fn released_bytes(&self) -> usize {
+        self.released_bytes
+    }
+
     /// Reorders only retained translucent quads, without allocations or re-emission.
     ///
     /// # Errors

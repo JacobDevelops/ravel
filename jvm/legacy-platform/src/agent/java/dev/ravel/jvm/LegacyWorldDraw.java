@@ -13,6 +13,8 @@ final class LegacyWorldDraw {
     private static final int[] EMPTY = new int[0];
     private static long configured;
     private static int distance;
+    private static long admittedTranslucent;
+    static synchronized long translucentAdmissions() { return admittedTranslucent; }
     private static final String[] AXES = {"getX", "getY", "getZ"};
     private static final java.util.HashMap<String, java.util.HashMap<String, Field>> FIELDS = new java.util.HashMap<>();
     private static final java.util.HashMap<String, java.util.HashMap<String, Method>> METHODS = new java.util.HashMap<>();
@@ -51,6 +53,7 @@ final class LegacyWorldDraw {
                 .invoke(renderer, x - radius, 0, z - radius, x + radius, 255, z + radius, true);
     }
     static synchronized void offer(Object chunk, Object task, int[] origin, long generation, long key, int[] emitted) {
+        if (emitted[3] > 0) admittedTranslucent++;
         ENTRIES.values().removeIf(entry -> entry.chunk() == chunk || Arrays.equals(entry.origin(), origin));
         if (ENTRIES.size() == 4096) ENTRIES.remove(ENTRIES.keySet().iterator().next());
         ENTRIES.put(key, new Entry(chunk, task, origin.clone(), generation, key, false,

@@ -83,9 +83,11 @@ fn retained(generation: jlong, resource: jlong) -> residency::Retained {
 }
 
 #[test]
-fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_mesh() {
+fn shaded_replacement_requires_exact_acknowledgement_and_releases_opaque_mesh() {
     let mut leases = Residency::new();
     let first = leases.publish(retained(1, 2)).expect("first pending");
+    let bytes = leases.metrics()[1];
+    assert!(bytes > 0);
     assert!(!leases.busy());
     assert!(leases.publish(retained(1, 2)).is_none());
     assert!(!leases.settle(2, first, true));
@@ -93,14 +95,14 @@ fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_mesh() {
     assert!(leases.settle(1, first, true));
     assert!(!leases.settle(1, first, true));
     let old = leases.metrics();
-    assert!(old[0] > 0);
+    assert_eq!(old[0], 0);
     assert_eq!(old[1], 0);
     assert_eq!(&old[5..], &[1, first, 2, 2, -16, 32, 48]);
     let second = leases.publish(retained(1, 3)).expect("replacement pending");
     let pending = leases.metrics();
     assert_eq!(pending[0], old[0]);
-    assert_eq!(pending[1], old[0]);
-    assert_eq!(pending[2], old[2] + old[0]);
+    assert_eq!(pending[1], bytes);
+    assert_eq!(pending[2], old[2]);
     assert_eq!(&pending[5..], &old[5..]);
     assert!(leases.settle(1, second, true));
     assert_eq!(leases.metrics()[3..5], [2, 1]);
@@ -159,6 +161,7 @@ fn section_table_evicts_the_most_distant_entry_at_its_bound() {
 #[test]
 fn byte_budget_refuses_pending_pressure_and_evicts_only_acknowledged_meshes() {
     let mut packet = input();
+    packet[40..44].copy_from_slice(&3_u32.to_le_bytes());
     let quad = packet[32..].to_vec();
     packet[..4].copy_from_slice(&u32::try_from(MAX_QUADS).expect("quad bound").to_le_bytes());
     packet.reserve_exact((MAX_QUADS - 1) * RECORD);

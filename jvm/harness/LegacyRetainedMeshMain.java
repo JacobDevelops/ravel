@@ -8,11 +8,48 @@ import java.util.Arrays;
 public final class LegacyRetainedMeshMain {
     private LegacyRetainedMeshMain() { }
 
-    public static void main(String[] arguments) {
+    public static void main(String[] arguments) throws ReflectiveOperationException {
         transactions();
         headers();
         admissions();
+        vanillaBufferBytes();
         System.out.println("retained-mesh-copy-validation-upload-ack-ok");
+    }
+
+    private static void vanillaBufferBytes() throws ReflectiveOperationException {
+        Object block = new Object();
+        for (String name : new String[]{"id", "format", "block"}) {
+            var field = LegacyVanillaBuffers.class.getDeclaredField(name);
+            field.setAccessible(true);
+            Object value = block;
+            if (!name.equals("block")) {
+                var member = VanillaBuffer.class.getDeclaredField(name);
+                member.setAccessible(true);
+                value = member;
+            }
+            field.set(null, value);
+        }
+        VanillaBuffer first = new VanillaBuffer(block);
+        VanillaBuffer second = new VanillaBuffer(block);
+        LegacyVanillaBuffers.upload(first, ByteBuffer.allocate(100).position(20));
+        LegacyVanillaBuffers.upload(second, ByteBuffer.allocate(40));
+        LegacyVanillaBuffers.upload(new VanillaBuffer(new Object()), ByteBuffer.allocate(500));
+        require(Arrays.equals(LegacyVanillaBuffers.metrics(), new long[]{120, 120, 2}), "section formats only");
+        LegacyVanillaBuffers.upload(first, ByteBuffer.allocate(10));
+        LegacyVanillaBuffers.deleted(first);
+        require(Arrays.equals(LegacyVanillaBuffers.metrics(), new long[]{50, 120, 2}), "resize and live bind");
+        first.id = -1;
+        LegacyVanillaBuffers.deleted(first);
+        LegacyVanillaBuffers.deleted(first);
+        second.id = -1;
+        LegacyVanillaBuffers.deleted(second);
+        require(Arrays.equals(LegacyVanillaBuffers.metrics(), new long[]{0, 120, 0}), "delete is exact and idempotent");
+    }
+
+    private static final class VanillaBuffer {
+        int id = 1;
+        final Object format;
+        VanillaBuffer(Object format) { this.format = format; }
     }
 
     private static void transactions() {

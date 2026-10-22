@@ -97,11 +97,13 @@ def validate_baked_export(data: dict[str, Any], renderer: str, preflight: bool =
 def validate_production_shapes(data: dict[str, Any]) -> None:
     from prepare import require
     for name, length in (('draws', 13), ('globalSorts', 3), ('ownedSorts', 3),
-                         ('native', 6), ('gl', 5)):
+                         ('native', 6), ('gl', 5), ('vanillaVbo', 3), ('nativeDedupe', 2)):
         values = data.get(name)
         require(isinstance(values, list) and len(values) == length
                 and all(type(value) is int and value >= 0 for value in values),
                 'production counter schema differs: ' + name)
+    require(type(data.get('translucentAdmissions')) is int and data['translucentAdmissions'] >= 0,
+            'production counter schema differs: translucentAdmissions')
 
 def validate_production_export(out: Path, renderer: str, started_ns: int) -> None:
     from prepare import require
@@ -117,12 +119,15 @@ def validate_production_export(out: Path, renderer: str, started_ns: int) -> Non
         require(not any(data['draws'] + data['globalSorts'] + data['ownedSorts']),
                 'unselected arm performed production work')
         return
-    require(all(value > 0 for value in data['draws'][:4]),
+    layers = 4 if data['translucentAdmissions'] > 0 else 3
+    require(all(value > 0 for value in data['draws'][:layers]),
             'selected arm has zero production replacements in a non-fluid layer')
     require(0 < data['draws'][9] <= data['draws'][8]
-            and all(value > 0 for value in data['globalSorts'][:2] + data['ownedSorts'][:2])
             and all(value <= total for value, total in zip(data['ownedSorts'], data['globalSorts'])),
             'production frame or sort/upload counters differ')
+    if data['translucentAdmissions'] > 0:
+        require(all(value > 0 for value in data['globalSorts'][:2] + data['ownedSorts'][:2]),
+                'production frame or sort/upload counters differ')
     require(0 < data['native'][4] <= data['native'][5] <= data['native'][0]
             and 0 < data['gl'][1] <= data['gl'][2] <= data['gl'][0],
             'production resident peaks exceed budget')

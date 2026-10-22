@@ -19,6 +19,7 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.AccessFlag;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -322,6 +323,21 @@ public final class Transformer implements ClassFileTransformer {
                                                         && model.methodType()
                                                                 .equalsString(target.descriptor()),
                                         MethodTransform.transformingCode(prepend)));
+                if (target.hookMethod().equals("legacyRendererUpload")) {
+                    rewritten = context.transformClass(context.parse(rewritten),
+                            ClassTransform.transformingMethods(model -> model.methodType().equalsString("()V")
+                                            && !model.flags().has(AccessFlag.STATIC)
+                                            && !model.methodName().equalsString("<init>"),
+                                    MethodTransform.transformingCode((builder, element) -> {
+                                        if (element instanceof ReturnInstruction) {
+                                            builder.aload(0);
+                                            builder.invokestatic(ClassDesc.of("dev.ravel.jvm.LegacyRenderer"),
+                                                    "vanillaBufferDeleted",
+                                                    MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V"));
+                                        }
+                                        builder.with(element);
+                                    })));
+                }
                 prepend.requireComplete();
             } catch (Throwable failure) {
                 String dottedName = internalName.replace('/', '.');

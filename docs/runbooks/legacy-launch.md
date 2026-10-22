@@ -121,10 +121,15 @@ instrumentation. The default remains vanilla.
 
 Each timed Ravel arm exports `production-renderer.json`: replacements and fallbacks
 for SOLID, CUTOUT_MIPPED, CUTOUT and TRANSLUCENT; global and currently owned section
-sort/upload counts; and native/GL residency, peaks and budgets. A resident-world arm
-fails if any layer has zero replacements, if production sort/upload activity is
-absent, or if a resident peak exceeds its budget. Report replacement ratios alongside
-timing: substantial vanilla fallback limits the conclusion. Pending and stale
+sort/upload counts; native/GL residency, peaks and budgets; and live/peak vanilla
+section VBO bytes. `nativeDedupe` compares hypothetical retained bytes without opaque
+release against actual native bytes for the same currently resident population.
+A resident-world arm requires replacements in all three opaque layers. TRANSLUCENT
+replacement and sort/upload coverage are also required when that arm's lifetime
+`translucentAdmissions` is positive; an absent layer does not manufacture a failure.
+Golden and preflight glass scenes still require translucent coverage unconditionally.
+Resident peaks must remain within budget. Report replacement ratios alongside timing:
+substantial vanilla fallback limits the conclusion. Pending and stale
 fallback draws are exact; the remainder means **not resident: fluid, unadmitted,
 evicted or over budget**. Admission refusal and eviction event counters have different
 units and cannot be substituted for a per-draw reason breakdown.

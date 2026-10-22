@@ -112,8 +112,9 @@ impl Residency {
         else {
             return false;
         };
-        let pending = self.pending.remove(index);
+        let mut pending = self.pending.remove(index);
         if accept {
+            pending.mesh.release_uploaded_opaque();
             if let Some(index) = self.resident.iter().position(|value| {
                 value.identity[0] == generation && value.identity[4..] == pending.identity[4..]
             }) {
@@ -205,6 +206,18 @@ impl Residency {
         self.resident
             .binary_search_by_key(&key, |value| value.identity[1])
             .is_ok_and(|index| self.resident[index].identity[0] == generation)
+    }
+
+    pub(super) fn dedupe(&self) -> [jlong; 2] {
+        let released = self
+            .resident
+            .iter()
+            .map(|value| value.mesh.released_bytes())
+            .sum::<usize>();
+        [
+            super::super::metric_long(self.bytes() + released),
+            super::super::metric_long(self.bytes()),
+        ]
     }
 
     pub(super) fn bounds(&self) -> [jlong; 6] {

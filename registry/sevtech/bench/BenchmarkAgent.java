@@ -370,6 +370,9 @@ public final class BenchmarkAgent {
             + ",\"globalSorts\":" + java.util.Arrays.toString((long[]) renderer.getMethod("productionSorts").invoke(null))
             + ",\"ownedSorts\":" + java.util.Arrays.toString(totals)
             + ",\"native\":" + java.util.Arrays.toString((long[]) renderer.getMethod("productionBudget").invoke(null))
+            + ",\"nativeDedupe\":" + java.util.Arrays.toString((long[]) renderer.getMethod("productionDedupe").invoke(null))
+            + ",\"vanillaVbo\":" + java.util.Arrays.toString((long[]) renderer.getMethod("vanillaBufferBytes").invoke(null))
+            + ",\"translucentAdmissions\":" + renderer.getMethod("translucentAdmissions").invoke(null)
             + ",\"gl\":" + java.util.Arrays.toString((long[]) geometry.getMethod("worldResidency").invoke(null)) + "}\n";
         Files.write(outputDirectory.resolve("production-renderer.json"), json.getBytes(StandardCharsets.UTF_8));
     }

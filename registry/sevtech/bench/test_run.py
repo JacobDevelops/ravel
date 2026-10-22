@@ -31,6 +31,7 @@ class RunPolicyTests(TestCase):
         data: dict[str, Any] = {"selection": "resident-world", "acceptance": False, "validationOverride": True,
                 "draws": [1, 2, 3, 4, 5, 6, 7, 8, 10, 9, 4, 0, 0],
                 "globalSorts": [8, 7, 0], "ownedSorts": [2, 2, 0],
+                "vanillaVbo": [60, 80, 4], "translucentAdmissions": 1, "nativeDedupe": [80, 40],
                 "native": [100, 0, 0, 0, 40, 80], "gl": [100, 40, 80, 1, 0]}
         with tempfile.TemporaryDirectory() as raw:
             out = Path(raw)
@@ -51,9 +52,26 @@ class RunPolicyTests(TestCase):
                 with self.subTest(key=key), self.assertRaises(ValueError):
                     run.validate_production_export(out, "resident-world", 0)
 
+    def test_absent_translucent_workload_needs_no_translucent_draw_or_sort(self) -> None:
+        data = {"selection": "resident-world", "acceptance": False, "validationOverride": True,
+                "draws": [1, 2, 3, 0, 5, 6, 7, 0, 10, 9, 4, 0, 0],
+                "globalSorts": [0, 0, 0], "ownedSorts": [0, 0, 0],
+                "native": [100, 1, 0, 0, 40, 80], "gl": [100, 40, 80, 1, 0],
+                "vanillaVbo": [60, 80, 4], "translucentAdmissions": 0, "nativeDedupe": [80, 40]}
+        with tempfile.TemporaryDirectory() as raw:
+            out = Path(raw)
+            path = out / "production-renderer.json"
+            path.write_text(json.dumps(data))
+            run.validate_production_export(out, "resident-world", 0)
+            for admitted in [1, -1, False, None]:
+                path.write_text(json.dumps(dict(data, translucentAdmissions=admitted)))
+                with self.subTest(admitted=admitted), self.assertRaises(ValueError):
+                    run.validate_production_export(out, "resident-world", 0)
+
     def test_vanilla_production_counters_are_zero(self) -> None:
         data: dict[str, Any] = {"selection": "vanilla", "acceptance": False, "validationOverride": False,
                 "draws": [0] * 13, "globalSorts": [0] * 3, "ownedSorts": [0] * 3,
+                "vanillaVbo": [60, 80, 4], "translucentAdmissions": 0, "nativeDedupe": [0, 0],
                 "native": [0] * 6, "gl": [0] * 5}
         with tempfile.TemporaryDirectory() as raw:
             out = Path(raw)

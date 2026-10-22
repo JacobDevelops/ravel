@@ -196,6 +196,9 @@ pub fn ravel_renderer_baked_lease<'local>(
             if operation == 5 {
                 return publish(env, &locked.shaded.bounds());
             }
+            if operation == 6 {
+                return publish(env, &locked.shaded.dedupe());
+            }
             if operation != 0
                 && (!locked.can_capture(generation)
                     || !matches!(operation, 1 | 2)

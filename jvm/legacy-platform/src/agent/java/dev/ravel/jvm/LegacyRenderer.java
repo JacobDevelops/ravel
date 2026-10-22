@@ -107,6 +107,10 @@ public final class LegacyRenderer {
     public static boolean skipCompositeUpdate() { return LegacyCompositeCapture.replaying(); }
     public static boolean productionReady(int x, int y, int z) { return LegacyWorldDraw.ready(x, y, z); }
     public static long[] productionBudget() { return Hook.ravelRendererBakedLease(0, 0, 5); }
+    public static long[] productionDedupe() { return Hook.ravelRendererBakedLease(0, 0, 6); }
+    public static long[] vanillaBufferBytes() { return LegacyVanillaBuffers.metrics(); }
+    public static void vanillaBufferDeleted(Object buffer) { LegacyVanillaBuffers.deleted(buffer); }
+    public static long translucentAdmissions() { return LegacyWorldDraw.translucentAdmissions(); }
     public static long[] productionSorts() { return LegacyWorldResort.metrics(); }
     public static long[] productionSectionSorts(int x, int y, int z) { return LegacyWorldDraw.sorts(x, y, z); }
     public static float[] productionSectionSortCamera(int x, int y, int z) {

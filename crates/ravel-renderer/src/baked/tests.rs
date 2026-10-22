@@ -24,6 +24,33 @@ fn quad(layer: RenderLayer, x: f32, sprite: u32) -> QuadInput {
 }
 
 #[test]
+fn acknowledged_opaque_payload_is_freed_but_translucent_can_still_resort() {
+    let source = vec![
+        quad(RenderLayer::Solid, 0.0, 1),
+        quad(RenderLayer::CutoutMipped, 0.0, 2),
+        quad(RenderLayer::Cutout, 0.0, 3),
+        quad(RenderLayer::Translucent, 1.0, 4),
+        quad(RenderLayer::Translucent, 4.0, 5),
+    ];
+    let snapshot = BakedSnapshot::new(1, 1, source).expect("snapshot");
+    let mut mesh = snapshot.mesh(1, [0.0; 3], || false).expect("mesh");
+    let before = mesh.heap_bytes();
+    mesh.release_uploaded_opaque();
+    assert_eq!(
+        mesh.layers()[..3].iter().map(Vec::capacity).sum::<usize>(),
+        0
+    );
+    assert_eq!(mesh.heap_bytes(), 2 * size_of::<ShadedQuad>());
+    assert_eq!(mesh.released_bytes() + mesh.heap_bytes(), before);
+    assert_eq!(mesh.layers()[3][0].sprite, 5);
+    mesh.resort(1, [8.0, 0.0, 0.0], || false)
+        .expect("retained translucent");
+    assert_eq!(mesh.layers()[3][0].sprite, 4);
+    mesh.release_uploaded_opaque();
+    assert_eq!(mesh.released_bytes() + mesh.heap_bytes(), before);
+}
+
+#[test]
 fn emits_model_uv_shading_and_light_without_cube_substitution() {
     let mut source = quad(RenderLayer::Cutout, 0.125, 7);
     source.offset = [2.5_f64.to_bits(), 3_f64.to_bits(), 4_f64.to_bits()];

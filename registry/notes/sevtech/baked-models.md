@@ -907,3 +907,101 @@ Python suites and registry checks. No Rust package changed, so the scoped gate
 selected no Rust clippy/tests and skipped legacy live launches. The frozen
 physical and separate Xvfb functional runs above supply the live evidence;
 the rejected timed selected arm remains rejected.
+
+## Acknowledged opaque release and measured duplicate residency
+
+The round-25 allocation observations above are historical. Exact GL acknowledgement
+now releases the native SOLID, CUTOUT_MIPPED and CUTOUT quad vectors, including their
+capacity. The acknowledged identity and lease remain available for lifecycle checks;
+vanilla's VBO remains the fallback. TRANSLUCENT retains its native quads and provenance
+for the existing resort path. Refused or inexact acknowledgements do not release a
+pending mesh. Native byte-budget accounting follows the remaining actual capacities.
+
+Selected renderers and the timed benchmark now count live/peak vanilla BLOCK-format
+section VBO upload bytes, replacing the previous size on reupload and retiring the
+entry after successful buffer deletion. Normal unselected play does not maintain
+this counter. The timed export records these bytes beside resident GL accounting.
+Its `nativeDedupe` pair is an atomic comparison of the same live native population:
+hypothetical bytes with its acknowledged opaque capacities still present, then actual
+bytes after release, including pending payloads and shared table capacity. It is not
+a before/after comparison of two independently populated runs.
+
+Timed slice-1 arms require TRANSLUCENT replacement and owned sort/upload coverage
+only when that run successfully admitted non-fluid translucent meshes. Missing,
+invalid or negative admission counters are refused; an admitted translucent mesh
+still makes zero replacement/sort coverage a failure. The frozen slice-1 world is
+unchanged. Glass remains mandatory in the golden and preflight scenes, and their
+strict pixel/coverage/depth and moving-sort oracles are unchanged. The live proof
+waits for retained translucent payload after opaque release before sampling native
+residency, rather than weakening its positive-live-byte requirement.
+
+### Frozen distance-12 diagnostic after release
+
+The fixture-free candidate `wp5s8-production-r26.json` passed the unchanged glass
+preflight `wp5s8-resident-r26-preflight` (279 admissions, all five required scenes).
+Trial `wp5s8-resident-r26` then completed the unchanged warm-filesystem slice-1
+workload at 1280×720 and render distance 12, exit 0. This is an individual
+**functional-only** Xvfb/Mesa 25.2.8 llvmpipe run, not an RTX 5090 performance arm
+or a repeated performance comparison. Private candidate and run artifacts remain
+under the ignored vanilla baseline directory.
+
+The final production export reports bytes, not process RSS or device VRAM:
+
+| Counter | Bytes |
+| --- | ---: |
+| Vanilla section VBOs, live | 199,466,064 |
+| Vanilla section VBOs, peak | 199,469,984 |
+| Resident GL, live, including shared scratch | 163,762,928 |
+| Resident GL, peak, including shared scratch | 163,839,424 |
+| Resident GL payload, live, excluding 2,752,512-byte shared scratch | 161,010,416 |
+| Native without opaque release, counterfactual for the same live population | 238,557,524 |
+| Native after opaque release, actual live | 698,880 |
+| Native peak, actual | 10,168,808 |
+| Native budget and GL budget, each | 163,840,000 |
+
+The paired native counter accounts for 237,858,644 fewer bytes (99.7070%).
+Its counterfactual is not an observed pre-release run: retaining all those copies
+would exceed the unchanged native budget and change which entries could coexist.
+The earlier physical trial's actual native snapshot was 163,280,008 bytes.
+The new trial retained 1,936 native identities, with no pending entries or native
+evictions. GL retained 1,735 layer buffers and recorded 212 evictions; vanilla
+retained 5,065 counted section buffers. The paired actual-native value matches
+the separate native-budget sample here; independent JNI exports are not required
+to be atomically identical.
+
+| Layer | Replacement draws | Vanilla fallback draws | Replaced / (replaced + fallback) |
+| --- | ---: | ---: | ---: |
+| SOLID | 1,494,254 | 1,594,030 | 48.3846% |
+| CUTOUT_MIPPED | 1,395,243 | 1,146,802 | 54.8866% |
+| CUTOUT | 899,567 | 813,715 | 52.5055% |
+| TRANSLUCENT | 0 | 962,872 | 0.0000% |
+
+This run's non-fluid translucent admission count and global/owned sort/upload
+counts were all zero, so timed translucent coverage is not applicable. The
+preflight and strict live golden runs still require glass replacement and resort.
+Fallback counts above include fluids and unavailable residency, not just budget
+evictions; they do not establish that every remaining fallback is budget-caused.
+
+**Recommendation: size resident GL from the measured vanilla section footprint,
+not by skipping vanilla uploads yet.** The observed vanilla peak plus shared
+scratch is 202,222,496 bytes, already above the current 163,840,000-byte cap.
+Both paths use 28-byte BLOCK vertices, but vanilla also retains fluid geometry:
+this is a measured sizing baseline, not an exact minimum for resident non-fluid data.
+A bounded 224 MiB (234,881,024-byte) distance-12 trial would add headroom within
+the existing 256 MiB ceiling. This is a recommended sizing experiment, not a
+budget increase made here or proof of full replacement. Native release has removed
+the native bottleneck in this run; GL still reaches its cap. Skipping vanilla
+uploads would remove the current safe fallback for pending, stale, refused or
+evicted sections and needs a separately proven ownership/lifecycle cutover.
+Vanilla remains the default and both VBO populations still coexist.
+
+The source `ravel:gate-lane`, `ravel:legacy-agent-build`, geometry-proof live client,
+resident-world live client, frozen glass preflight and diagnostic run all exited 0.
+The strict golden oracle was not relaxed. Frozen runtime SHA256 values:
+
+| Input | SHA256 |
+| --- | --- |
+| Agent | `19dd501bdcf9d101e38030ed15be4cd83a6d61f4ecd54625f69ac260f818ac77` |
+| Fixture-free host | `2e275f2ed92f3149008f9fef1522335c42d03ad463170519524c31530cc6fe82` |
+| Platform | `163881e66c383a7fe9345f806a8c9b5a5210ea6a545db7c0f85d74693b35456b` |
+| Screen | `ba1940fcfb4b0c57eb5bfb170bdefbbfebdad67b71a7bcb0ffd084ed937827be` |

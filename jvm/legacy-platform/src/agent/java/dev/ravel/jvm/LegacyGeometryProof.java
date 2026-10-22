@@ -197,14 +197,14 @@ final class LegacyGeometryProof {
                 LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration());
     }
     static byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated, int width, int height,
-            boolean fallback) {
+            boolean fallback, int fluidLayers) {
         long generation = LegacyRenderer.currentGeneration();
         requireOwner(generation);
         return (byte[]) call("compositeFrame", new Class<?>[]{Runnable.class, int[].class, int.class,
-                int.class, int.class, int.class, long.class, long.class, long.class, long.class, boolean.class},
+                int.class, int.class, int.class, long.class, long.class, long.class, long.class, boolean.class, int.class},
                 render, ids, scene, designated, width, height, generation,
                 LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration(),
-                LegacyRenderer.ownerThread(), fallback);
+                LegacyRenderer.ownerThread(), fallback, fluidLayers);
     }
 
     static long[] shadedNativeResidency() {

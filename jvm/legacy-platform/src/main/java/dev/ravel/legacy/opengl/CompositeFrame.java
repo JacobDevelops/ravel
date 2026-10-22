@@ -14,26 +14,31 @@ public final class CompositeFrame {
     private static boolean replacing;
     private static boolean omitting;
     private static boolean vanillaFallback;
+    private static int fluidLayers;
     private static int draws;
     private static int submitted;
+    private static final int[] layerDraws = new int[4];
 
     private CompositeFrame() { }
 
     static boolean replaying() { return buffers != null; }
 
     static byte[] capture(Runnable render, int buffer, int[] ids, int[] counts, int scene, int designated,
-            int width, int height, boolean fallback) {
+            int width, int height, boolean fallback, int excludedLayers) {
         if (buffers != null || width <= 0 || height <= 0 || width > 1920 || height > 1080)
             throw new IllegalStateException("Invalid composited frame capture");
         int pixels = Math.multiplyExact(width, height);
-        ByteBuffer raw = ByteBuffer.allocate(32 + pixels * 24).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer raw = ByteBuffer.allocate(32 + pixels * 24 + (designated >= 8 ? 16 : 0))
+                .order(ByteOrder.LITTLE_ENDIAN);
         ByteBuffer arm = ByteBuffer.allocateDirect(pixels * 8).order(ByteOrder.LITTLE_ENDIAN);
         resident = buffer;
         buffers = ids;
         vertices = counts;
         vanillaFallback = fallback;
+        fluidLayers = excludedLayers;
         draws = 0;
         submitted = 0;
+        java.util.Arrays.fill(layerDraws, 0);
         try {
             render.run();
             read(render, arm, width, height);
@@ -45,6 +50,7 @@ public final class CompositeFrame {
             omitting = true;
             read(render, arm, width, height);
             raw.put(arm);
+            if (designated >= 8) for (int value : layerDraws) raw.putInt(value);
             raw.position(0).putInt(scene).putInt(designated).putInt(width).putInt(height)
                     .putInt(draws).putInt(submitted).putInt(3)
                     .putInt(fallback ? 0 : counts[0] + counts[1] + counts[2] + counts[3]);
@@ -74,11 +80,12 @@ public final class CompositeFrame {
         for (int layer = 0; layer < 4; layer++) {
             if (buffers[layer] == bound && count > 0) {
                 if (omitting) return true;
-                if (vanillaFallback) return false;
+                if (vanillaFallback || (fluidLayers & 1 << layer) != 0) return false;
                 if (mode != GL11.GL_QUADS || first != 0 || count != vertices[layer])
                     throw new IllegalStateException("Resident world draw does not match published vanilla layer");
                 submit(mode, count, offset, resident, bound);
                 draws++;
+                layerDraws[layer]++;
                 submitted += count;
                 return true;
             }

@@ -15,7 +15,7 @@ final class LegacyBakedCapture {
     private static final int LIMIT = LegacyRendererContract.BAKED_MAX_QUADS;
     private static final int RECORD = LegacyRendererContract.BAKED_RECORD_BYTES;
     static final int SCENES = 8;
-    static final int DESIGNATED = 8;
+    static final int DESIGNATED = 10;
     static final int SAMPLES = 8;
     static final int READBACK_BYTES = 16 + 64 * 64 * 16;
     private static final int QUAD_BUDGET = 20;
@@ -122,7 +122,7 @@ final class LegacyBakedCapture {
     static synchronized void composited(int designated) { COVERAGE[phase] |= 1 << designated; }
     static synchronized byte[] composite(Runnable render, int width, int height, int expected, boolean finish) {
         if (expected != LegacyCompositeCapture.designated()) return null;
-        if (expected < 5 && !resident) return null;
+        if ((expected < 5 || expected >= 8) && !resident) return null;
         return LegacyCompositeCapture.capture(render, width, height, finish);
     }
     static synchronized int compositeDesignated() { return LegacyCompositeCapture.designated(); }
@@ -393,6 +393,27 @@ final class LegacyBakedCapture {
         catch (Throwable failure) { capture.fail(OBSERVATION); }
     }
 
+    static int provenLayers(ByteBuffer source, int count, int[] vanilla, int fluidLayers, int[] observed) {
+        Arrays.fill(observed, 0);
+        for (int index = 0; index < count; index++) {
+            int layer = source.getInt(32 + index * RECORD + 8);
+            if (layer < 0 || layer >= 4) return -1;
+            observed[layer] += 4;
+        }
+        for (int layer = 0; layer < 4; layer++) {
+            if (vanilla[layer] < observed[layer] || vanilla[layer] % 4 != 0) return -1;
+            if ((fluidLayers & 1 << layer) == 0 && vanilla[layer] != observed[layer]) return -1;
+        }
+        int kept = 0;
+        for (int index = 0; index < count; index++) {
+            int offset = 32 + index * RECORD;
+            if ((fluidLayers & 1 << source.getInt(offset + 8)) != 0) continue;
+            if (kept != index) System.arraycopy(source.array(), offset, source.array(), 32 + kept * RECORD, RECORD);
+            kept++;
+        }
+        return kept;
+    }
+
     static synchronized void finish(Object task) {
         Capture capture = LOCAL.get();
         if (capture == null || capture.task != task) return;
@@ -408,6 +429,8 @@ final class LegacyBakedCapture {
             else if (capture.fluidFallback()) status = LegacyWorldDraw.FLUID;
             else {
                 synchronized (LegacyBakedResort.class) { retry = capture.compare(); }
+                if (capture.refusal == 0 && capture.fluidLayers != 0 && capture.count == 0)
+                    status = LegacyWorldDraw.FLUID;
             }
             LegacyWorldDraw.status(task, status, true, retry);
         } catch (Throwable failure) {
@@ -428,6 +451,8 @@ final class LegacyBakedCapture {
         final Object[] builders = new Object[4];
         final int[] words = new int[28];
         final int[] fluids = new int[4];
+        final int[] vanillaVertices = new int[4];
+        final int[] observedVertices = new int[4];
         final int[] light = new int[4];
         final float[] ao = new float[4];
         final float[] rgb = new float[12];
@@ -445,6 +470,7 @@ final class LegacyBakedCapture {
         int count;
         int animated;
         int refusal;
+        int fluidLayers;
         boolean pending;
 
         Capture() throws ReflectiveOperationException { }
@@ -470,7 +496,7 @@ final class LegacyBakedCapture {
             source.clear().position(32);
             source.putLong(16, LegacyRuntime.completedResourceGeneration());
             source.putLong(24, LegacyRuntime.atlasResourceGeneration());
-            count = 0; animated = 0; refusal = 0;
+            count = 0; animated = 0; refusal = 0; fluidLayers = 0;
         }
 
         void append(Object builder, double x, double y, double z) throws Throwable {
@@ -505,7 +531,8 @@ final class LegacyBakedCapture {
         int scene(int designated) {
             long resource = source.getLong(16);
             return switch (phase) {
-                case 0 -> resource != designatedResource || designated == 4 && animated == 0 ? -1 : designated;
+                case 0 -> resource != designatedResource || designated == 4 && animated == 0 ? -1
+                        : designated >= 8 ? 7 : designated;
                 case 1 -> resource > designatedResource && generation >= phaseRenderer ? 5 : -1;
                 default -> generation >= phaseRenderer ? 6 : -1;
             };
@@ -522,11 +549,13 @@ final class LegacyBakedCapture {
             Object chunk = access.chunk.invokeExact(task);
             LegacySectionSnapshot.fluids(chunk, fluids);
             if (fluids[0] == 0) return false;
-            refuse(UNACCOUNTED_VERTICES);
+            fluidLayers = ((fluids[0] & 3) != 0 ? 8 : 0) | ((fluids[0] & 12) != 0 ? 1 : 0);
             int designated = designated();
+            if (designated < 5 || designated >= 8) return false;
+            refuse(UNACCOUNTED_VERTICES);
             if (designated == 6 && fluids[2] == 0) return true;
             if (needed() && resourceCurrent() && LegacyRenderer.accepts(generation)) {
-                LegacyCompositeCapture.offer(chunk, task, 7, designated, origin);
+                LegacyCompositeCapture.offer(chunk, task, 7, designated, origin, fluidLayers);
                 LegacyCompositeCapture.fluids(fluids);
                 LegacyCompositeCapture.ready(true);
             }
@@ -534,7 +563,7 @@ final class LegacyBakedCapture {
         }
 
         boolean compare() throws Throwable {
-            if (designated() >= 5) { refuse(UNACCOUNTED_VERTICES); return false; }
+            if (designated() >= 5 && designated() < 8) { refuse(UNACCOUNTED_VERTICES); return false; }
             Object translucent = builders[3];
             source.putFloat(4, (float) (camera[0] + access.x.getDouble(translucent)));
             source.putFloat(8, (float) (camera[1] + access.y.getDouble(translucent)));
@@ -543,16 +572,19 @@ final class LegacyBakedCapture {
             int vertices = 0;
             for (int i = 0; i < 4; i++) {
                 int length = (int) access.count.invokeExact(builders[i]);
-                if (length < 0 || length % 4 != 0) { refuse(UNACCOUNTED_VERTICES); return false; }
-                if (length > (LIMIT * 4) - vertices) { refuse(QUAD_BUDGET); return false; }
+                if (length < 0 || length % 4 != 0) return reject(UNACCOUNTED_VERTICES);
+                if (length > (LIMIT * 4) - vertices) return reject(QUAD_BUDGET);
                 vertices += length;
+                vanillaVertices[i] = length;
+                if ((fluidLayers & 1 << i) != 0) { oracle.putInt(i * 4, 0); continue; }
                 oracle.putInt(i * 4, length / 4);
                 ByteBuffer buffer = (ByteBuffer) access.buffer.invokeExact(builders[i]);
                 ByteBuffer view = buffer.duplicate();
                 view.clear().limit(length * 28);
                 oracle.put(view);
             }
-            if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return false; }
+            count = provenLayers(source, count, vanillaVertices, fluidLayers, observedVertices);
+            if (count < 0) return reject(UNACCOUNTED_VERTICES);
             if (!resourceCurrent()) { METRICS[3]++; return true; }
             source.putInt(0, count);
             supersede(this);
@@ -565,12 +597,17 @@ final class LegacyBakedCapture {
             }
             if (result.length == 0) { METRICS[3]++; return false; }
             if (result.length != 7 || result[0] < 0) {
-                refuse(result.length == 6
+                return reject(result.length == 6
                         && LegacyRendererContract.BakedFailure.decode(result[1]) == LegacyRendererContract.BakedFailure.DECODE
                         ? RUST_DECODE : RUST_OTHER);
-                return false;
             }
             publish(result);
+            return false;
+        }
+
+        private boolean reject(int reason) {
+            fail(reason);
+            refuse(reason);
             return false;
         }
 
@@ -582,15 +619,17 @@ final class LegacyBakedCapture {
                 if (queued == null) queued = this;
                 else WAITING.addLast(this);
                 Object chunk = access.chunk.invokeExact(task);
-                LegacyWorldDraw.offer(chunk, task, origin, generation, key, output);
+                LegacyWorldDraw.offer(chunk, task, origin, generation, key, output, fluidLayers);
                 if (controlledWindow())
                     LegacyBakedResort.offer(generation, key, origin, output, chunk,
                             (ByteBuffer) access.buffer.invokeExact(builders[3]));
                 resident = false;
                 int designated = designated();
                 int scene = scene(designated);
-                if (scene >= 0 && needed())
-                    LegacyCompositeCapture.offer(chunk, task, scene, designated, origin);
+                if (scene >= 0 && needed()) {
+                    LegacyCompositeCapture.offer(chunk, task, designated >= 8 ? 7 : scene, designated, origin, fluidLayers);
+                    if (fluidLayers != 0) LegacyCompositeCapture.fluids(fluids);
+                }
             } else settle(false);
             METRICS[7] = Math.max(METRICS[7], result[4]);
             METRICS[8] = Math.max(METRICS[8], result[5]); METRICS[9] += animated;

@@ -508,7 +508,7 @@ public final class GeometryProof {
     }
     public static synchronized void worldStatus(int[] pairs, boolean reset) { ResidentWorldDraw.status(pairs, reset); }
     public static synchronized byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated,
-            int width, int height, long generation, long resource, long atlas, long owner, boolean fallback) {
+            int width, int height, long generation, long resource, long atlas, long owner, boolean fallback, int fluidLayers) {
         if (fallback && designated >= 5 && context == null) initialize();
         if (!fallback || designated < 5) {
             if (BAKED_RESIDENCY[0] == 0 || BAKED_RESIDENCY[6] != generation
@@ -518,7 +518,7 @@ public final class GeometryProof {
         }
         if (context != GL.getCapabilities()) throw new IllegalStateException("Wrong shaded GL context");
         return CompositeFrame.capture(render, bakedBuffer, ids, bakedLayers.clone(), scene, designated,
-                width, height, fallback);
+                width, height, fallback, fluidLayers);
     }
 
     private static int littleInt(byte[] bytes, int offset) {

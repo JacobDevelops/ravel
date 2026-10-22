@@ -1099,5 +1099,120 @@ the 224 MiB platform was a temporary uncommitted experiment build):
 | `wp5s8-r27-recapture2` | `ca6ddc366d01fdac41560079b9c773c179d6a2c8a4fb93f635a3ba56a8b231c3` | `aba2e2d6ee4f876b58091aba9c59fa3e4c142c97dcb9882f62fef2c7e3e81a03` |
 
 These are functional software-GL counts, not performance evidence. Vanilla remains the
-default. Next: run physical frozen RTX 5090 trials now that ratios are higher. Separately, scope a
-proven fluid capture path, since fluid sections are now the dominant fallback.
+default. The per-layer work below addresses the dominant fluid fallback without
+adding native fluid tessellation. Physical frozen RTX 5090 trials remain next.
+
+## Per-layer fluid provenance
+
+The pinned 1.12.2 client bytecode establishes the layer boundary directly:
+`aru.f()` (Feather `LiquidBlock.getRenderLayer`) compares its material with
+`bcz.h` (`WATER`), returning `amm.d` (`TRANSLUCENT`) for water and
+`amm.a` (`SOLID`) otherwise, including lava. `bxr` (`RenderChunk`) selects the
+builder using that layer's ordinal; `bvm` (`BlockRenderDispatcher`) passes that
+same builder to `bvn` (MCP `BlockFluidRenderer`). This was checked with `javap`
+against the pinned client SHA256
+`8ada07da5ee77dad3527bd7278fbd05ee1fc8a597813b216a871a2d7d64cc64f`
+and Feather `1.12.2+build.31`, not assumed from material transparency.
+
+The capture independently counts observed baked vertices in each layer and
+compares them with each final vanilla builder's vertex count. Every retained
+layer requires exact equality, not equality of a section-wide total. Water's
+TRANSLUCENT layer and lava's SOLID layer are excluded in their entirety from
+both the Rust input and the raw vanilla oracle. Their observed baked subset
+must still fit the final builder count. The complete vanilla vertex budget,
+generation/resource/atlas checks, exact upload acknowledgement, section identity,
+pending/dirty guards and per-draw vertex checks remain in force. A fluid mask
+travels with the resident entry so only excluded layers receive the fluid
+fallback reason after all admission guards pass.
+
+The retained transparency callbacks skip sorting and upload when the resident
+TRANSLUCENT count is zero: vanilla water must not sort or upload an excluded
+fluid layer through the opaque resident lease. Acknowledgement then performs no
+transparency upload. All nonempty translucent guards remain unchanged.
+Unpublished captures with non-fluid geometry retain their refusal reason;
+captures whose only geometry is in excluded fluid layers retain the fluid reason.
+
+Two additional static composited scenes exercise a water/stone section and a
+lava/cactus section in initial, staged-reload and reopen lifecycles. The raw
+format records actual substituted draw counts by layer; its strict oracle
+requires exactly SOLID for water/stone and exactly CUTOUT for lava/cactus.
+Existing pure-fluid fallback controls remain unchanged. These controls do not
+change the default renderer or the slice-1 workload.
+
+The distance-12 Xvfb before run, `wp5s8-r28-before`, used the frozen round-27
+recapture candidate and exited 0. Replacements/fallbacks by layer were
+SOLID 1,866,812/1,193,517 (61.0004%), CUTOUT_MIPPED 1,728,251/790,033
+(68.6281%), CUTOUT 1,111,666/588,699 (65.3781%), and TRANSLUCENT
+0/955,213 (0%). The complete per-layer reason vectors are retained in the
+private diagnostic export; fluid accounted for 1,035,896, 644,213, 499,070
+and 944,782 fallback draws respectively. These are functional counts, not
+physical timing or a resource-win verdict.
+
+The selected `geometry-proof` live gate exited 0. All 45 composited rows
+(30 static, including six new mixed rows, and 15 moving) passed the unchanged
+strict oracle. A separate reader recounted the raw three-arm RGBA/depth
+buffers without importing the repository oracle: zero RGBA, coverage or
+depth mismatches in all 45 rows, with positive omission footprints throughout.
+The new raw rows recorded:
+
+| Lifecycle | Water/stone: replaced layers, vertices, visible pixels | Lava/cactus: replaced layers, vertices, visible pixels |
+| --- | --- | --- |
+| Initial | SOLID only, 544, 5,264 | CUTOUT only, 68, 2,281 |
+| Staged reload | SOLID only, 544, 5,264 | CUTOUT only, 68, 2,264 |
+| Reopen | SOLID only, 544, 5,265 | CUTOUT only, 68, 2,281 |
+
+Every water row contained 16 water source cells and no flowing/lava cells;
+every lava row contained 16 lava cells and no water cells. The lava block
+settled from its flowing ID to its still ID across lifecycles, without changing
+the layer exclusion. No fluid layer was substituted.
+
+The final frozen diagnostic, `wp5s8-r28-after4`, also exited 0 on Xvfb
+at distance 12 with the same functional-only workload. This diagnostic does
+not supersede the failed resident-world acceptance below. It used agent
+`5938b6eaf55faca42466a24dc736f4dfcddf57c592b9e4064517b65578558974`,
+platform `f10fb2ca824676ef7ff1d978813fa8d6b537b31c10a662da1ae0a8c6a3315070`
+and the unchanged pinned native host
+`2e275f2ed92f3149008f9fef1522335c42d03ad463170519524c31530cc6fe82`.
+
+| Layer | Before replaced / fallback | Before ratio | After replaced / fallback | After ratio |
+| --- | --- | --- | --- | --- |
+| SOLID | 1,866,812 / 1,193,517 | 61.0004% | 2,482,098 / 354,392 | 87.5060% |
+| CUTOUT_MIPPED | 1,728,251 / 790,033 | 68.6281% | 2,090,152 / 186,563 | 91.8056% |
+| CUTOUT | 1,111,666 / 588,699 | 65.3781% | 1,433,443 / 119,159 | 92.3252% |
+| TRANSLUCENT | 0 / 955,213 | 0% | 0 / 924,081 | 0% |
+
+Exact fallback counts follow, with each cell `before → after`:
+
+| Reason | SOLID | CUTOUT_MIPPED | CUTOUT | TRANSLUCENT |
+| --- | --- | --- | --- | --- |
+| Stale | 2,333 → 61 | 2,639 → 597 | 2,511 → 405 | 387 → 313 |
+| Pending | 82,106 → 66,237 | 76,141 → 57,863 | 43,688 → 33,252 | 1,296 → 19,247 |
+| Unacknowledged | 17,486 → 40,373 | 14,448 → 31,350 | 9,326 → 22,868 | 0 → 14,790 |
+| Fluid | 1,035,896 → 111,880 | 644,213 → 0 | 499,070 → 0 | 944,782 → 850,211 |
+| Capture skipped | 33,004 → 74,952 | 27,758 → 57,844 | 17,674 → 36,150 | 8,737 → 18,072 |
+| Capture refused | 22,616 → 60,841 | 24,783 → 38,890 | 16,417 → 26,482 | 0 → 21,445 |
+| In flight | 76 → 48 | 51 → 19 | 13 → 2 | 11 → 3 |
+| Untracked | 0 → 0 | 0 → 0 | 0 → 0 | 0 → 0 |
+
+Drain refusal, GL eviction, GL over-budget, GL stale key, dropped residents,
+draw-count mismatch and draw-shape reasons were zero in every layer of both
+runs. The reason columns sum exactly to their fallback totals. The opaque/
+cutout fluid share fell from 2,179,179 of 2,572,249 fallback draws to
+111,880 of 660,114; only lava's SOLID and water's TRANSLUCENT
+layers retain fluid-labelled fallbacks, never either cutout layer.
+The trials have different frame/draw denominators; their counts and ratios
+are functional observations, not paired timing measurements or a causal
+performance estimate. No native fluid tessellation or default cutover was
+introduced. Physical frozen vanilla-versus-resident-world trials remain next
+only after the resident-world regression below is resolved.
+
+The final candidate is not accepted. The same resident-world live command
+passes on base `rkluwvkl` but the feature run exits 105 after emitting only the
+initial moving-translucent capture. That capture has section sort counters
+`[1,1,0]`, global counters `[10,10,0]`, origin `[-176,192,-32]`, and camera
+`[-174,198,-24,-90,30]`; it does not prove later moving points or lifecycles.
+Zero-resident-translucency callbacks now skip excluded water sorting/upload,
+but this did not resolve the moving stall. The narrowing step is to restore
+byte-for-byte pre-change admission, lease and sort behaviour for fluid-free
+sections, retaining per-layer handling only where the capture contains fluid.
+No timeout, camera path or strict oracle has been relaxed.

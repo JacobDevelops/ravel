@@ -596,7 +596,7 @@ final class ClientAutomation implements Runnable {
 
     private int goldenY;
     private static final String[] COMPOSITE_SCENES = {"opaque", "cutout-mipped", "cutout", "translucent",
-            "animated", "still-water", "flowing-water", "lava"};
+            "animated", "still-water", "flowing-water", "lava", "water-stone", "lava-cutout-plants"};
     private final String[][] goldenBlocks = new String[COMPOSITE_SCENES.length][];
     private final int[][] goldenChunks = new int[COMPOSITE_SCENES.length][];
     private int[] goldenOrigin;
@@ -963,8 +963,8 @@ final class ClientAutomation implements Runnable {
     private Void refillFluid(Object server, int scene, int x, int z) throws Exception {
         String low = (x + 5) + " " + (goldenY + 5) + " " + (z + 5);
         String high = (x + 10) + " " + (goldenY + 6) + " " + (z + 10);
-        require(command(server, "fill " + low + " " + high + " " + goldenBlocks[scene][1]) > 0,
-                "Fluid basin fill failed");
+        String basin = scene == 9 ? "minecraft:stone 0" : goldenBlocks[scene][1];
+        require(command(server, "fill " + low + " " + high + " " + basin) > 0, "Fluid basin fill failed");
         require(command(server, "fill " + (x + 6) + " " + (goldenY + 6) + " " + (z + 6)
                 + " " + (x + 9) + " " + (goldenY + 9) + " " + (z + 9) + " minecraft:air 0") > 0,
                 "Fluid basin clearing failed");
@@ -975,6 +975,17 @@ final class ClientAutomation implements Runnable {
             require(command(server, "fill " + (x + 6) + " " + (goldenY + 6) + " " + (z + 6)
                     + " " + (x + 9) + " " + (goldenY + 6) + " " + (z + 9)
                     + " " + goldenBlocks[scene][0]) > 0, "Still fluid fill failed");
+        }
+        if (scene == 9) {
+            command(server, "fill " + (x + 12) + " " + (goldenY + 4) + " " + (z + 6)
+                    + " " + (x + 12) + " " + (goldenY + 9) + " " + (z + 6) + " minecraft:air 0");
+            require(command(server, "setblock " + (x + 12) + " " + (goldenY + 4) + " " + (z + 6)
+                    + " minecraft:stone 0") > 0, "Cutout plants support failed");
+            require(command(server, "setblock " + (x + 12) + " " + (goldenY + 5) + " " + (z + 6)
+                    + " minecraft:sand 0") > 0, "Cutout plants sand failed");
+            require(command(server, "fill " + (x + 12) + " " + (goldenY + 6) + " " + (z + 6)
+                    + " " + (x + 12) + " " + (goldenY + 8) + " " + (z + 6)
+                    + " " + goldenBlocks[scene][1]) > 0, "Cutout plants fill failed");
         }
         return null;
     }

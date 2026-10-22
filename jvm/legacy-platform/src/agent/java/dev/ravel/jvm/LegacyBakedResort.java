@@ -63,7 +63,7 @@ final class LegacyBakedResort {
     }
 
     static synchronized void sort(Object builder, float x, float y, float z) {
-        if (target == null || !LegacyRenderer.accepts(generation)) return;
+        if (target == null || uploaded[3] == 0 || !LegacyRenderer.accepts(generation)) return;
         try {
             Object bytes = buffer.invoke(builder);
             camera[0] = x; camera[1] = y; camera[2] = z;
@@ -108,7 +108,7 @@ final class LegacyBakedResort {
     }
 
     private static void uploadCurrent(Object destination, Object bytes) {
-        if (destination != target || !LegacyRenderer.accepts(generation)) return;
+        if (destination != target || uploaded[3] == 0 || !LegacyRenderer.accepts(generation)) return;
         for (Slot slot : slots) {
             if (slot == null || slot.bytes != bytes) continue;
             if (acknowledged) LegacyGeometryProof.resortBaked(slot.output, generation, key);
@@ -120,7 +120,7 @@ final class LegacyBakedResort {
             METRICS[1]++;
             return;
         }
-        if (acknowledged && uploaded[3] != 0) refuse();
+        if (acknowledged) refuse();
     }
 
     private static void refuse() {

@@ -303,16 +303,20 @@ def composited_sample(data: bytes, phase: int, designated: int, expected_draws: 
         raise RuntimeError('Composited frame header missing')
     scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
     expected = 7 if designated >= 5 else designated if phase == 0 else phase + 4
-    fallback = designated >= 5
-    if (scene != expected or section != designated or version != (4 if designated >= 5 else 3)
+    fallback = 5 <= designated < 8
+    mixed = designated >= 8
+    if (scene != expected or section != designated or version != (5 if mixed else 4 if fallback else 3)
             or vertices != expected_vertices
             or not 0 < width <= COMPOSITE_MAX_WIDTH or not 0 < height <= COMPOSITE_MAX_HEIGHT
             or draws != (0 if fallback else expected_draws)
             or (vertices != 0 if fallback else not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4 * expected_draws)
             or vertices % 4
-            or len(data) != 32 + width * height * 24 + (16 if designated >= 5 else 0)):
+            or len(data) != 32 + width * height * 24 + (32 if mixed else 16 if fallback else 0)):
         raise RuntimeError(f'Composited frame metadata invalid: phase={phase}, section={designated}')
     fluids = fluid_evidence(data, designated) if designated >= 5 else []
+    layer_draws = list(struct.unpack_from('<4i', data, len(data) - 32)) if mixed else []
+    if mixed and layer_draws != ([1, 0, 0, 0] if designated == 8 else [0, 0, 1, 0]):
+        raise RuntimeError('Composited replaced layer provenance invalid')
     pixels = width * height
     vanilla = data[32:32 + pixels * 4]
     resident = data[32 + pixels * 8:32 + pixels * 12]
@@ -335,6 +339,7 @@ def composited_sample(data: bytes, phase: int, designated: int, expected_draws: 
             'designated': SCENES[designated], 'fluidStateCounts': fluids,
             'width': width, 'height': height, 'substitutedDraws': draws, 'substitutedVertices': vertices,
             'translucentVanillaFallback': False, 'fluidVanillaFallback': designated >= 5,
+            'replacedLayerDraws': layer_draws,
             'visibleSectionPixels': footprint,
             'rgbaMismatchPixels': sum(vanilla[i:i + 4] != resident[i:i + 4] for i in range(0, pixels * 4, 4)),
             'coverageMismatchPixels': sum((a < 1) != (b < 1) for a, b in zip(left, right)),
@@ -344,7 +349,7 @@ def composited_sample(data: bytes, phase: int, designated: int, expected_draws: 
 def fluid_evidence(data: bytes, designated: int) -> list[int]:
     mask, sources, flow, lava = struct.unpack_from('<4i', data, len(data) - 16)
     valid = all(0 <= value <= 4096 for value in (sources, flow, lava))
-    if designated == 7:
+    if designated in (7, 9):
         valid &= mask > 0 and mask & ~12 == 0 and lava > 0 and sources == flow == 0
     else:
         valid &= mask > 0 and mask & ~3 == 0 and sources > 0 and lava == 0

@@ -11,6 +11,7 @@ final class LegacyCompositeCapture {
     private static long offeredAt;
     private static int scene;
     private static int designated;
+    private static int fluidLayers;
     private static boolean ready;
     private static boolean vanillaFallback;
     private static boolean uploaded;
@@ -34,7 +35,7 @@ final class LegacyCompositeCapture {
     }
 
 
-    static void offer(Object value, Object work, int row, int section, int[] sectionOrigin) {
+    static void offer(Object value, Object work, int row, int section, int[] sectionOrigin, int excludedLayers) {
         if (chunk != null) throw new IllegalStateException("Composited section already pending");
         origin = sectionOrigin.clone();
         fluids = null;
@@ -44,6 +45,7 @@ final class LegacyCompositeCapture {
         offeredAt = System.nanoTime();
         scene = row;
         designated = section;
+        fluidLayers = excludedLayers;
     }
 
     static byte[] capture(Runnable render, int width, int height, boolean finish) {
@@ -76,7 +78,7 @@ final class LegacyCompositeCapture {
             for (int layer = 0; layer < 4; layer++) ids[layer] = id.getInt(buffer.invoke(chunk, layer));
             replaying = true;
             byte[] raw = LegacyGeometryProof.compositeFrame(render, ids, scene, designated, width, height,
-                    vanillaFallback);
+                    vanillaFallback, fluidLayers);
             if (fluids != null) raw = fluidEvidence(raw);
             if (!vanillaFallback
                     && java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(16) == 0)
@@ -96,7 +98,7 @@ final class LegacyCompositeCapture {
     private static byte[] fluidEvidence(byte[] raw) {
         byte[] result = java.util.Arrays.copyOf(raw, raw.length + 16);
         java.nio.ByteBuffer bytes = java.nio.ByteBuffer.wrap(result).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        bytes.putInt(24, 4);
+        bytes.putInt(24, designated >= 8 ? 5 : 4);
         bytes.position(raw.length);
         for (int value : fluids) bytes.putInt(value);
         return result;

@@ -13,7 +13,59 @@ public final class LegacyRetainedMeshMain {
         headers();
         admissions();
         vanillaBufferBytes();
+        layerProvenance();
+        excludedTranslucentCallbacks();
         System.out.println("retained-mesh-copy-validation-upload-ack-ok");
+    }
+
+    private static void excludedTranslucentCallbacks() throws ReflectiveOperationException {
+        var target = LegacyBakedResort.class.getDeclaredField("target");
+        var uploaded = LegacyBakedResort.class.getDeclaredField("uploaded");
+        target.setAccessible(true);
+        uploaded.setAccessible(true);
+        Object destination = new Object();
+        target.set(null, destination);
+        uploaded.set(null, new int[]{4, 0, 0, 0});
+        try {
+            LegacyBakedResort.sort(new Object(), 1, 2, 3);
+            LegacyBakedResort.upload(destination, new Object());
+            uploaded.set(null, new int[]{0, 0, 0, 4});
+            expect(ExceptionInInitializerError.class, () -> LegacyBakedResort.sort(new Object(), 1, 2, 3));
+            expect(NoClassDefFoundError.class, () -> LegacyBakedResort.upload(destination, new Object()));
+        } finally {
+            LegacyBakedResort.clear();
+        }
+    }
+
+    private static void layerProvenance() {
+        int record = LegacyRendererContract.BAKED_RECORD_BYTES;
+        ByteBuffer source = ByteBuffer.allocate(32 + 4 * record).order(ByteOrder.LITTLE_ENDIAN);
+        for (int layer = 0; layer < 4; layer++) source.putInt(32 + layer * record + 8, layer);
+        int[] observed = new int[4];
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{4, 4, 4, 4}, 0, observed) == 4,
+                "complete layers admitted");
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{8, 0, 4, 4}, 0, observed) == -1,
+                "equal total vertices cannot hide layer mismatch");
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{4, 4, 8, 12}, 8, observed) == -1,
+                "water does not excuse cutout vertices");
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{4, 4, 4, 12}, 8, observed) == 3,
+                "water removes only translucent provenance");
+        require(source.getInt(32 + 2 * record + 8) == 2, "resident source order retained");
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{12, 4, 4, 4}, 1, observed) == 3,
+                "lava removes only solid provenance");
+        require(source.getInt(40) == 1, "lava source compacts past solid quads");
+        for (int layer = 0; layer < 4; layer++) source.putInt(32 + layer * record + 8, layer);
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{0, 4, 4, 4}, 1, observed) == -1,
+                "fluid cannot hide fewer vanilla vertices than baked vertices");
+        require(LegacyBakedCapture.provenLayers(source, 4, new int[]{12, 4, 4, 12}, 9, observed) == 2,
+                "water and lava remove only their two layers");
+        require(source.getInt(40) == 1 && source.getInt(40 + record) == 2,
+                "two fluid layers preserve ordered cutout provenance");
+        source.putInt(40, 4);
+        require(LegacyBakedCapture.provenLayers(source, 1, new int[]{4, 4, 4, 4}, 9, observed) == -1,
+                "unknown baked layer is refused");
+        require(LegacyBakedCapture.provenLayers(source, 0, new int[4], 0, observed) == 0,
+                "empty capture remains valid");
     }
 
     private static void vanillaBufferBytes() throws ReflectiveOperationException {

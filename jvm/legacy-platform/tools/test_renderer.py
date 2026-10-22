@@ -16,12 +16,15 @@ def composite_fixture(directory: Path) -> None:
     for phase in range(3):
         for designated in range(len(SCENES)):
             scene = 7 if designated >= 5 else designated if phase == 0 else phase + 4
-            draws, vertices = (0, 0) if designated >= 5 else (1, 4)
+            draws, vertices = (0, 0) if 5 <= designated < 8 else (1, 4)
             header = struct.pack('<8i', scene, designated, 1, 1, draws, vertices,
-                                 4 if designated >= 5 else 3, vertices)
+                                 5 if designated >= 8 else 4 if designated >= 5 else 3, vertices)
             sample = header + arm + arm + omitted
             if designated >= 5:
-                summary = ((2, 16, 0, 0), (3, 1, 5, 0), (8, 0, 0, 16))[designated - 5]
+                if designated >= 8:
+                    sample += struct.pack('<4i', *( (1, 0, 0, 0) if designated == 8 else (0, 0, 1, 0)))
+                summary = ((2, 16, 0, 0), (3, 1, 5, 0), (8, 0, 0, 16),
+                           (2, 16, 0, 0), (8, 0, 0, 16))[designated - 5]
                 sample += struct.pack('<4i', *summary)
             (directory / f'composited-{phase}-{designated}.raw').write_bytes(sample)
             if designated == 3:
@@ -133,7 +136,7 @@ class CompositeFrameTests(unittest.TestCase):
             root = Path(directory)
             composite_fixture(root)
             rows = renderer_proof.composited_proof(root, 0)
-            self.assertEqual(len(rows), 39)
+            self.assertEqual(len(rows), 45)
             self.assertTrue(all(row['rgbaMismatchPixels'] == row['depthMismatchPixels'] == 0 for row in rows))
             with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
                 renderer_proof.composited_proof(root, float('inf'))
@@ -182,7 +185,7 @@ class CompositeFrameTests(unittest.TestCase):
             root = Path(directory)
             composite_fixture(root)
             rows = renderer_proof.composited_proof(root, 0)
-            fluids = [row for row in rows if row['fluidVanillaFallback']]
+            fluids = [row for row in rows if row['fluidVanillaFallback'] and row['substitutedDraws'] == 0]
             self.assertEqual(len(fluids), 9)
             self.assertEqual({row['designated'] for row in fluids}, {'still-water', 'flowing-water', 'lava'})
             for designated in range(5, 8):
@@ -200,6 +203,28 @@ class CompositeFrameTests(unittest.TestCase):
                 path.unlink()
                 with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
                     renderer_proof.composited_proof(root, 0)
+                path.write_bytes(original)
+
+    def test_mixed_fluid_layers_are_exact_across_all_lifecycles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            composite_fixture(root)
+            rows = renderer_proof.composited_proof(root, 0)
+            mixed = [row for row in rows if row['designated'] in ('water-stone', 'lava-cutout-plants')]
+            self.assertEqual(len(mixed), 6)
+            for row in mixed:
+                expected = [1, 0, 0, 0] if row['designated'] == 'water-stone' else [0, 0, 1, 0]
+                self.assertEqual(row['replacedLayerDraws'], expected)
+                self.assertEqual(row['substitutedDraws'], 1)
+            for designated in (8, 9):
+                path = root / f'composited-0-{designated}.raw'
+                original = path.read_bytes()
+                for layer in range(4):
+                    raw = bytearray(original)
+                    struct.pack_into('<i', raw, len(raw) - 32 + layer * 4, 2)
+                    path.write_bytes(raw)
+                    with self.subTest(designated=designated, layer=layer), self.assertRaises(RuntimeError):
+                        renderer_proof.composited_proof(root, 0)
                 path.write_bytes(original)
 
     def test_rejects_camera_path_shifted_away_from_section_interior(self):

@@ -11,7 +11,7 @@ import java.util.LinkedHashMap;
 
 final class LegacyWorldDraw {
     record Entry(Object chunk, Object task, int[] origin, long generation, long key,
-            boolean ready, int[] layers, long[] sorts, float[] sortCamera) { }
+            boolean ready, int[] layers, long[] sorts, float[] sortCamera, int fluidLayers) { }
     private static final LinkedHashMap<Long, Entry> ENTRIES = new LinkedHashMap<>();
     static final int UNACKNOWLEDGED = 3, DRAIN_REFUSED = 4, FLUID = 8, SKIPPED = 9, REFUSED = 10,
             IN_FLIGHT = 11, OFFERED = 12;
@@ -124,13 +124,14 @@ final class LegacyWorldDraw {
         method("LEGACY_WORLD_RENDERER", "setDirty")
                 .invoke(renderer, x - radius, 0, z - radius, x + radius, 255, z + radius, true);
     }
-    static synchronized void offer(Object chunk, Object task, int[] origin, long generation, long key, int[] emitted) {
+    static synchronized void offer(Object chunk, Object task, int[] origin, long generation, long key,
+            int[] emitted, int fluidLayers) {
         if (emitted[3] > 0) admittedTranslucent++;
         ENTRIES.values().removeIf(entry -> entry.chunk() == chunk || Arrays.equals(entry.origin(), origin));
         if (ENTRIES.size() == 4096) ENTRIES.remove(ENTRIES.keySet().iterator().next());
         if (!DRAINED.isEmpty()) DRAINED.retainAll(ENTRIES.keySet());
         ENTRIES.put(key, new Entry(chunk, task, origin.clone(), generation, key, false,
-                Arrays.copyOf(emitted, 4), new long[3], new float[3]));
+                Arrays.copyOf(emitted, 4), new long[3], new float[3], fluidLayers));
         if (!SELECTED) return;
         try { mark(chunk, OFFERED, false, false); }
         catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section status failed", failure); }
@@ -140,7 +141,7 @@ final class LegacyWorldDraw {
         if (entry != null && entry.generation() == generation && LegacyWorldResort.acknowledge(key)) {
             entry = ENTRIES.get(key);
             ENTRIES.put(key, new Entry(entry.chunk(), entry.task(), entry.origin(), generation, key,
-                    true, entry.layers(), entry.sorts(), entry.sortCamera()));
+                    true, entry.layers(), entry.sorts(), entry.sortCamera(), entry.fluidLayers()));
         }
     }
     static synchronized void clear() {
@@ -189,7 +190,8 @@ final class LegacyWorldDraw {
         Object pending = field("LEGACY_RENDER_CHUNK", "pendingTask").get(entry.chunk());
         if (pending != null && pending != task) return false;
         ENTRIES.put(key, new Entry(entry.chunk(), task,
-                entry.origin(), entry.generation(), key, entry.ready(), entry.layers(), entry.sorts(), entry.sortCamera()));
+                entry.origin(), entry.generation(), key, entry.ready(), entry.layers(), entry.sorts(),
+                entry.sortCamera(), entry.fluidLayers()));
         return true;
     }
     private static boolean sameCompiled(Entry entry) throws ReflectiveOperationException {
@@ -239,8 +241,10 @@ final class LegacyWorldDraw {
                     Object vertexBuffer = buffer.invoke(entry.chunk(), index);
                     VBO[index] = vertexBuffer == null ? 0 : id.getInt(vertexBuffer);
                 }
+                if (reason == 0 && (entry.fluidLayers() & 1 << layer) != 0) reason = FLUID;
                 if (reason == 0) LegacyGeometryProof.worldLayer(layer, VBO, entry.generation(), entry.key());
-                else LegacyGeometryProof.worldFallback(layer, VBO[layer], label(entry, reason), Math.max(reason, 0));
+                else LegacyGeometryProof.worldFallback(layer, VBO[layer], label(entry, reason),
+                        reason == FLUID ? 0 : Math.max(reason, 0));
             }
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident world draw seam failed", failure); }
     }

@@ -4,7 +4,8 @@ import re
 import sys
 
 SETTINGS = Path(__file__).resolve().parents[1] / 'harness-client.properties'
-SCENES = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'still-water', 'flowing-water', 'lava')
+SCENES = ('opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated', 'still-water', 'flowing-water', 'lava',
+          'water-stone', 'lava-cutout-plants')
 
 
 def read_settings(path: Path) -> dict[str, str]:

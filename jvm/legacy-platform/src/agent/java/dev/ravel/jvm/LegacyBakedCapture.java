@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
+import java.util.ArrayDeque;
 
 /** Selected-only owning-thread source capture; final vanilla buffers are an independent oracle. */
 final class LegacyBakedCapture {
@@ -39,9 +40,15 @@ final class LegacyBakedCapture {
     private static int phase;
     private static long designatedResource;
     private static long phaseRenderer;
-    private static Capture storage;
-    private static volatile Capture active;
+    private static final ArrayDeque<Capture> WAITING = new ArrayDeque<>();
+    private static final ArrayDeque<Capture> AVAILABLE = new ArrayDeque<>();
+    private static final IdentityHashMap<Thread, Capture> ACTIVE = new IdentityHashMap<>();
+    private static final ThreadLocal<Capture> LOCAL = new ThreadLocal<>();
+    private static int allocated;
     private static volatile boolean resident;
+    private static volatile long epoch;
+    private static volatile int uploads;
+    static synchronized void frame() { uploads = 2; }
 
     private LegacyBakedCapture() { }
 
@@ -57,32 +64,42 @@ final class LegacyBakedCapture {
     static synchronized void begin(Object task, float x, float y, float z) {
         if (!LegacyGeometryProof.selected()) return;
         if (LegacyRenderer.taskGeneration(task) <= 0) return;
-        if (active != null || queued != null) { METRICS[1]++; return; }
+        Thread thread = Thread.currentThread();
+        int limit = LegacyWorldDraw.captureLimit(48 + LIMIT * (RECORD + 224));
+        if (ACTIVE.containsKey(thread) || allocated >= limit && AVAILABLE.isEmpty()
+                || controlledWindow() && (queued != null || !ACTIVE.isEmpty())) { METRICS[1]++; return; }
+        Capture capture = AVAILABLE.pollFirst();
         try {
-            if (LegacyCompositeCapture.pending() && !LegacyCompositeCapture.replacePending(task)) {
-                METRICS[1]++;
-                return;
+            if (capture == null) { capture = new Capture(); allocated++; }
+            if (controlledWindow() && LegacyCompositeCapture.pending()
+                    && !LegacyCompositeCapture.replacePending(task)) {
+                AVAILABLE.addLast(capture); METRICS[1]++; return;
             }
-            if (storage == null) storage = new Capture();
-            storage.begin(task, x, y, z);
-        } catch (Throwable failure) { throw new IllegalStateException("Baked capture initialization failed", failure); }
-        if (controlledWindow() && !storage.needed()) {
-            storage.release();
-            METRICS[29]++;
-            return;
+            if (!LegacyWorldDraw.configure(LegacyRenderer.taskGeneration(task))) {
+                AVAILABLE.addLast(capture); METRICS[1]++; return;
+            }
+            capture.begin(task, x, y, z);
+        } catch (Throwable failure) {
+            if (capture != null) AVAILABLE.addLast(capture);
+            throw new IllegalStateException("Baked capture initialization failed", failure);
         }
-        active = storage;
+        if (controlledWindow() && !capture.needed()) {
+            capture.release(); AVAILABLE.addLast(capture); METRICS[29]++; return;
+        }
+        ACTIVE.put(thread, capture);
+        LOCAL.set(capture);
     }
 
     static synchronized void clear() {
         resident = false;
         LegacyWorldDraw.clear();
         LegacyBakedResort.clear();
-        active = null;
+        epoch++;
         queued = null;
+        WAITING.clear();
+        AVAILABLE.clear();
+        allocated = ACTIVE.size();
         LegacyCompositeCapture.clear();
-        if (storage != null) storage.sprites.clear();
-        if (storage != null) storage.release();
     }
 
     static synchronized long[] metrics() {
@@ -128,11 +145,26 @@ final class LegacyBakedCapture {
 
     static void draw() {
         if (!LegacyGeometryProof.selected() || LegacyCompositeCapture.replaying()) return;
-        if (queued != null) drawQueued();
-        else if (resident && System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof")
+        drainQueued();
+        if (resident && System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof")
                 && LegacyRuntime.resourceGeneration() == LegacyRuntime.completedResourceGeneration())
             LegacyGeometryProof.drawBaked(LegacyRuntime.completedResourceGeneration(),
                     LegacyRuntime.atlasResourceGeneration());
+    }
+    private static void drainQueued() {
+        if (queued == null || uploads == 0) return;
+        synchronized (LegacyBakedCapture.class) { drainReady(); }
+    }
+    private static void drainReady() {
+        while (queued != null && uploads > 0) {
+            Capture capture = queued;
+            try { drawQueued(); }
+            finally {
+                AVAILABLE.addLast(capture);
+                queued = WAITING.pollFirst();
+                uploads--;
+            }
+        }
     }
 
     private static synchronized void drawQueued() {
@@ -170,17 +202,17 @@ final class LegacyBakedCapture {
             return;
         }
         synchronized (LegacyBakedResort.class) {
-            if (!LegacyBakedResort.acknowledge(capture.generation, capture.key)) {
+            if (controlledWindow() && !LegacyBakedResort.acknowledge(capture.generation, capture.key)) {
                 abandon(capture);
                 queued = null;
                 LegacyCompositeCapture.clear();
                 METRICS[15]++;
                 return;
             }
-            capture.settle(true);
             boolean exact = true;
             for (int layer = 0; layer < 3; layer++)
                 for (int mismatch = 1; mismatch <= 3; mismatch++) exact &= result[layer * 7 + mismatch] == 0;
+            capture.settle(exact);
             if (exact) LegacyWorldDraw.acknowledge(capture.generation, capture.key);
             resident = true;
         }
@@ -217,6 +249,19 @@ final class LegacyBakedCapture {
             resident = false;
         }
     }
+    private static void supersede(Capture next) {
+        if (controlledWindow()) return;
+        if (queued != null && queued.generation == next.generation && Arrays.equals(queued.origin, next.origin)) {
+            queued.settle(false); AVAILABLE.addLast(queued); queued = WAITING.pollFirst();
+        }
+        var iterator = WAITING.iterator();
+        while (iterator.hasNext()) {
+            Capture previous = iterator.next();
+            if (previous.generation == next.generation && Arrays.equals(previous.origin, next.origin)) {
+                previous.settle(false); AVAILABLE.addLast(previous); iterator.remove();
+            }
+        }
+    }
 
     private static void refuse(int reason) {
         METRICS[2]++;
@@ -224,15 +269,15 @@ final class LegacyBakedCapture {
     }
 
     private static Capture current() {
-        Capture capture = active;
-        return capture != null && capture.owner == Thread.currentThread().threadId() ? capture : null;
+        Capture capture = LOCAL.get();
+        return capture != null && capture.epoch == epoch && capture.owner == Thread.currentThread().threadId() ? capture : null;
     }
 
     static void model(Object state, Object builder) {
         if (current() != null) modelCurrent(state, builder);
     }
 
-    private static synchronized void modelCurrent(Object state, Object builder) {
+    private static void modelCurrent(Object state, Object builder) {
         Capture capture = current();
         if (capture == null) return;
         try {
@@ -250,7 +295,7 @@ final class LegacyBakedCapture {
         if (current() != null) observeCurrent(id, receiver, number);
     }
 
-    private static synchronized void observeCurrent(String id, Object receiver, int number) {
+    private static void observeCurrent(String id, Object receiver, int number) {
         Capture capture = current();
         if (capture == null) return;
         try {
@@ -280,7 +325,7 @@ final class LegacyBakedCapture {
         if (current() != null) verticesCurrent(builder, words);
     }
 
-    private static synchronized void verticesCurrent(Object builder, int[] words) {
+    private static void verticesCurrent(Object builder, int[] words) {
         Capture capture = current();
         if (capture == null || capture.builder != builder) return;
         if (words.length != 28 || capture.pending) { capture.fail(OBSERVATION); return; }
@@ -295,7 +340,7 @@ final class LegacyBakedCapture {
         if (current() != null) lightCurrent(builder, a, b, c, d);
     }
 
-    private static synchronized void lightCurrent(Object builder, int a, int b, int c, int d) {
+    private static void lightCurrent(Object builder, int a, int b, int c, int d) {
         Capture capture = current();
         if (capture == null || capture.builder != builder || !capture.pending) return;
         capture.light[0] = a; capture.light[1] = b; capture.light[2] = c; capture.light[3] = d;
@@ -305,7 +350,7 @@ final class LegacyBakedCapture {
         if (current() != null) colorCurrent(builder, r, g, b, index);
     }
 
-    private static synchronized void colorCurrent(Object builder, float r, float g, float b, int index) {
+    private static void colorCurrent(Object builder, float r, float g, float b, int index) {
         Capture capture = current();
         if (capture == null || capture.builder != builder || !capture.pending) return;
         if (index < 1 || index > 4) { capture.fail(OBSERVATION); return; }
@@ -317,7 +362,7 @@ final class LegacyBakedCapture {
         if (current() != null) positionCurrent(builder, x, y, z);
     }
 
-    private static synchronized void positionCurrent(Object builder, double x, double y, double z) {
+    private static void positionCurrent(Object builder, double x, double y, double z) {
         Capture capture = current();
         if (capture == null || capture.builder != builder || !capture.pending) return;
         capture.pending = false;
@@ -326,20 +371,24 @@ final class LegacyBakedCapture {
     }
 
     static synchronized void finish(Object task) {
-        Capture capture = current();
+        Capture capture = LOCAL.get();
         if (capture == null || capture.task != task) return;
-        active = null;
+        ACTIVE.remove(Thread.currentThread());
+        LOCAL.remove();
         try {
             int reason = capture.refusal != 0 ? capture.refusal
                     : capture.pending ? INCOMPLETE_QUAD
-                    : !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
+                    : capture.epoch != epoch || !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
             if (reason != 0) refuse(reason);
             else if (!capture.fluidFallback()) {
                 synchronized (LegacyBakedResort.class) { capture.compare(); }
             }
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
-        } finally { capture.release(); }
+        } finally {
+            capture.release();
+            if (capture != queued && !WAITING.contains(capture)) AVAILABLE.addLast(capture);
+        }
     }
 
     private static final class Capture {
@@ -362,6 +411,7 @@ final class LegacyBakedCapture {
         Object builder;
         long generation;
         long owner;
+        long epoch;
         int state;
         int sprite;
         int tint;
@@ -381,6 +431,7 @@ final class LegacyBakedCapture {
             this.task = task;
             generation = LegacyRenderer.taskGeneration(task);
             owner = Thread.currentThread().threadId();
+            epoch = LegacyBakedCapture.epoch;
             Object buffers = access.buffers.invokeExact(task);
             for (int i = 0; i < 4; i++) builders[i] = access.get.invokeExact(buffers, i);
             camera[0] = x; camera[1] = y; camera[2] = z;
@@ -477,6 +528,7 @@ final class LegacyBakedCapture {
             if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return; }
             if (!resourceCurrent()) { METRICS[3]++; return; }
             source.putInt(0, count);
+            supersede(this);
             long[] result = Hook.ravelRendererBaked(generation, section, source.array(), oracle.array(), output);
             if (result.length == 7) key = result[6];
             if (!resourceCurrent() || !LegacyRenderer.accepts(generation)) {
@@ -499,11 +551,13 @@ final class LegacyBakedCapture {
             METRICS[4] += result[0]; METRICS[5] += result[1]; METRICS[6] += result[3];
             if (result[2] >= 0 && METRICS[10] < 0) METRICS[10] = result[2];
             if (count > 0 && (!controlledWindow() || needed())) {
-                queued = this;
+                if (queued == null) queued = this;
+                else WAITING.addLast(this);
                 Object chunk = access.chunk.invokeExact(task);
                 LegacyWorldDraw.offer(chunk, task, origin, generation, key);
-                LegacyBakedResort.offer(generation, key, origin, output, chunk,
-                        (ByteBuffer) access.buffer.invokeExact(builders[3]));
+                if (controlledWindow())
+                    LegacyBakedResort.offer(generation, key, origin, output, chunk,
+                            (ByteBuffer) access.buffer.invokeExact(builders[3]));
                 resident = false;
                 int designated = designated();
                 int scene = scene(designated);

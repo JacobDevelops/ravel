@@ -3,72 +3,132 @@ package dev.ravel.jvm;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 final class LegacyWorldDraw {
-    private static final boolean SELECTED = System.getProperty("ravel.renderer", "vanilla").equals("resident-world");
+    private record Entry(Object chunk, Object task, int[] origin, long generation, long key, boolean ready) { }
+    private static final LinkedHashMap<Long, Entry> ENTRIES = new LinkedHashMap<>();
+    private static final int[] VBO = new int[3];
+    private static final int[] EMPTY = new int[0];
+    private static long configured;
+    private static int distance;
     private static final String[] AXES = {"getX", "getY", "getZ"};
-    private static Object chunk;
-    private static Object task;
-    private static int[] origin;
-    private static long generation;
-    private static long key;
-    private static boolean ready;
-    private static final int[] ids = new int[4];
-
+    private static final java.util.HashMap<String, java.util.HashMap<String, Field>> FIELDS = new java.util.HashMap<>();
+    private static final java.util.HashMap<String, java.util.HashMap<String, Method>> METHODS = new java.util.HashMap<>();
+    private static Entry probe;
+    private static int probeKind;
     private LegacyWorldDraw() { }
-
-    static boolean selected() { return SELECTED; }
-
-    static synchronized void clear() {
-        chunk = null; task = null; origin = null; ready = false;
+    static synchronized int captureLimit(int bytes) {
+        long diameter = distance * 2L + 1;
+        long budget = Math.clamp(diameter * diameter * 262144L, 16L * 1024 * 1024, 256L * 1024 * 1024);
+        return Math.clamp(budget / bytes, 1, 64);
     }
-
-    static synchronized void offer(Object section, Object work, int[] position, long epoch, long lease) {
-        if (!selected()) return;
-        chunk = section; task = work; origin = position.clone();
-        generation = epoch; key = lease; ready = false;
+    static synchronized boolean configure(long generation) throws ReflectiveOperationException {
+        if (!LegacyRenderer.accepts(generation)) return false;
+        if (configured == generation) return true;
+        int selected = viewDistance();
+        if (Hook.ravelRendererBakedLease(generation, selected, 3)[0] != 1) return false;
+        if (!LegacyGeometryProof.worldBudget(selected)) return false;
+        distance = selected; configured = generation;
+        return true;
     }
-
-    static synchronized void acknowledge(long epoch, long lease) {
-        ready = chunk != null && generation == epoch && key == lease;
+    static synchronized boolean distanceChanged() {
+        if (configured == 0) return false;
+        try { return distance != viewDistance(); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("View distance unavailable", failure); }
     }
-
+    private static int viewDistance() throws ReflectiveOperationException {
+        Object client = method("LEGACY_CLIENT", "getInstance").invoke(null);
+        Object options = field("LEGACY_CLIENT", "options").get(client);
+        return field("LEGACY_GAME_OPTIONS", "viewDistance").getInt(options);
+    }
+    static synchronized void warm(int x, int z) throws ReflectiveOperationException {
+        Object client = method("LEGACY_CLIENT", "getInstance").invoke(null);
+        Object renderer = field("LEGACY_CLIENT", "worldRenderer").get(client);
+        int radius = (distance + 1) * 16;
+        method("LEGACY_WORLD_RENDERER", "setDirty")
+                .invoke(renderer, x - radius, 0, z - radius, x + radius, 255, z + radius, true);
+    }
+    static synchronized void offer(Object chunk, Object task, int[] origin, long generation, long key) {
+        ENTRIES.values().removeIf(entry -> entry.chunk() == chunk || Arrays.equals(entry.origin(), origin));
+        if (ENTRIES.size() == 4096) ENTRIES.remove(ENTRIES.keySet().iterator().next());
+        ENTRIES.put(key, new Entry(chunk, task, origin.clone(), generation, key, false));
+    }
+    static synchronized void acknowledge(long generation, long key) {
+        Entry entry = ENTRIES.get(key);
+        if (entry != null && entry.generation() == generation)
+            ENTRIES.put(key, new Entry(entry.chunk(), entry.task(), entry.origin(), generation, key, true));
+    }
+    static synchronized void clear() { ENTRIES.clear(); probe = null; configured = 0; }
     static synchronized boolean ready(int x, int y, int z) {
-        if (!ready || origin[0] != x || origin[1] != y || origin[2] != z
-                || !LegacyRenderer.accepts(generation)) return false;
-        try { return current(); }
-        catch (ReflectiveOperationException failure) {
-            throw new IllegalStateException("Resident world admission lookup failed", failure);
-        }
+        for (Entry entry : ENTRIES.values())
+            if (entry.origin()[0] == x && entry.origin()[1] == y && entry.origin()[2] == z && current(entry)) return true;
+        return false;
     }
-
-    static synchronized void layer(Object value) {
-        if (!selected()) return;
-        int layer = value == null || LegacyCompositeCapture.replaying() ? -1 : ((Enum<?>) value).ordinal();
-        Arrays.fill(ids, 0);
-        try {
-            if (layer >= 0 && ready && LegacyRenderer.accepts(generation) && current()) {
-                Method buffer = LegacyAccess.method("LEGACY_RENDER_CHUNK", "getBuffer");
-                Field id = Members.field(LegacyAccess.type("LEGACY_VERTEX_BUFFER"),
-                        LegacyNames.member("LEGACY_VERTEX_BUFFER", "id"));
-                Object source = buffer.invoke(chunk, layer);
-                ids[layer] = source == null ? 0 : id.getInt(source);
+    static synchronized boolean negative(int x, int y, int z, int kind) {
+        if (kind != 1 && kind != 2) throw new IllegalArgumentException("Unknown world fallback proof");
+        for (Entry entry : ENTRIES.values())
+            if (entry.origin()[0] == x && entry.origin()[1] == y && entry.origin()[2] == z && current(entry)) {
+                probe = entry; probeKind = kind; return true;
             }
-        } catch (ReflectiveOperationException failure) {
-            throw new IllegalStateException("Resident world section identity lookup failed", failure);
-        }
-        LegacyGeometryProof.worldLayer(layer, ids, generation, key);
+        return false;
     }
-
-    private static boolean current() throws ReflectiveOperationException {
-        Object position = Members.field(LegacyAccess.type("LEGACY_RENDER_CHUNK"),
-                LegacyNames.member("LEGACY_RENDER_CHUNK", "origin")).get(chunk);
-        for (int axis = 0; axis < 3; axis++)
-            if ((int) LegacyAccess.method("LEGACY_VEC3I", AXES[axis]).invoke(position) != origin[axis]) return false;
-        Object compiled = LegacyAccess.method("LEGACY_COMPILE_TASK", "getCompiledChunk").invoke(task);
-        if (compiled != LegacyAccess.method("LEGACY_RENDER_CHUNK", "getCompiledChunk").invoke(chunk)) return false;
-        Object pending = Members.field(LegacyAccess.type("LEGACY_RENDER_CHUNK"),
-                LegacyNames.member("LEGACY_RENDER_CHUNK", "pendingTask")).get(chunk);
-        return pending == null || pending == task;
+    private static boolean current(Entry entry) { return reason(entry) == 0; }
+    private static int reason(Entry entry) {
+        if (!entry.ready()) return -1;
+        if (!LegacyRenderer.accepts(entry.generation())
+                || LegacyRuntime.resourceGeneration() != LegacyRuntime.completedResourceGeneration()) return 1;
+        try {
+            Object position = field("LEGACY_RENDER_CHUNK", "origin").get(entry.chunk());
+            for (int axis = 0; axis < 3; axis++)
+                if ((int) method("LEGACY_VEC3I", AXES[axis]).invoke(position) != entry.origin()[axis]) return 1;
+            Object pending = field("LEGACY_RENDER_CHUNK", "pendingTask").get(entry.chunk());
+            if (pending != null && pending != entry.task()) return 2;
+            if ((boolean) method("LEGACY_RENDER_CHUNK", "isDirty").invoke(entry.chunk())) return 1;
+            return method("LEGACY_RENDER_CHUNK", "getCompiledChunk").invoke(entry.chunk())
+                    == method("LEGACY_COMPILE_TASK", "getCompiledChunk").invoke(entry.task())
+                    && Hook.ravelRendererBakedLease(entry.generation(), entry.key(), 4)[0] == 1 ? 0 : 1;
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section readiness failed", failure); }
+    }
+    static synchronized void layer(Object value) {
+        if (!System.getProperty("ravel.renderer", "vanilla").equals("resident-world")) return;
+        int layer = value instanceof Enum<?> enumeration ? enumeration.ordinal() : -1;
+        LegacyGeometryProof.worldLayer(layer, EMPTY, 0, 0);
+        if (layer < 0 || layer >= 3) return;
+        try {
+            if (layer == 0 && probe != null) {
+                Object chunk = probe.chunk();
+                if (probeKind == 2) method("LEGACY_RENDER_CHUNK", "startCompile").invoke(chunk);
+                method("LEGACY_RENDER_CHUNK", "setDirty").invoke(chunk, true);
+                probe = null;
+            }
+            Method buffer = method("LEGACY_RENDER_CHUNK", "getBuffer");
+            Field id = field("LEGACY_VERTEX_BUFFER", "id");
+            for (Entry entry : ENTRIES.values()) {
+                int reason = reason(entry);
+                if (reason < 0) continue;
+                for (int index = 0; index < 3; index++) {
+                    Object vertexBuffer = buffer.invoke(entry.chunk(), index);
+                    VBO[index] = vertexBuffer == null ? 0 : id.getInt(vertexBuffer);
+                }
+                if (reason == 0) LegacyGeometryProof.worldLayer(layer, VBO, entry.generation(), entry.key());
+                else LegacyGeometryProof.worldFallback(layer, VBO[layer], reason);
+            }
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident world draw seam failed", failure); }
+    }
+    private static Field field(String owner, String name) throws ReflectiveOperationException {
+        var members = FIELDS.computeIfAbsent(owner, ignored -> new java.util.HashMap<>());
+        Field field = members.get(name);
+        if (field == null) {
+            field = Members.field(LegacyAccess.type(owner), LegacyNames.member(owner, name));
+            members.put(name, field);
+        }
+        return field;
+    }
+    private static Method method(String owner, String name) throws ReflectiveOperationException {
+        var members = METHODS.computeIfAbsent(owner, ignored -> new java.util.HashMap<>());
+        Method method = members.get(name);
+        if (method == null) { method = LegacyAccess.method(owner, name); members.put(name, method); }
+        return method;
     }
 }

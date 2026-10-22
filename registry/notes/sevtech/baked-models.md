@@ -9,18 +9,78 @@ explicit world-frame replay. Those timings are not renderer-replacement results.
 
 The separate experimental `resident-world` selection intercepts vanilla's actual
 per-section VBO draw during normal SOLID, CUTOUT_MIPPED and CUTOUT rendering.
-It reuses vanilla's layer state, translation and section ordering. Residency is
-limited to **one acknowledged section**, not every admitted visible section;
-therefore this is a replacement-mechanism experiment, not a production world renderer.
-Fluids, stale generations, pending meshes and all TRANSLUCENT draws remain vanilla.
-`productionWorldDraw` exports four replacement counts, four fallback counts,
-presented frames, frames with replacements and maximum replaced sections/frame.
-Whole-frame normal-rendering raw triplets are separate from replay evidence;
-readback occurs on the ordinary world-render return, before GUI depth clears.
+It reuses vanilla's layer state, translation and section ordering. Every compiled
+section can now publish to a generation-keyed native table and a Java-owned GL
+table. Each table admits at most 4,096 resident sections; native pending entries
+are separately keyed and capped at 64. Their render-distance byte budgets are
+`clamp((2d + 1)^2 * 262144, 16 MiB, 256 MiB)`. Native accounting includes retained
+mesh capacity and table storage; GL accounting includes the three comparison
+scratch buffers. Both tables evict the section farthest from the newly admitted
+section, preserving vanilla fallback when a lease is no longer resident. These
+are residency limits, not a claim about total JVM heap, process memory or physical VRAM.
+Fluids, stale generations, dirty or pending meshes and all TRANSLUCENT draws
+remain vanilla. Exact generation/key acknowledgement and current compiled-task,
+section-origin, resource and atlas identities are required before replacement.
+Reload, world unload and shutdown retire native entries and GL buffers.
 The selection remains refused outside diagnostic opt-in
-`RAVEL_LEGACY_PRODUCTION_VALIDATION=1`. The first normal-world independent
-recount submitted **one section/frame** in twelve 1280×720 samples, with three
-strict RGBA failures. Coverage and depth were exact. Initial failure counts:
+`RAVEL_LEGACY_PRODUCTION_VALIDATION=1`; vanilla remains the default.
+`productionWorldDraw` separately counts per-layer replacement and fallback draws,
+presented frames, frames with replacements, maximum replacements/frame and actual
+acknowledged-then-stale/pending fallback draws. Normal-world raw triplets remain
+separate from designated-section replay evidence, which cannot enter the normal
+draw replacement path. Sidecars report per-frame replaced and fallback draws,
+native/GL live and peak bytes and their configured budgets.
+
+The bounded-residency software-GL run captured four distinct camera positions in
+each of three lifecycle phases. A/B/C/D were respectively
+`(-167.5, 200, -7.5)`, `(-166.5, 200, -8.5)`, `(-165.5, 200, -9.5)` and
+`(-163.5, 200, -11.5)`, with yaw `-135/-90/-45/0` and pitch zero.
+The viewing platform supports the complete translated camera path; exact
+XYZ/yaw/pitch acknowledgement remains required before capture.
+These are controlled scenes rendered through ordinary world-layer submission,
+not the offscreen or designated-section replay.
+
+Each 1280×720 row below contains vanilla, replacement and omission arms captured
+within its one recorded client tick. A separate raw-byte recount, independent
+of the acceptance parser, found zero RGBA and coverage mismatches and zero depth
+violations at the unchanged `2 / 16777215` tolerance in all twelve rows.
+The omission footprint is positive in every row. Counts are section-layer draw
+calls, not unique sections: S/M/C means replaced SOLID/CUTOUT_MIPPED/CUTOUT;
+opaque and translucent columns count vanilla fallback draws.
+
+| Phase | Camera | Tick | Replaced S/M/C | Opaque fallback | Translucent fallback | Omission footprint |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Initial | A | 933 | 3/1/0 | 0 | 1 | 234157 |
+| Initial | B | 948 | 2/1/1 | 0 | 1 | 174129 |
+| Initial | C | 964 | 2/1/1 | 0 | 0 | 97111 |
+| Initial | D | 980 | 2/1/1 | 2 | 1 | 188658 |
+| Resource reload | A | 1465 | 3/1/0 | 0 | 1 | 234157 |
+| Resource reload | B | 1480 | 2/1/1 | 0 | 1 | 174129 |
+| Resource reload | C | 1496 | 2/1/1 | 0 | 0 | 97111 |
+| Resource reload | D | 1534 | 2/1/1 | 2 | 1 | 188658 |
+| Reopened | A | 2563 | 3/1/0 | 0 | 1 | 233889 |
+| Reopened | B | 2578 | 2/1/1 | 0 | 1 | 174129 |
+| Reopened | C | 2603 | 2/1/1 | 0 | 0 | 97148 |
+| Reopened | D | 2618 | 2/1/1 | 2 | 1 | 188663 |
+
+Four replaced draws outnumber the zero to two opaque fallback draws in every
+sample. At render distance two, each independent table's byte budget was
+16,777,216 bytes. Recorded native peak was **4,974,472 bytes** and GL peak was
+**5,750,640 bytes**, including comparison scratch storage. The twelve snapshots
+held seven to seventeen native/GL residents, with no pending native entries at
+capture. These measured peaks stay below their residency budgets; they are not
+total process or physical GPU memory measurements.
+
+Live negative probes began with exact acknowledged resident identities:
+generation/key `5/122` was made dirty, and `5/141` entered a new compile task.
+The actual stale-fallback counter increased `1 → 2`; the actual pending-fallback
+counter increased `2266 → 2267`. Both probes observed vanilla fallback after the
+transition, without removing the corresponding vanilla draw. This closes the
+acknowledged-then-stale/pending live-evidence gap for the diagnostic path only.
+
+The earlier single-resident experiment's first independent recount submitted
+**one section/frame** in twelve 1280×720 samples, with three strict RGBA failures.
+Coverage and depth were exact. Initial failure counts:
 
 | Phase | Opaque RGBA mismatches | Cutout-mipped | Cutout | Animated |
 | --- | ---: | ---: | ---: | ---: |
@@ -37,8 +97,8 @@ The independent tick-stable recount has **zero RGBA, coverage and depth
 mismatches in all twelve frames**, each with one resident section and positive
 omitted-section footprint. This supports animation drift as the original cause;
 atlas phase and GL state were not independently sampled. No oracle changed.
-Next: scale residency to every admitted visible section within a bounded budget,
-before production translucent and trials. Full-world parity is not established.
+Bounded multi-section residency extends that mechanism; production translucent
+replacement and physical trials remain separate work. Full-world parity is not established.
 
 The earlier offscreen/replay proof uses the live atlas and lightmap, model
 positions, UVs, shaded color, combined light, alpha testing and translucent
@@ -86,14 +146,20 @@ Before the first completed reload, generation zero remains inadmissible. This
 avoids requiring an artificial F3+T reload before physical trials can admit
 complete baked comparisons.
 
-Selected capture admits one owning compile thread, 8,192 source quads and fixed
-source/oracle/output buffers. Busy, oversized, uncolored, incomplete-provenance,
-unaccounted final vertices (including fluid tessellation) and stale inputs are
-explicitly refused, not truncated success. Game references are cleared at
-retirement. A volatile queue avoids taking the comparison monitor on idle layer
-hooks. GL capability refusal is an unsupported result, not a render-thread throw.
-Temporary baked VBO storage is deleted after each comparison; no baked VBO remains
-resident between comparisons. Client pointers and caller GL state are restored.
+Selected capture uses pooled owning compile-thread captures, each limited to
+8,192 source quads and fixed source/oracle/output buffers. Their render-distance
+budget permits four captures at distance two and at most 64; uploads drain at most
+two captures per frame. Per-quad observation is thread-confined; retirement
+invalidates its epoch without mutating another thread's active buffers. While
+designated comparison scenes are incomplete, that proof window remains serial;
+afterward the existing compile seam captures every section within the bounds.
+Busy, oversized, uncolored, incomplete-provenance, unaccounted final vertices
+(including fluid tessellation), stale and over-budget inputs are refused, never
+truncated success. Exact pending acknowledgements can arrive out of order without
+settling another section. Native and GL entries retire immediately; an invalidated
+active capture releases its game references on its owning thread's finish hook.
+GL context ownership and caller GL state remain Java responsibilities;
+world-resident uploads reuse existing bounded staging storage.
 
 Dormant baked targets still undergo descriptor/shape validation but are neither
 rewritten nor installed. Their transformer result is null, preserving original
@@ -228,8 +294,9 @@ the non-legacy adapter before the successful legacy rebuild.
 
 ## Slice 7: generation-keyed shaded residency
 
-Shaded comparison now retains one acknowledged native section and at most one
-pending replacement. Each owns its source bytes and emitted words. Its identity
+Slice 7 introduced one acknowledged native section and at most one pending
+replacement, superseded by the bounded native table described above. Each owned
+its source bytes and emitted words. Its identity
 contains the renderer generation, monotonic lease key, resource and atlas
 generations, and aligned section origin. The GL owner must acknowledge the exact
 pending generation/key after comparison; refusal preserves the prior native
@@ -596,7 +663,8 @@ comparison was reported. Same-section rebuild recapture was then admitted, and
 the completed run passed without changing the camera path, oracle or draw
 requirement. No moving stop or static row differed in the completed run.
 
-This proves the bounded selected software-GL replay, not physical-GPU parity,
+That selected software-GL replay alone does not prove physical-GPU parity,
 default world cutover or renderer savings. Normal-world color parity and bounded
-visible-section residency must precede production translucent replacement and
-preflighted frozen RTX 5090 trials. No default cutover is admitted.
+visible-section residency are reported separately above; production translucent
+replacement and preflighted frozen RTX 5090 trials remain outside this result.
+No default cutover is admitted.

@@ -86,7 +86,7 @@ fn retained(generation: jlong, resource: jlong) -> residency::Retained {
 fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_mesh() {
     let mut leases = Residency::new();
     let first = leases.publish(retained(1, 2)).expect("first pending");
-    assert!(leases.busy());
+    assert!(!leases.busy());
     assert!(leases.publish(retained(1, 2)).is_none());
     assert!(!leases.settle(2, first, true));
     assert!(!leases.settle(1, first + 1, true));
@@ -100,11 +100,133 @@ fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_mesh() {
     let pending = leases.metrics();
     assert_eq!(pending[0], old[0]);
     assert_eq!(pending[1], old[0]);
-    assert_eq!(pending[2], old[0] * 2);
+    assert_eq!(pending[2], old[2] + old[0]);
     assert_eq!(&pending[5..], &old[5..]);
     assert!(leases.settle(1, second, true));
     assert_eq!(leases.metrics()[3..5], [2, 1]);
     assert_eq!(leases.metrics()[7..9], [3, 3]);
+}
+
+#[test]
+fn independent_sections_can_be_pending_and_settle_out_of_order() {
+    let mut leases = Residency::new();
+    assert!(!leases.configure(0));
+    assert!(!leases.configure(33));
+    assert!(leases.configure(2));
+    let mut keys = Vec::with_capacity(64);
+    for section in 0..64 {
+        let mut value = retained(7, 2);
+        value.identity[4] = section * 16;
+        keys.push(leases.publish(value).expect("independent pending section"));
+    }
+    assert!(leases.busy());
+    assert!(leases.publish(retained(7, 2)).is_none());
+    assert!(!leases.configure(3));
+    for key in keys.into_iter().rev() {
+        assert!(!leases.contains(7, key));
+        assert!(leases.settle(7, key, true));
+        assert!(leases.contains(7, key));
+        assert!(!leases.contains(8, key));
+    }
+    let bounds = leases.bounds();
+    assert_eq!(&bounds[1..4], &[64, 0, 0]);
+    assert!(bounds[4] > leases.metrics()[0]);
+    assert!(bounds[5] <= bounds[0]);
+    leases.retire();
+    assert_eq!(leases.bounds()[4], 0);
+    assert!(leases.configure(32));
+    assert_eq!(leases.bounds()[0], 256 * 1024 * 1024);
+}
+
+#[test]
+fn section_table_evicts_the_most_distant_entry_at_its_bound() {
+    let mut leases = Residency::new();
+    let mut first = 0;
+    for section in 0..4097 {
+        let mut value = retained(3, 2);
+        value.identity[4] = section * 16;
+        let key = leases.publish(value).expect("bounded replacement");
+        if section == 0 {
+            first = key;
+        }
+        assert!(leases.settle(3, key, true));
+    }
+    assert!(!leases.contains(3, first));
+    assert_eq!(&leases.bounds()[1..4], &[4096, 0, 1]);
+    assert!(leases.bounds()[5] <= leases.bounds()[0]);
+}
+
+#[test]
+fn byte_budget_refuses_pending_pressure_and_evicts_only_acknowledged_meshes() {
+    let mut packet = input();
+    let quad = packet[32..].to_vec();
+    packet[..4].copy_from_slice(&u32::try_from(MAX_QUADS).expect("quad bound").to_le_bytes());
+    packet.reserve_exact((MAX_QUADS - 1) * RECORD);
+    for _ in 1..MAX_QUADS {
+        packet.extend_from_slice(&quad);
+    }
+    let mesh = || {
+        decode(&packet)
+            .expect("large snapshot")
+            .0
+            .mesh(1, [0.; 3], || false)
+            .expect("large mesh")
+    };
+    let mut leases = Residency::new();
+    let mut keys = Vec::with_capacity(64);
+    for section in 0..64 {
+        let value = residency::Retained {
+            identity: [3, 0, 1, 1, section * 16, 0, 0],
+            mesh: mesh(),
+        };
+        let Some(key) = leases.publish(value) else {
+            break;
+        };
+        keys.push(key);
+    }
+    assert!(!keys.is_empty() && keys.len() < 64);
+    assert!(!leases.busy());
+    assert_eq!(
+        leases.bounds()[2],
+        jlong::try_from(keys.len()).expect("bounded keys")
+    );
+    assert_eq!(leases.bounds()[3], 0);
+    assert!(leases.bounds()[5] <= leases.bounds()[0]);
+    for &key in &keys {
+        assert!(leases.settle(3, key, true));
+    }
+    let next = residency::Retained {
+        identity: [3, 0, 1, 1, 2048, 0, 0],
+        mesh: mesh(),
+    };
+    let key = leases
+        .publish(next)
+        .expect("distance eviction frees acknowledged bytes");
+    assert!(leases.settle(3, key, true));
+    assert!(!leases.contains(3, keys[0]));
+    assert!(leases.bounds()[3] > 0);
+    assert!(leases.bounds()[5] <= leases.bounds()[0]);
+}
+
+#[test]
+fn changed_distance_resets_budget_peak_without_losing_lifetime_accounting() {
+    let mut leases = Residency::new();
+    assert!(leases.configure(32));
+    let key = leases.publish(retained(3, 1)).expect("pending");
+    assert!(leases.settle(3, key, true));
+    let peak = leases.metrics()[2];
+    assert!(peak > 0);
+    assert!(!leases.configure(2));
+    leases.retire();
+    assert!(leases.configure(2));
+    assert_eq!(leases.bounds()[0], 16 * 1024 * 1024);
+    assert_eq!(&leases.bounds()[4..], &[0, 0]);
+    assert_eq!(leases.metrics()[2], peak);
+    let key = leases.publish(retained(4, 1)).expect("new budget");
+    assert!(leases.settle(4, key, true));
+    assert!(leases.bounds()[4] > 0);
+    assert!(leases.bounds()[4] <= leases.bounds()[5]);
+    assert!(leases.bounds()[5] <= leases.bounds()[0]);
 }
 
 #[test]
@@ -462,6 +584,15 @@ fn injected_capture_admission_refuses_busy_stale_and_overlapping_calls() {
         .shaded
         .publish(retained(1, 1))
         .expect("pending");
+    assert_eq!(admit(&renderer, 1, || Ok::<_, ()>(7)), Ok(Some(7)));
+    {
+        let mut state = renderer.lock().expect("renderer");
+        for section in 1..64 {
+            let mut value = retained(1, 1);
+            value.identity[4] = section * 16;
+            state.shaded.publish(value).expect("independent pending");
+        }
+    }
     assert_eq!(admit(&renderer, 1, || Ok::<_, ()>(7)), Ok(None));
     let output = 4 + MAX_QUADS * 28;
     assert!(valid_bounds(INPUT_BOUND, ORACLE_BOUND, output));

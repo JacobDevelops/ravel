@@ -59,6 +59,11 @@ public final class GeometryProof {
     private static final int BAKED_CAPACITY = MAX_BAKED_QUADS * 112;
 
     public static synchronized long[] bakedResidency() { return BAKED_RESIDENCY.clone(); }
+    public static synchronized boolean worldBudget(int distance) { return BakedWorldTable.configure(distance); }
+    public static synchronized long[] worldResidency() { return BakedWorldTable.metrics(); }
+    public static synchronized long[] worldIdentity(int x, int y, int z) {
+        return BakedWorldTable.identity(x, y, z);
+    }
 
     private GeometryProof() { }
 
@@ -332,10 +337,33 @@ public final class GeometryProof {
             System.arraycopy(identity, 0, BAKED_RESIDENCY, 6, identity.length);
             bakedAtlas = atlas;
             bakedLightmap = lightmap;
+            boolean exact = true;
+            for (int layer = 0; layer < 3; layer++)
+                for (int mismatch = 1; mismatch <= 3; mismatch++) exact &= result[layer * 7 + mismatch] == 0;
+            if (exact && System.getProperty("ravel.renderer", "vanilla").equals("resident-world"))
+                BakedWorldTable.publish(emitted, identity);
             bakedRetained = retained;
             return result;
         } finally {
             bind(GL15.GL_ARRAY_BUFFER, previous);
+        }
+    }
+    static int retainWorld(int[] emitted, int size) {
+        int buffer = generate();
+        try {
+            staging.clear().limit(size);
+            staging.asIntBuffer().put(emitted, 4, size / 4);
+            bind(GL15.GL_ARRAY_BUFFER, buffer);
+            data(GL15.GL_ARRAY_BUFFER, staging);
+            int uploaded = GL.getCapabilities().OpenGL15
+                    ? GL15.glGetBufferParameteri(GL15.GL_ARRAY_BUFFER, GL15.GL_BUFFER_SIZE)
+                    : ARBVertexBufferObject.glGetBufferParameteriARB(
+                            GL15.GL_ARRAY_BUFFER, ARBVertexBufferObject.GL_BUFFER_SIZE_ARB);
+            if (uploaded != size) { delete(buffer); return 0; }
+            return buffer;
+        } catch (RuntimeException | Error failure) {
+            delete(buffer);
+            throw failure;
         }
     }
 
@@ -435,17 +463,23 @@ public final class GeometryProof {
 
     public static synchronized void worldLayer(int layer, int[] ids, long generation, long key,
             long resource, long atlas) {
-        boolean current = BAKED_RESIDENCY[0] > 0 && BAKED_RESIDENCY[6] == generation
-                && BAKED_RESIDENCY[7] == key && BAKED_RESIDENCY[8] == resource && BAKED_RESIDENCY[9] == atlas
-                && context == GL.getCapabilities();
-        if (current) BAKED_LEASE.draw(generation, Thread.currentThread().threadId());
+        if (layer < 0 || ids.length == 0) {
+            ResidentWorldDraw.layer(layer, 0, 0, 0, 0);
+            return;
+        }
+        if (ids[layer] <= 0) return;
+        BakedWorldTable.Entry entry = BakedWorldTable.get(generation, key, resource, atlas);
+        if (entry == null || context != GL.getCapabilities()) return;
+        BAKED_LEASE.draw(generation, Thread.currentThread().threadId());
         int offset = 0;
-        for (int index = 0; index < layer; index++) offset += bakedLayers[index] * 28;
-        ResidentWorldDraw.layer(layer, current && layer >= 0 ? ids[layer] : 0, current ? bakedBuffer : 0,
-                layer >= 0 ? bakedLayers[layer] : 0, offset);
+        for (int index = 0; index < layer; index++) offset += entry.layers()[index] * 28;
+        ResidentWorldDraw.layer(layer, ids[layer], entry.buffer(), entry.layers()[layer], offset);
     }
 
     public static long[] worldMetrics() { return ResidentWorldDraw.metrics(); }
+    public static void worldFallback(int layer, int source, int reason) {
+        if (source > 0) ResidentWorldDraw.layer(layer, source, 0, -reason, 0);
+    }
     public static synchronized byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated,
             int width, int height, long generation, long resource, long atlas, long owner, boolean fallback) {
         if (fallback && designated >= 5 && context == null) initialize();
@@ -680,6 +714,7 @@ public final class GeometryProof {
     }
 
     private static void destroy() {
+        BakedWorldTable.clear();
         if (bakedBuffer != 0) delete(bakedBuffer);
         if (bakedPending != 0) delete(bakedPending);
         if (bakedOracle != 0) delete(bakedOracle);
@@ -727,7 +762,7 @@ public final class GeometryProof {
                 : ARBVertexBufferObject.glGetBufferParameteriARB(target, ARBVertexBufferObject.GL_BUFFER_SIZE_ARB);
         if (size != bytes.remaining()) throw new IllegalStateException("Geometry VBO allocation failed");
     }
-    private static void delete(int buffer) {
+    static void delete(int buffer) {
         if (coreBuffers) GL15.glDeleteBuffers(buffer);
         else ARBVertexBufferObject.glDeleteBuffersARB(buffer);
     }

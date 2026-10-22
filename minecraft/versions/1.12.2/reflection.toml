@@ -478,6 +478,28 @@ descriptor = "Lnet/minecraft/client/world/ClientWorld;"
 [[reflected.member]]
 name = "defaultResourcePacks"
 descriptor = "Ljava/util/List;"
+[[reflected.member]]
+name = "options"
+descriptor = "Lnet/minecraft/client/options/GameOptions;"
+[[reflected.member]]
+name = "worldRenderer"
+descriptor = "Lnet/minecraft/client/render/world/WorldRenderer;"
+
+[[reflected]]
+name = "LEGACY_GAME_OPTIONS"
+class = "net.minecraft.client.options.GameOptions"
+runtime = "bid"
+[[reflected.member]]
+name = "viewDistance"
+descriptor = "I"
+
+[[reflected]]
+name = "LEGACY_WORLD_RENDERER"
+class = "net.minecraft.client.render.world.WorldRenderer"
+runtime = "buy"
+[[reflected.member]]
+name = "setDirty"
+descriptor = "(IIIIIIZ)V"
 
 [[reflected]]
 name = "LEGACY_SOUND_EVENT"
@@ -641,6 +663,15 @@ descriptor = "()Lnet/minecraft/client/render/world/CompiledChunk;"
 [[reflected.member]]
 name = "compileLock"
 descriptor = "Ljava/util/concurrent/locks/ReentrantLock;"
+[[reflected.member]]
+name = "isDirty"
+descriptor = "()Z"
+[[reflected.member]]
+name = "setDirty"
+descriptor = "(Z)V"
+[[reflected.member]]
+name = "startCompile"
+descriptor = "()Lnet/minecraft/client/render/world/ChunkCompileTask;"
 
 # Official bxn$2 publishes its captured bxo only after every layer upload completes.
 # Feather hasBlock is inverted: bxo.b(layer) returns true when the layer is empty.

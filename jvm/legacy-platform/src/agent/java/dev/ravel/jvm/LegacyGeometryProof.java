@@ -47,6 +47,8 @@ final class LegacyGeometryProof {
     }
 
     static boolean selected() { return !SELECTION.equals("vanilla"); }
+    static boolean worldBudget(int distance) { return (boolean) call("worldBudget", new Class<?>[]{int.class}, distance); }
+    static long[] worldResidency() { return (long[]) call("worldResidency", new Class<?>[]{}); }
 
     private static synchronized Class<?> platform() {
         if (!selected()) throw new IllegalStateException("Geometry proof was not explicitly selected");
@@ -119,7 +121,7 @@ final class LegacyGeometryProof {
         String backend = platform == null ? (selected() ? "selected-not-initialized" : "not-selected")
                 : (String) call("backend", new Class<?>[0]);
         return new String[]{SELECTION, backend, SELECTION.equals("resident-world")
-                ? "one-section-opaque-world-replacement-parity-unproven" : FIDELITY};
+                ? "bounded-opaque-world-replacement-parity-unproven" : FIDELITY};
     }
 
     static long[] identity() {
@@ -175,6 +177,9 @@ final class LegacyGeometryProof {
         call("worldLayer", new Class<?>[]{int.class, int[].class, long.class, long.class,
                 long.class, long.class}, layer, ids, generation, key,
                 LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration());
+    }
+    static void worldFallback(int layer, int source, int reason) {
+        call("worldFallback", new Class<?>[]{int.class, int.class, int.class}, layer, source, reason);
     }
 
     static void resortBaked(int[] output, long generation, long key) {
@@ -238,6 +243,8 @@ final class LegacyGeometryProof {
             json.append(Arrays.toString(LegacyBakedCapture.world()).replace(" ", ""));
             json.append(",\"shadedNativeResidency\":");
             json.append(Arrays.toString(shadedNativeResidency()).replace(" ", ""));
+            json.append(",\"shadedNativeBudget\":");
+            json.append(Arrays.toString(Hook.ravelRendererBakedLease(0, 0, 5)).replace(" ", ""));
             json.append(",\"shadedGlResidency\":");
             json.append(Arrays.toString(shadedGlResidency()).replace(" ", ""));
             json.append(",\"productionWorldDraw\":");

@@ -184,6 +184,18 @@ pub fn ravel_renderer_baked_lease<'local>(
             let mut locked = super::RENDERER
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
+            if operation == 3 {
+                let configured = locked.can_capture(generation) && locked.shaded.configure(key);
+                return publish(env, &[jlong::from(configured)]);
+            }
+            if operation == 4 {
+                let current =
+                    locked.can_capture(generation) && locked.shaded.contains(generation, key);
+                return publish(env, &[jlong::from(current)]);
+            }
+            if operation == 5 {
+                return publish(env, &locked.shaded.bounds());
+            }
             if operation != 0
                 && (!locked.can_capture(generation)
                     || !matches!(operation, 1 | 2)

@@ -26,6 +26,9 @@ public final class ProductionFrames {
     private static java.util.function.LongSupplier ticks;
     private static long capturedTick;
     private static long previousTick;
+    private static int admitted;
+    private static final int[] COUNTS = new int[5];
+    private static final int[] ADMISSION = new int[4096 * 3 * 4];
 
     private ProductionFrames() { }
 
@@ -64,10 +67,22 @@ public final class ProductionFrames {
         raw.putInt(scene).putInt(designated).putInt(w).putInt(h).putInt(0).putInt(0).putInt(3).putInt(0);
         arm = ByteBuffer.allocateDirect(pixels * 8).order(ByteOrder.LITTLE_ENDIAN);
         stage = 0;
+        admitted = 0;
+        java.util.Arrays.fill(COUNTS, 0);
     }
 
     static boolean baseline() { return stage == 0; }
     static boolean omitting() { return stage == 2; }
+    static void admission(int ordinal, int source, int target, int count, int offset) {
+        if (stage < 0) return;
+        int index = ordinal * 4;
+        if (index < 0 || index + 3 >= ADMISSION.length) { bad = true; return; }
+        if (stage == 0) {
+            ADMISSION[index] = source; ADMISSION[index + 1] = target;
+            ADMISSION[index + 2] = count; ADMISSION[index + 3] = offset;
+        } else if (ADMISSION[index] != source || ADMISSION[index + 1] != target
+                || ADMISSION[index + 2] != count || ADMISSION[index + 3] != offset) bad = true;
+    }
 
     static void presented(int draws, int vertices, int admittedDraws, int admittedVertices, int w, int h) {
         if (stage < 0) return;
@@ -88,9 +103,9 @@ public final class ProductionFrames {
             GL11.glReadPixels(0, 0, width, height, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT,
                     arm.slice(width * height * 4, width * height * 4));
             raw.position(32 + stage * width * height * 8).put(arm);
-            if (stage == 0) raw.putInt(28, admittedVertices);
+            if (stage == 0) { raw.putInt(28, admittedVertices); admitted = admittedDraws; }
             if (stage == 1) raw.putInt(16, draws).putInt(20, vertices);
-            if (admittedDraws != 1 || admittedVertices != raw.getInt(28)) bad = true;
+            if (admittedDraws != admitted || admitted <= 0 || admittedVertices != raw.getInt(28)) bad = true;
             stage++;
             if (stage == 3) {
                 if (bad) raw.putInt(16, 0);
@@ -102,6 +117,8 @@ public final class ProductionFrames {
     }
 
     public static long capturedTick() { return capturedTick; }
+    static void counts(int[] counts) { if (stage == 1) System.arraycopy(counts, 0, COUNTS, 0, COUNTS.length); }
+    public static int[] counts() { return COUNTS.clone(); }
     public static void cancel() { stage = -1; raw = null; arm = null; completed = null; }
 
     public static byte[] take() { byte[] result = completed; completed = null; return result; }

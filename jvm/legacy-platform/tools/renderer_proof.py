@@ -158,14 +158,18 @@ def mesh_proof(mesh: Proof, selection: str = 'vanilla') -> None:
 def shaded_residency_proof(proof: Proof, selection: str = 'geometry-proof') -> None:
     native, gl = proof['shadedNativeResidency'], proof['shadedGlResidency']
     live_native, live_gl = proof['shadedNativeLive'], proof['shadedGlLive']
-    vectors = ((native, 12), (gl, 16), (live_native, 12), (live_gl, 16))
+    budget, live_budget = proof['shadedNativeBudget'], proof['shadedNativeBudgetLive']
+    vectors = ((native, 12), (gl, 16), (live_native, 12), (live_gl, 16), (budget, 6), (live_budget, 6))
     if not all(isinstance(values, list) and len(values) == width
                and all(type(value) is int for value in values) for values, width in vectors):
         raise RuntimeError('Shaded residency schema differs')
     if not (all(value >= 0 for value in native + gl + live_native[:9] + live_gl[:10] + live_gl[13:])
             and not any(native[:2] + native[5:] + gl[:1] + gl[5:14])
-            and 0 < live_native[0] <= BAKED_NATIVE_SLOT_BYTES and 0 <= live_native[1] <= BAKED_NATIVE_SLOT_BYTES
-            and sum(live_native[:2]) <= live_native[2] <= native[2] <= 2 * BAKED_NATIVE_SLOT_BYTES
+            and 16 * 1024 * 1024 <= budget[0] == live_budget[0] <= 256 * 1024 * 1024
+            and budget[1:3] == [0, 0] and budget[4] == 0 and 0 < live_budget[1] <= 4096
+            and 0 <= live_budget[2] <= 64 and 0 < live_native[0] and 0 <= live_native[1]
+            and sum(live_native[:2]) <= live_budget[4] <= live_native[2] == live_budget[5]
+            <= native[2] == budget[5] <= budget[0]
             and native[3] >= live_native[3] > 0 and native[4] >= native[3]
             and gl[1] == live_gl[0] == live_gl[1] == BAKED_GL_RESERVED_BYTES
             and gl[2] == gl[4] * 3 > 0 and gl[3] == native[3]
@@ -189,7 +193,7 @@ def geometry_proof(path: Path, started: float, selection: str = 'geometry-proof'
             and proof['width'] == proof['height'] == 64 and proof['rowOrder'] == 'bottom-up'
             and len(proof['info']) == 3 and proof['info'][0] == selection
             and proof['info'][1] in ('OpenGL15', 'ARB_vertex_buffer_object')
-            and proof['info'][2] == ('one-section-opaque-world-replacement-parity-unproven'
+            and proof['info'][2] == ('bounded-opaque-world-replacement-parity-unproven'
                 if selection == 'resident-world' else 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused')
             and all(type(value) is int and value >= 0 for value in metrics.values())
             and all(type(value) is int and value >= 0 for value in final.values())
@@ -294,7 +298,7 @@ def baked_sample(data: bytes, scene: int) -> tuple[list[int], int]:
     return counts, designated
 
 
-def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
+def composited_sample(data: bytes, phase: int, designated: int, expected_draws: int = 1) -> Proof:
     if len(data) < 32:
         raise RuntimeError('Composited frame header missing')
     scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
@@ -303,8 +307,8 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
     if (scene != expected or section != designated or version != (4 if designated >= 5 else 3)
             or vertices != expected_vertices
             or not 0 < width <= COMPOSITE_MAX_WIDTH or not 0 < height <= COMPOSITE_MAX_HEIGHT
-            or draws != (0 if fallback else 1)
-            or (vertices != 0 if fallback else not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4)
+            or draws != (0 if fallback else expected_draws)
+            or (vertices != 0 if fallback else not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4 * expected_draws)
             or vertices % 4
             or len(data) != 32 + width * height * 24 + (16 if designated >= 5 else 0)):
         raise RuntimeError(f'Composited frame metadata invalid: phase={phase}, section={designated}')
@@ -353,12 +357,22 @@ def fluid_evidence(data: bytes, designated: int) -> list[int]:
 def production_proof(directory: Path, started: float) -> list[Proof]:
     export = json.loads((directory / 'geometry-upload.json').read_text())
     metrics = export.get('productionWorldDraw', [])
-    if not (len(metrics) == 11 and all(type(value) is int and value >= 0 for value in metrics)
+    if not (len(metrics) == 13 and all(type(value) is int and value >= 0 for value in metrics)
             and all(metrics[layer] > 0 for layer in range(3)) and metrics[3] == 0
-            and metrics[7] > 0 and 0 < metrics[9] <= metrics[8] and metrics[10] == 1):
+            and metrics[7] > 0 and 0 < metrics[9] <= metrics[8] and 1 < metrics[10] <= 4096 * 3
+            and metrics[11] > 0 and metrics[12] > 0):
         raise RuntimeError('Normal world replacement/fallback counters missing or invalid')
+    for kind in (1, 2):
+        negative = json.loads((directory / f'production-fallback-{kind}.json').read_text())
+        acknowledged = negative.get('acknowledged', [])
+        before, after = negative.get('before', []), negative.get('after', [])
+        if not (negative.get('kind') == kind and len(acknowledged) == 7
+                and acknowledged[0] > 0 and acknowledged[1] > 0
+                and len(before) == len(after) == 13 and after[10 + kind] > before[10 + kind]):
+            raise RuntimeError(f'Acknowledged stale/pending live fallback proof missing: {kind}')
     rows = []
     for phase in range(3):
+        positions = set()
         for designated in (0, 1, 2, 4):
             path = directory / f'production-{phase}-{designated}.raw'
             if not path.is_file() or path.stat().st_mtime < started:
@@ -368,10 +382,26 @@ def production_proof(directory: Path, started: float) -> list[Proof]:
                 raise RuntimeError(f'Missing fresh normal world identity: {identity_path.name}')
             identity = json.loads(identity_path.read_text())
             residency = identity.get('residency', [])
-            if not (len(residency) == 16 and residency[0] > 0 and residency[6] > 0
-                    and residency[7] > 0 and residency[10:13] == identity.get('origin')):
-                raise RuntimeError(f'Normal world resident identity mismatch: {identity_path.name}')
-            rows.append(composited_sample(path.read_bytes(), phase, designated))
+            counts = identity.get('drawCounts', [])
+            native, gl = identity.get('nativeBudget', []), identity.get('glBudget', [])
+            camera = identity.get('camera', [])
+            if not (len(residency) == 7 and residency[0] > 0 and residency[1] > 0
+                    and residency[2] == residency[3] > 0 and residency[4:7] == identity.get('origin')
+                    and len(counts) == 5 and all(type(value) is int and value >= 0 for value in counts)
+                    and sum(counts[:3]) > counts[3] and identity.get('clientTick', 0) > 0
+                    and len(native) == 6 and 0 < native[4] <= native[5] <= native[0]
+                    and len(gl) == 5 and 0 < gl[1] <= gl[2] <= gl[0]
+                    and len(camera) == 5 and all(type(value) in (int, float) and math.isfinite(value)
+                                                for value in camera)):
+                raise RuntimeError(f'Normal world resident identity or budget mismatch: {identity_path.name}')
+            row = composited_sample(path.read_bytes(), phase, designated, sum(counts[:3]))
+            row.update({'drawCounts': counts, 'nativeBudget': native, 'glBudget': gl,
+                        'camera': identity.get('camera'), 'clientTick': identity['clientTick'],
+                        'translucentVanillaFallback': True})
+            rows.append(row)
+            positions.add(tuple(camera[:3]))
+        if len(positions) != 4:
+            raise RuntimeError('Normal world proof requires four distinct camera positions')
     (directory / 'production-summary.json').write_text(json.dumps(rows, indent=2) + '\n')
     if any(row[key] for row in rows for key in
            ('rgbaMismatchPixels', 'coverageMismatchPixels', 'depthMismatchPixels')):

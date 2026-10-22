@@ -19,7 +19,7 @@ public final class LegacyGeometryProofMain {
             if (!info[0].equals(selection)
                     || !info[1].equals(selected ? "selected-not-initialized" : "not-selected")
                     || !info[2].equals(selection.equals("resident-world")
-                            ? "one-section-opaque-world-replacement-parity-unproven"
+                            ? "bounded-opaque-world-replacement-parity-unproven"
                             : "geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused"))
                 throw new AssertionError("Missing fidelity refusal or unexpected context creation");
             long[] identity = LegacyGeometryProof.identity();

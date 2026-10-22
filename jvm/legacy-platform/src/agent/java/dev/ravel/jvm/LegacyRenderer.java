@@ -30,7 +30,9 @@ public final class LegacyRenderer {
             case "legacyRendererUnload", "legacyRendererClose" -> lifecycle(2);
             case "legacyRendererFrame" -> {
                 ownerEvent(3);
+                if (LegacyGeometryProof.selected() && LegacyWorldDraw.distanceChanged()) lifecycle(1);
                 LegacyMeshWork.frame();
+                if (LegacyGeometryProof.selected()) LegacyBakedCapture.frame();
             }
             case "legacyRendererTerrain" -> ownerEvent(4);
             case "legacyRendererLayer" -> {
@@ -104,6 +106,11 @@ public final class LegacyRenderer {
     public static int bakedCompositeDesignated() { return LegacyBakedCapture.compositeDesignated(); }
     public static boolean skipCompositeUpdate() { return LegacyCompositeCapture.replaying(); }
     public static boolean productionReady(int x, int y, int z) { return LegacyWorldDraw.ready(x, y, z); }
+    public static long[] productionBudget() { return Hook.ravelRendererBakedLease(0, 0, 5); }
+    public static void productionWarm(int x, int z) throws ReflectiveOperationException { LegacyWorldDraw.warm(x, z); }
+    public static boolean productionNegative(int x, int y, int z, int kind) {
+        return LegacyWorldDraw.negative(x, y, z, kind);
+    }
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }

@@ -472,7 +472,8 @@ final class ClientAutomation implements Runnable {
                         + "\"info\":[\"" + String.join("\",\"", info) + "\"],\"metrics\":" + geometryMetrics()
                         + ",\"vanillaComparison\":" + comparison
                         + ",\"shadedNativeLive\":" + shadedResidency("shadedNativeResidency")
-                        + ",\"shadedGlLive\":" + shadedResidency("shadedGlResidency");
+                        + ",\"shadedGlLive\":" + shadedResidency("shadedGlResidency")
+                        + ",\"shadedNativeBudgetLive\":" + shadedResidency("productionBudget");
                 captured.set(pixels);
                 return true;
             }), TimeUnit.MINUTES.toNanos(3));
@@ -528,6 +529,7 @@ final class ClientAutomation implements Runnable {
         Files.writeString(evidence.resolve("geometry-upload.json"),
                 geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof()
                         + ",\"shadedNativeResidency\":" + onGame(() -> shadedResidency("shadedNativeResidency"))
+                        + ",\"shadedNativeBudget\":" + onGame(() -> shadedResidency("productionBudget"))
                         + ",\"shadedGlResidency\":" + onGame(() -> shadedResidency("shadedGlResidency"))
                         + ",\"productionWorldDraw\":" + onGame(() -> shadedResidency("productionWorldDraw")) + "}\n");
     }
@@ -637,8 +639,9 @@ final class ClientAutomation implements Runnable {
             rendererType().getMethod("bakedDesignate", int.class, int.class, int.class, int.class)
                     .invoke(null, scene, goldenOrigin[0] + goldenChunks[scene][0] * 16,
                             goldenY, goldenOrigin[1] + goldenChunks[scene][1] * 16);
-        int placed = onServer(server, () -> command(server, "setblock " + (goldenOrigin[0] + 8) + " "
-                + (goldenY + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
+        int placed = onServer(server, () -> command(server, "fill " + (goldenOrigin[0] + 8) + " "
+                + (goldenY + 7) + " " + (goldenOrigin[1] + 4) + " " + (goldenOrigin[0] + 12)
+                + " " + (goldenY + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
         require(placed > 0, "Golden viewing platform was not placed");
         int floorX = goldenOrigin[0] + goldenChunks[3][0] * 16;
         int floorZ = goldenOrigin[1] + goldenChunks[3][1] * 16;
@@ -668,7 +671,6 @@ final class ClientAutomation implements Runnable {
                     return false;
                 }
                 if (pending >= 0) {
-                    if (pending != 3 && pending < 5 && !captureProduction(phase, pending)) return false;
                     captureComposite(phase, pending, -1);
                 }
                 int covered = goldenCoverage(phase);
@@ -683,11 +685,47 @@ final class ClientAutomation implements Runnable {
                 }
                 return false;
             }, TimeUnit.MINUTES.toNanos(3));
+            measureProduction(server, phase);
         } catch (IllegalStateException failure) {
             throw new IllegalStateException(failure.getMessage() + " coverage="
                     + Integer.toBinaryString(goldenCoverage(phase)) + " baked="
                     + Arrays.toString((long[]) rendererType().getMethod("bakedMetrics").invoke(null)), failure);
         }
+    }
+    private void measureProduction(Object server, int phase) throws Exception {
+        if (!System.getProperty("ravel.renderer", "vanilla").equals("resident-world")) return;
+        onGame(() -> {
+            rendererType().getMethod("productionWarm", int.class, int.class)
+                    .invoke(null, goldenOrigin[0], goldenOrigin[1]);
+            return null;
+        });
+        for (int designated : new int[]{0, 1, 2, 4}) {
+            double yaw = Math.toDegrees(Math.atan2(-goldenChunks[designated][0], goldenChunks[designated][1]));
+            positionGolden(server, goldenOrigin[0] + 8.5 + designated, goldenY + 8,
+                    goldenOrigin[1] + 8.5 - designated, yaw, 0);
+            await("Bounded normal-world replacement at camera " + designated,
+                    () -> captureProduction(phase, designated), TimeUnit.MINUTES.toNanos(2));
+        }
+        if (phase == 0) for (int kind : new int[]{1, 2}) measureProductionFallback(kind);
+    }
+    private void measureProductionFallback(int kind) throws Exception {
+        int x = goldenOrigin[0] + goldenChunks[4][0] * 16;
+        int z = goldenOrigin[1] + goldenChunks[4][1] * 16;
+        await("Acknowledged resident ready for fallback proof", () -> onGame(() ->
+                (boolean) rendererType().getMethod("productionReady", int.class, int.class, int.class)
+                        .invoke(null, x, goldenY, z)), TimeUnit.MINUTES.toNanos(2));
+        long[] identity = onGame(() -> GeometryProof.worldIdentity(x, goldenY, z));
+        long[] before = onGame(GeometryProof::worldMetrics);
+        require(onGame(() -> (boolean) rendererType().getMethod("productionNegative",
+                int.class, int.class, int.class, int.class).invoke(null, x, goldenY, z, kind)),
+                "Acknowledged section accepted the actual dirty/pending transition");
+        await("Acknowledged " + (kind == 1 ? "stale" : "pending") + " section fell back in a live draw",
+                () -> onGame(() -> GeometryProof.worldMetrics()[10 + kind] > before[10 + kind]),
+                TimeUnit.MINUTES.toNanos(2));
+        Files.writeString(evidence.resolve("production-fallback-" + kind + ".json"),
+                "{\"kind\":" + kind + ",\"acknowledged\":" + Arrays.toString(identity)
+                        + ",\"before\":" + Arrays.toString(before)
+                        + ",\"after\":" + Arrays.toString(onGame(GeometryProof::worldMetrics)) + "}\n");
     }
 
     private void aimGolden(Object server, int scene) throws Exception {
@@ -761,7 +799,7 @@ final class ClientAutomation implements Runnable {
         Field hand = declaredField(renderer.getClass(), "C");
         boolean previous = onGame(() -> hand.getBoolean(renderer));
         double[] camera = onGame(this::playerState);
-        long[] identity = onGame(GeometryProof::bakedResidency);
+        long[] identity = onGame(() -> GeometryProof.worldIdentity(x, goldenY, z));
         long uploads = rendererCount(9);
         try {
             onGame(() -> {
@@ -778,15 +816,21 @@ final class ClientAutomation implements Runnable {
                 captured[0] = onGame(dev.ravel.legacy.opengl.ProductionFrames::take);
                 return captured[0] != null;
             }, TimeUnit.SECONDS.toNanos(30));
-            if (java.nio.ByteBuffer.wrap(captured[0]).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(16) != 1
+            if (java.nio.ByteBuffer.wrap(captured[0]).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(16) <= 0
                     || rendererCount(9) != uploads) return false;
+            int[] counts = dev.ravel.legacy.opengl.ProductionFrames.counts();
+            if (counts[0] + counts[1] + counts[2] <= counts[3]) return false;
             Files.write(output, captured[0]);
             double[] after = onGame(this::playerState);
             require(Arrays.equals(camera, after), "Normal world golden camera changed between arms");
             Files.writeString(evidence.resolve("production-" + phase + "-" + designated + ".json"),
                     "{\"residency\":" + Arrays.toString(identity) + ",\"origin\":[" + x + "," + goldenY
                     + "," + z + "],\"camera\":" + Arrays.toString(camera)
-                    + ",\"clientTick\":" + dev.ravel.legacy.opengl.ProductionFrames.capturedTick() + "}");
+                    + ",\"clientTick\":" + dev.ravel.legacy.opengl.ProductionFrames.capturedTick()
+                    + ",\"drawCounts\":" + Arrays.toString(dev.ravel.legacy.opengl.ProductionFrames.counts())
+                    + ",\"glBudget\":" + Arrays.toString(onGame(GeometryProof::worldResidency))
+                    + ",\"nativeBudget\":" + Arrays.toString(onGame(() ->
+                            (long[]) rendererType().getMethod("productionBudget").invoke(null))) + "}");
             productionCaptured[phase][designated] = true;
         } finally {
             onGame(() -> { dev.ravel.legacy.opengl.ProductionFrames.cancel(); return null; });

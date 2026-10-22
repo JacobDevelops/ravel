@@ -246,6 +246,8 @@ def geometry_proof_fixture(directory: Path) -> renderer_proof.Proof:
         'shadedGlResidency': [0, 2_752_512, 3, 2, 1] + [0] * 9 + [1, 0],
         'shadedNativeLive': [100, 0, 200, 2, 0, 1, 2, 1, 1, -16, 32, 48],
         'shadedGlLive': [2_752_512, 2_752_512, 3, 2, 0, 3, 1, 2, 1, 1, -16, 32, 48, 1, 1, 0],
+        'shadedNativeBudget': [16 * 1024 * 1024, 0, 0, 0, 0, 200],
+        'shadedNativeBudgetLive': [16 * 1024 * 1024, 1, 0, 0, 150, 200],
         'finalMetrics': final, 'baked': baked_proof_fixture(directory)}
 
 
@@ -293,18 +295,39 @@ class RendererProofTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             directory = Path(raw)
             (directory / 'geometry-upload.json').write_text(json.dumps({
-                'productionWorldDraw': [1, 1, 1, 0, 1, 1, 1, 1, 3, 2, 1]}))
+                'productionWorldDraw': [1, 1, 1, 0, 1, 1, 1, 1, 3, 2, 2, 2, 2]}))
             composite_fixture(directory)
+            for kind in (1, 2):
+                (directory / f'production-fallback-{kind}.json').write_text(json.dumps({
+                    'kind': kind, 'acknowledged': [1] * 7, 'before': [0] * 13, 'after': [1] * 13}))
             with self.assertRaises(RuntimeError):
                 renderer_proof.production_proof(directory, 0)
             for phase in range(3):
                 for designated in (0, 1, 2, 4):
                     source = directory / f'composited-{phase}-{designated}.raw'
-                    (directory / f'production-{phase}-{designated}.raw').write_bytes(source.read_bytes())
+                    frame = bytearray(source.read_bytes())
+                    vertices = struct.unpack_from('<i', frame, 20)[0] * 2
+                    struct.pack_into('<i', frame, 16, 2)
+                    struct.pack_into('<i', frame, 20, vertices)
+                    struct.pack_into('<i', frame, 28, vertices)
+                    (directory / f'production-{phase}-{designated}.raw').write_bytes(frame)
                     (directory / f'production-{phase}-{designated}.json').write_text(json.dumps({
-                        'residency': [1] * 16, 'origin': [1, 1, 1], 'camera': [0, 0, 0, 0, 0]}))
+                        'residency': [1] * 7, 'origin': [1, 1, 1], 'camera': [designated, 0, -designated, 0, 0],
+                        'clientTick': 1, 'drawCounts': [1, 1, 0, 0, 1],
+                        'nativeBudget': [100, 2, 0, 0, 50, 75], 'glBudget': [100, 50, 75, 2, 0]}))
             rows = renderer_proof.production_proof(directory, 0)
             self.assertEqual(len(rows), 12)
+            self.assertEqual(rows[0]['substitutedDraws'], 2)
+            metadata = directory / 'production-0-0.json'
+            original = json.loads(metadata.read_text())
+            metadata.write_text(json.dumps(original | {'camera': [1, 0, -1, 0, 0]}))
+            with self.assertRaisesRegex(RuntimeError, 'distinct camera positions'):
+                renderer_proof.production_proof(directory, 0)
+            metadata.write_text(json.dumps(original))
+            metadata.write_text(json.dumps(original | {'nativeBudget': [100, 2, 0, 0, 50, 101]}))
+            with self.assertRaisesRegex(RuntimeError, 'budget mismatch'):
+                renderer_proof.production_proof(directory, 0)
+            metadata.write_text(json.dumps(original))
             path = directory / 'production-0-0.raw'
             changed = bytearray(path.read_bytes())
             changed[40] ^= 1
@@ -460,7 +483,7 @@ class RendererProofTests(unittest.TestCase):
             proof = geometry_proof_fixture(Path(directory))
             renderer_proof.shaded_residency_proof(proof)
             for name, index, value in (('shadedNativeResidency', 0, 1),
-                    ('shadedNativeResidency', 1, 1), ('shadedNativeResidency', 2, 5_636_193),
+                    ('shadedNativeResidency', 1, 1), ('shadedNativeResidency', 2, 16 * 1024 * 1024 + 1),
                     ('shadedNativeResidency', 3, 0), ('shadedGlResidency', 5, 2),
                     ('shadedGlResidency', 14, 0), ('shadedGlLive', 6, 2), ('shadedGlLive', 7, 3),
                     ('shadedGlLive', 8, 2), ('shadedGlLive', 9, 2), ('shadedGlLive', 10, 1),

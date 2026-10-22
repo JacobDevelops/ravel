@@ -5,6 +5,8 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import time
+
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -69,6 +71,7 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
         out.mkdir(parents=True, exist_ok=True)
     proof = out / 'preflight.json'
     proof.unlink(missing_ok=True)
+    started_ns = time.time_ns()
     with (out / 'preflight-launcher.log').open('w') as log:
         process = subprocess.Popen(command, cwd=cwd, env=environment, start_new_session=True,
                                    stdout=log, stderr=subprocess.STDOUT)
@@ -81,3 +84,6 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
     if code != 0 or not proof.is_file():
         raise RuntimeError('preflight: no fresh successful scene proof; inspect ' + str(out))
     validate_preflight(json.loads(proof.read_text()))
+    if candidate is not None:
+        from run import validate_geometry_export
+        validate_geometry_export(out, 'geometry-proof', started_ns, preflight=True)

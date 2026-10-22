@@ -82,6 +82,29 @@ class RunPolicyTests(TestCase):
                              str(args.candidate.resolve()))
             self.assertEqual(record["trials"][index]["renderer"], renderer)
 
+    def test_preflight_geometry_export_checks_metric_shapes_without_claiming_work(self) -> None:
+        data = self.geometry_export("geometry-proof")
+        data["backend"] = "selected-not-initialized"
+        with tempfile.TemporaryDirectory() as raw:
+            out = Path(raw)
+            path = out / "geometry-upload.json"
+            path.write_text(json.dumps(data))
+            run.validate_geometry_export(out, "geometry-proof", 0, preflight=True)
+            data["bakedMetrics"] = data["bakedMetrics"][:30]
+            path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "baked metrics schema"):
+                run.validate_geometry_export(out, "geometry-proof", 0, preflight=True)
+
+    def test_selected_arm_requires_translucent_resort_and_uploads(self) -> None:
+        for index, value in ((30, 0), (31, 0), (32, 1)):
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as raw:
+                data = self.geometry_export("geometry-proof")
+                data["bakedMetrics"][index] = value
+                out = Path(raw)
+                (out / "geometry-upload.json").write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    run.validate_geometry_export(out, "geometry-proof", 0)
+
     def test_preflight_failure_prevents_all_trials(self) -> None:
         args = argparse.Namespace(matrix="blocked", instance="ravel", candidate=Path("candidate.json"),
                                   workload="vanilla", renderer="geometry-proof",
@@ -235,7 +258,8 @@ class RunPolicyTests(TestCase):
             metrics.update(copiedMeshes=1, copiedBytes=100, uploads=1, uploadBytes=60,
                            submissions=1, cleanups=1, maxResidentBytes=60,
                            maxStagingBytes=1_212_416)
-            for index, value in ((0, 2), (2, 1), (4, 6), (11, 1), (12, 1), (13, 2), (16, 224), (25, 1)):
+            for index, value in ((0, 2), (2, 1), (4, 6), (11, 1), (12, 1), (13, 2), (16, 224), (25, 1),
+                                 (30, 2), (31, 1)):
                 baked[index] = value
             world = [2, 0, 0, 0, 30, 30, 24]
             native[:5] = [0, 0, 100, 2, 2]

@@ -11,6 +11,7 @@ from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 import preflight
+import run
 import vanilla
 
 
@@ -83,10 +84,14 @@ class PreflightLaunchTests(TestCase):
                  patch('renderer_proof.validate_scene_settings'), \
                  patch.object(vanilla, 'prepare_vanilla') as prepare, \
                  patch.object(vanilla, 'prepare_command', return_value=(command, root)), \
+                 patch.object(run, 'validate_geometry_export') as validate_metrics, \
                  patch.object(preflight.subprocess, 'Popen', side_effect=launch) as execute:
                 preflight.run_preflight(candidate, 'check')
             prepare.assert_called_once_with(out, 'ravel', candidate)
-
+            validate_metrics.assert_called_once()
+            args, kwargs = validate_metrics.call_args
+            self.assertEqual(args[:2], (out, 'geometry-proof'))
+            self.assertTrue(kwargs['preflight'])
     def test_nonsilent_driver_fails_before_launch(self) -> None:
         with patch.object(preflight, 'launcher_environment', return_value={'ALSOFT_DRIVERS': 'pulse'}), \
              patch('renderer_proof.validate_scene_settings'), \

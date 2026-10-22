@@ -35,7 +35,7 @@ GEOMETRY_METRICS = (
     'generation', 'key',
 )
 GEOMETRY_FIDELITY = 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'
-BAKED_METRICS = 30
+BAKED_METRICS = 33
 BAKED_REFUSALS = range(20, 29)
 PROOF_IMAGE_EDGE = 64
 PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2
@@ -45,7 +45,7 @@ BAKED_QUAD_BYTES = 112
 BAKED_NATIVE_SLOT_BYTES = 48 + BAKED_MAX_QUADS_PER_SECTION * (BAKED_RECORD_BYTES + BAKED_QUAD_BYTES)
 BAKED_GL_RESERVED_BYTES = 3 * BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES
 
-def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
+def validate_shaded_export(data: dict[str, Any], renderer: str, preflight: bool = False) -> None:
     from prepare import require
     native, gl = data.get('shadedNativeResidency'), data.get('shadedGlResidency')
     require(isinstance(native, list) and len(native) == 12 and isinstance(gl, list) and len(gl) == 16
@@ -54,6 +54,8 @@ def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
     if renderer == 'vanilla':
         require(not any(native + gl), 'vanilla arm performed shaded residency work')
         return
+    if preflight:
+        return
     require(not any(native[:2] + native[5:] + gl[:1] + gl[5:14]),
             'shaded residency did not drain at shutdown')
     require(0 < native[2] <= 2 * BAKED_NATIVE_SLOT_BYTES and native[3] > 0 and native[4] >= native[3]
@@ -61,8 +63,7 @@ def validate_shaded_export(data: dict[str, Any], renderer: str) -> None:
             and gl[3] == native[3] and gl[14] > 0 and gl[15] == 0,
             'shaded reservation, exact acknowledgement, reuse or retirement proof missing')
 
-
-def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
+def validate_baked_export(data: dict[str, Any], renderer: str, preflight: bool = False) -> None:
     from prepare import require
     baked, world = data.get('bakedMetrics'), data.get('bakedWorld')
     require(isinstance(baked, list) and len(baked) == BAKED_METRICS
@@ -75,8 +76,13 @@ def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
     if renderer == 'vanilla':
         require(not any(counters) and not any(world), 'vanilla arm performed baked work')
         return
-    require(baked[0] > 0 and baked[4] > 0 and baked[5] == 0 and baked[11] == baked[12] > 0 and baked[29] == 0,
-            'selected arm admitted no complete matching baked comparison')
+    if preflight:
+        require(baked[5] == 0 and baked[32] == 0 and not any(world[1:4]),
+                'preflight baked metrics report a mismatch or refusal')
+        return
+    require(baked[0] > 0 and baked[4] > 0 and baked[5] == 0 and baked[11] == baked[12] > 0
+            and baked[29] == 0 and baked[30] > 0 and baked[31] > 0 and baked[32] == 0,
+            'selected arm admitted no complete matching baked comparison or translucent re-sort')
     require(baked[13] > 0 and baked[16] > 0 and 0 < world[0] <= 4 * baked[13]
             and world[4] > 0 and world[5] > 0
             and all(value <= world[0] * PROOF_IMAGE_PIXELS for value in world[1:6]),
@@ -86,7 +92,8 @@ def validate_baked_export(data: dict[str, Any], renderer: str) -> None:
             'baked refusal reasons do not account for unsupported sections')
 
 
-def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
+def validate_geometry_export(out: Path, renderer: str, started_ns: int, *,
+                             preflight: bool = False) -> None:
     from prepare import require
     path = out / 'geometry-upload.json'
     require(path.is_file(), 'geometry metrics export missing')
@@ -103,8 +110,12 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
             'geometry metrics fields differ')
     require(all(type(value) is int and value >= 0 for value in metrics.values()),
             'geometry metrics must be nonnegative integers')
-    validate_baked_export(data, renderer)
-    validate_shaded_export(data, renderer)
+    validate_baked_export(data, renderer, preflight=preflight)
+    validate_shaded_export(data, renderer, preflight=preflight)
+    if preflight:
+        require(data.get('backend') in ('selected-not-initialized', 'OpenGL15', 'ARB_vertex_buffer_object'),
+                'preflight geometry backend differs')
+        return
     if renderer == 'vanilla':
         require(data.get('backend') == 'not-selected' and not any(metrics.values()),
                 'vanilla arm performed geometry work')
@@ -120,7 +131,6 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int) -> None:
     require(not any(metrics[name] for name in
                     ('residentBytes', 'stagingBytes', 'liveBuffers', 'liveFramebuffers', 'generation', 'key')),
             'geometry cleanup retained residency or live objects')
-
 
 def pinned_asm(version: str, checksum: str) -> Path:
     asm = LOCAL / ('asm-' + version + '.jar')

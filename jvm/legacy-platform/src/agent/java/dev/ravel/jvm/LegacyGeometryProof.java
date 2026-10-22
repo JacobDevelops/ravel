@@ -168,6 +168,15 @@ final class LegacyGeometryProof {
         call("drawBaked", new Class<?>[]{long.class, long.class, long.class, long.class},
                 generation, resource, atlas, LegacyRenderer.ownerThread());
     }
+    static byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated, int width, int height) {
+        long generation = LegacyRenderer.currentGeneration();
+        requireOwner(generation);
+        return (byte[]) call("compositeFrame", new Class<?>[]{Runnable.class, int[].class, int.class,
+                int.class, int.class, int.class, long.class, long.class, long.class, long.class},
+                render, ids, scene, designated, width, height, generation,
+                LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration(),
+                LegacyRenderer.ownerThread());
+    }
 
     static long[] shadedNativeResidency() {
         return selected() ? Hook.ravelRendererBakedLease(0, 0, 0) : new long[12];

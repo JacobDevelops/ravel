@@ -559,10 +559,20 @@ public final class Transformer implements ClassFileTransformer {
             return at;
         }
 
+        private void freezeCompositeUpdate(CodeBuilder builder) {
+            if (target.hookMethod().equals("legacyRendererUpdate")
+                    && System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof")) {
+                builder.invokestatic(ClassDesc.of("dev.ravel.jvm.LegacyRenderer"),
+                        "skipCompositeUpdate", MethodTypeDesc.ofDescriptor("()Z"));
+                builder.ifThen(block -> block.return_());
+            }
+        }
+
         @Override
         public void accept(CodeBuilder builder, CodeElement element) {
             if (!injected) {
                 injected = true;
+                freezeCompositeUpdate(builder);
                 int slot = target.isStatic() ? 0 : 1;
                 for (ClassDesc parameter : targetType.parameterList()) {
                     TypeKind kind = TypeKind.from(parameter);

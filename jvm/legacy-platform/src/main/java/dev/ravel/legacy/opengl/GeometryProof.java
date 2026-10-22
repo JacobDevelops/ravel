@@ -407,6 +407,15 @@ public final class GeometryProof {
         }
         BAKED_RESIDENCY[14]++;
     }
+    public static synchronized byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated,
+            int width, int height, long generation, long resource, long atlas, long owner) {
+        if (BAKED_RESIDENCY[0] == 0 || BAKED_RESIDENCY[6] != generation
+                || BAKED_RESIDENCY[8] != resource || BAKED_RESIDENCY[9] != atlas)
+            throw new IllegalStateException("Composited frame has no current resident section");
+        BAKED_LEASE.draw(generation, owner);
+        if (context != GL.getCapabilities()) throw new IllegalStateException("Wrong shaded GL context");
+        return CompositeFrame.capture(render, bakedBuffer, ids, bakedLayers.clone(), scene, designated, width, height);
+    }
 
     private static int littleInt(byte[] bytes, int offset) {
         return (bytes[offset] & 255) | (bytes[offset + 1] & 255) << 8

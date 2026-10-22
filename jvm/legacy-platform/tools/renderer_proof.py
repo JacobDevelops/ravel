@@ -1,5 +1,6 @@
 """Validate fresh observational renderer evidence and bounded geometry artifacts."""
 import json
+import math
 from pathlib import Path
 import struct
 from typing import TypeAlias
@@ -233,6 +234,7 @@ def geometry_proof(path: Path, started: float) -> Proof:
     if rgba != vanilla['rgbaMismatchPixels'] or coverage != vanilla['coverageMismatchPixels']:
         raise RuntimeError('Vanilla mismatch counts do not match raw pixels')
     baked_proof(proof['baked'], path.parent, started)
+    composited_proof(path.parent, started)
     return proof
 
 
@@ -282,6 +284,61 @@ def baked_sample(data: bytes, scene: int) -> tuple[list[int], int]:
         counts[4] += left[3] != 0
         counts[5] += right[3] != 0
     return counts, designated
+
+
+def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
+    if len(data) < 32:
+        raise RuntimeError('Composited frame header missing')
+    scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
+    expected = designated if phase == 0 else phase + 4
+    if (scene != expected or section != designated or version != 2 or vertices != expected_vertices
+            or not 0 < width <= 1920 or not 0 < height <= 1080 or draws != 1
+            or not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4 or vertices % 4
+            or len(data) != 32 + width * height * 24):
+        raise RuntimeError(f'Composited frame metadata invalid: phase={phase}, section={designated}')
+    pixels = width * height
+    vanilla = data[32:32 + pixels * 4]
+    resident = data[32 + pixels * 8:32 + pixels * 12]
+    left = struct.unpack_from(f'<{pixels}f', data, 32 + pixels * 4)
+    right = struct.unpack_from(f'<{pixels}f', data, 32 + pixels * 12)
+    omitted = data[32 + pixels * 16:32 + pixels * 20]
+    omitted_depth = struct.unpack_from(f'<{pixels}f', data, 32 + pixels * 20)
+    if not all(math.isfinite(value) and 0 <= value <= 1
+               for arm in (left, right, omitted_depth) for value in arm):
+        raise RuntimeError('Composited frame has invalid depth')
+    coverage = [sum(value < 1 for value in arm) for arm in (left, right)]
+    if min(coverage) == 0:
+        raise RuntimeError('Composited frame contains no world depth coverage')
+    footprint = sum(vanilla[i * 4:i * 4 + 4] != omitted[i * 4:i * 4 + 4]
+                    or abs(float32(left[i] - omitted_depth[i])) > BAKED_DEPTH_TOLERANCE
+                    for i in range(pixels))
+    if footprint == 0:
+        raise RuntimeError('Composited designated section has no visible footprint')
+    return {'phase': phase, 'scene': BAKED_SCENES[scene], 'designated': BAKED_SCENES[designated],
+            'width': width, 'height': height, 'substitutedDraws': draws, 'substitutedVertices': vertices,
+            'visibleSectionPixels': footprint,
+            'rgbaMismatchPixels': sum(vanilla[i:i + 4] != resident[i:i + 4] for i in range(0, pixels * 4, 4)),
+            'coverageMismatchPixels': sum((a < 1) != (b < 1) for a, b in zip(left, right)),
+            'depthMismatchPixels': sum(abs(float32(a - b)) > BAKED_DEPTH_TOLERANCE for a, b in zip(left, right))}
+
+
+def composited_proof(directory: Path, started: float) -> list[Proof]:
+    rows = []
+    for phase in range(3):
+        for designated in range(5):
+            path = directory / f'composited-{phase}-{designated}.raw'
+            if not path.is_file() or path.stat().st_mtime < started:
+                raise RuntimeError(f'Missing fresh composited frame: {path.name}')
+            try:
+                rows.append(composited_sample(path.read_bytes(), phase, designated))
+            except RuntimeError as failure:
+                raise RuntimeError(f'{path.name}: {failure}') from failure
+    (directory / 'composited-summary.json').write_text(json.dumps(rows, indent=2) + '\n')
+    failed = [row for row in rows if any(row[key] for key in
+              ('rgbaMismatchPixels', 'coverageMismatchPixels', 'depthMismatchPixels'))]
+    if failed:
+        raise RuntimeError('Composited fidelity failed: ' + json.dumps(failed))
+    return rows
 
 
 def baked_golden(row: Proof, scene: int, directory: Path, started: float) -> None:

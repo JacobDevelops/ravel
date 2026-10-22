@@ -323,10 +323,12 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   residency, RSS, heap and whole-device VRAM. Every selected trial admitted shaded
   comparisons and native/GL replacement, then drained to zero. Selected frame
   quantiles increased; no vanilla speedup or resource saving is established.
-  Full-world/composited and moving-camera goldens remain unsupported because the
-  current readbacks compare isolated section layers, not composited resident drawing
-  or camera-dependent translucent reordering. Fluid provenance and these goldens
-  remain WP5 acceptance work before any default cutover; vanilla remains authoritative.
+  Slice 8 step one adds full-world static-camera composited readbacks, substituting
+  one acknowledged resident section at a time across initial, staged-reload and
+  reopened-after-unload scene matrices. The strict oracle independently recounts
+  complete-frame RGBA/depth differences. Moving-camera translucent reordering,
+  fluid provenance and frozen physical composited trials remain WP5 acceptance
+  work before any default cutover; ordinary world drawing remains vanilla.
 
 ### WP6 — Profile-guided startup, tick and JVM optimization
 

@@ -1,14 +1,16 @@
-# WP5 slices 6–7: bounded shaded baked comparisons and residency
+# WP5 slices 6–8: bounded shaded baked comparisons and residency
 
 ## Status and boundary
 
-Vanilla remains authoritative for world drawing. The off-by-default
-`geometry-proof` selection now submits independently emitted baked BLOCK vertices
-to a bounded Java-owned offscreen GL comparison, not a replacement world renderer.
+Vanilla remains authoritative for ordinary world drawing. The off-by-default
+`geometry-proof` selection submits independently emitted baked BLOCK vertices
+to a bounded Java-owned offscreen GL comparison. Slice 8 additionally replays
+complete static-camera world frames, substituting one acknowledged resident
+section at a time while every other section and the rest of the world remain
+vanilla. This is a selected acceptance proof, not a default renderer cutover.
 It uses the live atlas and lightmap, model positions, UVs, shaded color, combined
-light, alpha testing, translucent blending and independently sorted translucent
-quad order. Full-world visual fidelity and replacement-renderer savings are not
-established by matching admitted section layers.
+light, alpha testing and translucent blending. Moving-camera ordering, fluids
+and replacement-renderer savings are not established by this static proof.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
 cube approximations. Model resolution, connected/multipart selection, face
@@ -342,8 +344,57 @@ not additional full-world golden scenes.
 The selected path increases observed frame quantiles in these trials; no
 speedup or resource saving is established. Off-3 stress also contains an
 885.7 ms full-scene maximum, outside its first-five-second maximum of 5.548 ms;
-quantiles must not conceal that outlier. Full-world/composited and moving-camera
-goldens remain **unsupported**: the current readbacks compare isolated section
-layers, not full-scene resident drawing or camera-dependent translucent
-reordering. Fluids remain unsupported for missing baked-quad provenance.
-World drawing therefore remains vanilla and selection remains off by default.
+quantiles must not conceal that outlier. Those frozen slice-7 readbacks compare
+isolated section layers, not full-scene resident drawing. They do not establish
+slice-8 composited fidelity or camera-dependent translucent reordering.
+Fluids remain unsupported for missing baked-quad provenance. Ordinary world
+drawing remains vanilla and selection remains off by default.
+
+## Slice 8, step one: static composited resident world frames
+
+The live harness replays vanilla's complete world render at the same fixed
+partial tick, without advancing a game tick or changing player position/yaw/pitch
+between the arms. A warmup draw precedes the vanilla arm. The second arm replaces
+the published designated section's world-layer draw calls with its acknowledged
+resident shaded VBO, retaining vanilla's actual camera transforms, material
+state, surrounding terrain, sky and other world draws. It does not use the
+oracle VBO as the replacement. The resident section is pinned until capture;
+task publication and cancellation are checked before replay, and lifecycle
+retirement clears the pending association. The selected transform skips vanilla
+chunk-update work during replay, freezing main-thread chunk uploads/scheduling
+across all arms rather than merely checking the game tick and camera.
+
+Five designated sections cover opaque, cutout-mipped, cutout, translucent and
+animated content in each of initial, staged-reload and reopened-after-unload
+phases: fifteen complete-frame pairs. Substitution remains bounded to one
+resident section per pair, not a whole-world resident cache. Raw files
+`composited-<phase>-<designated>.raw` carry a 32-byte little-endian header
+(scene, designated section, width, height, substituted draws, substituted
+vertices, version 2, expected resident vertices), followed by vanilla RGBA/depth,
+resident RGBA/depth and section-omitted RGBA/depth. RGBA is four bytes per pixel;
+depth is float32; rows are bottom-up.
+
+The independent Python oracle requires all fifteen fresh artifacts, exactly one
+substituted layer per single-layer designated scene, the complete resident vertex
+total, finite depth and nonempty world depth coverage. The section-omitted arm
+must differ visibly from vanilla, rejecting clipped/occluded vacuous comparisons.
+It recounts exact RGBA and depth-coverage differences, plus depth differences
+at the existing two-24-bit-depth-unit tolerance. Any mismatch fails acceptance;
+`composited-summary.json` records each row's independently recounted result.
+This step does not authorize physical performance or memory claims.
+
+The static selected live acceptance passed after the generated-agent build;
+default live acceptance also passed. An independent raw-readback recount found
+zero RGBA, depth-coverage and tolerated-depth differences in all fifteen
+1280×720 pairs. Every pair substituted exactly one draw with the complete
+resident vertex count and had a positive omitted-section footprint
+(7,508–44,915 pixels). These are software-display live checks, not physical
+RTX 5090 trials or a performance claim. An earlier staged-reload translucent
+capture was correctly refused for a zero visible footprint: the camera still
+faced the preceding section. Capture now waits for the requested client yaw
+and a subsequent rendered frame; no oracle threshold was changed.
+
+Remaining acceptance work is moving-camera translucent order, fluid provenance
+and tessellation, then preflight followed by frozen physical trials, before
+considering a default cutover. The benchmark preflight must pass before any
+physical trials; no RTX 5090 trial is required for this static-camera step.

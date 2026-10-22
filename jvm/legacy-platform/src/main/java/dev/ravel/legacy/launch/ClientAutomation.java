@@ -641,17 +641,26 @@ final class ClientAutomation implements Runnable {
         teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5, new double[]{0, 0, 0, -90, 0});
         long interval = TimeUnit.SECONDS.toNanos(3);
         long[] refilled = {System.nanoTime() - interval};
+        int[] viewed = {-1};
         int all = (1 << goldenBlocks.length) - 1;
         try {
             await("Controlled baked golden scenes measured in phase " + phase, () -> {
+                int pending = (int) rendererType().getMethod("bakedCompositeDesignated").invoke(null);
+                if (pending < 0) viewed[0] = -1;
+                if (pending >= 0 && viewed[0] != pending) {
+                    aimGolden(server, pending);
+                    viewed[0] = pending;
+                    return false;
+                }
+                if (pending >= 0) captureComposite(phase, pending);
                 int covered = goldenCoverage(phase);
                 if (covered == all) return true;
                 if (System.nanoTime() - refilled[0] >= interval) {
-                    int scene = Integer.numberOfTrailingZeros(~covered & all);
+                    int scene = pending >= 0 ? pending : Integer.numberOfTrailingZeros(~covered & all);
                     double yaw = Math.toDegrees(Math.atan2(-goldenChunks[scene][0], goldenChunks[scene][1]));
                     teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5,
                             new double[]{0, 0, 0, yaw, 0});
-                    onServer(server, () -> refillGolden(server, scene));
+                    if (pending < 0) onServer(server, () -> refillGolden(server, scene));
                     refilled[0] = System.nanoTime();
                 }
                 return false;
@@ -661,6 +670,46 @@ final class ClientAutomation implements Runnable {
                     + Integer.toBinaryString(goldenCoverage(phase)) + " baked="
                     + Arrays.toString((long[]) rendererType().getMethod("bakedMetrics").invoke(null)), failure);
         }
+    }
+
+    private void aimGolden(Object server, int scene) throws Exception {
+        double yaw = Math.toDegrees(Math.atan2(-goldenChunks[scene][0], goldenChunks[scene][1]));
+        teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5,
+                new double[]{0, 0, 0, yaw, 0});
+        await("Composited camera rotation acknowledged", () -> onGame(() -> {
+            double difference = Math.IEEEremainder(playerState()[3] - yaw, 360.0);
+            return Math.abs(difference) < 0.01;
+        }), TimeUnit.SECONDS.toNanos(30));
+        long frame = onGame(() -> (long) rendererType().getMethod("count", int.class).invoke(null, 3));
+        await("Composited camera frame rendered", () -> onGame(() ->
+                (long) rendererType().getMethod("count", int.class).invoke(null, 3) > frame),
+                TimeUnit.SECONDS.toNanos(30));
+    }
+
+    private void captureComposite(int phase, int expected) throws Exception {
+        byte[] raw = onGame(() -> {
+            long tick = ticks();
+            double[] camera = playerState();
+            Object renderer = field(game, "o");
+            Method world = renderer.getClass().getDeclaredMethod("b", float.class, long.class);
+            world.setAccessible(true);
+            Runnable replay = () -> {
+                try {
+                    world.invoke(renderer, 1.0f, 0L);
+                } catch (ReflectiveOperationException failure) {
+                    throw new IllegalStateException("Static world frame replay failed", failure);
+                }
+            };
+            byte[] result = (byte[]) rendererType().getMethod("bakedComposite",
+                    Runnable.class, int.class, int.class, int.class)
+                    .invoke(null, replay, (int) field(game, "d"), (int) field(game, "e"), expected);
+            require(tick == ticks() && Arrays.equals(camera, playerState()),
+                    "Composited frame replay changed the static camera or world tick");
+            return result;
+        });
+        if (raw == null) return;
+        int designated = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(4);
+        Files.write(evidence.resolve("composited-" + phase + "-" + designated + ".raw"), raw);
     }
 
     private int goldenCoverage(int phase) throws ReflectiveOperationException {

@@ -3,6 +3,10 @@ package dev.ravel.legacy.opengl;
 /** Independently written adapters for the pinned vanilla constant-pool surface. */
 public final class GL11 extends org.lwjgl.opengl.GL11 {
     private GL11() {}
+    public static void glDrawArrays(int mode, int first, int count) {
+        if (!CompositeFrame.draw(mode, first, count))
+            org.lwjgl.opengl.GL11.glDrawArrays(mode, first, count);
+    }
     public static void glFog(int a0, java.nio.FloatBuffer a1) {
         org.lwjgl.opengl.GL11.glFogfv(a0, a1);
     }

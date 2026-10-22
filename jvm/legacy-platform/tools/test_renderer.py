@@ -9,6 +9,47 @@ import zlib
 import renderer_proof
 from harness_settings import SETTINGS, SCENES, client_options
 
+def composite_fixture(directory: Path) -> None:
+    arm = bytes((32, 64, 96, 255)) + struct.pack('<f', 0.5)
+    omitted = bytes((0, 0, 0, 255)) + struct.pack('<f', 1.0)
+    for phase in range(3):
+        for designated in range(5):
+            scene = designated if phase == 0 else phase + 4
+            header = struct.pack('<8i', scene, designated, 1, 1, 1, 4, 2, 4)
+            (directory / f'composited-{phase}-{designated}.raw').write_bytes(header + arm + arm + omitted)
+
+
+class CompositeFrameTests(unittest.TestCase):
+    def test_recounts_complete_lifecycle_matrix_and_rejects_missing_or_stale_frames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            composite_fixture(root)
+            rows = renderer_proof.composited_proof(root, 0)
+            self.assertEqual(len(rows), 15)
+            self.assertTrue(all(row['rgbaMismatchPixels'] == row['depthMismatchPixels'] == 0 for row in rows))
+            with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
+                renderer_proof.composited_proof(root, float('inf'))
+            (root / 'composited-2-4.raw').unlink()
+            with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
+                renderer_proof.composited_proof(root, 0)
+
+    def test_never_accepts_different_empty_or_unsubstituted_frames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for offset, replacement in ((40, bytes((255,))), (44, struct.pack('<f', 0.75)),
+                                        (16, bytes(4)), (20, bytes(4)), (16, struct.pack('<i', 2)),
+                                        (28, struct.pack('<i', 8)),
+                                        (48, bytes((32, 64, 96, 255)) + struct.pack('<f', 0.5)),
+                                        (36, struct.pack('<f', float('nan')))):
+                composite_fixture(root)
+                path = root / 'composited-0-0.raw'
+                raw = bytearray(path.read_bytes())
+                raw[offset:offset + len(replacement)] = replacement
+                path.write_bytes(raw)
+                with self.subTest(offset=offset), self.assertRaises(RuntimeError):
+                    renderer_proof.composited_proof(root, 0)
+
+
 
 class SceneSettingsTests(unittest.TestCase):
     def test_pinned_client_options_and_visible_scene_offsets(self):
@@ -110,6 +151,7 @@ def mesh_proof_fixture() -> renderer_proof.Proof:
 
 
 def geometry_proof_fixture(directory: Path) -> renderer_proof.Proof:
+    composite_fixture(directory)
     names = ('copiedMeshes copiedBytes copyNanos uploads uploadBytes uploadNanos residentBytes '
              'maxResidentBytes stagingBytes maxStagingBytes submissions submissionNanos refusedMeshes '
              'cleanups liveBuffers liveFramebuffers referenceMismatchPixels vanillaComparisons '

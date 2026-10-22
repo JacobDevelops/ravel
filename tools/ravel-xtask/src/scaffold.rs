@@ -75,6 +75,10 @@ const ROOT_FILES: &[&str] = &[
     "tests/fixtures/README.md",
     "tests/fixtures/local/README.md",
     "tests/fixtures/public/README.md",
+    "tools/gate/gate.py",
+    "tools/gate/matrix.py",
+    "tools/gate/summary.py",
+    "tools/gate/test_gate.py",
     "tools/ravel-xtask/Cargo.toml",
 ];
 

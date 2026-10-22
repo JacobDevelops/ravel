@@ -65,6 +65,43 @@ A review comment on change `xskxqtyw` is answered by editing `xskxqtyw`. Never b
 Conflicts live inside the change that carries them; jj does not stop the rebase. Run `jj resolve` on that
 change and the descendants settle.
 
+## Lane workspaces
+
+Keep the default checkout reserved for coordination. Run integration in its own long-lived workspace,
+not in the default checkout:
+
+```console
+tools/lane.sh up integrate main
+tools/lane.sh up loader main --prewarm
+tools/lane.sh land loader <integration-tip>
+tools/lane.sh down loader
+```
+
+Run the script from a workspace other than the lane it manages. `up <name> <base>` creates
+`../ravel-<name>` or rebases the existing lane onto the base without discarding its warm `target/`.
+It links each local fixture directory from the primary checkout; fixture files are not linked.
+The optional `--prewarm` runs `cargo build --workspace --all-targets --locked` through `numen run`.
+Keep lanes between rounds. `down` snapshots the lane and refuses removal unless its working copy is empty
+and its parent is already an ancestor of `main`. After integrating elsewhere, use `down <name> --force`
+only when discarding that workspace is intentional; removal also discards its warm cache.
+
+`land <name> [onto]` defaults to `main`, drops the lane's empty undescribed working-copy child,
+rebases its stack, and opens a new child above the landed tip. It resolves package-manifest conflicts
+only when all three versions differ exclusively in source/provenance digest fields. It regenerates
+digests after each conflict-free change and folds them into that change. Other conflicts remain visible
+and make the command fail; resolve those in the lane and rerun `land`.
+Every non-empty change being landed must be described, even below empty or described children.
+Rebasing preserves the stack's ancestry and moves descendant lanes along with it.
+Each lifecycle command refreshes its target lane if another lane's rebase left that workspace stale.
+Land lanes onto the integration tip and run the full gate in `ravel-integrate`; move the default
+workspace only when integration is complete.
+
+Regenerate all maintained package manifests with
+`cargo run -q -p ravel-xtask -- package digests --all`; add `--check` to report every stale package
+without writing. The single-package form, `package digests <directory> [--check]`, remains available.
+Normal `mise exec -- cargo` builds inherit the host's mbx Cargo wrapper; coverage deliberately disables
+mbx with `MBX_DISABLE=1`. A missing `RUSTC_WRAPPER` alone does not mean the Cargo wrapper is inactive.
+
 ## Stack shape
 
 - One work package is a short stack, usually two to five changes. Each one compiles, passes the gate, and

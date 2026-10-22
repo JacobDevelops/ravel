@@ -35,12 +35,24 @@ The first build needs network access for the cargo registry.
 
 ## Verify before claiming done
 
+Gates are tiered so concurrent lanes do not serialise behind repeated full runs:
+
+- A lane runs `cargo make ravel:gate-lane`: `ravel:verify-quick` (fmt, clippy and nextest on the changed
+  packages and their reverse dependents for every live version, every package digest, the Python suites,
+  registry checks only when registry paths change) plus the legacy live launches only when legacy, JVM or
+  renderer paths change. The diff base is `fork_point(@ | main)`; `RAVEL_GATE_BASE` overrides it.
+- Only the integrator runs the full gate, once per landed stack, with `cargo make ravel:gate-land`. It runs
+  `ravel:verify`, plus the legacy live launches when `trunk()..@` touches legacy paths, and records the
+  verified jj tree and its ignored inputs, so an identical tree (a rebase that changed nothing, a new
+  description) is not verified twice; `RAVEL_FORCE_VERIFY=1` reruns it anyway.
+
 ```console
 cargo make ravel:verify
 ```
 
 That gate's sub-tasks are the `dependencies` of `[tasks."ravel:verify"]` in `Makefile.toml`;
-run any of them individually by name.
+run any of them individually by name. A successful run ends with one summary line of tests per version,
+coverage and exit status.
 Registry checks requiring acquired local fixtures run separately with `ravel:registry-verify-fixture`.
 
 Formatting and lint cover shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
@@ -62,7 +74,8 @@ checkout paths. Cleaning the local coverage target alone does not prevent that r
 
 Package digests in `package.json` are written by
 `cargo run -q -p ravel-xtask -- package digests <dir>` and confirmed with the same command plus `--check`;
-regenerate them for every package whose sources a change touches.
+regenerate them for every package whose sources a change touches. `package digests --all` and
+`package digests --check --all` cover every package at once; run them after any rebase.
 
 ## Hard rules
 
@@ -117,10 +130,19 @@ your first commit in a session; it holds the commands and the review loop.
 
 ### Parallel workspaces
 
-Concurrent agents each work in their own `jj workspace add --name <lane> -r <base> ../ravel-<lane>`, then
-link the local fixtures with
-`for d in ../ravel/tests/fixtures/local/*/; do ln -s "$(realpath "$d")" tests/fixtures/local/; done`.
+Concurrent agents each work in their own lane workspace, created or reused with
+`tools/lane.sh up <lane> <base>` (it links the local fixtures; `--prewarm` builds once). Keep lane
+workspaces between rounds: `up` on an existing lane moves it onto the new base and keeps its warm `target/`.
+`tools/lane.sh land <lane>` rebases the lane onto main's tip and resolves digest-only `package.json`
+conflicts by regenerating them; `tools/lane.sh down <lane>` removes a lane for good.
 
+- Integrate in a dedicated `ravel-integrate` workspace (`tools/lane.sh up integrate <base>`), never in the
+  primary checkout while lanes run; move the primary working copy only once the stack has landed.
+- Every lane brief carries a standalone `Workspace: /absolute/path/to/ravel-<lane>` line; under omp the
+  numen lane guard rejects writes outside that root.
+- Lanes that edit the same files are sequenced: land one and rebase the other before its gate, rather than
+  resolving afterwards. A rename that migrates callers across packages lands first, alone in its own
+  small change, before content lanes branch from it.
 - Edit and write tools resolve relative paths against the primary checkout, so every edit path starts with
   the lane workspace's absolute path; repeat this in each sub-agent brief.
 - A change below another workspace's working-copy parent stays frozen while that workspace is live.
@@ -137,3 +159,6 @@ link the local fixtures with
 Implement what the current work package asks and nothing beyond it; the roadmap order is a dependency
 order. Prefer the standard library and dependencies already in `Cargo.lock`. A new dependency needs a
 reason and has to pass `cargo deny check` for advisories, licences, bans, and sources.
+
+When fixing a finding, fix the pattern, not the file: search for every other instance of the same defect
+and fix those in the same change.

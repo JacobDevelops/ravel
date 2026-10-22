@@ -115,8 +115,13 @@ def validate_production_export(out: Path, renderer: str, started_ns: int) -> Non
             and data.get('validationOverride') is (renderer == 'resident-world'),
             'production selection or acceptance mode differs')
     validate_production_shapes(data)
+    require(0 < data['vanillaVbo'][0] <= data['vanillaVbo'][1] and data['vanillaVbo'][2] > 0,
+            'vanilla section VBO accounting missing')
+    require(data['nativeDedupe'][0] >= data['nativeDedupe'][1] == data['native'][4],
+            'native dedupe accounting differs')
     if renderer != 'resident-world':
-        require(not any(data['draws'] + data['globalSorts'] + data['ownedSorts']),
+        require(not any(data['draws'] + data['globalSorts'] + data['ownedSorts']
+                        + data['nativeDedupe']) and data['translucentAdmissions'] == 0,
                 'unselected arm performed production work')
         return
     layers = 4 if data['translucentAdmissions'] > 0 else 3

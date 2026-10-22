@@ -47,7 +47,9 @@ class RunPolicyTests(TestCase):
             for key, values in (("native", [100, 0, 0, 0, 40, 101]),
                                 ("gl", [100, 40, 101, 1, 0]), ("globalSorts", [0, 7, 0]),
                                 ("ownedSorts", [9, 2, 0]), ("ownedSorts", [0, 0, 0]), ("acceptance", True),
-                                ("validationOverride", False), ("draws", [0] * 11)):
+                                ("validationOverride", False), ("draws", [0] * 11),
+                                ("vanillaVbo", [0, 80, 0]), ("vanillaVbo", [90, 80, 4]),
+                                ("nativeDedupe", [39, 40]), ("nativeDedupe", [80, 41])):
                 path.write_text(json.dumps(dict(data, **{key: values})))
                 with self.subTest(key=key), self.assertRaises(ValueError):
                     run.validate_production_export(out, "resident-world", 0)

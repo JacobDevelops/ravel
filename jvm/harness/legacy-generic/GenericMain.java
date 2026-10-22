@@ -25,6 +25,22 @@ public final class GenericMain {
                 builder.withMethodBody("main", MethodTypeDesc.ofDescriptor("([Ljava/lang/String;)V"),
                         ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> code.return_());
             }
+            if (target.hookMethod().equals("legacyRendererUpload")) {
+                ClassDesc owner = ClassDesc.ofInternalName(target.internalClass());
+                ClassDesc integer = ClassDesc.ofDescriptor("I");
+                builder.withField("id", integer, 0);
+                builder.withMethodBody("deleteBuffer", MethodTypeDesc.ofDescriptor("()V"),
+                        ClassFile.ACC_PUBLIC, code -> code.aload(0).iconst_m1()
+                                .putfield(owner, "id", integer).return_());
+                builder.withMethodBody("bindBuffer", MethodTypeDesc.ofDescriptor("()V"),
+                        ClassFile.ACC_PUBLIC, code -> code.return_());
+                builder.withMethodBody("staticBuffer", MethodTypeDesc.ofDescriptor("()V"),
+                        ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> code.return_());
+                builder.withMethodBody("<init>", MethodTypeDesc.ofDescriptor("()V"),
+                        ClassFile.ACC_PUBLIC, code -> code.aload(0).invokespecial(
+                                ClassDesc.of("java.lang.Object"), "<init>", MethodTypeDesc.ofDescriptor("()V"))
+                                .aload(0).iconst_0().putfield(owner, "id", integer).return_());
+            }
             builder.withMethodBody(target.member(), MethodTypeDesc.ofDescriptor(target.descriptor()),
                     ClassFile.ACC_PUBLIC | (target.isStatic() ? ClassFile.ACC_STATIC : 0), code -> {
                         if (target.member().equals("<init>")) {
@@ -172,6 +188,17 @@ public final class GenericMain {
                 "baked descriptor drift lost fail-closed evidence " + hook);
     }
 
+    private static void vanillaBufferFixture(HookTarget hook, ClassModel model) {
+        if (!hook.hookMethod().equals("legacyRendererUpload")) return;
+        boolean enabled = !System.getProperty("ravel.renderer", "vanilla").equals("vanilla")
+                || Boolean.getBoolean("ravel.legacy.benchmark");
+        for (MethodModel method : model.methods()) {
+            long expected = enabled && method.methodName().equalsString("deleteBuffer") ? 1 : 0;
+            require(calls(method, "dev/ravel/jvm/LegacyRenderer", "vanillaBufferDeleted") == expected,
+                    "delete callback scope differs: " + method.methodName());
+        }
+    }
+
     public static void main(String[] arguments) {
         require(Hook.LEGACY_ADAPTER, "not the legacy adapter");
         missingEntryBeforeStartup();
@@ -220,6 +247,7 @@ public final class GenericMain {
             else {
                 adapterFixtureTests(hook, method);
                 rendererFixtureTests(hook, method);
+                vanillaBufferFixture(hook, model);
             }
             for (String wrapper : java.util.List.of("Integer", "Long", "Float", "Double", "Boolean")) {
                 require(calls(method, "java/lang/" + wrapper, "valueOf") == 0, "boxing allocation " + hook);

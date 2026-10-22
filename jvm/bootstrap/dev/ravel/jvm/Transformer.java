@@ -323,11 +323,17 @@ public final class Transformer implements ClassFileTransformer {
                                                         && model.methodType()
                                                                 .equalsString(target.descriptor()),
                                         MethodTransform.transformingCode(prepend)));
-                if (target.hookMethod().equals("legacyRendererUpload")) {
+                if (target.hookMethod().equals("legacyRendererUpload")
+                        && (!System.getProperty("ravel.renderer", "vanilla").equals("vanilla")
+                            || Boolean.getBoolean("ravel.legacy.benchmark"))) {
                     rewritten = context.transformClass(context.parse(rewritten),
                             ClassTransform.transformingMethods(model -> model.methodType().equalsString("()V")
                                             && !model.flags().has(AccessFlag.STATIC)
-                                            && !model.methodName().equalsString("<init>"),
+                                            && !model.methodName().equalsString("<init>")
+                                            && model.code().stream().flatMap(code -> code.elementStream())
+                                                .anyMatch(element -> element instanceof FieldInstruction field
+                                                        && field.opcode() == Opcode.PUTFIELD
+                                                        && field.type().equalsString("I")),
                                     MethodTransform.transformingCode((builder, element) -> {
                                         if (element instanceof ReturnInstruction) {
                                             builder.aload(0);

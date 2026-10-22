@@ -98,6 +98,8 @@ fn shaded_replacement_requires_exact_acknowledgement_and_releases_opaque_mesh() 
     assert_eq!(old[0], 0);
     assert_eq!(old[1], 0);
     assert_eq!(&old[5..], &[1, first, 2, 2, -16, 32, 48]);
+    let after = leases.bounds()[4];
+    assert_eq!(leases.dedupe(), [after + bytes, after]);
     let second = leases.publish(retained(1, 3)).expect("replacement pending");
     let pending = leases.metrics();
     assert_eq!(pending[0], old[0]);
@@ -107,6 +109,12 @@ fn shaded_replacement_requires_exact_acknowledgement_and_releases_opaque_mesh() 
     assert!(leases.settle(1, second, true));
     assert_eq!(leases.metrics()[3..5], [2, 1]);
     assert_eq!(leases.metrics()[7..9], [3, 3]);
+    assert_eq!(
+        leases.dedupe(),
+        [leases.bounds()[4] + bytes, leases.bounds()[4]]
+    );
+    leases.retire();
+    assert_eq!(leases.dedupe(), [0, 0]);
 }
 
 #[test]

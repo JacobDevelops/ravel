@@ -58,7 +58,8 @@ final class LegacyBakedCapture {
     }
 
     static void upload(Object buffer, Object bytes) {
-        LegacyVanillaBuffers.upload(buffer, bytes);
+        if (LegacyGeometryProof.selected() || Boolean.getBoolean("ravel.legacy.benchmark"))
+            LegacyVanillaBuffers.upload(buffer, bytes);
         if (LegacyGeometryProof.selected()) LegacyBakedResort.upload(buffer, bytes);
         if (LegacyGeometryProof.selected()) LegacyWorldResort.upload(buffer, bytes);
     }

@@ -442,6 +442,8 @@ final class ClientAutomation implements Runnable {
                 require(vanilla.length == 9, "Vanilla comparison schema mismatch");
                 lastComparison.set(vanilla);
                 if (vanilla[0] != 1) return false;
+                if (((long[]) rendererType().getMethod("shadedNativeResidency").invoke(null))[0] == 0)
+                    return false;
                 String[] comparisonNames = {"status", "generation", "key", "vanillaVertices", "vanillaLayers",
                         "rgbaMismatchPixels", "coverageMismatchPixels", "depthMismatchPixels", "totalPixels"};
                 StringBuilder comparison = new StringBuilder("{");

@@ -26,10 +26,9 @@
 # it. checks/source-name-collisions.tsv is written by hand and excuses ordinary
 # English words that genuinely collide; nothing derives it from either side.
 #
-# The fetched tree is not tracked in either repository -- it lives in the public
-# checkout's ignored fixture tree, which is the whole point of a clean-room read
-# -- so on a machine that never fetched it this check prints a loud skip line per
-# entry rather than passing quietly or failing. A skip is not a pass and says so.
+# Clean-room trees are ignored local inputs, with no repository acquisition
+# command. Offline counts all skips when the root is absent; with a root, only
+# listed omissions pass. Ambiguity always fails; fixture mode requires every tree.
 #
 # What it cannot catch is printed on every run. See the line at the end.
 set -euo pipefail
@@ -45,6 +44,16 @@ provenance_root="$registry_root/provenance/${RAVEL_WAVE:-m6-foundation}"
 source_root="${RAVEL_CLEAN_ROOM_SRC:-$repo_root/tests/fixtures/local/m6-clean-room/src}"
 manifest="${RAVEL_CLEAN_ROOM_MANIFEST:-$repo_root/tests/fixtures/local/m6-clean-room/fetch-manifest.txt}"
 collisions="$checks_dir/source-name-collisions.tsv"
+
+declare -A offline_skip_reasons=(
+  [RVL-097]="CyclopsCore 1.30.1 tree absent; historical manual archive acquisition only"
+  [RVL-103]="MysticalAgradditions branch 26.1 at 91f56cf tree absent; historical manual archive acquisition only"
+  [RVL-129]="Glodium 26.1-1.2-neoforge tree absent; historical manual archive acquisition only"
+  [RVL-159]="MysticalAutomation branch 26.1 at 99e3ac8 tree absent; historical manual archive acquisition only"
+  [RVL-162]="Cucumber branch 26.1 at c486a7f tree absent; historical manual archive acquisition only"
+  [RVL-199]="MysticalAgriculture branch 26.1 at 12352f3 tree absent; historical manual archive acquisition only"
+  [RVL-217]="CommonCapabilities 2.11.8 tree absent; historical manual archive acquisition only"
+)
 
 for path in "$spec_root" "$provenance_root"; do
   if [ ! -d "$path" ]; then
@@ -554,6 +563,9 @@ resolve_tree() {
     printf '%s\n' "${candidates[0]}"
     return 0
   fi
+  if [ "${#candidates[@]}" -gt 1 ]; then
+    return 2
+  fi
   return 1
 }
 
@@ -561,6 +573,7 @@ resolve_tree() {
 : >"$work/skips"
 checked=0
 skipped=0
+skipped_entries=()
 scanned_specs=0
 token_total=0
 
@@ -590,10 +603,24 @@ for record in "$provenance_root"/RVL-*.json; do
     continue
   fi
 
-  if ! tree="$(resolve_tree "$owner_repo" "$version")"; then
+  if tree="$(resolve_tree "$owner_repo" "$version")"; then
+    :
+  else
+    resolution=$?
     skipped=$((skipped + 1))
-    printf '%s: skipped: source tree absent: expected %s@*%s* under %s -- the clean-room tree is ignored and may not exist on this machine, so this entry was not checked and its result is not a pass\n' \
-      "$canonical" "${owner_repo/\//_}" "$version" "$source_root" >>"$work/skips"
+    skipped_entries+=("$canonical")
+    reason="${offline_skip_reasons[$canonical]:-unlisted source tree absent}"
+    if [ "$resolution" -eq 2 ]; then
+      reason="ambiguous source tree: multiple directories match $owner_repo@$version"
+      printf '%s: %s\n' "$canonical" "$reason" >>"$work/out"
+    elif [ ! -d "$source_root" ]; then
+      reason="clean-room fixture root not acquired"
+    elif [ -z "${offline_skip_reasons[$canonical]:-}" ]; then
+      printf '%s: unexpected skip: %s for %s@%s\n' \
+        "$canonical" "$reason" "$owner_repo" "$version" >>"$work/out"
+    fi
+    printf '%s: skipped: %s; expected %s@*%s* under %s; not a pass\n' \
+      "$canonical" "$reason" "${owner_repo/\//_}" "$version" "$source_root" >>"$work/skips"
     continue
   fi
   if [ -f "$manifest" ] && ! LC_ALL=C grep -Fq "$owner_repo|" "$manifest"; then
@@ -677,10 +704,14 @@ if [ "$scanned_specs" -eq 0 ]; then
 fi
 
 if [ -s "$work/skips" ]; then
-  printf 'specification source names: NOT CHECKED, %s of %s source-informed specifications:\n' \
-    "$skipped" "$scanned_specs" >&2
-  sed 's/^/- /' "$work/skips" >&2
+  skip_context="ignored trees absent or ambiguous, not passes; known reasons: checks/verify-spec-source-names.sh offline_skip_reasons"
+  if [ ! -d "$source_root" ]; then
+    skip_context="clean-room fixture root not acquired, not passes"
+  fi
+  printf 'specification source names: NOT CHECKED, %s of %s source-informed specifications (%s); %s\n' \
+    "$skipped" "$scanned_specs" "${skipped_entries[*]}" "$skip_context" >&2
   if [ "$mode" = "--fixture" ]; then
+    sed 's/^/- /' "$work/skips" >&2
     printf 'required clean-room source inputs are absent for %s specifications\n' "$skipped" >>"$work/out"
   fi
 fi

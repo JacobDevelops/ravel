@@ -20,6 +20,7 @@ import zipfile
 from shade import relocate_class
 from launch import prepare_command, validate_java, validate_renderer_selection
 from summarize import validate_ravel_runtime
+from preflight import launcher_environment, run_preflight
 
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = ROOT / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline'
@@ -270,8 +271,7 @@ def run(args: argparse.Namespace) -> None:
     if args.cache == 'cold-data-cache':
         evict_inputs(instance, out)
     hardware(out, args.functional_only)
-    environment = os.environ.copy()
-    environment.setdefault('ALSOFT_DRIVERS', 'null')
+    environment = launcher_environment()
     start = time.monotonic_ns()
     started_ns = time.time_ns()
     with (out / 'launcher.log').open('w') as log, (out / 'process.csv').open('w') as raw:
@@ -297,6 +297,7 @@ def run(args: argparse.Namespace) -> None:
     if game_log.exists():
         shutil.copyfile(game_log, out / 'game.log')
     result = {'trial': args.trial, 'instance': args.instance, 'cache': args.cache,
+              'renderer': args.renderer,
               'start_monotonic_ns': start, 'wall_seconds': (time.monotonic_ns()-start)/1e9,
               'launcher_exit': process.returncode, 'complete': (out / 'complete').exists(),
               'monitor_error': failure, 'audio_driver': environment['ALSOFT_DRIVERS'],
@@ -372,23 +373,40 @@ def matrix(args: argparse.Namespace) -> None:
     validate_renderer_selection(args.instance, args.workload, args.renderer)
     if '/' in args.matrix or args.matrix in ('.', '..'):
         raise ValueError('matrix prefix must be a simple identifier')
+    paired = args.renderer == 'geometry-proof'
     caches = ('warm-filesystem',) if args.workload == 'vanilla' else ('cold-data-cache', 'warm-filesystem')
-    for repetition in range(1, 4):
-        for cache in caches:
-            trial = f'{args.matrix}-{cache}-{repetition}'
-            command = ['mise', 'exec', '--', 'numen', 'run', '--', 'python3', str(Path(__file__)),
-                       trial, '--cache', cache, '--instance', args.instance,
-                       '--timeout', str(args.timeout), '--workload', args.workload,
-                       '--renderer', args.renderer]
-            if args.candidate:
-                command += ['--candidate', str(args.candidate.resolve())]
-            subprocess.run(command, check=True)
+    renderers = ('vanilla', 'geometry-proof') if paired else (args.renderer,)
+    schedule = [{'trial': f'{args.matrix}-{cache}-{repetition}'
+                 + (f'-{renderer}' if paired else ''), 'cache': cache, 'renderer': renderer}
+                for repetition in range(1, 4) for cache in caches for renderer in renderers]
+    out = LOCAL / 'runs' / args.matrix
+    out.mkdir(parents=True, mode=0o700)
+    record = {'order': 'off-on-alternating' if paired else 'single-arm', 'trials': schedule,
+              'preflight': 'pending' if paired else 'not-applicable'}
+    path = out / 'matrix.json'
+    path.write_text(json.dumps(record, indent=2) + '\n')
+    base = ['mise', 'exec', '--', 'numen', 'run', '--', 'python3', str(Path(__file__))]
+    if paired:
+        subprocess.run(base + [args.matrix + '-preflight', '--preflight', '--instance', 'ravel',
+                               '--workload', 'vanilla', '--candidate', str(args.candidate.resolve())],
+                       check=True)
+        record['preflight'] = 'passed'
+        path.write_text(json.dumps(record, indent=2) + '\n')
+    for trial in schedule:
+        command = base + [trial['trial'], '--cache', trial['cache'], '--instance', args.instance,
+                          '--timeout', str(args.timeout), '--workload', args.workload,
+                          '--renderer', trial['renderer']]
+        if args.candidate:
+            command += ['--candidate', str(args.candidate.resolve())]
+        subprocess.run(command, check=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('trial', nargs='?')
     parser.add_argument('--build', action='store_true')
+    parser.add_argument('--preflight', action='store_true',
+                        help='run a bounded 60-second selected-renderer scene and silence check')
     parser.add_argument('--cache', choices=['cold-data-cache', 'warm-filesystem'], default='warm-filesystem')
     parser.add_argument('--instance', choices=['original', 'cleanroom', 'ravel', 'vanilla'], default='original')
     parser.add_argument('--workload', choices=['sevtech', 'vanilla'], default='sevtech')
@@ -412,7 +430,9 @@ def main() -> None:
         parser.error('functional-only runs are individual trials, not a performance matrix')
     if (args.instance == 'ravel') != bool(args.candidate):
         parser.error('--candidate is required exactly for --instance ravel')
-    if args.build:
+    if args.preflight:
+        run_preflight(args.candidate, args.trial or 'renderer-preflight')
+    elif args.build:
         build()
     elif args.matrix:
         matrix(args)

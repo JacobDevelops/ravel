@@ -4,6 +4,8 @@ from pathlib import Path
 import struct
 from typing import TypeAlias
 
+from harness_settings import validate_scene_settings
+
 JsonValue: TypeAlias = str | int | float | bool | None | list['JsonValue'] | dict[str, 'JsonValue']
 Proof: TypeAlias = dict[str, JsonValue]
 
@@ -25,6 +27,7 @@ RENDERER_SEAMS = ('reload', 'unload', 'frame', 'terrain', 'layer', 'update',
 
 
 def renderer_proof(path: Path, started: float, selection: str = 'vanilla') -> Proof:
+    validate_scene_settings()
     if not path.is_file() or path.stat().st_mtime < started:
         raise RuntimeError(f'No fresh renderer proof: {path}')
     proof = json.loads(path.read_text())
@@ -308,6 +311,7 @@ def baked_golden(row: Proof, scene: int, directory: Path, started: float) -> Non
 
 
 def baked_proof(proof: Proof, directory: Path, started: float) -> None:
+    validate_scene_settings()
     labels = {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
               'worldSubstitution': False, 'maxQuadsPerSection': BAKED_MAX_QUADS_PER_SECTION}
     nonnegative = ('busySections', 'unsupportedSections', 'staleSections', 'animatedSpriteObservations',

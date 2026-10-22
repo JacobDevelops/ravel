@@ -74,6 +74,26 @@ class SummaryTests(SummaryFixture, unittest.TestCase):
         self.assertEqual(result[0]["metrics"]["startup_ms"]["p50"], 11.0)
         self.assertEqual(result[0]["metrics"]["startup_ms"]["p99"], 12.0)
 
+    def test_three_completed_trials_required_per_renderer_arm(self):
+        trials = [{"trial": str(index), "instance": "original", "cache": "warm-filesystem",
+                   "renderer": "vanilla" if index % 2 == 0 else "geometry-proof",
+                   "workload_protocol": self.protocol(), "runtime_cohort": self.cohort(),
+                   "metrics": {"startup_ms": 10.0 + index}} for index in range(6)]
+        with self.assertRaisesRegex(ValueError, "at least three"):
+            summary.aggregate(trials[:5])
+        groups = summary.aggregate(trials)
+        self.assertEqual({group["renderer"]: group["metrics"]["startup_ms"]["p50"]
+                          for group in groups}, {"vanilla": 12.0, "geometry-proof": 13.0})
+
+    def test_renderer_arm_still_requires_matching_runtime_cohorts(self):
+        trials = [{"trial": str(index), "instance": "original", "cache": "warm-filesystem",
+                   "renderer": "geometry-proof",
+                   "workload_protocol": self.protocol(), "runtime_cohort": self.cohort(),
+                   "metrics": {"startup_ms": 10.0}} for index in range(3)]
+        trials[0]["runtime_cohort"]["argv"] = ["/different-java"]
+        with self.assertRaisesRegex(ValueError, "runtime/build cohorts"):
+            summary.aggregate(trials)
+
     def test_sparse_gc_has_no_false_trial_distribution(self):
         trials = [{"trial": str(index), "instance": "original", "cache": "warm-filesystem",
                    "workload_protocol": self.protocol(),
@@ -89,6 +109,7 @@ class SummaryTests(SummaryFixture, unittest.TestCase):
             self.make_trial(root)
             result = summary.summarize_trial(root)
             self.assertEqual(result["workload_protocol"], self.protocol())
+            self.assertEqual(result["renderer"], "vanilla")
             self.assertEqual(result["metrics"]["agent_startup_ms"], 1000)
             self.assertEqual(result["metrics"]["wall_to_menu_ms"], 500)
             self.assertEqual(result["steady_state_scope"]["scene"], "loaded_chunk_stress")

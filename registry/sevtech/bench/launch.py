@@ -24,7 +24,7 @@ import urllib.request
 import uuid
 import zipfile
 
-from prepare import digest, require, write_json
+from prepare import HARNESS_SETTINGS, digest, require, write_json
 
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = ROOT / 'tests/fixtures/local/sevtech-ages-3.2.3/baseline'
@@ -387,6 +387,8 @@ def candidate_command(candidate: dict[str, Any], game: Path, assets: Path, nativ
     require(not agents or agents == [observer], 'candidate must use exactly the shared observer once')
     if not agents:
         jvm.append(observer)
+    jvm = [value for value in jvm if not value.startswith('-Dravel.harness.settings=')]
+    jvm.append('-Dravel.harness.settings=' + str(HARNESS_SETTINGS))
     if not any(v.startswith('-Xlog:gc') for v in jvm):
         require(':' not in str(output), 'GC output path contains colon')
         jvm.append('-Xlog:gc*,safepoint:file=' + str(output / 'gc.log') + ':time,uptime,level,tags')

@@ -20,6 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -71,6 +72,18 @@ final class ClientAutomation implements Runnable {
                 return;
             }
             createIntegratedWorld();
+            if (Boolean.getBoolean("ravel.legacy.preflight")) {
+                preflightProof();
+                return;
+            }
+            exerciseIntegratedWorld();
+        } catch (Exception failure) {
+            failure.printStackTrace();
+            System.exit(2);
+        }
+    }
+
+    private void exerciseIntegratedWorld() throws Exception {
             AudioAcceptance.play(evidence);
             snapshot("03-world");
             walkAndLook();
@@ -84,7 +97,9 @@ final class ClientAutomation implements Runnable {
             key(KeyEvent.VK_F11);
             await(() -> displayFlag(false));
             // Vanilla restores launch dimensions, not the last resized window.
-            requireDisplaySize(854, 480);
+            Properties settings = harnessSettings();
+            requireDisplaySize(Integer.parseInt(settings.getProperty("option.overrideWidth")),
+                    Integer.parseInt(settings.getProperty("option.overrideHeight")));
             snapshot("05b-windowed");
             key(KeyEvent.VK_ESCAPE);
             await(() -> onGame(() -> field(game, "m") != null));
@@ -117,13 +132,32 @@ final class ClientAutomation implements Runnable {
                     + ",wheel,resize,fullscreen,save-quit,reopen\n"
                     + "durationMillis=" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + "\n");
             onGame(() -> invoke(game, "n", new Class<?>[0]));
-        } catch (Exception failure) {
-            failure.printStackTrace();
-            System.exit(2);
+    }
+
+    private void preflightProof() throws Exception {
+        require(geometrySelected(), "Preflight requires geometry-proof renderer");
+        long[] metrics = (long[]) rendererType().getMethod("bakedMetrics").invoke(null);
+        long[][] rows = (long[][]) rendererType().getMethod("bakedGoldens").invoke(null);
+        require(metrics.length == BAKED_NAMES.length && metrics[0] > 0, "Preflight has no baked admissions");
+        StringBuilder names = new StringBuilder();
+        for (int scene = 0; scene < goldenChunks.length; scene++) {
+            require(rows.length > scene && rows[scene].length == 7 && rows[scene][0] > 0
+                    && rows[scene][4] > 0 && rows[scene][5] > 0, "Preflight scene not measured: " + BAKED_SCENES[scene]);
+            if (scene > 0) names.append(',');
+            names.append('"').append(BAKED_SCENES[scene]).append('"');
         }
+        String driver = System.getenv("ALSOFT_DRIVERS");
+        require(driver != null && driver.matches("[a-zA-Z0-9_,!-]+"), "Preflight audio driver missing or invalid");
+        Files.writeString(evidence.resolve("preflight.json"), "{\"admissions\":" + metrics[0]
+                + ",\"coveredScenes\":[" + names + "],\"audioDriver\":\"" + driver + "\"}\n");
+        Files.writeString(evidence.resolve("automation.complete"), "preflight=complete\n");
+        onGame(() -> invoke(game, "n", new Class<?>[0]));
     }
 
     private void createIntegratedWorld() throws Exception {
+            if (Boolean.getBoolean("ravel.legacy.preflight"))
+                require(geometrySelected() && Boolean.getBoolean("ravel.legacy.acceptance"),
+                        "Preflight requires geometry-proof acceptance");
             button(1);
             await(() -> onGame(() -> screenIs("bok")));
             button(3);
@@ -145,6 +179,7 @@ final class ClientAutomation implements Runnable {
             if (Boolean.getBoolean("ravel.legacy.acceptance")) {
                 Object server = onGame(() -> invoke(game, "F", new Class<?>[0]));
                 double[] ground = geometrySelected() ? designateGoldenScenes(server) : null;
+                if (Boolean.getBoolean("ravel.legacy.preflight")) return;
                 reloadResources();
                 if (ground != null) {
                     measureGolden(server, 1);
@@ -547,25 +582,55 @@ final class ClientAutomation implements Runnable {
                 + ",\"readbacks\":[" + files + "]}";
     }
 
-    private static final int GOLDEN_Y = 192;
-    private static final String[][] GOLDEN_BLOCKS = {
-            {"minecraft:stone 0", "minecraft:planks 0"}, {"minecraft:iron_bars 0", "minecraft:glass_pane 0"},
-            {"minecraft:glass 0", "minecraft:web 0"}, {"minecraft:stained_glass 14", "minecraft:ice 0"},
-            {"minecraft:sea_lantern 0", "minecraft:magma 0"}};
-    private static final int[][] GOLDEN_CHUNKS = {{1, -1}, {1, 0}, {1, 1}, {0, -1}, {0, 1}};
+    private int goldenY;
+    private final String[][] goldenBlocks = new String[5][];
+    private final int[][] goldenChunks = new int[5][];
     private int[] goldenOrigin;
 
+    private Properties harnessSettings() throws Exception {
+        Properties settings = new Properties();
+        try (var reader = Files.newBufferedReader(Path.of(System.getProperty("ravel.harness.settings")))) {
+            settings.load(reader);
+        }
+        return settings;
+    }
+
     // Controlled arrangements occupy separate sky sections around the viewing platform.
+    private void loadGoldenSettings() throws Exception {
+        Properties settings = harnessSettings();
+        int distance = Integer.parseInt(settings.getProperty("option.renderDistance"));
+        goldenY = Integer.parseInt(settings.getProperty("scene.y"));
+        require(distance > 0 && goldenY >= 0 && goldenY <= 240, "Invalid golden scene settings");
+        for (int scene = 0; scene < goldenChunks.length; scene++) {
+            String prefix = "scene." + scene + ".";
+            require(BAKED_SCENES[scene].equals(settings.getProperty(prefix + "name")), "Golden scene name differs");
+            String[] chunk = settings.getProperty(prefix + "chunk").split(",", -1);
+            require(chunk.length == 2, "Golden scene chunk must have two offsets");
+            int x = Integer.parseInt(chunk[0]), z = Integer.parseInt(chunk[1]);
+            require(x >= -distance && x <= distance && z >= -distance && z <= distance,
+                    "Golden scene offset outside render distance: " + BAKED_SCENES[scene]);
+            require(x != 0 || z != 0, "Golden scene overlaps viewing platform");
+            goldenChunks[scene] = new int[]{x, z};
+            for (int previous = 0; previous < scene; previous++)
+                require(!Arrays.equals(goldenChunks[previous], goldenChunks[scene]), "Golden scenes overlap");
+            goldenBlocks[scene] = settings.getProperty(prefix + "blocks").split(",", -1);
+            require(goldenBlocks[scene].length == 2, "Golden scene requires two blocks");
+            for (String block : goldenBlocks[scene])
+                require(block.matches("minecraft:[a-z_]+ [0-9]+"), "Invalid golden scene block");
+        }
+    }
+
     private double[] designateGoldenScenes(Object server) throws Exception {
+        loadGoldenSettings();
         double[] ground = onGame(this::playerState);
         goldenOrigin = new int[]{Math.floorDiv((int) Math.floor(ground[0]), 16) * 16,
                 Math.floorDiv((int) Math.floor(ground[2]), 16) * 16};
-        for (int scene = 0; scene < GOLDEN_BLOCKS.length; scene++)
+        for (int scene = 0; scene < goldenBlocks.length; scene++)
             rendererType().getMethod("bakedDesignate", int.class, int.class, int.class, int.class)
-                    .invoke(null, scene, goldenOrigin[0] + GOLDEN_CHUNKS[scene][0] * 16,
-                            GOLDEN_Y, goldenOrigin[1] + GOLDEN_CHUNKS[scene][1] * 16);
+                    .invoke(null, scene, goldenOrigin[0] + goldenChunks[scene][0] * 16,
+                            goldenY, goldenOrigin[1] + goldenChunks[scene][1] * 16);
         int placed = onServer(server, () -> command(server, "setblock " + (goldenOrigin[0] + 8) + " "
-                + (GOLDEN_Y + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
+                + (goldenY + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
         require(placed > 0, "Golden viewing platform was not placed");
         measureGolden(server, 0);
         return ground;
@@ -573,18 +638,18 @@ final class ClientAutomation implements Runnable {
 
     private void measureGolden(Object server, int phase) throws Exception {
         if (phase > 0) rendererType().getMethod("bakedPhase", int.class).invoke(null, phase);
-        teleport(server, goldenOrigin[0] + 8.5, GOLDEN_Y + 8, goldenOrigin[1] + 8.5, new double[]{0, 0, 0, -90, 0});
+        teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5, new double[]{0, 0, 0, -90, 0});
         long interval = TimeUnit.SECONDS.toNanos(3);
         long[] refilled = {System.nanoTime() - interval};
-        int all = (1 << GOLDEN_BLOCKS.length) - 1;
+        int all = (1 << goldenBlocks.length) - 1;
         try {
             await("Controlled baked golden scenes measured in phase " + phase, () -> {
                 int covered = goldenCoverage(phase);
                 if (covered == all) return true;
                 if (System.nanoTime() - refilled[0] >= interval) {
                     int scene = Integer.numberOfTrailingZeros(~covered & all);
-                    double yaw = Math.toDegrees(Math.atan2(-GOLDEN_CHUNKS[scene][0], GOLDEN_CHUNKS[scene][1]));
-                    teleport(server, goldenOrigin[0] + 8.5, GOLDEN_Y + 8, goldenOrigin[1] + 8.5,
+                    double yaw = Math.toDegrees(Math.atan2(-goldenChunks[scene][0], goldenChunks[scene][1]));
+                    teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5,
                             new double[]{0, 0, 0, yaw, 0});
                     onServer(server, () -> refillGolden(server, scene));
                     refilled[0] = System.nanoTime();
@@ -604,14 +669,14 @@ final class ClientAutomation implements Runnable {
 
     // Clearing then refilling one section in a server task republishes it and forces a fresh compile.
     private Void refillGolden(Object server, int scene) throws Exception {
-        int x = goldenOrigin[0] + GOLDEN_CHUNKS[scene][0] * 16;
-        int z = goldenOrigin[1] + GOLDEN_CHUNKS[scene][1] * 16;
-        String low = " " + (GOLDEN_Y + 6) + " " + (z + 6) + " ";
-        String high = " " + (GOLDEN_Y + 9) + " " + (z + 9) + " ";
+        int x = goldenOrigin[0] + goldenChunks[scene][0] * 16;
+        int z = goldenOrigin[1] + goldenChunks[scene][1] * 16;
+        String low = " " + (goldenY + 6) + " " + (z + 6) + " ";
+        String high = " " + (goldenY + 9) + " " + (z + 9) + " ";
         command(server, "fill " + (x + 6) + low + (x + 9) + high + "minecraft:air 0");
         for (int half = 0; half < 2; half++)
             require(command(server, "fill " + (x + 6 + half * 2) + low + (x + 7 + half * 2) + high
-                    + GOLDEN_BLOCKS[scene][half]) > 0, "Golden scene fill failed: " + GOLDEN_BLOCKS[scene][half]);
+                    + goldenBlocks[scene][half]) > 0, "Golden scene fill failed: " + goldenBlocks[scene][half]);
         return null;
     }
 
@@ -704,7 +769,7 @@ final class ClientAutomation implements Runnable {
 
 
     private void configureWorld() throws Exception {
-        typeField("g", "Ravel Legacy 8675309");
+        typeField("g", Boolean.getBoolean("ravel.legacy.preflight") ? "RavelBenchmark" : "Ravel Legacy 8675309");
         Files.writeString(evidence.resolve("world-name.txt"), "typed=" + onGame(() -> text("g")) + "\n");
         saveName = onGame(() -> (String) field(field(game, "m"), "i"));
         button(2);

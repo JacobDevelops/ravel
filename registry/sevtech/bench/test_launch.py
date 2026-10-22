@@ -154,6 +154,7 @@ class LaunchTests(unittest.TestCase):
                                                root / 'natives', root / 'observer.jar', root / 'trial')
             self.assertIn('real.Main', command)
             self.assertIn(str(root / 'game'), command)
+            self.assertIn('-Dravel.harness.settings=' + str(launch.HARNESS_SETTINGS), command)
             agents = [arg for arg in command if arg.startswith('-javaagent:')]
             self.assertEqual(agents, ['-javaagent:' + str(root / 'observer.jar') + '=' + str(root / 'trial')])
             self.assertIn('-Xms4096M', command)
@@ -388,6 +389,7 @@ class VanillaLaunchTests(unittest.TestCase):
                 else:
                     self.assertIn('dev.ravel.legacy.launch.LegacyLauncher', command)
                     self.assertIn('-Dravel.legacy.benchmark=true', command)
+                    self.assertIn('-Dravel.harness.settings=' + str(launch.HARNESS_SETTINGS), command)
                     self.assertEqual(len([arg for arg in command if arg.startswith('-javaagent:')]), 2)
                     self.assertTrue(any(arg.startswith('-Dravel.host=') for arg in command))
                     selection = ['-Dravel.renderer=' + renderer,

@@ -25,7 +25,11 @@ SUPPLEMENTAL = {'legacy.world-open', 'legacy.world-open-integrated', 'legacy.com
 
 def launch(action: str, connected: bool = False, suffix: str = '') -> dict[str, object]:
     environment = os.environ.copy()
-    environment.setdefault('ALSOFT_DRIVERS', 'null')
+    for setting in (ROOT / 'jvm/legacy-platform/launcher.env').read_text().splitlines():
+        if not setting.strip() or setting.lstrip().startswith('#'):
+            continue
+        key, value = setting.split('=', 1)
+        environment.setdefault(key, value)
     environment['RAVEL_LEGACY_PROBES'] = str(WORK / 'evidence-harness-agent/classes')
     environment['RAVEL_PACKET_LIVE'] = tempfile.mkdtemp(prefix='packets-', dir=WORK)
     environment['RAVEL_LEGACY_EVIDENCE_SUFFIX'] = suffix

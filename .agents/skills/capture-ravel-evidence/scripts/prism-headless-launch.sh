@@ -2,6 +2,11 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/../../../.." && pwd)"
+if [[ ! -v ALSOFT_DRIVERS ]]; then
+	source "$repo_root/jvm/legacy-platform/launcher.env"
+fi
+export ALSOFT_DRIVERS
 source "$script_dir/prism-launch-common.sh"
 
 # Drives the pinned 1.21.1 client through a Ravel proof on a virtual display, so
@@ -294,7 +299,6 @@ chmod 600 "$RAVEL_HEADLESS_LOG"
 # Software rasterisation, named rather than inferred, and no audio device at all.
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
-export ALSOFT_DRIVERS=null
 
 setsid -f Xvfb "$display" -screen 0 "${screen_width}x${screen_height}x24" \
 	-nolisten tcp >"$out_dir/xvfb.log" 2>&1
@@ -734,7 +738,6 @@ fi
 	exit 1
 }
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 mkdir -p "$repo_root/target"
 {
 	printf 'headless proof for %s on %s\n' "$instance_id" "$display"

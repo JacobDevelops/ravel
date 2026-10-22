@@ -7,6 +7,39 @@ import unittest
 import zlib
 
 import renderer_proof
+from harness_settings import SETTINGS, SCENES, client_options
+
+
+class SceneSettingsTests(unittest.TestCase):
+    def test_pinned_client_options_and_visible_scene_offsets(self):
+        values = renderer_proof.validate_scene_settings()
+        options = client_options()
+        self.assertEqual({name: options[name] for name in
+                          ('renderDistance', 'fancyGraphics', 'maxFps', 'enableVsync', 'guiScale')},
+                         {'renderDistance': '2', 'fancyGraphics': 'false', 'maxFps': '60',
+                          'enableVsync': 'false', 'guiScale': '2'})
+        self.assertEqual([values[f'scene.{index}.name'] for index in range(5)], list(SCENES))
+        self.assertTrue(all(max(map(abs, map(int, values[f'scene.{index}.chunk'].split(',')))) <= 2
+                            for index in range(5)))
+
+    def test_rejects_outside_distance_before_placement(self):
+        for offset in ('3,0', '0,-3', '-3,3'):
+            with self.subTest(offset=offset), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'settings.properties'
+                path.write_text(SETTINGS.read_text().replace('scene.0.chunk=1,-1', 'scene.0.chunk=' + offset))
+                with self.assertRaisesRegex(ValueError, 'outside render distance'):
+                    renderer_proof.validate_scene_settings(path)
+
+    def test_rejects_overlapping_and_malformed_scene_definitions(self):
+        for original, replacement in (('scene.0.chunk=1,-1', 'scene.0.chunk=0,1'),
+                                      ('scene.0.blocks=minecraft:stone 0,minecraft:planks 0',
+                                       'scene.0.blocks=minecraft:stone 0'),
+                                      ('scene.0.name=opaque', 'scene.0.name=other')):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'settings.properties'
+                path.write_text(SETTINGS.read_text().replace(original, replacement))
+                with self.assertRaises(ValueError):
+                    renderer_proof.validate_scene_settings(path)
 
 
 def renderer_proof_fixture() -> renderer_proof.Proof:

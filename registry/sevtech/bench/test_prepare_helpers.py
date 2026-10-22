@@ -16,6 +16,18 @@ import run
 
 
 class PrepareHelperTests(unittest.TestCase):
+    def test_options_preserve_benchmark_protocol(self):
+        with tempfile.TemporaryDirectory() as directory:
+            game = Path(directory)
+            values = prepare.configure_options(game)
+            self.assertEqual(values["renderDistance"], "12")
+            self.assertEqual((game / "options.txt").read_text(),
+                             "".join(f"{key}:{value}\n" for key, value in values.items()))
+            self.assertNotIn("fancyGraphics", values)
+            self.assertEqual(values["maxFps"], "0")
+            self.assertNotIn("guiScale", values)
+            self.assertEqual(values["soundCategory_master"], "0.0")
+
     def test_reset_restores_publisher_files_but_preserves_mods_and_saves(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

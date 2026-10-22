@@ -36,10 +36,11 @@ OpenAL owns the sound device and context. Matching LWJGL3 APIs are reused rather
 than reimplemented. No LWJGL2 Java or native artifact is placed on the runtime
 class path. The dedicated server has a separate launch path.
 
-Legacy launch and benchmark commands default `ALSOFT_DRIVERS` to `null`, so
-OpenAL still opens and mixes audio without sending sound to speakers. An
-explicit caller value is preserved. Live acceptance still checks the audio
-device and context.
+Legacy launch, evidence capture and benchmark commands read their default
+`ALSOFT_DRIVERS=null` from `jvm/legacy-platform/launcher.env`, so OpenAL
+still opens and mixes audio without sending sound to speakers. An explicit
+caller value is preserved; renderer trial preflight rejects nonsilent overrides.
+Live acceptance still checks the audio device and context.
 
 `vanilla-1.12.2-lwjgl.tsv` records the exact client constant-pool surface,
 including class, descriptor, inherited member, superclass and invocation
@@ -69,7 +70,7 @@ seed through GLFW character callbacks; each character is checked. Robot input dr
 movement and look; wheel callbacks must change the live hotbar slot. A real
 OpenAL source must reach `AL_PLAYING`. Resize to 960 × 540 and fullscreen
 roundtrips wait for observed conditions, not fixed sleeps. Vanilla restores its
-854 × 480 launch size after fullscreen. Automation saves, reopens, checks the
+1280 × 720 shared launch size after fullscreen. Automation saves, reopens, checks the
 seed again, then saves and quits. Screenshots capture only the game window.
 A missing fresh completion record, logged game error or unsuccessful child
 process fails; the complete launch has a 300-second deadline.
@@ -78,6 +79,38 @@ process fails; the complete launch has a 300-second deadline.
 the scanned surface. The explicit `ravel:legacy-client` and
 `ravel:legacy-server` tasks perform the live workload; compilation alone is not
 live acceptance.
+
+### Renderer trial preflight
+
+`jvm/legacy-platform/harness-client.properties` is the shared source for pinned
+live-harness client options and golden-scene chunk offsets. The harness launcher,
+scene placement and proof validators read it. Scene offsets outside the configured
+render distance fail before launch; measured scene rows prove loaded coverage.
+Benchmark preparation retains its separate recorded protocol: render distance 12,
+unlimited frames, and no harness-specific fancy-graphics or GUI-scale overrides.
+
+After building the legacy agent and platform, run the bounded preflight on the
+native display:
+
+```console
+DISPLAY=:0 numen run -- python3 registry/sevtech/bench/run.py --preflight
+```
+
+It allows 60 seconds for a fresh selected-renderer launch, requires nonzero baked
+admissions, all five controlled scene arrangements measured, and the null audio
+driver. Failure stops the batch with a reason and private evidence under
+`tests/fixtures/local/legacy-platform/evidence-display-agent-preflight/`.
+This is a section-layer admission/coverage check, not full-world renderer fidelity.
+
+For `--instance ravel --workload vanilla --renderer geometry-proof --matrix PREFIX`,
+the runner preflights the same pinned candidate runtime once, then executes three
+deterministic off/on pairs (`vanilla`, `geometry-proof`), not two blocks of three.
+Candidate preflight evidence lives in `baseline/runs/PREFIX-preflight/`.
+The candidate must be rebuilt and repinned after automation changes.
+The runner writes the exact trial order and preflight verdict to
+`baseline/runs/PREFIX/matrix.json` under the local
+SevTech fixture. Each arm retains its own result and summary cohort. Other matrices
+retain their single-arm schedule and have no baked-renderer preflight.
 
 ### Explicit premain/JNI launches
 

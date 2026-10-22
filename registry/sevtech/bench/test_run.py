@@ -10,6 +10,7 @@ from unittest import TestCase, main
 from unittest.mock import patch
 
 import run
+from preflight import validate_preflight
 
 
 class GeometryExport(TypedDict):
@@ -51,7 +52,8 @@ class RunPolicyTests(TestCase):
         args = argparse.Namespace(matrix="vanilla-test", instance="vanilla", candidate=None,
                                   workload="vanilla", renderer="vanilla",
                                   functional_only=False, timeout=1800)
-        with patch.object(run.subprocess, "run") as execute:
+        with tempfile.TemporaryDirectory() as raw, patch.object(run, "LOCAL", Path(raw)), \
+             patch.object(run.subprocess, "run") as execute:
             run.matrix(args)
         self.assertEqual(execute.call_count, 3)
         for index, call in enumerate(execute.call_args_list, 1):
@@ -64,14 +66,40 @@ class RunPolicyTests(TestCase):
         args = argparse.Namespace(matrix="geometry-test", instance="ravel",
                                   candidate=Path("candidate.json"), workload="vanilla",
                                   renderer="geometry-proof", functional_only=False, timeout=900)
-        with patch.object(run.subprocess, "run") as execute:
+        with tempfile.TemporaryDirectory() as raw, patch.object(run, "LOCAL", Path(raw)), \
+             patch.object(run.subprocess, "run") as execute:
             run.matrix(args)
-        self.assertEqual(execute.call_count, 3)
-        for call in execute.call_args_list:
+            record = json.loads((Path(raw) / "runs/geometry-test/matrix.json").read_text())
+        self.assertEqual(execute.call_count, 7)
+        self.assertIn("--preflight", execute.call_args_list[0].args[0])
+        self.assertEqual(record["order"], "off-on-alternating")
+        self.assertEqual(record["preflight"], "passed")
+        for index, call in enumerate(execute.call_args_list[1:]):
             command = call.args[0]
-            self.assertEqual(command[command.index("--renderer") + 1], "geometry-proof")
+            renderer = ("vanilla", "geometry-proof")[index % 2]
+            self.assertEqual(command[command.index("--renderer") + 1], renderer)
             self.assertEqual(command[command.index("--candidate") + 1],
                              str(args.candidate.resolve()))
+            self.assertEqual(record["trials"][index]["renderer"], renderer)
+
+    def test_preflight_failure_prevents_all_trials(self) -> None:
+        args = argparse.Namespace(matrix="blocked", instance="ravel", candidate=Path("candidate.json"),
+                                  workload="vanilla", renderer="geometry-proof",
+                                  functional_only=False, timeout=900)
+        with tempfile.TemporaryDirectory() as raw, patch.object(run, "LOCAL", Path(raw)), \
+             patch.object(run.subprocess, "run", side_effect=RuntimeError("preflight")) as execute:
+            with self.assertRaisesRegex(RuntimeError, "preflight"):
+                run.matrix(args)
+        self.assertEqual(execute.call_count, 1)
+
+    def test_preflight_rejects_zero_admissions_missing_scenes_and_audio(self) -> None:
+        proof = {"admissions": 1, "audioDriver": "null",
+                 "coveredScenes": ["opaque", "cutout-mipped", "cutout", "translucent", "animated"]}
+        validate_preflight(proof)
+        for field, value, reason in (("admissions", 0, "no baked"), ("coveredScenes", [], "scenes"),
+                                      ("audioDriver", "pulse", "silent")):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, reason):
+                validate_preflight({**proof, field: value})
 
     def test_cli_defaults_to_vanilla_renderer(self) -> None:
         with patch("sys.argv", ["run.py", "default-trial"]), patch.object(run, "run") as execute:

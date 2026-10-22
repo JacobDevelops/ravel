@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export ALSOFT_DRIVERS="${ALSOFT_DRIVERS-null}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 module="$root/jvm/legacy-platform"
+if [[ ! -v ALSOFT_DRIVERS ]]; then
+	source "$module/launcher.env"
+fi
+export ALSOFT_DRIVERS
 work="$root/tests/fixtures/local/legacy-platform"
 mkdir -p "$work"
 java=(mise exec -- java)
@@ -102,8 +105,12 @@ if [[ ! -f "$work/classes/dev/ravel/legacy/launch/LegacyLauncher.class" ]]; then
     echo 'Run jvm/legacy-platform/launch.sh build first' >&2
     exit 1
 fi
+preflight=false
+if [[ "${RAVEL_LEGACY_PREFLIGHT:-0}" == 1 ]]; then preflight=true; fi
 jvm=("${modular[@]}" "--enable-native-access=$client_native_modules" "${agent_options[@]}" -Xmx2G
     -XX:ErrorFile="$work/hs_err_pid%p.log"
+    "-Dravel.harness.settings=$module/harness-client.properties"
+    "-Dravel.legacy.preflight=$preflight"
     -Djava.library.path="$work/natives" -Dlog4j2.formatMsgNoLookups=true -cp "$parent_cp"
     dev.ravel.legacy.launch.LegacyLauncher)
 case "$action" in
@@ -117,11 +124,17 @@ case "$action" in
         rm -f "$evidence/automation.complete"
         : > "$evidence/player-states.txt"
         : > "$evidence/ticks.txt"
-        printf 'renderDistance:2\nfancyGraphics:false\nmaxFps:60\nenableVsync:false\nguiScale:2\n' > "$game/options.txt"
+        python3 "$module/tools/harness_settings.py" "$game/options.txt"
+        while IFS=: read -r option value; do
+            case "$option" in
+                overrideWidth) width="$value" ;;
+                overrideHeight) height="$value" ;;
+            esac
+        done < "$game/options.txt"
         command=("${jvm[@]}" client "$work/client-classpath.txt" "$evidence"
             --version 1.12.2 --gameDir "$game" --assetsDir "$work/assets" --assetIndex 1.12
             --username RavelLegacy --uuid 00000000000000000000000000000001 --accessToken 0
-            --userType legacy --versionType release --width 854 --height 480)
+            --userType legacy --versionType release --width "$width" --height "$height")
         (
             if [[ -n "$suffix" ]]; then cd "$game"; fi
             if [[ "$mode" == xvfb ]]; then

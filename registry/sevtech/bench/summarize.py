@@ -4,6 +4,8 @@
 Frame stalls use scene-start-relative first-five-second and full-scene windows.
 Chunk compile/upload timings are observational, never inferred from frame intervals.
 Functional-only trials are retained as evidence but excluded from physical groups.
+Default discovery skips matrix records and preflights, not incomplete trial evidence.
+Older results infer their renderer from the effective launch command, defaulting to vanilla.
 """
 import argparse
 from collections import defaultdict
@@ -431,11 +433,16 @@ def summarize_trial(directory: Path) -> dict[str, Any]:
     for percentile in ("p50", "p95", "p99"):
         metrics["gc_pause." + percentile + "_ms"] = distribution(pauses)[percentile] if pauses else None
     metrics["gc_pause_max_ms"] = max(pauses) if pauses else None
+    cohort = runtime_cohort(directory)
+    renderer = result.get("renderer")
+    if "renderer" not in result:
+        renderer = next((value.split("=", 1)[1] for value in reversed(cohort["argv"])
+                         if value.startswith("-Dravel.renderer=")), "vanilla")
     return {"trial": result["trial"], "instance": result["instance"], "cache": result["cache"],
-            "measurement": measurement,
+            "renderer": renderer, "measurement": measurement,
             "clock_ticks_per_second": frequency, "sample_counts": counts, "metrics": metrics,
             "workload_protocol": protocol,
-            "runtime_cohort": runtime_cohort(directory),
+            "runtime_cohort": cohort,
             "startup_phases": startup_phases((directory / "game.log").read_text()),
             "frame_stall_scope": {
                 "window": "scene_start <= frame monotonic_ns <= scene_start + 5 seconds (first5s); full scene for max",
@@ -461,15 +468,15 @@ def aggregate(trials: list[dict[str, Any]]) -> list[dict[str, Any]]:
         require(protocol is None or current == protocol,
                 "workload protocols differ across supplied trials")
         protocol = current
-        groups[trial["instance"], trial["cache"]].append(trial)
+        groups[trial["instance"], trial["cache"], trial.get("renderer", "vanilla")].append(trial)
     output = []
-    for (instance, cache), members in sorted(groups.items()):
-        require(len(members) >= 3, "need at least three completed trials per instance/cache group")
+    for (instance, cache, renderer), members in sorted(groups.items()):
+        require(len(members) >= 3, "need at least three completed trials per instance/cache/renderer group")
         require(len({member["trial"] for member in members}) == len(members), "duplicate trial identity")
         cohort = members[0].get("runtime_cohort")
         require(isinstance(cohort, dict) and bool(cohort) and
                 all(member.get("runtime_cohort") == cohort for member in members),
-                "missing or differing runtime/build cohorts within instance/cache group")
+                "missing or differing runtime/build cohorts within instance/cache/renderer group")
         keys = set(members[0]["metrics"])
         require(all(set(member["metrics"]) == keys for member in members),
                 "trial metric populations differ; cannot aggregate missing distributions")
@@ -478,8 +485,9 @@ def aggregate(trials: list[dict[str, Any]]) -> list[dict[str, Any]]:
             values = [member["metrics"][key] for member in members if member["metrics"][key] is not None]
             percentiles = distribution(values) if len(values) >= 3 else dict.fromkeys(("p50", "p95", "p99"))
             metrics[key] = {"trial_samples": len(values), **percentiles}
-        output.append({"instance": instance, "cache": cache, "trial_count": len(members),
-                       "workload_protocol": protocol, "runtime_cohort": cohort, "metrics": metrics})
+        output.append({"instance": instance, "cache": cache, "renderer": renderer,
+                       "trial_count": len(members), "workload_protocol": protocol,
+                       "runtime_cohort": cohort, "metrics": metrics})
     return output
 
 
@@ -503,14 +511,16 @@ def markdown(trials: list[dict[str, Any]], groups: list[dict[str, Any]]) -> str:
     if functional:
         lines += ["Functional-only evidence (not compared): " + ", ".join(functional), ""]
     for group in groups:
-        lines += ["## " + group["instance"] + " / " + group["cache"], "",
+        lines += ["## " + group["instance"] + " / " + group["cache"] + " / " + group["renderer"], "",
                   "Completed trials: " + str(group["trial_count"]), "",
                   "| Metric | Trial samples | Trial-metric p50 | p95 | p99 |", "|---|---:|---:|---:|---:|"]
         for key, value in group["metrics"].items():
             cells = [str(value["trial_samples"])] + [display(value[p]) for p in ("p50", "p95", "p99")]
             lines.append("| " + key + " | " + " | ".join(cells) + " |")
         members = [trial for trial in trials if trial["instance"] == group["instance"] and
-                   trial["cache"] == group["cache"] and trial.get("measurement", "physical") == "physical"]
+                   trial["cache"] == group["cache"] and
+                   trial.get("renderer", "vanilla") == group["renderer"] and
+                   trial.get("measurement", "physical") == "physical"]
         lines += ["", "### Per-trial values", "", "| Trial | Metric | Value |", "|---|---|---:|"]
         for trial in members:
             label = re.sub(r"[^A-Za-z0-9_.-]", "_", str(trial["trial"]))
@@ -538,7 +548,9 @@ def main() -> None:
     parser.add_argument("trials", nargs="*", type=Path, help="completed trial directories; default: local runs")
     parser.add_argument("--output", type=Path, default=LOCAL / "report", help="private summary output directory")
     args = parser.parse_args()
-    directories = args.trials or sorted((LOCAL / "runs").iterdir())
+    directories = args.trials or sorted(path for path in (LOCAL / "runs").iterdir()
+                                       if not (path / "matrix.json").is_file() and
+                                       not path.name.endswith("-preflight"))
     directories = [path for path in directories if path.is_dir()]
     require(bool(directories), "no trial directories supplied")
     trials = [summarize_trial(path) for path in directories]

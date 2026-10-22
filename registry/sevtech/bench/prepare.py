@@ -22,6 +22,8 @@ import tempfile
 import tomllib
 import zipfile
 
+HARNESS_SETTINGS = Path(__file__).resolve().parents[3] / "jvm/legacy-platform/harness-client.properties"
+
 FIXTURE = "sevtech-ages-3.2.3"
 JAVA = "java@temurin-8.0.504+1"
 ARGS_SOURCE = "https://github.com/DarkPacks/SevTech-Ages/wiki/Recommended-Java-Args"

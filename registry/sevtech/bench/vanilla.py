@@ -16,7 +16,7 @@ import zipfile
 from typing import Any
 
 import launch
-from prepare import JAVA, configure_options, digest, require, write_json
+from prepare import HARNESS_SETTINGS, JAVA, configure_options, digest, require, write_json
 
 MODULES = 'org.lwjgl,org.lwjgl.glfw,org.lwjgl.opengl,org.lwjgl.openal'
 FIELDS = {'javaPath', 'platform', 'agent', 'host', 'screen', 'lwjgl', 'sha256'}
@@ -157,6 +157,7 @@ def ravel_command(candidate: Path | str | None, settings: dict[str, Any], direct
                '--enable-native-access=' + MODULES + ',dev.ravel.agent',
                '-javaagent:' + str(agent), '-Dravel.host=' + str(host),
                '-Dravel.report.targets=true', '-Dravel.report.loader=true',
+               '-Dravel.harness.settings=' + str(HARNESS_SETTINGS),
                '-Dravel.legacy.benchmark=true', *renderer_args,
                '-javaagent:' + str(observer) + '=' + str(out),
                '-Xlog:gc*,safepoint:file=' + str(out / 'gc.log') + ':time,uptime,level,tags',

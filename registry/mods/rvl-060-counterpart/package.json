@@ -59,11 +59,11 @@
       },
       {
         "path": "src/colour.rs",
-        "sha256": "cb133358444faac003809711b3157e826af23603d65b6fd3ba1ca1c6fc5b3550"
+        "sha256": "4e5864ed871f10861eb4cbe749c2c120d75d7b4c13cfab0b4e186bd0a78a0302"
       },
       {
         "path": "src/data.rs",
-        "sha256": "6e3375d096380dea7fdee112554d3b1ef0f63f609bad8dbbabbc27ae9ac99880"
+        "sha256": "dc4c7987acbd779ca6aff3b56b677fc31efcf7197c07b14501a26551dd662fc7"
       },
       {
         "path": "src/declaration.rs",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "1d30c909d3f41cb70da9dbea4ab3dc144bb822185d455e30462f88c12cc2fa8f"
+        "sha256": "f6e2923ec515fc60d0406c00c80468e68f5fa8e05012085dfdaceb8d263b0621"
       },
       {
         "path": "src/highlights/declarations.rs",
@@ -91,7 +91,7 @@
       },
       {
         "path": "src/matching.rs",
-        "sha256": "7553074844993fefa8ae31c042d88adac036085ca5b9f043edd89ed45e7299bd"
+        "sha256": "1f7965fc6fcc7860afa250d34113e6997d4ec485064daed9358c90a482fdb38c"
       },
       {
         "path": "src/presentation.rs",
@@ -103,7 +103,7 @@
       },
       {
         "path": "src/persistence.rs",
-        "sha256": "f8fa9d76c681740d15046b7ca3ee6dc22725c33cdb7b0bedd05c74dc4095a37b"
+        "sha256": "3e5fba4554110540e303dbdabedd30484621692d96e7b3ebedc048a1433d1f80"
       },
       {
         "path": "src/transport.rs",
@@ -111,7 +111,7 @@
       },
       {
         "path": "src/validators.rs",
-        "sha256": "cc1938f7b5fdc02e4dc99d6326d63d1eb1d92c063e7894cc0d8a2c609b88fb38"
+        "sha256": "c061667014843530165ab2180905c1dbd06fa39aafa17185169e98417f3999ae"
       },
       {
         "path": "src/validators/conditions.rs",

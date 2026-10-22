@@ -63,7 +63,7 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "43742ac993849421b3c7472bdc168bc5f2cadf04c907faab239e28ea39a970af"
+        "sha256": "7307b22e5c34d56e0942362268e73f458dfec46f082464c6820938392e6133cc"
       },
       {
         "path": "src/capabilities.rs",

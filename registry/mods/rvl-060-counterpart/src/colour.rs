@@ -146,19 +146,7 @@ impl Colour {
 }
 
 fn channel(value: f32) -> u8 {
-    let scaled = (value * 255.0).round();
-    if scaled.is_nan() {
-        return 0;
-    }
-    if scaled <= 0.0 {
-        0
-    } else if scaled >= 255.0 {
-        255
-    } else {
-        scaled
-            .to_u8()
-            .expect("rounded channel lies between zero and 255")
-    }
+    num_traits::AsPrimitive::<u8>::as_((value * 255.0).round())
 }
 
 /// A colour that turns its own hue by a fixed step.
@@ -196,7 +184,7 @@ impl Animated {
     /// same colour and a value never changes between two reads within a frame.
     #[must_use]
     pub fn at(self, frame: u64) -> Colour {
-        let turns = f32::from(u16::try_from(frame % 360).expect("a turn is below 360 degrees"));
+        let turns = num_traits::AsPrimitive::<f32>::as_(frame % 360);
         self.base.with_hue_turned(self.step_degrees * turns)
     }
 
@@ -403,7 +391,8 @@ impl Value {
                     return Err(ColourError::NameTooLong(text.len()));
                 }
                 bytes.push(discriminator::NAMED);
-                let len = u32::try_from(text.len()).expect("a packet list shorter than 2^32");
+                let len =
+                    u32::try_from(text.len()).map_err(|_| ColourError::NameTooLong(text.len()))?;
                 bytes.extend_from_slice(&len.to_be_bytes());
                 bytes.extend_from_slice(text);
             }
@@ -492,8 +481,8 @@ impl Value {
         let explicit = digits.is_some();
         let body = digits.unwrap_or(trimmed);
         if (body.len() == 6 || body.len() == 8) && body.bytes().all(|b| b.is_ascii_hexdigit()) {
-            let value =
-                u32::from_str_radix(body, 16).expect("six or eight hexadecimal digits fit u32");
+            let value = u32::from_str_radix(body, 16)
+                .map_err(|_| ColourError::Unspellable(text.to_owned()))?;
             let colour = if body.len() == 6 {
                 Colour::from_packed(value | 0xFF00_0000)
             } else {

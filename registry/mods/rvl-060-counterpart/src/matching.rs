@@ -22,8 +22,8 @@
 
 use std::collections::BTreeMap;
 
+use ravel_sdk::JsonValue;
 use ravel_sdk::content::ContentId;
-use ravel_sdk::{JsonValue, json};
 
 use crate::data::{DataPredicate, Tag};
 
@@ -298,26 +298,20 @@ impl Matcher {
     }
 
     /// Writes a matcher back to a document, in the shape it decodes from.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a freshly constructed JSON object is not an object.
     #[must_use]
     pub fn encode(&self) -> JsonValue {
         match self {
             Self::Exact(value) => JsonValue::String(value.clone()),
             Self::Range { lower, upper } => {
-                let mut document = json!({});
-                let object = document
-                    .as_object_mut()
-                    .expect("the value was just built as an object");
-                if let Some(bound) = lower {
-                    object.insert(LOWER_BOUND.to_owned(), JsonValue::String(bound.clone()));
-                }
-                if let Some(bound) = upper {
-                    object.insert(UPPER_BOUND.to_owned(), JsonValue::String(bound.clone()));
-                }
-                document
+                JsonValue::Object(
+                    lower
+                        .iter()
+                        .map(|bound| (LOWER_BOUND.to_owned(), JsonValue::String(bound.clone())))
+                        .chain(upper.iter().map(|bound| {
+                            (UPPER_BOUND.to_owned(), JsonValue::String(bound.clone()))
+                        }))
+                        .collect(),
+                )
             }
         }
     }
@@ -863,14 +857,39 @@ mod tests {
 
     #[test]
     fn a_matcher_round_trips_through_the_shape_it_decodes_from() {
-        for matcher in [
-            Matcher::Exact("north".to_owned()),
-            Matcher::Range {
-                lower: Some("1".to_owned()),
-                upper: None,
-            },
+        for (matcher, document) in [
+            (Matcher::Exact("north".to_owned()), json!("north")),
+            (
+                Matcher::Range {
+                    lower: Some("1".to_owned()),
+                    upper: None,
+                },
+                json!({ "lower": "1" }),
+            ),
+            (
+                Matcher::Range {
+                    lower: None,
+                    upper: Some("3".to_owned()),
+                },
+                json!({ "upper": "3" }),
+            ),
+            (
+                Matcher::Range {
+                    lower: Some("1".to_owned()),
+                    upper: Some("3".to_owned()),
+                },
+                json!({ "lower": "1", "upper": "3" }),
+            ),
+            (
+                Matcher::Range {
+                    lower: None,
+                    upper: None,
+                },
+                json!({}),
+            ),
         ] {
-            assert_eq!(Matcher::decode(&matcher.encode()), Ok(matcher));
+            assert_eq!(matcher.encode(), document);
+            assert_eq!(Matcher::decode(&document), Ok(matcher));
         }
     }
 

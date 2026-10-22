@@ -134,13 +134,10 @@ impl Caches {
         &mut self,
         derive: impl FnOnce() -> Result<Vec<Converted>, E>,
     ) -> Result<&[Converted], E> {
-        if self.brewing.is_none() {
-            self.brewing = Some(derive()?);
-        }
-        Ok(self
-            .brewing
-            .as_deref()
-            .expect("the brewing closure was held or just derived"))
+        Ok(match &mut self.brewing {
+            Some(held) => held,
+            vacant @ None => vacant.insert(derive()?),
+        })
     }
 
     /// How many station keys are filed.

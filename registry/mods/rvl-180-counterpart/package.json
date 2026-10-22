@@ -59,7 +59,7 @@
       },
       {
         "path": "src/commands.rs",
-        "sha256": "bb2f53510e024db3dadfe03e5cd690d024bcc5494b0918dc5e46adc6cbfef28c"
+        "sha256": "21ec7eb770b629c2d0b1a7cc3f05b408062a9c65ae731dad79dc977f43678ede"
       },
       {
         "path": "src/dumps.rs",

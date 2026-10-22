@@ -30,7 +30,6 @@
 
 use std::collections::BTreeMap;
 
-use num_traits::ToPrimitive;
 use ravel_sdk::JsonValue;
 
 use crate::data::{Tag, TagKind};
@@ -568,10 +567,7 @@ fn equal_at_width(expected: f64, candidate: &Tag) -> bool {
         Tag::Int(value) => i32::try_from(integer()).is_ok_and(|narrow| narrow == value),
         Tag::Long(value) => integer() == value && expected.fract() == 0.0,
         Tag::Float(value) => {
-            expected
-                .to_f32()
-                .expect("float narrowing includes infinities and NaN")
-                .partial_cmp(&value)
+            num_traits::AsPrimitive::<f32>::as_(expected).partial_cmp(&value)
                 == Some(std::cmp::Ordering::Equal)
         }
         Tag::Double(value) => expected.partial_cmp(&value) == Some(std::cmp::Ordering::Equal),

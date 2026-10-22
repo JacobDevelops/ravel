@@ -94,7 +94,7 @@
       },
       {
         "path": "src/machines.rs",
-        "sha256": "6eb81876015f9ddabd52c5f4037acbeb34cb863606b6b6a5d24ade925bb30a9f"
+        "sha256": "8e82e147dd91c07e07d4e3e28859e97ef348354abc1b8a2fb4a6382c10b2b004"
       },
       {
         "path": "src/matching.rs",

@@ -15,7 +15,7 @@
 //! rather than invented, and `NOTES.md` records it as a reading of §3 with the
 //! citation it replaces.
 
-use num_traits::ToPrimitive;
+use num_traits::AsPrimitive;
 
 use crate::data::Stack;
 use crate::settings::Settings;
@@ -125,8 +125,8 @@ pub fn factor(level: u32, ceiling: u32) -> f32 {
     }
     // Both are below 2^32 and f32 rounds each once, which is the same single
     // rounding the original's own conversion performs.
-    let level = level.to_f32().expect("u32 values fit the f32 range");
-    let ceiling = ceiling.to_f32().expect("u32 values fit the f32 range");
+    let level: f32 = level.as_();
+    let ceiling: f32 = ceiling.as_();
     level / ceiling
 }
 
@@ -137,23 +137,12 @@ pub fn factor(level: u32, ceiling: u32) -> f32 {
 /// configured figure; at a factor of one it is half of it.
 #[must_use]
 pub fn price(configured: i32, factor: f32) -> i32 {
-    let configured_float = configured.to_f32().expect("i32 values fit the f32 range");
+    let configured_float: f32 = configured.as_();
     let scaled = configured_float * (2.0 - factor) / 2.0;
     if !scaled.is_finite() {
         return configured;
     }
-    let truncated = scaled.trunc();
-    if truncated <= 0.0 {
-        return 0;
-    }
-    // i32::MAX rounds up to this boundary in single precision.
-    let maximum = 2_147_483_648.0;
-    if truncated >= maximum {
-        return i32::MAX;
-    }
-    truncated
-        .to_i32()
-        .expect("positive truncated price is below i32::MAX")
+    AsPrimitive::<i32>::as_(scaled).max(0)
 }
 
 /// What one tick of the machine did.
@@ -468,6 +457,16 @@ mod tests {
     fn a_price_that_would_overflow_is_carried_at_the_ceiling_rather_than_wrapping() {
         assert_eq!(price(i32::MAX, 0.0), i32::MAX);
         assert!(price(i32::MAX, 1.0) > 0);
+    }
+
+    #[test]
+    fn price_clamps_negative_results_but_keeps_nonfinite_factors_at_the_configured_value() {
+        assert_eq!(price(-600, 0.0), 0);
+        assert_eq!(price(600, 3.0), 0);
+        for factor in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(price(600, factor), 600);
+            assert_eq!(price(-600, factor), -600);
+        }
     }
 
     #[test]

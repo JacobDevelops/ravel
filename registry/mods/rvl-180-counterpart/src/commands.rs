@@ -214,7 +214,7 @@ impl Console {
 
     /// Returns how many notes the bound has dropped.
     ///
-    /// Counted rather than silent, which is the rule [`crate::Outbox::dropped`]
+    /// Counted rather than silent, which is the rule [`crate::Outbox::dropped_packets`]
     /// follows for the same reason: a bound that discards without a count is a
     /// bound nobody can see was reached.
     #[must_use]

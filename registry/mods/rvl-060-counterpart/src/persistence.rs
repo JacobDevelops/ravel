@@ -46,7 +46,7 @@
 //! world exists.
 
 use ravel_sdk::save::{SavedDataDeclaration, SavedDataError, SavedDataVersion};
-use ravel_sdk::{JsonValue, ModId, Side, json};
+use ravel_sdk::{JsonValue, ModId, Side};
 
 use crate::data::Tag;
 
@@ -279,27 +279,17 @@ impl Record {
     ///
     /// Returns [`StorageError::ValueNotCompound`] when either side is not a
     /// compound.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a freshly constructed JSON object is not an object.
     pub fn write(&self, held: &JsonValue, encoded: &JsonValue) -> Result<JsonValue, StorageError> {
         let encoded_entries = encoded.as_object().ok_or(StorageError::ValueNotCompound)?;
         if self.clearing {
             return Ok(encoded.clone());
         }
         let held_entries = held.as_object().ok_or(StorageError::ValueNotCompound)?;
-        let mut merged = json!({});
-        let target = merged
-            .as_object_mut()
-            .expect("the value was just built as an object");
-        for (name, value) in held_entries {
-            target.insert(name.clone(), value.clone());
-        }
+        let mut merged = held_entries.clone();
         for (name, value) in encoded_entries {
-            target.insert(name.clone(), value.clone());
+            merged.insert(name.clone(), value.clone());
         }
-        Ok(merged)
+        Ok(JsonValue::Object(merged))
     }
 
     /// Returns whether this record clears before writing.

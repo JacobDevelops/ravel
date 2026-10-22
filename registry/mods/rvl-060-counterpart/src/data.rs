@@ -104,7 +104,7 @@ impl Tag {
             Self::Byte(value) => Some(f64::from(value)),
             Self::Short(value) => Some(f64::from(value)),
             Self::Int(value) => Some(f64::from(value)),
-            Self::Long(value) => Some(value.to_f64().expect("i64 values fit the f64 range")),
+            Self::Long(value) => value.to_f64(),
             Self::Float(value) => Some(f64::from(value)),
             Self::Double(value) => Some(value),
             Self::Text(_)

@@ -443,13 +443,7 @@ fn mended(per_unit: u32, units: f64) -> u32 {
     if !mended.is_finite() || mended <= 0.0 {
         return 0;
     }
-    let truncated = mended.trunc();
-    if truncated >= f64::from(u32::MAX) {
-        u32::MAX
-    } else {
-        num_traits::ToPrimitive::to_u32(&truncated)
-            .expect("a finite nonnegative value below u32::MAX fits after truncation")
-    }
+    num_traits::AsPrimitive::<u32>::as_(mended)
 }
 
 #[cfg(test)]

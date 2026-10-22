@@ -12,10 +12,19 @@ from unittest.mock import Mock, call, patch
 
 import preflight
 import vanilla
-sys.path.insert(0, str(preflight.ROOT / 'jvm/legacy-platform/tools'))
 
 
 class PreflightLaunchTests(TestCase):
+    def setUp(self) -> None:
+        paths = patch.object(sys, 'path', [
+            str(preflight.ROOT / 'jvm/legacy-platform/tools'), *sys.path,
+        ])
+        paths.start()
+        self.addCleanup(paths.stop)
+        modules = patch.dict(sys.modules)
+        modules.start()
+        self.addCleanup(modules.stop)
+
     def test_launcher_environment_ignores_blank_and_comment_lines(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -57,7 +66,7 @@ class PreflightLaunchTests(TestCase):
             proof = {'admissions': 1, 'audioDriver': 'null',
                      'coveredScenes': ['opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated']}
 
-            def launch(argv, **kwargs):
+            def launch(argv: list[str], **kwargs: object) -> Mock:
                 self.assertIn('-javaagent:pinned-agent.jar', argv)
                 self.assertIn('-Dravel.legacy.preflight=true', argv)
                 self.assertIn('-Dravel.legacy.acceptance=true', argv)
@@ -65,7 +74,8 @@ class PreflightLaunchTests(TestCase):
                 self.assertNotIn('-Dravel.legacy.benchmark=true', argv)
                 self.assertFalse(any('observer.jar' in token for token in argv))
                 self.assertTrue(kwargs['start_new_session'])
-                (out / 'preflight.json').write_text(json.dumps(proof))
+                proof_path = out / 'preflight.json'
+                proof_path.write_text(json.dumps(proof))
                 return Mock(wait=Mock(return_value=0), poll=Mock(return_value=0))
 
             with patch.object(preflight, 'ROOT', root), \
@@ -86,13 +96,16 @@ class PreflightLaunchTests(TestCase):
         execute.assert_not_called()
 
     @contextmanager
-    def _mock_launch(self, process, proof=None, timestamp=None):
+    def _mock_launch(self, process, proof=None, timestamp=None, stale_before_launch=False):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             out = root / 'tests/fixtures/local/legacy-platform/evidence-display-agent-preflight'
+            if stale_before_launch:
+                out.mkdir(parents=True)
+                (out / 'preflight.json').write_text(json.dumps(proof))
 
             def launch(*args, **kwargs):
-                if proof is not None:
+                if proof is not None and not stale_before_launch:
                     path = out / 'preflight.json'
                     path.write_text(json.dumps(proof))
                     if timestamp is not None:
@@ -157,17 +170,26 @@ class PreflightLaunchTests(TestCase):
     def test_missing_stale_or_unsuccessful_proof_refuses_launch(self) -> None:
         proof = {'admissions': 1, 'audioDriver': 'null',
                  'coveredScenes': ['opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated']}
-        for name, code, evidence, timestamp in [
-            ('missing', 0, None, None),
-            ('stale', 0, proof, 1),
-            ('nonzero', 1, proof, None),
+        for name, code, evidence in [
+            ('missing', 0, None),
+            ('stale', 0, proof),
+            ('nonzero', 1, proof),
         ]:
             with self.subTest(name=name):
                 process = Mock(wait=Mock(return_value=code), poll=Mock(return_value=code))
-                with self._mock_launch(process, evidence, timestamp) as events:
+                with self._mock_launch(
+                    process, evidence, stale_before_launch=name == 'stale',
+                ) as events:
                     with self.assertRaisesRegex(RuntimeError, 'no fresh successful scene proof'):
                         preflight.run_preflight()
                     self.assertEqual(events.mock_calls, [call.wait(timeout=60)])
+
+    def test_new_scene_proof_does_not_depend_on_wall_clock_timestamp(self) -> None:
+        proof = {'admissions': 1, 'audioDriver': 'null',
+                 'coveredScenes': ['opaque', 'cutout-mipped', 'cutout', 'translucent', 'animated']}
+        process = Mock(wait=Mock(return_value=0), poll=Mock(return_value=0))
+        with self._mock_launch(process, proof, timestamp=1):
+            preflight.run_preflight()
 
     def test_escaping_trial_fails_before_launch_preparation(self) -> None:
         with patch.object(preflight, 'launcher_environment') as environment, \

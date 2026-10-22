@@ -102,6 +102,10 @@ without writing. The single-package form, `package digests <directory> [--check]
 Normal `mise exec -- cargo` builds inherit the host's mbx Cargo wrapper; coverage deliberately disables
 mbx with `MBX_DISABLE=1`. A missing `RUSTC_WRAPPER` alone does not mean the Cargo wrapper is inactive.
 
+The direct gate and matrix policy tests run with `python3 -B -m unittest discover -s tools/gate`.
+Renderer preflight deletes any previous scene proof before launching and requires the launched process
+to produce a replacement; freshness does not depend on filesystem timestamp precision or wall clocks.
+
 ## Stack shape
 
 - One work package is a short stack, usually two to five changes. Each one compiles, passes the gate, and

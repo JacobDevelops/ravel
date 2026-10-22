@@ -3,12 +3,13 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 import gate
 
 
-def metadata():
+def metadata() -> dict[str, Any]:
     packages = [{"id": name, "name": name,
                  "manifest_path": str(gate.ROOT / "crates" / name / "Cargo.toml")}
                 for name in ("base", "ravel-composed-host", "dev")]
@@ -18,6 +19,32 @@ def metadata():
         {"pkg": "dev", "dep_kinds": [{"kind": "dev"}]}])
     return {"packages": packages, "workspace_members": [p["id"] for p in packages],
             "resolve": {"nodes": nodes}}
+
+
+class GateCommandTests(unittest.TestCase):
+    def test_commands_preserve_checked_capture_contract(self) -> None:
+        with patch.object(gate.subprocess, "run") as run:
+            gate.run("cargo", "test")
+        run.assert_called_once_with(("cargo", "test"), check=True)
+        with patch.object(gate.subprocess, "check_output", return_value=" value\n") as capture:
+            self.assertEqual(gate.capture("jj", "root"), "value")
+        capture.assert_called_once_with(("jj", "root"), text=True)
+
+    def test_scoped_packages_require_a_live_version(self) -> None:
+        with patch.object(gate, "matrix_eligibility", return_value=[["old", "generation-only"]]), \
+             patch.object(gate, "run"):
+            with self.assertRaisesRegex(RuntimeError, "no tracked live version"):
+                gate.test_packages(["base"])
+
+    def test_scoped_packages_cover_live_versions_and_special_suites(self) -> None:
+        with patch.object(gate, "matrix_eligibility", return_value=[
+                ["old", "generation-only"], ["live", "live"]]), patch.object(gate, "run") as run:
+            gate.test_packages(["ravel-composed-host", "ravel-bootstrap-runtime"])
+        self.assertEqual(run.call_count, 5)
+        self.assertEqual(run.call_args_list[1].kwargs["env"]["RAVEL_MINECRAFT_VERSION"], "live")
+        self.assertIn("--no-default-features", run.call_args_list[2].args)
+        self.assertIn("--doc", run.call_args_list[3].args)
+        self.assertEqual(run.call_args_list[4].args[-2:], ("ravel-bootstrap-runtime", "--all-features"))
 
 
 class GateTests(unittest.TestCase):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run version-isolated suites and publish only completed version verdicts."""
 
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
@@ -15,7 +16,7 @@ OUTPUT = ROOT / "target/ravel-jvm"
 GENERATION = Lock()
 
 
-def test_version(version, eligibility, workers):
+def test_version(version: str, eligibility: str, workers: int) -> dict[str, str | int | float]:
     started = time.monotonic()
     env = dict(os.environ, RAVEL_MINECRAFT_VERSION=version,
                CARGO_TARGET_DIR=str(ROOT / "target/matrix" / version))
@@ -24,36 +25,43 @@ def test_version(version, eligibility, workers):
     env.setdefault("NEXTEST_TEST_THREADS", threads)
     env["CARGO_TERM_COLOR"] = "never"
     log = OUTPUT / f"tests-{version}.log"
-    commands = [["cargo", "build", "--locked", "-p", "ravel-minecraft-adapter"]]
-    if eligibility == "live":
-        commands = [["cargo", "nextest", "run", "--locked", "--workspace", "--exclude", "ravel-xtask",
-                     "--exclude", "ravel-minecraft-generate", "--all-features"],
-                    ["cargo", "nextest", "run", "--locked", "-p", "ravel-composed-host", "--no-default-features"],
-                    ["cargo", "nextest", "run", "--locked", "-p", "ravel-xtask", "-p", "ravel-minecraft-generate", "--all-features"]]
+    record = OUTPUT / f"tests-{version}.json"
+    record.unlink(missing_ok=True)
+    commands = version_commands(eligibility)
     status = 0
     with log.open("w") as output:
         for command in commands:
             output.write("+ " + " ".join(command) + "\n")
             output.flush()
-            if "ravel-xtask" in command and "--exclude" not in command:
-                # Generator tests rewrite the shared Java output tree.
-                with GENERATION:
-                    status = subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT).returncode
-            else:
-                status = subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT).returncode
+            lock = GENERATION if "ravel-xtask" in command and "--exclude" not in command else nullcontext()
+            with lock:
+                status = subprocess.run(command, env=env, stdout=output,
+                                        stderr=subprocess.STDOUT).returncode
             if status:
                 break
     counts = [int(count) for count in re.findall(r"Summary\s+\[[^\]]+\]\s+(\d+) tests? run:", log.read_text())]
     result = {"version": version, "exit": status, "tests": sum(counts),
               "seconds": round(time.monotonic() - started, 2), "log": str(log.relative_to(ROOT))}
-    (OUTPUT / f"tests-{version}.json").write_text(json.dumps(result) + "\n")
+    record.write_text(json.dumps(result) + "\n")
     print(f"Minecraft {version}: exit={status} tests={result['tests']} seconds={result['seconds']} log={result['log']}", flush=True)
     if status:
         print(log.read_text(), flush=True)
     return result
 
 
-def main():
+def version_commands(eligibility: str) -> list[list[str]]:
+    if eligibility != "live":
+        return [["cargo", "build", "--locked", "-p", "ravel-minecraft-adapter"]]
+    return [
+        ["cargo", "nextest", "run", "--locked", "--workspace", "--exclude", "ravel-xtask",
+         "--exclude", "ravel-minecraft-generate", "--all-features"],
+        ["cargo", "nextest", "run", "--locked", "-p", "ravel-composed-host", "--no-default-features"],
+        ["cargo", "nextest", "run", "--locked", "-p", "ravel-xtask",
+         "-p", "ravel-minecraft-generate", "--all-features"],
+    ]
+
+
+def main() -> None:
     os.chdir(ROOT)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     tested = OUTPUT / "tested-versions.txt"
@@ -64,7 +72,8 @@ def main():
             continue
         version = directory.name
         eligibility = subprocess.check_output(
-            ["cargo", "run", "--quiet", "--locked", "-p", "ravel-xtask", "--", "version-matrix", version], text=True).strip()
+            ["cargo", "run", "--quiet", "--locked", "-p", "ravel-xtask", "--", "version-matrix", version],
+            text=True).strip()
         if eligibility not in ("live", "generation-only"):
             verdict = f"SKIPPED: Minecraft {version} adapter tests were NOT run; {eligibility}"
             print(verdict, flush=True)

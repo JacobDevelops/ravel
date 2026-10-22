@@ -5,7 +5,6 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
-import time
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -68,9 +67,8 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
                         '-Dravel.legacy.proof=true']
     else:
         out.mkdir(parents=True, exist_ok=True)
-        (out / 'preflight.json').unlink(missing_ok=True)
     proof = out / 'preflight.json'
-    started = time.time_ns()
+    proof.unlink(missing_ok=True)
     with (out / 'preflight-launcher.log').open('w') as log:
         process = subprocess.Popen(command, cwd=cwd, env=environment, start_new_session=True,
                                    stdout=log, stderr=subprocess.STDOUT)
@@ -80,6 +78,6 @@ def run_preflight(candidate: Path | None = None, trial: str = 'renderer-prefligh
         raise RuntimeError('preflight: launch exceeded 60 seconds; inspect ' + str(out)) from error
     finally:
         stop_preflight(process)
-    if code != 0 or not proof.is_file() or proof.stat().st_mtime_ns < started:
+    if code != 0 or not proof.is_file():
         raise RuntimeError('preflight: no fresh successful scene proof; inspect ' + str(out))
     validate_preflight(json.loads(proof.read_text()))

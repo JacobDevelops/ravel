@@ -79,6 +79,7 @@ const ROOT_FILES: &[&str] = &[
     "tools/gate/matrix.py",
     "tools/gate/summary.py",
     "tools/gate/test_gate.py",
+    "tools/gate/test_matrix.py",
     "tools/ravel-xtask/Cargo.toml",
 ];
 

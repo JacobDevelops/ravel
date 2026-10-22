@@ -3,7 +3,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::{BuildRefused, plan};
+use crate::error::BuildRefused;
+use crate::plan;
 use ravel_core::{ModId, Sha256Digest};
 use ravel_loader::{DiscoveryRefused, discover};
 

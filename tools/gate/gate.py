@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Scoped lane checks and content-addressed landing receipts."""
 
+from collections.abc import Iterable
 import datetime
 import hashlib
 from functools import cache
@@ -10,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tomllib
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY_PATHS = (
@@ -20,26 +22,26 @@ LEGACY_PATHS = (
 )
 
 
-def run(*args, **kwargs):
+def run(*args: str, **kwargs: Any) -> subprocess.CompletedProcess:
     print("+ " + " ".join(map(str, args)), flush=True)
     return subprocess.run(args, check=True, **kwargs)
 
 
-def capture(*args):
+def capture(*args: str) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
-def changed_paths(base=None):
+def changed_paths(base: str | None = None) -> list[str]:
     base = base if base is not None else os.environ.get("RAVEL_GATE_BASE", "fork_point(@ | main)")
     return capture("jj", "diff", "--from", base, "--to", "@", "--name-only").splitlines()
 
 
 @cache
-def cargo_metadata():
+def cargo_metadata() -> dict[str, Any]:
     return json.loads(capture("cargo", "metadata", "--format-version", "1", "--locked", "--all-features"))
 
 
-def legacy_changed(paths):
+def legacy_changed(paths: list[str]) -> bool:
     if any(p.startswith(LEGACY_PATHS) for p in paths):
         return True
     metadata = cargo_metadata()
@@ -58,7 +60,7 @@ def legacy_changed(paths):
     return any(p.startswith(roots) for p in paths)
 
 
-def package_scope(paths):
+def package_scope(paths: list[str]) -> tuple[list[str], list[str]]:
     metadata = cargo_metadata()
     members = set(metadata["workspace_members"])
     packages = {p["id"]: p for p in metadata["packages"] if p["id"] in members}
@@ -82,7 +84,7 @@ def package_scope(paths):
     return names(touched), names(affected)
 
 
-def quick(paths):
+def quick(paths: list[str]) -> None:
     run("cargo", "make", "ravel:fmt")
     touched, affected = package_scope(paths)
     print(f"gate scope: clippy={','.join(touched) or 'none'} tests={','.join(affected) or 'none'}", flush=True)
@@ -90,26 +92,7 @@ def quick(paths):
         flags = [arg for name in touched for arg in ("-p", name)]
         run("cargo", "clippy", "--locked", "--all-targets", "--all-features", *flags, "--", "-D", "warnings")
     if affected:
-        run("cargo", "make", "ravel:prepare-normalizer")
-        flags = [arg for name in affected for arg in ("-p", name)]
-        tested = False
-        for directory in sorted(Path("minecraft/versions").iterdir()):
-            if not directory.is_dir():
-                continue
-            version = directory.name
-            if capture("cargo", "run", "--quiet", "--locked", "-p", "ravel-xtask", "--", "version-matrix", version) != "live":
-                continue
-            env = dict(os.environ, RAVEL_MINECRAFT_VERSION=version,
-                       CARGO_TARGET_DIR=str(ROOT / "target/matrix" / version))
-            tested = True
-            run("cargo", "nextest", "run", "--locked", "--all-features", *flags, env=env)
-            if "ravel-composed-host" in affected:
-                run("cargo", "nextest", "run", "--locked", "-p", "ravel-composed-host", "--no-default-features", env=env)
-        if not tested:
-            raise RuntimeError("no tracked live version was testable; scoped tests proved nothing")
-        run("cargo", "test", "--locked", "--doc", "--all-features", *flags)
-        if "ravel-bootstrap-runtime" in affected:
-            run("cargo", "test", "--locked", "-p", "ravel-bootstrap-runtime", "--all-features")
+        test_packages(affected)
     run("cargo", "run", "--quiet", "--locked", "-p", "ravel-xtask", "--", "package", "digests", "--check", "--all")
     for suite in ("tools/gate", "jvm/legacy-platform/tools", "registry/sevtech", "registry/sevtech/bench"):
         run("python3", "-B", "-m", "unittest", "discover", "-s", suite, "-p", "test_*.py")
@@ -117,17 +100,37 @@ def quick(paths):
         run("cargo", "make", "ravel:registry-verify")
 
 
-def tree_identity():
+def test_packages(affected: list[str]) -> None:
+    run("cargo", "make", "ravel:prepare-normalizer")
+    flags = [arg for name in affected for arg in ("-p", name)]
+    tested = False
+    for version, eligibility in matrix_eligibility():
+        if eligibility != "live":
+            continue
+        env = dict(os.environ, RAVEL_MINECRAFT_VERSION=version,
+                   CARGO_TARGET_DIR=str(ROOT / "target/matrix" / version))
+        tested = True
+        run("cargo", "nextest", "run", "--locked", "--all-features", *flags, env=env)
+        if "ravel-composed-host" in affected:
+            run("cargo", "nextest", "run", "--locked", "-p", "ravel-composed-host", "--no-default-features", env=env)
+    if not tested:
+        raise RuntimeError("no tracked live version was testable; scoped tests proved nothing")
+    run("cargo", "test", "--locked", "--doc", "--all-features", *flags)
+    if "ravel-bootstrap-runtime" in affected:
+        run("cargo", "test", "--locked", "-p", "ravel-bootstrap-runtime", "--all-features")
+
+
+def tree_identity() -> str:
     return hashlib.sha256(subprocess.check_output(("jj", "debug", "tree", "-r", "@"))).hexdigest()
 
 
-def matrix_eligibility():
+def matrix_eligibility() -> list[list[str]]:
     return [[directory.name, capture("cargo", "run", "--quiet", "--locked", "-p", "ravel-xtask",
                                      "--", "version-matrix", directory.name)]
             for directory in sorted((ROOT / "minecraft/versions").iterdir()) if directory.is_dir()]
 
 
-def legacy_inputs():
+def legacy_inputs() -> set[str]:
     platform = ROOT / "tests/fixtures/local/legacy-platform"
     paths = {str(platform / line.split()[1]) for line in
              (ROOT / "jvm/legacy-platform/dependencies.sha256").read_text().splitlines()
@@ -143,13 +146,13 @@ def legacy_inputs():
     return paths
 
 
-def input_digests():
+def input_digests() -> dict[str, str | None]:
     paths = {entry["path"] for declaration in (ROOT / "minecraft/versions").glob("*/adapter.toml")
              for entry in tomllib.loads(declaration.read_text()).get("inputs", {}).values()}
     return digest_paths(paths)
 
 
-def digest_paths(paths):
+def digest_paths(paths: Iterable[str]) -> dict[str, str | None]:
     digests = {}
     for path in sorted(paths):
         source = ROOT / path
@@ -161,7 +164,7 @@ def digest_paths(paths):
     return digests
 
 
-def listing_digest(directory):
+def listing_digest(directory: str | Path) -> str:
     directory = Path(directory)
     entries = []
     visited = set()
@@ -181,7 +184,7 @@ def listing_digest(directory):
     return hashlib.sha256(json.dumps([directory.is_dir(), entries]).encode()).hexdigest()
 
 
-def receipt_context():
+def receipt_context() -> dict[str, Any]:
     environment = {key: value for key, value in os.environ.items()
                    if (key.startswith(("RAVEL_", "CARGO_", "RUST", "NEXTEST_", "JAVA_", "JDK_", "PYTHON", "LLVM_"))
                        or key in ("PATH", "HOME", "CC", "CXX", "AR", "JAVA", "JAVAC", "JAR",
@@ -195,16 +198,17 @@ def receipt_context():
             "rustc": capture("rustc", "-vV")}
 
 
-def receipt_key(tree, eligibility, inputs, context, legacy):
+def receipt_key(tree: str, eligibility: list[list[str]], inputs: dict[str, str | None],
+                context: dict[str, Any], legacy: bool) -> str:
     return hashlib.sha256(json.dumps([tree, eligibility, inputs, context, legacy], sort_keys=True).encode()).hexdigest()
 
 
-def legacy_live():
+def legacy_live() -> None:
     run("cargo", "make", "ravel:legacy-agent-build")
     run("cargo", "make", "ravel:legacy-agent-live")
 
 
-def land():
+def land() -> None:
     tree = tree_identity()
     eligibility = matrix_eligibility()
     inputs = input_digests()
@@ -237,7 +241,7 @@ def land():
     os.replace(temporary, stamp)
 
 
-def main():
+def main() -> None:
     os.chdir(ROOT)
     mode = sys.argv[1]
     if mode == "land":

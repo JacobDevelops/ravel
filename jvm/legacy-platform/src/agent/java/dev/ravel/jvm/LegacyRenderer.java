@@ -36,6 +36,7 @@ public final class LegacyRenderer {
             case "legacyRendererLayer" -> {
                 ownerEvent(5);
                 LegacyBakedCapture.draw();
+                LegacyWorldDraw.layer(first);
             }
             case "legacyRendererUpdate" -> {
                 ownerEvent(6);
@@ -68,6 +69,7 @@ public final class LegacyRenderer {
     // Generation admission is not a compilation/publication outcome claim.
     static void exit(String id, Object receiver, Object first) throws ReflectiveOperationException {
         switch (id) {
+            case "legacyRendererLayer" -> LegacyWorldDraw.layer(null);
             case "legacyRendererTaskCreate" -> capture(receiver);
             case "legacyRendererCompile" -> compileReturn(receiver, first);
             case "legacyRendererWorkerComplete" -> callbackReturn(receiver);
@@ -101,6 +103,7 @@ public final class LegacyRenderer {
     }
     public static int bakedCompositeDesignated() { return LegacyBakedCapture.compositeDesignated(); }
     public static boolean skipCompositeUpdate() { return LegacyCompositeCapture.replaying(); }
+    public static boolean productionReady(int x, int y, int z) { return LegacyWorldDraw.ready(x, y, z); }
     public static long snapshotPercentile(int percent) { return LegacySectionSnapshot.percentile(percent); }
     public static boolean snapshotProofReady() { return LegacySectionSnapshot.proofReady(); }
     public static boolean injectStaleSnapshotProof() { return LegacySectionSnapshot.rejectStaleProof(); }
@@ -134,6 +137,7 @@ public final class LegacyRenderer {
     public static long[] geometryProofMetrics() { return LegacyGeometryProof.metrics(); }
     public static long[] shadedNativeResidency() { return LegacyGeometryProof.shadedNativeResidency(); }
     public static long[] shadedGlResidency() { return LegacyGeometryProof.shadedGlResidency(); }
+    public static long[] productionWorldDraw() { return LegacyGeometryProof.worldMetrics(); }
     public static String[] geometryProofMetricNames() { return LegacyGeometryProof.NAMES.clone(); }
     public static String[] geometryProofInfo() { return LegacyGeometryProof.info(); }
     public static long[] geometryProofIdentity() { return LegacyGeometryProof.identity(); }

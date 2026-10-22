@@ -39,13 +39,14 @@ final class LegacyGeometryProof {
 
     private static String selection() {
         String value = System.getProperty("ravel.renderer", "vanilla");
-        if (!value.equals("vanilla") && !value.equals("geometry-proof"))
-            throw new IllegalArgumentException("ravel.renderer=" + value
-                    + " refused: world renderer texture/model/AO/light fidelity is unavailable; use vanilla or geometry-proof");
+        if (!value.equals("vanilla") && !value.equals("geometry-proof") && !value.equals("resident-world"))
+            throw new IllegalArgumentException("Renderer fidelity is unavailable for ravel.renderer=" + value);
+        if (value.equals("resident-world") && !Boolean.getBoolean("ravel.renderer.validation"))
+            throw new IllegalArgumentException("Renderer fidelity is unavailable: resident-world normal-frame parity unproven");
         return value;
     }
 
-    static boolean selected() { return SELECTION.equals("geometry-proof"); }
+    static boolean selected() { return !SELECTION.equals("vanilla"); }
 
     private static synchronized Class<?> platform() {
         if (!selected()) throw new IllegalStateException("Geometry proof was not explicitly selected");
@@ -117,7 +118,8 @@ final class LegacyGeometryProof {
     static String[] info() {
         String backend = platform == null ? (selected() ? "selected-not-initialized" : "not-selected")
                 : (String) call("backend", new Class<?>[0]);
-        return new String[]{SELECTION, backend, FIDELITY};
+        return new String[]{SELECTION, backend, SELECTION.equals("resident-world")
+                ? "one-section-opaque-world-replacement-parity-unproven" : FIDELITY};
     }
 
     static long[] identity() {
@@ -169,6 +171,12 @@ final class LegacyGeometryProof {
                 generation, resource, atlas, LegacyRenderer.ownerThread());
     }
 
+    static void worldLayer(int layer, int[] ids, long generation, long key) {
+        call("worldLayer", new Class<?>[]{int.class, int[].class, long.class, long.class,
+                long.class, long.class}, layer, ids, generation, key,
+                LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration());
+    }
+
     static void resortBaked(int[] output, long generation, long key) {
         requireOwner(generation);
         call("resortBaked", new Class<?>[]{int[].class, long.class, long.class, long.class},
@@ -204,6 +212,10 @@ final class LegacyGeometryProof {
         if (platform != null) call("retire", new Class<?>[]{long.class, long.class}, generation, LegacyRenderer.ownerThread());
     }
 
+    static long[] worldMetrics() {
+        return platform == null ? new long[11] : (long[]) call("worldMetrics", new Class<?>[0]);
+    }
+
     static void flushMetrics() {
         String destination = System.getProperty("ravel.renderer.metrics");
         if (destination != null) export(destination);
@@ -228,6 +240,9 @@ final class LegacyGeometryProof {
             json.append(Arrays.toString(shadedNativeResidency()).replace(" ", ""));
             json.append(",\"shadedGlResidency\":");
             json.append(Arrays.toString(shadedGlResidency()).replace(" ", ""));
+            json.append(",\"productionWorldDraw\":");
+            json.append(platform == null ? "[0,0,0,0,0,0,0,0,0,0,0]"
+                    : Arrays.toString((long[]) call("worldMetrics", new Class<?>[0])).replace(" ", ""));
             json.append("}\n");
             Path path = Path.of(destination);
             if (path.toAbsolutePath().getParent() != null) Files.createDirectories(path.toAbsolutePath().getParent());

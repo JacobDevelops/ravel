@@ -289,6 +289,29 @@ def png_chunk(kind: bytes, data: bytes) -> bytes:
 
 
 class RendererProofTests(unittest.TestCase):
+    def test_normal_world_requires_fresh_capture_files_and_strict_parity(self):
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            (directory / 'geometry-upload.json').write_text(json.dumps({
+                'productionWorldDraw': [1, 1, 1, 0, 1, 1, 1, 1, 3, 2, 1]}))
+            composite_fixture(directory)
+            with self.assertRaises(RuntimeError):
+                renderer_proof.production_proof(directory, 0)
+            for phase in range(3):
+                for designated in (0, 1, 2, 4):
+                    source = directory / f'composited-{phase}-{designated}.raw'
+                    (directory / f'production-{phase}-{designated}.raw').write_bytes(source.read_bytes())
+                    (directory / f'production-{phase}-{designated}.json').write_text(json.dumps({
+                        'residency': [1] * 16, 'origin': [1, 1, 1], 'camera': [0, 0, 0, 0, 0]}))
+            rows = renderer_proof.production_proof(directory, 0)
+            self.assertEqual(len(rows), 12)
+            path = directory / 'production-0-0.raw'
+            changed = bytearray(path.read_bytes())
+            changed[40] ^= 1
+            path.write_bytes(changed)
+            with self.assertRaisesRegex(RuntimeError, 'Normal world fidelity failed'):
+                renderer_proof.production_proof(directory, 0)
+
     def test_baked_requires_independent_atlas_and_observable_mismatch(self):
         with tempfile.TemporaryDirectory() as raw:
             directory = Path(raw)
@@ -449,6 +472,17 @@ class RendererProofTests(unittest.TestCase):
             for name in ('shadedNativeResidency', 'shadedGlResidency', 'shadedNativeLive', 'shadedGlLive'):
                 with self.subTest(name=name), self.assertRaises(RuntimeError):
                     renderer_proof.shaded_residency_proof(proof | {name: []})
+
+    def test_production_residency_forbids_offscreen_idle_submissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proof = geometry_proof_fixture(Path(directory))
+            with self.assertRaises(RuntimeError):
+                renderer_proof.shaded_residency_proof(proof, 'resident-world')
+            proof['shadedGlResidency'][14] = proof['shadedGlLive'][14] = 0
+            renderer_proof.shaded_residency_proof(proof, 'resident-world')
+            with self.assertRaises(RuntimeError):
+                renderer_proof.shaded_residency_proof(proof, 'geometry-proof')
+
     def test_generations_seams_and_freshness(self):
         proof = renderer_proof_fixture()
         proof['snapshot'].update(oracleRetryCells=7, oracleRetryCandidates=2)

@@ -93,7 +93,7 @@ public final class GenericMain {
                     "legacyWorldOpenIntegrated", "legacyScreenOpen", "legacyTitleInit",
                     "legacyRendererCompile", "legacyRendererWorkerComplete",
                     "legacyRendererTaskCreate", "legacyBakedQuad", "legacyBakedAo",
-                    "legacyBakedTint").contains(hook.hookMethod());
+                    "legacyBakedTint", "legacyRendererLayer").contains(hook.hookMethod());
             require(calls(method, "dev/ravel/jvm/Hook", "legacyEnter") == (entry ? 1 : 0),
                     "wrong reviewed entry adapter " + hook);
             require(calls(method, "dev/ravel/jvm/Hook", "legacyExit") == (exit ? 1 : 0),
@@ -101,6 +101,12 @@ public final class GenericMain {
     }
 
     private static void rendererFixtureTests(HookTarget hook, MethodModel method) {
+            if (hook.hookMethod().equals("legacyRendererLayer")) {
+                long layers = method.code().orElseThrow().elementStream()
+                        .filter(element -> element instanceof java.lang.classfile.instruction.LoadInstruction load
+                                && load.typeKind() == TypeKind.REFERENCE && load.slot() == 1).count();
+                require(layers == 2, "world draw lost its native or adapter layer argument");
+            }
             if (hook.hookMethod().equals("legacyRendererTaskCreate")) {
                 long receivers = method.code().orElseThrow().elementStream()
                         .filter(element -> element instanceof java.lang.classfile.instruction.LoadInstruction load
@@ -189,7 +195,7 @@ public final class GenericMain {
         require(required.isEmpty(), "missing original/supplemental legacy hooks: " + required);
         for (HookTarget hook : Hook.TARGETS) {
             boolean dormant = hook.hookMethod().startsWith("legacyBaked")
-                    && !System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof");
+                    && System.getProperty("ravel.renderer", "vanilla").equals("vanilla");
             Transformer transformer = new Transformer(new HookTarget[] {hook}, true);
             byte[] original = target(hook);
             byte[] rewritten = transformer.transform(null, GenericMain.class.getClassLoader(),

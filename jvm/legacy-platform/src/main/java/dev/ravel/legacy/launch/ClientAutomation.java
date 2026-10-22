@@ -48,6 +48,7 @@ final class ClientAutomation implements Runnable {
     private long unloadDrainChecks;
     private long unloadRetiredPoolGeneration;
     private String geometryLiveProof;
+    private final boolean[][] productionCaptured = new boolean[3][5];
 
     ClientAutomation(ClassLoader loader, Path evidence) {
         this.loader = loader;
@@ -414,7 +415,7 @@ final class ClientAutomation implements Runnable {
     }
 
     private static boolean geometrySelected() {
-        return "geometry-proof".equals(System.getProperty("ravel.renderer", "vanilla"));
+        return !"vanilla".equals(System.getProperty("ravel.renderer", "vanilla"));
     }
 
     private String geometryMetrics() throws ReflectiveOperationException {
@@ -448,7 +449,8 @@ final class ClientAutomation implements Runnable {
                 }
                 comparison.append('}');
                 String[] info = (String[]) rendererType().getMethod("geometryProofInfo").invoke(null);
-                require(info.length == 3 && info[0].equals("geometry-proof"), "Geometry mode not selected");
+                require(info.length == 3 && info[0].equals(System.getProperty("ravel.renderer")),
+                        "Geometry mode not selected");
                 byte[][] pixels = {
                     (byte[]) rendererType().getMethod("geometryProofPixels").invoke(null),
                     (byte[]) rendererType().getMethod("geometryProofReferencePixels").invoke(null),
@@ -462,8 +464,8 @@ final class ClientAutomation implements Runnable {
                 comparison.setLength(comparison.length() - 1);
                 comparison.append(",\"nativeForegroundPixels\":").append(nativeForeground)
                         .append(",\"vanillaForegroundPixels\":").append(vanillaForeground).append('}');
-                geometryLiveProof = "{\"selection\":\"geometry-proof\",\"offDefault\":true,"
-                        + "\"worldSubstitution\":false,\"fidelity\":\"not-proven\","
+                geometryLiveProof = "{\"selection\":\"" + info[0] + "\",\"offDefault\":true,"
+                        + "\"worldSubstitution\":" + info[0].equals("resident-world") + ",\"fidelity\":\"not-proven\","
                         + "\"reference\":\"self-reference-not-vanilla-oracle\","
                         + "\"vanillaScope\":\"published-SOLID-only-section-position-coverage-depth\","
                         + "\"width\":64,\"height\":64,\"rowOrder\":\"bottom-up\","
@@ -526,7 +528,8 @@ final class ClientAutomation implements Runnable {
         Files.writeString(evidence.resolve("geometry-upload.json"),
                 geometryLiveProof + ",\"finalMetrics\":" + finalMetrics + ",\"baked\":" + bakedProof()
                         + ",\"shadedNativeResidency\":" + onGame(() -> shadedResidency("shadedNativeResidency"))
-                        + ",\"shadedGlResidency\":" + onGame(() -> shadedResidency("shadedGlResidency")) + "}\n");
+                        + ",\"shadedGlResidency\":" + onGame(() -> shadedResidency("shadedGlResidency"))
+                        + ",\"productionWorldDraw\":" + onGame(() -> shadedResidency("productionWorldDraw")) + "}\n");
     }
 
     private String shadedResidency(String name) throws Exception {
@@ -551,7 +554,9 @@ final class ClientAutomation implements Runnable {
         require(values[0] > 0 && values[4] > 0 && values[5] == 0 && values[10] == -1,
                 "Baked CPU comparison missing or differs from vanilla");
         StringBuilder json = new StringBuilder("{\"comparison\":\"Rust-emission-vs-final-vanilla-BLOCK-words\","
-                + "\"drawable\":true,\"worldSubstitution\":false,\"maxQuadsPerSection\":" + GeometryProof.MAX_BAKED_QUADS);
+                + "\"drawable\":true,\"worldSubstitution\":"
+                + System.getProperty("ravel.renderer", "vanilla").equals("resident-world")
+                + ",\"maxQuadsPerSection\":" + GeometryProof.MAX_BAKED_QUADS);
         for (int i = 0; i < BAKED_NAMES.length; i++)
             json.append(",\"").append(BAKED_NAMES[i]).append("\":").append(values[i]);
         json.append(",\"world\":").append(Arrays.toString((long[]) rendererType().getMethod("bakedWorld").invoke(null)));
@@ -662,7 +667,10 @@ final class ClientAutomation implements Runnable {
                     viewed[0] = pending;
                     return false;
                 }
-                if (pending >= 0) captureComposite(phase, pending, -1);
+                if (pending >= 0) {
+                    if (pending != 3 && pending < 5 && !captureProduction(phase, pending)) return false;
+                    captureComposite(phase, pending, -1);
+                }
                 int covered = goldenCoverage(phase);
                 if (covered == all) return true;
                 if (System.nanoTime() - refilled[0] >= interval) {
@@ -736,6 +744,62 @@ final class ClientAutomation implements Runnable {
                 return null;
             });
         }
+    }
+
+    private boolean captureProduction(int phase, int designated) throws Exception {
+        if (!System.getProperty("ravel.renderer", "vanilla").equals("resident-world")) return true;
+        Path output = evidence.resolve("production-" + phase + "-" + designated + ".raw");
+        require(Boolean.getBoolean("ravel.legacy.proof"), "Normal world capture requires proof counters");
+        if (productionCaptured[phase][designated]) return true;
+        int x = goldenOrigin[0] + goldenChunks[designated][0] * 16;
+        int z = goldenOrigin[1] + goldenChunks[designated][1] * 16;
+        if (!onGame(() -> (boolean) rendererType().getMethod("productionReady", int.class, int.class, int.class)
+                .invoke(null, x, goldenY, z))) return false;
+        key(KeyEvent.VK_ESCAPE);
+        await(() -> onGame(() -> field(game, "m") != null));
+        Object renderer = onGame(() -> field(game, "o"));
+        Field hand = declaredField(renderer.getClass(), "C");
+        boolean previous = onGame(() -> hand.getBoolean(renderer));
+        double[] camera = onGame(this::playerState);
+        long[] identity = onGame(GeometryProof::bakedResidency);
+        long uploads = rendererCount(9);
+        try {
+            onGame(() -> {
+                hand.setBoolean(renderer, false);
+                Object framebuffer = game.getClass().getMethod("b").invoke(game);
+                dev.ravel.legacy.opengl.ProductionFrames.begin(
+                        phase == 0 ? designated : phase + 4, designated,
+                        (int) field(framebuffer, "f"), (int) field(game, "d"), (int) field(game, "e"),
+                        this::productionTick);
+                return null;
+            });
+            byte[][] captured = {null};
+            await("Normal world frame triplet captured", () -> {
+                captured[0] = onGame(dev.ravel.legacy.opengl.ProductionFrames::take);
+                return captured[0] != null;
+            }, TimeUnit.SECONDS.toNanos(30));
+            if (java.nio.ByteBuffer.wrap(captured[0]).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(16) != 1
+                    || rendererCount(9) != uploads) return false;
+            Files.write(output, captured[0]);
+            double[] after = onGame(this::playerState);
+            require(Arrays.equals(camera, after), "Normal world golden camera changed between arms");
+            Files.writeString(evidence.resolve("production-" + phase + "-" + designated + ".json"),
+                    "{\"residency\":" + Arrays.toString(identity) + ",\"origin\":[" + x + "," + goldenY
+                    + "," + z + "],\"camera\":" + Arrays.toString(camera)
+                    + ",\"clientTick\":" + dev.ravel.legacy.opengl.ProductionFrames.capturedTick() + "}");
+            productionCaptured[phase][designated] = true;
+        } finally {
+            onGame(() -> { dev.ravel.legacy.opengl.ProductionFrames.cancel(); return null; });
+            onGame(() -> { hand.setBoolean(renderer, previous); return null; });
+            key(KeyEvent.VK_ESCAPE);
+            await(() -> onGame(() -> field(game, "m") == null));
+        }
+        return true;
+    }
+
+    private long productionTick() {
+        try { return hookCount("legacy.client-tick"); }
+        catch (Exception failure) { throw new IllegalStateException("Client tick identity unavailable", failure); }
     }
 
     private boolean captureComposite(int phase, int expected, int point) throws Exception {

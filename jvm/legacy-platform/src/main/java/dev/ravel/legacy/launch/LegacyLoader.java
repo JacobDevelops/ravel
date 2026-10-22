@@ -44,6 +44,7 @@ public final class LegacyLoader extends URLClassLoader {
         try (var input = resource.openStream()) {
             byte[] bytes = rewrite(input.readAllBytes());
             if (name.equals("bib")) bytes = LegacyShutdown.transform(bytes, this);
+            if (name.equals("buq")) bytes = dev.ravel.legacy.opengl.ProductionFrames.transform(bytes, this);
             if (name.equals("com.mojang.text2speech.Narrator")) bytes = LegacyNarrator.transform(bytes);
             return defineClass(name, bytes, 0, bytes.length);
         } catch (IOException failure) {

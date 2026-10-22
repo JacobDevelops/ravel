@@ -78,8 +78,10 @@ def renderer_proof(path: Path, started: float, selection: str = 'vanilla') -> Pr
             <= snapshot['maxNanos'] <= snapshot['totalNanos']):
         raise RuntimeError('Bounded vanilla snapshot roundtrip, timing or stale capture proof missing')
     mesh_proof(proof['mesh'], selection)
-    if selection == 'geometry-proof':
-        geometry_proof(path.parent / 'geometry-upload.json', started)
+    if selection != 'vanilla':
+        geometry_proof(path.parent / 'geometry-upload.json', started, selection)
+    if selection == 'resident-world':
+        production_proof(path.parent, started)
     return proof
 
 
@@ -123,10 +125,10 @@ def mesh_proof(mesh: Proof, selection: str = 'vanilla') -> None:
     stress = mesh['stress']
     retired = mesh['retiredBeforeDrain']
     evidence = 'actual-retired-before-drain' if retired > 0 else 'deterministic-harness-only'
-    if selection not in ('vanilla', 'geometry-proof'):
+    if selection not in ('vanilla', 'geometry-proof', 'resident-world'):
         raise RuntimeError(f'Unsupported renderer selection: {selection}')
     labels = MESH_LABELS | ({'upload': 'bounded-native-wire-java-owned-offscreen-gl'}
-                            if selection == 'geometry-proof' else {})
+                            if selection != 'vanilla' else {})
     if not (all(mesh[key] == value for key, value in labels.items())
             and mesh['cancellationEvidence'] == evidence and 0 <= retired <= mesh['submitted']
             and 0 < mesh['drained'] and mesh['drained'] + retired <= mesh['submitted'] and mesh['errors'] == 0
@@ -153,7 +155,7 @@ def mesh_proof(mesh: Proof, selection: str = 'vanilla') -> None:
         raise RuntimeError('Bounded native geometry admission, drain, stale rejection or timing proof missing')
 
 
-def shaded_residency_proof(proof: Proof) -> None:
+def shaded_residency_proof(proof: Proof, selection: str = 'geometry-proof') -> None:
     native, gl = proof['shadedNativeResidency'], proof['shadedGlResidency']
     live_native, live_gl = proof['shadedNativeLive'], proof['shadedGlLive']
     vectors = ((native, 12), (gl, 16), (live_native, 12), (live_gl, 16))
@@ -167,26 +169,28 @@ def shaded_residency_proof(proof: Proof) -> None:
             and native[3] >= live_native[3] > 0 and native[4] >= native[3]
             and gl[1] == live_gl[0] == live_gl[1] == BAKED_GL_RESERVED_BYTES
             and gl[2] == gl[4] * 3 > 0 and gl[3] == native[3]
-            and gl[14] >= live_gl[14] > 0 and gl[15] == 0
+            and (gl[14] == live_gl[14] == 0 if selection == 'resident-world'
+                 else gl[14] >= live_gl[14] > 0) and gl[15] == 0
             and live_gl[5] == 3 and live_native[5:] == live_gl[6:13]
             and live_gl[6] > 0 and live_gl[7] > 0 and live_gl[8] == live_gl[9] > 0
             and all(axis & 15 == 0 for axis in live_gl[10:13]) and live_gl[13] > 0):
         raise RuntimeError('Shaded generation, acknowledgement, residency reuse or shutdown drain missing')
 
 
-def geometry_proof(path: Path, started: float) -> Proof:
+def geometry_proof(path: Path, started: float, selection: str = 'geometry-proof') -> Proof:
     if not path.is_file() or path.stat().st_mtime < started:
         raise RuntimeError(f'No fresh geometry upload proof: {path}')
     proof = json.loads(path.read_text())
     metrics, final = proof['metrics'], proof['finalMetrics']
-    shaded_residency_proof(proof)
-    if not (proof['selection'] == 'geometry-proof' and proof['offDefault'] is True
-            and proof['worldSubstitution'] is False and proof['fidelity'] == 'not-proven'
+    shaded_residency_proof(proof, selection)
+    if not (proof['selection'] == selection and proof['offDefault'] is True
+            and proof['worldSubstitution'] is (selection == 'resident-world') and proof['fidelity'] == 'not-proven'
             and proof['reference'] == 'self-reference-not-vanilla-oracle'
             and proof['width'] == proof['height'] == 64 and proof['rowOrder'] == 'bottom-up'
-            and len(proof['info']) == 3 and proof['info'][0] == 'geometry-proof'
+            and len(proof['info']) == 3 and proof['info'][0] == selection
             and proof['info'][1] in ('OpenGL15', 'ARB_vertex_buffer_object')
-            and proof['info'][2] == 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused'
+            and proof['info'][2] == ('one-section-opaque-world-replacement-parity-unproven'
+                if selection == 'resident-world' else 'geometric-only-no-uv-sprite-tint-ao-baked-light-world-replacement-refused')
             and all(type(value) is int and value >= 0 for value in metrics.values())
             and all(type(value) is int and value >= 0 for value in final.values())
             and all(metrics[key] > 0 for key in
@@ -237,7 +241,7 @@ def geometry_proof(path: Path, started: float) -> Proof:
     coverage = sum((pixels[0][i] != 0) != (pixels[2][i] != 0) for i in range(0, PROOF_IMAGE_BYTES, 4))
     if rgba != vanilla['rgbaMismatchPixels'] or coverage != vanilla['coverageMismatchPixels']:
         raise RuntimeError('Vanilla mismatch counts do not match raw pixels')
-    baked_proof(proof['baked'], path.parent, started)
+    baked_proof(proof['baked'], path.parent, started, selection)
     composited_proof(path.parent, started)
     return proof
 
@@ -346,6 +350,35 @@ def fluid_evidence(data: bytes, designated: int) -> list[int]:
     return [mask, sources, flow, lava]
 
 
+def production_proof(directory: Path, started: float) -> list[Proof]:
+    export = json.loads((directory / 'geometry-upload.json').read_text())
+    metrics = export.get('productionWorldDraw', [])
+    if not (len(metrics) == 11 and all(type(value) is int and value >= 0 for value in metrics)
+            and all(metrics[layer] > 0 for layer in range(3)) and metrics[3] == 0
+            and metrics[7] > 0 and 0 < metrics[9] <= metrics[8] and metrics[10] == 1):
+        raise RuntimeError('Normal world replacement/fallback counters missing or invalid')
+    rows = []
+    for phase in range(3):
+        for designated in (0, 1, 2, 4):
+            path = directory / f'production-{phase}-{designated}.raw'
+            if not path.is_file() or path.stat().st_mtime < started:
+                raise RuntimeError(f'Missing fresh normal world frame: {path.name}')
+            identity_path = path.with_suffix('.json')
+            if not identity_path.is_file() or identity_path.stat().st_mtime < started:
+                raise RuntimeError(f'Missing fresh normal world identity: {identity_path.name}')
+            identity = json.loads(identity_path.read_text())
+            residency = identity.get('residency', [])
+            if not (len(residency) == 16 and residency[0] > 0 and residency[6] > 0
+                    and residency[7] > 0 and residency[10:13] == identity.get('origin')):
+                raise RuntimeError(f'Normal world resident identity mismatch: {identity_path.name}')
+            rows.append(composited_sample(path.read_bytes(), phase, designated))
+    (directory / 'production-summary.json').write_text(json.dumps(rows, indent=2) + '\n')
+    if any(row[key] for row in rows for key in
+           ('rgbaMismatchPixels', 'coverageMismatchPixels', 'depthMismatchPixels')):
+        raise RuntimeError('Normal world fidelity failed: ' + json.dumps(rows))
+    return rows
+
+
 def composited_proof(directory: Path, started: float) -> list[Proof]:
     rows = []
     for phase in range(3):
@@ -428,10 +461,11 @@ def baked_golden(row: Proof, scene: int, directory: Path, started: float) -> Non
         raise RuntimeError(f'Baked golden counts differ from raw readbacks: {name}')
 
 
-def baked_proof(proof: Proof, directory: Path, started: float) -> None:
+def baked_proof(proof: Proof, directory: Path, started: float, selection: str = 'geometry-proof') -> None:
     validate_scene_settings()
     labels = {'comparison': 'Rust-emission-vs-final-vanilla-BLOCK-words', 'drawable': True,
-              'worldSubstitution': False, 'maxQuadsPerSection': BAKED_MAX_QUADS_PER_SECTION}
+              'worldSubstitution': selection == 'resident-world',
+              'maxQuadsPerSection': BAKED_MAX_QUADS_PER_SECTION}
     nonnegative = ('busySections', 'unsupportedSections', 'staleSections', 'animatedSpriteObservations',
                    'glStaleSections', 'glUnsupportedSections', 'controlledDeferredSections', *BAKED_REFUSALS)
     positive = ('comparedSections', 'quads', 'cpuNanos', 'maxInputBytes', 'maxOutputBytes',

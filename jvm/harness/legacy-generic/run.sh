@@ -25,10 +25,12 @@ mkdir -p "$work/classes" "$work/fixture" "$work/entries" "$work/missing"
     "$sources/PaletteFixture.java" "$sources/PaletteMain.java"
 native=("${jvm[@]}" --module-path "$jar" --add-modules "dev.ravel.agent,java.instrument"
     --enable-native-access=dev.ravel.agent --patch-module "dev.ravel.agent=$work/classes")
-for renderer in vanilla geometry-proof world; do
+for renderer in vanilla geometry-proof resident-world world; do
     "${native[@]}" "-Dravel.renderer=$renderer" \
         -m dev.ravel.agent/dev.ravel.jvm.LegacyGeometryProofMain
 done
+"${native[@]}" -Dravel.renderer=resident-world -Dravel.renderer.validation=true \
+    -m dev.ravel.agent/dev.ravel.jvm.LegacyGeometryProofMain
 "${native[@]}" -m dev.ravel.agent/dev.ravel.jvm.LegacyRetainedMeshMain
 (cd "$work" && "${native[@]}" -m dev.ravel.agent/dev.ravel.jvm.NativeMain prepare \
     "$work/entries" "$work/missing" "$work/entry-names")
@@ -39,6 +41,7 @@ server="${entries[1]}"
 # Real generated inventory: every method must contain native and adapter calls.
 (cd "$work" && "${native[@]}" -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
 (cd "$work" && "${native[@]}" -Dravel.renderer=geometry-proof -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
+(cd "$work" && "${native[@]}" -Dravel.renderer=resident-world -Dravel.renderer.validation=true -Dravel.host="$host" -m dev.ravel.agent/dev.ravel.jvm.GenericMain)
 "${jvm[@]}" -cp "$work/fixture:$jar" dev.ravel.jvm.ExecutableMain
 # ExecutableMain checks the actual legacy fire-damage refusal crossing.
 section refusal

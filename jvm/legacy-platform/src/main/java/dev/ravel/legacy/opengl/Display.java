@@ -173,7 +173,11 @@ public final class Display {
     public static void setVSyncEnabled(boolean enabled) {
         if (window != 0) GLFW.glfwSwapInterval(enabled ? 1 : 0);
     }
-    public static void update() { GLFW.glfwSwapBuffers(window); GLFW.glfwPollEvents(); }
+    public static void update() {
+        ResidentWorldDraw.presented(getWidth(), getHeight());
+        GLFW.glfwSwapBuffers(window);
+        GLFW.glfwPollEvents();
+    }
     public static boolean wasResized() {
         boolean value = resized;
         resized = false;

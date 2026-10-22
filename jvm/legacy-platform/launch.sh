@@ -21,9 +21,14 @@ client_native_modules="$modules"
 server_native_options=()
 if [[ "$action" == client-agent || "$action" == server-agent ]]; then
     case "${RAVEL_LEGACY_RENDERER:-vanilla}" in
-        vanilla|geometry-proof) ;;
-        *) echo 'RAVEL_LEGACY_RENDERER must be vanilla or geometry-proof' >&2; exit 1 ;;
+        vanilla|geometry-proof|resident-world) ;;
+        *) echo 'RAVEL_LEGACY_RENDERER must be vanilla, geometry-proof or resident-world' >&2; exit 1 ;;
     esac
+    if [[ "${RAVEL_LEGACY_RENDERER:-vanilla}" == resident-world
+            && "${RAVEL_LEGACY_PRODUCTION_VALIDATION:-0}" != 1 ]]; then
+        echo 'resident-world refused: normal-frame pixel parity is unproven; validation only' >&2
+        exit 1
+    fi
     action="${action%-agent}"
     suffix="-agent"
     agent="${RAVEL_LEGACY_AGENT:-$root/target/ravel-jvm/ravel-agent.jar}"
@@ -36,8 +41,11 @@ if [[ "$action" == client-agent || "$action" == server-agent ]]; then
     agent_options=(--add-modules dev.ravel.agent "-javaagent:$agent"
         "-Dravel.host=$host" -Dravel.report.targets=true -Dravel.report.loader=true
         -Dravel.legacy.acceptance=true -Dravel.legacy.proof=true)
-    if [[ "$action" == client && "${RAVEL_LEGACY_RENDERER:-vanilla}" == geometry-proof ]]; then
-        agent_options+=(-Dravel.renderer=geometry-proof)
+    if [[ "$action" == client && "${RAVEL_LEGACY_RENDERER:-vanilla}" != vanilla ]]; then
+        agent_options+=("-Dravel.renderer=$RAVEL_LEGACY_RENDERER")
+        if [[ "$RAVEL_LEGACY_RENDERER" == resident-world && "${RAVEL_LEGACY_PRODUCTION_VALIDATION:-0}" == 1 ]]; then
+            agent_options+=(-Dravel.renderer.validation=true)
+        fi
     fi
     if [[ -n "${RAVEL_LEGACY_PROBES:-}" ]]; then
         agent_options+=(--patch-module "dev.ravel.agent=$RAVEL_LEGACY_PROBES"

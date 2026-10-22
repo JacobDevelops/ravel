@@ -456,7 +456,7 @@ public final class Transformer implements ClassFileTransformer {
             hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
             returnKind = TypeKind.from(targetType.returnType()).asLoadable();
             dormantBaked = target.hookMethod().startsWith("legacyBaked")
-                    && !System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof");
+                    && System.getProperty("ravel.renderer", "vanilla").equals("vanilla");
             if (isTitleMenu(target)
                     && TypeKind.from(targetType.returnType()) != TypeKind.INT
                     && returnKind != TypeKind.VOID) {
@@ -561,7 +561,7 @@ public final class Transformer implements ClassFileTransformer {
 
         private void freezeCompositeUpdate(CodeBuilder builder) {
             if (target.hookMethod().equals("legacyRendererUpdate")
-                    && System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof")) {
+                    && !System.getProperty("ravel.renderer", "vanilla").equals("vanilla")) {
                 builder.invokestatic(ClassDesc.of("dev.ravel.jvm.LegacyRenderer"),
                         "skipCompositeUpdate", MethodTypeDesc.ofDescriptor("()Z"));
                 builder.ifThen(block -> block.return_());
@@ -665,7 +665,7 @@ public final class Transformer implements ClassFileTransformer {
                         "legacyRecipeRegister", "legacyWorldOpen", "legacyWorldOpenIntegrated",
                         "legacyScreenOpen", "legacyTitleInit", "legacyRendererCompile",
                         "legacyRendererWorkerComplete", "legacyRendererTaskCreate",
-                        "legacyBakedQuad", "legacyBakedAo", "legacyBakedTint" -> true;
+                        "legacyBakedQuad", "legacyBakedAo", "legacyBakedTint", "legacyRendererLayer" -> true;
                 default -> false;
             };
         }
@@ -760,7 +760,7 @@ public final class Transformer implements ClassFileTransformer {
                 case "legacyPayloadClient", "legacyPayloadServer", "legacyRecipeRegister",
                         "legacyWorldOpen", "legacyWorldOpenIntegrated", "legacyScreenOpen",
                         "legacyBlockMetadataFromState", "legacyCommandExecute",
-                        "legacyItemFireDamage" -> 0;
+                        "legacyItemFireDamage", "legacyRendererLayer" -> 0;
                 case "legacyRendererCompile" -> 3;
                 default -> -1;
             };

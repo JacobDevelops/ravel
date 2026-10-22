@@ -2,17 +2,49 @@
 
 ## Status and boundary
 
-Vanilla remains authoritative for ordinary world drawing. The off-by-default
-`geometry-proof` selection submits independently emitted baked BLOCK vertices
-to a bounded Java-owned offscreen GL comparison. Slice 8 additionally replays
-complete static-camera world frames, substituting one acknowledged resident
-section at a time while every other section and the rest of the world remain
-vanilla. This is a selected acceptance proof, not a default renderer cutover.
-It uses the live atlas and lightmap, model positions, UVs, shaded color, combined
-light, alpha testing and translucent blending. Step four adds native translucent
-re-sorting to the selected path; whole sections containing water/lava still stay
-on vanilla. Native fluid tessellation and replacement-renderer savings remain
-unsupported.
+Vanilla remains the default world renderer. Earlier slices 5–8 selection-on trials
+measured **proof overhead**, not Ravel world drawing: `geometry-proof` submits to
+the bounded offscreen comparison, and slice 8 substitutes one section only inside
+explicit world-frame replay. Those timings are not renderer-replacement results.
+
+The separate experimental `resident-world` selection intercepts vanilla's actual
+per-section VBO draw during normal SOLID, CUTOUT_MIPPED and CUTOUT rendering.
+It reuses vanilla's layer state, translation and section ordering. Residency is
+limited to **one acknowledged section**, not every admitted visible section;
+therefore this is a replacement-mechanism experiment, not a production world renderer.
+Fluids, stale generations, pending meshes and all TRANSLUCENT draws remain vanilla.
+`productionWorldDraw` exports four replacement counts, four fallback counts,
+presented frames, frames with replacements and maximum replaced sections/frame.
+Whole-frame normal-rendering raw triplets are separate from replay evidence;
+readback occurs on the ordinary world-render return, before GUI depth clears.
+The selection remains refused outside diagnostic opt-in
+`RAVEL_LEGACY_PRODUCTION_VALIDATION=1`. The first normal-world independent
+recount submitted **one section/frame** in twelve 1280×720 samples, with three
+strict RGBA failures. Coverage and depth were exact. Initial failure counts:
+
+| Phase | Opaque RGBA mismatches | Cutout-mipped | Cutout | Animated |
+| --- | ---: | ---: | ---: | ---: |
+| Initial | 0 | 0 | 0 | 0 |
+| Resource reload | 0 | 0 | 15006 | 17043 |
+| Reopened | 0 | 0 | 14516 | 0 |
+
+All failed pixels lie on the animated magma wall. In the two cutout-designated
+failures, every mismatching pixel equals the omitted arm: the changed wall is
+outside the replaced cutout section. Captures now require all three ordinary
+frames inside one counted client tick, beginning just after that tick; drift,
+camera/upload/FBO changes poison the triplet and retry without consuming it.
+The independent tick-stable recount has **zero RGBA, coverage and depth
+mismatches in all twelve frames**, each with one resident section and positive
+omitted-section footprint. This supports animation drift as the original cause;
+atlas phase and GL state were not independently sampled. No oracle changed.
+Next: scale residency to every admitted visible section within a bounded budget,
+before production translucent and trials. Full-world parity is not established.
+
+The earlier offscreen/replay proof uses the live atlas and lightmap, model
+positions, UVs, shaded color, combined light, alpha testing and translucent
+blending. Slice 8's native translucent re-sort belongs to that proof path, not
+the new production opaque experiment. Whole fluid sections remain on vanilla.
+Native fluid tessellation and replacement-renderer savings remain unsupported.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
 cube approximations. Model resolution, connected/multipart selection, face
@@ -565,5 +597,6 @@ the completed run passed without changing the camera path, oracle or draw
 requirement. No moving stop or static row differed in the completed run.
 
 This proves the bounded selected software-GL replay, not physical-GPU parity,
-default world cutover or renderer savings. The next step is preflighted frozen
-RTX 5090 trials, then default cutover with fluids on vanilla.
+default world cutover or renderer savings. Normal-world color parity and bounded
+visible-section residency must precede production translucent replacement and
+preflighted frozen RTX 5090 trials. No default cutover is admitted.

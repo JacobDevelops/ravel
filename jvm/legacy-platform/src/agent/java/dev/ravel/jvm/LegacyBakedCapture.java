@@ -76,6 +76,7 @@ final class LegacyBakedCapture {
 
     static synchronized void clear() {
         resident = false;
+        LegacyWorldDraw.clear();
         LegacyBakedResort.clear();
         active = null;
         queued = null;
@@ -128,7 +129,8 @@ final class LegacyBakedCapture {
     static void draw() {
         if (!LegacyGeometryProof.selected() || LegacyCompositeCapture.replaying()) return;
         if (queued != null) drawQueued();
-        else if (resident && LegacyRuntime.resourceGeneration() == LegacyRuntime.completedResourceGeneration())
+        else if (resident && System.getProperty("ravel.renderer", "vanilla").equals("geometry-proof")
+                && LegacyRuntime.resourceGeneration() == LegacyRuntime.completedResourceGeneration())
             LegacyGeometryProof.drawBaked(LegacyRuntime.completedResourceGeneration(),
                     LegacyRuntime.atlasResourceGeneration());
     }
@@ -176,6 +178,10 @@ final class LegacyBakedCapture {
                 return;
             }
             capture.settle(true);
+            boolean exact = true;
+            for (int layer = 0; layer < 3; layer++)
+                for (int mismatch = 1; mismatch <= 3; mismatch++) exact &= result[layer * 7 + mismatch] == 0;
+            if (exact) LegacyWorldDraw.acknowledge(capture.generation, capture.key);
             resident = true;
         }
         queued = null;
@@ -495,6 +501,7 @@ final class LegacyBakedCapture {
             if (count > 0 && (!controlledWindow() || needed())) {
                 queued = this;
                 Object chunk = access.chunk.invokeExact(task);
+                LegacyWorldDraw.offer(chunk, task, origin, generation, key);
                 LegacyBakedResort.offer(generation, key, origin, output, chunk,
                         (ByteBuffer) access.buffer.invokeExact(builders[3]));
                 resident = false;

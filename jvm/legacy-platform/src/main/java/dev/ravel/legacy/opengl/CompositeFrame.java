@@ -19,6 +19,8 @@ public final class CompositeFrame {
 
     private CompositeFrame() { }
 
+    static boolean replaying() { return buffers != null; }
+
     static byte[] capture(Runnable render, int buffer, int[] ids, int[] counts, int scene, int designated,
             int width, int height, boolean fallback) {
         if (buffers != null || width <= 0 || height <= 0 || width > 1920 || height > 1080)
@@ -75,7 +77,7 @@ public final class CompositeFrame {
                 if (vanillaFallback) return false;
                 if (mode != GL11.GL_QUADS || first != 0 || count != vertices[layer])
                     throw new IllegalStateException("Resident world draw does not match published vanilla layer");
-                submit(mode, count, offset, bound);
+                submit(mode, count, offset, resident, bound);
                 draws++;
                 submitted += count;
                 return true;
@@ -85,17 +87,17 @@ public final class CompositeFrame {
         return false;
     }
 
-    private static void submit(int mode, int count, int offset, int previous) {
+    static void submit(int mode, int count, int offset, int buffer, int previous) {
         GL11.glPushClientAttrib(GL11.GL_CLIENT_VERTEX_ARRAY_BIT);
         try {
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, resident);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, buffer);
             GL11.glVertexPointer(3, GL11.GL_FLOAT, 28, (long) offset);
             GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12L + offset);
             GL13.glClientActiveTexture(GL13.GL_TEXTURE0);
             GL11.glTexCoordPointer(2, GL11.GL_FLOAT, 28, 16L + offset);
             GL13.glClientActiveTexture(GL13.GL_TEXTURE1);
             GL11.glTexCoordPointer(2, GL11.GL_SHORT, 28, 24L + offset);
-            GL11.glDrawArrays(mode, 0, count);
+            org.lwjgl.opengl.GL11.glDrawArrays(mode, 0, count);
         } finally {
             GL11.glPopClientAttrib();
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, previous);

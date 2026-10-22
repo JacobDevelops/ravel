@@ -432,6 +432,20 @@ public final class GeometryProof {
         }
         BAKED_RESIDENCY[14]++;
     }
+
+    public static synchronized void worldLayer(int layer, int[] ids, long generation, long key,
+            long resource, long atlas) {
+        boolean current = BAKED_RESIDENCY[0] > 0 && BAKED_RESIDENCY[6] == generation
+                && BAKED_RESIDENCY[7] == key && BAKED_RESIDENCY[8] == resource && BAKED_RESIDENCY[9] == atlas
+                && context == GL.getCapabilities();
+        if (current) BAKED_LEASE.draw(generation, Thread.currentThread().threadId());
+        int offset = 0;
+        for (int index = 0; index < layer; index++) offset += bakedLayers[index] * 28;
+        ResidentWorldDraw.layer(layer, current && layer >= 0 ? ids[layer] : 0, current ? bakedBuffer : 0,
+                layer >= 0 ? bakedLayers[layer] : 0, offset);
+    }
+
+    public static long[] worldMetrics() { return ResidentWorldDraw.metrics(); }
     public static synchronized byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated,
             int width, int height, long generation, long resource, long atlas, long owner, boolean fallback) {
         if (fallback && designated >= 5 && context == null) initialize();

@@ -117,7 +117,8 @@ def validate_production_export(out: Path, renderer: str, started_ns: int) -> Non
     validate_production_shapes(data)
     require(0 < data['vanillaVbo'][0] <= data['vanillaVbo'][1] and data['vanillaVbo'][2] > 0,
             'vanilla section VBO accounting missing')
-    require(data['nativeDedupe'][0] >= data['nativeDedupe'][1] == data['native'][4],
+    require(data['nativeDedupe'][0] >= data['nativeDedupe'][1]
+            and data['nativeDedupe'][1] <= data['native'][0],
             'native dedupe accounting differs')
     if renderer != 'resident-world':
         require(not any(data['draws'] + data['globalSorts'] + data['ownedSorts']

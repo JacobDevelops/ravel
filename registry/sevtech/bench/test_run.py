@@ -49,7 +49,7 @@ class RunPolicyTests(TestCase):
                                 ("ownedSorts", [9, 2, 0]), ("ownedSorts", [0, 0, 0]), ("acceptance", True),
                                 ("validationOverride", False), ("draws", [0] * 11),
                                 ("vanillaVbo", [0, 80, 0]), ("vanillaVbo", [90, 80, 4]),
-                                ("nativeDedupe", [39, 40]), ("nativeDedupe", [80, 41])):
+                                ("nativeDedupe", [39, 40]), ("nativeDedupe", [102, 101])):
                 path.write_text(json.dumps(dict(data, **{key: values})))
                 with self.subTest(key=key), self.assertRaises(ValueError):
                     run.validate_production_export(out, "resident-world", 0)
@@ -64,6 +64,8 @@ class RunPolicyTests(TestCase):
             out = Path(raw)
             path = out / "production-renderer.json"
             path.write_text(json.dumps(data))
+            run.validate_production_export(out, "resident-world", 0)
+            path.write_text(json.dumps(dict(data, nativeDedupe=[81, 41])))
             run.validate_production_export(out, "resident-world", 0)
             for admitted in [1, -1, False, None]:
                 path.write_text(json.dumps(dict(data, translucentAdmissions=admitted)))
@@ -80,10 +82,11 @@ class RunPolicyTests(TestCase):
             path = out / "production-renderer.json"
             path.write_text(json.dumps(data))
             run.validate_production_export(out, "vanilla", 0)
-            data["draws"][4] = 1
-            path.write_text(json.dumps(data))
-            with self.assertRaisesRegex(ValueError, "unselected arm"):
-                run.validate_production_export(out, "vanilla", 0)
+            for key, value in (("draws", [0, 0, 0, 0, 1] + [0] * 8),
+                               ("nativeDedupe", [1, 0]), ("translucentAdmissions", 1)):
+                path.write_text(json.dumps(dict(data, **{key: value})))
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "unselected arm"):
+                    run.validate_production_export(out, "vanilla", 0)
 
     def test_resident_preflight_rejects_production_schema_drift(self) -> None:
         data = dict(self.geometry_export("geometry-proof"),

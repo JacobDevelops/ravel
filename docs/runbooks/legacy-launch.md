@@ -122,8 +122,13 @@ instrumentation. The default remains vanilla.
 Each timed Ravel arm exports `production-renderer.json`: replacements and fallbacks
 for SOLID, CUTOUT_MIPPED, CUTOUT and TRANSLUCENT; global and currently owned section
 sort/upload counts; native/GL residency, peaks and budgets; and live/peak vanilla
-section VBO bytes. `nativeDedupe` compares hypothetical retained bytes without opaque
-release against actual native bytes for the same currently resident population.
+section VBO bytes. Vanilla section VBO accounting runs only for a selected renderer
+or the benchmark observer;
+the unselected normal client does not maintain this counter. `nativeDedupe` compares
+hypothetical retained bytes without opaque release against actual native bytes for
+the same live native population, including pending meshes and shared table capacity.
+Its two values are sampled under one native lock; the separate budget sample may
+differ when a compile worker publishes between exports.
 A resident-world arm requires replacements in all three opaque layers. TRANSLUCENT
 replacement and sort/upload coverage are also required when that arm's lifetime
 `translucentAdmissions` is positive; an absent layer does not manufacture a failure.

@@ -1005,3 +1005,99 @@ The strict golden oracle was not relaxed. Frozen runtime SHA256 values:
 | Fixture-free host | `2e275f2ed92f3149008f9fef1522335c42d03ad463170519524c31530cc6fe82` |
 | Platform | `163881e66c383a7fe9345f806a8c9b5a5210ea6a545db7c0f85d74693b35456b` |
 | Screen | `ba1940fcfb4b0c57eb5bfb170bdefbbfebdad67b71a7bcb0ffd084ed937827be` |
+
+## Exact fallback attribution and capture-pool recapture
+
+`geometry-upload.json` now exports `productionFallbackReasons`: four layers by sixteen
+mutually exclusive reasons, counted at vanilla's draw site in the same branch as
+`productionWorldDraw`'s per-layer fallback counter. The benchmark validator requires
+each layer's reasons to sum exactly to that layer's fallback draws. In index order:
+
+| Reason | Meaning for the bound vanilla section VBO |
+| --- | --- |
+| baseline | admitted, but drawn by vanilla in a baseline frame |
+| stale | acknowledged resident, section dirty, moved or recompiled since |
+| pending | acknowledged resident with a different pending compile task |
+| unacknowledged | offered, waiting for its GL drain and exact acknowledgement |
+| drain-refused | drained without exact acknowledgement |
+| gl-evicted | acknowledged, but evicted from the GL table |
+| gl-over-budget | acknowledged, but larger than the GL budget at admission |
+| gl-stale-key | acknowledged, but no current GL entry for its generation, key, resource and atlas, or the GL context changed; GL keys evicted or refused before the latest 4,096 of each also land here |
+| fluid | latest compile contains fluid, whole-section fallback |
+| skipped | latest compile not captured: capture pool full, configuration refused or controlled window |
+| refused | latest compile captured but refused, including resources changing before offer |
+| in-flight | latest compile captured but not finished |
+| dropped | offered, then removed from the 4,096-entry agent table or by resort refusal |
+| untracked | no capture event since the last renderer clear |
+| count | resident vertex count differs from vanilla's draw |
+| shape | non-quad, offset or non-block-layer draw |
+
+A stale resident whose recompile was skipped, refused or found fluid is labelled with
+that latest outcome. Admission guards are unchanged; only labels were added.
+
+Three individual functional-only Xvfb/Mesa llvmpipe runs used the unchanged
+warm-filesystem slice-1 workload at 1280×720 and render distance 12, each exit 0 in
+343 seconds. Every layer's reasons summed exactly to its fallback count.
+
+| Run | GL budget | SOLID | CUTOUT_MIPPED | CUTOUT | GL peak | GL evictions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `wp5s8-r27-attrib` | 163,840,000 | 48.8349% | 55.1201% | 53.1903% | 163,839,984 | 259 |
+| `wp5s8-r27-gl224` | 234,881,024 | 49.2372% | 56.0252% | 54.4680% | 183,934,464 | 0 |
+| `wp5s8-r27-recapture2` | 163,840,000 | 60.4149% | 68.6659% | 64.9976% | 163,839,760 | 392 |
+
+Percentages are replaced / (replaced + fallback) draws. TRANSLUCENT stayed at 0%:
+these runs admitted no non-fluid translucent sections.
+
+Opaque and cutout fallback draws by reason, summed over the three layers (zero rows omitted):
+
+| Reason | Attribution, 163,840,000 | 224 MiB | After recapture |
+| --- | ---: | ---: | ---: |
+| fluid | 1,863,168 | 1,942,871 | 2,222,740 |
+| skipped | 1,343,712 | 1,197,721 | 58,221 |
+| pending | 127,465 | 154,098 | 133,904 |
+| refused | 75,295 | 64,220 | 93,831 |
+| unacknowledged | 43,911 | 42,647 | 43,987 |
+| stale | 7,332 | 25,465 | 544 |
+| untracked | 2,880 | 4,131 | 0 |
+| in-flight | 189 | 155 | 186 |
+| gl-evicted, gl-over-budget, gl-stale-key, others | 0 | 0 | 0 |
+| **Total fallback draws** | 3,463,952 | 3,431,308 | 2,553,413 |
+
+No fallback draw in any run hit a GL eviction, budget refusal or GL key miss. The
+163,840,000-byte table evicts sections far from the newest admission, and none of those
+was drawn afterward. At 224 MiB the GL peak was 183,934,464 bytes with no evictions, but
+the ratios rose only 0.4–1.3 points. That is close to the 0.2–0.7-point spread between
+`wp5s8-resident-r26` and `wp5s8-r27-attrib` at the same budget, and every gain came
+from reasons other than GL eviction. **The GL budget stays unchanged:** the data does not
+support raising it.
+
+The dominant non-fluid cause was `skipped`. The capture pool holds
+`captureLimit` sections (43 at distance 12) and the GL drain acknowledges two per
+frame. During the initial distance-12 load most compiles found the pool full, and a
+section is only captured again when vanilla recompiles it, so those sections stayed vanilla.
+
+The fix records sections whose latest compile found the capture pool full, or whose
+resources changed before the offer while the renderer generation was still accepted.
+Other skips and refusals are not retried. When the drain queue is empty and no controlled
+golden window is open, the resident-world seam marks at most two of them dirty per frame, without
+forcing an immediate rebuild. Vanilla recompiles them and the normal capture, comparison,
+exact acknowledgement and every admission guard apply unchanged. Skipped draws fell
+from 1,343,712 to 58,221. Fluid sections are now 87.05% of the remaining opaque and
+cutout fallbacks. Their whole-section fallback is a deliberate guard, kept here.
+Some previously skipped sections turned out to contain fluid when recaptured, so the
+fluid count rose. An earlier iteration that also retried persistent skips and
+refusals (`wp5s8-r27-recapture`) reached 60.1720%/69.6454%/66.2676%; review narrowed the
+retry set and bounded it per frame before the final run.
+
+Frozen runtime SHA256 values (host and screen unchanged from the previous section;
+the 224 MiB platform was a temporary uncommitted experiment build):
+
+| Run | Agent | Platform |
+| --- | --- | --- |
+| `wp5s8-r27-attrib` | `ef68e25d2effac7abb43f3a652845512c0ebd4bea17a7df02da28c3d60f4e487` | `22a80e7d82ffcc8a0d230d5af9561984f0772a86d28b90688a46591158a67abb` |
+| `wp5s8-r27-gl224` | `ef68e25d2effac7abb43f3a652845512c0ebd4bea17a7df02da28c3d60f4e487` | `de82d6583d0c5835c97085625e25cecc9ecec0da73cedb4d9fdebdf4348898fb` |
+| `wp5s8-r27-recapture2` | `ca6ddc366d01fdac41560079b9c773c179d6a2c8a4fb93f635a3ba56a8b231c3` | `aba2e2d6ee4f876b58091aba9c59fa3e4c142c97dcb9882f62fef2c7e3e81a03` |
+
+These are functional software-GL counts, not performance evidence. Vanilla remains the
+default. Next: run physical frozen RTX 5090 trials now that ratios are higher. Separately, scope a
+proven fluid capture path, since fluid sections are now the dominant fallback.

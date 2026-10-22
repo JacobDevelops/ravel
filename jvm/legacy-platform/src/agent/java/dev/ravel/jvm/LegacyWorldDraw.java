@@ -2,6 +2,7 @@ package dev.ravel.jvm;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -17,8 +18,10 @@ final class LegacyWorldDraw {
     private static final boolean SELECTED = System.getProperty("ravel.renderer", "vanilla").equals("resident-world");
     private static final IdentityHashMap<Object, int[]> SECTIONS = new IdentityHashMap<>();
     private static final ArrayList<int[]> CHANGED = new ArrayList<>();
+    private static final ArrayDeque<Object> RETRY = new ArrayDeque<>();
     private static final HashSet<Long> DRAINED = new HashSet<>();
     private static boolean reset;
+    private static int retries;
     private static final int[] VBO = new int[4];
     private static final int[] EMPTY = new int[0];
     private static long configured;
@@ -31,26 +34,42 @@ final class LegacyWorldDraw {
     private static Entry probe;
     private static int probeKind;
     private LegacyWorldDraw() { }
-    static synchronized void status(Object task, int code, boolean settle) {
+    static synchronized void status(Object task, int code, boolean settle, boolean retry) {
         if (!SELECTED) return;
         try {
             Object chunk = method("LEGACY_COMPILE_TASK", "getChunk").invoke(task);
-            if (chunk != null) mark(chunk, code, settle);
+            if (chunk != null) mark(chunk, code, settle, retry);
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section status failed", failure); }
     }
-    private static void mark(Object chunk, int code, boolean settle) throws ReflectiveOperationException {
+    private static void mark(Object chunk, int code, boolean settle, boolean retry) throws ReflectiveOperationException {
         int[] section = SECTIONS.get(chunk);
         if (section == null) {
-            section = new int[6];
+            section = new int[7];
             Method buffer = method("LEGACY_RENDER_CHUNK", "getBuffer");
             for (int index = 0; index < 4; index++) {
                 Object vertexBuffer = buffer.invoke(chunk, index);
                 section[1 + index] = vertexBuffer == null ? 0 : field("LEGACY_VERTEX_BUFFER", "id").getInt(vertexBuffer);
             }
             SECTIONS.put(chunk, section);
-        } else if (settle && section[0] != IN_FLIGHT || section[0] == code) return;
+        } else if (settle && section[0] != IN_FLIGHT) return;
+        if (retry && section[6] == 0) RETRY.addLast(chunk);
+        section[6] = retry ? 1 : section[6] == 0 ? 0 : 2;
+        if (section[0] == code) return;
         section[0] = code;
         if (section[5] == 0) { section[5] = 1; CHANGED.add(section); }
+    }
+    static synchronized void frame() { retries = 2; }
+    private static void retry() throws ReflectiveOperationException {
+        while (retries > 0 && !RETRY.isEmpty()) {
+            Object chunk = RETRY.pollFirst();
+            int[] section = SECTIONS.get(chunk);
+            if (section == null) continue;
+            boolean wanted = section[6] == 1;
+            section[6] = 0;
+            if (!wanted) continue;
+            method("LEGACY_RENDER_CHUNK", "setDirty").invoke(chunk, false);
+            retries--;
+        }
     }
     static synchronized void drained(long key) {
         Entry entry = ENTRIES.get(key);
@@ -109,10 +128,11 @@ final class LegacyWorldDraw {
         if (emitted[3] > 0) admittedTranslucent++;
         ENTRIES.values().removeIf(entry -> entry.chunk() == chunk || Arrays.equals(entry.origin(), origin));
         if (ENTRIES.size() == 4096) ENTRIES.remove(ENTRIES.keySet().iterator().next());
+        if (!DRAINED.isEmpty()) DRAINED.retainAll(ENTRIES.keySet());
         ENTRIES.put(key, new Entry(chunk, task, origin.clone(), generation, key, false,
                 Arrays.copyOf(emitted, 4), new long[3], new float[3]));
         if (!SELECTED) return;
-        try { mark(chunk, OFFERED, false); }
+        try { mark(chunk, OFFERED, false, false); }
         catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section status failed", failure); }
     }
     static synchronized void acknowledge(long generation, long key) {
@@ -125,7 +145,7 @@ final class LegacyWorldDraw {
     }
     static synchronized void clear() {
         ENTRIES.clear(); probe = null; configured = 0; LegacyWorldResort.clear();
-        SECTIONS.clear(); CHANGED.clear(); DRAINED.clear(); reset = true;
+        SECTIONS.clear(); CHANGED.clear(); RETRY.clear(); DRAINED.clear(); reset = true;
     }
     static synchronized boolean ready(int x, int y, int z) {
         for (Entry entry : ENTRIES.values())
@@ -178,7 +198,7 @@ final class LegacyWorldDraw {
         return compiled != null && method("LEGACY_RENDER_CHUNK", "getCompiledChunk").invoke(entry.chunk()) == compiled
                 && (pending == null || method("LEGACY_COMPILE_TASK", "getCompiledChunk").invoke(pending) == compiled);
     }
-    static synchronized void refuse(long key) { ENTRIES.remove(key); }
+    static synchronized void refuse(long key) { ENTRIES.remove(key); DRAINED.remove(key); }
     private static boolean current(Entry entry) { return reason(entry) == 0; }
     private static int reason(Entry entry) {
         if (!entry.ready()) return -1;
@@ -210,6 +230,7 @@ final class LegacyWorldDraw {
                 method("LEGACY_RENDER_CHUNK", "setDirty").invoke(chunk, true);
                 probe = null;
             }
+            if (LegacyBakedCapture.idle()) retry();
             Method buffer = method("LEGACY_RENDER_CHUNK", "getBuffer");
             Field id = field("LEGACY_VERTEX_BUFFER", "id");
             for (Entry entry : ENTRIES.values()) {

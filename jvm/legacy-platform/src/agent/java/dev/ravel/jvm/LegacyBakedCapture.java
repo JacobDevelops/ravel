@@ -70,17 +70,18 @@ final class LegacyBakedCapture {
         if (LegacyRenderer.taskGeneration(task) <= 0) return;
         Thread thread = Thread.currentThread();
         int limit = LegacyWorldDraw.captureLimit(48 + LIMIT * (RECORD + 224));
-        if (ACTIVE.containsKey(thread) || allocated >= limit && AVAILABLE.isEmpty()
-                || controlledWindow() && (queued != null || !ACTIVE.isEmpty())) { skip(task, 1); return; }
+        if (ACTIVE.containsKey(thread)
+                || controlledWindow() && (queued != null || !ACTIVE.isEmpty())) { skip(task, 1, false); return; }
+        if (allocated >= limit && AVAILABLE.isEmpty()) { skip(task, 1, true); return; }
         Capture capture = AVAILABLE.pollFirst();
         try {
             if (capture == null) { capture = new Capture(); allocated++; }
             if (controlledWindow() && LegacyCompositeCapture.pending()
                     && !LegacyCompositeCapture.replacePending(task)) {
-                AVAILABLE.addLast(capture); skip(task, 1); return;
+                AVAILABLE.addLast(capture); skip(task, 1, false); return;
             }
             if (!LegacyWorldDraw.configure(LegacyRenderer.taskGeneration(task))) {
-                AVAILABLE.addLast(capture); skip(task, 1); return;
+                AVAILABLE.addLast(capture); skip(task, 1, false); return;
             }
             capture.begin(task, x, y, z);
         } catch (Throwable failure) {
@@ -88,17 +89,18 @@ final class LegacyBakedCapture {
             throw new IllegalStateException("Baked capture initialization failed", failure);
         }
         if (controlledWindow() && !capture.needed()) {
-            capture.release(); AVAILABLE.addLast(capture); skip(task, 29); return;
+            capture.release(); AVAILABLE.addLast(capture); skip(task, 29, false); return;
         }
-        LegacyWorldDraw.status(task, LegacyWorldDraw.IN_FLIGHT, false);
+        LegacyWorldDraw.status(task, LegacyWorldDraw.IN_FLIGHT, false, false);
         ACTIVE.put(thread, capture);
         LOCAL.set(capture);
     }
-    private static void skip(Object task, int metric) {
+    private static void skip(Object task, int metric, boolean retry) {
         METRICS[metric]++;
-        LegacyWorldDraw.status(task, LegacyWorldDraw.SKIPPED, false);
+        LegacyWorldDraw.status(task, LegacyWorldDraw.SKIPPED, false, retry);
     }
 
+    static boolean idle() { return queued == null && !controlledWindow(); }
     static synchronized void clear() {
         resident = false;
         LegacyWorldDraw.clear();
@@ -401,12 +403,13 @@ final class LegacyBakedCapture {
                     : capture.pending ? INCOMPLETE_QUAD
                     : capture.epoch != epoch || !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
             int status = LegacyWorldDraw.REFUSED;
+            boolean retry = false;
             if (reason != 0) refuse(reason);
             else if (capture.fluidFallback()) status = LegacyWorldDraw.FLUID;
             else {
-                synchronized (LegacyBakedResort.class) { capture.compare(); }
+                synchronized (LegacyBakedResort.class) { retry = capture.compare(); }
             }
-            LegacyWorldDraw.status(task, status, true);
+            LegacyWorldDraw.status(task, status, true, retry);
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
         } finally {
@@ -530,8 +533,8 @@ final class LegacyBakedCapture {
             return true;
         }
 
-        void compare() throws Throwable {
-            if (designated() >= 5) { refuse(UNACCOUNTED_VERTICES); return; }
+        boolean compare() throws Throwable {
+            if (designated() >= 5) { refuse(UNACCOUNTED_VERTICES); return false; }
             Object translucent = builders[3];
             source.putFloat(4, (float) (camera[0] + access.x.getDouble(translucent)));
             source.putFloat(8, (float) (camera[1] + access.y.getDouble(translucent)));
@@ -540,8 +543,8 @@ final class LegacyBakedCapture {
             int vertices = 0;
             for (int i = 0; i < 4; i++) {
                 int length = (int) access.count.invokeExact(builders[i]);
-                if (length < 0 || length % 4 != 0) { refuse(UNACCOUNTED_VERTICES); return; }
-                if (length > (LIMIT * 4) - vertices) { refuse(QUAD_BUDGET); return; }
+                if (length < 0 || length % 4 != 0) { refuse(UNACCOUNTED_VERTICES); return false; }
+                if (length > (LIMIT * 4) - vertices) { refuse(QUAD_BUDGET); return false; }
                 vertices += length;
                 oracle.putInt(i * 4, length / 4);
                 ByteBuffer buffer = (ByteBuffer) access.buffer.invokeExact(builders[i]);
@@ -549,8 +552,8 @@ final class LegacyBakedCapture {
                 view.clear().limit(length * 28);
                 oracle.put(view);
             }
-            if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return; }
-            if (!resourceCurrent()) { METRICS[3]++; return; }
+            if (vertices != count * 4) { refuse(UNACCOUNTED_VERTICES); return false; }
+            if (!resourceCurrent()) { METRICS[3]++; return true; }
             source.putInt(0, count);
             supersede(this);
             long[] result = Hook.ravelRendererBaked(generation, section, source.array(), oracle.array(), output);
@@ -558,16 +561,17 @@ final class LegacyBakedCapture {
             if (!resourceCurrent() || !LegacyRenderer.accepts(generation)) {
                 if (result.length == 7) settle(false);
                 METRICS[3]++;
-                return;
+                return LegacyRenderer.accepts(generation);
             }
-            if (result.length == 0) { METRICS[3]++; return; }
+            if (result.length == 0) { METRICS[3]++; return false; }
             if (result.length != 7 || result[0] < 0) {
                 refuse(result.length == 6
                         && LegacyRendererContract.BakedFailure.decode(result[1]) == LegacyRendererContract.BakedFailure.DECODE
                         ? RUST_DECODE : RUST_OTHER);
-                return;
+                return false;
             }
             publish(result);
+            return false;
         }
 
         private void publish(long[] result) throws Throwable {

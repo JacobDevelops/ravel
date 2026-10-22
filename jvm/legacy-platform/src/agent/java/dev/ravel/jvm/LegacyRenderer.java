@@ -32,7 +32,7 @@ public final class LegacyRenderer {
                 ownerEvent(3);
                 if (LegacyGeometryProof.selected() && LegacyWorldDraw.distanceChanged()) lifecycle(1);
                 LegacyMeshWork.frame();
-                if (LegacyGeometryProof.selected()) LegacyBakedCapture.frame();
+                if (LegacyGeometryProof.selected()) { LegacyBakedCapture.frame(); LegacyWorldDraw.frame(); }
             }
             case "legacyRendererTerrain" -> ownerEvent(4);
             case "legacyRendererLayer" -> {

@@ -308,9 +308,9 @@ fn find_cycle(
         }
     }
 
-    let mut walk: Vec<&ModId> = vec![stuck.first().copied().expect("a cycle has a member")];
+    let mut current = stuck.first().copied().expect("a cycle has a member");
+    let mut walk = vec![current];
     let repeat = loop {
-        let current = *walk.last().expect("the walk starts with one member");
         let previous = predecessors
             .get(current)
             .and_then(BTreeSet::first)
@@ -320,6 +320,7 @@ fn find_cycle(
             break index;
         }
         walk.push(previous);
+        current = previous;
     };
 
     let mut members: Vec<ModId> = walk.split_off(repeat).into_iter().rev().cloned().collect();

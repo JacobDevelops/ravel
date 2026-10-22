@@ -1,18 +1,20 @@
 //! Generates pinned bindings using the shared generator before the adapter compiles.
+//!
+//! Missing Cargo paths or an unexpected crate layout fail the build with an error.
 
 use ravel_minecraft_generate as generate;
 
 use std::path::PathBuf;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
+        std::env::var_os("CARGO_MANIFEST_DIR").ok_or("Cargo did not set CARGO_MANIFEST_DIR")?,
     );
     let root = manifest
         .ancestors()
         .nth(2)
-        .expect("the crate lives under crates/<name>");
-    let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+        .ok_or("the adapter crate must live under crates/<name>")?;
+    let out = PathBuf::from(std::env::var_os("OUT_DIR").ok_or("Cargo did not set OUT_DIR")?);
 
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-env-changed={}", generate::SELECTION);
@@ -41,4 +43,5 @@ fn main() {
     // Cargo forwards `links` metadata to direct dependants' build scripts.
     println!("cargo::metadata=bindings={}", generated.bindings.display());
     println!("cargo::metadata=exports={}", generated.exports.display());
+    Ok(())
 }

@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 use super::{GenerateError, Input, Inputs};
 
-/// Refuses an input whose bytes no longer match the tracked hash.
+/// Refuses an input whose bytes no longer match the tracked hash or length.
 pub(crate) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateError> {
     // Omit paths from recorded evidence to avoid exposing machine-local details.
     let name = file_name(&input.path);
@@ -28,7 +28,7 @@ pub(crate) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
         }
     }
     if let Some(expected) = input.bytes
-        && u64::try_from(bytes.len()).expect("input length fits in u64") != expected
+        && u64::try_from(bytes.len()) != Ok(expected)
     {
         return Err(GenerateError::Drift(format!(
             "{name} is {} bytes but the adapter inputs pin {expected}",
@@ -54,7 +54,8 @@ pub(crate) fn repin_locks(
         let name = file_name(&input.path);
         let bytes =
             fs::read(root.join(&input.path)).map_err(|error| GenerateError::io(name, error))?;
-        let length = u64::try_from(bytes.len()).expect("lock length fits in u64");
+        let length = u64::try_from(bytes.len())
+            .map_err(|_| GenerateError::Input(format!("{name} length exceeds u64")))?;
         document = replace_pin(&document, table, &sha256(&bytes), length)?;
     }
     fs::write(&path, document)

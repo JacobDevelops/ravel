@@ -198,3 +198,6 @@ fn seeded_member_name(
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests;

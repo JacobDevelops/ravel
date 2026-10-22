@@ -11,7 +11,8 @@ vanilla. This is a selected acceptance proof, not a default renderer cutover.
 It uses the live atlas and lightmap, model positions, UVs, shaded color, combined
 light, alpha testing and translucent blending. Step two keeps every section
 containing translucent vertices on vanilla, including its camera-dependent
-resort; fluids and replacement-renderer savings remain unsupported.
+resort. Step three also routes complete water/lava-containing sections to vanilla;
+native fluid tessellation and replacement-renderer savings remain unsupported.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
 cube approximations. Model resolution, connected/multipart selection, face
@@ -439,9 +440,9 @@ Neither fallback nor camera movement relaxes the pixel oracle.
 Ravel camera-dependent translucent re-sorting remains unimplemented: these
 moving rows prove the vanilla fallback, not a native translucent ordering claim.
 
-Remaining acceptance work is fluid provenance and tessellation, then preflight
-followed by frozen physical trials, before considering a default cutover.
-No physical trial belongs to this moving-camera step.
+Remaining acceptance work includes native translucent resort and native fluid
+tessellation, then preflight followed by frozen physical trials before considering
+a default cutover. No physical trial belongs to this moving-camera step.
 
 The rebuilt selected live acceptance exited 0. An independent raw recount
 (separate scalar `struct`/`memoryview` implementation, without importing the
@@ -464,3 +465,45 @@ These moving rows prove fidelity of the translucent vanilla fallback under
 camera motion, not resident translucent ordering or whole-world native drawing.
 Opaque/cutout resident substitution is proven by the twelve static rows; the
 moving rows do not claim additional resident opaque/cutout substitutions.
+
+## Slice 8, step three: whole-section fluid fallback
+
+The boring option is to keep fluid sections entirely on vanilla. Minecraft
+1.12.2's `BlockFluidRenderer` does not emit baked-model quads, so water and lava
+cannot acquire source provenance by treating their final buffers as model input.
+The selected compile capture checks every interior cell using the pinned vanilla
+water/flowing-water/lava/flowing-lava block IDs (8–11), including enclosed fluids
+that emit no visible vertices. A match refuses native baked publication and routes
+the entire designated section, including its opaque basin, to vanilla.
+This does not implement native fluids or claim their provenance.
+
+Three additional static sections contain a still-water basin, a continuously fed
+falling/flowing-water basin and a lava basin. They repeat across initial, staged
+resource reload and reopened-world phases. Fluid frames use version 4 of the
+three-arm format: version 3's unchanged pixel payload plus four little-endian
+counts (fluid-ID mask, water sources, flowing surface cells, lava cells). Every
+fluid row requires matching scene-specific fluid evidence, zero substituted draws
+and zero resident vertices, positive world-depth coverage, a visible omitted-section
+footprint and the same exact RGBA/coverage and two-24-bit-depth-unit checks.
+The complete matrix now requires 24 static and 15 moving frames; missing fluid
+rows, native fluid-section draws and fluid pixel/depth mismatches fail acceptance.
+The flowing scene waits for non-falling, non-source water levels before retaining
+a frame; fluid offers also wait 250 ms without a replacing compile. One-block
+basin rims and a raised, supported camera expose the surfaces. Superseding fluid
+compiles replace pending fluid offers for the same section. The first replay waits
+for the exact offered compiled chunk upload; later fallback frames use current
+vanilla buffers.
+
+The lane gate, legacy agent build and selected `geometry-proof` live acceptance
+all exited 0. The 31 harness unit tests include fluid-row refusal mutations.
+An independent scalar raw recount, importing no acceptance implementation,
+checked all 39 frames at 1280×720: zero RGBA, coverage or depth mismatches under
+the unchanged strict oracle. Its nine fluid rows had zero substituted draws and
+vertices and 12,222–25,458 omitted-section footprint pixels. All phases contained
+16 still-water source cells, one source plus 15 flowing surface cells in the
+flowing scene, and 16 lava cells. These counts prove the fixture states and
+whole-section routing, not native fluid tessellation or steady-state simulation.
+
+Native translucent resort and fluid tessellation remain before the preflighted
+frozen RTX 5090 trials and any default cutover. No physical trials run in this
+step, and drawing stays off by default.

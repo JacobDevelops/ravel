@@ -14,7 +14,7 @@ final class LegacyBakedCapture {
     private static final int LIMIT = LegacyRendererContract.BAKED_MAX_QUADS;
     private static final int RECORD = LegacyRendererContract.BAKED_RECORD_BYTES;
     static final int SCENES = 8;
-    static final int DESIGNATED = 5;
+    static final int DESIGNATED = 8;
     static final int SAMPLES = 8;
     static final int READBACK_BYTES = 16 + 64 * 64 * 16;
     private static final int QUAD_BUDGET = 20;
@@ -48,8 +48,12 @@ final class LegacyBakedCapture {
     static synchronized void begin(Object task, float x, float y, float z) {
         if (!LegacyGeometryProof.selected()) return;
         if (LegacyRenderer.taskGeneration(task) <= 0) return;
-        if (active != null || queued != null || LegacyCompositeCapture.pending()) { METRICS[1]++; return; }
+        if (active != null || queued != null) { METRICS[1]++; return; }
         try {
+            if (LegacyCompositeCapture.pending() && !LegacyCompositeCapture.replaceFluid(task)) {
+                METRICS[1]++;
+                return;
+            }
             if (storage == null) storage = new Capture();
             storage.begin(task, x, y, z);
         } catch (Throwable failure) { throw new IllegalStateException("Baked capture initialization failed", failure); }
@@ -127,7 +131,7 @@ final class LegacyBakedCapture {
         int designated = capture.designated();
         int scene = designated < 0 ? -1 : capture.scene(designated);
         boolean retain = scene >= 0 && RETAINED[scene] < SAMPLES
-                && (RETAINED_COVERAGE[phase] & 1 << designated) == 0;
+                && designated < 5 && (RETAINED_COVERAGE[phase] & 1 << designated) == 0;
         long[] identity = {capture.generation, capture.key, capture.source.getLong(16),
                 capture.source.getLong(24), capture.origin[0], capture.origin[1], capture.origin[2],
                 LegacyRenderer.ownerThread()};
@@ -292,7 +296,7 @@ final class LegacyBakedCapture {
                     : capture.pending ? INCOMPLETE_QUAD
                     : !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
             if (reason != 0) refuse(reason);
-            else capture.compare();
+            else if (!capture.fluidFallback()) capture.compare();
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
         } finally { capture.release(); }
@@ -307,6 +311,7 @@ final class LegacyBakedCapture {
         final int[] output = new int[4 + LIMIT * 28];
         final Object[] builders = new Object[4];
         final int[] words = new int[28];
+        final int[] fluids = new int[4];
         final int[] light = new int[4];
         final float[] ao = new float[4];
         final float[] rgb = new float[12];
@@ -395,7 +400,23 @@ final class LegacyBakedCapture {
                     && source.getLong(24) == LegacyRuntime.atlasResourceGeneration();
         }
 
+        boolean fluidFallback() throws Throwable {
+            Object chunk = access.chunk.invokeExact(task);
+            LegacySectionSnapshot.fluids(chunk, fluids);
+            if (fluids[0] == 0) return false;
+            refuse(UNACCOUNTED_VERTICES);
+            int designated = designated();
+            if (designated == 6 && fluids[2] == 0) return true;
+            if (needed() && resourceCurrent() && LegacyRenderer.accepts(generation)) {
+                LegacyCompositeCapture.offer(chunk, task, 7, designated, origin);
+                LegacyCompositeCapture.fluids(fluids);
+                LegacyCompositeCapture.ready(true);
+            }
+            return true;
+        }
+
         void compare() throws Throwable {
+            if (designated() >= 5) { refuse(UNACCOUNTED_VERTICES); return; }
             Object translucent = builders[3];
             source.putFloat(4, (float) (camera[0] + access.x.getDouble(translucent)));
             source.putFloat(8, (float) (camera[1] + access.y.getDouble(translucent)));

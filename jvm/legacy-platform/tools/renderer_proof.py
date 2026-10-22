@@ -6,7 +6,7 @@ import struct
 from typing import TypeAlias
 import tempfile
 
-from harness_settings import validate_scene_settings
+from harness_settings import SCENES, validate_scene_settings
 
 JsonValue: TypeAlias = str | int | float | bool | None | list['JsonValue'] | dict[str, 'JsonValue']
 Proof: TypeAlias = dict[str, JsonValue]
@@ -294,15 +294,17 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
     if len(data) < 32:
         raise RuntimeError('Composited frame header missing')
     scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
-    expected = designated if phase == 0 else phase + 4
-    fallback = designated == 3
-    if (scene != expected or section != designated or version != 3 or vertices != expected_vertices
+    expected = 7 if designated >= 5 else designated if phase == 0 else phase + 4
+    fallback = designated == 3 or designated >= 5
+    if (scene != expected or section != designated or version != (4 if designated >= 5 else 3)
+            or vertices != expected_vertices
             or not 0 < width <= COMPOSITE_MAX_WIDTH or not 0 < height <= COMPOSITE_MAX_HEIGHT
             or draws != (0 if fallback else 1)
             or (vertices != 0 if fallback else not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4)
             or vertices % 4
-            or len(data) != 32 + width * height * 24):
+            or len(data) != 32 + width * height * 24 + (16 if designated >= 5 else 0)):
         raise RuntimeError(f'Composited frame metadata invalid: phase={phase}, section={designated}')
+    fluids = fluid_evidence(data, designated) if designated >= 5 else []
     pixels = width * height
     vanilla = data[32:32 + pixels * 4]
     resident = data[32 + pixels * 8:32 + pixels * 12]
@@ -321,19 +323,33 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
                     for i in range(pixels))
     if footprint == 0:
         raise RuntimeError('Composited designated section has no visible footprint')
-    return {'phase': phase, 'scene': BAKED_SCENES[scene], 'designated': BAKED_SCENES[designated],
+    return {'phase': phase, 'scene': SCENES[designated] if designated >= 5 else BAKED_SCENES[scene],
+            'designated': SCENES[designated], 'fluidStateCounts': fluids,
             'width': width, 'height': height, 'substitutedDraws': draws, 'substitutedVertices': vertices,
-            'translucentVanillaFallback': fallback,
+            'translucentVanillaFallback': designated == 3, 'fluidVanillaFallback': designated >= 5,
             'visibleSectionPixels': footprint,
             'rgbaMismatchPixels': sum(vanilla[i:i + 4] != resident[i:i + 4] for i in range(0, pixels * 4, 4)),
             'coverageMismatchPixels': sum((a < 1) != (b < 1) for a, b in zip(left, right)),
             'depthMismatchPixels': sum(abs(float32(a - b)) > BAKED_DEPTH_TOLERANCE for a, b in zip(left, right))}
 
 
+def fluid_evidence(data: bytes, designated: int) -> list[int]:
+    mask, sources, flow, lava = struct.unpack_from('<4i', data, len(data) - 16)
+    valid = all(0 <= value <= 4096 for value in (sources, flow, lava))
+    if designated == 7:
+        valid &= mask > 0 and mask & ~12 == 0 and lava > 0 and sources == flow == 0
+    else:
+        valid &= mask > 0 and mask & ~3 == 0 and sources > 0 and lava == 0
+        valid &= flow > 0 if designated == 6 else flow == 0
+    if not valid:
+        raise RuntimeError('Composited fluid state evidence invalid')
+    return [mask, sources, flow, lava]
+
+
 def composited_proof(directory: Path, started: float) -> list[Proof]:
     rows = []
     for phase in range(3):
-        for designated in range(5):
+        for designated in range(len(SCENES)):
             path = directory / f'composited-{phase}-{designated}.raw'
             if not path.is_file() or path.stat().st_mtime < started:
                 raise RuntimeError(f'Missing fresh composited frame: {path.name}')

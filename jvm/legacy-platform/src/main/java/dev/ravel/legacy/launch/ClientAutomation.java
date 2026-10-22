@@ -140,7 +140,7 @@ final class ClientAutomation implements Runnable {
         long[][] rows = (long[][]) rendererType().getMethod("bakedGoldens").invoke(null);
         require(metrics.length == BAKED_NAMES.length && metrics[0] > 0, "Preflight has no baked admissions");
         StringBuilder names = new StringBuilder();
-        for (int scene = 0; scene < goldenChunks.length; scene++) {
+        for (int scene = 0; scene < 5; scene++) {
             require(rows.length > scene && rows[scene].length == 7 && rows[scene][0] > 0
                     && rows[scene][4] > 0 && rows[scene][5] > 0, "Preflight scene not measured: " + BAKED_SCENES[scene]);
             if (scene > 0) names.append(',');
@@ -583,8 +583,10 @@ final class ClientAutomation implements Runnable {
     }
 
     private int goldenY;
-    private final String[][] goldenBlocks = new String[5][];
-    private final int[][] goldenChunks = new int[5][];
+    private static final String[] COMPOSITE_SCENES = {"opaque", "cutout-mipped", "cutout", "translucent",
+            "animated", "still-water", "flowing-water", "lava"};
+    private final String[][] goldenBlocks = new String[COMPOSITE_SCENES.length][];
+    private final int[][] goldenChunks = new int[COMPOSITE_SCENES.length][];
     private int[] goldenOrigin;
 
     private Properties harnessSettings() throws Exception {
@@ -603,12 +605,12 @@ final class ClientAutomation implements Runnable {
         require(distance > 0 && goldenY >= 0 && goldenY <= 240, "Invalid golden scene settings");
         for (int scene = 0; scene < goldenChunks.length; scene++) {
             String prefix = "scene." + scene + ".";
-            require(BAKED_SCENES[scene].equals(settings.getProperty(prefix + "name")), "Golden scene name differs");
+            require(COMPOSITE_SCENES[scene].equals(settings.getProperty(prefix + "name")), "Golden scene name differs");
             String[] chunk = settings.getProperty(prefix + "chunk").split(",", -1);
             require(chunk.length == 2, "Golden scene chunk must have two offsets");
             int x = Integer.parseInt(chunk[0]), z = Integer.parseInt(chunk[1]);
             require(x >= -distance && x <= distance && z >= -distance && z <= distance,
-                    "Golden scene offset outside render distance: " + BAKED_SCENES[scene]);
+                    "Golden scene offset outside render distance: " + COMPOSITE_SCENES[scene]);
             require(x != 0 || z != 0, "Golden scene overlaps viewing platform");
             goldenChunks[scene] = new int[]{x, z};
             for (int previous = 0; previous < scene; previous++)
@@ -680,8 +682,14 @@ final class ClientAutomation implements Runnable {
     }
 
     private void aimGolden(Object server, int scene) throws Exception {
+        if (scene >= 5) onServer(server, () -> {
+            command(server, "setblock " + (goldenOrigin[0] + 8) + " " + (goldenY + 11)
+                    + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0");
+            return null;
+        });
         double yaw = Math.toDegrees(Math.atan2(-goldenChunks[scene][0], goldenChunks[scene][1]));
-        positionGolden(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5, yaw, 0);
+        positionGolden(server, goldenOrigin[0] + 8.5, goldenY + (scene >= 5 ? 12 : 8),
+                goldenOrigin[1] + 8.5, yaw, scene >= 5 ? 20 : 0);
     }
 
     private void positionGolden(Object server, double x, double y, double z, double yaw, double pitch)
@@ -779,12 +787,32 @@ final class ClientAutomation implements Runnable {
     private Void refillGolden(Object server, int scene) throws Exception {
         int x = goldenOrigin[0] + goldenChunks[scene][0] * 16;
         int z = goldenOrigin[1] + goldenChunks[scene][1] * 16;
+        if (scene >= 5) return refillFluid(server, scene, x, z);
         String low = " " + (goldenY + 6) + " " + (z + 6) + " ";
         String high = " " + (goldenY + 9) + " " + (z + 9) + " ";
         command(server, "fill " + (x + 6) + low + (x + 9) + high + "minecraft:air 0");
         for (int half = 0; half < 2; half++)
             require(command(server, "fill " + (x + 6 + half * 2) + low + (x + 7 + half * 2) + high
                     + goldenBlocks[scene][half]) > 0, "Golden scene fill failed: " + goldenBlocks[scene][half]);
+        return null;
+    }
+
+    private Void refillFluid(Object server, int scene, int x, int z) throws Exception {
+        String low = (x + 5) + " " + (goldenY + 5) + " " + (z + 5);
+        String high = (x + 10) + " " + (goldenY + 6) + " " + (z + 10);
+        require(command(server, "fill " + low + " " + high + " " + goldenBlocks[scene][1]) > 0,
+                "Fluid basin fill failed");
+        require(command(server, "fill " + (x + 6) + " " + (goldenY + 6) + " " + (z + 6)
+                + " " + (x + 9) + " " + (goldenY + 9) + " " + (z + 9) + " minecraft:air 0") > 0,
+                "Fluid basin clearing failed");
+        if (scene == 6) {
+            require(command(server, "setblock " + (x + 8) + " " + (goldenY + 8) + " " + (z + 8)
+                    + " " + goldenBlocks[scene][0]) > 0, "Flowing water source failed");
+        } else {
+            require(command(server, "fill " + (x + 6) + " " + (goldenY + 6) + " " + (z + 6)
+                    + " " + (x + 9) + " " + (goldenY + 6) + " " + (z + 9)
+                    + " " + goldenBlocks[scene][0]) > 0, "Still fluid fill failed");
+        }
         return null;
     }
 

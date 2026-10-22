@@ -168,14 +168,15 @@ final class LegacyGeometryProof {
         call("drawBaked", new Class<?>[]{long.class, long.class, long.class, long.class},
                 generation, resource, atlas, LegacyRenderer.ownerThread());
     }
-    static byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated, int width, int height) {
+    static byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated, int width, int height,
+            boolean fallback) {
         long generation = LegacyRenderer.currentGeneration();
         requireOwner(generation);
         return (byte[]) call("compositeFrame", new Class<?>[]{Runnable.class, int[].class, int.class,
-                int.class, int.class, int.class, long.class, long.class, long.class, long.class},
+                int.class, int.class, int.class, long.class, long.class, long.class, long.class, boolean.class},
                 render, ids, scene, designated, width, height, generation,
                 LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration(),
-                LegacyRenderer.ownerThread());
+                LegacyRenderer.ownerThread(), fallback);
     }
 
     static long[] shadedNativeResidency() {

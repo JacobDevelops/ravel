@@ -104,6 +104,28 @@ final class LegacySectionSnapshot {
         METRICS[20] = candidate[2];
     }
 
+    static void fluids(Object chunk, int[] summary) throws Throwable {
+        Arrays.fill(summary, 0);
+        if (access == null) access = new Access();
+        Access a = access;
+        Object region = a.region.get(chunk);
+        Object origin = a.origin.get(chunk);
+        int ox = (int) a.x.invoke(origin), oy = (int) a.y.invoke(origin), oz = (int) a.z.invoke(origin);
+        Object pos = (Object) a.position.invokeExact(0, 0, 0);
+        for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+            a.set.invokeExact(pos, ox + x, oy + y, oz + z);
+            Object state = (Object) a.state.invokeExact(region, pos);
+            Object block = (Object) a.block.invokeExact(state);
+            int id = (int) a.id.invokeExact(block);
+            if (id < 8 || id > 11) continue;
+            int level = (int) a.meta.invokeExact(block, state);
+            summary[0] |= 1 << (id - 8);
+            if (id >= 10) summary[3]++;
+            else if (level == 0) summary[1]++;
+            else if (level < 8) summary[2]++;
+        }
+    }
+
     private static long fill(Access a, Object region, int ox, int oy, int oz, int[] states, byte[] light,
             byte[] geometry) throws Throwable {
         Object pos = (Object) a.position.invokeExact(0, 0, 0);

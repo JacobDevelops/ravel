@@ -14,11 +14,15 @@ def composite_fixture(directory: Path) -> None:
     arm = bytes((32, 64, 96, 255)) + struct.pack('<f', 0.5)
     omitted = bytes((0, 0, 0, 255)) + struct.pack('<f', 1.0)
     for phase in range(3):
-        for designated in range(5):
-            scene = designated if phase == 0 else phase + 4
-            draws, vertices = (0, 0) if designated == 3 else (1, 4)
-            header = struct.pack('<8i', scene, designated, 1, 1, draws, vertices, 3, vertices)
+        for designated in range(len(SCENES)):
+            scene = 7 if designated >= 5 else designated if phase == 0 else phase + 4
+            draws, vertices = (0, 0) if designated == 3 or designated >= 5 else (1, 4)
+            header = struct.pack('<8i', scene, designated, 1, 1, draws, vertices,
+                                 4 if designated >= 5 else 3, vertices)
             sample = header + arm + arm + omitted
+            if designated >= 5:
+                summary = ((2, 16, 0, 0), (3, 1, 5, 0), (8, 0, 0, 16))[designated - 5]
+                sample += struct.pack('<4i', *summary)
             (directory / f'composited-{phase}-{designated}.raw').write_bytes(sample)
             if designated == 3:
                 for point, (dx, dz) in enumerate(renderer_proof.MOVING_PATH):
@@ -34,7 +38,7 @@ class CompositeFrameTests(unittest.TestCase):
             root = Path(directory)
             composite_fixture(root)
             rows = renderer_proof.composited_proof(root, 0)
-            self.assertEqual(len(rows), 30)
+            self.assertEqual(len(rows), 39)
             self.assertTrue(all(row['rgbaMismatchPixels'] == row['depthMismatchPixels'] == 0 for row in rows))
             with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
                 renderer_proof.composited_proof(root, float('inf'))
@@ -77,6 +81,31 @@ class CompositeFrameTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'fresh moving'):
                 renderer_proof.composited_proof(root, 0)
 
+    def test_fluid_sections_require_vanilla_routing_and_unchanged_strict_oracle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            composite_fixture(root)
+            rows = renderer_proof.composited_proof(root, 0)
+            fluids = [row for row in rows if row['fluidVanillaFallback']]
+            self.assertEqual(len(fluids), 9)
+            self.assertEqual({row['designated'] for row in fluids}, {'still-water', 'flowing-water', 'lava'})
+            for designated in range(5, 8):
+                path = root / f'composited-0-{designated}.raw'
+                original = path.read_bytes()
+                for offset, replacement in ((16, struct.pack('<i', 1)), (20, struct.pack('<i', 4)),
+                                            (40, bytes((255,))), (44, struct.pack('<f', 0.75)),
+                                            (48, original[32:40]), (len(original) - 16, bytes(16))):
+                    raw = bytearray(original)
+                    raw[offset:offset + len(replacement)] = replacement
+                    path.write_bytes(raw)
+                    with self.subTest(designated=designated, offset=offset), self.assertRaises(RuntimeError):
+                        renderer_proof.composited_proof(root, 0)
+                    path.write_bytes(original)
+                path.unlink()
+                with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
+                    renderer_proof.composited_proof(root, 0)
+                path.write_bytes(original)
+
     def test_rejects_camera_path_shifted_away_from_section_interior(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -101,9 +130,9 @@ class SceneSettingsTests(unittest.TestCase):
                           ('renderDistance', 'fancyGraphics', 'maxFps', 'enableVsync', 'guiScale')},
                          {'renderDistance': '2', 'fancyGraphics': 'false', 'maxFps': '60',
                           'enableVsync': 'false', 'guiScale': '2'})
-        self.assertEqual([values[f'scene.{index}.name'] for index in range(5)], list(SCENES))
+        self.assertEqual([values[f'scene.{index}.name'] for index in range(len(SCENES))], list(SCENES))
         self.assertTrue(all(max(map(abs, map(int, values[f'scene.{index}.chunk'].split(',')))) <= 2
-                            for index in range(5)))
+                            for index in range(len(SCENES))))
 
     def test_rejects_outside_distance_before_placement(self):
         for offset in ('3,0', '0,-3', '-3,3'):

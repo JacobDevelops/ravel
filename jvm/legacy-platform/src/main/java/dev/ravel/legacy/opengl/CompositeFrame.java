@@ -13,13 +13,14 @@ public final class CompositeFrame {
     private static int[] vertices;
     private static boolean replacing;
     private static boolean omitting;
+    private static boolean vanillaFallback;
     private static int draws;
     private static int submitted;
 
     private CompositeFrame() { }
 
     static byte[] capture(Runnable render, int buffer, int[] ids, int[] counts, int scene, int designated,
-            int width, int height) {
+            int width, int height, boolean fallback) {
         if (buffers != null || width <= 0 || height <= 0 || width > 1920 || height > 1080)
             throw new IllegalStateException("Invalid composited frame capture");
         int pixels = Math.multiplyExact(width, height);
@@ -28,6 +29,7 @@ public final class CompositeFrame {
         resident = buffer;
         buffers = ids;
         vertices = counts;
+        vanillaFallback = fallback;
         draws = 0;
         submitted = 0;
         try {
@@ -43,7 +45,7 @@ public final class CompositeFrame {
             raw.put(arm);
             raw.position(0).putInt(scene).putInt(designated).putInt(width).putInt(height)
                     .putInt(draws).putInt(submitted).putInt(3)
-                    .putInt(counts[3] > 0 ? 0 : counts[0] + counts[1] + counts[2]);
+                    .putInt(fallback ? 0 : counts[0] + counts[1] + counts[2]);
             return raw.array();
         } finally {
             replacing = false;
@@ -70,7 +72,7 @@ public final class CompositeFrame {
         for (int layer = 0; layer < 4; layer++) {
             if (buffers[layer] == bound && count > 0) {
                 if (omitting) return true;
-                if (vertices[3] > 0) return false;
+                if (vanillaFallback) return false;
                 if (mode != GL11.GL_QUADS || first != 0 || count != vertices[layer])
                     throw new IllegalStateException("Resident world draw does not match published vanilla layer");
                 submit(mode, count, offset, bound);

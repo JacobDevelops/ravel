@@ -363,10 +363,10 @@ mod tests {
             assert!(java.contains(declaration), "{declaration}");
         }
         let modern = hook_java(&adapter(), &[]);
-        assert_eq!(modern.matches("public static native ").count(), 21);
+        assert_eq!(modern.matches("public static native ").count(), 22);
         assert_eq!(
             java.matches("public static native ").count(),
-            shapes.len() + 21 + 8
+            shapes.len() + 22 + 8
         );
         for rendered in [&java, &modern] {
             assert!(rendered.contains(
@@ -387,6 +387,9 @@ mod tests {
             ));
             assert!(rendered.contains(
                 "native long[] ravelRendererBakedLease(long generation, long key, int operation);"
+            ));
+            assert!(rendered.contains(
+                "native int ravelRendererBakedResort(long generation, long key, float[] camera, int[] output);"
             ));
         }
         assert!(!modern.contains("\"legacyRenderer"));

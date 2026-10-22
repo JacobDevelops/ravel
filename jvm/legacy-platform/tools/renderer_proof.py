@@ -295,7 +295,7 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
         raise RuntimeError('Composited frame header missing')
     scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
     expected = 7 if designated >= 5 else designated if phase == 0 else phase + 4
-    fallback = designated == 3 or designated >= 5
+    fallback = designated >= 5
     if (scene != expected or section != designated or version != (4 if designated >= 5 else 3)
             or vertices != expected_vertices
             or not 0 < width <= COMPOSITE_MAX_WIDTH or not 0 < height <= COMPOSITE_MAX_HEIGHT
@@ -326,7 +326,7 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
     return {'phase': phase, 'scene': SCENES[designated] if designated >= 5 else BAKED_SCENES[scene],
             'designated': SCENES[designated], 'fluidStateCounts': fluids,
             'width': width, 'height': height, 'substitutedDraws': draws, 'substitutedVertices': vertices,
-            'translucentVanillaFallback': designated == 3, 'fluidVanillaFallback': designated >= 5,
+            'translucentVanillaFallback': False, 'fluidVanillaFallback': designated >= 5,
             'visibleSectionPixels': footprint,
             'rgbaMismatchPixels': sum(vanilla[i:i + 4] != resident[i:i + 4] for i in range(0, pixels * 4, 4)),
             'coverageMismatchPixels': sum((a < 1) != (b < 1) for a, b in zip(left, right)),
@@ -436,12 +436,14 @@ def baked_proof(proof: Proof, directory: Path, started: float) -> None:
                    'glStaleSections', 'glUnsupportedSections', 'controlledDeferredSections', *BAKED_REFUSALS)
     positive = ('comparedSections', 'quads', 'cpuNanos', 'maxInputBytes', 'maxOutputBytes',
                 'resourceGeneration', 'atlasGeneration', 'glComparedSections',
-                'glUploadedBytes', 'glPeakBufferBytes', 'glUploadNanos', 'glComparisonNanos')
+                'glUploadedBytes', 'glPeakBufferBytes', 'glUploadNanos', 'glComparisonNanos',
+                'translucentSorts', 'translucentUploads')
     if not (all(proof.get(key) == value and type(proof.get(key)) is type(value) for key, value in labels.items())
             and all(type(proof.get(key)) is int and proof[key] >= 0 for key in nonnegative)
             and all(type(proof.get(key)) is int and proof[key] > 0 for key in positive)
             and type(proof.get('mismatchedWords')) is int and proof['mismatchedWords'] == 0
             and type(proof.get('firstMismatchedWord')) is int and proof['firstMismatchedWord'] == -1
+            and type(proof.get('translucentRefusals')) is int and proof['translucentRefusals'] == 0
             and proof['resourceGeneration'] == proof['atlasGeneration']
             and sum(proof[key] for key in BAKED_REFUSALS) == proof['unsupportedSections']
             and proof['maxInputBytes'] <= 8_000_000 and proof['maxOutputBytes'] <= 4_000_000

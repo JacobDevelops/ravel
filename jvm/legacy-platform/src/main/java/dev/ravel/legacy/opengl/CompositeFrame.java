@@ -45,7 +45,7 @@ public final class CompositeFrame {
             raw.put(arm);
             raw.position(0).putInt(scene).putInt(designated).putInt(width).putInt(height)
                     .putInt(draws).putInt(submitted).putInt(3)
-                    .putInt(fallback ? 0 : counts[0] + counts[1] + counts[2]);
+                    .putInt(fallback ? 0 : counts[0] + counts[1] + counts[2] + counts[3]);
             return raw.array();
         } finally {
             replacing = false;

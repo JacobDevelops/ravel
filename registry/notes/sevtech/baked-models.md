@@ -9,10 +9,10 @@ complete static-camera world frames, substituting one acknowledged resident
 section at a time while every other section and the rest of the world remain
 vanilla. This is a selected acceptance proof, not a default renderer cutover.
 It uses the live atlas and lightmap, model positions, UVs, shaded color, combined
-light, alpha testing and translucent blending. Step two keeps every section
-containing translucent vertices on vanilla, including its camera-dependent
-resort. Step three also routes complete water/lava-containing sections to vanilla;
-native fluid tessellation and replacement-renderer savings remain unsupported.
+light, alpha testing and translucent blending. Step four adds native translucent
+re-sorting to the selected path; whole sections containing water/lava still stay
+on vanilla. Native fluid tessellation and replacement-renderer savings remain
+unsupported.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
 cube approximations. Model resolution, connected/multipart selection, face
@@ -30,7 +30,7 @@ owning compile thread. Rust receives only owned primitive values.
 | Combined light | Actual per-corner packed lightmap inputs; not independent light propagation |
 | Final XYZ | Rust adds source float to effective double offset rounded to float first |
 | Final color | Rust reproduces little-endian integer component/float multiplication, truncation and shifts |
-| Translucent order | Descending squared centroid distance, source ordinal for ties; cancellable in-place resort |
+| Translucent order | Descending float squared centroid distance; stable current-order ties on every cancellable in-place resort |
 | Final vanilla buffer | Oracle after compile normal return, never substituted for emitted vertices |
 
 Exact Feather-resolved inventory entries cover model rendering, baked vertices,
@@ -504,6 +504,66 @@ vertices and 12,222–25,458 omitted-section footprint pixels. All phases contai
 flowing scene, and 16 lava cells. These counts prove the fixture states and
 whole-section routing, not native fluid tessellation or steady-state simulation.
 
-Native translucent resort and fluid tessellation remain before the preflighted
-frozen RTX 5090 trials and any default cutover. No physical trials run in this
-step, and drawing stays off by default.
+Step four below addresses native translucent resort. Fluids deliberately remain
+on vanilla for the preflighted frozen RTX 5090 trials and any default cutover.
+No physical trials ran in step three, and drawing stays off by default.
+
+## Slice 8, step four: resident translucent re-sort
+
+Rust retains the independently shaded mesh behind the acknowledged renderer
+generation and lease key instead of retaining duplicate source/emitted arrays.
+Each re-sort requires the exact pending or acknowledged renderer generation and
+lease key, and rejects stale, retired or non-finite requests. It reorders
+the resident translucent quad vector in place without allocating; solid and
+cutout vectors are unchanged. Quad centres and squared distances use vanilla's
+float operation order. Ties preserve the input order of that particular sort,
+including the order left by a preceding camera position, rather than resetting
+to the original capture ordinal.
+
+The adapter observes the pinned `BufferBuilder.sortQuads` call itself: vanilla
+still owns camera thresholds, task scheduling and cancellation. Builder translation
+is combined with the camera in double and rounded to float, as in vanilla.
+Native ordering changes at the actual sort call, even if a later task is canceled.
+Bounded, lazily populated Java staging slots associate the resulting words with
+their exact builder buffer; each holds only its actual translucent words and a
+four-layer count header. Only the corresponding translucent VBO upload applies
+that snapshot to the Java-owned resident GL buffer. Publication registers the
+pending lease under the same lock as sorting; uploads that precede acknowledgement
+are retained and applied as owner-thread acknowledgement succeeds. The 205-slot ceiling
+covers vanilla's at-most-204 pooled builders plus its local worker: its pool-size
+calculation saturates a double-to-int conversion before dividing by 10 MiB.
+Canceled tasks can retain a slot, but reuse of the same builder replaces it rather
+than consuming an unbounded history. A missing acknowledged upload snapshot or
+exhausted staging bound invalidates selected resident drawing instead of crashing
+vanilla or accepting a stale order. A refused pending lease cannot subsequently
+be acknowledged. The strict proof requires positive native sort and matching
+upload counts and zero translucent refusals. Reload/retirement invalidates the
+generation/key and clears pending staging. This does not create a parallel camera
+polling cadence or let Rust own GL. Selected non-fluid translucent sections now
+use resident compositing; whole sections containing fluids remain on vanilla,
+and resident drawing remains off by default.
+
+Pending proof replay does not freeze vanilla rebuilds. A rebuild of the exact
+pending chunk replaces its pending comparison and lease; unrelated chunks cannot
+replace the designated scene. Replay still requires the offered compiled chunk
+to be current, the native lease to be acknowledged, and a positive resident draw,
+so camera motion cannot silently continue with stale geometry or vanilla draws.
+
+The selected Xvfb acceptance exited 0 with exact parity on the existing strict
+oracle. An independent scalar recount, without the production proof parser,
+checked all 24 static and 15 moving raw frames across initial, resource-reload
+and reopened phases. Every frame had zero RGBA, coverage and genuine-world-depth
+mismatches, with the unchanged two-24-bit-depth-step tolerance and a positive
+omitted-section footprint. All 30 non-fluid frames substituted resident draws;
+this includes all three static translucent rows and all 15 moving-camera stops,
+each submitting 512 resident vertices. All nine fluid rows retained zero resident
+draws and vertices. The selected run recorded 32 native translucent sorts,
+35 matched uploads (including initial publication) and zero translucent refusals.
+The first selected attempt timed out at initial moving stop 1; no mismatch
+comparison was reported. Same-section rebuild recapture was then admitted, and
+the completed run passed without changing the camera path, oracle or draw
+requirement. No moving stop or static row differed in the completed run.
+
+This proves the bounded selected software-GL replay, not physical-GPU parity,
+default world cutover or renderer savings. The next step is preflighted frozen
+RTX 5090 trials, then default cutover with fluids on vanilla.

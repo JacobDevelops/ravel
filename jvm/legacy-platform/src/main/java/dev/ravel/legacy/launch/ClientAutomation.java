@@ -540,7 +540,8 @@ final class ClientAutomation implements Runnable {
             "glUploadedBytes", "glPeakBufferBytes", "glUploadNanos", "glComparisonNanos",
             "refusedQuadBudget", "refusedUncolored", "refusedForeignBuilder", "refusedObservation",
             "refusedIncompleteQuad", "refusedUnaccountedVertices", "refusedRetiredAtFinish",
-            "refusedRustDecode", "refusedRustOther", "controlledDeferredSections"};
+            "refusedRustDecode", "refusedRustOther", "controlledDeferredSections",
+            "translucentSorts", "translucentUploads", "translucentRefusals"};
     private static final String[] BAKED_SCENES = {"opaque", "cutout-mipped", "cutout", "translucent",
             "animated", "staged-reload", "unload", "translucent-fluid"};
 

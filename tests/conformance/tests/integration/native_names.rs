@@ -59,6 +59,7 @@ fn initialization_harness_implements_the_handwritten_crossings_it_exercises() {
         "ravelRendererMesh",
         "ravelRendererBaked",
         "ravelRendererBakedLease",
+        "ravelRendererBakedResort",
     ] {
         assert!(expected.remove(unused));
     }
@@ -79,8 +80,8 @@ fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
         .collect();
     assert_eq!(
         renderer_names.len(),
-        7,
-        "exactly seven renderer declarations"
+        8,
+        "exactly eight renderer declarations"
     );
     assert_eq!(
         renderer_names.into_iter().collect::<BTreeSet<_>>(),
@@ -92,6 +93,7 @@ fn renderer_semantic_natives_keep_the_shared_bounded_primitive_contract() {
             "ravelRendererMesh",
             "ravelRendererBaked",
             "ravelRendererBakedLease",
+            "ravelRendererBakedResort",
         ]),
         "renderer crossings carry only scalars and bounded primitive batches"
     );
@@ -128,6 +130,11 @@ fn renderer_semantic_native_signatures_share_copied_primitives() {
             "ravelRendererBakedLease",
             "long[]",
             vec!["long", "long", "int"],
+        ),
+        (
+            "ravelRendererBakedResort",
+            "int",
+            vec!["long", "long", "float[]", "int[]"],
         ),
     ] {
         assert!(

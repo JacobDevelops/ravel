@@ -45,12 +45,21 @@ final class LegacyBakedCapture {
 
     private LegacyBakedCapture() { }
 
+    static void sort(Object builder, float x, float y, float z) {
+        if (LegacyGeometryProof.selected()) LegacyBakedResort.sort(builder, x, y, z);
+    }
+
+    static void upload(Object buffer, Object bytes) {
+        if (LegacyGeometryProof.selected()) LegacyBakedResort.upload(buffer, bytes);
+    }
+    static void invalidateResident() { resident = false; }
+
     static synchronized void begin(Object task, float x, float y, float z) {
         if (!LegacyGeometryProof.selected()) return;
         if (LegacyRenderer.taskGeneration(task) <= 0) return;
         if (active != null || queued != null) { METRICS[1]++; return; }
         try {
-            if (LegacyCompositeCapture.pending() && !LegacyCompositeCapture.replaceFluid(task)) {
+            if (LegacyCompositeCapture.pending() && !LegacyCompositeCapture.replacePending(task)) {
                 METRICS[1]++;
                 return;
             }
@@ -67,6 +76,7 @@ final class LegacyBakedCapture {
 
     static synchronized void clear() {
         resident = false;
+        LegacyBakedResort.clear();
         active = null;
         queued = null;
         LegacyCompositeCapture.clear();
@@ -74,11 +84,16 @@ final class LegacyBakedCapture {
         if (storage != null) storage.release();
     }
 
-    static synchronized long[] metrics() { return METRICS.clone(); }
+    static synchronized long[] metrics() {
+        long[] result = Arrays.copyOf(METRICS, 33);
+        System.arraycopy(LegacyBakedResort.metrics(), 0, result, 30, 3);
+        return result;
+    }
     static synchronized long[] world() { return WORLD.clone(); }
     static synchronized void composited(int designated) { COVERAGE[phase] |= 1 << designated; }
     static synchronized byte[] composite(Runnable render, int width, int height, int expected, boolean finish) {
         if (expected != LegacyCompositeCapture.designated()) return null;
+        if (expected < 5 && !resident) return null;
         return LegacyCompositeCapture.capture(render, width, height, finish);
     }
     static synchronized int compositeDesignated() { return LegacyCompositeCapture.designated(); }
@@ -122,7 +137,7 @@ final class LegacyBakedCapture {
         Capture capture = queued;
         if (capture == null) return;
         if (!LegacyRenderer.accepts(capture.generation) || !capture.resourceCurrent()) {
-            capture.settle(false);
+            abandon(capture);
             queued = null;
             LegacyCompositeCapture.clear();
             METRICS[14]++;
@@ -139,21 +154,30 @@ final class LegacyBakedCapture {
         try {
             result = LegacyGeometryProof.compareBaked(capture.output, capture.oracle.array(), identity, retain);
         } catch (RuntimeException failure) {
-            capture.settle(false);
+            abandon(capture);
             queued = null;
             resident = false;
             LegacyCompositeCapture.clear();
             throw failure;
         }
         if (result.length != 32) {
-            capture.settle(false);
+            abandon(capture);
             queued = null;
             LegacyCompositeCapture.clear();
             METRICS[15]++;
             return;
         }
-        capture.settle(true);
-        resident = true;
+        synchronized (LegacyBakedResort.class) {
+            if (!LegacyBakedResort.acknowledge(capture.generation, capture.key)) {
+                abandon(capture);
+                queued = null;
+                LegacyCompositeCapture.clear();
+                METRICS[15]++;
+                return;
+            }
+            capture.settle(true);
+            resident = true;
+        }
         queued = null;
         METRICS[13]++;
         METRICS[16] += result[28]; METRICS[17] = Math.max(METRICS[17], result[29]);
@@ -165,7 +189,7 @@ final class LegacyBakedCapture {
             if (raw != null && raw[layer] != null && RETAINED[scene] < SAMPLES)
                 retain(scene, designated, layer, result, raw[layer]);
         }
-        if (LegacyCompositeCapture.pending()) LegacyCompositeCapture.ready(result[21] != 0);
+        if (LegacyCompositeCapture.pending()) LegacyCompositeCapture.ready(false);
     }
 
     private static void retain(int scene, int designated, int layer, long[] result, byte[] raw) {
@@ -178,6 +202,14 @@ final class LegacyBakedCapture {
 
     private static void add(long[] target, long[] result, int base) {
         for (int index = 0; index < 7; index++) target[index] += result[base + index];
+    }
+
+    private static void abandon(Capture capture) {
+        synchronized (LegacyBakedResort.class) {
+            capture.settle(false);
+            LegacyBakedResort.clear();
+            resident = false;
+        }
     }
 
     private static void refuse(int reason) {
@@ -296,7 +328,9 @@ final class LegacyBakedCapture {
                     : capture.pending ? INCOMPLETE_QUAD
                     : !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
             if (reason != 0) refuse(reason);
-            else if (!capture.fluidFallback()) capture.compare();
+            else if (!capture.fluidFallback()) {
+                synchronized (LegacyBakedResort.class) { capture.compare(); }
+            }
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
         } finally { capture.release(); }
@@ -460,10 +494,14 @@ final class LegacyBakedCapture {
             if (result[2] >= 0 && METRICS[10] < 0) METRICS[10] = result[2];
             if (count > 0 && (!controlledWindow() || needed())) {
                 queued = this;
+                Object chunk = access.chunk.invokeExact(task);
+                LegacyBakedResort.offer(generation, key, origin, output, chunk,
+                        (ByteBuffer) access.buffer.invokeExact(builders[3]));
+                resident = false;
                 int designated = designated();
                 int scene = scene(designated);
                 if (scene >= 0 && needed())
-                    LegacyCompositeCapture.offer(access.chunk.invokeExact(task), task, scene, designated, origin);
+                    LegacyCompositeCapture.offer(chunk, task, scene, designated, origin);
             } else settle(false);
             METRICS[7] = Math.max(METRICS[7], result[4]);
             METRICS[8] = Math.max(METRICS[8], result[5]); METRICS[9] += animated;

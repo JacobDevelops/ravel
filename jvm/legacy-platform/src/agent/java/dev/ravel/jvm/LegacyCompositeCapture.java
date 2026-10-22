@@ -25,9 +25,9 @@ final class LegacyCompositeCapture {
     static void ready(boolean fallback) { vanillaFallback = fallback; ready = true; }
 
     static void fluids(int[] summary) { fluids = summary.clone(); }
-    static boolean replaceFluid(Object replacement) throws ReflectiveOperationException {
-        if (fluids == null || LegacyAccess.method("LEGACY_COMPILE_TASK", "getChunk")
-                .invoke(replacement) != chunk) return false;
+    static boolean replacePending(Object replacement) throws ReflectiveOperationException {
+        if (LegacyAccess.method("LEGACY_COMPILE_TASK", "getChunk").invoke(replacement) != chunk)
+            return false;
         clear();
         return true;
     }

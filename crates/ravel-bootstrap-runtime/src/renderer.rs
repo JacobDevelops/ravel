@@ -25,7 +25,7 @@ mod baked;
 mod snapshot;
 mod status;
 mod work;
-pub use baked::{ravel_renderer_baked, ravel_renderer_baked_lease};
+pub use baked::{ravel_renderer_baked, ravel_renderer_baked_lease, ravel_renderer_baked_resort};
 
 // Shared wire values with the Java renderer observer (not raw hook IDs).
 const CURRENT: jint = 0;

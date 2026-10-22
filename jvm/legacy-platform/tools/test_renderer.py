@@ -16,7 +16,7 @@ def composite_fixture(directory: Path) -> None:
     for phase in range(3):
         for designated in range(len(SCENES)):
             scene = 7 if designated >= 5 else designated if phase == 0 else phase + 4
-            draws, vertices = (0, 0) if designated == 3 or designated >= 5 else (1, 4)
+            draws, vertices = (0, 0) if designated >= 5 else (1, 4)
             header = struct.pack('<8i', scene, designated, 1, 1, draws, vertices,
                                  4 if designated >= 5 else 3, vertices)
             sample = header + arm + arm + omitted
@@ -62,10 +62,11 @@ class CompositeFrameTests(unittest.TestCase):
                 with self.subTest(offset=offset), self.assertRaises(RuntimeError):
                     renderer_proof.composited_proof(root, 0)
 
-    def test_rejects_missing_camera_motion_and_translucent_resident_substitution(self):
+    def test_rejects_missing_camera_motion_and_translucent_resident_draws(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for field, value in ((16, struct.pack('<i', 1)), (-44, struct.pack('<i', 4)),
+            for field, value in ((16, struct.pack('<i', 0)), (20, struct.pack('<i', 0)),
+                                 (-44, struct.pack('<i', 4)),
                                  (-40, struct.pack('<d', 104)), (-8, struct.pack('<d', 20)),
                                  (-32, struct.pack('<d', float('inf')))):
                 composite_fixture(root)
@@ -276,6 +277,7 @@ def baked_proof_fixture(directory: Path) -> renderer_proof.Proof:
             'maxInputBytes': 1000, 'maxOutputBytes': 1000, 'animatedSpriteObservations': 1,
             'resourceGeneration': 1, 'atlasGeneration': 1, 'glComparedSections': 4,
             'glStaleSections': 0, 'glUnsupportedSections': 0,
+            'translucentSorts': 1, 'translucentUploads': 1, 'translucentRefusals': 0,
             'glUploadedBytes': 224, 'glPeakBufferBytes': 112, 'glUploadNanos': 1, 'glComparisonNanos': 1,
             **dict.fromkeys(renderer_proof.BAKED_REFUSALS, 0),
             'refusedUnaccountedVertices': 1, 'refusedQuadBudget': 1,
@@ -296,6 +298,8 @@ class RendererProofTests(unittest.TestCase):
                                    ('firstMismatchedWord', 0), ('mismatchedWords', 1),
                                    ('drawable', False), ('comparedSections', 0),
                                    ('glComparedSections', 0), ('glStaleSections', -1),
+                                   ('translucentSorts', 0), ('translucentUploads', 0),
+                                   ('translucentRefusals', 1),
                                    ('glPeakBufferBytes', 8192 * 112 + 112),
                                    ('glUploadedBytes', 225), ('glUploadNanos', 0),
                                    ('maxInputBytes', 8_000_001), ('maxOutputBytes', 4_000_001),

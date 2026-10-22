@@ -312,8 +312,9 @@ fn sort_translucent(
     camera: [f32; 3],
     cancelled: &impl Fn() -> bool,
 ) -> Result<(), BakedError> {
-    for quad in quads.iter_mut() {
+    for (ordinal, quad) in quads.iter_mut().enumerate() {
         check_cancel(cancelled)?;
+        quad.ordinal = u32::try_from(ordinal).expect("bounded quad ordinal");
         let value = distance(quad, camera);
         if !value.is_finite() {
             return Err(BakedError::Nonfinite);

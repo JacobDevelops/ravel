@@ -294,6 +294,15 @@ kind = "instance-method"
 capability = "Finish one source quad after its vanilla position operation; finalized buffers remain a separate oracle."
 
 [[hook]]
+id = "legacy.baked-sort"
+side = "client-only"
+class = "net.minecraft.client.render.vertex.BufferBuilder"
+member = "sortQuads"
+descriptor = "(FFF)V"
+kind = "instance-method"
+capability = "Observe vanilla transparency sort calls; Rust stably reorders the generation-keyed resident mesh and Java uploads the matching staged buffer order."
+
+[[hook]]
 id = "legacy.recipe-register"
 class = "net.minecraft.crafting.CraftingManager"
 member = "register"

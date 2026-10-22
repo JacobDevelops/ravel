@@ -184,7 +184,7 @@ public final class GenericMain {
                 "legacyRendererWorkerComplete", "legacyRendererUpload", "legacyRendererUnload",
                 "legacyRendererClose", "legacyRendererTaskCreate", "legacyBakedModel", "legacyBakedQuad",
                 "legacyBakedAo", "legacyBakedTint", "legacyBakedVertices", "legacyBakedLight",
-                "legacyBakedColor", "legacyBakedPosition"));
+                "legacyBakedColor", "legacyBakedPosition", "legacyBakedSort"));
         for (HookTarget hook : Hook.TARGETS) required.remove(hook.hookMethod());
         require(required.isEmpty(), "missing original/supplemental legacy hooks: " + required);
         for (HookTarget hook : Hook.TARGETS) {

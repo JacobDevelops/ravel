@@ -339,6 +339,31 @@ public final class GeometryProof {
         }
     }
 
+    public static synchronized void resortBaked(int[] emitted, long generation, long key, long owner) {
+        BAKED_LEASE.check(generation, owner);
+        if (BAKED_RESIDENCY[6] != generation || BAKED_RESIDENCY[7] != key
+                || context != GL.getCapabilities() || emitted.length < 4
+                || emitted.length != 4 + emitted[3] * 28)
+            throw new IllegalStateException("Stale resident transparency upload");
+        int offset = 0;
+        for (int layer = 0; layer < 4; layer++) {
+            if (emitted[layer] * 4 != bakedLayers[layer])
+                throw new IllegalArgumentException("Resident transparency layer count changed");
+            if (layer < 3) offset += emitted[layer] * 112;
+        }
+        int bytes = emitted[3] * 112;
+        if (bytes == 0) return;
+        int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+        try {
+            staging.clear().limit(bytes);
+            staging.asIntBuffer().put(emitted, 4, bytes / 4);
+            bind(GL15.GL_ARRAY_BUFFER, bakedBuffer);
+            updateBaked(offset, staging);
+        } finally {
+            bind(GL15.GL_ARRAY_BUFFER, previous);
+        }
+    }
+
     static void checkBakedCounts(int[] emitted, byte[] oracle) {
         int total = 0;
         for (int layer = 0; layer < 4; layer++) {

@@ -243,6 +243,16 @@ fn baked_callbacks(legacy: bool) -> String {
             "Object builder, double x, double y, double z",
             "position(builder, x, y, z)",
         ),
+        (
+            "legacyCaptureSort",
+            "Object builder, float x, float y, float z",
+            "sort(builder, x, y, z)",
+        ),
+        (
+            "legacyCaptureUpload",
+            "Object buffer, Object bytes",
+            "upload(buffer, bytes)",
+        ),
     ];
     let mut text = String::new();
     for (name, parameters, call) in calls {
@@ -336,6 +346,7 @@ fn written_declarations() -> &'static str {
      \x20   public static native long[] ravelRendererBaked(long generation, long[] origin, byte[] source, byte[] oracle, int[] output);\n\n\
      \x20   /** Operation 0 observes, 1 acknowledges replacement, 2 refuses the pending lease. */\n\
      \x20   public static native long[] ravelRendererBakedLease(long generation, long key, int operation);\n\n\
+     \x20   public static native int ravelRendererBakedResort(long generation, long key, float[] camera, int[] output);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

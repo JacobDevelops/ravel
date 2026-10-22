@@ -624,6 +624,13 @@ public final class Transformer implements ClassFileTransformer {
                 builder.invokestatic(HOOK, "legacyCapturePosition",
                         MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;DDD)V"));
             }
+            if (target.hookMethod().equals("legacyRendererUpload")
+                    && element instanceof ReturnInstruction) {
+                builder.aload(0);
+                builder.aload(slot(0));
+                builder.invokestatic(HOOK, "legacyCaptureUpload",
+                        MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;)V"));
+            }
             if (legacyExit()
                     && element instanceof ReturnInstruction instruction
                     && instruction.typeKind() == returnKind) {
@@ -672,6 +679,12 @@ public final class Transformer implements ClassFileTransformer {
                     for (int i = 0; i < 3; i++) builder.fload(slot(i));
                     descriptor = "(Ljava/lang/Object;FFF)V";
                     method = "legacyCaptureBegin";
+                }
+                case "legacyBakedSort" -> {
+                    builder.aload(0);
+                    for (int i = 0; i < 3; i++) builder.fload(slot(i));
+                    descriptor = "(Ljava/lang/Object;FFF)V";
+                    method = "legacyCaptureSort";
                 }
                 case "legacyBakedModel" -> {
                     builder.aload(slot(2));
@@ -899,6 +912,7 @@ public final class Transformer implements ClassFileTransformer {
                 case "legacyBakedLight" -> "instance:(IIII)V";
                 case "legacyBakedColor" -> "instance:(FFFI)V";
                 case "legacyBakedPosition" -> "instance:(DDD)V";
+                case "legacyBakedSort" -> "instance:(FFF)V";
                 default -> null;
             };
             if (expected == null) {

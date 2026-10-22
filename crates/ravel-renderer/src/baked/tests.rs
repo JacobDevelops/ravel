@@ -118,6 +118,14 @@ fn translucent_sort_is_far_to_near_and_preserves_equal_distance_order() {
             .collect::<Vec<_>>(),
         vec![3, 1, 2]
     );
+    mesh.resort(1, [0.0; 3], || false).expect("tied resort");
+    assert_eq!(
+        mesh.layers()[3]
+            .iter()
+            .map(|q| q.sprite)
+            .collect::<Vec<_>>(),
+        vec![3, 2, 1]
+    );
     assert_eq!(mesh.layers().each_ref().map(Vec::as_ptr), allocations);
 }
 

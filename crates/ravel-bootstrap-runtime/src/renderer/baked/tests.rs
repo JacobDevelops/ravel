@@ -67,15 +67,23 @@ fn independently_observed_atlas_generation_must_match_completed_resources() {
 }
 
 fn retained(generation: jlong, resource: jlong) -> residency::Retained {
+    let mut source = input();
+    source[16..24].copy_from_slice(&resource.to_le_bytes());
+    source[24..32].copy_from_slice(&resource.to_le_bytes());
     residency::Retained {
         identity: [generation, 0, resource, resource, -16, 32, 48],
-        source: input(),
-        emitted: vec![1, 0, 0, 0, 42],
+        mesh: decode(&source)
+            .expect("snapshot")
+            .0
+            .mesh(u64::try_from(resource).expect("resource"), [0.; 3], || {
+                false
+            })
+            .expect("mesh"),
     }
 }
 
 #[test]
-fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_source() {
+fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_mesh() {
     let mut leases = Residency::new();
     let first = leases.publish(retained(1, 2)).expect("first pending");
     assert!(leases.busy());
@@ -97,6 +105,23 @@ fn shaded_replacement_requires_exact_acknowledgement_and_keeps_owned_source() {
     assert!(leases.settle(1, second, true));
     assert_eq!(leases.metrics()[3..5], [2, 1]);
     assert_eq!(leases.metrics()[7..9], [3, 3]);
+}
+
+#[test]
+fn translucent_resort_requires_the_exact_live_lease_before_and_after_acknowledgement() {
+    let mut leases = Residency::new();
+    let key = leases.publish(retained(7, 2)).expect("pending");
+    assert!(leases.resort(7, key, [0.; 3], 4).is_some());
+    assert!(leases.settle(7, key, true));
+    let before = leases.metrics();
+    assert!(leases.resort(8, key, [0.; 3], 4).is_none());
+    assert!(leases.resort(7, key + 1, [0.; 3], 4).is_none());
+    assert!(leases.resort(7, key, [f32::NAN; 3], 4).is_none());
+    assert!(leases.resort(7, key, [4.; 3], 5).is_none());
+    assert!(leases.resort(7, key, [4.; 3], 4).is_some());
+    assert_eq!(leases.metrics(), before);
+    leases.retire();
+    assert!(leases.resort(7, key, [0.; 3], 4).is_none());
 }
 
 #[test]
@@ -125,10 +150,21 @@ fn shaded_refusal_reload_and_shutdown_release_both_slots_without_reusing_keys() 
 fn shaded_reservations_and_provenance_refuse_outside_the_fixed_envelope() {
     let mut leases = Residency::new();
     let mut oversized = retained(1, 1);
-    oversized.source = vec![0; INPUT_BOUND + 1];
-    assert!(leases.publish(oversized).is_none());
-    let mut oversized = retained(1, 1);
-    oversized.emitted = vec![0; 5 + MAX_QUADS * 28];
+    let quad = QuadInput {
+        state_key: 0,
+        sprite: 0,
+        layer: RenderLayer::Solid,
+        vertices: [[0; 7]; 4],
+        offset: [0; 3],
+        tint: 0,
+        ambient_occlusion: [0; 4],
+        multipliers: [[0; 3]; 4],
+        combined_light: [0; 4],
+    };
+    oversized.mesh = BakedSnapshot::new(1, 1, vec![quad; MAX_QUADS + 1])
+        .expect("core permits larger than bridge")
+        .mesh(1, [0.; 3], || false)
+        .expect("mesh");
     assert!(leases.publish(oversized).is_none());
     for identity in [
         [0, 0, 1, 1, 0, 0, 0],
@@ -206,6 +242,7 @@ fn emission_oracle_and_reservation_refusals_are_distinct() {
         &mut Vec::new(),
         || false,
         |_, _| Vec::<u8>::new().try_reserve_exact(usize::MAX),
+        |_| {},
     );
     assert_eq!(failed, BakedFailure::Allocation.receipt());
 }
@@ -229,6 +266,7 @@ fn reload_during_comparison_or_before_commit_cannot_publish() {
             comparing.set(true);
             words.try_reserve_exact(size)
         },
+        |_| {},
     );
     assert_eq!(result, BakedFailure::Emission.receipt());
     assert_eq!(output, [0; 4]);
@@ -236,6 +274,7 @@ fn reload_during_comparison_or_before_commit_cannot_publish() {
         source: input(),
         emitted: vec![1; 32],
         result: [1, 0, -1, 0, 0, 0],
+        mesh: None,
     };
     let receipt = commit(&renderer, 1, [0; 3], prepared, |_| -> Result<(), ()> {
         panic!("stale publication must not write Java output");

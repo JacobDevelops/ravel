@@ -4,7 +4,7 @@ use super::status::BakedFailure;
 use jni::objects::{JByteArray, JClass, JIntArray, JLongArray};
 use jni::sys::jlong;
 use jni::{Env, EnvUnowned};
-use ravel_renderer::baked::{BakedSnapshot, QuadInput};
+use ravel_renderer::baked::{BakedMesh, BakedSnapshot, QuadInput};
 use ravel_renderer::mesh::RenderLayer;
 use std::sync::PoisonError;
 use std::time::Instant;
@@ -59,8 +59,15 @@ pub fn ravel_renderer_baked<'local>(
                     .collect::<Vec<_>>();
                 let oracle = env.convert_byte_array(&oracle)?;
                 let mut emitted = Vec::new();
-                let result =
-                    emit_and_compare(&source, &oracle, &mut emitted, || !active(generation));
+                let mut mesh = None;
+                let result = emit_and_compare_with(
+                    &source,
+                    &oracle,
+                    &mut emitted,
+                    || !active(generation),
+                    Vec::try_reserve_exact,
+                    |value| mesh = Some(value),
+                );
                 let values = commit(
                     &super::RENDERER,
                     generation,
@@ -69,6 +76,7 @@ pub fn ravel_renderer_baked<'local>(
                         source,
                         emitted,
                         result,
+                        mesh,
                     },
                     |words| output.set_region(env, 0, words),
                 )?;
@@ -110,6 +118,7 @@ struct Prepared {
     source: Vec<u8>,
     emitted: Vec<i32>,
     result: [jlong; 6],
+    mesh: Option<BakedMesh>,
 }
 
 fn commit<E>(
@@ -123,6 +132,7 @@ fn commit<E>(
         source,
         emitted,
         result,
+        mesh,
     } = prepared;
     let mut locked = renderer.lock().unwrap_or_else(PoisonError::into_inner);
     if !locked.can_capture(generation) {
@@ -145,11 +155,13 @@ fn commit<E>(
         origin[1],
         origin[2],
     ];
-    let Some(key) = locked.shaded.publish(residency::Retained {
-        identity,
-        source,
-        emitted,
-    }) else {
+    let Some(mesh) = mesh else {
+        return Ok(Vec::new());
+    };
+    let Some(key) = locked
+        .shaded
+        .publish(residency::Retained { identity, mesh })
+    else {
         return Ok(Vec::new());
     };
     drop(locked);
@@ -185,6 +197,50 @@ pub fn ravel_renderer_baked_lease<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
+/// Reorders only the exact resident lease on a vanilla transparency upload.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelRendererBakedResort")]
+pub fn ravel_renderer_baked_resort<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    generation: jlong,
+    key: jlong,
+    camera: jni::objects::JFloatArray<'local>,
+    output: JIntArray<'local>,
+) -> jni::sys::jint {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<_, super::work::BoundaryError> {
+            if camera.len(env)? != 3 || !(4..=4 + MAX_QUADS * 28).contains(&output.len(env)?) {
+                return Ok(0);
+            }
+            let mut position = [0.; 3];
+            camera.get_region(env, 0, &mut position)?;
+            let mut locked = super::RENDERER
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if !locked.can_capture(generation) {
+                return Ok(0);
+            }
+            let Some(mesh) = locked
+                .shaded
+                .resort(generation, key, position, output.len(env)?)
+            else {
+                return Ok(0);
+            };
+            for (index, quad) in mesh.layers()[3].iter().enumerate() {
+                let mut vertices = quad.vertices.iter().flatten();
+                let words: [i32; 28] = std::array::from_fn(|_| {
+                    i32::from_ne_bytes(vertices.next().expect("fixed quad words").to_ne_bytes())
+                });
+                let offset = i32::try_from(4 + index * 28).expect("bounded output offset");
+                output.set_region(env, offset, &words)?;
+            }
+            drop(locked);
+            Ok(1)
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
 fn active(generation: jlong) -> bool {
     super::RENDERER
         .lock()
@@ -201,13 +257,21 @@ fn publish<'local>(
     Ok(result)
 }
 
+#[cfg(test)]
 fn emit_and_compare(
     source: &[u8],
     oracle: &[u8],
     output: &mut Vec<i32>,
     cancelled: impl Fn() -> bool,
 ) -> [jlong; 6] {
-    emit_and_compare_with(source, oracle, output, cancelled, Vec::try_reserve_exact)
+    emit_and_compare_with(
+        source,
+        oracle,
+        output,
+        cancelled,
+        Vec::try_reserve_exact,
+        |_| {},
+    )
 }
 
 fn emit_and_compare_with(
@@ -216,6 +280,7 @@ fn emit_and_compare_with(
     output: &mut Vec<i32>,
     cancelled: impl Fn() -> bool,
     reserve: impl FnOnce(&mut Vec<i32>, usize) -> Result<(), std::collections::TryReserveError>,
+    retain: impl FnOnce(BakedMesh),
 ) -> [jlong; 6] {
     let started = Instant::now();
     let Some((snapshot, camera)) = decode(source) else {
@@ -265,14 +330,16 @@ fn emit_and_compare_with(
             }
         }
     }
-    [
+    let receipt = [
         quads,
         mismatches,
         first,
         super::metric_long(started.elapsed().as_nanos()),
         super::metric_long(input_bytes),
         super::metric_long(mesh.heap_bytes() + output.capacity() * 4),
-    ]
+    ];
+    retain(mesh);
+    receipt
 }
 
 fn decode(source: &[u8]) -> Option<(BakedSnapshot, [f32; 3])> {

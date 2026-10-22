@@ -289,6 +289,14 @@ static = false
 runtimeClass = "buk"
 runtimeMember = "a"
 
+[target."legacy.baked-sort"]
+class = "net/minecraft/client/render/vertex/BufferBuilder"
+member = "sortQuads"
+descriptor = "(FFF)V"
+static = false
+runtimeClass = "buk"
+runtimeMember = "a"
+
 [target."legacy.recipe-register"]
 class = "net/minecraft/crafting/CraftingManager"
 member = "register"

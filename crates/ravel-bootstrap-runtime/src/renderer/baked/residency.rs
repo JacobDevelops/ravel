@@ -1,14 +1,14 @@
 use jni::sys::jlong;
+use ravel_renderer::baked::BakedMesh;
 
 pub(super) struct Retained {
     pub(super) identity: [jlong; 7],
-    pub(super) source: Vec<u8>,
-    pub(super) emitted: Vec<i32>,
+    pub(super) mesh: BakedMesh,
 }
 
 impl Retained {
     fn bytes(&self) -> usize {
-        self.source.capacity() + self.emitted.capacity() * 4
+        self.mesh.heap_bytes()
     }
 }
 
@@ -44,8 +44,8 @@ impl Residency {
             || value.identity[2] <= 0
             || value.identity[2] != value.identity[3]
             || value.identity[4..].iter().any(|axis| axis & 15 != 0)
-            || value.source.capacity() > super::INPUT_BOUND
-            || value.emitted.capacity() > 4 + super::MAX_QUADS * 28
+            || value.mesh.layers().iter().map(Vec::capacity).sum::<usize>() > super::MAX_QUADS
+            || value.mesh.generation() != u64::try_from(value.identity[2]).ok()?
         {
             return None;
         }
@@ -73,6 +73,29 @@ impl Residency {
             self.retired += 1;
         }
         true
+    }
+
+    pub(super) fn resort(
+        &mut self,
+        generation: jlong,
+        key: jlong,
+        camera: [f32; 3],
+        output_words: usize,
+    ) -> Option<&BakedMesh> {
+        let matches = |value: &&mut Retained| value.identity[..2] == [generation, key];
+        let value = self
+            .resident
+            .as_mut()
+            .filter(matches)
+            .or_else(|| self.pending.as_mut().filter(matches))?;
+        if output_words != 4 + value.mesh.layers()[3].len() * 28 {
+            return None;
+        }
+        value
+            .mesh
+            .resort(u64::try_from(value.identity[2]).ok()?, camera, || false)
+            .ok()?;
+        Some(&value.mesh)
     }
 
     pub(crate) fn retire(&mut self) {

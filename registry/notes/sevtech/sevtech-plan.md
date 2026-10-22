@@ -325,8 +325,13 @@ Existing adapter/version-boundary contracts remain the starting point. [SPEC.md:
   quantiles increased; no vanilla speedup or resource saving is established.
   Slice 8 step one adds full-world static-camera composited readbacks, substituting
   one acknowledged resident section at a time across initial, staged-reload and
-  reopened-after-unload scene matrices. The strict oracle independently recounts
-  complete-frame RGBA/depth differences. Moving-camera translucent reordering,
+  reopened-after-unload scene matrices. Its original depth readbacks followed the
+  hand-pass depth clear, not world depth. Step two disables that hand pass during
+  replay and passed fifteen static plus fifteen moving comparisons with zero
+  RGBA/coverage/genuine-world-depth mismatches in a separate raw recount. Twelve
+  static nontranslucent rows substitute resident sections; all translucent rows
+  stay entirely on vanilla, including all fifteen moving-camera rows with positive
+  color-only footprints at every stop. Native translucent re-sorting,
   fluid provenance and frozen physical composited trials remain WP5 acceptance
   work before any default cutover; ordinary world drawing remains vanilla.
 

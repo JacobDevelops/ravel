@@ -632,6 +632,12 @@ final class ClientAutomation implements Runnable {
         int placed = onServer(server, () -> command(server, "setblock " + (goldenOrigin[0] + 8) + " "
                 + (goldenY + 7) + " " + (goldenOrigin[1] + 8) + " minecraft:stone 0"));
         require(placed > 0, "Golden viewing platform was not placed");
+        int floorX = goldenOrigin[0] + goldenChunks[3][0] * 16;
+        int floorZ = goldenOrigin[1] + goldenChunks[3][1] * 16;
+        require(onServer(server, () -> command(server, "fill " + floorX + " " + (goldenY - 1)
+                + " " + floorZ + " " + (floorX + 15) + " " + (goldenY - 1) + " "
+                + (floorZ + 15) + " minecraft:stone 0")) > 0,
+                "Moving camera depth backing floor was not placed");
         measureGolden(server, 0);
         return ground;
     }
@@ -648,11 +654,12 @@ final class ClientAutomation implements Runnable {
                 int pending = (int) rendererType().getMethod("bakedCompositeDesignated").invoke(null);
                 if (pending < 0) viewed[0] = -1;
                 if (pending >= 0 && viewed[0] != pending) {
+                    if (pending == 3) movingGolden(server, phase);
                     aimGolden(server, pending);
                     viewed[0] = pending;
                     return false;
                 }
-                if (pending >= 0) captureComposite(phase, pending);
+                if (pending >= 0) captureComposite(phase, pending, -1);
                 int covered = goldenCoverage(phase);
                 if (covered == all) return true;
                 if (System.nanoTime() - refilled[0] >= interval) {
@@ -674,11 +681,18 @@ final class ClientAutomation implements Runnable {
 
     private void aimGolden(Object server, int scene) throws Exception {
         double yaw = Math.toDegrees(Math.atan2(-goldenChunks[scene][0], goldenChunks[scene][1]));
-        teleport(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5,
-                new double[]{0, 0, 0, yaw, 0});
+        positionGolden(server, goldenOrigin[0] + 8.5, goldenY + 8, goldenOrigin[1] + 8.5, yaw, 0);
+    }
+
+    private void positionGolden(Object server, double x, double y, double z, double yaw, double pitch)
+            throws Exception {
+        teleport(server, x, y, z, new double[]{0, 0, 0, yaw, pitch});
         await("Composited camera rotation acknowledged", () -> onGame(() -> {
             double difference = Math.IEEEremainder(playerState()[3] - yaw, 360.0);
-            return Math.abs(difference) < 0.01;
+            double[] state = playerState();
+            return Math.abs(difference) < 0.01 && Math.abs(state[0] - x) < 0.01
+                    && Math.abs(state[1] - y) < 0.01 && Math.abs(state[2] - z) < 0.01
+                    && Math.abs(state[4] - pitch) < 0.01;
         }), TimeUnit.SECONDS.toNanos(30));
         long frame = onGame(() -> (long) rendererType().getMethod("count", int.class).invoke(null, 3));
         await("Composited camera frame rendered", () -> onGame(() ->
@@ -686,30 +700,75 @@ final class ClientAutomation implements Runnable {
                 TimeUnit.SECONDS.toNanos(30));
     }
 
-    private void captureComposite(int phase, int expected) throws Exception {
+    private void movingGolden(Object server, int phase) throws Exception {
+        int[][] path = {{-8, 0}, {0, -7}, {-1, 0}, {8, 0}, {0, 8}};
+        double x = goldenOrigin[0] + goldenChunks[3][0] * 16 + 8;
+        double z = goldenOrigin[1] + goldenChunks[3][1] * 16 + 8;
+        Object abilities = onServer(server, () -> field(serverPlayer(server), "bO"));
+        Field flying = declaredField(abilities.getClass(), "b");
+        boolean wasFlying = onServer(server, () -> flying.getBoolean(abilities));
+        require(onServer(server, () -> command(server, "gamemode spectator @a")) > 0,
+                "Moving camera spectator mode was refused");
+        try {
+            for (int point = 0; point < path.length; point++) {
+                int index = point;
+                double yaw = Math.toDegrees(Math.atan2(path[point][0], -path[point][1]));
+                positionGolden(server, x + path[point][0], goldenY + 6, z + path[point][1], yaw, 30);
+                await("Moving translucent frame " + point, () -> captureComposite(phase, 3, index),
+                        TimeUnit.SECONDS.toNanos(30));
+            }
+        } finally {
+            require(onServer(server, () -> command(server, "gamemode creative @a")) > 0,
+                    "Moving camera creative restoration was refused");
+            onServer(server, () -> { flying.setBoolean(abilities, wasFlying); return null; });
+            onGame(() -> {
+                Object clientAbilities = field(field(game, "h"), "bO");
+                flying.setBoolean(clientAbilities, wasFlying);
+                return null;
+            });
+        }
+    }
+
+    private boolean captureComposite(int phase, int expected, int point) throws Exception {
         byte[] raw = onGame(() -> {
             long tick = ticks();
             double[] camera = playerState();
             Object renderer = field(game, "o");
             Method world = renderer.getClass().getDeclaredMethod("b", float.class, long.class);
             world.setAccessible(true);
+            Field hand = declaredField(renderer.getClass(), "C");
             Runnable replay = () -> {
                 try {
-                    world.invoke(renderer, 1.0f, 0L);
+                    boolean previous = hand.getBoolean(renderer);
+                    try {
+                        hand.setBoolean(renderer, false);
+                        world.invoke(renderer, 1.0f, 0L);
+                    } finally {
+                        hand.setBoolean(renderer, previous);
+                    }
                 } catch (ReflectiveOperationException failure) {
-                    throw new IllegalStateException("Static world frame replay failed", failure);
+                    throw new IllegalStateException("World-only composited frame replay failed", failure);
                 }
             };
             byte[] result = (byte[]) rendererType().getMethod("bakedComposite",
-                    Runnable.class, int.class, int.class, int.class)
-                    .invoke(null, replay, (int) field(game, "d"), (int) field(game, "e"), expected);
+                    Runnable.class, int.class, int.class, int.class, boolean.class)
+                    .invoke(null, replay, (int) field(game, "d"), (int) field(game, "e"), expected, point < 0);
             require(tick == ticks() && Arrays.equals(camera, playerState()),
                     "Composited frame replay changed the static camera or world tick");
+            if (result != null && point >= 0) {
+                java.nio.ByteBuffer moving = java.nio.ByteBuffer.allocate(result.length + 44)
+                        .order(java.nio.ByteOrder.LITTLE_ENDIAN).put(result).putInt(point);
+                for (double value : camera) moving.putDouble(value);
+                return moving.array();
+            }
             return result;
         });
-        if (raw == null) return;
+        if (raw == null) return false;
         int designated = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(4);
-        Files.write(evidence.resolve("composited-" + phase + "-" + designated + ".raw"), raw);
+        String name = point < 0 ? "composited-" + phase + "-" + designated
+                : "moving-" + phase + "-" + point;
+        Files.write(evidence.resolve(name + ".raw"), raw);
+        return true;
     }
 
     private int goldenCoverage(int phase) throws ReflectiveOperationException {

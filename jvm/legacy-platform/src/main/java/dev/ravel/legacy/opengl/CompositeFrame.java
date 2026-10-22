@@ -42,8 +42,8 @@ public final class CompositeFrame {
             read(render, arm, width, height);
             raw.put(arm);
             raw.position(0).putInt(scene).putInt(designated).putInt(width).putInt(height)
-                    .putInt(draws).putInt(submitted).putInt(2)
-                    .putInt(counts[0] + counts[1] + counts[2] + counts[3]);
+                    .putInt(draws).putInt(submitted).putInt(3)
+                    .putInt(counts[3] > 0 ? 0 : counts[0] + counts[1] + counts[2]);
             return raw.array();
         } finally {
             replacing = false;
@@ -70,6 +70,7 @@ public final class CompositeFrame {
         for (int layer = 0; layer < 4; layer++) {
             if (buffers[layer] == bound && count > 0) {
                 if (omitting) return true;
+                if (vertices[3] > 0) return false;
                 if (mode != GL11.GL_QUADS || first != 0 || count != vertices[layer])
                     throw new IllegalStateException("Resident world draw does not match published vanilla layer");
                 submit(mode, count, offset, bound);

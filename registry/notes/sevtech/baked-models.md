@@ -9,8 +9,9 @@ complete static-camera world frames, substituting one acknowledged resident
 section at a time while every other section and the rest of the world remain
 vanilla. This is a selected acceptance proof, not a default renderer cutover.
 It uses the live atlas and lightmap, model positions, UVs, shaded color, combined
-light, alpha testing and translucent blending. Moving-camera ordering, fluids
-and replacement-renderer savings are not established by this static proof.
+light, alpha testing and translucent blending. Step two keeps every section
+containing translucent vertices on vanilla, including its camera-dependent
+resort; fluids and replacement-renderer savings remain unsupported.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
 cube approximations. Model resolution, connected/multipart selection, face
@@ -394,7 +395,72 @@ capture was correctly refused for a zero visible footprint: the camera still
 faced the preceding section. Capture now waits for the requested client yaw
 and a subsequent rendered frame; no oracle threshold was changed.
 
-Remaining acceptance work is moving-camera translucent order, fluid provenance
-and tessellation, then preflight followed by frozen physical trials, before
-considering a default cutover. The benchmark preflight must pass before any
-physical trials; no RTX 5090 trial is required for this static-camera step.
+Step two identified a limitation in that original depth result. Pinned 1.12.2
+`buq.a(int,float,long)` bytecode clears `GL_DEPTH_BUFFER_BIT` immediately before
+the hand pass when field `C` is true. Original creative-player readbacks therefore
+compared post-hand depth, not world depth; the zero-depth-difference result above
+must not be read as world-depth fidelity evidence. Composited replay now disables
+that hand pass for every arm and restores its prior value in `finally`. Both
+matrices have now passed again with genuine world depth, without changing depth
+tolerance, RGBA equality, coverage equality or footprint checks.
+
+## Slice 8, step two: moving-camera translucent fallback
+
+Sections containing any translucent vertices are never substituted with the
+compile-time resident VBO. Their complete section draw stays vanilla, retaining
+`RenderChunk.resortTransparency` and vanilla's camera-dependent ordering.
+Opaque, cutout and animated resident substitution remains selected-only;
+ordinary drawing stays off by default. This is a fidelity-preserving fallback,
+not evidence that a stale resident translucent mesh can be drawn correctly.
+
+The harness moves a spectator camera west, north, through the glass interior,
+east and south of the stained-glass/ice scene, aiming toward its center with a
+30-degree downward pitch. A stone backing floor lies in the section below the
+designated scene, so opaque world-depth coverage is mandatory without changing
+the designated section's glass/ice contents. Every stop must still differ from
+its floor-only omitted-section arm.
+It waits for exact position/rotation acknowledgement and a subsequent rendered
+frame. The five positions repeat in initial, staged-resource and reopened-world
+phases. Each point replays the complete world at a fixed tick/camera for vanilla,
+selected fallback and omitted-section arms. The offered resident stays retained,
+but fallback frames read current vanilla VBOs even after a section rebuild;
+no resident data is submitted. Immutable section coordinates reject RenderChunk
+relocation. Nontranslucent substitution still requires the exact offered compile.
+
+The raw header is now version 3. Translucent scenes require zero substituted
+draws and vertices; the other designated scenes still require one complete
+resident draw. Fifteen additional `moving-<phase>-<point>.raw` files append a
+little-endian point index and five float64 camera values (XYZ, yaw, pitch) to
+the existing three-arm frame payload. The independent oracle requires every
+fresh point, the exact through-and-around path, finite cameras/depths, positive
+omitted-section footprint and zero RGBA/coverage/tolerated-depth mismatches.
+Neither fallback nor camera movement relaxes the pixel oracle.
+
+Ravel camera-dependent translucent re-sorting remains unimplemented: these
+moving rows prove the vanilla fallback, not a native translucent ordering claim.
+
+Remaining acceptance work is fluid provenance and tessellation, then preflight
+followed by frozen physical trials, before considering a default cutover.
+No physical trial belongs to this moving-camera step.
+
+The rebuilt selected live acceptance exited 0. An independent raw recount
+(separate scalar `struct`/`memoryview` implementation, without importing the
+production oracle) confirmed zero RGBA, depth-coverage and tolerated-world-depth
+mismatches in all thirty 1280×720 rows. The static genuine-world-depth result
+therefore held on rerun: twelve nontranslucent rows each submitted one complete
+resident draw, while three translucent rows used vanilla fallback. Static
+omitted-section footprints were 7,508–23,409 pixels, and every row contained
+positive genuine world-depth coverage. All fifteen moving rows submitted zero
+resident vertices. Their positive designated-section color-only footprints
+against the floor-only omitted arm were:
+
+| Lifecycle phase | West | North | Glass interior | East | South |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial | 82,390 | 107,096 | 775,496 | 82,209 | 82,209 |
+| Staged resources | 82,146 | 107,083 | 775,496 | 82,209 | 82,209 |
+| Reopened world | 82,390 | 107,096 | 775,496 | 82,209 | 82,209 |
+
+These moving rows prove fidelity of the translucent vanilla fallback under
+camera motion, not resident translucent ordering or whole-world native drawing.
+Opaque/cutout resident substitution is proven by the twelve static rows; the
+moving rows do not claim additional resident opaque/cutout substitutions.

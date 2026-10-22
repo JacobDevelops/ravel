@@ -1,5 +1,6 @@
 """Offline renderer proof acceptance and refusal regression tests."""
 import json
+import math
 from pathlib import Path
 import struct
 import tempfile
@@ -15,8 +16,16 @@ def composite_fixture(directory: Path) -> None:
     for phase in range(3):
         for designated in range(5):
             scene = designated if phase == 0 else phase + 4
-            header = struct.pack('<8i', scene, designated, 1, 1, 1, 4, 2, 4)
-            (directory / f'composited-{phase}-{designated}.raw').write_bytes(header + arm + arm + omitted)
+            draws, vertices = (0, 0) if designated == 3 else (1, 4)
+            header = struct.pack('<8i', scene, designated, 1, 1, draws, vertices, 3, vertices)
+            sample = header + arm + arm + omitted
+            (directory / f'composited-{phase}-{designated}.raw').write_bytes(sample)
+            if designated == 3:
+                for point, (dx, dz) in enumerate(renderer_proof.MOVING_PATH):
+                    yaw = math.degrees(math.atan2(dx, -dz))
+                    y = int(renderer_proof.validate_scene_settings()['scene.y']) + 6
+                    metadata = struct.pack('<i5d', point, 104 + dx, y, 312 + dz, yaw, 30)
+                    (directory / f'moving-{phase}-{point}.raw').write_bytes(sample + metadata)
 
 
 class CompositeFrameTests(unittest.TestCase):
@@ -25,7 +34,7 @@ class CompositeFrameTests(unittest.TestCase):
             root = Path(directory)
             composite_fixture(root)
             rows = renderer_proof.composited_proof(root, 0)
-            self.assertEqual(len(rows), 15)
+            self.assertEqual(len(rows), 30)
             self.assertTrue(all(row['rgbaMismatchPixels'] == row['depthMismatchPixels'] == 0 for row in rows))
             with self.assertRaisesRegex(RuntimeError, 'fresh composited'):
                 renderer_proof.composited_proof(root, float('inf'))
@@ -47,6 +56,39 @@ class CompositeFrameTests(unittest.TestCase):
                 raw[offset:offset + len(replacement)] = replacement
                 path.write_bytes(raw)
                 with self.subTest(offset=offset), self.assertRaises(RuntimeError):
+                    renderer_proof.composited_proof(root, 0)
+
+    def test_rejects_missing_camera_motion_and_translucent_resident_substitution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for field, value in ((16, struct.pack('<i', 1)), (-44, struct.pack('<i', 4)),
+                                 (-40, struct.pack('<d', 104)), (-8, struct.pack('<d', 20)),
+                                 (-32, struct.pack('<d', float('inf')))):
+                composite_fixture(root)
+                path = root / 'moving-0-0.raw'
+                raw = bytearray(path.read_bytes())
+                offset = field if field >= 0 else len(raw) + field
+                raw[offset:offset + len(value)] = value
+                path.write_bytes(raw)
+                with self.subTest(field=field), self.assertRaises(RuntimeError):
+                    renderer_proof.composited_proof(root, 0)
+            composite_fixture(root)
+            (root / 'moving-2-4.raw').unlink()
+            with self.assertRaisesRegex(RuntimeError, 'fresh moving'):
+                renderer_proof.composited_proof(root, 0)
+
+    def test_rejects_camera_path_shifted_away_from_section_interior(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for field, delta in ((-40, 1), (-32, 16)):
+                composite_fixture(root)
+                for path in root.glob('moving-*.raw'):
+                    raw = bytearray(path.read_bytes())
+                    offset = len(raw) + field
+                    value = struct.unpack_from('<d', raw, offset)[0]
+                    struct.pack_into('<d', raw, offset, value + delta)
+                    path.write_bytes(raw)
+                with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, 'camera path'):
                     renderer_proof.composited_proof(root, 0)
 
 

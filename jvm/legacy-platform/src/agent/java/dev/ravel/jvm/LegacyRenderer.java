@@ -96,8 +96,8 @@ public final class LegacyRenderer {
     public static void bakedDesignate(int scene, int x, int y, int z) { LegacyBakedCapture.designate(scene, x, y, z); }
     public static void bakedPhase(int phase) { LegacyBakedCapture.phase(phase); }
     public static int bakedCoverage(int phase) { return LegacyBakedCapture.coverage(phase); }
-    public static byte[] bakedComposite(Runnable render, int width, int height, int expected) {
-        return LegacyBakedCapture.composite(render, width, height, expected);
+    public static byte[] bakedComposite(Runnable render, int width, int height, int expected, boolean finish) {
+        return LegacyBakedCapture.composite(render, width, height, expected, finish);
     }
     public static int bakedCompositeDesignated() { return LegacyBakedCapture.compositeDesignated(); }
     public static boolean skipCompositeUpdate() { return LegacyCompositeCapture.replaying(); }

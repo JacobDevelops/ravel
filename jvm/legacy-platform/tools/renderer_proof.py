@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 import struct
 from typing import TypeAlias
+import tempfile
 
 from harness_settings import validate_scene_settings
 
@@ -21,6 +22,9 @@ MAX_STAGING_BYTES = 1212416
 PROOF_IMAGE_EDGE = 64
 PROOF_IMAGE_PIXELS = PROOF_IMAGE_EDGE ** 2
 PROOF_IMAGE_BYTES = PROOF_IMAGE_PIXELS * 4
+COMPOSITE_MAX_WIDTH = 1920
+COMPOSITE_MAX_HEIGHT = 1080
+MOVING_PATH = ((-8, 0), (0, -7), (-1, 0), (8, 0), (0, 8))
 
 
 RENDERER_SEAMS = ('reload', 'unload', 'frame', 'terrain', 'layer', 'update',
@@ -291,9 +295,12 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
         raise RuntimeError('Composited frame header missing')
     scene, section, width, height, draws, vertices, version, expected_vertices = struct.unpack_from('<8i', data)
     expected = designated if phase == 0 else phase + 4
-    if (scene != expected or section != designated or version != 2 or vertices != expected_vertices
-            or not 0 < width <= 1920 or not 0 < height <= 1080 or draws != 1
-            or not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4 or vertices % 4
+    fallback = designated == 3
+    if (scene != expected or section != designated or version != 3 or vertices != expected_vertices
+            or not 0 < width <= COMPOSITE_MAX_WIDTH or not 0 < height <= COMPOSITE_MAX_HEIGHT
+            or draws != (0 if fallback else 1)
+            or (vertices != 0 if fallback else not 0 < vertices <= BAKED_MAX_QUADS_PER_SECTION * 4)
+            or vertices % 4
             or len(data) != 32 + width * height * 24):
         raise RuntimeError(f'Composited frame metadata invalid: phase={phase}, section={designated}')
     pixels = width * height
@@ -316,6 +323,7 @@ def composited_sample(data: bytes, phase: int, designated: int) -> Proof:
         raise RuntimeError('Composited designated section has no visible footprint')
     return {'phase': phase, 'scene': BAKED_SCENES[scene], 'designated': BAKED_SCENES[designated],
             'width': width, 'height': height, 'substitutedDraws': draws, 'substitutedVertices': vertices,
+            'translucentVanillaFallback': fallback,
             'visibleSectionPixels': footprint,
             'rgbaMismatchPixels': sum(vanilla[i:i + 4] != resident[i:i + 4] for i in range(0, pixels * 4, 4)),
             'coverageMismatchPixels': sum((a < 1) != (b < 1) for a, b in zip(left, right)),
@@ -333,11 +341,48 @@ def composited_proof(directory: Path, started: float) -> list[Proof]:
                 rows.append(composited_sample(path.read_bytes(), phase, designated))
             except RuntimeError as failure:
                 raise RuntimeError(f'{path.name}: {failure}') from failure
-    (directory / 'composited-summary.json').write_text(json.dumps(rows, indent=2) + '\n')
+    rows.extend(moving_proof(directory, started))
+    with tempfile.NamedTemporaryFile(mode='w', dir=directory, delete=False) as temporary:
+        temporary_path = Path(temporary.name)
+        try:
+            temporary.write(json.dumps(rows, indent=2) + '\n')
+            temporary.close()
+            temporary_path.replace(directory / 'composited-summary.json')
+        finally:
+            temporary_path.unlink(missing_ok=True)
     failed = [row for row in rows if any(row[key] for key in
               ('rgbaMismatchPixels', 'coverageMismatchPixels', 'depthMismatchPixels'))]
     if failed:
         raise RuntimeError('Composited fidelity failed: ' + json.dumps(failed))
+    return rows
+
+
+def moving_proof(directory: Path, started: float) -> list[Proof]:
+    rows, origin = [], None
+    height = int(validate_scene_settings()['scene.y']) + 6
+    for phase in range(3):
+        for point, (dx, dz) in enumerate(MOVING_PATH):
+            path = directory / f'moving-{phase}-{point}.raw'
+            if not path.is_file() or path.stat().st_mtime < started:
+                raise RuntimeError(f'Missing fresh moving frame: {path.name}')
+            data = path.read_bytes()
+            if len(data) < 76:
+                raise RuntimeError('Moving camera metadata missing')
+            index, x, y, z, yaw, pitch = struct.unpack_from('<i5d', data, len(data) - 44)
+            expected_yaw = math.degrees(math.atan2(dx, -dz))
+            center = (x - dx, y, z - dz)
+            if origin is None:
+                origin = center
+            if (index != point or not all(math.isfinite(value) for value in (x, y, z, yaw, pitch))
+                    or abs(y - height) > 0.01
+                    or abs(math.remainder(center[0] - 8, 16)) > 0.01
+                    or abs(math.remainder(center[2] - 8, 16)) > 0.01
+                    or any(abs(a - b) > 0.01 for a, b in zip(center, origin))
+                    or abs(math.remainder(yaw - expected_yaw, 360)) > 0.01 or abs(pitch - 30) > 0.01):
+                raise RuntimeError('Moving camera path differs from scripted through-and-around positions')
+            row = composited_sample(data[:-44], phase, 3)
+            row.update({'cameraPoint': point, 'camera': [x, y, z, yaw, pitch]})
+            rows.append(row)
     return rows
 
 

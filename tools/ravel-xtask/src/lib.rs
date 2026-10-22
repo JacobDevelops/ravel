@@ -22,7 +22,9 @@ pub use evidence::manifest::{verify_evidence_manifest, verify_evidence_records, 
 pub use evidence::spikes::verify_spikes;
 pub use gate_versions::{GateVersionsReport, verify_gate_versions};
 pub use instance_scan::{Finding, InstanceScan, Loader, MarkerKind, scan_instance};
-pub use package_digests::{StaleDigest, refresh_digests, stale_digests};
+pub use package_digests::{
+    StaleDigest, maintained_package_directories, refresh_digests, stale_digests,
+};
 pub use scaffold::{required_scaffold_paths, verify_scaffold};
 pub use tracked::{verify_tracked_contents, verify_tracked_paths};
 pub use version_boundary::{MatrixEligibility, matrix_eligibility};

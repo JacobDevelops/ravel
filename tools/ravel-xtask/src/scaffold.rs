@@ -237,7 +237,7 @@ fn maintained_rust_roots(
         .collect()
 }
 
-fn maintained_members(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+pub(crate) fn maintained_members(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
     let mut members = Vec::new();
     for directory in ["crates", "registry/mods", "test-mods", "examples"] {
         let entries = match crate::text::entries(root, &root.join(directory)) {

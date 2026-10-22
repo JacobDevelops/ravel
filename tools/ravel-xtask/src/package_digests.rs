@@ -39,6 +39,17 @@ impl fmt::Display for StaleDigest {
     }
 }
 
+/// Discovers maintained Cargo members that carry a package manifest.
+///
+/// Discovery failures are appended to `violations` without discarding packages
+/// found in the remaining maintained directories.
+pub fn maintained_package_directories(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+    crate::scaffold::maintained_members(root, violations)
+        .into_iter()
+        .filter(|member| root.join(member).join(MANIFEST_FILE).is_file())
+        .collect()
+}
+
 /// Reports stale digests without modifying the package.
 pub fn stale_digests(directory: &Path) -> Result<Vec<StaleDigest>, Vec<String>> {
     digest_update(directory).map(|update| update.stale)
@@ -275,7 +286,10 @@ fn string_entries(document: &str) -> Vec<(String, Span)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MANIFEST_FILE, refresh_digests, stale_digests, string_entries};
+    use super::{
+        MANIFEST_FILE, maintained_package_directories, refresh_digests, stale_digests,
+        string_entries,
+    };
     use ravel_core::Sha256Digest;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -330,6 +344,43 @@ mod tests {
         let package = Package::new("already-removed");
         fs::remove_dir_all(package.path()).expect("temporary package should be removable");
         drop(package);
+    }
+
+    #[test]
+    fn all_packages_follow_maintained_member_discovery_not_recursive_manifest_search() {
+        let root = Package::new("maintained-members");
+        let members = [
+            "crates/package",
+            "registry/mods/package",
+            "test-mods/package",
+            "examples/package",
+        ];
+        for member in members {
+            let directory = root.path().join(member);
+            fs::create_dir_all(&directory).expect("a writable member directory");
+            fs::write(directory.join("Cargo.toml"), "").expect("a writable Cargo manifest");
+            fs::write(directory.join(MANIFEST_FILE), "{}").expect("a writable package manifest");
+        }
+        let crate_only = root.path().join("crates/not-a-package");
+        fs::create_dir_all(&crate_only).expect("a writable crate directory");
+        fs::write(crate_only.join("Cargo.toml"), "").expect("a writable Cargo manifest");
+        for excluded in ["examples/not-a-member", "registry/mods/nested/package"] {
+            let directory = root.path().join(excluded);
+            fs::create_dir_all(&directory).expect("a writable excluded directory");
+            fs::write(directory.join(MANIFEST_FILE), "{}").expect("a writable package manifest");
+        }
+        let mut violations = Vec::new();
+        let packages = maintained_package_directories(root.path(), &mut violations);
+        assert!(violations.is_empty(), "{violations:?}");
+        assert_eq!(
+            packages,
+            [
+                "crates/package",
+                "examples/package",
+                "registry/mods/package",
+                "test-mods/package",
+            ]
+        );
     }
 
     const ZEROES: &str = "0000000000000000000000000000000000000000000000000000000000000000";

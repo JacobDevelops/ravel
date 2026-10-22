@@ -20,7 +20,8 @@ const USAGE: &str = "usage:
   cargo xtask fixture reconstruct [descriptor]
   cargo xtask fixture verify [descriptor archive]
   cargo xtask scan instance <instance-directory>
-  cargo xtask package digests [--check] <package-directory>";
+  cargo xtask package digests [--check] <package-directory>
+  cargo xtask package digests [--check] --all";
 
 pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
     let (subject, violations) = match args {
@@ -58,13 +59,8 @@ pub(crate) fn dispatch(args: &[String], root: &Path) -> ExitCode {
         [generate, locks] if generate == "generate" && locks == "locks" => {
             return generate_sources(root, true);
         }
-        [package, digests, directory] if package == "package" && digests == "digests" => {
-            return package_digests(&root.join(directory), false);
-        }
-        [package, digests, flag, directory] | [package, digests, directory, flag]
-            if package == "package" && digests == "digests" && flag == "--check" =>
-        {
-            return package_digests(&root.join(directory), true);
+        [package, digests, selection @ ..] if package == "package" && digests == "digests" => {
+            return package_digest_command(selection, root);
         }
         [verify, scaffold] if verify == "verify" && scaffold == "scaffold" => {
             ("scaffold", ravel_xtask::verify_scaffold(root))
@@ -162,6 +158,44 @@ fn verify_archive(descriptor: &Path, archive: &Path) -> Result<(), Box<dyn Error
         verified.mod_loader
     );
     Ok(())
+}
+
+fn package_digest_command(args: &[String], root: &Path) -> ExitCode {
+    match args {
+        [all] if all == "--all" => all_package_digests(root, false),
+        [check, all] | [all, check] if check == "--check" && all == "--all" => {
+            all_package_digests(root, true)
+        }
+        [directory] if !directory.starts_with("--") => {
+            package_digests(&root.join(directory), false)
+        }
+        [check, directory] | [directory, check]
+            if check == "--check" && !directory.starts_with("--") =>
+        {
+            package_digests(&root.join(directory), true)
+        }
+        _ => {
+            eprintln!("{USAGE}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn all_package_digests(root: &Path, check: bool) -> ExitCode {
+    let mut violations = Vec::new();
+    let directories = ravel_xtask::maintained_package_directories(root, &mut violations);
+    let mut status = if violations.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        report_violations("package discovery", violations)
+    };
+    for directory in directories {
+        eprintln!("Package digests: {directory}");
+        if package_digests(&root.join(directory), check) != ExitCode::SUCCESS {
+            status = ExitCode::FAILURE;
+        }
+    }
+    status
 }
 
 fn package_digests(directory: &Path, check: bool) -> ExitCode {
@@ -275,6 +309,9 @@ mod tests {
             vec!["generate", "unknown"],
             vec!["host", "build"],
             vec!["fixture", "verify", "descriptor"],
+            vec!["package", "digests"],
+            vec!["package", "digests", "--all", "--all"],
+            vec!["package", "digests", "--check"],
         ] {
             let args = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
             assert_eq!(dispatch(&args, Path::new(".")), ExitCode::from(2));

@@ -32,6 +32,101 @@ def composite_fixture(directory: Path) -> None:
                     (directory / f'moving-{phase}-{point}.raw').write_bytes(sample + metadata)
 
 
+def production_fixture(root: Path) -> None:
+    metrics = [1] * 13
+    metrics[8:11] = [10, 5, 3]
+    (root / 'geometry-upload.json').write_text(json.dumps({'productionWorldDraw': metrics}))
+    for kind in (1, 2):
+        after = metrics.copy()
+        after[10 + kind] += 1
+        (root / f'production-fallback-{kind}.json').write_text(json.dumps(
+            {'kind': kind, 'acknowledged': [1] * 7, 'before': metrics, 'after': after}))
+    arm = bytes((32, 64, 96, 255)) + struct.pack('<f', 0.5)
+    omitted = bytes((0, 0, 0, 255)) + struct.pack('<f', 1.0)
+    for phase in range(3):
+        for designated, point in [(value, -1) for value in (0, 1, 2, 4)] + [(3, value) for value in range(6)]:
+            suffix = str(designated) if point < 0 else f'moving-{point}'
+            scene = designated if phase == 0 else phase + 4
+            raw = struct.pack('<8i', scene, designated, 1, 1, 3, 12, 3, 12) + arm + arm + omitted
+            (root / f'production-{phase}-{suffix}.raw').write_bytes(raw)
+            moving = ((-6, 0), (0, -5), (-1, 0), (6, 0), (0, 6), (8, 0))
+            dx, dz = (0, 0) if point < 0 else moving[point]
+            camera = [100 + designated, 206, 300, 0, 0] if point < 0 else [
+                104 + dx, 206, 312 + dz, math.degrees(math.atan2(dx, -dz)), 30]
+            identity = {'residency': [1, 2, 3, 3, 96, 200, 304], 'origin': [96, 200, 304],
+                        'camera': camera, 'clientTick': 10 + point, 'drawCounts': [1, 1, 0, 1, 0, 1],
+                        'sortCounters': [10 + point, 8 + point, 0], 'nativeBudget': [100, 0, 0, 0, 50, 80],
+                        'sortCamera': camera[:3],
+                        'designatedTranslucentDraws': 1,
+                        'globalSortCounters': [100 + point, 80 + point, 0],
+                        'glBudget': [100, 50, 80, 1, 0]}
+            if point == 5:
+                identity['residency'][1] = 4
+                identity['sortCounters'] = [0, 0, 0]
+            (root / f'production-{phase}-{suffix}.json').write_text(json.dumps(identity))
+
+
+class ProductionFrameTests(unittest.TestCase):
+    def test_requires_translucent_replacements_at_every_moving_stop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            production_fixture(root)
+            rows = renderer_proof.production_proof(root, 0)
+            self.assertEqual(len(rows), 30)
+            self.assertEqual(sum(row['point'] >= 0 for row in rows), 18)
+            path = root / 'production-1-moving-2.json'
+            initial = json.loads(path.read_text())
+            for key, value in [('drawCounts', [1, 2, 0, 0, 0, 1]), ('sortCounters', [0, 0, 0]),
+                               ('sortCounters', [10, 8, 0]),
+                               ('globalSortCounters', [0, 0, 0]),
+                               ('residency', [1, 3, 3, 3, 96, 200, 304]),
+                               ('sortCamera', [104, 206, 312]),
+                               ('designatedTranslucentDraws', 0),
+                               ('camera', [104, 206, 312, -90, 30]), ('clientTick', 0)]:
+                changed = dict(initial, **{key: value})
+                path.write_text(json.dumps(changed))
+                with self.subTest(key=key), self.assertRaises(RuntimeError):
+                    renderer_proof.production_proof(root, 0)
+            path.write_text(json.dumps(initial))
+            raw = root / 'production-2-moving-4.raw'
+            corrupted = bytearray(raw.read_bytes())
+            corrupted[40] ^= 1
+            raw.write_bytes(corrupted)
+            with self.assertRaisesRegex(RuntimeError, 'fidelity failed'):
+                renderer_proof.production_proof(root, 0)
+
+    def test_first_stop_and_crossing_require_owned_translucent_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            production_fixture(root)
+            for point, change in ((0, {'sortCamera': [104, 206, 306]}),
+                                  (5, {'designatedTranslucentDraws': 0})):
+                path = root / f'production-0-moving-{point}.json'
+                initial = json.loads(path.read_text())
+                path.write_text(json.dumps(initial | change))
+                with self.subTest(point=point), self.assertRaises(RuntimeError):
+                    renderer_proof.production_proof(root, 0)
+                path.write_text(json.dumps(initial))
+            self.assertEqual(len(renderer_proof.production_proof(root, 0)), 30)
+
+    def test_crossing_requires_fresh_residency_and_preserves_global_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            production_fixture(root)
+            path = root / 'production-1-moving-5.json'
+            initial = json.loads(path.read_text())
+            self.assertEqual(initial['sortCounters'], [0, 0, 0])
+            for key, value in (
+                    ('residency', [1, 2, 3, 3, 96, 200, 304]),
+                    ('residency', [2, 4, 3, 3, 96, 200, 304]),
+                    ('globalSortCounters', [1, 1, 0])):
+                path.write_text(json.dumps(initial | {key: value}))
+                with self.subTest(key=key), self.assertRaises(RuntimeError):
+                    renderer_proof.production_proof(root, 0)
+            path.write_text(json.dumps(initial))
+            self.assertEqual(len(renderer_proof.production_proof(root, 0)), 30)
+
+
 class CompositeFrameTests(unittest.TestCase):
     def test_recounts_complete_lifecycle_matrix_and_rejects_missing_or_stale_frames(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -294,33 +389,17 @@ class RendererProofTests(unittest.TestCase):
     def test_normal_world_requires_fresh_capture_files_and_strict_parity(self):
         with tempfile.TemporaryDirectory() as raw:
             directory = Path(raw)
-            (directory / 'geometry-upload.json').write_text(json.dumps({
-                'productionWorldDraw': [1, 1, 1, 0, 1, 1, 1, 1, 3, 2, 2, 2, 2]}))
-            composite_fixture(directory)
-            for kind in (1, 2):
-                (directory / f'production-fallback-{kind}.json').write_text(json.dumps({
-                    'kind': kind, 'acknowledged': [1] * 7, 'before': [0] * 13, 'after': [1] * 13}))
-            with self.assertRaises(RuntimeError):
+            production_fixture(directory)
+            (directory / 'production-2-moving-4.raw').unlink()
+            with self.assertRaisesRegex(RuntimeError, 'fresh normal world'):
                 renderer_proof.production_proof(directory, 0)
-            for phase in range(3):
-                for designated in (0, 1, 2, 4):
-                    source = directory / f'composited-{phase}-{designated}.raw'
-                    frame = bytearray(source.read_bytes())
-                    vertices = struct.unpack_from('<i', frame, 20)[0] * 2
-                    struct.pack_into('<i', frame, 16, 2)
-                    struct.pack_into('<i', frame, 20, vertices)
-                    struct.pack_into('<i', frame, 28, vertices)
-                    (directory / f'production-{phase}-{designated}.raw').write_bytes(frame)
-                    (directory / f'production-{phase}-{designated}.json').write_text(json.dumps({
-                        'residency': [1] * 7, 'origin': [1, 1, 1], 'camera': [designated, 0, -designated, 0, 0],
-                        'clientTick': 1, 'drawCounts': [1, 1, 0, 0, 1],
-                        'nativeBudget': [100, 2, 0, 0, 50, 75], 'glBudget': [100, 50, 75, 2, 0]}))
+            production_fixture(directory)
             rows = renderer_proof.production_proof(directory, 0)
-            self.assertEqual(len(rows), 12)
-            self.assertEqual(rows[0]['substitutedDraws'], 2)
+            self.assertEqual(len(rows), 30)
+            self.assertEqual(rows[0]['substitutedDraws'], 3)
             metadata = directory / 'production-0-0.json'
             original = json.loads(metadata.read_text())
-            metadata.write_text(json.dumps(original | {'camera': [1, 0, -1, 0, 0]}))
+            metadata.write_text(json.dumps(original | {'camera': [101, 206, 300, 0, 0]}))
             with self.assertRaisesRegex(RuntimeError, 'distinct camera positions'):
                 renderer_proof.production_proof(directory, 0)
             metadata.write_text(json.dumps(original))

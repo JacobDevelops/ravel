@@ -358,8 +358,8 @@ def production_proof(directory: Path, started: float) -> list[Proof]:
     export = json.loads((directory / 'geometry-upload.json').read_text())
     metrics = export.get('productionWorldDraw', [])
     if not (len(metrics) == 13 and all(type(value) is int and value >= 0 for value in metrics)
-            and all(metrics[layer] > 0 for layer in range(3)) and metrics[3] == 0
-            and metrics[7] > 0 and 0 < metrics[9] <= metrics[8] and 1 < metrics[10] <= 4096 * 3
+            and all(metrics[layer] > 0 for layer in range(4))
+            and metrics[7] > 0 and 0 < metrics[9] <= metrics[8] and 1 < metrics[10] <= 4096 * 4
             and metrics[11] > 0 and metrics[12] > 0):
         raise RuntimeError('Normal world replacement/fallback counters missing or invalid')
     for kind in (1, 2):
@@ -373,33 +373,30 @@ def production_proof(directory: Path, started: float) -> list[Proof]:
     rows = []
     for phase in range(3):
         positions = set()
-        for designated in (0, 1, 2, 4):
-            path = directory / f'production-{phase}-{designated}.raw'
+        previous_sorts = None
+        previous_key = None
+        for designated, point in [(value, -1) for value in (0, 1, 2, 4)] + [(3, value) for value in range(6)]:
+            suffix = str(designated) if point < 0 else f'moving-{point}'
+            path = directory / f'production-{phase}-{suffix}.raw'
             if not path.is_file() or path.stat().st_mtime < started:
                 raise RuntimeError(f'Missing fresh normal world frame: {path.name}')
-            identity_path = path.with_suffix('.json')
-            if not identity_path.is_file() or identity_path.stat().st_mtime < started:
-                raise RuntimeError(f'Missing fresh normal world identity: {identity_path.name}')
-            identity = json.loads(identity_path.read_text())
-            residency = identity.get('residency', [])
-            counts = identity.get('drawCounts', [])
-            native, gl = identity.get('nativeBudget', []), identity.get('glBudget', [])
-            camera = identity.get('camera', [])
-            if not (len(residency) == 7 and residency[0] > 0 and residency[1] > 0
-                    and residency[2] == residency[3] > 0 and residency[4:7] == identity.get('origin')
-                    and len(counts) == 5 and all(type(value) is int and value >= 0 for value in counts)
-                    and sum(counts[:3]) > counts[3] and identity.get('clientTick', 0) > 0
-                    and len(native) == 6 and 0 < native[4] <= native[5] <= native[0]
-                    and len(gl) == 5 and 0 < gl[1] <= gl[2] <= gl[0]
-                    and len(camera) == 5 and all(type(value) in (int, float) and math.isfinite(value)
-                                                for value in camera)):
-                raise RuntimeError(f'Normal world resident identity or budget mismatch: {identity_path.name}')
-            row = composited_sample(path.read_bytes(), phase, designated, sum(counts[:3]))
-            row.update({'drawCounts': counts, 'nativeBudget': native, 'glBudget': gl,
-                        'camera': identity.get('camera'), 'clientTick': identity['clientTick'],
-                        'translucentVanillaFallback': True})
+            row = production_sample(path, started, phase, designated, point)
             rows.append(row)
-            positions.add(tuple(camera[:3]))
+            if point < 0:
+                positions.add(tuple(row['camera'][:3]))
+            else:
+                sorts = row['sortCounters']
+                key = row['residency'][:2]
+                if point == 5:
+                    if key[0] != previous_key[0] or key[1] == previous_key[1]:
+                        raise RuntimeError('Cross-section frame did not acknowledge a rebuilt section')
+                    if any(value < old for value, old in zip(
+                            row['globalSortCounters'], rows[-2]['globalSortCounters'])):
+                        raise RuntimeError('Cross-section global sort counters regressed')
+                elif previous_sorts is not None and (key != previous_key or not all(
+                        sorts[index] > previous_sorts[index] for index in (0, 1))):
+                    raise RuntimeError('Production camera motion changed identity or did not advance sort/upload')
+                previous_sorts, previous_key = sorts, key
         if len(positions) != 4:
             raise RuntimeError('Normal world proof requires four distinct camera positions')
     (directory / 'production-summary.json').write_text(json.dumps(rows, indent=2) + '\n')
@@ -407,6 +404,63 @@ def production_proof(directory: Path, started: float) -> list[Proof]:
            ('rgbaMismatchPixels', 'coverageMismatchPixels', 'depthMismatchPixels')):
         raise RuntimeError('Normal world fidelity failed: ' + json.dumps(rows))
     return rows
+
+
+def production_sample(path: Path, started: float, phase: int, designated: int, point: int) -> Proof:
+    identity_path = path.with_suffix('.json')
+    if not identity_path.is_file() or identity_path.stat().st_mtime < started:
+        raise RuntimeError(f'Missing fresh normal world identity: {identity_path.name}')
+    identity = json.loads(identity_path.read_text())
+    residency = identity.get('residency', [])
+    counts = identity.get('drawCounts', [])
+    native, gl = identity.get('nativeBudget', []), identity.get('glBudget', [])
+    camera, sorts = identity.get('camera', []), identity.get('sortCounters', [])
+    global_sorts = identity.get('globalSortCounters', [])
+    valid = (len(residency) == 7 and residency[0] > 0 and residency[1] > 0
+             and residency[2] == residency[3] > 0 and residency[4:7] == identity.get('origin')
+             and identity.get('clientTick', 0) > 0
+             and len(global_sorts) == 3 and all(type(value) is int and value >= 0 for value in global_sorts)
+             and len(sorts) == 3
+             and all(type(value) is int and 0 <= value <= total for value, total in zip(sorts, global_sorts))
+             and len(native) == 6 and 0 < native[4] <= native[5] <= native[0]
+             and len(gl) == 5 and 0 < gl[1] <= gl[2] <= gl[0]
+             and len(camera) == 5 and all(type(value) in (int, float) and math.isfinite(value) for value in camera))
+    if not valid or not production_counts(counts, sorts, point):
+        raise RuntimeError(f'Normal world resident identity or budget mismatch: {identity_path.name}')
+    if point >= 0:
+        validate_production_path(camera, identity['origin'], point)
+        if type(identity.get('designatedTranslucentDraws')) is not int or identity['designatedTranslucentDraws'] <= 0:
+            raise RuntimeError('Production designated translucent VBO was not replaced')
+        sorted_camera = identity.get('sortCamera', [])
+        if point < 5 and not (len(sorted_camera) == 3
+                and all(type(value) in (int, float) and math.isfinite(value) for value in sorted_camera)
+                and sorted_camera[0] == camera[0] and sorted_camera[2] == camera[2]):
+            raise RuntimeError('Production translucent sort belongs to a different camera')
+    row = composited_sample(path.read_bytes(), phase, designated, sum(counts[:4]))
+    row.update({'drawCounts': counts, 'nativeBudget': native, 'glBudget': gl,
+                'camera': camera, 'clientTick': identity['clientTick'], 'residency': residency,
+                'translucentVanillaFallback': counts[5] > 0, 'sortCounters': sorts,
+                'globalSortCounters': global_sorts, 'sortCamera': identity.get('sortCamera'),
+                'designatedTranslucentDraws': identity.get('designatedTranslucentDraws'), 'point': point})
+    return row
+
+
+def production_counts(counts: list, sorts: list, point: int) -> bool:
+    return (len(counts) == 6 and all(type(value) is int and value >= 0 for value in counts)
+            and (sum(counts[:3]) > counts[4] if point < 0 else counts[3] > 0)
+            and len(sorts) == 3 and all(type(value) is int and value >= 0 for value in sorts)
+            and 0 <= sorts[1] <= sorts[0] and (point < 0 or point == 5 or sorts[1] > 0))
+
+
+def validate_production_path(camera: list, origin: list, point: int) -> None:
+    path = ((-6, 0), (0, -5), (-1, 0), (6, 0), (0, 6), (8, 0))
+    dx, dz = path[point]
+    yaw = math.degrees(math.atan2(dx, -dz))
+    if not (abs(camera[0] - (origin[0] + 8 + dx)) < 0.01
+            and abs(camera[1] - (origin[1] + 6)) < 0.01
+            and abs(camera[2] - (origin[2] + 8 + dz)) < 0.01
+            and abs(math.remainder(camera[3] - yaw, 360)) < 0.01 and abs(camera[4] - 30) < 0.01):
+        raise RuntimeError('Production moving-camera path differs')
 
 
 def composited_proof(directory: Path, started: float) -> list[Proof]:

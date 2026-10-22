@@ -16,7 +16,7 @@ public final class ResidentWorldDraw {
     private static int frameVertices;
     private static int admittedDraws;
     private static int admittedVertices;
-    private static final int[] COUNTS = new int[5];
+    private static final int[] COUNTS = new int[6];
 
     private ResidentWorldDraw() { }
 
@@ -44,7 +44,7 @@ public final class ResidentWorldDraw {
         if (CompositeFrame.replaying() || layer < 0 || count <= 0) return false;
         int bound = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
         int[] candidate = null;
-        if (layer < 3 && mode == GL11.GL_QUADS && first == 0) {
+        if (layer < 4 && mode == GL11.GL_QUADS && first == 0) {
             int index = INDEX[slot(bound)] - 1;
             if (index >= 0 && (CANDIDATES[index][2] < 0 || CANDIDATES[index][2] == count))
                 candidate = CANDIDATES[index];
@@ -58,11 +58,12 @@ public final class ResidentWorldDraw {
         }
         if (!admitted || ProductionFrames.baseline()) {
             METRICS[4 + layer]++;
-            if (!ProductionFrames.baseline()) COUNTS[layer == 3 ? 4 : 3]++;
+            if (!ProductionFrames.baseline()) COUNTS[layer == 3 ? 5 : 4]++;
             return false;
         }
         if (ProductionFrames.omitting()) return true;
         CompositeFrame.submit(mode, count, candidate[3], candidate[1], bound);
+        ProductionFrames.replaced(layer, candidate[1]);
         METRICS[layer]++;
         COUNTS[layer]++;
         replacedThisFrame = true;

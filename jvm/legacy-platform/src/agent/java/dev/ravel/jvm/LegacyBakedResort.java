@@ -51,8 +51,12 @@ final class LegacyBakedResort {
         initial.bytes = bytes;
     }
 
+    static synchronized boolean matches(long epoch, long lease) {
+        return target != null && generation == epoch && key == lease;
+    }
+
     static synchronized boolean acknowledge(long epoch, long lease) {
-        if (target == null || generation != epoch || key != lease) return false;
+        if (!matches(epoch, lease)) return false;
         acknowledged = true;
         if (hasUpload) LegacyGeometryProof.resortBaked(uploaded, generation, key);
         return true;

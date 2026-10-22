@@ -22,6 +22,7 @@ final class LegacyCompositeCapture {
     static int designated() { return chunk == null ? -1 : designated; }
     static boolean replaying() { return replaying; }
     static void clear() { chunk = null; task = null; origin = null; fluids = null; ready = false; }
+    static void clear(Object work) { if (task == work) clear(); }
     static void ready(boolean fallback) { vanillaFallback = fallback; ready = true; }
 
     static void fluids(int[] summary) { fluids = summary.clone(); }

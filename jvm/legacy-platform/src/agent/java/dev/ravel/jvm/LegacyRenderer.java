@@ -107,6 +107,11 @@ public final class LegacyRenderer {
     public static boolean skipCompositeUpdate() { return LegacyCompositeCapture.replaying(); }
     public static boolean productionReady(int x, int y, int z) { return LegacyWorldDraw.ready(x, y, z); }
     public static long[] productionBudget() { return Hook.ravelRendererBakedLease(0, 0, 5); }
+    public static long[] productionSorts() { return LegacyWorldResort.metrics(); }
+    public static long[] productionSectionSorts(int x, int y, int z) { return LegacyWorldDraw.sorts(x, y, z); }
+    public static float[] productionSectionSortCamera(int x, int y, int z) {
+        return LegacyWorldDraw.sortCamera(x, y, z);
+    }
     public static void productionWarm(int x, int z) throws ReflectiveOperationException { LegacyWorldDraw.warm(x, z); }
     public static boolean productionNegative(int x, int y, int z, int kind) {
         return LegacyWorldDraw.negative(x, y, z, kind);

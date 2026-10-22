@@ -338,7 +338,7 @@ public final class GeometryProof {
             bakedAtlas = atlas;
             bakedLightmap = lightmap;
             boolean exact = true;
-            for (int layer = 0; layer < 3; layer++)
+            for (int layer = 0; layer < 4; layer++)
                 for (int mismatch = 1; mismatch <= 3; mismatch++) exact &= result[layer * 7 + mismatch] == 0;
             if (exact && System.getProperty("ravel.renderer", "vanilla").equals("resident-world"))
                 BakedWorldTable.publish(emitted, identity);
@@ -390,6 +390,27 @@ public final class GeometryProof {
         } finally {
             bind(GL15.GL_ARRAY_BUFFER, previous);
         }
+    }
+    public static synchronized boolean resortWorld(int[] emitted, long generation, long key, long resource, long atlas) {
+        BakedWorldTable.Entry entry = BakedWorldTable.get(generation, key, resource, atlas);
+        if (entry == null || context != GL.getCapabilities()) return false;
+        BAKED_LEASE.check(generation, Thread.currentThread().threadId());
+        int offset = 0;
+        for (int layer = 0; layer < 4; layer++) {
+            if (emitted[layer] * 4 != entry.layers()[layer])
+                throw new IllegalArgumentException("Resident world transparency layer count changed");
+            if (layer < 3) offset += emitted[layer] * 112;
+        }
+        if (emitted.length != 4 + emitted[3] * 28)
+            throw new IllegalArgumentException("Resident world transparency payload changed");
+        int previous = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+        try {
+            staging.clear().limit(emitted[3] * 112);
+            staging.asIntBuffer().put(emitted, 4, emitted.length - 4);
+            bind(GL15.GL_ARRAY_BUFFER, entry.buffer());
+            updateBaked(offset, staging);
+            return true;
+        } finally { bind(GL15.GL_ARRAY_BUFFER, previous); }
     }
 
     static void checkBakedCounts(int[] emitted, byte[] oracle) {

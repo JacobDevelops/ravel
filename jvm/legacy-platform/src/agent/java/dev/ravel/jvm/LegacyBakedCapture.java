@@ -54,10 +54,12 @@ final class LegacyBakedCapture {
 
     static void sort(Object builder, float x, float y, float z) {
         if (LegacyGeometryProof.selected()) LegacyBakedResort.sort(builder, x, y, z);
+        if (LegacyGeometryProof.selected()) LegacyWorldResort.sort(builder, x, y, z);
     }
 
     static void upload(Object buffer, Object bytes) {
         if (LegacyGeometryProof.selected()) LegacyBakedResort.upload(buffer, bytes);
+        if (LegacyGeometryProof.selected()) LegacyWorldResort.upload(buffer, bytes);
     }
     static void invalidateResident() { resident = false; }
 
@@ -168,13 +170,24 @@ final class LegacyBakedCapture {
     }
 
     private static synchronized void drawQueued() {
+        synchronized (LegacyBakedResort.class) { drawCurrent(); }
+    }
+
+    private static void drawCurrent() {
         Capture capture = queued;
         if (capture == null) return;
         if (!LegacyRenderer.accepts(capture.generation) || !capture.resourceCurrent()) {
             abandon(capture);
             queued = null;
-            LegacyCompositeCapture.clear();
+            LegacyCompositeCapture.clear(capture.task);
             METRICS[14]++;
+            return;
+        }
+        if (controlledWindow() && !LegacyBakedResort.matches(capture.generation, capture.key)) {
+            LegacyCompositeCapture.clear(capture.task);
+            capture.settle(false);
+            queued = null;
+            METRICS[15]++;
             return;
         }
         int designated = capture.designated();
@@ -245,7 +258,7 @@ final class LegacyBakedCapture {
     private static void abandon(Capture capture) {
         synchronized (LegacyBakedResort.class) {
             capture.settle(false);
-            LegacyBakedResort.clear();
+            if (LegacyBakedResort.matches(capture.generation, capture.key)) LegacyBakedResort.clear();
             resident = false;
         }
     }
@@ -554,7 +567,7 @@ final class LegacyBakedCapture {
                 if (queued == null) queued = this;
                 else WAITING.addLast(this);
                 Object chunk = access.chunk.invokeExact(task);
-                LegacyWorldDraw.offer(chunk, task, origin, generation, key);
+                LegacyWorldDraw.offer(chunk, task, origin, generation, key, output);
                 if (controlledWindow())
                     LegacyBakedResort.offer(generation, key, origin, output, chunk,
                             (ByteBuffer) access.buffer.invokeExact(builders[3]));

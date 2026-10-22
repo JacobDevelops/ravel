@@ -187,6 +187,12 @@ final class LegacyGeometryProof {
         call("resortBaked", new Class<?>[]{int[].class, long.class, long.class, long.class},
                 output, generation, key, LegacyRenderer.ownerThread());
     }
+    static boolean resortWorld(int[] output, long generation, long key) {
+        requireOwner(generation);
+        return (boolean) call("resortWorld", new Class<?>[]{int[].class, long.class, long.class,
+                long.class, long.class}, output, generation, key,
+                LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration());
+    }
     static byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated, int width, int height,
             boolean fallback) {
         long generation = LegacyRenderer.currentGeneration();

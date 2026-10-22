@@ -8,9 +8,10 @@ the bounded offscreen comparison, and slice 8 substitutes one section only insid
 explicit world-frame replay. Those timings are not renderer-replacement results.
 
 The separate experimental `resident-world` selection intercepts vanilla's actual
-per-section VBO draw during normal SOLID, CUTOUT_MIPPED and CUTOUT rendering.
-It reuses vanilla's layer state, translation and section ordering. Every compiled
-section can now publish to a generation-keyed native table and a Java-owned GL
+per-section VBO draw during normal SOLID, CUTOUT_MIPPED, CUTOUT and TRANSLUCENT
+rendering. It reuses vanilla's layer state, translation and section ordering,
+including back-to-front translucent section order and vanilla blend state.
+Every compiled section can publish to a generation-keyed native table and a Java-owned GL
 table. Each table admits at most 4,096 resident sections; native pending entries
 are separately keyed and capped at 64. Their render-distance byte budgets are
 `clamp((2d + 1)^2 * 262144, 16 MiB, 256 MiB)`. Native accounting includes retained
@@ -18,8 +19,8 @@ mesh capacity and table storage; GL accounting includes the three comparison
 scratch buffers. Both tables evict the section farthest from the newly admitted
 section, preserving vanilla fallback when a lease is no longer resident. These
 are residency limits, not a claim about total JVM heap, process memory or physical VRAM.
-Fluids, stale generations, dirty or pending meshes and all TRANSLUCENT draws
-remain vanilla. Exact generation/key acknowledgement and current compiled-task,
+Fluids, stale generations and dirty or pending meshes remain vanilla.
+Exact generation/key acknowledgement and current compiled-task,
 section-origin, resource and atlas identities are required before replacement.
 Reload, world unload and shutdown retire native entries and GL buffers.
 The selection remains refused outside diagnostic opt-in
@@ -29,54 +30,102 @@ presented frames, frames with replacements, maximum replacements/frame and actua
 acknowledged-then-stale/pending fallback draws. Normal-world raw triplets remain
 separate from designated-section replay evidence, which cannot enter the normal
 draw replacement path. Sidecars report per-frame replaced and fallback draws,
-native/GL live and peak bytes and their configured budgets.
+native/GL live and peak bytes and their configured budgets. Translucent native
+sort, Java upload and refusal counters are recorded both for the designated
+resident key and globally in each normal-world sidecar.
+Vanilla's actual transparency-sort callback invokes the existing native Rust
+sort against the production section key; its matching vanilla VBO upload
+updates only that resident VBO's translucent range. Pending handoffs are bounded
+to 64 byte-buffer/destination identities and 16 MiB of reusable output arrays.
+Missing native residency, a refused handoff or failed GL identity lookup removes
+that section's production admission instead of drawing stale translucent data.
+Publication requires zero isolated-layer RGBA, coverage and depth violations
+under the existing strict oracle for all four baked layers, not just the three
+opaque/cutout layers.
 
-The bounded-residency software-GL run captured four distinct camera positions in
-each of three lifecycle phases. A/B/C/D were respectively
-`(-167.5, 200, -7.5)`, `(-166.5, 200, -8.5)`, `(-165.5, 200, -9.5)` and
-`(-163.5, 200, -11.5)`, with yaw `-135/-90/-45/0` and pitch zero.
-The viewing platform supports the complete translated camera path; exact
-XYZ/yaw/pitch acknowledgement remains required before capture.
-These are controlled scenes rendered through ordinary world-layer submission,
-not the offscreen or designated-section replay.
+The production translucent software-GL run captured four translated camera
+positions plus five within-section moving stops and one section-crossing stop
+in each of three lifecycle phases. Static A/B/C/D were respectively
+`(-167.5, 200, 8.5)`, `(-166.5, 200, 7.5)`, `(-165.5, 200, 6.5)` and
+`(-163.5, 200, 4.5)`, with yaw `-135/-90/-45/0` and pitch zero.
+Moving M0–M5 were respectively `(-174,198,-8)`, `(-168,198,-13)`,
+`(-169,198,-8)`, `(-162,198,-8)`, `(-168,198,-2)` and
+`(-160,198,-8)`, yaw `-90/0/-90/90/180/90`, pitch 30.
+M0–M4 retain one generation/key per phase and advance its native sort and upload
+counters at every stop. The last applied matching upload also records vanilla's
+sort camera; each cadence row requires its X/Z to equal that stop's camera,
+including M0, so an earlier priming resort cannot satisfy a later stop.
+All six moving rows require an actual TRANSLUCENT replacement of the designated
+resident VBO, not merely another visible translucent section. M5 crosses the x
+section boundary, causes a new acknowledged key and retains monotonic global counters.
+These controlled scenes use ordinary world-layer submission, not the offscreen
+or designated-section replay.
 
 Each 1280×720 row below contains vanilla, replacement and omission arms captured
 within its one recorded client tick. A separate raw-byte recount, independent
 of the acceptance parser, found zero RGBA and coverage mismatches and zero depth
-violations at the unchanged `2 / 16777215` tolerance in all twelve rows.
+violations at the unchanged `2 / 16777215` tolerance in all thirty rows.
 The omission footprint is positive in every row. Counts are section-layer draw
-calls, not unique sections: S/M/C means replaced SOLID/CUTOUT_MIPPED/CUTOUT;
-opaque and translucent columns count vanilla fallback draws.
+calls, not unique sections: S/M/C/T means replaced
+SOLID/CUTOUT_MIPPED/CUTOUT/TRANSLUCENT; fallback columns count vanilla draws.
 
-| Phase | Camera | Tick | Replaced S/M/C | Opaque fallback | Translucent fallback | Omission footprint |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Initial | A | 933 | 3/1/0 | 0 | 1 | 234157 |
-| Initial | B | 948 | 2/1/1 | 0 | 1 | 174129 |
-| Initial | C | 964 | 2/1/1 | 0 | 0 | 97111 |
-| Initial | D | 980 | 2/1/1 | 2 | 1 | 188658 |
-| Resource reload | A | 1465 | 3/1/0 | 0 | 1 | 234157 |
-| Resource reload | B | 1480 | 2/1/1 | 0 | 1 | 174129 |
-| Resource reload | C | 1496 | 2/1/1 | 0 | 0 | 97111 |
-| Resource reload | D | 1534 | 2/1/1 | 2 | 1 | 188658 |
-| Reopened | A | 2563 | 3/1/0 | 0 | 1 | 233889 |
-| Reopened | B | 2578 | 2/1/1 | 0 | 1 | 174129 |
-| Reopened | C | 2603 | 2/1/1 | 0 | 0 | 97148 |
-| Reopened | D | 2618 | 2/1/1 | 2 | 1 | 188663 |
+| Phase | Pose | Tick | Replaced S/M/C/T | Fallback opaque/T | Key sort/upload | Global sort/upload/refusal | Omission footprint |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Initial | A | 757 | 3/1/0/1 | 0/0 | 0/0 | 7/7/0 | 279039 |
+| Initial | B | 774 | 2/1/1/1 | 0/0 | 0/0 | 8/8/0 | 174128 |
+| Initial | C | 791 | 2/1/1/0 | 0/0 | 0/0 | 8/8/0 | 97110 |
+| Initial | D | 808 | 2/1/1/0 | 2/1 | 0/0 | 8/8/0 | 188658 |
+| Initial | M0 | 837 | 3/0/0/1 | 3/1 | 1/1 | 10/10/0 | 448099 |
+| Initial | M1 | 856 | 4/0/0/1 | 5/2 | 2/2 | 11/11/0 | 516171 |
+| Initial | M2 | 875 | 3/0/0/1 | 2/0 | 3/3 | 12/12/0 | 888210 |
+| Initial | M3 | 894 | 3/0/0/1 | 3/2 | 4/4 | 13/13/0 | 443976 |
+| Initial | M4 | 913 | 3/0/0/1 | 1/1 | 5/5 | 14/14/0 | 443976 |
+| Initial | M5 crossing | 932 | 3/0/0/1 | 4/2 | 0/0 | 15/15/0 | 388029 |
+| Reload | A | 1354 | 3/1/0/1 | 0/0 | 0/0 | 24/24/0 | 279039 |
+| Reload | B | 1372 | 2/1/1/1 | 0/0 | 0/0 | 25/25/0 | 174128 |
+| Reload | C | 1389 | 2/1/1/0 | 0/0 | 0/0 | 25/25/0 | 97110 |
+| Reload | D | 1407 | 2/1/1/0 | 2/1 | 0/0 | 25/25/0 | 188658 |
+| Reload | M0 | 1434 | 3/0/0/1 | 3/1 | 1/1 | 27/27/0 | 448081 |
+| Reload | M1 | 1453 | 4/0/0/1 | 5/2 | 2/2 | 28/28/0 | 516171 |
+| Reload | M2 | 1472 | 3/0/0/1 | 2/0 | 3/3 | 29/29/0 | 888210 |
+| Reload | M3 | 1490 | 3/0/0/1 | 3/2 | 4/4 | 30/30/0 | 443976 |
+| Reload | M4 | 1510 | 3/0/0/1 | 1/1 | 5/5 | 31/31/0 | 443976 |
+| Reload | M5 crossing | 1527 | 3/0/0/1 | 4/2 | 0/0 | 32/32/0 | 388029 |
+| Reopened | A | 2479 | 3/1/0/1 | 0/0 | 0/0 | 39/39/0 | 280076 |
+| Reopened | B | 2496 | 2/1/1/1 | 0/0 | 0/0 | 40/40/0 | 174130 |
+| Reopened | C | 2513 | 2/1/1/0 | 0/0 | 0/0 | 40/40/0 | 97106 |
+| Reopened | D | 2530 | 2/1/1/0 | 2/1 | 0/0 | 40/40/0 | 188663 |
+| Reopened | M0 | 2555 | 3/0/0/1 | 3/1 | 1/1 | 42/42/0 | 448097 |
+| Reopened | M1 | 2572 | 4/0/0/1 | 5/2 | 2/2 | 43/43/0 | 516171 |
+| Reopened | M2 | 2590 | 3/0/0/1 | 2/0 | 3/3 | 44/44/0 | 888210 |
+| Reopened | M3 | 2609 | 3/0/0/1 | 3/2 | 4/4 | 45/45/0 | 443976 |
+| Reopened | M4 | 2628 | 3/0/0/1 | 1/1 | 5/5 | 46/46/0 | 443976 |
+| Reopened | M5 crossing | 2646 | 3/0/0/1 | 4/2 | 0/0 | 47/47/0 | 388029 |
 
-Four replaced draws outnumber the zero to two opaque fallback draws in every
-sample. At render distance two, each independent table's byte budget was
-16,777,216 bytes. Recorded native peak was **4,974,472 bytes** and GL peak was
-**5,750,640 bytes**, including comparison scratch storage. The twelve snapshots
-held seven to seventeen native/GL residents, with no pending native entries at
-capture. These measured peaks stay below their residency budgets; they are not
-total process or physical GPU memory measurements.
+Key counters refer to the designated resident, not every visible translucent
+section. All recorded key refusal counts were zero. The moving cadence keys
+were `5/130`, `7/432` and `10/1087`; the crossing rows acknowledged fresh keys
+`5/212`, `7/512` and `10/1163`. Their zero counters reflect initial mesh
+publication, not a missing required resort of the previous mesh.
+This reset matches vanilla's lifetime: the pinned 1.12.2 `RenderChunk` rebuild
+creates a fresh `CompiledChunk`, emits geometry and records its initial sorted
+vertex state. A resort instead restores the existing vertex state, stably sorts
+its current quad order and stores the updated state. The native mesh likewise
+physically retains each sorted order and uses that current ordinal to resolve
+equal-distance ties; only a rebuild replaces the mesh with fresh emission.
+Counter reset does not discard tie order vanilla would retain on a resort.
+
+At render distance two, each independent table's budget was 16,777,216 bytes.
+Recorded native peak was **3,679,324 bytes** and GL peak **4,785,200 bytes**,
+including comparison scratch storage. These are residency peaks, not total
+process or physical GPU memory measurements. Actual per-layer totals were
+11,259/5,802/6,472/1,787 replacements and 24,285/10,772/8,539/15,109 fallbacks.
 
 Live negative probes began with exact acknowledged resident identities:
-generation/key `5/122` was made dirty, and `5/141` entered a new compile task.
-The actual stale-fallback counter increased `1 → 2`; the actual pending-fallback
-counter increased `2266 → 2267`. Both probes observed vanilla fallback after the
-transition, without removing the corresponding vanilla draw. This closes the
-acknowledged-then-stale/pending live-evidence gap for the diagnostic path only.
+generation/key `5/39` was made dirty, and `5/111` entered a new compile task.
+The actual stale-fallback counter increased `4 → 5`; the actual pending-fallback
+counter increased `2237 → 2238`. Both observed vanilla fallback without removing
+the corresponding vanilla draw. Selection remains diagnostic-only.
 
 The earlier single-resident experiment's first independent recount submitted
 **one section/frame** in twelve 1280×720 samples, with three strict RGBA failures.
@@ -97,13 +146,14 @@ The independent tick-stable recount has **zero RGBA, coverage and depth
 mismatches in all twelve frames**, each with one resident section and positive
 omitted-section footprint. This supports animation drift as the original cause;
 atlas phase and GL state were not independently sampled. No oracle changed.
-Bounded multi-section residency extends that mechanism; production translucent
-replacement and physical trials remain separate work. Full-world parity is not established.
+Bounded multi-section residency extends that mechanism; physical trials remain
+separate work. Full-world parity is not established.
 
 The earlier offscreen/replay proof uses the live atlas and lightmap, model
 positions, UVs, shaded color, combined light, alpha testing and translucent
-blending. Slice 8's native translucent re-sort belongs to that proof path, not
-the new production opaque experiment. Whole fluid sections remain on vanilla.
+blending. The production path reuses slice 8's native translucent re-sort with
+generation/key ownership rather than its single replay slot. Whole fluid
+sections remain on vanilla.
 Native fluid tessellation and replacement-renderer savings remain unsupported.
 
 The input contract accepts actual face-culled vanilla model quads, not invented
@@ -664,7 +714,7 @@ the completed run passed without changing the camera path, oracle or draw
 requirement. No moving stop or static row differed in the completed run.
 
 That selected software-GL replay alone does not prove physical-GPU parity,
-default world cutover or renderer savings. Normal-world color parity and bounded
-visible-section residency are reported separately above; production translucent
-replacement and preflighted frozen RTX 5090 trials remain outside this result.
+default world cutover or renderer savings. Normal-world four-layer parity,
+including production translucent replacement and bounded visible-section
+residency, is reported separately above. Preflighted frozen RTX 5090 trials remain.
 No default cutover is admitted.

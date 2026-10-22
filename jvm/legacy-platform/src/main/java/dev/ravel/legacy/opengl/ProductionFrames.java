@@ -27,8 +27,10 @@ public final class ProductionFrames {
     private static long capturedTick;
     private static long previousTick;
     private static int admitted;
-    private static final int[] COUNTS = new int[5];
-    private static final int[] ADMISSION = new int[4096 * 3 * 4];
+    private static int targetBuffer;
+    private static int targetDraws;
+    private static final int[] COUNTS = new int[6];
+    private static final int[] ADMISSION = new int[4096 * 4 * 4];
 
     private ProductionFrames() { }
 
@@ -55,13 +57,16 @@ public final class ProductionFrames {
     }
 
     public static void begin(int scene, int designated, int buffer, int w, int h,
-            java.util.function.LongSupplier clientTicks) {
+            long[] identity, java.util.function.LongSupplier clientTicks) {
         if (stage >= 0 || buffer <= 0 || w <= 0 || h <= 0 || w > 1920 || h > 1080)
             throw new IllegalStateException("Invalid production frame capture");
         width = w; height = h; framebuffer = buffer; warmup = 3; completed = null; bad = false;
         ticks = clientTicks;
         previousTick = ticks.getAsLong();
         if (previousTick <= 0) throw new IllegalStateException("Production frames require counted client ticks");
+        BakedWorldTable.Entry entry = BakedWorldTable.get(identity[0], identity[1], identity[2], identity[3]);
+        if (entry == null) throw new IllegalStateException("Production capture resident changed");
+        targetBuffer = entry.buffer(); targetDraws = 0;
         int pixels = Math.multiplyExact(w, h);
         raw = ByteBuffer.allocate(32 + pixels * 24).order(ByteOrder.LITTLE_ENDIAN);
         raw.putInt(scene).putInt(designated).putInt(w).putInt(h).putInt(0).putInt(0).putInt(3).putInt(0);
@@ -119,6 +124,10 @@ public final class ProductionFrames {
     public static long capturedTick() { return capturedTick; }
     static void counts(int[] counts) { if (stage == 1) System.arraycopy(counts, 0, COUNTS, 0, COUNTS.length); }
     public static int[] counts() { return COUNTS.clone(); }
+    static void replaced(int layer, int buffer) {
+        if (stage == 1 && layer == 3 && buffer == targetBuffer) targetDraws++;
+    }
+    public static int designatedTranslucentDraws() { return targetDraws; }
     public static void cancel() { stage = -1; raw = null; arm = null; completed = null; }
 
     public static byte[] take() { byte[] result = completed; completed = null; return result; }

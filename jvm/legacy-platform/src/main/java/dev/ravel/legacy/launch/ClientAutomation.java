@@ -48,7 +48,9 @@ final class ClientAutomation implements Runnable {
     private long unloadDrainChecks;
     private long unloadRetiredPoolGeneration;
     private String geometryLiveProof;
-    private final boolean[][] productionCaptured = new boolean[3][5];
+    private final boolean[][] productionCaptured = new boolean[3][11];
+    private final long[][] productionMotionSorts = new long[3][3];
+    private final long[] productionMotionKeys = new long[3];
 
     ClientAutomation(ClassLoader loader, Path evidence) {
         this.loader = loader;
@@ -665,7 +667,7 @@ final class ClientAutomation implements Runnable {
                 int pending = (int) rendererType().getMethod("bakedCompositeDesignated").invoke(null);
                 if (pending < 0) viewed[0] = -1;
                 if (pending >= 0 && viewed[0] != pending) {
-                    if (pending == 3) movingGolden(server, phase);
+                    if (pending == 3) movingGolden(server, phase, false);
                     aimGolden(server, pending);
                     viewed[0] = pending;
                     return false;
@@ -704,9 +706,10 @@ final class ClientAutomation implements Runnable {
             positionGolden(server, goldenOrigin[0] + 8.5 + designated, goldenY + 8,
                     goldenOrigin[1] + 8.5 - designated, yaw, 0);
             await("Bounded normal-world replacement at camera " + designated,
-                    () -> captureProduction(phase, designated), TimeUnit.MINUTES.toNanos(2));
+                    () -> captureProduction(phase, designated, -1), TimeUnit.MINUTES.toNanos(2));
         }
         if (phase == 0) for (int kind : new int[]{1, 2}) measureProductionFallback(kind);
+        movingGolden(server, phase, true);
     }
     private void measureProductionFallback(int kind) throws Exception {
         int x = goldenOrigin[0] + goldenChunks[4][0] * 16;
@@ -755,8 +758,9 @@ final class ClientAutomation implements Runnable {
                 TimeUnit.SECONDS.toNanos(30));
     }
 
-    private void movingGolden(Object server, int phase) throws Exception {
-        int[][] path = {{-8, 0}, {0, -7}, {-1, 0}, {8, 0}, {0, 8}};
+    private void movingGolden(Object server, int phase, boolean production) throws Exception {
+        int[][] path = production ? new int[][]{{-6, 0}, {0, -5}, {-1, 0}, {6, 0}, {0, 6}}
+                : new int[][]{{-8, 0}, {0, -7}, {-1, 0}, {8, 0}, {0, 8}};
         double x = goldenOrigin[0] + goldenChunks[3][0] * 16 + 8;
         double z = goldenOrigin[1] + goldenChunks[3][1] * 16 + 8;
         Object abilities = onServer(server, () -> field(serverPlayer(server), "bO"));
@@ -765,12 +769,25 @@ final class ClientAutomation implements Runnable {
         require(onServer(server, () -> command(server, "gamemode spectator @a")) > 0,
                 "Moving camera spectator mode was refused");
         try {
+            if (production) {
+                positionGolden(server, x, goldenY + 6, z - 6, 0, 30);
+                await("Translucent resident acknowledged before camera motion", () -> onGame(() ->
+                        (boolean) rendererType().getMethod("productionReady", int.class, int.class, int.class)
+                                .invoke(null, (int) x - 8, goldenY, (int) z - 8)),
+                        TimeUnit.MINUTES.toNanos(2));
+            }
             for (int point = 0; point < path.length; point++) {
                 int index = point;
                 double yaw = Math.toDegrees(Math.atan2(path[point][0], -path[point][1]));
                 positionGolden(server, x + path[point][0], goldenY + 6, z + path[point][1], yaw, 30);
-                await("Moving translucent frame " + point, () -> captureComposite(phase, 3, index),
-                        TimeUnit.SECONDS.toNanos(30));
+                await("Moving translucent frame " + point, () -> production
+                        ? captureProduction(phase, 3, index) : captureComposite(phase, 3, index),
+                        production ? TimeUnit.MINUTES.toNanos(2) : TimeUnit.SECONDS.toNanos(30));
+            }
+            if (production) {
+                positionGolden(server, x + 8, goldenY + 6, z, 90, 30);
+                await("Cross-section translucent frame", () -> captureProduction(phase, 3, 5),
+                        TimeUnit.MINUTES.toNanos(2));
             }
         } finally {
             require(onServer(server, () -> command(server, "gamemode creative @a")) > 0,
@@ -784,15 +801,27 @@ final class ClientAutomation implements Runnable {
         }
     }
 
-    private boolean captureProduction(int phase, int designated) throws Exception {
+    private boolean captureProduction(int phase, int designated, int point) throws Exception {
         if (!System.getProperty("ravel.renderer", "vanilla").equals("resident-world")) return true;
-        Path output = evidence.resolve("production-" + phase + "-" + designated + ".raw");
+        String sample = "production-" + phase + "-" + (point < 0 ? designated : "moving-" + point);
+        Path output = evidence.resolve(sample + ".raw");
         require(Boolean.getBoolean("ravel.legacy.proof"), "Normal world capture requires proof counters");
-        if (productionCaptured[phase][designated]) return true;
+        int slot = point < 0 ? designated : 5 + point;
+        if (productionCaptured[phase][slot]) return true;
         int x = goldenOrigin[0] + goldenChunks[designated][0] * 16;
         int z = goldenOrigin[1] + goldenChunks[designated][1] * 16;
         if (!onGame(() -> (boolean) rendererType().getMethod("productionReady", int.class, int.class, int.class)
                 .invoke(null, x, goldenY, z))) return false;
+        if (point >= 0 && point < 5) {
+            long[] current = onGame(() -> (long[]) rendererType().getMethod(
+                    "productionSectionSorts", int.class, int.class, int.class).invoke(null, x, goldenY, z));
+            if (current[0] <= productionMotionSorts[phase][0]
+                    || current[1] <= productionMotionSorts[phase][1]) return false;
+            float[] sorted = onGame(() -> (float[]) rendererType().getMethod(
+                    "productionSectionSortCamera", int.class, int.class, int.class).invoke(null, x, goldenY, z));
+            double[] position = onGame(this::playerState);
+            if (sorted[0] != (float) position[0] || sorted[2] != (float) position[2]) return false;
+        }
         key(KeyEvent.VK_ESCAPE);
         await(() -> onGame(() -> field(game, "m") != null));
         Object renderer = onGame(() -> field(game, "o"));
@@ -801,14 +830,16 @@ final class ClientAutomation implements Runnable {
         double[] camera = onGame(this::playerState);
         long[] identity = onGame(() -> GeometryProof.worldIdentity(x, goldenY, z));
         long uploads = rendererCount(9);
+        long[] sorts = onGame(() -> (long[]) rendererType().getMethod("productionSorts").invoke(null));
         try {
+            if (point == 5 && identity[1] == productionMotionKeys[phase]) return false;
             onGame(() -> {
                 hand.setBoolean(renderer, false);
                 Object framebuffer = game.getClass().getMethod("b").invoke(game);
                 dev.ravel.legacy.opengl.ProductionFrames.begin(
                         phase == 0 ? designated : phase + 4, designated,
                         (int) field(framebuffer, "f"), (int) field(game, "d"), (int) field(game, "e"),
-                        this::productionTick);
+                        identity, this::productionTick);
                 return null;
             });
             byte[][] captured = {null};
@@ -817,21 +848,20 @@ final class ClientAutomation implements Runnable {
                 return captured[0] != null;
             }, TimeUnit.SECONDS.toNanos(30));
             if (java.nio.ByteBuffer.wrap(captured[0]).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(16) <= 0
-                    || rendererCount(9) != uploads) return false;
+                    || rendererCount(9) != uploads || !Arrays.equals(sorts,
+                            onGame(() -> (long[]) rendererType().getMethod("productionSorts").invoke(null)))) return false;
             int[] counts = dev.ravel.legacy.opengl.ProductionFrames.counts();
-            if (counts[0] + counts[1] + counts[2] <= counts[3]) return false;
+            if (point < 0 && counts[0] + counts[1] + counts[2] <= counts[4]) return false;
+            if (point >= 0 && (counts[3] <= 0
+                    || dev.ravel.legacy.opengl.ProductionFrames.designatedTranslucentDraws() <= 0)) return false;
             Files.write(output, captured[0]);
-            double[] after = onGame(this::playerState);
-            require(Arrays.equals(camera, after), "Normal world golden camera changed between arms");
-            Files.writeString(evidence.resolve("production-" + phase + "-" + designated + ".json"),
-                    "{\"residency\":" + Arrays.toString(identity) + ",\"origin\":[" + x + "," + goldenY
-                    + "," + z + "],\"camera\":" + Arrays.toString(camera)
-                    + ",\"clientTick\":" + dev.ravel.legacy.opengl.ProductionFrames.capturedTick()
-                    + ",\"drawCounts\":" + Arrays.toString(dev.ravel.legacy.opengl.ProductionFrames.counts())
-                    + ",\"glBudget\":" + Arrays.toString(onGame(GeometryProof::worldResidency))
-                    + ",\"nativeBudget\":" + Arrays.toString(onGame(() ->
-                            (long[]) rendererType().getMethod("productionBudget").invoke(null))) + "}");
-            productionCaptured[phase][designated] = true;
+            writeProductionSample(sample, x, z, camera, identity);
+            if (point >= 0 && point < 5) {
+                productionMotionSorts[phase] = onGame(() -> (long[]) rendererType().getMethod(
+                        "productionSectionSorts", int.class, int.class, int.class).invoke(null, x, goldenY, z));
+                productionMotionKeys[phase] = identity[1];
+            }
+            productionCaptured[phase][slot] = true;
         } finally {
             onGame(() -> { dev.ravel.legacy.opengl.ProductionFrames.cancel(); return null; });
             onGame(() -> { hand.setBoolean(renderer, previous); return null; });
@@ -839,6 +869,28 @@ final class ClientAutomation implements Runnable {
             await(() -> onGame(() -> field(game, "m") == null));
         }
         return true;
+    }
+
+    private void writeProductionSample(String sample, int x, int z, double[] camera, long[] identity)
+            throws Exception {
+        require(Arrays.equals(camera, onGame(this::playerState)), "Normal world golden camera changed between arms");
+        Files.writeString(evidence.resolve(sample + ".json"),
+                "{\"residency\":" + Arrays.toString(identity) + ",\"origin\":[" + x + "," + goldenY
+                + "," + z + "],\"camera\":" + Arrays.toString(camera)
+                + ",\"clientTick\":" + dev.ravel.legacy.opengl.ProductionFrames.capturedTick()
+                + ",\"drawCounts\":" + Arrays.toString(dev.ravel.legacy.opengl.ProductionFrames.counts())
+                + ",\"designatedTranslucentDraws\":" + dev.ravel.legacy.opengl.ProductionFrames.designatedTranslucentDraws()
+                + ",\"sortCounters\":" + Arrays.toString(onGame(() ->
+                        (long[]) rendererType().getMethod("productionSectionSorts", int.class, int.class, int.class)
+                                .invoke(null, x, goldenY, z)))
+                + ",\"sortCamera\":" + Arrays.toString(onGame(() ->
+                        (float[]) rendererType().getMethod("productionSectionSortCamera", int.class, int.class, int.class)
+                                .invoke(null, x, goldenY, z)))
+                + ",\"globalSortCounters\":" + Arrays.toString(onGame(() ->
+                        (long[]) rendererType().getMethod("productionSorts").invoke(null)))
+                + ",\"glBudget\":" + Arrays.toString(onGame(GeometryProof::worldResidency))
+                + ",\"nativeBudget\":" + Arrays.toString(onGame(() ->
+                        (long[]) rendererType().getMethod("productionBudget").invoke(null))) + "}");
     }
 
     private long productionTick() {

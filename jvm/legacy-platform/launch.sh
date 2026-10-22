@@ -143,14 +143,16 @@ case "$action" in
             --version 1.12.2 --gameDir "$game" --assetsDir "$work/assets" --assetIndex 1.12
             --username RavelLegacy --uuid 00000000000000000000000000000001 --accessToken 0
             --userType legacy --versionType release --width "$width" --height "$height")
+        client_timeout=300s
+        if [[ "${RAVEL_LEGACY_RENDERER:-vanilla}" == resident-world ]]; then client_timeout=600s; fi
         (
             if [[ -n "$suffix" ]]; then cd "$game"; fi
             if [[ "$mode" == xvfb ]]; then
                 export LIBGL_ALWAYS_SOFTWARE=1
-                timeout --kill-after=10s 300s xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX' \
+                timeout --kill-after=10s "$client_timeout" xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX' \
                     "${command[@]}"
             else
-                timeout --kill-after=10s 300s "${command[@]}"
+                timeout --kill-after=10s "$client_timeout" "${command[@]}"
             fi
         ) 2>&1 | tee "$evidence/client.log"
         test -f "$evidence/automation.complete"

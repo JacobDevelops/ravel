@@ -44,6 +44,7 @@ BAKED_RECORD_BYTES = 232
 BAKED_QUAD_BYTES = 112
 BAKED_NATIVE_SLOT_BYTES = 48 + BAKED_MAX_QUADS_PER_SECTION * (BAKED_RECORD_BYTES + BAKED_QUAD_BYTES)
 BAKED_GL_RESERVED_BYTES = 3 * BAKED_MAX_QUADS_PER_SECTION * BAKED_QUAD_BYTES
+FALLBACK_REASONS = 16
 
 def validate_shaded_export(data: dict[str, Any], renderer: str, preflight: bool = False) -> None:
     from prepare import require
@@ -166,10 +167,15 @@ def validate_geometry_export(out: Path, renderer: str, started_ns: int, *,
         require(isinstance(budget, list) and len(budget) == 6
                 and all(type(value) is int and value >= 0 for value in budget),
                 'production native budget schema differs')
-        require(isinstance(data.get('productionWorldDraw'), list)
-                and len(data['productionWorldDraw']) == 13
-                and all(type(value) is int and value >= 0 for value in data['productionWorldDraw']),
+        draws, reasons = data.get('productionWorldDraw'), data.get('productionFallbackReasons')
+        require(isinstance(draws, list) and len(draws) == 13
+                and all(type(value) is int and value >= 0 for value in draws)
+                and isinstance(reasons, list) and len(reasons) == 4 * FALLBACK_REASONS
+                and all(type(value) is int and value >= 0 for value in reasons),
                 'production draw schema differs')
+        require(all(sum(reasons[layer * FALLBACK_REASONS:(layer + 1) * FALLBACK_REASONS]) == draws[4 + layer]
+                    for layer in range(4)),
+                'production fallback reasons do not account for every fallback draw')
         return
     if preflight:
         require(data.get('backend') in ('selected-not-initialized', 'OpenGL15', 'ARB_vertex_buffer_object'),

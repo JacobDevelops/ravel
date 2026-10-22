@@ -92,7 +92,8 @@ class RunPolicyTests(TestCase):
         data = dict(self.geometry_export("geometry-proof"),
                     selection="resident-world",
                     fidelity="bounded-opaque-world-replacement-parity-unproven",
-                    shadedNativeBudget=[100, 0, 0, 0, 40, 80], productionWorldDraw=[0] * 13)
+                    shadedNativeBudget=[100, 0, 0, 0, 40, 80], productionWorldDraw=[0] * 13,
+                    productionFallbackReasons=[0] * 64)
         with tempfile.TemporaryDirectory() as raw:
             out = Path(raw)
             path = out / "geometry-upload.json"
@@ -100,10 +101,21 @@ class RunPolicyTests(TestCase):
             run.validate_geometry_export(out, "resident-world", 0, preflight=True)
             for key, values in (("productionWorldDraw", [0] * 11),
                                 ("productionWorldDraw", [False] * 13),
+                                ("productionFallbackReasons", [0] * 63),
                                 ("shadedNativeBudget", [0] * 5)):
                 path.write_text(json.dumps(dict(data, **{key: values})))
                 with self.subTest(key=key), self.assertRaisesRegex(ValueError, "schema differs"):
                     run.validate_geometry_export(out, "resident-world", 0, preflight=True)
+            draws = [0] * 13
+            draws[5] = 3
+            reasons = [0] * 64
+            reasons[16 + 9] = 2
+            path.write_text(json.dumps(dict(data, productionWorldDraw=draws, productionFallbackReasons=reasons)))
+            with self.assertRaisesRegex(ValueError, "do not account"):
+                run.validate_geometry_export(out, "resident-world", 0, preflight=True)
+            reasons[16 + 13] = 1
+            path.write_text(json.dumps(dict(data, productionWorldDraw=draws, productionFallbackReasons=reasons)))
+            run.validate_geometry_export(out, "resident-world", 0, preflight=True)
 
     def test_resident_matrix_alternates_production_selection(self) -> None:
         args = argparse.Namespace(matrix="resident-test", instance="ravel",

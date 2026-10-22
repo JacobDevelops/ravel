@@ -490,7 +490,11 @@ public final class GeometryProof {
         }
         if (ids[layer] <= 0) return;
         BakedWorldTable.Entry entry = BakedWorldTable.get(generation, key, resource, atlas);
-        if (entry == null || context != GL.getCapabilities()) return;
+        if (entry == null || context != GL.getCapabilities()) {
+            int reason = entry == null ? BakedWorldTable.missing(key) : ResidentWorldDraw.GL_STALE_KEY;
+            ResidentWorldDraw.layer(layer, ids[layer], 0, -reason, 0);
+            return;
+        }
         BAKED_LEASE.draw(generation, Thread.currentThread().threadId());
         int offset = 0;
         for (int index = 0; index < layer; index++) offset += entry.layers()[index] * 28;
@@ -498,9 +502,11 @@ public final class GeometryProof {
     }
 
     public static long[] worldMetrics() { return ResidentWorldDraw.metrics(); }
-    public static void worldFallback(int layer, int source, int reason) {
-        if (source > 0) ResidentWorldDraw.layer(layer, source, 0, -reason, 0);
+    public static long[] worldFallbacks() { return ResidentWorldDraw.fallbacks(); }
+    public static void worldFallback(int layer, int source, int reason, int kind) {
+        if (source > 0) ResidentWorldDraw.layer(layer, source, 0, -reason, kind);
     }
+    public static synchronized void worldStatus(int[] pairs, boolean reset) { ResidentWorldDraw.status(pairs, reset); }
     public static synchronized byte[] compositeFrame(Runnable render, int[] ids, int scene, int designated,
             int width, int height, long generation, long resource, long atlas, long owner, boolean fallback) {
         if (fallback && designated >= 5 && context == null) initialize();

@@ -2,13 +2,23 @@ package dev.ravel.jvm;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 
 final class LegacyWorldDraw {
     record Entry(Object chunk, Object task, int[] origin, long generation, long key,
             boolean ready, int[] layers, long[] sorts, float[] sortCamera) { }
     private static final LinkedHashMap<Long, Entry> ENTRIES = new LinkedHashMap<>();
+    static final int UNACKNOWLEDGED = 3, DRAIN_REFUSED = 4, FLUID = 8, SKIPPED = 9, REFUSED = 10,
+            IN_FLIGHT = 11, OFFERED = 12;
+    private static final boolean SELECTED = System.getProperty("ravel.renderer", "vanilla").equals("resident-world");
+    private static final IdentityHashMap<Object, int[]> SECTIONS = new IdentityHashMap<>();
+    private static final ArrayList<int[]> CHANGED = new ArrayList<>();
+    private static final HashSet<Long> DRAINED = new HashSet<>();
+    private static boolean reset;
     private static final int[] VBO = new int[4];
     private static final int[] EMPTY = new int[0];
     private static long configured;
@@ -21,6 +31,49 @@ final class LegacyWorldDraw {
     private static Entry probe;
     private static int probeKind;
     private LegacyWorldDraw() { }
+    static synchronized void status(Object task, int code, boolean settle) {
+        if (!SELECTED) return;
+        try {
+            Object chunk = method("LEGACY_COMPILE_TASK", "getChunk").invoke(task);
+            if (chunk != null) mark(chunk, code, settle);
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section status failed", failure); }
+    }
+    private static void mark(Object chunk, int code, boolean settle) throws ReflectiveOperationException {
+        int[] section = SECTIONS.get(chunk);
+        if (section == null) {
+            section = new int[6];
+            Method buffer = method("LEGACY_RENDER_CHUNK", "getBuffer");
+            for (int index = 0; index < 4; index++) {
+                Object vertexBuffer = buffer.invoke(chunk, index);
+                section[1 + index] = vertexBuffer == null ? 0 : field("LEGACY_VERTEX_BUFFER", "id").getInt(vertexBuffer);
+            }
+            SECTIONS.put(chunk, section);
+        } else if (settle && section[0] != IN_FLIGHT || section[0] == code) return;
+        section[0] = code;
+        if (section[5] == 0) { section[5] = 1; CHANGED.add(section); }
+    }
+    static synchronized void drained(long key) {
+        Entry entry = ENTRIES.get(key);
+        if (entry != null && !entry.ready()) DRAINED.add(key);
+    }
+    private static void flush() {
+        if (!reset && CHANGED.isEmpty()) return;
+        int[] pairs = new int[CHANGED.size() * 8];
+        int at = 0;
+        for (int[] section : CHANGED) {
+            for (int index = 0; index < 4; index++) { pairs[at++] = section[1 + index]; pairs[at++] = section[0]; }
+            section[5] = 0;
+        }
+        LegacyGeometryProof.worldStatus(pairs, reset);
+        CHANGED.clear();
+        reset = false;
+    }
+    private static int label(Entry entry, int reason) {
+        if (reason < 0) return DRAINED.contains(entry.key()) ? DRAIN_REFUSED : UNACKNOWLEDGED;
+        int[] section = SECTIONS.get(entry.chunk());
+        int code = section == null ? 0 : section[0];
+        return reason == 1 && (code == SKIPPED || code == REFUSED || code == FLUID) ? code : reason;
+    }
     static synchronized int captureLimit(int bytes) {
         long diameter = distance * 2L + 1;
         long budget = Math.clamp(diameter * diameter * 262144L, 16L * 1024 * 1024, 256L * 1024 * 1024);
@@ -58,6 +111,9 @@ final class LegacyWorldDraw {
         if (ENTRIES.size() == 4096) ENTRIES.remove(ENTRIES.keySet().iterator().next());
         ENTRIES.put(key, new Entry(chunk, task, origin.clone(), generation, key, false,
                 Arrays.copyOf(emitted, 4), new long[3], new float[3]));
+        if (!SELECTED) return;
+        try { mark(chunk, OFFERED, false); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident section status failed", failure); }
     }
     static synchronized void acknowledge(long generation, long key) {
         Entry entry = ENTRIES.get(key);
@@ -67,7 +123,10 @@ final class LegacyWorldDraw {
                     true, entry.layers(), entry.sorts(), entry.sortCamera()));
         }
     }
-    static synchronized void clear() { ENTRIES.clear(); probe = null; configured = 0; LegacyWorldResort.clear(); }
+    static synchronized void clear() {
+        ENTRIES.clear(); probe = null; configured = 0; LegacyWorldResort.clear();
+        SECTIONS.clear(); CHANGED.clear(); DRAINED.clear(); reset = true;
+    }
     static synchronized boolean ready(int x, int y, int z) {
         for (Entry entry : ENTRIES.values())
             if (entry.origin()[0] == x && entry.origin()[1] == y && entry.origin()[2] == z && current(entry)) return true;
@@ -143,6 +202,7 @@ final class LegacyWorldDraw {
         int layer = value instanceof Enum<?> enumeration ? enumeration.ordinal() : -1;
         LegacyGeometryProof.worldLayer(layer, EMPTY, 0, 0);
         if (layer < 0 || layer >= 4) return;
+        flush();
         try {
             if (layer == 0 && probe != null) {
                 Object chunk = probe.chunk();
@@ -154,13 +214,12 @@ final class LegacyWorldDraw {
             Field id = field("LEGACY_VERTEX_BUFFER", "id");
             for (Entry entry : ENTRIES.values()) {
                 int reason = reason(entry);
-                if (reason < 0) continue;
                 for (int index = 0; index < 4; index++) {
                     Object vertexBuffer = buffer.invoke(entry.chunk(), index);
                     VBO[index] = vertexBuffer == null ? 0 : id.getInt(vertexBuffer);
                 }
                 if (reason == 0) LegacyGeometryProof.worldLayer(layer, VBO, entry.generation(), entry.key());
-                else LegacyGeometryProof.worldFallback(layer, VBO[layer], reason);
+                else LegacyGeometryProof.worldFallback(layer, VBO[layer], label(entry, reason), Math.max(reason, 0));
             }
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Resident world draw seam failed", failure); }
     }

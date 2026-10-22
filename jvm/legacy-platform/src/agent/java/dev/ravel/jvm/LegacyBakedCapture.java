@@ -71,16 +71,16 @@ final class LegacyBakedCapture {
         Thread thread = Thread.currentThread();
         int limit = LegacyWorldDraw.captureLimit(48 + LIMIT * (RECORD + 224));
         if (ACTIVE.containsKey(thread) || allocated >= limit && AVAILABLE.isEmpty()
-                || controlledWindow() && (queued != null || !ACTIVE.isEmpty())) { METRICS[1]++; return; }
+                || controlledWindow() && (queued != null || !ACTIVE.isEmpty())) { skip(task, 1); return; }
         Capture capture = AVAILABLE.pollFirst();
         try {
             if (capture == null) { capture = new Capture(); allocated++; }
             if (controlledWindow() && LegacyCompositeCapture.pending()
                     && !LegacyCompositeCapture.replacePending(task)) {
-                AVAILABLE.addLast(capture); METRICS[1]++; return;
+                AVAILABLE.addLast(capture); skip(task, 1); return;
             }
             if (!LegacyWorldDraw.configure(LegacyRenderer.taskGeneration(task))) {
-                AVAILABLE.addLast(capture); METRICS[1]++; return;
+                AVAILABLE.addLast(capture); skip(task, 1); return;
             }
             capture.begin(task, x, y, z);
         } catch (Throwable failure) {
@@ -88,10 +88,15 @@ final class LegacyBakedCapture {
             throw new IllegalStateException("Baked capture initialization failed", failure);
         }
         if (controlledWindow() && !capture.needed()) {
-            capture.release(); AVAILABLE.addLast(capture); METRICS[29]++; return;
+            capture.release(); AVAILABLE.addLast(capture); skip(task, 29); return;
         }
+        LegacyWorldDraw.status(task, LegacyWorldDraw.IN_FLIGHT, false);
         ACTIVE.put(thread, capture);
         LOCAL.set(capture);
+    }
+    private static void skip(Object task, int metric) {
+        METRICS[metric]++;
+        LegacyWorldDraw.status(task, LegacyWorldDraw.SKIPPED, false);
     }
 
     static synchronized void clear() {
@@ -164,6 +169,7 @@ final class LegacyBakedCapture {
             Capture capture = queued;
             try { drawQueued(); }
             finally {
+                LegacyWorldDraw.drained(capture.key);
                 AVAILABLE.addLast(capture);
                 queued = WAITING.pollFirst();
                 uploads--;
@@ -394,10 +400,13 @@ final class LegacyBakedCapture {
             int reason = capture.refusal != 0 ? capture.refusal
                     : capture.pending ? INCOMPLETE_QUAD
                     : capture.epoch != epoch || !LegacyRenderer.accepts(capture.generation) ? RETIRED_AT_FINISH : 0;
+            int status = LegacyWorldDraw.REFUSED;
             if (reason != 0) refuse(reason);
-            else if (!capture.fluidFallback()) {
+            else if (capture.fluidFallback()) status = LegacyWorldDraw.FLUID;
+            else {
                 synchronized (LegacyBakedResort.class) { capture.compare(); }
             }
+            LegacyWorldDraw.status(task, status, true);
         } catch (Throwable failure) {
             throw new IllegalStateException("Baked comparison failed", failure);
         } finally {

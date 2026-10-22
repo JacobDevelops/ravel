@@ -9,12 +9,19 @@ final class BakedWorldTable {
     private static long bytes;
     private static long peak;
     private static long evictions;
+    private static final java.util.Set<Long> EVICTED = bounded();
+    private static final java.util.Set<Long> OVER_BUDGET = bounded();
     private static final long SCRATCH = 3L * GeometryProof.MAX_BAKED_QUADS * 112;
 
     record Entry(long generation, long key, long resource, long atlas, int x, int y, int z,
             int buffer, int[] layers, int bytes) { }
 
     private BakedWorldTable() { }
+    private static java.util.Set<Long> bounded() {
+        return java.util.Collections.newSetFromMap(new LinkedHashMap<Long, Boolean>() {
+            @Override protected boolean removeEldestEntry(java.util.Map.Entry<Long, Boolean> eldest) { return size() > 4096; }
+        });
+    }
 
     static boolean configure(int distance) {
         if (distance < 1 || distance > 32 || !ENTRIES.isEmpty()) return false;
@@ -32,7 +39,8 @@ final class BakedWorldTable {
             layers[layer] = emitted[layer] * 4;
             size += layers[layer] * 28;
         }
-        if (size == 0 || size + SCRATCH > budget) return false;
+        if (size == 0) return false;
+        if (size + SCRATCH > budget) { OVER_BUDGET.add(identity[1]); return false; }
         Iterator<Entry> iterator = ENTRIES.values().iterator();
         while (iterator.hasNext()) {
             Entry entry = iterator.next();
@@ -57,6 +65,10 @@ final class BakedWorldTable {
         return entry != null && entry.generation == generation && entry.resource == resource
                 && entry.atlas == atlas ? entry : null;
     }
+    static int missing(long key) {
+        return EVICTED.contains(key) ? ResidentWorldDraw.GL_EVICTED
+                : OVER_BUDGET.contains(key) ? ResidentWorldDraw.GL_OVER_BUDGET : ResidentWorldDraw.GL_STALE_KEY;
+    }
     static long[] identity(int x, int y, int z) {
         for (Entry entry : ENTRIES.values())
             if (entry.x == x && entry.y == y && entry.z == z)
@@ -76,6 +88,7 @@ final class BakedWorldTable {
         if (farthest == null) throw new IllegalStateException("World residency accounting drift");
         retire(farthest);
         ENTRIES.remove(farthest.key);
+        EVICTED.add(farthest.key);
         evictions++;
     }
 
@@ -87,6 +100,8 @@ final class BakedWorldTable {
     static void clear() {
         for (Entry entry : ENTRIES.values()) retire(entry);
         ENTRIES.clear();
+        EVICTED.clear();
+        OVER_BUDGET.clear();
     }
 
     static long[] metrics() { return new long[]{budget, bytes + (ENTRIES.isEmpty() ? 0 : SCRATCH), peak,

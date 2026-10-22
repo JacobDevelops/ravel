@@ -178,8 +178,11 @@ final class LegacyGeometryProof {
                 long.class, long.class}, layer, ids, generation, key,
                 LegacyRuntime.completedResourceGeneration(), LegacyRuntime.atlasResourceGeneration());
     }
-    static void worldFallback(int layer, int source, int reason) {
-        call("worldFallback", new Class<?>[]{int.class, int.class, int.class}, layer, source, reason);
+    static void worldFallback(int layer, int source, int reason, int kind) {
+        call("worldFallback", new Class<?>[]{int.class, int.class, int.class, int.class}, layer, source, reason, kind);
+    }
+    static void worldStatus(int[] pairs, boolean reset) {
+        call("worldStatus", new Class<?>[]{int[].class, boolean.class}, pairs, reset);
     }
 
     static void resortBaked(int[] output, long generation, long key) {
@@ -256,6 +259,9 @@ final class LegacyGeometryProof {
             json.append(",\"productionWorldDraw\":");
             json.append(platform == null ? "[0,0,0,0,0,0,0,0,0,0,0]"
                     : Arrays.toString((long[]) call("worldMetrics", new Class<?>[0])).replace(" ", ""));
+            json.append(",\"productionFallbackReasons\":");
+            json.append(platform == null ? Arrays.toString(new long[64]).replace(" ", "")
+                    : Arrays.toString((long[]) call("worldFallbacks", new Class<?>[0])).replace(" ", ""));
             json.append("}\n");
             Path path = Path.of(destination);
             if (path.toAbsolutePath().getParent() != null) Files.createDirectories(path.toAbsolutePath().getParent());
